@@ -1,6 +1,6 @@
 # Soil n Silo
 
-A cozy farming and production game: one 28-day season to earn 20,000g by growing crops, raising chickens and turning both into
+A cozy point-and-click farming and production game: one 28-day season to earn 20,000g by growing crops, raising chickens and turning both into
 bread and pumpkin pie. The depth is in soil fertility, animals and processing chains rather than relationships. A 3D world drawn as
 pixel art by [pixel3d-renderer](https://github.com/CelestialLemon/pixel3d-renderer), for the web.
 
@@ -9,7 +9,7 @@ pixel art by [pixel3d-renderer](https://github.com/CelestialLemon/pixel3d-render
 - How the agents work here: [`AGENTS.md`](AGENTS.md) and [`docs/BOARD.md`](docs/BOARD.md)
 - Models: [`docs/ASSET_BRIEF.md`](docs/ASSET_BRIEF.md)
 
-![The game shell: the placeholder farm at 6 AM](docs/screenshot.png)
+![The game shell: the placeholder farm at 6 AM, with the tile under the pointer highlighted](docs/screenshot.png)
 
 ```sh
 npm install
@@ -21,7 +21,8 @@ npm run build        # typecheck, then the game into dist/
 
 Needs Node 22.18 or later (the tests run TypeScript directly, and installing the renderer from git builds it).
 
-Controls for now: WASD or arrows walk (relative to the camera), Q/E turn the camera 90°, Z cycles zoom 1x/2x/3x, T skips an hour.
+Controls for now: drag to pan, Q/E turn the camera between its 4 views, the mouse wheel or Z changes the zoom (1x/2x/3x), T skips
+an hour. The tile under the pointer is highlighted.
 
 ## Layout
 

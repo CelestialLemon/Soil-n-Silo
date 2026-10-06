@@ -3,8 +3,8 @@ import { FLAG, GeometryCollector, linearColor as lin, place, type PixelScene } f
 
 // A placeholder farm, drawn from a character map, to prove the renderer and the camera before the real layout is decided
 // (design doc, open question "Farm layout"). Each character is one 1 m tile; tile (col, row) covers x in [col, col + 1]
-// and z in [row, row + 1]. The game reads the same map for collision.
-//   .  grass    =  tilled soil    #  fence    T  tree    C  coop    B  shipping bin    @  where the player starts
+// and z in [row, row + 1].
+//   .  grass    =  tilled soil    #  fence    T  tree    C  coop    B  shipping bin    @  where the camera starts
 const MAP = [
   '##########################',
   '#T.......................#',
@@ -32,14 +32,13 @@ export interface Farm {
   scene: PixelScene;
   /** Every geometry the scene draws, for choosing the palette together with the objects'. */
   geometries: THREE.BufferGeometry[];
-  /** True where the player can't walk. */
-  solid(col: number, row: number): boolean;
-  start: THREE.Vector3;
+  /** The point the camera looks at when the game starts. */
+  home: THREE.Vector3;
 }
 
 export function buildFarm(): Farm {
   const s = new GeometryCollector();
-  let start = new THREE.Vector3(WIDTH / 2, 0, DEPTH / 2);
+  let home = new THREE.Vector3(WIDTH / 2, 0, DEPTH / 2);
   const at = (col: number, row: number) => MAP[row]?.[col] ?? '#';
   let coopDone = false;
 
@@ -50,7 +49,7 @@ export function buildFarm(): Farm {
       continue;
     }
     box(s, x, -0.5, z, 1, 0.5, 1, n < 0.5 ? 0x6f9a48 : 0x76a24c);
-    if (ch === '@') start = new THREE.Vector3(x, 0, z);
+    if (ch === '@') home = new THREE.Vector3(x, 0, z);
     if (ch === '#') {
       box(s, x, 0, z, 0.12, 0.8, 0.12, 0x8a6a44);
       if (at(col + 1, row) === '#') box(s, x + 0.5, 0.5, z, 1, 0.08, 0.06, 0xa07a50);
@@ -71,13 +70,12 @@ export function buildFarm(): Farm {
   }
 
   // Meadow outside the fence, just below the tiles, so the camera never looks past the edge of the world.
-  const M = 30;
+  const M = 100;
   for (const [x, z, w, d] of [[WIDTH / 2, -M / 2, WIDTH + 2 * M, M], [WIDTH / 2, DEPTH + M / 2, WIDTH + 2 * M, M], [-M / 2, DEPTH / 2, M, DEPTH], [WIDTH + M / 2, DEPTH / 2, M, DEPTH]]) {
     box(s, x, -0.5, z, w, 0.48, d, 0x5f8a40);
   }
 
   const staticGeometry = s.build();
   const scene: PixelScene = { staticGeometry, shadow: { center: new THREE.Vector3(WIDTH / 2, 0, DEPTH / 2), radius: Math.max(WIDTH, DEPTH) * 0.6 } };
-  const solid = (col: number, row: number) => '#TCB'.includes(at(col, row));
-  return { scene, geometries: [staticGeometry], solid, start };
+  return { scene, geometries: [staticGeometry], home };
 }
