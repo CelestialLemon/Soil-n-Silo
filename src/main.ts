@@ -15,7 +15,8 @@ const BASE_PIXEL = 2;               // screen pixels per art pixel at 1x
 const ELEVATION = THREE.MathUtils.degToRad(30);
 const HOME_YAW = THREE.MathUtils.degToRad(45);
 const DRAG_THRESHOLD = 4;           // CSS pixels the pointer moves before a press becomes a pan rather than a click
-const WHEEL_STEP = 100;             // wheel delta per zoom level, so a trackpad flick doesn't run through every level
+const WHEEL_STEP = 100;             // wheel delta per zoom level
+const WHEEL_GESTURE_GAP = 200;      // ms without wheel events that end a gesture; one gesture zooms one level at most
 
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
 const hud = { day: document.querySelector('#day')!, clock: document.querySelector('#clock')!, zoom: document.querySelector('#zoom')! };
@@ -70,6 +71,8 @@ let press: { id: number; x: number; y: number; dragging: boolean } | null = null
 canvas.addEventListener('pointerdown', (e) => {
   if (!e.isPrimary || press) return;
   press = { id: e.pointerId, x: e.clientX, y: e.clientY, dragging: false };
+  pointer = { x: e.clientX, y: e.clientY };   // a tap may come with no pointermove at all
+  repick = 2;
   canvas.setPointerCapture(e.pointerId);
 });
 canvas.addEventListener('pointermove', (e) => {
@@ -92,16 +95,18 @@ function release(e: PointerEvent) {
 canvas.addEventListener('pointerup', release);
 canvas.addEventListener('pointercancel', release);
 canvas.addEventListener('pointerleave', (e) => { if (!press && e.isPrimary) { pointer = null; repick = 2; } });
-let wheel = 0;
+// The wheel steps whole zoom levels, one per gesture, so an inertial trackpad flick doesn't run through every level.
+let wheel = 0, wheelAt = -Infinity, wheelDone = false;
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
-  // Steps whole zoom levels; a pinch (ctrlKey) and sideways scrolling are not zoom.
-  if (e.ctrlKey || e.deltaY === 0) return;
-  if (Math.sign(e.deltaY) !== Math.sign(wheel)) wheel = 0;
+  if (e.ctrlKey || e.deltaY === 0) return;   // a pinch and sideways scrolling are not zoom
+  if (e.timeStamp - wheelAt > WHEEL_GESTURE_GAP || Math.sign(e.deltaY) !== Math.sign(wheel)) { wheel = 0; wheelDone = false; }
+  wheelAt = e.timeStamp;
+  if (wheelDone) return;
   wheel += e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? e.deltaY : Math.sign(e.deltaY) * WHEEL_STEP;
   if (Math.abs(wheel) < WHEEL_STEP) return;
   setZoom(THREE.MathUtils.clamp(zoom - Math.sign(wheel), 0, ZOOMS.length - 1));
-  wheel = 0;
+  wheelDone = true;
 }, { passive: false });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
