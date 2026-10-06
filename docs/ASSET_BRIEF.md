@@ -22,11 +22,10 @@ Scale: 1 Blender unit = 1 m = one farm tile. Origin on the ground at the model's
 
 | Model | Notes |
 | --- | --- |
-| Farmer | Rigid parts (body, two legs, two arms) until the renderer has skinned meshes |
 | Chicken | Rigid parts; small (about 0.4 m), must read at 1x zoom |
 | Wheat, tomato, pumpkin | 3–5 growth stages each, one model per stage; tomato has a harvested-and-regrowing stage |
 | Tilled soil tile | One per fertility band, pale to rich dark brown (exact bands agreed when soil work starts) |
-| Coop | With a door that opens, trough inside; the roof must be able to fade or lift when the player is inside or behind it |
+| Coop | With a door that opens and a trough inside; the roof may need to lift off so the player can see in |
 | Shipping bin, shop stall | |
 | Mill, oven | Idle and running looks (smoke, glow) |
 | Items | Seeds, feed, egg, manure, flour, bread, pumpkin pie: small, for the hotbar icons and for dropped items |

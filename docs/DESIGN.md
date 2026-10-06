@@ -49,7 +49,7 @@ Manure from chickens is what restores the fields, so animals and soil quality st
 
 ## Camera and presentation
 
-The camera is an orthographic, isometric-style 3/4 view that orbits the player in snapped 90° steps. This keeps the diorama look while letting players see behind buildings.
+The camera is an orthographic, isometric-style 3/4 view over the farm. The player turns it between 4 preset views 90° apart and pans it with the mouse. This keeps the diorama look while letting players see behind buildings.
 
 | Setting | Decision | Why |
 | --- | --- | --- |
@@ -58,30 +58,29 @@ The camera is an orthographic, isometric-style 3/4 view that orbits the player i
 | Pitch | Fixed, about 30° | Produces clean 2:1 pixel lines |
 | Rotation | Snapped 90° steps (4 views) | Free orbit makes pixel art shimmer |
 | Zoom | Fixed integer levels (1x, 2x, 3x) | Smooth zoom breaks pixel crispness |
-| Camera movement | Snapped to pixel-size steps | Prevents shimmer while following the player |
+| Panning | Drag with the mouse, kept over the farm; snapped to pixel-size steps | Point-and-click needs the whole farm in reach; snapping prevents shimmer |
 
 **Readability rules**
 
-- The tile the player is targeting is always highlighted. With diamond tiles this is essential.
-- Buildings and trees fade or cut away when they block the player.
+- The tile under the pointer is always highlighted. With diamond tiles this is essential.
+- Buildings and trees fade or cut away when they hide the tile under the pointer, if turning the camera turns out not to be enough.
 - Soil color shows fertility (see Crops), so fields can be read without UI.
 
 **Art note:** every model is seen from 4 sides, so it must read well all the way around. Low-poly, flat-color models are the target style.
 
 ## Player controls and interaction
 
-The player walks around the farm freely and acts on one grid tile at a time. There is no energy or stamina in the MVP; time is the only daily limit.
+The game is point-and-click (decided 2026-10-06). There is no player character in the scene: the player is the hand on the farm, pointing at one grid tile or object at a time and clicking to act. There is no energy or stamina in the MVP; time is the only daily limit.
 
-- **Movement:** free and smooth in any direction, not grid-locked. Only actions snap to the grid.
-- **Camera-relative:** pressing "up" always moves the player up the screen, whatever the camera rotation.
-- **Facing:** snaps to the 4 grid directions, so "the tile in front" is never ambiguous.
-- **Targeting:** the tile in front by default. Optional mouse/cursor targeting within 1 tile of the player.
-- **Two action buttons:**
-  - *Use:* uses the held tool or item (hoe, water, plant, fertilize, feed).
-  - *Interact:* opens or acts on things (machines, shop, shipping bin, petting, collecting).
-- **Tools:** hoe, watering can, hand. Each affects one tile per use. Area tools are a post-MVP upgrade.
+- **No avatar and no walking.** Anything on the farm can be reached from anywhere, as long as it is on screen.
+- **Camera:** drag to pan; Q/E (or on-screen buttons) turn between the 4 views; the mouse wheel steps through the zoom levels.
+- **Pointing:** the tile or object under the pointer is highlighted.
+- **Clicking:**
+  - On a tile, click *uses* the held tool or item there (hoe, water, plant, fertilize).
+  - On a thing, click *interacts* with it (machines, shop, shipping bin, trough, chickens for petting, eggs and manure for collecting).
+  - A press that moves more than a few pixels is a pan, not a click.
+- **Tools:** hoe, watering can, hand. Each affects one tile per click. Area tools are a post-MVP upgrade.
 - **Inventory:** a hotbar plus a small backpack. Items stack.
-- **Movement speed target:** crossing a 10-tile field takes about 2 seconds. Tune in playtests.
 
 ## Time and day structure
 
@@ -89,7 +88,7 @@ A day lasts about 13 real minutes, from 6 AM to a 2 AM cutoff. The clock pauses 
 
 - **Day length:** ~13 real minutes. Tune in playtests.
 - **Paused in menus:** inventory, shop, and machine screens stop the clock.
-- **Ending the day:** the player can go to bed at any time. At 2 AM they are sent home automatically and wake up late the next morning (exact penalty to tune).
+- **Ending the day:** the player can end the day at any time (clicking the farmhouse or an "End day" button). At 2 AM the day ends automatically, with a penalty the next morning (exact penalty to tune).
 - **Machines run on in-game hours**, so players can run several batches per day.
 
 **Overnight, in this order:**
@@ -242,7 +241,8 @@ The goal is to earn 20,000g in total sales by the end of day 28. Total earnings 
 ### Open questions
 
 - [ ] Exact quality odds per fertility band
-- [ ] Penalty for hitting the 2 AM cutoff (wake late? lose a sale?)
+- [ ] Penalty for hitting the 2 AM cutoff (start the next day late? lose a sale?)
+- [ ] Without walking, what makes distance on the farm matter, if anything? (Layout may then be about readability rather than travel.)
 - [ ] How often harvests drop crop scraps
 - [ ] Happiness values per action, and how happiness maps to egg quality
 - [ ] Does the 20,000g target hold up in a spreadsheet sim?

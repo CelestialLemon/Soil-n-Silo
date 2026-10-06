@@ -7,7 +7,7 @@
   <title>Soil n Silo</title>
   <style>
     html, body { margin: 0; height: 100%; overflow: hidden; background: #111; }
-    #view { display: block; image-rendering: pixelated; }
+    #view { display: block; image-rendering: pixelated; touch-action: none; }
     #hud {
       position: fixed; left: 12px; top: 12px; padding: 8px 12px; border-radius: 6px;
       font: 13px/1.5 ui-monospace, monospace; color: #f3ead8; background: rgb(20 16 12 / 0.7); pointer-events: none;
@@ -19,7 +19,7 @@
   <canvas id="view"></canvas>
   <div id="hud">
     <div>Day <b id="day">1</b> · <b id="clock">6:00</b> · zoom <b id="zoom">2x</b></div>
-    <div>WASD / arrows walk · Q E turn 90° · Z zoom · T +1 hour</div>
+    <div>Drag to pan · Q E turn 90° · wheel or Z zoom · T +1 hour</div>
   </div>
   <script type="module" src="./src/main.ts"></script>
 </body>
