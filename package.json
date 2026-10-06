@@ -1,0 +1,30 @@
+{
+  "name": "soil-n-silo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "A cozy farming and production game: soil, chickens and processing chains, drawn as pixel art.",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run typecheck && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc -p test",
+    "test": "node --test 'test/**/*.test.ts'"
+  },
+  "dependencies": {
+    "pixel3d-renderer": "github:CelestialLemon/pixel3d-renderer#v0.1.0",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/three": "^0.180.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.3"
+  },
+  "allowScripts": {
+    "github:CelestialLemon/pixel3d-renderer#cd45c1c890180089dfb17e6fd2fa07e1da50945b": true
+  }
+}
