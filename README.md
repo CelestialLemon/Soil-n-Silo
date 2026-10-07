@@ -6,7 +6,7 @@ pixel art by [pixel3d-renderer](https://github.com/CelestialLemon/pixel3d-render
 
 - Design: [`docs/DESIGN.md`](docs/DESIGN.md) (the MVP design doc)
 - Plan: [`docs/ROADMAP.md`](docs/ROADMAP.md), including the renderer gaps to confirm
-- How the agents work here: [`AGENTS.md`](AGENTS.md) and [`docs/BOARD.md`](docs/BOARD.md)
+- How to work here: [`AGENTS.md`](AGENTS.md)
 - Models: [`docs/ASSET_BRIEF.md`](docs/ASSET_BRIEF.md)
 
 ![The game shell: the placeholder farm at 6 AM, with the tile under the pointer highlighted](docs/screenshot.png)
@@ -32,7 +32,7 @@ src/
   game/         game rules and state as pure TypeScript (no DOM, no renderer), unit-tested in test/
   world/        building what the renderer draws: the farm scene and the objects' geometry
 test/           unit tests (Node's test runner)
-docs/           design, roadmap, asset brief, the agents' board and its saved history
+docs/           design, roadmap, asset brief
 ```
 
 ## The renderer
@@ -56,4 +56,4 @@ npm install ../pixel3d-renderer     # then `npm run build:lib` in the renderer a
 ```
 
 Never commit the game pointing at a local path. Renderer bugs and missing features are issues in the renderer repo, labelled
-`soil-n-silo` (see `docs/BOARD.md`, "Renderer issues").
+`soil-n-silo` (see `AGENTS.md`, "Renderer issues").
