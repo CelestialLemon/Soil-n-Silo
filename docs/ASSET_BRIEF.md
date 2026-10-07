@@ -1,6 +1,6 @@
 # Asset brief: models for the game
 
-Who this is for: whichever agent builds the 3D models (usually **Sol**). To change a rule, propose it on `docs/BOARD.md` first.
+Who this is for: whoever builds the 3D models. To change a rule, edit this file in the same PR as the work that needs the change.
 
 ## Style
 

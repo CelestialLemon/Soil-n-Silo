@@ -2,7 +2,7 @@
 
 Goal: the MVP in [`DESIGN.md`](DESIGN.md), one 28-day season with a 20,000g target, proving that farming and production chains
 are fun without a social layer. The game is drawn with [`pixel3d-renderer`](https://github.com/CelestialLemon/pixel3d-renderer),
-and is the first real game on it: renderer gaps found here go back to that repo as issues (`docs/BOARD.md`, "Renderer issues").
+and is the first real game on it: renderer gaps found here go back to that repo as issues (`AGENTS.md`, "Renderer issues").
 
 Items are roughly in priority order within each milestone. Each milestone ends playable.
 
@@ -27,7 +27,7 @@ Pinned: **v0.1.0** (`package.json`). The game owns the loop, state, input, UI, a
 
 ## Milestone 0: set-up (done 2026-10-06)
 
-- The repo, the agent workflow (`AGENTS.md`, `docs/BOARD.md`), CI, the design doc in `docs/`.
+- The repo, the agent instructions (`AGENTS.md`), CI, the design doc in `docs/`.
 - A game shell on the renderer: a placeholder farm, the camera from the design doc (orthographic, 45° home yaw, 30° pitch, 4
   preset views 90° apart, 1x/2x/3x integer zoom that scales whole art pixels, mouse panning), the hovered-tile highlight, and
   the day clock. The game is point-and-click, with no player character (decided 2026-10-06).
