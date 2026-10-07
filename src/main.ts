@@ -1,13 +1,24 @@
 import * as THREE from 'three';
-import { hourLabel, lookAt, PixelRenderer, quantizePalette, type PixelObject } from 'pixel3d-renderer';
-import { hourOfDay, newClock, nextDay, tick } from './game/clock.ts';
-import { buildFarm, DEPTH, WIDTH } from './world/farm.ts';
-import { tileCursor } from './world/models.ts';
+import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObject } from 'pixel3d-renderer';
+import { collectEggs, collectManure, fillTrough, petChicken, toggleDoor, useOnTile, type Result } from './game/actions.ts';
+import { hourOfDay } from './game/clock.ts';
+import { CROPS, daysToRipe, isRipe } from './game/crops.ts';
+import { endDay, passTime } from './game/day.ts';
+import { ITEMS, QUALITY_NAMES } from './game/items.ts';
+import { at, DEPTH, isField, isOpenGrass, WIDTH } from './game/layout.ts';
+import { canPlace, collect, isReady, isRunning, MACHINE_NAMES, placeMachine, recipe } from './game/machines.ts';
+import { deserialize, SAVE_KEY, serialize } from './game/save.ts';
+import { held, newGame, tileAt, type GameState } from './game/state.ts';
+import { Ui } from './ui/ui.ts';
+import { buildFarm } from './world/farm.ts';
+import { allGeometries, loadModels, SOIL_TOP } from './world/models.ts';
+import { FarmView, type Target } from './world/view.ts';
+import './ui/style.css';
 
-// The game shell: owns the loop, the clock, input and every object's position, and each frame tells the renderer where
-// things are. The game is point-and-click, with no player character. The camera follows the design doc: orthographic, 45°
-// home yaw, 30° pitch (clean 2:1 lines), four preset views 90° apart, integer zoom levels that scale whole art pixels,
-// and panning with the mouse. The renderer snaps the camera to the art-pixel grid, so panning doesn't shimmer.
+// The game: owns the loop, the state, input and the camera, and each frame tells the renderer where everything is. The
+// game is point-and-click with no player character: a click on a field tile uses what is in hand there, a click on a thing
+// interacts with it. The camera follows the design doc: orthographic, 45° home yaw, 30° pitch (clean 2:1 lines), four
+// preset views 90° apart, integer zoom levels that scale whole art pixels, and panning with the mouse.
 
 const ART_PX_PER_METRE = 16;        // art pixels per metre of view height: fixed, so zooming never resamples the art
 const ZOOMS = [1, 2, 3];
@@ -17,33 +28,60 @@ const HOME_YAW = THREE.MathUtils.degToRad(45);
 const DRAG_THRESHOLD = 4;           // CSS pixels the pointer moves before a press becomes a pan rather than a click
 const WHEEL_STEP = 100;             // wheel delta per zoom level
 const WHEEL_GESTURE_GAP = 200;      // ms without wheel events that end a gesture; one gesture zooms one level at most
+const REPICK_FRAMES = 8;            // things move under a still pointer, so the hover is re-picked this often too
 
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
-const hud = { day: document.querySelector('#day')!, clock: document.querySelector('#clock')!, zoom: document.querySelector('#zoom')! };
+const loading = document.querySelector<HTMLElement>('#loading')!;
 
-const farm = buildFarm();
-const cursorGeometry = tileCursor();
-quantizePalette([...farm.geometries, cursorGeometry], 64);
-const renderer = new PixelRenderer(canvas, farm.scene, { shadowMapSize: 2048 });
+const models = await loadModels();
+const farm = buildFarm(models);
+quantizePalette([...farm.geometries, ...allGeometries(models)], 80);
+const renderer = new PixelRenderer(canvas, farm.scene, { shadowMapSize: 2048, warmHighlight: true });
+const view = new FarmView(renderer, models);
+const cursor = renderer.addObject(models.cursor);
+const placeOk = renderer.addObject(models.place.ok), placeBad = renderer.addObject(models.place.bad);
+cursor.visible = placeOk.visible = placeBad.visible = false;
 
-const cursor = renderer.addObject(cursorGeometry);
-cursor.visible = false;
-const clock = newClock();
+let state: GameState = deserialize(localStorage.getItem(SAVE_KEY)) ?? newGame();
+const save = () => localStorage.setItem(SAVE_KEY, serialize(state));
+
+const ui = new Ui(document.body, {
+  state: () => state,
+  changed: () => { repick = 2; },
+  endDay: () => sleep(false),
+  newGame: () => { state = newGame(); save(); ui.showWelcome(); },
+  turn: (dir) => turn(dir),
+  zoom: () => setZoom((zoom + 1) % ZOOMS.length),
+});
+if (!localStorage.getItem(SAVE_KEY)) ui.showWelcome();
+save();
+addEventListener('pagehide', save);
+document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
+loading.remove();
+
+function sleep(passedOut: boolean) {
+  const summary = endDay(state, passedOut);
+  save();
+  ui.showSummary(summary);
+}
+
+// ---- Camera ----
 const target = farm.home.clone();   // the ground point the camera looks at
-let view = 0, zoom = 1;             // view: quarter turns from the home yaw; zoom indexes ZOOMS
+let view4 = 0, zoom = 1;            // view4: quarter turns from the home yaw; zoom indexes ZOOMS
 /**
- * Frames left to pick on. Picking reads back from the GPU, so it runs only after the pointer or the camera changed: on the
- * next frame, and on the one after it, which reads the image drawn with the new camera.
+ * Frames left to pick on. Picking reads back from the GPU, so it runs only after the pointer, the camera or the farm
+ * changed: on the next frame, and on the one after it, which reads the image drawn with the new camera.
  */
 let repick = 2;
 
 const pixelSize = () => BASE_PIXEL * ZOOMS[zoom];
-const yaw = () => HOME_YAW + view * Math.PI / 2;
+const yaw = () => HOME_YAW + view4 * Math.PI / 2;
 const forward = new THREE.Vector3(), right = new THREE.Vector3();
 function cameraAxes() {
   forward.set(-Math.sin(yaw()), 0, -Math.cos(yaw()));
   right.set(-forward.z, 0, forward.x);
 }
+function turn(dir: 1 | -1) { view4 = (view4 + 4 + dir) % 4; repick = 2; }
 
 /** Moves the camera over the ground by a pointer movement in CSS pixels, so the ground follows the pointer. */
 function pan(dx: number, dy: number) {
@@ -56,13 +94,34 @@ function pan(dx: number, dy: number) {
   repick = 2;
 }
 
+function setZoom(z: number) {
+  zoom = z;
+  fit();
+}
+
+function fit() {
+  const px = pixelSize();
+  const w = Math.max(1, Math.ceil(innerWidth / px)), h = Math.max(1, Math.ceil(innerHeight / px));
+  if (renderer.width !== w || renderer.height !== h) renderer.resize(w, h);
+  canvas.style.width = `${w * px}px`; canvas.style.height = `${h * px}px`;
+  repick = 2;
+}
+addEventListener('resize', fit);
+fit();
+
 // ---- Input ----
 addEventListener('keydown', (e) => {
-  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
-  if (e.code === 'KeyQ') { view = (view + 3) % 4; repick = 2; }
-  if (e.code === 'KeyE') { view = (view + 1) % 4; repick = 2; }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.code === 'Escape') { if (ui.busy) ui.close(); else ui.openMenu(); return; }
+  if (e.repeat) return;
+  if (e.code === 'KeyB' || e.code === 'KeyI') { if (!ui.busy || ui.panelName === 'backpack') ui.openBackpack(); return; }
+  if (ui.busy) return;
+  if (e.code === 'KeyQ') turn(-1);
+  if (e.code === 'KeyE') turn(1);
   if (e.code === 'KeyZ') setZoom((zoom + 1) % ZOOMS.length);
-  if (e.code === 'KeyT') clock.hour = Math.min(clock.hour + 1, 26);
+  if (e.code === 'KeyT' && passTime(state, 0, 1)) sleep(true);
+  const digit = /^Digit(\d)$/.exec(e.code);
+  if (digit) { state.selected = (Number(digit[1]) + 9) % 10; repick = 2; }
 });
 
 let pointer: { x: number; y: number } | null = null;
@@ -87,10 +146,12 @@ canvas.addEventListener('pointermove', (e) => {
 });
 function release(e: PointerEvent) {
   if (e.pointerId !== press?.id) return;
-  // A press that didn't pan is a click: acting on the hovered tile comes with the tools.
+  const click = !press.dragging && e.type === 'pointerup' && e.button === 0;
   press = null;
   canvas.style.cursor = '';
   repick = 2;
+  // The click acts on what the pointer was over when it went down (the hover is fresh: a press re-picks).
+  if (click && !ui.busy) act();
 }
 canvas.addEventListener('pointerup', release);
 canvas.addEventListener('pointercancel', release);
@@ -110,53 +171,152 @@ canvas.addEventListener('wheel', (e) => {
 }, { passive: false });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-/** The ground tile at a picked point, if it is one: the top of grass or soil inside the fence, or the cursor lying on it. */
-function tileUnder(world: THREE.Vector3, normal: THREE.Vector3, object: PixelObject | null) {
-  if (object && object !== cursor) return null;
+// ---- Pointing and clicking ----
+
+/** What the pointer is over: a thing, or a ground tile inside the fence. */
+let hover: Target | null = null;
+let highlighted: PixelObject[] = [];
+
+/** The ground tile at a picked point, if it is one: the top of grass, path or soil inside the fence. */
+function tileUnder(world: THREE.Vector3, normal: THREE.Vector3): Target | null {
   if (normal.y < 0.7 || Math.abs(world.y) > 0.1) return null;
   const col = Math.floor(world.x), row = Math.floor(world.z);
-  return col > 0 && row > 0 && col < WIDTH - 1 && row < DEPTH - 1 ? { col, row } : null;
+  return col > 0 && row > 0 && col < WIDTH - 1 && row < DEPTH - 1 && at(col, row) !== '#' && at(col, row) !== 'f' ? { kind: 'tile', col, row } : null;
+}
+
+const holdingMachine = () => { const st = held(state); return !!st && ITEMS[st.item].kind === 'machine'; };
+/** A machine goes with its north-west tile under the pointer. */
+const placeAt = (t: Target & { kind: 'tile' }) => ({ col: t.col, row: t.row });
+
+function setHover(t: Target | null, picked: PixelObject | null) {
+  hover = t;
+  const objs = t && t.kind !== 'tile' ? view.objectsOf(t) : [];
+  // The hovered object first, so it is among the ones highlighted when a thing has more than the renderer allows.
+  if (picked) objs.sort((a, b) => (a === picked ? -1 : b === picked ? 1 : 0));
+  const next = objs.slice(0, MAX_HIGHLIGHTS);
+  for (const o of highlighted) if (!next.includes(o)) o.highlight = false;
+  for (const o of next) o.highlight = true;
+  highlighted = next;
+
+  cursor.visible = placeOk.visible = placeBad.visible = false;
+  if (t?.kind === 'tile') {
+    if (holdingMachine()) {
+      const p = placeAt(t), frame = canPlace(state, p.col, p.row) ? placeOk : placeBad;
+      frame.visible = true;
+      frame.setTransform(new THREE.Vector3(p.col + 1, 0.01, p.row + 1));
+    } else {
+      cursor.visible = true;
+      cursor.setTransform(new THREE.Vector3(t.col + 0.5, (tileAt(state, t.col, t.row)?.tilled ? SOIL_TOP : 0) + 0.01, t.row + 0.5));
+    }
+  }
+  ui.setInfo(t ? describe(t) : null);
+}
+
+/** The hover line: what the thing is and what a click does. */
+function describe(t: Target): string | null {
+  const s = state;
+  switch (t.kind) {
+    case 'tile': {
+      if (holdingMachine()) return canPlace(s, t.col, t.row) ? `Click to place the ${ITEMS[held(s)!.item].name.toLowerCase()} here.` : 'A machine needs 2 x 2 tiles of open grass.';
+      const tile = tileAt(s, t.col, t.row);
+      if (!tile) return isOpenGrass(t.col, t.row) ? 'Grass. Machines can go here.' : null;
+      if (!tile.tilled) return 'Field. Till it with the hoe.';
+      const lines = [`Soil fertility ${tile.fertility}${tile.watered ? ' · watered' : ' · dry'}`];
+      const c = tile.crop;
+      if (c) {
+        const name = ITEMS[CROPS[c.id].produce].name;
+        lines.push(isRipe(c) ? `${name}: ripe! Click to harvest.` : `${name}: ${daysToRipe(c)} watered day${daysToRipe(c) > 1 ? 's' : ''} to go.`);
+      } else lines.push('Empty: plant seeds, or let it rest (+5 a night).');
+      return lines.join('\n');
+    }
+    case 'building':
+      return {
+        farmhouse: 'Farmhouse. Click to sleep and end the day.',
+        shop: 'Shop. Seeds, feed, chickens and machines.',
+        bin: `Shipping bin: ${s.bin.reduce((n, b) => n + b.count, 0)} items. Sold overnight.`,
+        coop: `Coop: ${s.coop.chickens.length} chickens, trough ${s.coop.trough}.`,
+      }[t.building];
+    case 'door': return `Coop door (${s.coop.doorOpen ? 'open' : 'closed'}). Click to ${s.coop.doorOpen ? 'close' : 'let the chickens out'}.`;
+    case 'trough': return `Trough: ${s.coop.trough} food. Click with feed or scraps in hand to fill it.`;
+    case 'eggs': return `${s.coop.eggs.length} egg${s.coop.eggs.length > 1 ? 's' : ''}. Click to collect.`;
+    case 'manure': return `${s.coop.manure} manure. Click to collect: fertilizer for the field.`;
+    case 'chicken': {
+      const c = s.coop.chickens.find((c) => c.id === t.id);
+      return c ? `${c.name} · happiness ${c.happiness}${c.pettedToday ? '' : ' · click to pet'}` : null;
+    }
+    case 'machine': {
+      const m = s.machines.find((m) => m.id === t.id);
+      if (!m) return null;
+      const name = MACHINE_NAMES[m.kind];
+      if (isReady(m)) return `${name}: ${ITEMS[recipe(m.batch!.recipe).output].name.toLowerCase()} ready! Click to collect.`;
+      if (isRunning(m)) return `${name}: making ${ITEMS[recipe(m.batch!.recipe).output].name.toLowerCase()}, ${Math.ceil(m.batch!.hoursLeft)}h left.`;
+      return `${name}: idle. Click to start a recipe.`;
+    }
+  }
+}
+
+function act() {
+  const t = hover;
+  if (!t) return;
+  const s = state, st = held(s);
+  let r: Result | null = null;
+  switch (t.kind) {
+    case 'tile':
+      if (holdingMachine()) {
+        const p = placeAt(t), m = placeMachine(s, s.selected, p.col, p.row);
+        r = m ? { ok: true, message: `Placed the ${MACHINE_NAMES[m.kind].toLowerCase()}.` } : { ok: false, message: 'A machine needs 2 x 2 tiles of open grass.' };
+      } else if (isField(t.col, t.row)) r = useOnTile(s, t.col, t.row);
+      break;
+    case 'building':
+      if (t.building === 'farmhouse') ui.confirmEndDay();
+      else if (t.building === 'shop') ui.openShop();
+      else if (t.building === 'bin') ui.openBin();
+      else ui.openCoop();
+      break;
+    case 'door': r = toggleDoor(s); break;
+    case 'trough':
+      if (st && (st.item === 'feed' || st.item === 'scraps')) r = fillTrough(s, st.item, st.count);
+      else ui.openCoop();
+      break;
+    case 'eggs': r = collectEggs(s); break;
+    case 'manure': r = collectManure(s); break;
+    case 'chicken': r = petChicken(s, t.id); break;
+    case 'machine': {
+      const m = s.machines.find((m) => m.id === t.id);
+      if (m && isReady(m)) {
+        const out = recipe(m.batch!.recipe).output, q = m.batch!.quality;
+        r = collect(s, m) ? { ok: true, message: `+1 ${q ? `${QUALITY_NAMES[q].toLowerCase()} ` : ''}${ITEMS[out].name.toLowerCase()}` } : { ok: false, message: 'The backpack is full.' };
+      } else if (m) ui.openMachine(m.id);
+      break;
+    }
+  }
+  if (r) ui.toast(r);
+  repick = 2;
 }
 
 // ---- Loop ----
-function setZoom(z: number) {
-  zoom = z;
-  fit();
-}
-
-function fit() {
-  const px = pixelSize();
-  const w = Math.max(1, Math.ceil(innerWidth / px)), h = Math.max(1, Math.ceil(innerHeight / px));
-  if (renderer.width !== w || renderer.height !== h) renderer.resize(w, h);
-  canvas.style.width = `${w * px}px`; canvas.style.height = `${h * px}px`;
-  repick = 2;
-  hud.zoom.textContent = `${ZOOMS[zoom]}x`;
-}
-addEventListener('resize', fit);
-fit();
-
-let last = performance.now(), time = 0, lookHour = Number.NaN;
-const cursorAt = new THREE.Vector3();
+let last = performance.now(), time = 0, lookHour = Number.NaN, frameNo = 0;
 
 function frame(now: number) {
   const dt = Math.min((now - last) / 1000, 0.1);
-  last = now; time += dt;
+  last = now; time += dt; frameNo++;
 
-  // Placeholder day: at the cutoff the next day starts (bed, the overnight steps and the summary come later).
-  if (tick(clock, dt)) nextDay(clock);
-  const hour = hourOfDay(clock);
+  state.clock.paused = ui.busy;
+  if (passTime(state, dt)) sleep(true);
+  const hour = hourOfDay(state.clock);
   if (!(Math.abs(hour - lookHour) < 0.02)) { renderer.setLook(lookAt(hour)); lookHour = hour; }
-  hud.day.textContent = String(clock.day);
-  hud.clock.textContent = hourLabel(hour);
 
-  // The hovered tile is highlighted, except while panning. The pick reads last frame's image, which is what the player
-  // is looking at.
+  view.sync(state, ui.busy ? 0 : dt);
+  ui.update();
+
+  // The hover is picked from last frame's image, which is what the player is looking at.
+  if (pointer && frameNo % REPICK_FRAMES === 0) repick = Math.max(repick, 1);
   if (repick > 0) {
     repick -= 1;
-    const hit = pointer && !press?.dragging ? renderer.pick(pointer.x, pointer.y) : null;
-    const tile = hit?.world ? tileUnder(hit.world, hit.normal!, hit.object) : null;
-    cursor.visible = !!tile;
-    if (tile) cursor.setTransform(cursorAt.set(tile.col + 0.5, 0.005, tile.row + 0.5));
+    const hit = pointer && !press?.dragging && !ui.busy ? renderer.pick(pointer.x, pointer.y) : null;
+    const picked = hit?.object ?? null;
+    // The cursor frames are objects too: under them is the ground.
+    setHover(view.targetOf(picked) ?? (hit?.world ? tileUnder(hit.world, hit.normal!) : null), picked);
   }
 
   renderer.placeCamera(target, yaw(), ELEVATION, renderer.height / ART_PX_PER_METRE);
@@ -165,3 +325,6 @@ function frame(now: number) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+// For checks in the browser console and scripted playtests.
+Object.assign(window, { game: { get state() { return state; }, get hover() { return hover; }, renderer, view, ui } });

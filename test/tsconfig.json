@@ -2,5 +2,5 @@
   // The unit tests run in Node with its type stripping (no build step), so only erasable TypeScript is allowed.
   "extends": "../tsconfig.json",
   "compilerOptions": { "lib": ["ES2022"], "types": ["node"] },
-  "include": [".", "../src/game"]
+  "include": [".", "../src/game", "../tools"]
 }
