@@ -1,5 +1,5 @@
-import { CROPS, cropForSeed, isRipe, rollQuality } from './crops.ts';
-import { CHICKEN_PRICE, ITEMS, sellPrice, type ItemId } from './items.ts';
+import { CROPS, cropForSeed, isRipe, qualityOdds, rollQuality } from './crops.ts';
+import { CHICKEN_PRICE, ITEMS, sellPrice, type ItemId, type Quality } from './items.ts';
 import { addChicken, addItem, canAdd, held, MAX_CHICKENS, random, takeFromSlot, tileAt, type GameState, type Stack } from './state.ts';
 
 // What the player's clicks do (design doc, "Player controls and interaction"). On a tile, a click uses what is in hand;
@@ -64,8 +64,9 @@ export function harvest(s: GameState, col: number, row: number): Result {
   const crop = tile?.crop;
   if (!tile || !crop || !isRipe(crop)) return no('Nothing to harvest.');
   const d = CROPS[crop.id];
-  // Room for whatever quality comes up, checked before rolling, so a full backpack can't be used to roll again.
-  if (!([0, 1, 2] as const).every((q) => canAdd(s, d.produce, q))) return no('The backpack is full.');
+  // Room for whatever quality can come up, checked before rolling, so a full backpack can't be used to roll again.
+  const possible: Quality[] = qualityOdds(tile.fertility).gold > 0 ? [0, 1, 2] : [0, 1];
+  if (!possible.every((q) => canAdd(s, d.produce, q))) return no('The backpack is full.');
   const quality = rollQuality(tile.fertility, random(s));
   addItem(s, d.produce, d.yield, quality);
   const scrap = random(s) < d.scrapChance && addItem(s, 'scraps', 1);

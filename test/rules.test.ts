@@ -82,6 +82,10 @@ test('a full backpack refuses a harvest before rolling its quality', () => {
   assert.equal(harvest(s, col, row).ok, false);
   assert.equal(s.rng, rng, 'nothing rolled');
   assert.ok(t.crop);
+  t.fertility = 50;   // gold can't come up: room for normal and silver is enough
+  s.inventory[0] = { item: 'wheat', quality: 0, count: 1 };
+  s.inventory[1] = { item: 'wheat', quality: 1, count: 1 };
+  assert.equal(harvest(s, col, row).ok, true);
 });
 
 test('growth stages run from 0 to ripe', () => {
@@ -251,6 +255,8 @@ test('save and load round-trip; broken saves are refused', () => {
   const back = deserialize(serialize(s))!;
   assert.deepEqual(back, s);
   assert.equal(deserialize('{"version":0}'), null);
+  const { machines: _, ...cut } = s;
+  assert.equal(deserialize(JSON.stringify(cut)), null, 'a missing field');
   assert.equal(deserialize('not json'), null);
   assert.equal(deserialize(null), null);
 });
