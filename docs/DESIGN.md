@@ -73,12 +73,14 @@ The camera is an orthographic, isometric-style 3/4 view over the farm. The playe
 The game is point-and-click (decided 2026-10-06). There is no player character in the scene: the player is the hand on the farm, pointing at one grid tile or object at a time and clicking to act. There is no energy or stamina in the MVP; time is the only daily limit.
 
 - **No avatar and no walking.** Anything on the farm can be reached from anywhere, as long as it is on screen.
-- **Camera:** drag to pan; Q/E (or on-screen buttons) turn between the 4 views; the mouse wheel steps through the zoom levels.
+- **Camera:** drag to pan (off the field; right-drag or Shift-drag pans anywhere); Q/E (or on-screen buttons) turn between the 4 views; the mouse wheel steps through the zoom levels.
 - **Pointing:** the tile or object under the pointer is highlighted.
 - **Clicking:**
   - On a tile, click *uses* the held tool or item there (hoe, water, plant, fertilize).
   - On a thing, click *interacts* with it (machines, shop, shipping bin, trough, chickens for petting, eggs and manure for collecting).
   - A press that moves more than a few pixels is a pan, not a click.
+  - Playtesting shortcut: a drag that starts on the field marks a rectangle of tiles and, on release, uses what is in hand
+    on each of them (the hoe leaves growing crops alone). It may become the area-tool upgrade, or go before release.
 - **Tools:** hoe, watering can, hand. Each affects one tile per click. Area tools are a post-MVP upgrade.
 - **Inventory:** a hotbar plus a small backpack. Items stack.
 

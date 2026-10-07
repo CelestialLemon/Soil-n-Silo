@@ -321,10 +321,11 @@ export class Ui {
 function help() {
   return h('ul', { class: 'help' },
     h('li', null, h('b', null, 'Click'), ' a field tile to use what is in hand: the hoe tills, the can waters, seeds plant, manure fertilizes. Ripe crops are harvested with a click.'),
+    h('li', null, h('b', null, 'Drag'), ' across the field to do the same on every tile in the rectangle (Esc cancels).'),
     h('li', null, h('b', null, 'Click'), ' things to use them: the shop, the shipping bin, the coop and its door, chickens (pet them), eggs, manure, machines, and the farmhouse (sleep).'),
     h('li', null, 'Crops grow one stage per watered day. Richer soil (darker) gives better quality; harvests drain it, manure and rest restore it.'),
     h('li', null, 'Buy a mill and an oven: wheat → flour, flour + egg → bread, flour + egg + pumpkin → pumpkin pie.'),
-    h('li', null, h('b', null, 'Drag'), ' to pan · ', h('b', null, 'Q E'), ' turn · ', h('b', null, 'wheel / Z'), ' zoom · ', h('b', null, '1-0'), ' hotbar · ', h('b', null, 'B'), ' backpack · ', h('b', null, 'T'), ' skip an hour · ', h('b', null, 'Esc'), ' menu'),
+    h('li', null, h('b', null, 'Drag'), ' off the field, ', h('b', null, 'right-drag'), ' or ', h('b', null, 'Shift-drag'), ' to pan · ', h('b', null, 'Q E'), ' turn · ', h('b', null, 'wheel / Z'), ' zoom · ', h('b', null, '1-0'), ' hotbar · ', h('b', null, 'B'), ' backpack · ', h('b', null, 'T'), ' skip an hour · ', h('b', null, 'Esc'), ' menu'),
   );
 }
 

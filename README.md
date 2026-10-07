@@ -23,8 +23,9 @@ npm run build        # typecheck, then the game into dist/
 Needs Node 22.18 or later (the tests run TypeScript directly, and installing the renderer from git builds it).
 
 **Playing.** Click a field tile to use what is in hand (hoe, watering can, seeds, manure); a ripe crop is harvested with any click.
+Drag across the field to do the same on every tile in the rectangle (a playtesting shortcut for now; Esc cancels).
 Click things to use them: the shop, the shipping bin, the coop and its door, the trough, chickens (pet), eggs and manure (collect),
-machines, and the farmhouse (sleep). Drag to pan, Q/E or the buttons turn the camera between its 4 views, the mouse wheel or Z
+machines, and the farmhouse (sleep). Drag off the field (or right-drag or Shift-drag anywhere) to pan, Q/E or the buttons turn the camera between its 4 views, the mouse wheel or Z
 zooms (1x/2x/3x), 1-0 pick a hotbar slot, B opens the backpack, T skips an hour, Esc opens the menu. The game saves in the
 browser (one slot) every morning and when the page is hidden.
 

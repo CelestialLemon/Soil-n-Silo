@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buy, buyChicken, collectEggs, collectManure, fillTrough, harvest, petChicken, ship, toggleDoor, unship, useOnTile } from '../src/game/actions.ts';
+import { buy, buyChicken, collectEggs, collectManure, fillTrough, harvest, petChicken, ship, toggleDoor, unship, useOnArea, useOnTile } from '../src/game/actions.ts';
 import { DAY_CUTOFF, DAY_SECONDS } from '../src/game/clock.ts';
 import { cropStage, qualityOdds, rollQuality, type Crop } from '../src/game/crops.ts';
 import { endDay, HAPPINESS, LATE_START, passTime, REST_RECOVERY, seasonResults } from '../src/game/day.ts';
 import { sellPrice } from '../src/game/items.ts';
-import { BUILDINGS, FIELD_TILES, isField, MAP, WIDTH } from '../src/game/layout.ts';
+import { BUILDINGS, FIELD_BOUNDS, FIELD_TILES, isField, MAP, WIDTH } from '../src/game/layout.ts';
 import { canPlace, canStart, collect, isReady, placeMachine, recipe, startRecipe } from '../src/game/machines.ts';
 import { deserialize, serialize } from '../src/game/save.ts';
 import { addItem, countItem, moveSlot, newGame, tileAt, type GameState, type Machine } from '../src/game/state.ts';
@@ -23,6 +23,7 @@ function hold(s: GameState, item: Parameters<typeof addItem>[1], count = 1) {
 test('the layout: a rectangular map with about 300 field tiles and every building', () => {
   for (const line of MAP) assert.equal(line.length, WIDTH);
   assert.equal(FIELD_TILES, 300);
+  assert.equal(FIELD_BOUNDS.cols * FIELD_BOUNDS.rows, FIELD_TILES, 'the field is one rectangle');
   assert.deepEqual(BUILDINGS.coop, { col: 2, row: 8, cols: 3, rows: 3 });
   assert.equal(BUILDINGS.farmhouse.cols, 4);
 });
@@ -60,6 +61,40 @@ test('till, plant, water: a crop grows only on watered days, then is harvested',
   assert.equal(t.crop, null);
   assert.equal(countItem(s, 'wheat'), 1);
   assert.equal(t.fertility, 45, 'wheat drains 5');
+});
+
+test('an area: each field tile in the rectangle, as a click would, with one message', () => {
+  const s = newGame(1), { col, row } = FIELD;
+  const tiles = (c0: number, r0: number, c1: number, r1: number) => {
+    const out = [];
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) out.push(tileAt(s, c, r)!);
+    return out;
+  };
+  hold(s, 'hoe');
+  // Dragged up and to the left, starting one tile outside the field: only field tiles count.
+  assert.deepEqual(useOnArea(s, { col: col + 2, row: row + 2 }, { col: col - 1, row }), { ok: true, message: 'Tilled 9 tiles.' });
+  assert.ok(tiles(col, row, col + 2, row + 2).every((t) => t.tilled));
+  assert.equal(useOnArea(s, { col, row }, { col: col + 2, row: row + 2 }).ok, false, 'nothing left to till');
+
+  // Seeds go from the corner the drag began at, and the drag stops planting when they run out.
+  hold(s, 'wheat_seed');
+  s.inventory[s.selected]!.count = 4;
+  assert.deepEqual(useOnArea(s, { col: col + 2, row: row + 2 }, { col, row }), { ok: true, message: 'Planted 4 wheat; out of wheat seeds.' });
+  assert.deepEqual(tiles(col, row + 2, col + 2, row + 2).map((t) => !!t.crop), [true, true, true]);
+  assert.deepEqual(tiles(col, row + 1, col + 2, row + 1).map((t) => !!t.crop), [false, false, true]);
+
+  hold(s, 'can');
+  assert.deepEqual(useOnArea(s, { col, row }, { col: col + 2, row: row + 2 }), { ok: true, message: 'Watered 9 tiles.' });
+
+  // The hoe leaves growing crops alone, and harvests ripe ones, as a click does.
+  for (const t of tiles(col, row + 2, col + 2, row + 2)) t.crop!.days = 4;
+  hold(s, 'hoe');
+  const r = useOnArea(s, { col, row }, { col: col + 2, row: row + 2 });
+  assert.equal(r.ok, true);
+  assert.match(r.message, /^Harvested 3: \+3 wheat/);
+  assert.equal(countItem(s, 'wheat'), 3);
+  assert.ok(tileAt(s, col + 2, row + 1)!.crop, 'the growing crop is still there');
+  assert.match(useOnArea(s, { col: col + 2, row: row + 1 }, { col: col + 2, row: row + 1 }).message, /leaves growing crops alone/);
 });
 
 test('tomatoes regrow every 3 watered days and yield 2', () => {
