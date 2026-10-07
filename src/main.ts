@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObject } from 'pixel3d-renderer';
-import { collectEggs, collectManure, fillTrough, petChicken, toggleDoor, useOnTile, type Result } from './game/actions.ts';
+import { collectEggs, collectManure, fillTrough, petChicken, toggleDoor, useOnArea, useOnTile, type Result, type TileAt } from './game/actions.ts';
 import { hourOfDay } from './game/clock.ts';
-import { CROPS, daysToRipe, isRipe } from './game/crops.ts';
+import { CROPS, cropForSeed, daysToRipe, isRipe } from './game/crops.ts';
 import { endDay, passTime } from './game/day.ts';
 import { ITEMS, QUALITY_NAMES } from './game/items.ts';
-import { at, DEPTH, isField, isOpenGrass, WIDTH } from './game/layout.ts';
+import { at, DEPTH, FIELD_BOUNDS, isField, isOpenGrass, WIDTH } from './game/layout.ts';
 import { canPlace, collect, isReady, isRunning, MACHINE_NAMES, placeMachine, recipe } from './game/machines.ts';
 import { deserialize, SAVE_KEY, serialize } from './game/save.ts';
 import { held, newGame, tileAt, type GameState } from './game/state.ts';
@@ -29,6 +29,7 @@ const DRAG_THRESHOLD = 4;           // CSS pixels the pointer moves before a pre
 const WHEEL_STEP = 100;             // wheel delta per zoom level
 const WHEEL_GESTURE_GAP = 200;      // ms without wheel events that end a gesture; one gesture zooms one level at most
 const REPICK_FRAMES = 8;            // things move under a still pointer, so the hover is re-picked this often too
+const TURN_SECONDS = 0.3;           // how long the camera takes to turn to the next view
 
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
 const loading = document.querySelector<HTMLElement>('#loading')!;
@@ -68,7 +69,9 @@ function sleep(passedOut: boolean) {
 
 // ---- Camera ----
 const target = farm.home.clone();   // the ground point the camera looks at
-let view4 = 0, zoom = 1;            // view4: quarter turns from the home yaw; zoom indexes ZOOMS
+let view4 = 0, zoom = 1;            // view4: quarter turns from the home yaw (any integer); zoom indexes ZOOMS
+/** The camera turns smoothly to the view: from `turnFrom` (radians) at `turnAt` (the loop's `time`) to `view4`'s yaw. */
+let yaw = HOME_YAW, turnFrom = HOME_YAW, turnAt = -Infinity;
 /**
  * Frames left to pick on. Picking reads back from the GPU, so it runs only after the pointer, the camera or the farm
  * changed: on the next frame, and on the one after it, which reads the image drawn with the new camera.
@@ -76,13 +79,20 @@ let view4 = 0, zoom = 1;            // view4: quarter turns from the home yaw; z
 let repick = 2;
 
 const pixelSize = () => BASE_PIXEL * ZOOMS[zoom];
-const yaw = () => HOME_YAW + view4 * Math.PI / 2;
 const forward = new THREE.Vector3(), right = new THREE.Vector3();
 function cameraAxes() {
-  forward.set(-Math.sin(yaw()), 0, -Math.cos(yaw()));
+  forward.set(-Math.sin(yaw), 0, -Math.cos(yaw));
   right.set(-forward.z, 0, forward.x);
 }
-function turn(dir: 1 | -1) { view4 = (view4 + 4 + dir) % 4; repick = 2; }
+/** Starts turning to the next view; a turn asked for mid-turn goes on from where the camera is. */
+function turn(dir: 1 | -1) { view4 += dir; turnFrom = yaw; turnAt = time; repick = 2; }
+/** Moves the camera along its turn (easing out, so it answers at once and settles gently). */
+function turning() {
+  const k = Math.min(1, (time - turnAt) / TURN_SECONDS);
+  const next = turnFrom + (HOME_YAW + view4 * Math.PI / 2 - turnFrom) * (1 - (1 - k) ** 3);
+  if (next !== yaw) repick = 2;   // the farm moves under the pointer
+  yaw = next;
+}
 
 /** Moves the camera over the ground by a pointer movement in CSS pixels, so the ground follows the pointer. */
 function pan(dx: number, dy: number) {
@@ -113,7 +123,7 @@ fit();
 // ---- Input ----
 addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  if (e.code === 'Escape') { if (ui.busy) ui.close(); else ui.openMenu(); return; }
+  if (e.code === 'Escape') { if (press?.mode === 'area') endArea(false); else if (ui.busy) ui.close(); else ui.openMenu(); return; }
   if (e.repeat) return;
   if (e.code === 'KeyB' || e.code === 'KeyI') { if (!ui.busy || ui.panelName === 'backpack') ui.openBackpack(); return; }
   if (ui.busy) return;
@@ -126,28 +136,45 @@ addEventListener('keydown', (e) => {
 });
 
 let pointer: { x: number; y: number } | null = null;
-// One pointer at a time (the primary one), so a second finger neither pans twice nor ends the drag.
-let press: { id: number; x: number; y: number; dragging: boolean } | null = null;
+/**
+ * The press in progress, of one pointer at a time (the primary one), so a second finger neither pans twice nor ends the
+ * drag. It starts as a click; moved far enough it becomes a pan, or an area when it began on the field with the left button
+ * (without Shift): the tiles from `from` to `to` get what is in hand on release (useOnArea). A cancelled area is `void`.
+ */
+let press: { id: number; x: number; y: number; mode: 'click' | 'pan' | 'area' | 'void'; from: TileAt | null; to: TileAt | null } | null = null;
 canvas.addEventListener('pointerdown', (e) => {
   if (!e.isPrimary || press) return;
-  press = { id: e.pointerId, x: e.clientX, y: e.clientY, dragging: false };
+  press = { id: e.pointerId, x: e.clientX, y: e.clientY, mode: 'click', from: null, to: null };
   pointer = { x: e.clientX, y: e.clientY };   // a tap may come with no pointermove at all
   repick = 2;
   canvas.setPointerCapture(e.pointerId);
+  if (e.button === 0 && !e.shiftKey && !ui.busy && !holdingMachine()) {
+    pickHover(e.clientX, e.clientY);
+    if (hover?.kind === 'tile' && isField(hover.col, hover.row)) press.from = press.to = { col: hover.col, row: hover.row };
+  }
 });
 canvas.addEventListener('pointermove', (e) => {
   if (press && e.pointerId === press.id) {
-    if (!press.dragging && Math.hypot(e.clientX - press.x, e.clientY - press.y) >= DRAG_THRESHOLD) {
-      press.dragging = true;
-      canvas.style.cursor = 'grabbing';
-      pan(e.clientX - press.x, e.clientY - press.y);   // from the press, so the ground stays under the pointer
-    } else if (press.dragging) pan(e.clientX - pointer!.x, e.clientY - pointer!.y);
+    if (press.mode === 'click' && Math.hypot(e.clientX - press.x, e.clientY - press.y) >= DRAG_THRESHOLD) {
+      press.mode = press.from ? 'area' : 'pan';
+      if (press.mode === 'pan') {
+        canvas.style.cursor = 'grabbing';
+        pan(e.clientX - press.x, e.clientY - press.y);   // from the press, so the ground stays under the pointer
+      }
+    } else if (press.mode === 'pan') pan(e.clientX - pointer!.x, e.clientY - pointer!.y);
+    // The left button let go while another is held: that is the release (pointerup waits for the last button).
+    if (press.mode === 'area' && !(e.buttons & 1)) { dragArea(e.clientX, e.clientY); endArea(true); }
   }
   if (e.isPrimary) { pointer = { x: e.clientX, y: e.clientY }; repick = 2; }
 });
 function release(e: PointerEvent) {
   if (e.pointerId !== press?.id) return;
-  const click = !press.dragging && e.type === 'pointerup' && e.button === 0;
+  const click = press.mode === 'click' && e.type === 'pointerup' && e.button === 0;
+  if (press.mode === 'area') {
+    // The far corner where the release is, as for a click: the last pick may be a frame old.
+    if (e.type === 'pointerup') dragArea(e.clientX, e.clientY);
+    endArea(e.type === 'pointerup');
+  }
   press = null;
   canvas.style.cursor = '';
   repick = 2;
@@ -256,6 +283,45 @@ function describe(t: Target): string | null {
   }
 }
 
+/** The frames marking the tiles of an area being dragged out, made as they're first needed. */
+const areaMarks: PixelObject[] = [];
+
+/** Moves the dragged area's far corner to the field tile under the pointer (the nearest one, off the field), and marks it. */
+function dragArea(x: number, y: number) {
+  const a = press!;
+  const hit = renderer.pick(x, y), t = view.targetOf(hit?.object ?? null);
+  // A crop or soil object is its tile; any other ground (the fence's too) is the tile it's in. Over a building or a tree,
+  // the corner stays where it was.
+  const ground = !t && hit?.world && hit.normal!.y >= 0.7 && Math.abs(hit.world.y) <= 0.1 ? hit.world : null;
+  const tile = t?.kind === 'tile' ? t : ground ? { col: Math.floor(ground.x), row: Math.floor(ground.z) } : null;
+  if (tile) {
+    const f = FIELD_BOUNDS;
+    a.to = { col: THREE.MathUtils.clamp(tile.col, f.col, f.col + f.cols - 1), row: THREE.MathUtils.clamp(tile.row, f.row, f.row + f.rows - 1) };
+  }
+  setHover(null, null);
+  const from = a.from!, to = a.to!;
+  const c0 = Math.min(from.col, to.col), c1 = Math.max(from.col, to.col), r0 = Math.min(from.row, to.row), r1 = Math.max(from.row, to.row);
+  let n = 0;
+  for (let row = r0; row <= r1; row++) for (let col = c0; col <= c1; col++) {
+    const mark = areaMarks[n++] ??= renderer.addObject(models.cursor);
+    mark.visible = true;
+    mark.setTransform(new THREE.Vector3(col + 0.5, (tileAt(state, col, row)?.tilled ? SOIL_TOP : 0) + 0.01, row + 0.5));
+  }
+  for (let i = n; i < areaMarks.length; i++) areaMarks[i].visible = false;
+  const st = held(state), item = st?.item;
+  const verb = item === 'hoe' ? 'till' : item === 'can' ? 'water' : item === 'manure' ? 'fertilize' : item && cropForSeed(item) ? 'plant' : 'harvest';
+  ui.setInfo(`${c1 - c0 + 1} × ${r1 - r0 + 1} tiles: release to ${verb}.\nEsc cancels.`);
+}
+
+/** Ends the area drag: uses what is in hand on its tiles, or (cancelled) leaves them be. */
+function endArea(apply: boolean) {
+  const a = press!;
+  for (const m of areaMarks) m.visible = false;
+  if (apply && !ui.busy) ui.toast(useOnArea(state, a.from!, a.to!));
+  a.mode = 'void';
+  repick = 2;
+}
+
 /** Finds what is under a point of the page and makes it the hover. */
 function pickHover(x: number, y: number) {
   const hit = renderer.pick(x, y), picked = hit?.object ?? null;
@@ -312,7 +378,8 @@ function frame(now: number) {
   state.clock.paused = ui.busy;
   if (passTime(state, dt)) sleep(true);
   const hour = hourOfDay(state.clock);
-  if (!(Math.abs(hour - lookHour) < 0.02)) { renderer.setLook(lookAt(hour)); lookHour = hour; }
+  // Every frame the clock moves, so shadows creep with the sun rather than stepping (the low morning sun moves them fast).
+  if (hour !== lookHour) { renderer.setLook(lookAt(hour)); lookHour = hour; }
 
   view.sync(state, ui.busy ? 0 : dt);
   ui.update();
@@ -321,10 +388,13 @@ function frame(now: number) {
   if (pointer && frameNo % REPICK_FRAMES === 0) repick = Math.max(repick, 1);
   if (repick > 0) {
     repick -= 1;
-    if (pointer && !press?.dragging && !ui.busy) pickHover(pointer.x, pointer.y); else setHover(null, null);
+    if (press?.mode === 'area' && pointer) dragArea(pointer.x, pointer.y);
+    else if (pointer && (!press || press.mode === 'click') && !ui.busy) pickHover(pointer.x, pointer.y);
+    else setHover(null, null);
   }
 
-  renderer.placeCamera(target, yaw(), ELEVATION, renderer.height / ART_PX_PER_METRE);
+  turning();
+  renderer.placeCamera(target, yaw, ELEVATION, renderer.height / ART_PX_PER_METRE);
   renderer.renderGeometry(time);
   renderer.renderStyle(time);
   requestAnimationFrame(frame);

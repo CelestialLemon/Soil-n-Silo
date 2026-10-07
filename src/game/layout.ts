@@ -63,6 +63,8 @@ function footprint(ch: string): Footprint {
 export const BUILDINGS: Record<BuildingKind, Footprint> = {
   farmhouse: footprint('H'), shop: footprint('S'), bin: footprint('B'), coop: footprint('C'),
 };
+/** The field's bounding box (the field is one rectangle). */
+export const FIELD_BOUNDS = footprint(',');
 /** The chicken run in front of the coop, inside its fence. */
 export const RUN = footprint('r');
 
