@@ -45,8 +45,8 @@ docs/           design, roadmap, asset brief
 
 ## The renderer
 
-The game installs the renderer from git, pinned to an exact ref: a release tag normally, for now commit `6216837` on its `main`
-(object highlight and ambient motion on objects, not yet tagged; move to `v0.2.0` once it is). three.js 0.180 sits beside it. Its public API is what its `src/renderer/index.ts` exports; its README explains how a game uses it.
+The game installs the renderer from git, pinned to a release tag, `v0.2.0` (see its `CHANGELOG.md` before moving to a newer
+one). three.js 0.180 sits beside it. Its public API is what its `src/renderer/index.ts` exports; its README explains how a game uses it.
 
 npm builds the renderer when it installs it from git, which needs the install script approved. The approval in `package.json`
 (`allowScripts`) names the exact commit, so after changing the tag run:
