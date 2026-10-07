@@ -8,8 +8,8 @@ Items are roughly in priority order within each milestone. Each milestone ends p
 
 ## Renderer
 
-Pinned: commit **6216837** on the renderer's `main` (`package.json`), which has object highlight (#22) and ambient motion on
-objects (#23) but no release tag yet. Move the pin to **v0.2.0** once it is tagged. The game owns the loop, state, input, UI, audio and save; the renderer draws, and answers
+Pinned: **v0.2.0** (`package.json`), which has object highlight (#22), ambient motion on objects (#23) and the Direct3D 11 fix
+for Chrome on Windows (#27). The game owns the loop, state, input, UI, audio and save; the renderer draws, and answers
 "what is under the pointer" (`pick`).
 
 **Gaps** (read off the design doc against v0.1.0, updated as the MVP was built):
