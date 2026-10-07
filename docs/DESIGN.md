@@ -240,14 +240,25 @@ The goal is to earn 20,000g in total sales by the end of day 28. Total earnings 
 
 ### Open questions
 
-- [ ] Exact quality odds per fertility band
-- [ ] Penalty for hitting the 2 AM cutoff (start the next day late? lose a sale?)
-- [ ] Without walking, what makes distance on the farm matter, if anything? (Layout may then be about readability rather than travel.)
-- [ ] How often harvests drop crop scraps
-- [ ] Happiness values per action, and how happiness maps to egg quality
-- [ ] Does the 20,000g target hold up in a spreadsheet sim?
-- [ ] Farm layout: where the coop, shipping bin and shop sit at the start
-- [ ] UI and HUD layout (clock, hotbar, money tracker)
+Decided for the MVP build (2026-10-07), as starting values to tune in playtests. The numbers live in `src/game/`.
+
+- [x] Exact quality odds per fertility band: below 30, 10% silver; 30–70, silver from 25% rising to 55%; above 70, 50% silver and
+  gold from 10% rising to 45% at 100 (`qualityOdds` in `crops.ts`).
+- [x] Penalty for hitting the 2 AM cutoff: the next day starts late, at 9 AM instead of 6 AM.
+- [ ] Without walking, what makes distance on the farm matter, if anything? (For now layout is about readability.)
+- [x] How often harvests drop crop scraps: one scrap, 35% of wheat harvests, 25% of tomato, 60% of pumpkin.
+- [x] Happiness values per action, and how happiness maps to egg quality: chickens start at 60; overnight, fed +4, hungry −15,
+  let outside that day +4, coop clean of manure +3; petting +5 once a day. Egg quality uses the crop odds with happiness in place of
+  fertility. The starting trough holds 2 nights of feed and the coop starts with 2 manure, so fertilizer is found on day 1.
+- [x] Does the 20,000g target hold up in a spreadsheet sim? A scripted season on the real rules (`npm run sim`): a bot clicking
+  300 times a day reaches 20,000g on day 22 and ends near 31,600g; 200 clicks a day reaches it on day 28. That is a little easier
+  than "day 24–26". Most of the money is wheat compounding early, and buying the mill before about day 10 slows the bot down
+  (flour adds only 15g per wheat at one per 2 hours), so "processing is always the better money path" holds for pie but not yet
+  for flour. Prices are unchanged from this doc; tuning them is the next step.
+- [x] Farm layout: farmhouse, shipping bin and shop stall along the north; coop and its fenced chicken run on the west; a 20 × 15
+  field (300 tiles) in the middle; open grass on the west and north for machines (`src/game/layout.ts`).
+- [x] UI and HUD layout: day, clock, gold and the season tracker (with tier marks) top left; turn, zoom and menu buttons top right;
+  the hotbar bottom centre; what's under the pointer (with exact soil fertility) bottom left; backpack and "End day" bottom right.
 
 ### Candidates after the MVP
 

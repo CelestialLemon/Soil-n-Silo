@@ -9,36 +9,43 @@ pixel art by [pixel3d-renderer](https://github.com/CelestialLemon/pixel3d-render
 - How to work here: [`AGENTS.md`](AGENTS.md)
 - Models: [`docs/ASSET_BRIEF.md`](docs/ASSET_BRIEF.md)
 
-![The game shell: the placeholder farm at 6 AM, with the tile under the pointer highlighted](docs/screenshot.png)
+![Day 12 on the farm: the coop and its run, a mill and an oven at work, and the field in every stage of growth](docs/screenshot.png)
 
 ```sh
 npm install
 npm run dev          # http://127.0.0.1:5190
 npm test             # the game rules (src/game/), in Node
+npm run sim          # a scripted season on the real rules, to check the economy
 npm run typecheck
 npm run build        # typecheck, then the game into dist/
 ```
 
 Needs Node 22.18 or later (the tests run TypeScript directly, and installing the renderer from git builds it).
 
-Controls for now: drag to pan, Q/E turn the camera between its 4 views, the mouse wheel or Z changes the zoom (1x/2x/3x), T skips
-an hour. The tile under the pointer is highlighted.
+**Playing.** Click a field tile to use what is in hand (hoe, watering can, seeds, manure); a ripe crop is harvested with any click.
+Click things to use them: the shop, the shipping bin, the coop and its door, the trough, chickens (pet), eggs and manure (collect),
+machines, and the farmhouse (sleep). Drag to pan, Q/E or the buttons turn the camera between its 4 views, the mouse wheel or Z
+zooms (1x/2x/3x), 1-0 pick a hotbar slot, B opens the backpack, T skips an hour, Esc opens the menu. The game saves in the
+browser (one slot) every morning and when the page is hidden.
 
 ## Layout
 
 ```
 src/
-  main.ts       the game shell: loop, input, camera, and telling the renderer where everything is
+  main.ts       the game: loop, input, camera, picking and clicking
   game/         game rules and state as pure TypeScript (no DOM, no renderer), unit-tested in test/
-  world/        building what the renderer draws: the farm scene and the objects' geometry
+  world/        what the renderer draws: the static farm, the models, and the view that mirrors the state into objects
+  ui/           the HTML HUD and menus over the canvas, and the item icons
+assets/         Blender build scripts for the models (the source of truth), exported to public/models/
+tools/          the economy sim
 test/           unit tests (Node's test runner)
 docs/           design, roadmap, asset brief
 ```
 
 ## The renderer
 
-The game installs the renderer from a release tag: `"pixel3d-renderer": "github:CelestialLemon/pixel3d-renderer#v0.1.0"`, with
-three.js 0.180 beside it. Its public API is what its `src/renderer/index.ts` exports; its README explains how a game uses it.
+The game installs the renderer from git, pinned to an exact ref: a release tag normally, for now commit `6216837` on its `main`
+(object highlight and ambient motion on objects, not yet tagged; move to `v0.2.0` once it is). three.js 0.180 sits beside it. Its public API is what its `src/renderer/index.ts` exports; its README explains how a game uses it.
 
 npm builds the renderer when it installs it from git, which needs the install script approved. The approval in `package.json`
 (`allowScripts`) names the exact commit, so after changing the tag run:
