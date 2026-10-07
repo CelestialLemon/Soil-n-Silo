@@ -87,7 +87,7 @@ export class Ui {
     const key = JSON.stringify([s.inventory, s.selected, this.grabbed]);
     if (key !== this.hotbarKey) {
       this.hotbarKey = key;
-      this.hotbar.replaceChildren(...s.inventory.slice(0, HOTBAR).map((st, i) => this.slot(st, i, () => { s.selected = i; this.hotbarKey = ''; })));
+      this.hotbar.replaceChildren(...s.inventory.slice(0, HOTBAR).map((st, i) => this.slot(st, i, () => { this.host.state().selected = i; this.hotbarKey = ''; })));
       const held = s.inventory[s.selected];
       set(this.heldName, held ? stackName(held) : 'Empty hand');
     }

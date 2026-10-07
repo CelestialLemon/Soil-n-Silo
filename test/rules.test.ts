@@ -146,6 +146,15 @@ test('chickens: fed ones lay and leave manure, hungry ones lose happiness', () =
   assert.equal(a.pettedToday, false);
 });
 
+test('collecting eggs takes every one that fits, whatever the order', () => {
+  const s = newGame(1);
+  s.inventory = s.inventory.map(() => ({ item: 'wheat', quality: 0, count: 1 }));
+  s.inventory[5] = { item: 'egg', quality: 1, count: 1 };
+  s.coop.eggs = [0, 1, 2, 1];
+  assert.equal(collectEggs(s).message, '+2 eggs');
+  assert.deepEqual(s.coop.eggs, [0, 2]);
+});
+
 test('the shop, the bin and the overnight payout', () => {
   const s = newGame(1);
   assert.equal(buy(s, 'feed', 10).ok, true);

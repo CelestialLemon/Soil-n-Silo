@@ -102,8 +102,9 @@ export function toggleDoor(s: GameState): Result {
 export function collectEggs(s: GameState): Result {
   const eggs = s.coop.eggs;
   if (!eggs.length) return no('No eggs to collect.');
-  let n = 0;
-  while (eggs.length && addItem(s, 'egg', 1, eggs[0])) { eggs.shift(); n++; }
+  // Each egg that fits; the rest stay in the coop.
+  s.coop.eggs = eggs.filter((q) => !addItem(s, 'egg', 1, q));
+  const n = eggs.length - s.coop.eggs.length;
   return n ? ok(`+${n} egg${n > 1 ? 's' : ''}`) : no('The backpack is full.');
 }
 
