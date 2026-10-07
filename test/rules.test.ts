@@ -74,6 +74,16 @@ test('tomatoes regrow every 3 watered days and yield 2', () => {
   assert.equal(countItem(s, 'tomato'), 4);
 });
 
+test('a full backpack refuses a harvest before rolling its quality', () => {
+  const s = newGame(1), { col, row } = FIELD, t = tileAt(s, col, row)!;
+  Object.assign(t, { tilled: true, fertility: 100, crop: { id: 'wheat', days: 4, harvests: 0 } });
+  s.inventory = s.inventory.map(() => ({ item: 'wheat', quality: 2, count: 1 }));
+  const rng = s.rng;
+  assert.equal(harvest(s, col, row).ok, false);
+  assert.equal(s.rng, rng, 'nothing rolled');
+  assert.ok(t.crop);
+});
+
 test('growth stages run from 0 to ripe', () => {
   const stages = (id: Crop['id'], days: number[]) => days.map((d) => cropStage({ id, days: d, harvests: 0 }));
   assert.deepEqual(stages('wheat', [0, 1, 2, 3, 4]), [0, 0, 1, 2, 3]);

@@ -64,8 +64,9 @@ export function harvest(s: GameState, col: number, row: number): Result {
   const crop = tile?.crop;
   if (!tile || !crop || !isRipe(crop)) return no('Nothing to harvest.');
   const d = CROPS[crop.id];
+  // Room for whatever quality comes up, checked before rolling, so a full backpack can't be used to roll again.
+  if (!([0, 1, 2] as const).every((q) => canAdd(s, d.produce, q))) return no('The backpack is full.');
   const quality = rollQuality(tile.fertility, random(s));
-  if (!canAdd(s, d.produce, quality)) return no('The backpack is full.');
   addItem(s, d.produce, d.yield, quality);
   const scrap = random(s) < d.scrapChance && addItem(s, 'scraps', 1);
   tile.fertility = Math.max(0, tile.fertility - d.drain);

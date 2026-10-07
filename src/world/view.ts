@@ -114,7 +114,8 @@ export class FarmView {
     // Machines, idle or running.
     for (const mc of s.machines) {
       const running = isRunning(mc), geo = this.m[mc.kind][running ? 'running' : 'idle'];
-      const shown = this.show(this.machines.get(mc.id) ?? null, `${running}`, () => geo, { kind: 'machine', id: mc.id },
+      // Keyed by place too: ids start again in a new game.
+      const shown = this.show(this.machines.get(mc.id) ?? null, `${mc.kind} ${mc.col} ${mc.row} ${running}`, () => geo, { kind: 'machine', id: mc.id },
         (o) => o.setTransform(v.set(mc.col + MACHINE_SIZE.cols / 2, 0, mc.row + MACHINE_SIZE.rows / 2)));
       this.machines.set(mc.id, shown!);
     }

@@ -9,7 +9,7 @@ pixel art by [pixel3d-renderer](https://github.com/CelestialLemon/pixel3d-render
 - How to work here: [`AGENTS.md`](AGENTS.md)
 - Models: [`docs/ASSET_BRIEF.md`](docs/ASSET_BRIEF.md)
 
-![The game shell: the placeholder farm at 6 AM, with the tile under the pointer highlighted](docs/screenshot.png)
+![Day 12 on the farm: the coop and its run, a mill and an oven at work, and the field in every stage of growth](docs/screenshot.png)
 
 ```sh
 npm install

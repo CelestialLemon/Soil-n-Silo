@@ -14,7 +14,7 @@ import { iconUrl } from './icons.ts';
 
 export interface UiHost {
   state(): GameState;
-  /** After a menu changed the state. */
+  /** After a menu changed the state (saved). */
   changed(): void;
   endDay(): void;
   newGame(): void;
@@ -295,7 +295,8 @@ export class Ui {
         r.bestDay ? h('p', null, `Best day: day ${r.bestDay.day}, ${gold(r.bestDay.earned)}.`) : null,
         h('h3', null, 'Sold'),
         ...r.sold.map((x) => h('div', { class: 'row' }, icon(x.item), h('div', { class: 'grow' }, `${x.count} × ${ITEMS[x.item].name}`), h('span', { class: 'price' }, gold(x.gold)))),
-        h('div', { class: 'actions' }, button('New game', () => { this.panel = null; this.host.newGame(); }), button('Keep farming', () => { this.panel = null; this.closePanel(true); }, { primary: true })));
+        h('div', { class: 'actions' }, button('New game', () => { this.panel = null; this.host.newGame(); }),
+          button('Keep farming', () => { s.resultsSeen = true; this.host.changed(); this.panel = null; this.closePanel(true); }, { primary: true })));
     } });
   }
 

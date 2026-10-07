@@ -47,13 +47,14 @@ const save = () => localStorage.setItem(SAVE_KEY, serialize(state));
 
 const ui = new Ui(document.body, {
   state: () => state,
-  changed: () => { repick = 2; },
+  changed: () => { repick = 2; save(); },
   endDay: () => sleep(false),
   newGame: () => { state = newGame(); save(); ui.showWelcome(); },
   turn: (dir) => turn(dir),
   zoom: () => setZoom((zoom + 1) % ZOOMS.length),
 });
 if (!localStorage.getItem(SAVE_KEY)) ui.showWelcome();
+else if (state.seasonOver && !state.resultsSeen) ui.showResults();
 save();
 addEventListener('pagehide', save);
 document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
@@ -150,8 +151,8 @@ function release(e: PointerEvent) {
   press = null;
   canvas.style.cursor = '';
   repick = 2;
-  // The click acts on what the pointer was over when it went down (the hover is fresh: a press re-picks).
-  if (click && !ui.busy) act();
+  // Pick again where the click is: the hover may be a frame old, and the click must act on what is under it now.
+  if (click && !ui.busy) { pickHover(e.clientX, e.clientY); act(); }
 }
 canvas.addEventListener('pointerup', release);
 canvas.addEventListener('pointercancel', release);
@@ -255,6 +256,13 @@ function describe(t: Target): string | null {
   }
 }
 
+/** Finds what is under a point of the page and makes it the hover. */
+function pickHover(x: number, y: number) {
+  const hit = renderer.pick(x, y), picked = hit?.object ?? null;
+  // The cursor frames are objects too: under them is the ground.
+  setHover(view.targetOf(picked) ?? (hit?.world ? tileUnder(hit.world, hit.normal!) : null), picked);
+}
+
 function act() {
   const t = hover;
   if (!t) return;
@@ -313,10 +321,7 @@ function frame(now: number) {
   if (pointer && frameNo % REPICK_FRAMES === 0) repick = Math.max(repick, 1);
   if (repick > 0) {
     repick -= 1;
-    const hit = pointer && !press?.dragging && !ui.busy ? renderer.pick(pointer.x, pointer.y) : null;
-    const picked = hit?.object ?? null;
-    // The cursor frames are objects too: under them is the ground.
-    setHover(view.targetOf(picked) ?? (hit?.world ? tileUnder(hit.world, hit.normal!) : null), picked);
+    if (pointer && !press?.dragging && !ui.busy) pickHover(pointer.x, pointer.y); else setHover(null, null);
   }
 
   renderer.placeCamera(target, yaw(), ELEVATION, renderer.height / ART_PX_PER_METRE);

@@ -72,8 +72,10 @@ export interface GameState {
   /** In the shipping bin, paid out overnight. */
   bin: Stack[];
   history: DayRecord[];
-  /** The season's results have been shown (after day 28); play goes on in free mode. */
+  /** Day 28 has ended; play goes on in free mode. */
   seasonOver: boolean;
+  /** The player has seen the season's results (shown again on load until then). */
+  resultsSeen: boolean;
 }
 
 export const SAVE_VERSION = 1;
@@ -99,7 +101,7 @@ export function newGame(seed = Date.now() >>> 0): GameState {
     version: SAVE_VERSION, rng: seed, clock: newClock(), gold: 500, earned: 0,
     inventory: Array(HOTBAR + BACKPACK).fill(null), selected: 0, tiles,
     coop: { chickens: [], trough: 4, eggs: [], manure: 2, doorOpen: false, outsideToday: false },
-    machines: [], nextId: 1, bin: [], history: [], seasonOver: false,
+    machines: [], nextId: 1, bin: [], history: [], seasonOver: false, resultsSeen: false,
   };
   // The starting chickens come with two days of feed and some manure in the coop, so fertilizer is found on day 1.
   addChicken(s); addChicken(s);
