@@ -6,6 +6,13 @@ import { BACKPACK, HOTBAR, SAVE_VERSION, type GameState } from './state.ts';
 
 export const SAVE_KEY = 'soil-n-silo/save';
 
+/** The save key for the page at `pathname`. The deployments (`/Soil-n-Silo/main/`, `/Soil-n-Silo/dev/`) share one origin, so
+ * each keeps its own save; a game served from the root (the dev server) keeps the plain key. */
+export function saveKey(pathname: string): string {
+  const dir = pathname.replace(/[^/]*$/, '');
+  return dir === '/' ? SAVE_KEY : `${SAVE_KEY}@${dir}`;
+}
+
 export const serialize = (s: GameState) => JSON.stringify(s);
 
 /** The saved game, or null if there is none or it is from an incompatible version or broken. */

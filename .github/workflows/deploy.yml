@@ -1,0 +1,62 @@
+name: Deploy
+
+# Each branch is deployed to its own folder of the GitHub Pages site (served from the gh-pages branch):
+# main -> /Soil-n-Silo/main/, dev -> /Soil-n-Silo/dev/. The site's root redirects to main. Other folders on gh-pages are left alone.
+
+on:
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write             # to request the Pages build (a push made with GITHUB_TOKEN doesn't start one)
+
+concurrency:
+  group: pages-deploy      # one deploy at a time, so two branches never push to gh-pages at once
+  cancel-in-progress: false
+  queue: max               # keep every pending deploy, so a main push can't cancel a waiting dev one
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Publish dist/ to gh-pages/${{ github.ref_name }}/
+        env:
+          DIR: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          case "$DIR" in main|dev) ;; *) echo "Not a deployed branch: $DIR"; exit 1 ;; esac
+          # Runs wait in a queue, so an older run can start after a newer one: leave the folder to the run for the branch's head.
+          if [ "$(git ls-remote origin "refs/heads/$DIR" | cut -f1)" != "$GITHUB_SHA" ]; then echo "$DIR has moved on; skipping"; exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch --depth=1 origin gh-pages
+          git worktree add --detach pages FETCH_HEAD
+          rm -rf "pages/$DIR"
+          cp -r dist "pages/$DIR"
+          touch pages/.nojekyll
+          cat > pages/index.html <<'HTML'
+          <!doctype html>
+          <meta charset="utf-8">
+          <title>Soil n Silo</title>
+          <meta http-equiv="refresh" content="0; url=./main/">
+          <p><a href="./main/">Soil n Silo</a> (the <a href="./dev/">dev</a> build is here).</p>
+          HTML
+          cd pages
+          git add -A .
+          if git diff --cached --quiet; then
+            echo "Nothing changed"       # still request the build below, in case a rerun follows a push whose build never started
+          else
+            git commit -q -m "Deploy $DIR (${GITHUB_SHA::7}): $(git -C .. log -1 --format=%s)"
+            git push origin HEAD:gh-pages
+          fi
+          gh api -X POST "repos/$GITHUB_REPOSITORY/pages/builds"
