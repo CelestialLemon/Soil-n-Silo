@@ -29,6 +29,10 @@ machines, and the farmhouse (sleep). Drag off the field (or right-drag or Shift-
 zooms (1x/2x/3x), 1-0 pick a hotbar slot, B opens the backpack, T skips an hour, Esc opens the menu. The game saves in the
 browser (one slot) every morning and when the page is hidden.
 
+**Builds online.** Every push to `main` or `dev` is built and deployed to GitHub Pages (`.github/workflows/deploy.yml`):
+[`/main/`](https://celestiallemon.github.io/Soil-n-Silo/main/) and [`/dev/`](https://celestiallemon.github.io/Soil-n-Silo/dev/).
+The site's root redirects to `/main/`. Each build keeps its own save.
+
 ## Layout
 
 ```

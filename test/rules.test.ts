@@ -7,7 +7,7 @@ import { endDay, HAPPINESS, LATE_START, passTime, REST_RECOVERY, seasonResults }
 import { sellPrice } from '../src/game/items.ts';
 import { BUILDINGS, FIELD_BOUNDS, FIELD_TILES, isField, MAP, WIDTH } from '../src/game/layout.ts';
 import { canPlace, canStart, collect, isReady, placeMachine, recipe, startRecipe } from '../src/game/machines.ts';
-import { deserialize, serialize } from '../src/game/save.ts';
+import { deserialize, SAVE_KEY, saveKey, serialize } from '../src/game/save.ts';
 import { addItem, countItem, moveSlot, newGame, tileAt, type GameState, type Machine } from '../src/game/state.ts';
 
 /** A field tile, the first one in the map. */
@@ -303,4 +303,12 @@ test('save and load round-trip; broken saves are refused', () => {
   assert.equal(deserialize(JSON.stringify(cut)), null, 'a missing field');
   assert.equal(deserialize('not json'), null);
   assert.equal(deserialize(null), null);
+});
+
+test('each deployment keeps its own save; the dev server keeps the plain key', () => {
+  assert.equal(saveKey('/'), SAVE_KEY);
+  assert.equal(saveKey('/index.html'), SAVE_KEY);
+  assert.equal(saveKey('/Soil-n-Silo/main/'), saveKey('/Soil-n-Silo/main/index.html'));
+  assert.notEqual(saveKey('/Soil-n-Silo/main/'), saveKey('/Soil-n-Silo/dev/'));
+  assert.notEqual(saveKey('/Soil-n-Silo/main/'), SAVE_KEY);
 });

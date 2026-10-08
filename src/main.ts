@@ -7,7 +7,7 @@ import { endDay, passTime } from './game/day.ts';
 import { ITEMS, QUALITY_NAMES } from './game/items.ts';
 import { at, DEPTH, FIELD_BOUNDS, isField, isOpenGrass, WIDTH } from './game/layout.ts';
 import { canPlace, collect, isReady, isRunning, MACHINE_NAMES, placeMachine, recipe } from './game/machines.ts';
-import { deserialize, SAVE_KEY, serialize } from './game/save.ts';
+import { deserialize, saveKey, serialize } from './game/save.ts';
 import { held, newGame, tileAt, type GameState } from './game/state.ts';
 import { Ui } from './ui/ui.ts';
 import { buildFarm } from './world/farm.ts';
@@ -43,6 +43,7 @@ const cursor = renderer.addObject(models.cursor);
 const placeOk = renderer.addObject(models.place.ok), placeBad = renderer.addObject(models.place.bad);
 cursor.visible = placeOk.visible = placeBad.visible = false;
 
+const SAVE_KEY = saveKey(location.pathname);
 let state: GameState = deserialize(localStorage.getItem(SAVE_KEY)) ?? newGame();
 const save = () => localStorage.setItem(SAVE_KEY, serialize(state));
 
