@@ -31,7 +31,8 @@ browser (one slot) every morning and when the page is hidden.
 
 **Builds online.** Every push to `main` or `dev` is built and deployed to GitHub Pages (`.github/workflows/deploy.yml`):
 [`/main/`](https://celestiallemon.github.io/Soil-n-Silo/main/) and [`/dev/`](https://celestiallemon.github.io/Soil-n-Silo/dev/).
-The site's root redirects to `/main/`. Each build keeps its own save.
+The site's root redirects to `/main/`. Each build keeps its own save. New work is merged into `dev` and moves to `main` in a
+PR from `dev`.
 
 ## Layout
 
