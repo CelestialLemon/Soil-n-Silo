@@ -1,196 +1,206 @@
-import { newClock, type Clock } from './clock.ts';
-import type { Crop } from './crops.ts';
-import { ITEMS, type ItemId, type Quality } from './items.ts';
-import { DEPTH, isField, WIDTH } from './layout.ts';
+import { BUILDINGS, recipesFor, type BuildingId, type CropId, type ItemId } from './data.ts';
+import { DEPOT_SIZE, generateMap, TERRAIN, type MapData } from './map.ts';
+import type { Scenario } from './scenarios.ts';
 
-// The whole game as plain data, so it saves as JSON and the rules can be tested in Node. The rules that change it live in
-// actions.ts (the player's clicks) and day.ts (the overnight steps); this file holds the shapes, the starting state
-// (design doc, "Starting state") and the inventory.
+// The state of a commission in progress: plain data, so it saves as JSON. Lookups that only speed things up (which building
+// is on a tile, the power networks) live in a cache beside it and are rebuilt when the layout changes.
 
-export interface Stack { item: ItemId; quality: Quality; count: number }
+/** North, east, south, west: row −1, column +1, row +1, column −1. */
+export type Dir = 0 | 1 | 2 | 3;
+export const DX = [0, 1, 0, -1] as const;
+export const DY = [-1, 0, 1, 0] as const;
+export const opposite = (d: Dir) => ((d + 2) % 4) as Dir;
+export const left = (d: Dir) => ((d + 3) % 4) as Dir;
+export const right = (d: Dir) => ((d + 1) % 4) as Dir;
 
-export interface Tile {
-  tilled: boolean;
-  /** 0-100. Freshly tilled ground starts at 50. */
-  fertility: number;
-  watered: boolean;
-  crop: Crop | null;
-}
+export interface BeltItem { item: ItemId; pos: number }
+/** A good passing through a splitter, sorter or crossing: where it came in, and how long it has left inside. */
+export interface Transit { item: ItemId; from: Dir; t: number }
+export interface Drone { phase: 'home' | 'out' | 'back' | 'hover'; t: number; cargo: ItemId[]; target: number }
 
-export interface Chicken {
+export type Status = 'ok' | 'idle' | 'input' | 'blocked' | 'power' | 'lowpower' | 'nolink' | 'flowers' | 'dry';
+
+export interface Building {
   id: number;
-  name: string;
-  /** 0-100. */
-  happiness: number;
-  pettedToday: boolean;
+  type: BuildingId;
+  /** North-west tile. */
+  x: number; y: number;
+  rot: Dir;
+  /** Why it isn't working, for the marker and the inspector (worked out each step). */
+  status: Status;
+  /** What it's waiting for or blocked by, for the status line. */
+  need?: string;
+  // Belts.
+  items?: BeltItem[];
+  // Splitters, sorters and crossings.
+  transit?: Transit[];
+  turn?: number;
+  filter?: ItemId | null;
+  // Machines (and the coop, composter and digester).
+  recipe?: string;
+  inputs?: Partial<Record<ItemId, number>>;
+  outputs?: Partial<Record<ItemId, number>>;
+  /** Seconds into the batch it's working on; null when it isn't. */
+  progress?: number | null;
+  // Fields and hives.
+  crop?: CropId;
+  growth?: number;
+  stored?: number;
+  compost?: number;
+  // Batteries.
+  charge?: number;
+  // Drone pads.
+  mode?: 'send' | 'receive';
+  link?: number | null;
+  store?: ItemId[];
+  drone?: Drone;
+  waited?: number;
+  // Saplings.
+  age?: number;
 }
 
-export interface Coop {
-  chickens: Chicken[];
-  /** Food units in the trough: feed and scraps both count one. */
-  trough: number;
-  /** Eggs waiting to be collected, by quality. */
-  eggs: Quality[];
-  /** Manure waiting to be collected. */
-  manure: number;
-  doorOpen: boolean;
-  /** The door was opened today, so the chickens got outside. */
-  outsideToday: boolean;
+export interface Stats {
+  /** Start time of the newest bucket. */
+  since: number;
+  /** Ten-second buckets, newest first (6 of them: the last minute). */
+  made: Partial<Record<ItemId, number>>[];
+  delivered: Partial<Record<ItemId, number>>[];
 }
 
-export type MachineKind = 'mill' | 'oven';
-export interface Machine {
-  id: number;
-  kind: MachineKind;
-  /** The footprint's north-west tile. */
-  col: number;
-  row: number;
-  /** The batch in it: running while `hoursLeft` > 0, ready to collect after. */
-  batch: { recipe: string; quality: Quality; hoursLeft: number } | null;
-}
-
-export interface Sale { item: ItemId; quality: Quality; count: number; gold: number }
-export interface DayRecord { day: number; earned: number; sales: Sale[] }
+export const STAT_BUCKET = 10, STAT_BUCKETS = 6;
 
 export interface GameState {
-  version: typeof SAVE_VERSION;
-  /** The random generator's state (mulberry32), so a saved game rolls the same. */
-  rng: number;
-  clock: Clock;
-  gold: number;
-  /** Total sales over the season: the score (design doc, "Win condition"). */
-  earned: number;
-  /** HOTBAR slots, then the backpack. */
-  inventory: (Stack | null)[];
-  /** The hotbar slot in hand. */
-  selected: number;
-  /** One per map tile (row-major); null where the hoe can't till. */
-  tiles: (Tile | null)[];
-  coop: Coop;
-  machines: Machine[];
+  version: 1;
+  scenario: Scenario;
+  map: MapData;
+  initialTrees: number;
+  buildings: Building[];
   nextId: number;
-  /** In the shipping bin, paid out overnight. */
-  bin: Stack[];
-  history: DayRecord[];
-  /** Day 28 has ended; play goes on in free mode. */
-  seasonOver: boolean;
-  /** The player has seen the season's results (shown again on load until then). */
-  resultsSeen: boolean;
+  credits: number;
+  /** Seconds of play. */
+  time: number;
+  /** Time left over from the last frame, less than a step. */
+  carry: number;
+  delivered: Partial<Record<ItemId, number>>;
+  earned: number;
+  stats: Stats;
+  /** Rate goals once reached stay reached. */
+  reached: boolean[];
+  completedAt: number | null;
+  /** Total made of each good over the commission. */
+  made: Partial<Record<ItemId, number>>;
 }
 
-export const SAVE_VERSION = 1;
-export const HOTBAR = 10;
-export const BACKPACK = 20;
-export const MAX_CHICKENS = 6;
-export const SEASON_DAYS = 28;
-export const TARGET = 20_000;
-export const TIERS = [
-  { name: 'Bronze', earned: 10_000 },
-  { name: 'Silver', earned: 20_000 },
-  { name: 'Gold', earned: 35_000 },
-] as const;
-
-const CHICKEN_NAMES = ['Henrietta', 'Clucky', 'Pepper', 'Marigold', 'Nugget', 'Biscuit', 'Dot', 'Penny', 'Hazel', 'Ginger', 'Olive', 'Mabel'];
-
-export function newGame(seed = Date.now() >>> 0): GameState {
-  const tiles: (Tile | null)[] = [];
-  for (let row = 0; row < DEPTH; row++) for (let col = 0; col < WIDTH; col++) {
-    tiles.push(isField(col, row) ? { tilled: false, fertility: 50, watered: false, crop: null } : null);
-  }
+export function newGame(sc: Scenario): GameState {
+  const map = generateMap(sc);
   const s: GameState = {
-    version: SAVE_VERSION, rng: seed, clock: newClock(), gold: 500, earned: 0,
-    inventory: Array(HOTBAR + BACKPACK).fill(null), selected: 0, tiles,
-    coop: { chickens: [], trough: 4, eggs: [], manure: 2, doorOpen: false, outsideToday: false },
-    machines: [], nextId: 1, bin: [], history: [], seasonOver: false, resultsSeen: false,
+    version: 1, scenario: sc, map, initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
+    buildings: [], nextId: 1, credits: sc.credits, time: 0, carry: 0, delivered: {}, earned: 0,
+    stats: { since: 0, made: [{}], delivered: [{}] }, reached: sc.goals.map(() => false), completedAt: null, made: {},
   };
-  // The starting chickens come with two days of feed and some manure in the coop, so fertilizer is found on day 1.
-  addChicken(s); addChicken(s);
-  s.inventory[0] = { item: 'hoe', quality: 0, count: 1 };
-  s.inventory[1] = { item: 'can', quality: 0, count: 1 };
-  s.inventory[2] = { item: 'hand', quality: 0, count: 1 };
-  s.inventory[3] = { item: 'wheat_seed', quality: 0, count: 15 };
+  s.buildings.push(makeBuilding(s, 'depot', map.depot.x, map.depot.y, 0));
   return s;
 }
 
-export function addChicken(s: GameState): Chicken | null {
-  if (s.coop.chickens.length >= MAX_CHICKENS) return null;
-  const used = new Set(s.coop.chickens.map((c) => c.name));
-  const name = CHICKEN_NAMES.find((n) => !used.has(n)) ?? `Hen ${s.nextId}`;
-  const c: Chicken = { id: s.nextId++, name, happiness: 60, pettedToday: false };
-  s.coop.chickens.push(c);
+/** A new building with the state its type needs (not yet in the game). */
+export function makeBuilding(s: GameState, type: BuildingId, x: number, y: number, rot: Dir): Building {
+  const b: Building = { id: s.nextId++, type, x, y, rot, status: 'idle' };
+  switch (type) {
+    case 'belt': b.items = []; break;
+    case 'splitter': case 'crossing': b.transit = []; b.turn = 0; break;
+    case 'sorter': b.transit = []; b.turn = 0; b.filter = null; break;
+    case 'field': b.crop = 'wheat'; b.growth = 0; b.stored = 0; b.compost = 0; break;
+    case 'hive': b.growth = 0; b.stored = 0; break;
+    case 'battery': b.charge = 0; break;
+    case 'pad': b.mode = 'send'; b.link = null; b.store = []; b.drone = { phase: 'home', t: 0, cargo: [], target: 0 }; b.waited = 0; break;
+    case 'sapling': b.age = 0; break;
+    default: {
+      const rs = recipesFor(type);
+      if (rs.length) { b.recipe = rs[0].id; b.inputs = {}; b.outputs = {}; b.progress = null; }
+    }
+  }
+  return b;
+}
+
+export const sizeOf = (b: { type: BuildingId }) => BUILDINGS[b.type].size;
+export const DEPOT = DEPOT_SIZE;
+
+// ---- The cache: who stands where, by id ----
+
+interface Cache { grid: Int32Array; byId: Map<number, Building>; layout: number }
+const caches = new WeakMap<GameState, Cache>();
+/** Bumped whenever buildings are added or removed, so derived caches (power networks, the view) know to rebuild. */
+let layoutVersion = 1;
+
+function cache(s: GameState): Cache {
+  let c = caches.get(s);
+  if (!c) {
+    c = { grid: new Int32Array(s.map.width * s.map.height), byId: new Map(), layout: layoutVersion++ };
+    for (const b of s.buildings) occupy(s, c, b, b.id);
+    caches.set(s, c);
+  }
   return c;
 }
 
-/** A float in [0, 1) from the game's generator (mulberry32), advancing it. */
-export function random(s: GameState): number {
-  let t = (s.rng = (s.rng + 0x6d2b79f5) | 0);
-  t = Math.imul(t ^ (t >>> 15), t | 1);
-  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+function occupy(s: GameState, c: Cache, b: Building, id: number) {
+  const n = sizeOf(b);
+  for (let y = b.y; y < b.y + n; y++) for (let x = b.x; x < b.x + n; x++) c.grid[y * s.map.width + x] = id;
+  if (id) c.byId.set(b.id, b); else c.byId.delete(b.id);
 }
 
-export const tileAt = (s: GameState, col: number, row: number): Tile | null =>
-  col >= 0 && row >= 0 && col < WIDTH && row < DEPTH ? s.tiles[row * WIDTH + col] : null;
+/** The layout's version: changes whenever a building is added or removed. */
+export const layoutOf = (s: GameState) => cache(s).layout;
 
-// ---- Inventory ----
-
-const stacks = (id: ItemId) => ITEMS[id].kind !== 'tool';
-
-/** How many of an item (of any quality, or one quality) the player carries. */
-export function countItem(s: GameState, item: ItemId, quality?: Quality): number {
-  let n = 0;
-  for (const st of s.inventory) if (st && st.item === item && (quality === undefined || st.quality === quality)) n += st.count;
-  return n;
+export function addBuilding(s: GameState, b: Building) {
+  const c = cache(s);
+  s.buildings.push(b);
+  occupy(s, c, b, b.id);
+  c.layout = layoutVersion++;
 }
 
-/** Whether an item would fit: onto a stack of the same item and quality, or into a free slot. */
-export function canAdd(s: GameState, item: ItemId, quality: Quality = 0): boolean {
-  return s.inventory.some((st) => st === null || (stacks(item) && st.item === item && st.quality === quality));
+/** Marks the layout changed without adding or removing anything (a belt turned, a tree cleared). */
+export function touchLayout(s: GameState) {
+  cache(s).layout = layoutVersion++;
 }
 
-/** Adds items, stacking with the same item and quality, else into the first free slot (hotbar first). False if no room. */
-export function addItem(s: GameState, item: ItemId, count: number, quality: Quality = 0): boolean {
-  if (count <= 0) return true;
-  const q: Quality = ITEMS[item].quality ? quality : 0;
-  const same = stacks(item) ? s.inventory.find((st) => st && st.item === item && st.quality === q) : undefined;
-  if (same) { same.count += count; return true; }
-  const free = s.inventory.indexOf(null);
-  if (free < 0) return false;
-  s.inventory[free] = { item, quality: q, count };
-  return true;
-}
-
-/** Takes `count` from one slot, emptying it when it runs out. */
-export function takeFromSlot(s: GameState, slot: number, count = 1) {
-  const st = s.inventory[slot];
-  if (!st || st.count < count) throw new Error(`takeFromSlot: slot ${slot} has fewer than ${count}`);
-  st.count -= count;
-  if (st.count === 0) s.inventory[slot] = null;
-}
-
-/**
- * Takes one of an item, the best quality first (a recipe uses the best it can, see machines.ts). Returns its quality, or
- * null if none is carried.
- */
-export function takeBest(s: GameState, item: ItemId): Quality | null {
-  let best = -1;
-  s.inventory.forEach((st, i) => { if (st && st.item === item && (best < 0 || st.quality > s.inventory[best]!.quality)) best = i; });
-  if (best < 0) return null;
-  const q = s.inventory[best]!.quality;
-  takeFromSlot(s, best);
-  return q;
-}
-
-/** Swaps two slots, or merges them when they hold the same item and quality. */
-export function moveSlot(s: GameState, from: number, to: number) {
-  if (from === to) return;
-  const a = s.inventory[from], b = s.inventory[to];
-  if (a && b && a.item === b.item && a.quality === b.quality && stacks(a.item)) {
-    b.count += a.count;
-    s.inventory[from] = null;
-  } else {
-    s.inventory[from] = b; s.inventory[to] = a;
+export function removeBuilding(s: GameState, b: Building) {
+  const c = cache(s);
+  const i = s.buildings.indexOf(b);
+  if (i >= 0) s.buildings.splice(i, 1);
+  occupy(s, c, b, 0);
+  c.layout = layoutVersion++;
+  for (const o of s.buildings) {
+    if (o.link === b.id) o.link = null;
+    if (o.drone && o.drone.target === b.id && o.drone.phase !== 'home') { o.drone.phase = 'back'; o.drone.target = 0; }
   }
 }
 
-export const held = (s: GameState): Stack | null => s.inventory[s.selected] ?? null;
+export const inMap = (s: GameState, x: number, y: number) => x >= 0 && y >= 0 && x < s.map.width && y < s.map.height;
+export const tileIndex = (s: GameState, x: number, y: number) => y * s.map.width + x;
+
+/** The building on a tile, if any. */
+export function buildingAt(s: GameState, x: number, y: number): Building | null {
+  if (!inMap(s, x, y)) return null;
+  const id = cache(s).grid[y * s.map.width + x];
+  return id ? cache(s).byId.get(id) ?? null : null;
+}
+
+export const buildingById = (s: GameState, id: number) => cache(s).byId.get(id) ?? null;
+
+export const terrainAt = (s: GameState, x: number, y: number) => s.map.terrain[y * s.map.width + x];
+
+/** The centre of a building's footprint, in tiles. */
+export function centre(b: Building) {
+  const n = sizeOf(b);
+  return { x: b.x + n / 2, y: b.y + n / 2 };
+}
+
+/** The distance in tiles from a tile to the nearest tile of a building (0 when on it), as the larger of the axes. */
+export function reachTo(b: Building, x: number, y: number) {
+  const n = sizeOf(b);
+  const dx = x < b.x ? b.x - x : x >= b.x + n ? x - (b.x + n - 1) : 0;
+  const dy = y < b.y ? b.y - y : y >= b.y + n ? y - (b.y + n - 1) : 0;
+  return Math.max(dx, dy);
+}
+
+export const countTrees = (s: GameState) => { let n = 0; for (const t of s.map.terrain) if (t === TERRAIN.tree) n++; return n; };
