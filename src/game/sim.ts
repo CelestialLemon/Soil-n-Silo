@@ -299,14 +299,14 @@ function ontoBelt(belt: Building, item: ItemId, travel: Dir): boolean {
   if (belt.rot === travel) {
     const last = items[items.length - 1];
     if (last && last.pos < BELT.spacing) return false;
-    items.push({ item, pos: 0 });
+    items.push({ item, pos: 0, step: stepNo });
     return true;
   }
   // From the side: it joins in the middle of the belt.
   const at = 0.5;
   if (items.some((it) => Math.abs(it.pos - at) < BELT.spacing)) return false;
   const i = items.findIndex((it) => it.pos < at);
-  items.splice(i < 0 ? items.length : i, 0, { item, pos: at });
+  items.splice(i < 0 ? items.length : i, 0, { item, pos: at, step: stepNo });
   return true;
 }
 
@@ -338,6 +338,8 @@ function moveBelt(s: GameState, b: Building, dt: number) {
   const frontLimit = tail ? Math.min(1, tail.pos + 1 - BELT.spacing) : 1;
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
+    // A good that came onto this belt during this step has moved already (whichever order the belts are in).
+    if (it.step === stepNo) continue;
     const limit = i === 0 ? frontLimit : items[i - 1].pos - BELT.spacing;
     it.pos = Math.max(it.pos, Math.min(it.pos + step, limit));
   }
@@ -360,6 +362,7 @@ function routeOut(s: GameState, b: Building, dt: number) {
     if (b.type === 'crossing') exits = [travel];
     else if (b.type === 'sorter') exits = b.filter && t.item === b.filter ? [b.rot] : b.filter ? [left(b.rot), right(b.rot)] : [b.rot];
     else exits = ([0, 1, 2, 3] as Dir[]).filter((d) => d !== t.from);
+    exits.sort((a, c) => a - c);
     const n = exits.length, start = exits.findIndex((d) => d >= b.turn!);
     for (let k = 0; k < n; k++) {
       const d = exits[((start < 0 ? 0 : start) + k) % n];
@@ -537,7 +540,11 @@ export function advance(s: GameState, seconds: number, maxSteps = Infinity) {
   if (n >= maxSteps) s.carry = 0;
 }
 
+/** Counts steps, so goods handed from belt to belt move once per step. */
+let stepNo = 0;
+
 export function tick(s: GameState) {
+  stepNo++;
   const dt = TICK;
   s.time += dt;
   const sun = sunAt(s.scenario, s.time), wind = windAt(s.scenario, s.time);

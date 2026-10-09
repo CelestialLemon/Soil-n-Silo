@@ -330,6 +330,8 @@ test('saves with missing state are refused', () => {
   assert.equal(without((o) => { o.buildings[0].type = 'castle'; }), null);
   assert.equal(without((o) => { o.buildings.find((b: any) => b.type === 'belt').items.push({ item: 'gold', pos: 0 }); }), null);
   assert.equal(without((o) => { delete o.soilBase; }), null);
+  assert.equal(without((o) => { delete o.scenario.tags; }), null);
+  assert.equal(without((o) => { delete o.scenario.weather.wind; }), null);
   const f = flat();
   put(f, 'field', 4, 4); put(f, 'mill', 10, 10);
   const fj = JSON.parse(serialize(f));
@@ -462,4 +464,35 @@ test('a drone takes its goods home if its target stops receiving', () => {
   assert.equal(b.store!.length, 0);
   assert.equal(a.drone!.phase, 'home');
   assert.equal(a.store!.length, 5);
+});
+
+test('sorters share the other goods between both sides, whichever way they face', () => {
+  for (const rot of [0, 1, 2, 3] as Dir[]) {
+    const s = flat();
+    const back = (rot + 2) % 4, L = (rot + 3) % 4, R = (rot + 1) % 4;
+    const DXs = [0, 1, 0, -1], DYs = [-1, 0, 1, 0], cx = 10, cy = 10;
+    put(s, 'belt', cx + DXs[back], cy + DYs[back], rot);
+    const sorter = put(s, 'sorter', cx, cy, rot);
+    setFilter(sorter, 'egg');
+    put(s, 'belt', cx + DXs[L], cy + DYs[L], L as Dir); put(s, 'belt', cx + 2 * DXs[L], cy + 2 * DYs[L], L as Dir);
+    put(s, 'belt', cx + DXs[R], cy + DYs[R], R as Dir); put(s, 'belt', cx + 2 * DXs[R], cy + 2 * DYs[R], R as Dir);
+    const src = buildingAt(s, cx + DXs[back], cy + DYs[back])!;
+    for (let i = 0; i < 4; i++) { src.items!.push({ item: 'bran', pos: 0.9 }); advance(s, 1); }
+    const n = (d: number) => buildingAt(s, cx + DXs[d], cy + DYs[d])!.items!.length + buildingAt(s, cx + 2 * DXs[d], cy + 2 * DYs[d])!.items!.length;
+    assert.deepEqual([n(L), n(R)], [2, 2], `facing ${rot}`);
+  }
+});
+
+test('goods take as long along a belt line whichever order it was built in', () => {
+  const times = [false, true].map((reverse) => {
+    const s = flat();
+    const d = s.map.depot;
+    const xs = Array.from({ length: 12 }, (_, i) => d.x - 12 + i);
+    for (const x of reverse ? [...xs].reverse() : xs) put(s, 'belt', x, d.y + 1, 1);
+    buildingAt(s, xs[0], d.y + 1)!.items!.push({ item: 'egg', pos: 0 });
+    let t = 0;
+    while (!s.delivered.egg && t < 60) { advance(s, 0.1); t += 0.1; }
+    return Math.round(t * 10);
+  });
+  assert.equal(times[0], times[1]);
 });

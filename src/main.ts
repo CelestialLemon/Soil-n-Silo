@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObject } from 'pixel3d-renderer';
-import { beltPath, canPlace, linkPad, place, removeAt, rotate } from './game/build.ts';
+import { beltPath, canPlace, linkPad, place, remove, removeAt, rotate } from './game/build.ts';
 import { BUILDINGS, type BuildingId } from './game/data.ts';
 import { TERRAIN } from './game/map.ts';
 import { deserialize, readProgress, recordResult, saveKey, serialize } from './game/save.ts';
@@ -258,8 +258,10 @@ async function play(initial: GameState) {
         return;
       }
       case 'remove': {
-        if (!t) return;
-        const r = removeAt(state, t.x, t.y);
+        // The building under the pointer (it may stand in front of another's ground tile), else the tile's tree or rock.
+        const hb = hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;
+        if (!hb && !t) return;
+        const r = hb ? remove(state, hb) : removeAt(state, t!.x, t!.y);
         if (r.message) hud.toast(r.message, r.ok);
         if (selected !== null && !buildingById(state, selected)) selected = null;
         return;

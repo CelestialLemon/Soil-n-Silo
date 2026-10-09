@@ -13,7 +13,8 @@ export const opposite = (d: Dir) => ((d + 2) % 4) as Dir;
 export const left = (d: Dir) => ((d + 3) % 4) as Dir;
 export const right = (d: Dir) => ((d + 1) % 4) as Dir;
 
-export interface BeltItem { item: ItemId; pos: number }
+/** A good on a belt: how far along it is (0–1), and the step it came on (it doesn't move again that step). */
+export interface BeltItem { item: ItemId; pos: number; step?: number }
 /** A good passing through a splitter, sorter or crossing: where it came in, and how long it has left inside. */
 export interface Transit { item: ItemId; from: Dir; t: number }
 export interface Drone { phase: 'home' | 'out' | 'back' | 'hover'; t: number; cargo: ItemId[]; target: number }

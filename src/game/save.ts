@@ -1,5 +1,6 @@
 import type { Medal } from './sim.ts';
 import { BUILDINGS, CROPS, ITEMS, recipesFor } from './data.ts';
+import type { Scenario } from './scenarios.ts';
 import type { Building, GameState } from './state.ts';
 
 // Saving: the commission in progress (one at a time) and each commission's best result. The game state is plain data, so a
@@ -39,9 +40,21 @@ const dir = (v: unknown) => v === 0 || v === 1 || v === 2 || v === 3;
 const goal = (g: { kind?: string; item?: unknown; n?: unknown; perMin?: unknown; min?: unknown }) =>
   !!g && ((g.kind === 'deliver' && item(g.item) && num(g.n)) || (g.kind === 'rate' && item(g.item) && num(g.perMin)) || (g.kind === 'soil' && num(g.min)));
 
+const str = (v: unknown) => typeof v === 'string';
+
+/** The scenario's fields the simulation and the HUD read. */
+function scenario(sc: Scenario): boolean {
+  const w = sc?.weather, t = sc?.terrain;
+  return !!sc && str(sc.id) && str(sc.name) && str(sc.blurb) && [sc.seed, sc.width, sc.height, sc.credits, sc.par].every(num)
+    && arr(sc.tags) && sc.tags.every(str) && (sc.tips === undefined || (arr(sc.tips) && sc.tips.every(str)))
+    && arr(sc.goals) && sc.goals.every(goal)
+    && !!w && [w.sunrise, w.sunset, w.sun, w.wind, w.gust].every(num)
+    && !!t && [t.soil, t.soilSpread, t.forest, t.rock].every(num) && ['river', 'ponds', 'lake', 'none'].includes(t.water);
+}
+
 function complete(s: GameState): boolean {
   const m = s.map, st = s.stats;
-  return !!s.scenario && typeof s.scenario.id === 'string' && arr(s.scenario.goals) && s.scenario.goals.every(goal) && !!s.scenario.weather && !!s.scenario.terrain
+  return scenario(s.scenario)
     && !!m && num(m.width) && num(m.height) && arr(m.terrain) && m.terrain.length === m.width * m.height
     && arr(m.fertility) && m.fertility.length === m.width * m.height && m.fertility.every(num)
     && arr(s.soilBase) && s.soilBase.length === m.fertility.length && s.soilBase.every(num) && !!m.depot && num(m.depot.x) && num(m.depot.y)
