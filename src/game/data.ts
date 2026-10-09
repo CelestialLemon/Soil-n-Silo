@@ -77,6 +77,8 @@ export const FIELD = {
   dry: 0.4,
   /** Growth multiplier at fertility 0 and 100 (linear between). */
   poorSoil: 0.4, richSoil: 1.4,
+  /** Fertility a second that ground without a field regains, up to what it started at. */
+  rest: 0.1,
 };
 
 // ---- Buildings ----

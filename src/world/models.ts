@@ -25,7 +25,8 @@ export interface Models {
   markers: Record<'red' | 'orange' | 'yellow' | 'blue' | 'purple', Geo>;
   cursor: Geo;
   frames: { ok: Geo[]; bad: Geo[] };
-  fills: { reach: Geo; water: Geo; bees: Geo; fert: Geo[] };
+  /** A flat square filling a tile, tinted per overlay. */
+  fill: Geo;
 }
 
 /** Which Blender model draws each building, in order of preference. */
@@ -157,10 +158,7 @@ export async function loadModels(): Promise<Models> {
     markers: { red: marker(0xff4a3a), orange: marker(0xffa030), yellow: marker(0xffe060), blue: marker(0x60b8ff), purple: marker(0xc070ff) },
     cursor: frame(1, 0xfff0c0),
     frames: { ok: [1, 2, 3].map((n) => frame(n, 0xd8ffb0)), bad: [1, 2, 3].map((n) => frame(n, 0xff5040)) },
-    fills: {
-      reach: tileFill(0xe8d070), water: tileFill(0x70b0e0), bees: tileFill(0xe8a040),
-      fert: [0xc06040, 0xd09048, 0xd8c050, 0xa8c850, 0x70b050, 0x3a9040].map(tileFill),
-    },
+    fill: tileFill(0xf4f0e0),
   };
 }
 
@@ -169,7 +167,7 @@ export function allGeometries(m: Models): Geo[] {
   return [
     ...Object.values(m.buildings).flatMap((l) => [l.idle, l.running]), ...m.turbine, ...Object.values(m.crops).flat(), ...Object.values(m.items),
     ...m.soil, ...m.trees, ...m.rocks, m.drone, ...Object.values(m.markers), m.cursor, ...m.frames.ok, ...m.frames.bad,
-    m.fills.reach, m.fills.water, m.fills.bees, ...m.fills.fert,
+    m.fill,
   ];
 }
 

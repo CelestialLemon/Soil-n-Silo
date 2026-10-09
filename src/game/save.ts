@@ -1,5 +1,5 @@
 import type { Medal } from './sim.ts';
-import { BUILDINGS, recipesFor } from './data.ts';
+import { BUILDINGS, CROPS, ITEMS, recipesFor } from './data.ts';
 import type { Building, GameState } from './state.ts';
 
 // Saving: the commission in progress (one at a time) and each commission's best result. The game state is plain data, so a
@@ -30,34 +30,48 @@ export function deserialize(json: string | null): GameState | null {
 const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
 const nums = (o: unknown) => !!o && typeof o === 'object' && Object.values(o).every(num);
 const arr = Array.isArray;
+const item = (v: unknown) => typeof v === 'string' && v in ITEMS;
+const items = (v: unknown) => arr(v) && v.every(item);
+/** Counts by good: every key a good, every value a number. */
+const counts = (o: unknown) => nums(o) && Object.keys(o as object).every(item);
+const crop = (v: unknown) => typeof v === 'string' && v in CROPS;
+const dir = (v: unknown) => v === 0 || v === 1 || v === 2 || v === 3;
+const goal = (g: { kind?: string; item?: unknown; n?: unknown; perMin?: unknown; min?: unknown }) =>
+  !!g && ((g.kind === 'deliver' && item(g.item) && num(g.n)) || (g.kind === 'rate' && item(g.item) && num(g.perMin)) || (g.kind === 'soil' && num(g.min)));
 
 function complete(s: GameState): boolean {
   const m = s.map, st = s.stats;
-  return !!s.scenario && typeof s.scenario.id === 'string' && arr(s.scenario.goals) && !!s.scenario.weather && !!s.scenario.terrain
+  return !!s.scenario && typeof s.scenario.id === 'string' && arr(s.scenario.goals) && s.scenario.goals.every(goal) && !!s.scenario.weather && !!s.scenario.terrain
     && !!m && num(m.width) && num(m.height) && arr(m.terrain) && m.terrain.length === m.width * m.height
-    && arr(m.fertility) && m.fertility.length === m.width * m.height && m.fertility.every(num) && !!m.depot && num(m.depot.x) && num(m.depot.y)
+    && arr(m.fertility) && m.fertility.length === m.width * m.height && m.fertility.every(num)
+    && arr(s.soilBase) && s.soilBase.length === m.fertility.length && s.soilBase.every(num) && !!m.depot && num(m.depot.x) && num(m.depot.y)
     && [s.credits, s.time, s.carry, s.nextId, s.earned, s.initialTrees].every(num)
     && (s.completedAt === null || num(s.completedAt))
-    && nums(s.delivered) && nums(s.made) && arr(s.reached) && s.reached.length === s.scenario.goals.length
-    && !!st && num(st.since) && arr(st.made) && arr(st.delivered) && st.made.length > 0 && st.delivered.length > 0 && st.made.every(nums) && st.delivered.every(nums)
+    && counts(s.delivered) && counts(s.made) && arr(s.reached) && s.reached.length === s.scenario.goals.length
+    && !!st && num(st.since) && arr(st.made) && arr(st.delivered) && st.made.length > 0 && st.delivered.length > 0 && st.made.every(counts) && st.delivered.every(counts)
     && arr(s.buildings) && s.buildings.every((b) => validBuilding(b, m.width, m.height));
 }
 
 /** A building has what its type's rules read. */
 function validBuilding(b: Building, w: number, h: number): boolean {
-  if (!b || !num(b.id) || !num(b.x) || !num(b.y) || !(b.type in BUILDINGS) || ![0, 1, 2, 3].includes(b.rot)) return false;
+  if (!b || !num(b.id) || !num(b.x) || !num(b.y) || !(b.type in BUILDINGS) || !dir(b.rot)) return false;
   const n = BUILDINGS[b.type].size;
   if (b.x < 0 || b.y < 0 || b.x + n > w || b.y + n > h) return false;
   switch (b.type) {
-    case 'belt': return arr(b.items) && b.items.every((i) => i && num(i.pos) && typeof i.item === 'string');
-    case 'splitter': case 'crossing': case 'sorter': return arr(b.transit) && num(b.turn);
-    case 'field': return typeof b.crop === 'string' && num(b.growth) && num(b.stored) && num(b.compost);
+    case 'belt': return arr(b.items) && b.items.every((i) => i && num(i.pos) && item(i.item));
+    case 'splitter': case 'crossing': case 'sorter':
+      return arr(b.transit) && b.transit.every((t) => t && item(t.item) && dir(t.from) && num(t.t)) && num(b.turn)
+        && (b.type !== 'sorter' || b.filter === null || item(b.filter));
+    case 'field': return crop(b.crop) && (b.harvest === undefined || crop(b.harvest)) && num(b.growth) && num(b.stored) && num(b.compost);
     case 'hive': return num(b.growth) && num(b.stored);
     case 'battery': return num(b.charge);
-    case 'pad': return (b.mode === 'send' || b.mode === 'receive') && arr(b.store) && num(b.waited) && !!b.drone && num(b.drone.t) && arr(b.drone.cargo) && num(b.drone.target);
+    case 'pad': return (b.mode === 'send' || b.mode === 'receive') && (b.link === null || num(b.link)) && items(b.store) && num(b.waited)
+      && !!b.drone && ['home', 'out', 'back', 'hover'].includes(b.drone.phase) && num(b.drone.t) && items(b.drone.cargo) && num(b.drone.target);
     case 'sapling': return num(b.age);
   }
-  if (recipesFor(b.type).length) return typeof b.recipe === 'string' && nums(b.inputs) && nums(b.outputs) && (b.progress === null || num(b.progress));
+  if (recipesFor(b.type).length) {
+    return recipesFor(b.type).some((r) => r.id === b.recipe) && counts(b.inputs) && counts(b.outputs) && (b.progress === null || num(b.progress));
+  }
   return true;
 }
 

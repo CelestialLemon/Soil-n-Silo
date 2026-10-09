@@ -16,14 +16,14 @@ Items are roughly in priority order within each section.
 
 ## Renderer
 
-Pinned: **v0.2.0** (`package.json`). The game owns the loop, state, input, UI, audio and save; the renderer draws, and answers
+Pinned: **v0.3.0** (`package.json`). The game owns the loop, state, input, UI, audio and save; the renderer draws, and answers
 "what is under the pointer" (`pick`).
 
 | Need | Status | Notes |
 | --- | --- | --- |
-| Build preview ("ghost") drawn see-through and tinted green/red | Asked: [#30](https://github.com/CelestialLemon/pixel3d-renderer/issues/30) | Meanwhile the ghost is drawn solid, with a green or red frame under it. |
-| Overlays (fertility, power reach, water, bees) without a geometry per colour | Asked: #30 | Meanwhile one flat tile geometry per colour, instanced. |
-| Hundreds of goods moving on belts without redrawing the object shadow map every frame | Asked: [#31](https://github.com/CelestialLemon/pixel3d-renderer/issues/31) | Meanwhile goods cast shadows; 60 fps on the bread factory on an RX 570. |
+| Build preview ("ghost") drawn see-through and tinted green/red | Yes ([#30](https://github.com/CelestialLemon/pixel3d-renderer/issues/30), v0.3.0) | `opacity` and `tint`; `pick` sees through it. |
+| Overlays (fertility, power reach, water, bees) without a geometry per colour | Yes (#30) | One tile geometry, tinted per tile. |
+| Many goods moving on belts without redrawing the object shadow map | Yes ([#31](https://github.com/CelestialLemon/pixel3d-renderer/issues/31)) | Goods, markers, ghosts and overlays have `castShadow = false`. |
 | Turbine rotors turning with the wind | Worked around | Three rotor speeds, swapped by wind strength (spin speed is baked into the geometry). |
 | Lamps on placed objects (pylon lanterns at night) | No | Lamps are scene data; emissive parts glow after dusk instead. |
 | Buildings fading when they hide the tile under the pointer | Not needed yet | Picking a tile uses the ground plane, so tall buildings don't block placement. |
@@ -46,7 +46,6 @@ Pinned: **v0.2.0** (`package.json`). The game owns the loop, state, input, UI, a
 
 - Play every campaign commission and tune: target times, prices, crop and machine times, power numbers. Bot layouts for the
   other five commissions in `tools/layouts.ts`, so `npm run sim` checks them all.
-- Pin the renderer release with #30/#31 and use them: see-through tinted ghosts, tinted overlays, goods without shadows.
 - Belt corners drawn as curves; goods easier to read on belts (bigger tokens, or an outline).
 - Copy and paste / blueprints for repeated blocks (a row of fields with sprinklers).
 - Undo for the last few actions.

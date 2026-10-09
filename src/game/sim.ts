@@ -52,6 +52,8 @@ interface Derived {
   exposure: Map<number, number>;
   /** Sprinklers near water. */
   nearWater: Set<number>;
+  /** Tiles under a field (the rest of the ground rests). */
+  fielded: Set<number>;
 }
 const derivedCache = new WeakMap<GameState, Derived>();
 
@@ -59,7 +61,7 @@ function derived(s: GameState): Derived {
   const layout = layoutOf(s);
   let d = derivedCache.get(s);
   if (d && d.layout === layout) return d;
-  d = { layout, outs: new Map(), sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), nearWater: new Set() };
+  d = { layout, outs: new Map(), sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), nearWater: new Set(), fielded: new Set() };
   const fields = s.buildings.filter((b) => b.type === 'field');
   const hives = s.buildings.filter((b) => b.type === 'hive');
   const sprinklers = s.buildings.filter((b) => b.type === 'sprinkler');
@@ -68,6 +70,7 @@ function derived(s: GameState): Derived {
     d.outs.set(b.id, beltsLeading(s, b));
   }
   for (const f of fields) {
+    for (let y = f.y; y < f.y + 3; y++) for (let x = f.x; x < f.x + 3; x++) d.fielded.add(tileIndex(s, x, y));
     const c = centre(f);
     d.sprinklers.set(f.id, sprinklers.filter((sp) => Math.max(Math.abs(sp.x + 0.5 - c.x), Math.abs(sp.y + 0.5 - c.y)) <= POWER.sprinklerReach + 0.5));
     if (hives.some((h) => reachTo(f, h.x, h.y) <= HIVE.reach)) d.pollinated.add(f.id);
@@ -512,7 +515,11 @@ function runPad(s: GameState, p: Building, dt: number) {
     case 'back':
       d.t += dt * PAD.speed * Math.max(share, target ? 0 : 1) / dist;
       p.status = share <= 0 ? 'power' : 'ok';
-      if (d.t >= 1 || !target) { d.phase = 'home'; d.t = 0; d.target = 0; }
+      if (d.t >= 1 || !target) {
+        // Goods it couldn't deliver (the target went) go back on the pad, first in line.
+        if (d.cargo.length) { p.store!.unshift(...d.cargo); d.cargo = []; }
+        d.phase = 'home'; d.t = 0; d.target = 0;
+      }
       return;
   }
 }
@@ -568,8 +575,15 @@ export function tick(s: GameState) {
   for (const b of s.buildings) if (b.type !== 'belt' && !isRouter(b)) pushOut(s, b);
   for (const b of s.buildings) if (isRouter(b)) routeOut(s, b, dt);
   for (const b of s.buildings) if (b.type === 'belt') moveBelt(s, b, dt);
+  // Once a second, ground without a field recovers a little.
+  if (Math.floor(s.time + 1e-6) !== Math.floor(s.time - dt + 1e-6)) rest(s);
   updateStats(s);
   updateGoals(s);
+}
+
+function rest(s: GameState) {
+  const fielded = derived(s).fielded, f = s.map.fertility, base = s.soilBase;
+  for (let i = 0; i < f.length; i++) if (f[i] < base[i] && !fielded.has(i)) f[i] = Math.min(base[i], f[i] + FIELD.rest);
 }
 
 function updateStats(s: GameState) {

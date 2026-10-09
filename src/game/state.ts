@@ -76,6 +76,8 @@ export interface GameState {
   version: 1;
   scenario: Scenario;
   map: MapData;
+  /** Each tile's fertility at the start: resting ground recovers up to it. */
+  soilBase: number[];
   initialTrees: number;
   buildings: Building[];
   nextId: number;
@@ -97,7 +99,7 @@ export interface GameState {
 export function newGame(sc: Scenario): GameState {
   const map = generateMap(sc);
   const s: GameState = {
-    version: 1, scenario: sc, map, initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
+    version: 1, scenario: sc, map, soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
     buildings: [], nextId: 1, credits: sc.credits, time: 0, carry: 0, delivered: {}, earned: 0,
     stats: { since: 0, made: [{}], delivered: [{}] }, reached: sc.goals.map(() => false), completedAt: null, made: {},
   };

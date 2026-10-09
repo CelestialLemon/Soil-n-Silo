@@ -172,14 +172,17 @@ async function play(initial: GameState) {
   // ---- Ghosts: what would be built ----
   const ghostPool = new Map<string, PixelObject[]>();
   let ghostUsed = new Map<string, number>();
-  function ghost(key: string, g: THREE.BufferGeometry, x: number, y: number, z: number, yaw = 0) {
+  const GOOD = new THREE.Color(0x90ff90), BAD = new THREE.Color(0xff5040);
+  /** Shows a preview object; `fits` draws it see-through and tinted green (fits) or red (doesn't). */
+  function ghost(key: string, g: THREE.BufferGeometry, x: number, y: number, z: number, yaw = 0, fits?: boolean) {
     const list = ghostPool.get(key) ?? [];
     ghostPool.set(key, list);
     const i = ghostUsed.get(key) ?? 0;
     ghostUsed.set(key, i + 1);
     let o = list[i];
-    if (!o) { o = renderer.addObject(g); list.push(o); }
+    if (!o) { o = renderer.addObject(g); o.castShadow = false; list.push(o); }
     o.visible = true;
+    if (fits !== undefined) { o.opacity = 0.6; o.tint = fits ? GOOD : BAD; o.tintStrength = 0.45; }
     o.setTransform(new THREE.Vector3(x, y, z), new THREE.Euler(0, yaw, 0));
   }
   function clearGhosts() {
@@ -215,7 +218,7 @@ async function play(initial: GameState) {
         if (okHere && !state.scenario.sandbox) credits -= BUILDINGS[type].cost;
         const cx = sp.x + n / 2, cz = sp.y + n / 2;
         ghost(`frame ${okHere} ${n}`, (okHere ? models.frames.ok : models.frames.bad)[n - 1], cx, 0.03, cz);
-        ghost(`b ${type}`, models.buildings[type].idle, cx, 0.04, cz, YAW[sp.rot]);
+        ghost(`b ${type}`, models.buildings[type].idle, cx, 0.04, cz, YAW[sp.rot], okHere);
       }
       // A pylon's reach, and the pylons it would link to.
       if (type === 'pylon' && spots.length === 1) overlayFor('power');

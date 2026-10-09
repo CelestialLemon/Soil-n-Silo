@@ -22,6 +22,10 @@ interface Shown { obj: PixelObject; key: string }
 
 const v = new THREE.Vector3(), e = new THREE.Euler();
 
+/** Overlay colours: soil from poor (red) to rich (green), pylon reach, sprinkler water, bee range. */
+const FERT = [0xb03020, 0xd07020, 0xd8b020, 0x98c030, 0x50a030, 0x207a30].map((c) => new THREE.Color(c));
+const REACH = new THREE.Color(0xf0d060), WATER = new THREE.Color(0x60a8e8), BEES = new THREE.Color(0xf09030);
+
 export type Overlay = 'none' | 'fertility' | 'power' | 'water' | 'bees';
 
 export class WorldView {
@@ -128,7 +132,7 @@ export class WorldView {
       const cur = this.markers.get(b.id);
       if (!colour) { if (cur) { this.drop(cur.obj); this.markers.delete(b.id); } continue; }
       const n = sizeOf(b), h = this.m.buildings[b.type].height;
-      this.markers.set(b.id, this.show(cur, colour, () => this.m.markers[colour], b.id, (o) => o.setTransform(v.set(b.x + n / 2, (b.type === 'field' ? 0.9 : h) + 0.45, b.y + n / 2))));
+      this.markers.set(b.id, this.show(cur, colour, () => this.m.markers[colour], b.id, (o) => (o.castShadow = false, o).setTransform(v.set(b.x + n / 2, (b.type === 'field' ? 0.9 : h) + 0.45, b.y + n / 2))));
     }
     for (const [id, sh] of this.markers) if (!alive.has(id)) { this.drop(sh.obj); this.markers.delete(id); }
   }
@@ -140,7 +144,7 @@ export class WorldView {
       let p = this.pools.get(item);
       if (!p) { p = { objs: [], used: 0 }; this.pools.set(item, p); }
       let o = p.objs[p.used];
-      if (!o) { o = this.add(this.m.items[item], null); p.objs.push(o); }
+      if (!o) { o = this.add(this.m.items[item], null); o.castShadow = false; p.objs.push(o); }
       p.used++;
       o.visible = true;
       o.setTransform(v.set(x, y, z), e.set(0, yaw, 0));
@@ -199,6 +203,12 @@ export class WorldView {
     });
   }
 
+  private tile(tint: THREE.Color) {
+    const o = this.r.addObject(this.m.fill);
+    o.tint = tint; o.tintStrength = 1; o.castShadow = false;
+    return o;
+  }
+
   /** Coloured tiles over the map: soil fertility, pylon reach, sprinkler water or bee range. */
   overlay(s: GameState, kind: Overlay) {
     const key = kind === 'none' ? 'none' : `${kind} ${kind === 'fertility' ? s.map.fertility.map((f) => Math.floor(f / 17)).join('') : ''} ${s.buildings.length} ${networks(s).layout}`;
@@ -215,7 +225,7 @@ export class WorldView {
     if (kind === 'fertility') {
       for (let i = 0; i < w * h; i++) {
         if (s.map.terrain[i] !== TERRAIN.grass) continue;
-        const o = this.r.addObject(this.m.fills.fert[Math.min(5, Math.floor(s.map.fertility[i] / 17))]);
+        const o = this.tile(FERT[Math.min(5, Math.floor(s.map.fertility[i] / 17))]);
         o.setTransform(v.set(i % w + 0.5, 0.02, Math.floor(i / w) + 0.5));
         this.overlayObjs.push(o);
       }
@@ -226,9 +236,9 @@ export class WorldView {
       if (kind === 'water' && b.type === 'sprinkler') cover(b.x - 1, b.y - 1, 3, POWER.sprinklerReach - 1);
       if (kind === 'bees' && b.type === 'hive') cover(b.x, b.y, 1, HIVE.reach);
     }
-    const g = kind === 'power' ? this.m.fills.reach : kind === 'water' ? this.m.fills.water : this.m.fills.bees;
+    const tint = kind === 'power' ? REACH : kind === 'water' ? WATER : BEES;
     for (const i of mark) {
-      const o = this.r.addObject(g);
+      const o = this.tile(tint);
       o.setTransform(v.set(i % w + 0.5, 0.02, Math.floor(i / w) + 0.5));
       this.overlayObjs.push(o);
     }

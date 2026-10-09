@@ -25,6 +25,7 @@ if (!layout) throw new Error(`no bot layout for ${id} yet (have: ${Object.keys(L
 const s: GameState = newGame(sc);
 s.map.terrain.fill(TERRAIN.grass);
 s.map.fertility.fill(sc.terrain.soil);
+s.soilBase.fill(sc.terrain.soil);
 // The depot in the middle of the south edge, so every layout fits (nothing has looked up the layout yet).
 s.map.depot.x = Math.floor(s.map.width / 2);
 s.buildings[0].x = s.map.depot.x;

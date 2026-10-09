@@ -51,14 +51,14 @@ docs/           design, roadmap, asset brief
 
 ## The renderer
 
-The game installs the renderer from git, pinned to a release tag, `v0.2.0` (see its `CHANGELOG.md` before moving to a newer
+The game installs the renderer from git, pinned to a release tag, `v0.3.0` (see its `CHANGELOG.md` before moving to a newer
 one). three.js 0.180 sits beside it. Its public API is what its `src/renderer/index.ts` exports; its README explains how a game uses it.
 
 npm builds the renderer when it installs it from git, which needs the install script approved. The approval in `package.json`
 (`allowScripts`) names the exact commit, so after changing the tag run:
 
 ```sh
-npm install github:CelestialLemon/pixel3d-renderer#v0.2.0
+npm install github:CelestialLemon/pixel3d-renderer#v0.3.0
 npm install-scripts approve pixel3d-renderer
 ```
 

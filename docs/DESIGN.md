@@ -150,7 +150,7 @@ any belt that points into it, if the building can use them and has room. Buildin
 | --- | --- | --- | --- | --- |
 | Field | 3 × 3 | 30 | — | Grows the chosen crop on its 9 tiles. Takes compost from belts |
 | Sprinkler | 1 × 1 | 25 | 3 W within 8 tiles of water, else 8 W | Waters fields whose centre is within 3 tiles |
-| Coop | 3 × 3 | 150 | — | Four chickens. Each feed (beans, bran or seed cake) gives an egg; every second feed also gives manure |
+| Coop | 3 × 3 | 150 | — | Four chickens. Every 2 feed (beans, bran or seed cake) give 2 eggs and 1 manure, 16 s |
 | Beehive | 1 × 1 | 60 | — | Makes honey from flowering fields (not wheat) within 4 tiles, faster with more of them (up to 3). Pollinates fields within 4 tiles |
 | Composter | 2 × 2 | 60 | — | Any 2 of manure, bran and seed cake → 1 compost, 20 s |
 
@@ -169,6 +169,8 @@ any belt that points into it, if the building can use them and has room. Buildin
 - A pollinated field (a hive within 4 tiles) yields 1 more of a flowering crop.
 - A harvest waits in the field (up to 6) until a belt takes it. A full field stops growing.
 - A field with compost waiting uses one whenever its average fertility is under 85: +12 on each tile.
+- Ground without a field rests: it regains 0.1 fertility a second (6 a minute), up to what it started at. Moving a field
+  lets worn ground recover.
 
 ### Processing (powered)
 

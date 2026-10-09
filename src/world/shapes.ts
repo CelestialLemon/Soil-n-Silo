@@ -28,6 +28,10 @@ function planter(k: Kit, x: number, z: number, y = 0) {
 }
 
 const B: Partial<Record<BuildingId, Builder>> = {
+  // A field is drawn from its soil and crops (view.ts); this is its look in the build preview.
+  field: (k) => {
+    for (const x of [-1, 0, 1]) for (const z of [-1, 0, 1]) k.box(x, -0.05, z, 0.98, 0.08, 0.98, 0x8a6a46).box(x, 0.03, z, 0.3, 0.12, 0.3, C.leafLight);
+  },
   belt: (k) => {
     k.box(-0.44, 0, 0, 0.08, 0.18, 1, C.timber).box(0.44, 0, 0, 0.08, 0.18, 1, C.timber)
       .box(0, 0.06, 0, 0.82, 0.08, 0.98, C.belt);
@@ -251,7 +255,7 @@ export function frame(n: number, hex: number, t = 0.06) {
 /** A flat tinted square filling a tile, for overlays. */
 export function tileFill(hex: number) {
   const k = new Kit(false);
-  k.box(0, 0, 0, 0.9, 0.015, 0.9, hex, { flag: FLAG.DECOR });
+  k.box(0, 0, 0, 0.84, 0.015, 0.84, hex, { flag: FLAG.DECOR });
   return k.build();
 }
 

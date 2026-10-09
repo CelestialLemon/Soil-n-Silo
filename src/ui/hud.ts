@@ -69,6 +69,7 @@ export class Hud {
   private readonly buildbar = h('div', { class: 'buildbar card' });
   private category = CATEGORIES[0].id;
   private buildKey = '';
+  private readonly buildButtons = new Map<BuildingId, HTMLButtonElement>();
   private readonly info = h('div', { class: 'info' });
   private readonly inspector = h('div', { class: 'card inspector' });
   private inspectKey = '';
@@ -77,7 +78,8 @@ export class Hud {
   private readonly layer = h('div', { class: 'layer' });
   private modals: Modal[] = [];
   private statsOpen = false;
-  private readonly stats = h('div', { class: 'card stats-panel' });
+  private readonly statsBody = h('div');
+  private readonly stats = h('div', { class: 'card stats-panel' }, h('div', { class: 'head' }, h('b', null, 'Production (last minute)'), button('✕', () => this.toggleStats(), { cls: 'close' })), this.statsBody);
   private lastSlow = 0;
 
   constructor(root: HTMLElement, host: HudHost) {
@@ -202,17 +204,24 @@ export class Hud {
 
   private syncBuildbar() {
     const s = this.host.state(), tool = this.host.tool();
-    const key = JSON.stringify([this.category, tool, s.credits >= 0 ? Math.floor(s.credits / 10) : 0]);
-    if (key === this.buildKey) return;
+    // The buttons are made again only when the category or tool changes (not while credits tick, which would swallow clicks).
+    const key = JSON.stringify([this.category, tool]);
+    if (key === this.buildKey) {
+      for (const [id, b] of this.buildButtons) b.classList.toggle('poor', s.credits < priceOf(s, id));
+      return;
+    }
     this.buildKey = key;
+    this.buildButtons.clear();
     const tabs = h('div', { class: 'tabs' }, ...CATEGORIES.map((c) => button(c.name, () => { this.category = c.id; this.buildKey = ''; }, { active: c.id === this.category })),
       button('Remove (X)', () => this.host.setTool(tool.kind === 'remove' ? { kind: 'select' } : { kind: 'remove' }), { active: tool.kind === 'remove', cls: 'danger' }));
     const ids = (Object.keys(BUILDINGS) as BuildingId[]).filter((id) => BUILDINGS[id].category === this.category);
     const items = h('div', { class: 'items' }, ...ids.map((id) => {
       const d = BUILDINGS[id], price = priceOf(s, id), active = tool.kind === 'build' && tool.type === id;
-      return button(h('span', null, h('b', null, d.name), h('small', null, `${price ? `${price} ◈` : 'free'}${d.power ? ` · ${d.power} W` : ''}${d.key ? ` · ${d.key}` : ''}`)),
+      const b = button(h('span', null, h('b', null, d.name), h('small', null, `${price ? `${price} ◈` : 'free'}${d.power ? ` · ${d.power} W` : ''}${d.key ? ` · ${d.key}` : ''}`)),
         () => this.host.setTool(active ? { kind: 'select' } : { kind: 'build', type: id, rot: tool.kind === 'build' ? tool.rot : 1 }),
         { active, title: d.hint, cls: s.credits < price ? 'poor' : '' });
+      this.buildButtons.set(id, b);
+      return b;
     }));
     this.buildbar.replaceChildren(tabs, items);
   }
@@ -343,7 +352,7 @@ export class Hud {
     const rows = ITEM_IDS.filter((i) => s.made[i] || s.delivered[i]).map((i) => h('tr', null,
       h('td', null, good(i)), h('td', null, ratePerMin(s, i, 'made').toFixed(1)), h('td', null, ratePerMin(s, i, 'delivered').toFixed(1)),
       h('td', null, String(s.made[i] ?? 0)), h('td', null, String(s.delivered[i] ?? 0))));
-    this.stats.replaceChildren(h('div', { class: 'head' }, h('b', null, 'Production (last minute)'), button('✕', () => this.toggleStats(), { cls: 'close' })),
+    this.statsBody.replaceChildren(
       rows.length ? h('table', null, h('tr', null, h('th', null, 'Good'), h('th', null, 'Made/min'), h('th', null, 'Delivered/min'), h('th', null, 'Made'), h('th', null, 'Delivered')), ...rows)
         : h('p', { class: 'hint' }, 'Nothing made yet.'),
       h('div', { class: 'kv' }, h('span', null, 'Soil health'), h('b', null, String(Math.round(soilHealth(s))))));

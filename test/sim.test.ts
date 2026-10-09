@@ -17,6 +17,7 @@ function flat(extra: Partial<Scenario> = {}): GameState {
   };
   const s = newGame(sc);
   s.map.fertility.fill(60);
+  s.soilBase.fill(60);
   return s;
 }
 
@@ -327,6 +328,14 @@ test('saves with missing state are refused', () => {
   assert.equal(without((o) => { delete o.carry; }), null);
   assert.equal(without((o) => { delete o.buildings.find((b: any) => b.type === 'pad').drone; }), null);
   assert.equal(without((o) => { o.buildings[0].type = 'castle'; }), null);
+  assert.equal(without((o) => { o.buildings.find((b: any) => b.type === 'belt').items.push({ item: 'gold', pos: 0 }); }), null);
+  assert.equal(without((o) => { delete o.soilBase; }), null);
+  const f = flat();
+  put(f, 'field', 4, 4); put(f, 'mill', 10, 10);
+  const fj = JSON.parse(serialize(f));
+  assert.ok(deserialize(JSON.stringify(fj)));
+  assert.equal(deserialize(JSON.stringify({ ...fj, buildings: fj.buildings.map((b: any) => (b.type === 'field' ? { ...b, crop: 'not-a-crop' } : b)) })), null);
+  assert.equal(deserialize(JSON.stringify({ ...fj, buildings: fj.buildings.map((b: any) => (b.type === 'mill' ? { ...b, recipe: 'bread' } : b)) })), null);
 });
 
 test('removing a building twice refunds it once', () => {
@@ -383,4 +392,29 @@ test('a tall building shelters a turbine once, however many tiles it has', () =>
   const t = put(s, 'turbine', 10, 10);
   put(s, 'mill', 11, 10);
   assert.equal(exposureOf(s, t), 1 - POWER.shelter);
+});
+
+test('a drone whose destination goes brings its cargo home', () => {
+  const s = flat();
+  powerAt(s, 1, 1);
+  const a = put(s, 'pad', 2, 3), b = put(s, 'pad', 20, 3);
+  setPadMode(b, 'receive'); linkPad(s, a, b);
+  a.store!.push('egg', 'egg', 'egg', 'egg', 'egg');
+  advance(s, 1);
+  assert.equal(a.drone!.phase, 'out');
+  remove(s, b);
+  advance(s, 10);
+  assert.equal(a.drone!.phase, 'home');
+  assert.deepEqual(a.store, ['egg', 'egg', 'egg', 'egg', 'egg']);
+});
+
+test('ground without a field rests back towards its starting fertility', () => {
+  const s = flat();
+  const f = put(s, 'field', 4, 4);
+  for (let i = 0; i < s.map.fertility.length; i++) s.map.fertility[i] = 10;
+  advance(s, 100);
+  assert.equal(fieldFertility(s, f), 10, 'under a field: no rest');
+  assert.ok(Math.abs(s.map.fertility[0] - 20) < 0.5, `resting: ${s.map.fertility[0]}`);
+  advance(s, 1000);
+  assert.equal(s.map.fertility[0], 60, 'not past where it started');
 });
