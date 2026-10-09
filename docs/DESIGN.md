@@ -1,273 +1,264 @@
-# Farming Game — MVP Design Doc
+# Soil n Silo — Design (v0.1, the solarpunk pivot)
 
-Oct 6, 2026 · @Ashutosh Shinde
+Oct 9, 2026 · @Ashutosh Shinde
 
 ## Overview
 
-The MVP is one 28-day season where the player earns 20,000g by growing crops, raising chickens and processing goods. It exists to prove one thing: that farming and production chains are fun on their own, without a social layer.
+Soil n Silo is a build-only automation game in a solarpunk valley. Each level is a commission from a nearby settlement: on a
+seeded map you lay out fields, belts, drones, machines and power, and the farm then runs on its own until the commission's goals
+are delivered. A level takes about 30 to 60 minutes.
 
-The game is a cozy farming sim in the vein of Stardew Valley, with depth moved from relationships into soil, animals and processing. Visuals use a 3D scene rendered to pixel art.
+The game replaced a Stardew-like season (the earlier MVP, decided 2026-10-06, built by 2026-10-07) on 2026-10-09. The reason: the
+only player is also the designer, so a reward loop of unlocking new crops, items and machines doesn't work: the designer already knows all of
+them. An automation loop does: the fun is in building a layout, finding its bottleneck, fixing it and watching the throughput rise,
+and that stays fun when every rule is known. Short, seeded levels are also quick to test, where a full season was hours.
 
-**Core loop:** plant → water → harvest → feed chickens → fertilize → process goods → sell → buy upgrades → repeat with better margins.
+**Core loop:** read the map (soil, water, wind, space) → lay out a chain → power it → watch it run → find the bottleneck → fix it →
+deliver the commission faster.
 
-```mermaid
-flowchart LR
-  Shop -- seeds, feed --> Fields
-  Fields -- crops --> Bin[Shipping bin]
-  Fields -- wheat --> Mill
-  Fields -- scraps --> Chickens
-  Shop -- feed --> Chickens
-  Chickens -- eggs --> Oven
-  Chickens -- manure --> Fields
-  Mill -- flour --> Oven
-  Fields -- pumpkin --> Oven
-  Oven -- bread, pie --> Bin
-  Bin -- gold --> Shop
-```
+**What makes it not Factorio:** farming. Soil is a resource that wears out and comes back, so fields need compost, resting or beans;
+byproducts must go somewhere (feed, compost or the digester), so the closed loops of a real farm are the puzzle; the sun sets every
+few minutes and the wind comes and goes, so power needs storage and a mix of sources.
 
-*(The original doc embeds this as a 7-part diagram; this is a text version of it.)*
+**In v0.1**
 
-Manure from chickens is what restores the fields, so animals and soil quality stay tied together all season.
+- 18 goods, 5 crops, chickens and bees, 6 processing machines, 4 power sources and storage
+- Belts, splitters, sorters, crossings and drones
+- Pylon power networks, each with its own balance
+- Soil fertility, sprinklers, compost and pollination
+- 8 campaign commissions, random commissions from any seed, a sandbox
+- A soft timer: the commission always finishes; gold, silver or bronze by how long it took
 
-**In scope**
+**Not in v0.1:** research or unlocks (every building is available from the start), pipes and fluids, weather events, trains,
+blueprints and copy-paste, sound, multiple saves per level.
 
-- 3 crops: wheat, tomato, pumpkin
-- Soil fertility and crop quality
-- 1 animal: chickens, with eggs and manure
-- 2 machines: mill and oven, 3 recipes
-- Shop, shipping bin, day/night clock
-- 20,000g money target with bronze/silver/gold tiers
+## Camera, presentation and controls
 
-**Out of scope for the MVP**
+The camera stays as it was: orthographic, a 3/4 view at about 30° pitch, 4 views 90° apart (Q/E), integer zoom levels (the wheel or
+Z) and panning (drag, right-drag or the arrow keys). Low-poly, flat-colour models drawn as pixel art by `pixel3d-renderer`. Everything is seen
+from 4 sides.
 
-- Energy/stamina
-- Seasons and weather
-- NPCs, relationships, quests
-- Composter and other extra machines
-- Farm expansion, multiple save slots
-- Animal sickness or death
+It is build-only and point-and-click. There is no character and no manual farming: you place, rotate, configure and remove.
 
-## Camera and presentation
+| Input | Does |
+| --- | --- |
+| Build bar (bottom) or hotkeys (B belt, F field, P pylon, S solar) | Pick a building to place |
+| Click / drag | Place it; belts are laid along the drag (an L from where the drag started) |
+| R | Rotate what you're placing (belts, splitters, sorters) |
+| Click a building with nothing in hand | Select it: the inspector shows its status, buffers and settings |
+| X, then click or drag | Remove (full refund) |
+| Esc / right click | Drop what's in hand, close the inspector |
+| Space, 1, 2, 3 | Pause, 1×, 2×, 4× speed. You can build while paused |
+| Tab | Production stats |
+| V (or the buttons) | Overlays: soil fertility, power reach, sprinkler water, bee range |
 
-The camera is an orthographic, isometric-style 3/4 view over the farm. The player turns it between 4 preset views 90° apart and pans it with the mouse. This keeps the diorama look while letting players see behind buildings.
-
-| Setting | Decision | Why |
-| --- | --- | --- |
-| Projection | Orthographic | No perspective distortion; clean pixel output |
-| Default yaw | 45° | Gives the classic iso diamond look as the home view |
-| Pitch | Fixed, about 30° | Produces clean 2:1 pixel lines |
-| Rotation | Snapped 90° steps (4 views) | Free orbit makes pixel art shimmer |
-| Zoom | Fixed integer levels (1x, 2x, 3x) | Smooth zoom breaks pixel crispness |
-| Panning | Drag with the mouse, kept over the farm; snapped to pixel-size steps | Point-and-click needs the whole farm in reach; snapping prevents shimmer |
+![Laying a belt: the preview is see-through, green where it fits and red on the depot](images/preview.png)
 
 **Readability rules**
 
-- The tile under the pointer is always highlighted. With diamond tiles this is essential.
-- Buildings and trees fade or cut away when they hide the tile under the pointer, if turning the camera turns out not to be enough.
-- Soil color shows fertility (see Crops), so fields can be read without UI.
+- Every building shows its state on a small marker above it: working, waiting for input, output blocked, no power, low power.
+- Hover any building for a one-line status ("Mill: waiting for wheat").
+- Soil colour shows fertility under fields. Overlays show fertility everywhere and power coverage.
 
-**Art note:** every model is seen from 4 sides, so it must read well all the way around. Low-poly, flat-color models are the target style.
+## Time
 
-## Player controls and interaction
+The simulation runs in fixed steps of 0.1 s. A day lasts 240 s at 1× (4 minutes); a commission starts at 7 AM, and the sun shines
+from 6 AM to 8 PM (scenarios change this), so night is about 40% of a day. The level timer counts simulated time, so speed controls only change
+how long you wait, and pausing to plan is free.
 
-The game is point-and-click (decided 2026-10-06). There is no player character in the scene: the player is the hand on the farm, pointing at one grid tile or object at a time and clicking to act. There is no energy or stamina in the MVP; time is the only daily limit.
+The wind follows a smooth seeded curve between about 0.15 and 1.0 of full strength.
 
-- **No avatar and no walking.** Anything on the farm can be reached from anywhere, as long as it is on screen.
-- **Camera:** drag to pan (off the field; right-drag or Shift-drag pans anywhere); Q/E (or on-screen buttons) turn between the 4 views; the mouse wheel steps through the zoom levels.
-- **Pointing:** the tile or object under the pointer is highlighted.
-- **Clicking:**
-  - On a tile, click *uses* the held tool or item there (hoe, water, plant, fertilize).
-  - On a thing, click *interacts* with it (machines, shop, shipping bin, trough, chickens for petting, eggs and manure for collecting).
-  - A press that moves more than a few pixels is a pan, not a click.
-  - Playtesting shortcut: a drag that starts on the field marks a rectangle of tiles and, on release, uses what is in hand
-    on each of them (the hoe leaves growing crops alone). It may become the area-tool upgrade, or go before release.
-- **Tools:** hoe, watering can, hand. Each affects one tile per click. Area tools are a post-MVP upgrade.
-- **Inventory:** a hotbar plus a small backpack. Items stack.
+## The map
 
-## Time and day structure
+Each level is generated from a seed: a grid of about 48 × 40 one-metre tiles.
 
-A day lasts about 13 real minutes, from 6 AM to a 2 AM cutoff. The clock pauses whenever a menu is open.
-
-- **Day length:** ~13 real minutes. Tune in playtests.
-- **Paused in menus:** inventory, shop, and machine screens stop the clock.
-- **Ending the day:** the player can end the day at any time (clicking the farmhouse or an "End day" button). At 2 AM the day ends automatically, with a penalty the next morning (exact penalty to tune).
-- **Machines run on in-game hours**, so players can run several batches per day.
-
-**Overnight, in this order:**
-
-1. Watered crops advance one growth stage.
-2. Empty tilled tiles recover fertility.
-3. Fed chickens lay eggs and leave manure.
-4. Shipping bin contents are sold and paid out.
-5. Watered status resets on all tiles.
-
-**Morning summary:** each day opens with a screen showing what sold, for how much, and progress toward the money target. This is a key reward moment, so it should feel good.
-
-## Crops and soil fertility
-
-Crops grow one stage per watered day, and every tile's fertility decides the quality of what it produces. Fertility is the system that makes this game more farming-focused than its peers.
-
-### Crops
-
-| Crop | Role | Grow time | Yield | Fertility drain |
-| --- | --- | --- | --- | --- |
-| Wheat | Fast, light, feeds the mill | 4 days | 1 per harvest | −5 |
-| Tomato | Regrowing cash crop | 8 days, then every 3 days | 2 per harvest | −5 per harvest |
-| Pumpkin | Slow, high value, hungry | 12 days | 1 per harvest | −15 |
-
-**Growth rules**
-
-- A crop advances only on days it was watered. Unwatered crops pause; they never die in the MVP.
-- Each crop has 3–5 visible growth stages, built as separate low-poly meshes.
-- Harvesting sometimes drops crop scraps, which can be fed to chickens.
-- No seasons: every crop can be planted on any day.
-
-### Soil fertility
-
-- Each tile has fertility from 0 to 100. Freshly tilled ground starts at 50.
-- Each harvest lowers it by the crop's drain value (table above).
-- Manure used as fertilizer adds +25, capped at 100.
-- A tilled tile left empty for a day recovers +5, so resting land is a real choice.
-- Soil color shifts from pale to rich dark brown as fertility rises. An inspect action shows the exact number.
-
-### Crop quality
-
-Quality is rolled at harvest from the tile's fertility:
-
-| Fertility | Likely result |
+| Tile | Notes |
 | --- | --- |
-| Below 30 | Mostly normal |
-| 30–70 | Good chance of silver |
-| Above 70 | Gold becomes possible |
+| Grass | Buildable. Has a fertility (0–100) from noise, which fields use |
+| Water | A river or ponds. Not buildable. Sprinklers near water use less power |
+| Rock | Not buildable. Can be cleared for 15 credits |
+| Tree | Not buildable. Slows wind turbines next to it. Can be cleared for 5 credits (soil health drops a little) |
 
-Exact odds are for tuning. Quality carries into processed goods (see Processing).
+A **freight depot** (3 × 3) stands at one edge. Anything a belt or drone delivers into it counts towards the goals and pays credits.
 
-## Animals: chickens
+## Goods
 
-Chickens are the only animal in the MVP. They turn feed and scraps into eggs for the oven and manure for the fields, tying animals into farming.
-
-- **Housing:** one coop holding up to 6 chickens. The player starts with the coop and 2 chickens; more are bought from the shop.
-- **Feeding:** a trough inside the coop, filled with bought feed or crop scraps. Each chicken eats 1 unit per day automatically.
-- **Happiness (0–100):**
-  - Up: fed, let outside (the player opens the coop door), petted once a day, manure collected.
-  - Down: not fed.
-- **Eggs:** each fed chicken lays 1 egg per day, collected by hand. Happiness sets egg quality, the same way fertility sets crop quality.
-- **Manure:** each chicken leaves 1 manure per day in the coop. It is used directly on a tile as fertilizer (+25 fertility). No composter in the MVP.
-- **Failure state:** an unfed chicken stops laying and loses happiness. No sickness or death.
-- **Onboarding:** the starting chickens provide manure on day 1–2, so players discover fertilizer naturally.
-
-## Processing machines and recipes
-
-Two machines turn raw goods into higher-value products. Processing is always the better money path, just slower, and it is the game's signature system.
-
-| Machine | Recipe | Time | Shop price |
+| Good | From | Used by | Pays |
 | --- | --- | --- | --- |
-| Mill | Wheat → flour | 2 in-game hours | 1,000g |
-| Oven | Flour + egg → bread | 3 in-game hours | 2,500g |
-| Oven | Flour + egg + pumpkin → pumpkin pie | 5 in-game hours | (same oven) |
+| Wheat | Field | Mill | 2 |
+| Beans | Field (restores soil) | Coop (feed) | 2 |
+| Tomato | Field | Cannery | 3 |
+| Sunflower | Field | Oil press | 3 |
+| Flax | Field | Spinner | 3 |
+| Egg | Coop | Bakery | 6 |
+| Manure | Coop | Composter, digester | 1 |
+| Honey | Beehive | Bakery | 10 |
+| Flour | Mill | Bakery | 7 |
+| Bran | Mill (byproduct) | Coop (feed), composter, digester | 1 |
+| Oil | Oil press | Cannery | 12 |
+| Seed cake | Oil press (byproduct) | Coop (feed), composter, digester | 2 |
+| Compost | Composter | Fields | 4 |
+| Yarn | Spinner | Loom | 10 |
+| Linen | Loom | (product) | 45 |
+| Bread | Bakery | (product) | 22 |
+| Tomato sauce | Cannery | (product) | 40 |
+| Honey cake | Bakery | (product) | 60 |
 
-**How machines work**
+Prices and timings are starting values; they live in `src/game/data.ts`.
 
-- The player loads ingredients, the machine runs on the in-game clock, and the player collects the result.
-- One batch at a time per machine.
-- Machines show progress visually (smoke, glow, small timer icon) so the farm can be read at a glance.
-- Machines are placed on the farm like any object. The player starts with neither; buying the first is an early goal.
-- All recipes are defined as data, so new recipes can be added without code changes.
+```mermaid
+flowchart LR
+  Field -- wheat --> Mill
+  Mill -- flour --> Bakery
+  Mill -- bran --> Coop
+  Field -- beans --> Coop
+  Coop -- egg --> Bakery
+  Coop -- manure --> Composter
+  Composter -- compost --> Field
+  Hive -- honey --> Bakery
+  Field -- sunflower --> Press[Oil press]
+  Press -- oil --> Cannery
+  Press -- seed cake --> Coop
+  Field -- tomato --> Cannery
+  Field -- flax --> Spinner
+  Spinner -- yarn --> Loom
+  Bakery -- bread, honey cake --> Depot
+  Cannery -- sauce --> Depot
+  Loom -- linen --> Depot
+  Mill -- bran --> Digester
+  Digester -- power --> Grid
+```
 
-**Quality through processing**
+## Buildings
 
-- Output quality = the average of the inputs' quality, rounded down. Gold flour + silver egg = silver bread.
-- This rewards both good soil and happy chickens, and encourages matching quality.
+Every building is available from the start. Removing one refunds its full cost, so trying layouts is free.
 
-Tomatoes have no recipe in the MVP; they are a raw cash crop.
+### Logistics
+
+| Building | Size | Cost | Notes |
+| --- | --- | --- | --- |
+| Belt | 1 × 1 | 2 | Carries goods at 1.2 tiles/s, two per tile. Takes goods from behind and both sides |
+| Splitter | 1 × 1 | 15 | Takes goods from any belt leading into it and shares them between the other sides in turn, skipping full or empty exits |
+| Sorter | 1 × 1 | 20 | The chosen good goes ahead; everything else goes left or right |
+| Crossing | 1 × 1 | 10 | Two belts cross without mixing: goods leave on the side opposite the one they came in by |
+| Drone pad | 2 × 2 | 120 | Set to send or receive. A sending pad's drone carries up to 5 goods to its linked receiving pad, 5 tiles/s, within 40 tiles. Needs 15 W while its drone flies |
+
+Goods leave a building onto any belt next to it that doesn't point into it or lead back into it within a few tiles, taking turns between them (a belt running past a field collects its harvest). Goods enter a building from
+any belt that points into it, if the building can use them and has room. Buildings never pass goods to each other directly.
+
+### Farming
+
+| Building | Size | Cost | Power | Notes |
+| --- | --- | --- | --- | --- |
+| Field | 3 × 3 | 30 | — | Grows the chosen crop on its 9 tiles. Takes compost from belts |
+| Sprinkler | 1 × 1 | 25 | 3 W within 8 tiles of water, else 8 W | Waters fields whose centre is within 3 tiles |
+| Coop | 3 × 3 | 150 | — | Four chickens. Every 2 feed (beans, bran or seed cake) give 2 eggs and 1 manure, 16 s |
+| Beehive | 1 × 1 | 60 | — | Makes honey from flowering fields (not wheat) within 4 tiles, faster with more of them (up to 3). Pollinates fields within 4 tiles |
+| Composter | 2 × 2 | 60 | — | Any 2 of manure, bran and seed cake → 1 compost, 20 s |
+
+**Crops**
+
+| Crop | Grows in | Yield | Soil per harvest |
+| --- | --- | --- | --- |
+| Wheat | 40 s | 3 | −1 |
+| Beans | 50 s | 2 | +2.5 (restores) |
+| Tomato | 60 s | 4 | −1.5 |
+| Sunflower | 70 s | 3 | −2 |
+| Flax | 55 s | 3 | −1.5 |
+
+- Grow times are with water at fertility 60. Growth speed is ×0.4 without water, and from ×0.4 (fertility 0) to ×1.4
+  (fertility 100) by the field's average fertility.
+- A pollinated field (a hive within 4 tiles) yields 1 more of a flowering crop.
+- A harvest waits in the field (up to 6) until a belt takes it. A full field stops growing.
+- A field with compost waiting uses one whenever its average fertility is under 85: +12 on each tile.
+- Ground without a field rests: it regains 0.1 fertility a second (6 a minute), up to what it started at. Moving a field
+  lets worn ground recover.
+
+### Processing (powered)
+
+| Building | Size | Cost | Power | Recipe |
+| --- | --- | --- | --- | --- |
+| Mill | 2 × 2 | 200 | 12 W | 2 wheat → flour + bran, 6 s |
+| Oil press | 2 × 2 | 220 | 15 W | 2 sunflower → oil + seed cake, 8 s |
+| Spinner | 2 × 2 | 200 | 10 W | 2 flax → yarn, 6 s |
+| Loom | 2 × 2 | 300 | 20 W | 3 yarn → linen, 10 s |
+| Bakery | 2 × 2 | 350 | 25 W | flour + egg → bread, 8 s; or flour + egg + honey → honey cake, 12 s (choose) |
+| Cannery | 2 × 2 | 300 | 18 W | 3 tomato + oil → tomato sauce, 10 s |
+
+A machine holds a small buffer of each input and each output. It starts a batch when it has the inputs and room for every output.
+**Byproducts are strict:** a mill whose bran has nowhere to go stops, which is the point: route it to chickens, compost or the
+digester.
+
+### Power
+
+| Building | Size | Cost | Notes |
+| --- | --- | --- | --- |
+| Solar panel | 2 × 2 | 70 | 30 W at noon, following the sun; nothing at night |
+| Wind turbine | 1 × 1 | 120 | 40 W at full wind; each tree or tall building within 2 tiles costs 10% (down to 40%) |
+| Battery | 2 × 2 | 150 | Stores 2.4 kJ, charges and discharges at up to 40 W |
+| Digester | 2 × 2 | 180 | Burns one manure, bran or seed cake every 10 s for a steady 30 W |
+| Pylon | 1 × 1 | 10 | Powers buildings with any tile within 3 tiles; links to pylons within 8 tiles |
+
+Pylons that link form a network. Each network adds up what its generators make and what its machines want; surplus charges its
+batteries, a shortfall drains them, and if that isn't enough every machine on it slows to the share it gets. A building outside
+every pylon's reach has no power.
+
+### Ecology
+
+| Building | Size | Cost | Notes |
+| --- | --- | --- | --- |
+| Sapling | 1 × 1 | 5 | Grows into a tree in 60 s |
+
+**Soil health** is the average fertility of all field tiles (50 before you have a field), plus 0.25 for every tree more than
+the map started with (minus for every tree fewer), at most 10 either way. Some commissions need it above a level when the rest
+is delivered.
+
+## Commissions (levels)
+
+A commission has goals, a target time and modifiers. It ends when every goal is met.
+
+- **Goals:** deliver *n* of a good; reach a delivery rate of a good (per minute, over the last minute); keep soil health above a
+  level at the end.
+- **Medals:** gold within the target time, silver within 1.5×, bronze any time after. There is no failing.
+- **Modifiers:** sun strength and hours, wind strength, soil richness, how much rock, water and forest the map has, starting credits.
+
+**Campaign** (seeds fixed, so each plays the same every time; goals, credits and target times in `src/game/scenarios.ts`):
+
+| # | Name | Goals | Target | Modifiers |
+| --- | --- | --- | --- | --- |
+| 1 | First Light | 120 wheat, 80 flour | 20 min | Gentle |
+| 2 | Morning Bread | 150 bread; soil health ≥ 40 | 35 min | |
+| 3 | Windy Ridge | 90 oil, 80 bread | 40 min | Weak sun, strong wind, rocky |
+| 4 | Linen for the Looms | 50 linen; 5 yarn/min | 50 min | |
+| 5 | Long Nights | 60 honey cake | 45 min | Short days |
+| 6 | Tired Soil | 50 sauce; soil health ≥ 55 | 45 min | Poor soil |
+| 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 55 min | Wet and cramped |
+| 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 60 min | Everything |
+
+The bot (`npm run sim`) clears First Light in about 14 minutes, Morning Bread in about 26 and Linen for the Looms in about 44
+(one spinner; two would be faster), building instantly; a person needs a few minutes more to plan and place. The other
+targets are guesses until they have bot layouts too.
+
+![The level select](images/menu.png)
+
+**Random commission:** any seed and a difficulty (1–3) pick the modifiers and 2–4 goals.
+**Sandbox:** a large calm map, unlimited credits, no goals: for trying things.
 
 ## Economy
 
-Wheat is quick, safe money; tomatoes pay best for low effort; pumpkins are worth the most but strip the soil. All prices are starting values to tune in playtests.
+You start with credits (1,100–1,800 by commission). Everything costs credits; every good delivered to the depot pays its price.
+Early on, raw goods are the way to afford the first machines; products pay far better per field.
 
-### Sell prices (normal quality)
+## Saving
 
-| Item | Sell price | Input value | Notes |
-| --- | --- | --- | --- |
-| Wheat | 25g | 10g seed |  |
-| Tomato | 20g each | 40g seed | 2 per harvest, regrows |
-| Pumpkin | 250g | 80g seed |  |
-| Egg | 30g | 5g feed |  |
-| Flour | 40g | 25g (1 wheat) |  |
-| Bread | 120g | 70g (flour + egg) |  |
-| Pumpkin pie | 500g | 320g (flour + egg + pumpkin) |  |
+The game saves the commission in progress (one at a time) in the browser every 30 s and when the page is hidden, and remembers
+each commission's best medal and time.
 
-**Quality multiplier:** silver ×1.25, gold ×1.5.
+## Open questions
 
-### Shop
-
-| Item | Price |
-| --- | --- |
-| Wheat seed | 10g |
-| Tomato seed | 40g |
-| Pumpkin seed | 80g |
-| Chicken feed | 5g per unit |
-| Chicken | 500g |
-| Mill | 1,000g |
-| Oven | 2,500g |
-
-**Selling:** items go in the shipping bin and are paid out overnight.
-
-### Starting state
-
-- 500g
-- A coop with 2 chickens
-- 15 wheat seeds
-- Hoe, watering can
-- A farm with about 300 tillable tiles
-
-**Expected pacing:** mill around week 1, oven around week 2, pumpkin pie as the late-season goal.
-
-## Win condition and progression
-
-The goal is to earn 20,000g in total sales by the end of day 28. Total earnings count, not gold on hand, so investing in machines and chickens is never punished.
-
-| Tier | Total earned by day 28 |
-| --- | --- |
-| Bronze | 10,000g |
-| Silver (main goal) | 20,000g |
-| Gold | 35,000g |
-
-- **HUD tracker:** progress is always visible, e.g. "8,420 / 20,000g".
-- **Target difficulty:** a skilled player should reach 20,000g around day 24–26; a new player may just miss it. Confirm with a spreadsheet sim before playtests.
-- **End of day 28:** a results screen shows total earned, tier reached, best day, and items sold by type.
-- **Free mode:** win or lose, the player can keep playing after day 28. This also gives longer playtest data.
-
-## Open questions and post-MVP
-
-### Open questions
-
-Decided for the MVP build (2026-10-07), as starting values to tune in playtests. The numbers live in `src/game/`.
-
-- [x] Exact quality odds per fertility band: below 30, 10% silver; 30–70, silver from 25% rising to 55%; above 70, 50% silver and
-  gold from 10% rising to 45% at 100 (`qualityOdds` in `crops.ts`).
-- [x] Penalty for hitting the 2 AM cutoff: the next day starts late, at 9 AM instead of 6 AM.
-- [ ] Without walking, what makes distance on the farm matter, if anything? (For now layout is about readability.)
-- [x] How often harvests drop crop scraps: one scrap, 35% of wheat harvests, 25% of tomato, 60% of pumpkin.
-- [x] Happiness values per action, and how happiness maps to egg quality: chickens start at 60; overnight, fed +4, hungry −15,
-  let outside that day +4, coop clean of manure +3; petting +5 once a day. Egg quality uses the crop odds with happiness in place of
-  fertility. The starting trough holds 2 nights of feed and the coop starts with 2 manure, so fertilizer is found on day 1.
-- [x] Does the 20,000g target hold up in a spreadsheet sim? A scripted season on the real rules (`npm run sim`): a bot clicking
-  300 times a day reaches 20,000g on day 22 and ends near 31,600g; 200 clicks a day reaches it on day 28. That is a little easier
-  than "day 24–26". Most of the money is wheat compounding early, and buying the mill before about day 10 slows the bot down
-  (flour adds only 15g per wheat at one per 2 hours), so "processing is always the better money path" holds for pie but not yet
-  for flour. Prices are unchanged from this doc; tuning them is the next step.
-- [x] Farm layout: farmhouse, shipping bin and shop stall along the north; coop and its fenced chicken run on the west; a 20 × 15
-  field (300 tiles) in the middle; open grass on the west and north for machines (`src/game/layout.ts`).
-- [x] UI and HUD layout: day, clock, gold and the season tracker (with tier marks) top left; turn, zoom and menu buttons top right;
-  the hotbar bottom centre; what's under the pointer (with exact soil fertility) bottom left; backpack and "End day" bottom right.
-
-### Candidates after the MVP
-
-- Composter machine (manure + scraps → fertilizer)
-- Seasons, weather, and crop seasonality
-- More animals (cows, sheep) and their product chains
-- More recipes, including tomato products
-- Area tools (3x3 hoe and watering can)
-- Energy/stamina, if playtests show days need more structure
-- Farm expansion and building upgrades
+- [ ] Tuning: crop times, machine times, prices and target times are first guesses. A scripted bot run per commission
+  (`npm run sim`) should check that each one can be cleared and roughly in its target time.
+- [ ] Do belts need curves drawn at corners, or are straight segments with arrows enough to read?
+- [ ] Should drones and belts cost power? (Only drone flights do, for now.)
+- [ ] Weather (rain waters fields, storms stop turbines) as a later modifier.
+- [ ] Blueprints/copy-paste once layouts grow large.
