@@ -7,7 +7,7 @@ import {
 import { networkOf, networks } from '../game/power.ts';
 import {
   dayAt, describeStatus, exposureOf, fieldFertility, fieldPace, flowersNear, goalDone, hourAt, isPollinated, makes, medalFor, padDistance,
-  padTarget, ratePerMin, recipeOf, shareOf, soilHealth, sunAt, windAt, type Medal,
+  padTarget, ratePerMin, recipeOf, shareOf, soilHealth, sunAt, wants, windAt, type Medal,
 } from '../game/sim.ts';
 import { buildingById, type Building, type Dir, type GameState } from '../game/state.ts';
 import type { Overlay } from '../world/view.ts';
@@ -329,7 +329,7 @@ export class Hud {
       });
       body.push(ins, outs);
     }
-    if (def.power) stat('Power', () => { const net = networkOf(s, b); return net ? `${def.power} W wanted · getting ${Math.round(shareOf(s, b) * 100)}%` : 'not connected'; });
+    if (def.power) stat('Power', () => { const net = networkOf(s, b), w = wants(s, b); return !net ? 'not connected' : w ? `using ${watts(w)} now · getting ${Math.round(shareOf(s, b) * 100)}%` : 'none right now'; });
     if (def.power || b.type === 'battery' || b.type === 'solar' || b.type === 'turbine' || b.type === 'digester') {
       stat('Network', () => { const net = networkOf(s, b); return net ? `${watts(net.made)} made · ${watts(net.wanted)} used · ${Math.round(net.stored)} J stored` : 'none: no pylon in reach'; });
     }

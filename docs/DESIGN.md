@@ -235,7 +235,7 @@ A commission has goals, a target time and modifiers. It ends when every goal is 
 | 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 55 min | Wet and cramped |
 | 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 60 min | Everything |
 
-The bot (`npm run sim`) clears First Light in about 14 minutes, Morning Bread in about 24 and Linen for the Looms in about 44
+The bot (`npm run sim`) clears First Light in about 14 minutes, Morning Bread in about 26 and Linen for the Looms in about 44
 (one spinner; two would be faster), building instantly; a person needs a few minutes more to plan and place. The other
 targets are guesses until they have bot layouts too.
 
