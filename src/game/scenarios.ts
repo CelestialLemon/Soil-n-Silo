@@ -37,6 +37,8 @@ export interface Scenario {
   /** Target time in seconds of play: gold within it, silver within 1.5×. */
   par: number;
   sandbox?: boolean;
+  /** First steps, shown when the commission starts. */
+  tips?: string[];
   /** Labels shown on the level card. */
   tags: string[];
 }
@@ -51,12 +53,24 @@ export const CAMPAIGN: Scenario[] = [
     blurb: 'Brightwater needs grain and flour to get through the season. Lay your first fields, belts and a powered mill.',
     terrain: { ...LOAM, forest: 0.08, rock: 0.02 }, weather: CALM, tags: ['Gentle'],
     goals: [{ kind: 'deliver', item: 'wheat', n: 120 }, { kind: 'deliver', item: 'flour', n: 80 }],
+    tips: [
+      'Place a few fields (F) on rich soil (V shows it) and run a belt (B) along one side of them: the harvest drops onto it.',
+      'Lead the belt into the depot for wheat. For flour, lead a belt into a mill, and another out of the mill into the depot.',
+      'The mill needs power: a solar panel (S) and a pylon (P) within 3 tiles of both. A battery keeps it going at night.',
+      'Sprinklers near the fields more than double their pace. Watch the markers: yellow waits for input, red has no power.',
+    ],
   },
   {
     id: 'c2', name: 'Morning Bread', seed: 2202, width: 48, height: 40, credits: 1600, par: 35 * MIN,
     blurb: 'Fresh bread for the schoolhouse. Chickens need feed, the mill makes bran: close the loop, and keep the soil alive.',
     terrain: LOAM, weather: CALM, tags: [],
     goals: [{ kind: 'deliver', item: 'bread', n: 150 }, { kind: 'soil', min: 40 }],
+    tips: [
+      'Bread is flour and an egg. Chickens lay eggs from feed: beans, bran or seed cake, and leave manure.',
+      'A mill makes bran with every flour. A sorter can send the flour one way and the bran another.',
+      'Anything a building can\'t get rid of stops it: send spare bran and manure to a composter, a digester or the depot.',
+      'Wheat tires the soil; bean fields and compost bring it back.',
+    ],
   },
   {
     id: 'c3', name: 'Windy Ridge', seed: 3303, width: 48, height: 40, credits: 1100, par: 40 * MIN,
@@ -66,10 +80,10 @@ export const CAMPAIGN: Scenario[] = [
     goals: [{ kind: 'deliver', item: 'oil', n: 90 }, { kind: 'deliver', item: 'bread', n: 80 }],
   },
   {
-    id: 'c4', name: 'Linen for the Looms', seed: 4404, width: 50, height: 40, credits: 1300, par: 40 * MIN,
+    id: 'c4', name: 'Linen for the Looms', seed: 4404, width: 50, height: 40, credits: 1300, par: 50 * MIN,
     blurb: 'The weavers of Hollin want linen, and a steady supply of yarn for their own looms.',
     terrain: LOAM, weather: CALM, tags: [],
-    goals: [{ kind: 'deliver', item: 'linen', n: 60 }, { kind: 'rate', item: 'yarn', perMin: 6 }],
+    goals: [{ kind: 'deliver', item: 'linen', n: 50 }, { kind: 'rate', item: 'yarn', perMin: 5 }],
   },
   {
     id: 'c5', name: 'Long Nights', seed: 5505, width: 48, height: 40, credits: 1400, par: 45 * MIN,

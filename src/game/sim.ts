@@ -76,11 +76,14 @@ function derived(s: GameState): Derived {
   for (const t of s.buildings) {
     if (t.type !== 'turbine') continue;
     let n = 0;
+    const tall = new Set<Building>();
     for (let y = t.y - 2; y <= t.y + 2; y++) for (let x = t.x - 2; x <= t.x + 2; x++) {
       if ((x === t.x && y === t.y) || x < 0 || y < 0 || x >= s.map.width || y >= s.map.height) continue;
       const o = buildingAt(s, x, y);
-      if (terrainAt(s, x, y) === TERRAIN.tree || (o && o !== t && BUILDINGS[o.type].tall)) n++;
+      if (terrainAt(s, x, y) === TERRAIN.tree) n++;
+      else if (o && o !== t && BUILDINGS[o.type].tall) tall.add(o);
     }
+    n += tall.size;
     d.exposure.set(t.id, Math.max(POWER.shelterFloor, 1 - POWER.shelter * n));
   }
   for (const sp of sprinklers) {
@@ -384,7 +387,7 @@ function pushOut(s: GameState, b: Building) {
 }
 
 function outputGoods(b: Building): ItemId[] {
-  if (b.type === 'field') return b.stored! > 0 ? [b.crop!] : [];
+  if (b.type === 'field') return b.stored! > 0 ? [b.harvest ?? b.crop!] : [];
   if (b.type === 'hive') return b.stored! > 0 ? ['honey'] : [];
   if (b.type === 'pad') return b.mode === 'receive' && b.store!.length ? [b.store![0]] : [];
   if (b.outputs) return Object.keys(b.outputs).filter((k) => b.outputs![k as ItemId]! > 0) as ItemId[];
@@ -396,7 +399,7 @@ function has(b: Building, item: ItemId) {
   return (b.outputs?.[item] ?? 0) > 0;
 }
 function take(b: Building, item: ItemId) {
-  if (b.type === 'field' || b.type === 'hive') { b.stored!--; return; }
+  if (b.type === 'field' || b.type === 'hive') { b.stored!--; if (!b.stored) b.harvest = b.crop; return; }
   if (b.type === 'pad') { b.store!.shift(); return; }
   b.outputs![item]! -= 1;
   if (!b.outputs![item]) delete b.outputs![item];
@@ -431,7 +434,9 @@ function runField(s: GameState, f: Building, dt: number) {
   const crop = CROPS[f.crop!];
   if (f.compost! > 0 && fieldFertility(s, f) < FIELD.compostBelow) { f.compost!--; changeSoil(s, f, FIELD.compostGain); }
   const bonus = crop.flowers && isPollinated(s, f) ? 1 : 0;
-  if (f.stored! + crop.yield + bonus > FIELD.store) { f.status = 'blocked'; f.need = crop.name.toLowerCase(); return; }
+  // A harvest of the old crop waits to go before the new one can join it.
+  const old = f.stored! > 0 && (f.harvest ?? f.crop) !== f.crop;
+  if (old || f.stored! + crop.yield + bonus > FIELD.store) { f.status = 'blocked'; f.need = CROPS[f.harvest ?? f.crop!].name.toLowerCase(); return; }
   const p = fieldPace(s, f);
   f.growth! += dt * p.pace / crop.grow;
   f.status = p.water < 1 ? 'dry' : 'ok';
@@ -439,6 +444,7 @@ function runField(s: GameState, f: Building, dt: number) {
   if (f.growth! >= 1) {
     f.growth = 0;
     f.stored! += crop.yield + bonus;
+    f.harvest = f.crop;
     made(s, f.crop!, crop.yield + bonus);
     changeSoil(s, f, crop.soil);
   }
@@ -578,9 +584,15 @@ function updateStats(s: GameState) {
 
 /** Per-minute rate of a good over the last minute, from the stat buckets. */
 export function ratePerMin(s: GameState, item: ItemId, which: 'made' | 'delivered') {
-  const buckets = s.stats[which];
-  const total = buckets.reduce((n, b) => n + (b[item] ?? 0), 0);
-  const span = Math.min(STAT_BUCKET * (buckets.length - 1) + (s.time - s.stats.since), STAT_BUCKET * STAT_BUCKETS);
+  const buckets = s.stats[which], into = s.time - s.stats.since;
+  const minute = STAT_BUCKET * (STAT_BUCKETS - 1);
+  // The newest buckets whole; the oldest only for the part of it still inside the last minute.
+  let total = 0;
+  buckets.forEach((b, i) => {
+    const n = b[item] ?? 0;
+    total += i === STAT_BUCKETS - 1 ? n * Math.max(0, 1 - into / STAT_BUCKET) : n;
+  });
+  const span = Math.min(s.time, minute);
   return span > 0 ? total / span * 60 : 0;
 }
 

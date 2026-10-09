@@ -59,11 +59,11 @@ export interface CropDef {
 }
 
 export const CROPS: Record<CropId, CropDef> = {
-  wheat: { name: 'Wheat', grow: 40, yield: 3, soil: -1.5, flowers: false, stages: 4 },
+  wheat: { name: 'Wheat', grow: 40, yield: 3, soil: -1, flowers: false, stages: 4 },
   beans: { name: 'Beans', grow: 50, yield: 2, soil: 2.5, flowers: true, stages: 4 },
-  tomato: { name: 'Tomato', grow: 60, yield: 4, soil: -2, flowers: true, stages: 4 },
-  sunflower: { name: 'Sunflower', grow: 70, yield: 3, soil: -2.5, flowers: true, stages: 4 },
-  flax: { name: 'Flax', grow: 55, yield: 3, soil: -2, flowers: true, stages: 4 },
+  tomato: { name: 'Tomato', grow: 60, yield: 4, soil: -1.5, flowers: true, stages: 4 },
+  sunflower: { name: 'Sunflower', grow: 70, yield: 3, soil: -2, flowers: true, stages: 4 },
+  flax: { name: 'Flax', grow: 55, yield: 3, soil: -1.5, flowers: true, stages: 4 },
 };
 
 export const FIELD = {

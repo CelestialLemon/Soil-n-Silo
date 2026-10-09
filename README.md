@@ -16,7 +16,7 @@ byproducts have to go somewhere, and the sun sets every few minutes. A 3D world 
 npm install
 npm run dev          # http://127.0.0.1:5190
 npm test             # the game rules (src/game/), in Node
-npm run sim -- c2     # a bot plays a commission on the real rules (c1, c2), to check it can be cleared and how fast
+npm run sim -- c2     # a bot plays a commission on the real rules (c1, c2, c4), to check it can be cleared and how fast
 npm run typecheck
 npm run build        # typecheck, then the game into dist/
 ```

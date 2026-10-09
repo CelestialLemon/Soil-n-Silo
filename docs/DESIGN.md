@@ -136,7 +136,7 @@ Every building is available from the start. Removing one refunds its full cost, 
 | Building | Size | Cost | Notes |
 | --- | --- | --- | --- |
 | Belt | 1 × 1 | 2 | Carries goods at 1.5 tiles/s, up to 3 per tile. Takes goods from behind and both sides |
-| Splitter | 1 × 1 | 15 | Sends what comes in from behind to the left, ahead and right in turn, skipping full exits |
+| Splitter | 1 × 1 | 15 | Takes goods from any belt leading into it and shares them between the other sides in turn, skipping full or empty exits |
 | Sorter | 1 × 1 | 20 | The chosen good goes ahead; everything else goes left or right |
 | Crossing | 1 × 1 | 10 | Two belts cross without mixing: goods leave on the side opposite the one they came in by |
 | Drone pad | 2 × 2 | 120 | Set to send or receive. A sending pad's drone carries up to 5 goods to its linked receiving pad, 5 tiles/s, within 40 tiles. Needs 15 W while its drone flies |
@@ -158,11 +158,11 @@ any belt that points into it, if the building can use them and has room. Buildin
 
 | Crop | Grows in | Yield | Soil per harvest |
 | --- | --- | --- | --- |
-| Wheat | 40 s | 3 | −1.5 |
+| Wheat | 40 s | 3 | −1 |
 | Beans | 50 s | 2 | +2.5 (restores) |
-| Tomato | 60 s | 4 | −2 |
-| Sunflower | 70 s | 3 | −2.5 |
-| Flax | 55 s | 3 | −2 |
+| Tomato | 60 s | 4 | −1.5 |
+| Sunflower | 70 s | 3 | −2 |
+| Flax | 55 s | 3 | −1.5 |
 
 - Grow times are with water at fertility 60. Growth speed is ×0.4 without water, and from ×0.4 (fertility 0) to ×1.4
   (fertility 100) by the field's average fertility.
@@ -225,14 +225,15 @@ A commission has goals, a target time and modifiers. It ends when every goal is 
 | 1 | First Light | 120 wheat, 80 flour | 20 min | Gentle |
 | 2 | Morning Bread | 150 bread; soil health ≥ 40 | 35 min | |
 | 3 | Windy Ridge | 90 oil, 80 bread | 40 min | Weak sun, strong wind, rocky |
-| 4 | Linen for the Looms | 60 linen; 6 yarn/min | 40 min | |
+| 4 | Linen for the Looms | 50 linen; 5 yarn/min | 50 min | |
 | 5 | Long Nights | 60 honey cake | 45 min | Short days |
 | 6 | Tired Soil | 50 sauce; soil health ≥ 55 | 45 min | Poor soil |
 | 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 55 min | Wet and cramped |
 | 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 60 min | Everything |
 
-The bot (`npm run sim`) clears First Light in about 14 minutes and Morning Bread in about 24, building instantly; a person
-needs a few minutes more to plan and place. The other targets are guesses until they have bot layouts too.
+The bot (`npm run sim`) clears First Light in about 14 minutes, Morning Bread in about 24 and Linen for the Looms in about 44
+(one spinner; two would be faster), building instantly; a person needs a few minutes more to plan and place. The other
+targets are guesses until they have bot layouts too.
 
 **Random commission:** any seed and a difficulty (1–3) pick the modifiers and 2–4 goals.
 **Sandbox:** a large calm map, unlimited credits, no goals: for trying things.

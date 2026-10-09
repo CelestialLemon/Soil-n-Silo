@@ -35,7 +35,7 @@ Pinned: **v0.2.0** (`package.json`). The game owns the loop, state, input, UI, a
   fertility, water and pollination, machines with strict byproducts, pylon power networks with batteries, goals and medals;
   building and configuring (`build.ts`); saves (`save.ts`). Unit tests in `test/`.
 - `npm run sim`: a bot builds a fixed layout as credits allow and plays a commission on the real rules (layouts for First
-  Light and Morning Bread so far, `tools/layouts.ts`).
+  Light, Morning Bread and Linen for the Looms so far, `tools/layouts.ts`).
 - The world (`src/world/`): the static terrain per map, every building/crop/good as a Blender model or an in-code stand-in,
   status markers, goods on belts, drones in flight, overlays.
 - The HUD (`src/ui/`): commission clock and medal pace, credits, power and weather, goals, build bar, inspector, stats, intro,
@@ -45,7 +45,7 @@ Pinned: **v0.2.0** (`package.json`). The game owns the loop, state, input, UI, a
 ## Next
 
 - Play every campaign commission and tune: target times, prices, crop and machine times, power numbers. Bot layouts for the
-  other six commissions in `tools/layouts.ts`, so `npm run sim` checks them all.
+  other five commissions in `tools/layouts.ts`, so `npm run sim` checks them all.
 - Pin the renderer release with #30/#31 and use them: see-through tinted ghosts, tinted overlays, goods without shadows.
 - Belt corners drawn as curves; goods easier to read on belts (bigger tokens, or an outline).
 - Copy and paste / blueprints for repeated blocks (a row of fields with sprinklers).

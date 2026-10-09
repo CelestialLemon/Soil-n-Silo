@@ -44,6 +44,8 @@ export interface Building {
   progress?: number | null;
   // Fields and hives.
   crop?: CropId;
+  /** The crop the stored harvest is (it may differ from `crop` just after the crop was changed). */
+  harvest?: CropId;
   growth?: number;
   stored?: number;
   compost?: number;
@@ -62,12 +64,13 @@ export interface Building {
 export interface Stats {
   /** Start time of the newest bucket. */
   since: number;
-  /** Ten-second buckets, newest first (6 of them: the last minute). */
+  /** Ten-second buckets, newest first (the one filling now and six full ones). */
   made: Partial<Record<ItemId, number>>[];
   delivered: Partial<Record<ItemId, number>>[];
 }
 
-export const STAT_BUCKET = 10, STAT_BUCKETS = 6;
+/** The current bucket plus six full ones, so a whole minute is always covered. */
+export const STAT_BUCKET = 10, STAT_BUCKETS = 7;
 
 export interface GameState {
   version: 1;

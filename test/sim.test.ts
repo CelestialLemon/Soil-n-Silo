@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { beltPath, canPlace, linkPad, place, remove, removeAt, setFilter, setPadMode } from '../src/game/build.ts';
+import { beltPath, canPlace, linkPad, place, remove, removeAt, setCrop, setFilter, setPadMode } from '../src/game/build.ts';
 import { BELT, BUILDINGS, DAY_SECONDS, ITEMS, POWER, START_HOUR } from '../src/game/data.ts';
 import { generateMap, TERRAIN } from '../src/game/map.ts';
 import { networkOf, networks } from '../src/game/power.ts';
 import { deserialize, readProgress, recordResult, serialize } from '../src/game/save.ts';
 import { CAMPAIGN, randomScenario, SANDBOX, scenarioById, type Scenario } from '../src/game/scenarios.ts';
-import { advance, fieldFertility, goalDone, hourAt, medalFor, soilHealth, sunAt, windAt } from '../src/game/sim.ts';
+import { advance, exposureOf, fieldFertility, goalDone, hourAt, medalFor, ratePerMin, soilHealth, sunAt, windAt } from '../src/game/sim.ts';
 import { buildingAt, newGame, type Building, type Dir, type GameState } from '../src/game/state.ts';
 
 /** A flat, empty test map: no water, rock or trees, even soil. */
@@ -314,4 +314,73 @@ test('saves round-trip, and progress keeps the best result', () => {
   assert.equal(p.c1.medal, 'silver');
   p = recordResult(p, 'c1', 'silver', 800);
   assert.equal(p.c1.time, 800);
+});
+
+test('saves with missing state are refused', () => {
+  const s = flat();
+  put(s, 'belt', 3, 3, 1);
+  put(s, 'pad', 6, 6);
+  const json = JSON.parse(serialize(s));
+  const without = (f: (o: any) => void) => { const o = structuredClone(json); f(o); return deserialize(JSON.stringify(o)); };
+  assert.ok(without(() => {}));
+  assert.equal(without((o) => { delete o.buildings.find((b: any) => b.type === 'belt').items; }), null);
+  assert.equal(without((o) => { delete o.carry; }), null);
+  assert.equal(without((o) => { delete o.buildings.find((b: any) => b.type === 'pad').drone; }), null);
+  assert.equal(without((o) => { o.buildings[0].type = 'castle'; }), null);
+});
+
+test('removing a building twice refunds it once', () => {
+  const s = flat();
+  const f = put(s, 'field', 4, 4), credits = s.credits;
+  assert.ok(remove(s, f).ok);
+  assert.equal(remove(s, f).ok, false);
+  assert.equal(s.credits, credits + BUILDINGS.field.cost);
+});
+
+test('a field keeps the kind of its harvest when its crop changes', () => {
+  const s = flat();
+  const f = put(s, 'field', 4, 4);
+  f.stored = 3; f.harvest = 'wheat';
+  setCrop(f, 'tomato');
+  put(s, 'belt', 7, 5, 1); put(s, 'belt', 8, 5, 1); put(s, 'belt', 9, 5, 1);
+  advance(s, 1);
+  const items = [7, 8, 9].flatMap((x) => buildingAt(s, x, 5)!.items!.map((i) => i.item));
+  assert.ok(items.length > 0 && items.every((i) => i === 'wheat'), items.join());
+  advance(s, 10);
+  assert.equal(f.stored, 0);
+  assert.equal(f.harvest, 'tomato');
+});
+
+test('a pad cannot switch to receiving while its drone is out', () => {
+  const s = flat();
+  powerAt(s, 1, 1);
+  const a = put(s, 'pad', 2, 3), b = put(s, 'pad', 12, 3);
+  setPadMode(b, 'receive'); linkPad(s, a, b);
+  a.store!.push('egg', 'egg', 'egg', 'egg', 'egg');
+  advance(s, 0.5);
+  assert.equal(a.drone!.phase, 'out');
+  assert.equal(setPadMode(a, 'receive').ok, false);
+  advance(s, 10);
+  assert.equal(b.store!.length, 5);
+});
+
+test('rate goals count deliveries across the last full minute (the oldest ten seconds pro-rated)', () => {
+  const s = flat({ goals: [{ kind: 'rate', item: 'yarn', perMin: 5.5 }] });
+  s.reached = [false];
+  const d = s.map.depot;
+  const belt = put(s, 'belt', d.x - 1, d.y + 1, 1);
+  advance(s, 1);
+  for (let i = 0; i < 6; i++) { belt.items!.push({ item: 'yarn', pos: 1 }); advance(s, 0.1); }
+  advance(s, 60 - s.time + 0.05);
+  assert.ok(ratePerMin(s, 'yarn', 'delivered') >= 5.5, `rate ${ratePerMin(s, 'yarn', 'delivered')}`);
+  assert.ok(s.reached[0]);
+  advance(s, 15);
+  assert.ok(ratePerMin(s, 'yarn', 'delivered') < 6);
+});
+
+test('a tall building shelters a turbine once, however many tiles it has', () => {
+  const s = flat();
+  const t = put(s, 'turbine', 10, 10);
+  put(s, 'mill', 11, 10);
+  assert.equal(exposureOf(s, t), 1 - POWER.shelter);
 });

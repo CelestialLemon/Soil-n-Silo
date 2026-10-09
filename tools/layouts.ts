@@ -71,4 +71,24 @@ export const LAYOUTS: Record<string, Layout> = {
     { type: 'solar', x: dx + 4, y: dy - 3 }, { type: 'solar', x: dx + 6, y: dy - 3 }, { type: 'battery', x: dx + 6, y: dy - 8 },
     { type: 'turbine', x: dx + 3, y: dy - 3 },
   ],
+  // Linen and yarn: six flax fields into a spinner; a splitter sends its yarn straight on to the depot and into a loom,
+  // whose linen joins the yarn on its way to the depot.
+  c4: (dx, dy) => {
+    const F = dy - 12, x0 = dx - 20;
+    return [
+      ...Array.from({ length: 6 }, (_, i) => ({ type: 'field' as const, x: x0 + 3 * i, y: F, crop: 'flax' as const })),
+      ...line('belt', x0, F + 3, 20, E),
+      { type: 'spinner', x: dx, y: F + 3 },
+      { type: 'belt', x: dx + 2, y: F + 3, rot: S }, { type: 'belt', x: dx + 2, y: F + 4, rot: S },
+      { type: 'splitter', x: dx + 2, y: F + 5 },
+      ...line('belt', dx + 2, F + 6, dy - (F + 6), S),
+      { type: 'pylon', x: dx + 3, y: F + 1 }, { type: 'solar', x: dx + 4, y: F - 2 }, { type: 'battery', x: dx + 4, y: F + 2 },
+      { type: 'loom', x: dx + 3, y: F + 5 }, { type: 'pylon', x: dx + 5, y: F + 4 }, { type: 'turbine', x: dx + 3, y: F + 4 },
+      { type: 'solar', x: dx + 6, y: F + 5 },
+      { type: 'pylon', x: x0 + 17, y: F - 2 }, { type: 'sprinkler', x: x0 + 15, y: F - 1 },
+      { type: 'pylon', x: x0 + 11, y: F - 2 }, { type: 'sprinkler', x: x0 + 9, y: F - 1 },
+      { type: 'pylon', x: x0 + 5, y: F - 2 }, { type: 'sprinkler', x: x0 + 3, y: F - 1 },
+      { type: 'solar', x: dx + 6, y: F - 2 }, { type: 'battery', x: dx + 6, y: F + 2 }, { type: 'solar', x: dx + 8, y: F - 2 },
+    ];
+  },
 };

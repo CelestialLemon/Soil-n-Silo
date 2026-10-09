@@ -95,6 +95,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 .panel .sub { color: #4a5a50; }
 .panel .help { padding-left: 18px; font-size: 13px; }
 .panel .help li { margin: 4px 0; }
+.tips h3 { margin: 10px 0 4px; font-size: 15px; }
+.tips ol { padding-left: 20px; font-size: 13px; margin: 0; }
+.tips li { margin: 4px 0; }
 .m { font-size: 14px; } .m.red { color: #ff4a3a; } .m.orange { color: #ffa030; } .m.yellow { color: #d8b020; } .m.blue { color: #3a98e0; } .m.purple { color: #a050e0; }
 .tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .tags span { background: #0001; border: 1px solid #0002; border-radius: 3px; padding: 0 6px; font-size: 12px; }

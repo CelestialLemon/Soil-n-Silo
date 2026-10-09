@@ -221,7 +221,11 @@ export class Hud {
 
   private inspect() {
     const s = this.host.state(), id = this.host.selected(), b = id !== null ? buildingById(s, id) : null;
-    if (!b) { if (this.inspectKey !== '') { this.inspectKey = ''; this.inspector.style.display = 'none'; this.inspectUpdate = null; } return; }
+    if (!b) {
+      if (this.inspector.style.display !== 'none') { this.inspector.style.display = 'none'; this.inspector.replaceChildren(); }
+      this.inspectKey = ''; this.inspectUpdate = null;
+      return;
+    }
     const key = JSON.stringify([b.id, b.type, b.crop, b.recipe, b.filter, b.mode, b.link, b.rot, this.host.tool().kind]);
     if (key !== this.inspectKey) {
       this.inspectKey = key;
@@ -372,7 +376,8 @@ export class Hud {
       sc.goals.length ? h('ul', null, ...sc.goals.map((g) => h('li', null, g.kind === 'deliver' ? `Deliver ${g.n} ${ITEMS[g.item].name.toLowerCase()} to the depot` : g.kind === 'rate' ? `Reach ${g.perMin} ${ITEMS[g.item].name.toLowerCase()} per minute delivered` : `Keep soil health at ${g.min} or more`))) : null,
       sc.sandbox ? null : h('p', { class: 'sub' }, `Target time ${fmtTime(sc.par)} for gold, ${fmtTime(sc.par * 1.5)} for silver. You can pause (Space) and build while paused.`),
       sc.tags.length ? h('p', { class: 'tags' }, ...sc.tags.map((t) => h('span', null, t))) : null,
-      help(),
+      sc.tips ? h('div', { class: 'tips' }, h('h3', null, 'First steps'), h('ol', null, ...sc.tips.map((t) => h('li', null, t)))) : null,
+      sc.tips ? null : help(),
       h('div', { class: 'actions' }, button('Start', () => this.close('intro'), { primary: true }))), true);
   }
 

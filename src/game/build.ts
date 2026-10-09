@@ -63,6 +63,7 @@ export function beltPath(from: { x: number; y: number }, to: { x: number; y: num
 
 export function remove(s: GameState, b: Building): Result {
   if (b.type === 'depot') return no("The depot stays: it's where the commission is delivered.");
+  if (!s.buildings.includes(b)) return no('');
   removeBuilding(s, b);
   s.credits += priceOf(s, b.type);
   return ok(`Removed the ${BUILDINGS[b.type].name.toLowerCase()} (refunded).`);
@@ -94,7 +95,7 @@ export function rotate(s: GameState, b: Building): Result {
 export function setCrop(b: Building, crop: CropId): Result {
   if (b.type !== 'field' || b.crop === crop) return no('');
   b.crop = crop; b.growth = 0;
-  return ok(`The field now grows ${CROPS[crop].name.toLowerCase()}.`);
+  return ok(`The field now grows ${CROPS[crop].name.toLowerCase()}${b.stored ? ` (once its ${CROPS[b.harvest ?? crop].name.toLowerCase()} harvest has gone)` : ''}.`);
 }
 
 export function setRecipe(b: Building, id: string): Result {
@@ -114,6 +115,7 @@ export function setFilter(b: Building, item: ItemId | null): Result {
 
 export function setPadMode(b: Building, mode: 'send' | 'receive'): Result {
   if (b.type !== 'pad' || b.mode === mode) return no('');
+  if (b.drone && b.drone.phase !== 'home') return no('Wait for the drone to come home.');
   b.mode = mode;
   if (mode === 'receive') b.link = null;
   return ok(mode === 'send' ? 'The pad sends: link it to a receiving pad or the depot.' : 'The pad receives goods from sending pads.');
