@@ -6,15 +6,16 @@ import {
 } from '../game/data.ts';
 import { networkOf, networks } from '../game/power.ts';
 import {
-  dayAt, describeStatus, exposureOf, fieldFertility, fieldPace, flowersNear, goalDone, hourAt, isPollinated, makes, medalFor, padDistance,
-  padTarget, ratePerMin, recipeOf, shareOf, soilHealth, sunAt, wants, windAt, type Medal,
+  dayAt, describeStatus, exposureOf, fieldFertility, fieldPace, flowersNear, goalDone, goodsFlow, hourAt, isPollinated, makes, medalFor, padDistance,
+  padTarget, ratePerMin, receiversOf, recipeOf, shareOf, soilHealth, sunAt, suppliersOf, wants, windAt, type Medal,
 } from '../game/sim.ts';
 import { buildingById, type Building, type Dir, type GameState } from '../game/state.ts';
-import type { Overlay } from '../world/view.ts';
+import { LINK_IN, LINK_OUT, type Overlay } from '../world/view.ts';
 import { h } from './dom.ts';
+import { buildingCard, guidePanel, type GuidePage } from './guide.ts';
 
 // The HUD over the canvas: the commission and its clock, power and weather, the goals, the build bar, what's under the
-// pointer, the inspector for the selected building, messages, and the modal screens (intro, pause, stats, results). The
+// pointer, the inspector for the selected building, messages, and the modal screens (intro, pause, stats, results, guide). The
 // game state belongs to main.ts; the HUD changes it only through the rules in src/game/.
 
 export type Tool =
@@ -36,7 +37,8 @@ export interface HudHost {
   select(id: number | null): void;
   changed(): void;
   turn(d: 1 | -1): void;
-  zoom(): void;
+  /** +1 zooms in, -1 out. */
+  zoom(d: 1 | -1): void;
   menu(): void;
   restart(): void;
 }
@@ -71,6 +73,9 @@ export class Hud {
   private buildKey = '';
   private readonly buildButtons = new Map<BuildingId, HTMLButtonElement>();
   private readonly info = h('div', { class: 'info' });
+  /** The card about the build button under the pointer, shown in place of `info`. */
+  private readonly tip = h('div', { class: 'card tip' });
+  private tipFor: BuildingId | null = null;
   private readonly inspector = h('div', { class: 'card inspector' });
   private inspectKey = '';
   private inspectUpdate: (() => void) | null = null;
@@ -107,10 +112,11 @@ export class Hud {
     const right = h('div', { class: 'right-col' }, h('div', { class: 'buttons' },
       speeds,
       button('⟲', () => host.turn(-1), { title: 'Turn the view (Q)' }), button('⟳', () => host.turn(1), { title: 'Turn the view (E)' }),
-      button('⌕', () => host.zoom(), { title: 'Zoom (Z or the wheel)' }), button('☰', () => this.openPause(), { title: 'Menu (Esc)' })),
-      overlays, button('Stats (Tab)', () => this.toggleStats(), { cls: 'small' }));
-    const bottom = h('div', { class: 'bottom' }, this.info, this.buildbar);
-    root.append(h('div', { class: 'hud' }, h('div', { class: 'top' }, left, mid, right), this.goals, this.inspector, this.stats, bottom, this.toasts), this.layer);
+      button('−', () => host.zoom(-1), { title: 'Zoom out (wheel, − or Shift+Z)' }), button('+', () => host.zoom(1), { title: 'Zoom in (wheel, + or Z)' }), button('☰', () => this.openPause(), { title: 'Menu (Esc)' })),
+      overlays, h('div', { class: 'buttons' }, button('Guide (G)', () => this.openGuide(), { cls: 'small' }), button('Stats (Tab)', () => this.toggleStats(), { cls: 'small' })));
+    // Stacked from the bottom up, so the build bar never moves when the line above it changes.
+    const bottom = h('div', { class: 'bottom' }, this.toasts, this.info, this.tip, this.buildbar);
+    root.append(h('div', { class: 'hud' }, h('div', { class: 'top' }, left, mid, right), this.goals, this.inspector, this.stats, bottom), this.layer);
     this.buildGoals();
     this.refresh();
   }
@@ -151,7 +157,13 @@ export class Hud {
 
   setHover(text: string | null) {
     set(this.info, text ?? '');
-    this.info.style.visibility = text ? 'visible' : 'hidden';
+    this.info.style.display = text && this.tipFor === null ? 'block' : 'none';
+  }
+
+  private showTip(id: BuildingId | null) {
+    this.tipFor = id;
+    if (id) this.tip.replaceChildren(buildingCard(id, priceOf(this.host.state(), id)));
+    this.tip.style.display = id ? 'block' : 'none';
   }
 
   toast(msg: string, ok = true) {
@@ -212,6 +224,7 @@ export class Hud {
     }
     this.buildKey = key;
     this.buildButtons.clear();
+    this.showTip(null);
     const tabs = h('div', { class: 'tabs' }, ...CATEGORIES.map((c) => button(c.name, () => { this.category = c.id; this.buildKey = ''; }, { active: c.id === this.category })),
       button('Remove (X)', () => this.host.setTool(tool.kind === 'remove' ? { kind: 'select' } : { kind: 'remove' }), { active: tool.kind === 'remove', cls: 'danger' }));
     const ids = (Object.keys(BUILDINGS) as BuildingId[]).filter((id) => BUILDINGS[id].category === this.category);
@@ -219,7 +232,9 @@ export class Hud {
       const d = BUILDINGS[id], price = priceOf(s, id), active = tool.kind === 'build' && tool.type === id;
       const b = button(h('span', null, h('b', null, d.name), h('small', null, `${price ? `${price} ◈` : 'free'}${d.power ? ` · ${d.power} W` : ''}${d.key ? ` · ${d.key}` : ''}`)),
         () => this.host.setTool(active ? { kind: 'select' } : { kind: 'build', type: id, rot: tool.kind === 'build' ? tool.rot : 1 }),
-        { active, title: d.hint, cls: s.credits < price ? 'poor' : '' });
+        { active, cls: s.credits < price ? 'poor' : '' });
+      b.addEventListener('pointerenter', () => this.showTip(id));
+      b.addEventListener('pointerleave', () => { if (this.tipFor === id) this.showTip(null); });
       this.buildButtons.set(id, b);
       return b;
     }));
@@ -251,6 +266,8 @@ export class Hud {
     const status = h('div', { class: 'status' });
     const lines: (() => void)[] = [() => { set(status, describeStatus(s, b)); status.className = `status ${b.status}`; }];
     const body: (Node | null)[] = [];
+    const wiring = this.wiring(s, b);
+    if (wiring) { body.push(wiring.el); lines.push(wiring.update); }
     const stat = (label: string, get: () => string) => {
       const v = h('b'); lines.push(() => set(v, get()));
       body.push(h('div', { class: 'kv' }, h('span', null, label), v));
@@ -338,9 +355,37 @@ export class Hud {
       def.directional ? button('Turn (R)', () => { rotate(s, b); changed(); }) : null,
       b.type !== 'depot' ? button('Remove', () => { const res = remove(s, b); this.toast(res.message, res.ok); this.host.select(null); changed(); }, { cls: 'danger' }) : null);
     const el = h('div', null,
-      h('div', { class: 'head' }, h('b', null, def.name), button('✕', () => { this.host.select(null); this.refresh(); }, { cls: 'close', title: 'Close (Esc)' })),
+      h('div', { class: 'head' }, h('b', null, def.name), h('span', { class: 'head-buttons' },
+        button('?', () => this.openGuide({ kind: 'building', id: b.type }), { cls: 'close', title: 'Open its page in the guide (G)' }),
+        button('✕', () => { this.host.select(null); this.refresh(); }, { cls: 'close', title: 'Close (Esc)' }))),
       h('p', { class: 'hint' }, def.hint), status, ...body, actions);
     return { el, update: () => { for (const l of lines) l(); } };
+  }
+
+  /**
+   * How many belts (or splitters, sorters, crossings) bring the building goods and take its goods away (they are tinted on
+   * the map), with a hint when one side isn't wired; null for buildings that don't handle goods.
+   */
+  private wiring(s: GameState, b: Building): { el: HTMLElement; update: () => void } | null {
+    const { takes, gives } = goodsFlow(b);
+    if (!takes && !gives) return null;
+    // A field's compost is optional, so a field without an input belt isn't missing anything.
+    const needsIn = takes && b.type !== 'field';
+    const dot = (hex: number) => h('i', { class: 'dot', style: `background:#${hex.toString(16).padStart(6, '0')}` });
+    const inN = h('b'), outN = h('b'), hint = h('p', { class: 'hint warn-hint' });
+    const el = h('div', null,
+      h('div', { class: 'kv wiring' }, h('span', null, 'Linked'), h('span', null,
+        takes ? h('span', null, dot(LINK_IN), inN, ' in') : null, takes && gives ? ' · ' : '', gives ? h('span', null, dot(LINK_OUT), outN, ' out') : null)),
+      hint);
+    const update = () => {
+      const ins = suppliersOf(s, b).length, outs = receiversOf(s, b).length;
+      set(inN, String(ins)); set(outN, String(outs));
+      const msg = needsIn && !ins ? 'No belt brings it goods yet: make a belt point into it.'
+        : gives && !outs ? 'Nothing takes its goods yet: run a belt beside it, pointing away.' : '';
+      set(hint, msg);
+      hint.style.display = msg ? '' : 'none';
+    };
+    return { el, update };
   }
 
   private padMode(b: Building, mode: 'send' | 'receive') {
@@ -382,6 +427,16 @@ export class Hud {
     return false;
   }
   private close(name: string) { this.modals = this.modals.filter((m) => m.name !== name); this.drawModals(); }
+
+  /** Opens the guide on `page`; by default on what's in hand, selected or hovered in the build bar. G again closes it. */
+  openGuide(page?: GuidePage) {
+    if (!page && this.modals.some((m) => m.name === 'guide')) { this.close('guide'); return; }
+    const tool = this.host.tool(), sel = this.host.selected(), b = sel !== null ? buildingById(this.host.state(), sel) : null;
+    const id = this.tipFor ?? (tool.kind === 'build' ? tool.type : b?.type ?? null);
+    const start: GuidePage = page ?? (id ? { kind: 'building', id } : { kind: 'topic', id: 'start' });
+    this.showTip(null);
+    this.openModal('guide', guidePanel(start, { build: (t) => this.host.setTool({ kind: 'build', type: t, rot: tool.kind === 'build' ? tool.rot : 1 }) }, () => this.close('guide')), true);
+  }
 
   showIntro() {
     const s = this.host.state(), sc = s.scenario;
@@ -430,6 +485,7 @@ function help() {
     h('li', null, 'Fields grow faster with water (sprinklers) and rich soil; harvests drain the soil. Compost, beans and resting fix it.'),
     h('li', null, 'Markers: ', h('span', { class: 'm red' }, '◆'), ' no power ', h('span', { class: 'm orange' }, '◆'), ' blocked/low power ', h('span', { class: 'm yellow' }, '◆'), ' waiting for input ', h('span', { class: 'm blue' }, '◆'), ' dry ', h('span', { class: 'm purple' }, '◆'), ' not linked'),
     h('li', null, h('b', null, 'Click'), ' a building to inspect it · ', h('b', null, 'X'), ' remove (refunds) · ', h('b', null, 'right click / Esc'), ' cancel'),
-    h('li', null, h('b', null, 'Drag'), ' (or right-drag, arrows) to pan · ', h('b', null, 'Q E'), ' turn · ', h('b', null, 'wheel / Z'), ' zoom · ', h('b', null, 'Space 1 2 3'), ' pause and speed · ', h('b', null, 'V'), ' overlays · ', h('b', null, 'Tab'), ' stats'),
+    h('li', null, h('b', null, 'Drag'), ' (or right-drag, arrows) to pan · ', h('b', null, 'Q E'), ' turn · ', h('b', null, 'wheel / pinch / + −'), ' zoom · ', h('b', null, 'Space 1 2 3'), ' pause and speed · ', h('b', null, 'V'), ' overlays · ', h('b', null, 'Tab'), ' stats'),
+    h('li', null, 'Not sure what something does? ', h('b', null, 'G'), ' opens the guide: every building, how to use it and its numbers.'),
   );
 }

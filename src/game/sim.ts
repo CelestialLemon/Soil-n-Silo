@@ -153,6 +153,59 @@ function leadsInto(s: GameState, belt: Building, b: Building) {
 }
 
 export const outputsOf = (s: GameState, b: Building) => derived(s).outs.get(b.id) ?? [];
+
+/** What a building does with goods: whether it takes them from belts, and whether it puts them on belts. */
+export function goodsFlow(b: Building): { takes: boolean; gives: boolean } {
+  if (isRouter(b)) return { takes: true, gives: true };
+  const r = recipeOf(b);
+  return {
+    takes: !!r || b.type === 'depot' || b.type === 'field' || (b.type === 'pad' && b.mode === 'send'),
+    gives: (!!r && r.outputs.length > 0) || b.type === 'field' || b.type === 'hive' || (b.type === 'pad' && b.mode === 'receive'),
+  };
+}
+
+/** The directions a splitter, sorter or crossing can send goods out (a crossing's depends on the side they came in by). */
+function routerExits(r: Building): Dir[] {
+  return r.type === 'sorter' ? (r.filter ? [r.rot, left(r.rot), right(r.rot)] : [r.rot]) : [0, 1, 2, 3];
+}
+
+/** The tiles round a building's edge, each with the direction out of the building towards it. */
+function around(b: Building): { x: number; y: number; d: Dir }[] {
+  const n = sizeOf(b), out: { x: number; y: number; d: Dir }[] = [];
+  for (let i = 0; i < n; i++) {
+    out.push({ x: b.x + i, y: b.y - 1, d: 0 }, { x: b.x + n, y: b.y + i, d: 1 }, { x: b.x + i, y: b.y + n, d: 2 }, { x: b.x - 1, y: b.y + i, d: 3 });
+  }
+  return out;
+}
+
+/**
+ * What hands goods to `b`: the belts beside it pointing into it, and the splitters, sorters and crossings beside it with an
+ * exit towards it.
+ */
+export function suppliersOf(s: GameState, b: Building): Building[] {
+  const out: Building[] = [];
+  for (const t of around(b)) {
+    const o = buildingAt(s, t.x, t.y);
+    if (!o || o === b || out.includes(o)) continue;
+    if (o.type === 'belt' ? o.rot === opposite(t.d) : isRouter(o) && routerExits(o).includes(opposite(t.d))) out.push(o);
+  }
+  return out;
+}
+
+/**
+ * What `b` hands its goods to: for a building, the belts beside it that take them (outputsOf); for a splitter, sorter or
+ * crossing, whatever on its exits takes goods: belts that don't point back into it, other routers, and buildings that use goods.
+ */
+export function receiversOf(s: GameState, b: Building): Building[] {
+  if (!isRouter(b)) return outputsOf(s, b).map((o) => o.belt);
+  const out: Building[] = [];
+  for (const d of routerExits(b)) {
+    const o = buildingAt(s, b.x + DX[d], b.y + DY[d]);
+    if (o && (o.type === 'belt' ? o.rot !== opposite(d) : goodsFlow(o).takes) && !out.includes(o)) out.push(o);
+  }
+  return out;
+}
+
 export const sprinklersOf = (s: GameState, b: Building) => derived(s).sprinklers.get(b.id) ?? [];
 export const isPollinated = (s: GameState, b: Building) => derived(s).pollinated.has(b.id);
 export const exposureOf = (s: GameState, b: Building) => derived(s).exposure.get(b.id) ?? 1;

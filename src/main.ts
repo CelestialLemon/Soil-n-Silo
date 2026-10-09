@@ -11,19 +11,22 @@ import { Hud, type Tool } from './ui/hud.ts';
 import { showMenu } from './ui/menu.ts';
 import { allGeometries, loadModels } from './world/models.ts';
 import { buildWorld } from './world/terrain.ts';
-import { WorldView, type Overlay } from './world/view.ts';
+import { DECK, WorldView, type Overlay } from './world/view.ts';
 import './ui/style.css';
 
 // The game: owns the loop, the state, input and the camera, and each frame tells the renderer where everything is. It is
 // build-only: the player places, turns, configures and removes buildings and the simulation runs on its own. The camera
-// is orthographic at a 30° pitch, turns between four views 90° apart, zooms in whole art-pixel steps and pans with the mouse.
+// is orthographic at a 30° pitch, turns between four views 90° apart, zooms towards the pointer and pans with the mouse.
+// Zoom eases smoothly between levels but always comes to rest on a whole number of screen pixels per art pixel, so the
+// art is never resampled while you look at it.
 
 const ART_PX_PER_METRE = 16;
 const PIXEL_SIZES = [1, 2, 3, 4, 6];  // screen pixels per art pixel, by zoom level
 const ELEVATION = THREE.MathUtils.degToRad(30);
 const HOME_YAW = THREE.MathUtils.degToRad(45);
 const DRAG_THRESHOLD = 4;
-const WHEEL_STEP = 100, WHEEL_GESTURE_GAP = 200;
+const WHEEL_STEP = 100, WHEEL_GESTURE_GAP = 200, PINCH_GAIN = 4;
+const ZOOM_RATE = 14;               // how fast the zoom eases towards its level (per second, in log space)
 const TURN_SECONDS = 0.3;
 const REPICK_FRAMES = 6;
 const AUTOSAVE_SECONDS = 30;
@@ -93,7 +96,7 @@ async function play(initial: GameState) {
     select: (id) => { selected = id; },
     changed: () => { repick = 2; },
     turn: (d) => turn(d),
-    zoom: () => setZoom((zoom + 1) % PIXEL_SIZES.length),
+    zoom: (d) => setZoom(zoom + d),
     menu: () => { save(); location.href = `${location.pathname}?menu`; },
     restart: () => startNew(state.scenario.id),
   });
@@ -109,9 +112,12 @@ async function play(initial: GameState) {
   // ---- Camera ----
   const target = new THREE.Vector3(map.depot.x + 1.5, 0, map.depot.y - 4);
   let view4 = 0, zoom = 1;
+  /** Screen pixels per art pixel right now: eases towards PIXEL_SIZES[zoom]. */
+  let scale = PIXEL_SIZES[zoom];
+  /** While zooming towards the pointer: the ground point that stays under it, and where the pointer is from the centre. */
+  let zoomAnchor: { ground: THREE.Vector3; dx: number; dy: number } | null = null;
   let yaw = HOME_YAW, turnFrom = HOME_YAW, turnAt = -Infinity;
   let repick = 2;
-  const pixelSize = () => PIXEL_SIZES[zoom];
   const forward = new THREE.Vector3(), right = new THREE.Vector3();
   function cameraAxes() { forward.set(-Math.sin(yaw), 0, -Math.cos(yaw)); right.set(-forward.z, 0, forward.x); }
   function turn(dir: 1 | -1) { view4 += dir; turnFrom = yaw; turnAt = time; repick = 2; }
@@ -123,33 +129,83 @@ async function play(initial: GameState) {
   }
   function pan(dx: number, dy: number) {
     cameraAxes();
-    const metres = 1 / (pixelSize() * ART_PX_PER_METRE);
+    const metres = 1 / (scale * ART_PX_PER_METRE);
+    const before = target.clone();
     target.addScaledVector(right, -dx * metres).addScaledVector(forward, dy * metres / Math.sin(ELEVATION));
+    clampTarget();
+    // A pan during a zoom carries the zoom's anchor along, so the two don't fight.
+    if (zoomAnchor) zoomAnchor.ground.add(target.clone().sub(before));
+    repick = 2;
+  }
+  function clampTarget() {
     target.x = THREE.MathUtils.clamp(target.x, 0, map.width);
     target.z = THREE.MathUtils.clamp(target.z, 0, map.height);
-    repick = 2;
   }
-  function setZoom(z: number) { zoom = z; fit(); }
+  /** Zooms to level `z`, keeping the ground under the page point `at` (the pointer) where it is; the centre without one. */
+  function setZoom(z: number, at?: { x: number; y: number }) {
+    z = THREE.MathUtils.clamp(z, 0, PIXEL_SIZES.length - 1);
+    if (z === zoom) return;
+    zoom = z;
+    // The ground under the point, from where the camera is now (target, turn and scale), not from the last picture drawn:
+    // several wheel events can arrive before the next frame, each after the last one resized the canvas.
+    if (at) {
+      const dx = at.x - innerWidth / 2, dy = at.y - innerHeight / 2, metres = 1 / (scale * ART_PX_PER_METRE);
+      cameraAxes();
+      const ground = target.clone().addScaledVector(right, dx * metres).addScaledVector(forward, -dy * metres / Math.sin(ELEVATION));
+      zoomAnchor = { ground, dx, dy };
+    } else zoomAnchor = null;
+    fit();
+  }
+  addEventListener('resize', () => fit());
+  /** One frame of the zoom easing towards its level. */
+  function zooming(dt: number) {
+    const goal = PIXEL_SIZES[zoom];
+    if (scale === goal) return;
+    const k = 1 - Math.exp(-dt * ZOOM_RATE);
+    scale = Math.exp(Math.log(scale) + Math.log(goal / scale) * k);
+    if (Math.abs(Math.log(goal / scale)) < 0.004) scale = goal;
+    if (zoomAnchor) {
+      cameraAxes();
+      const metres = 1 / (scale * ART_PX_PER_METRE);
+      target.copy(zoomAnchor.ground).addScaledVector(right, -zoomAnchor.dx * metres).addScaledVector(forward, zoomAnchor.dy * metres / Math.sin(ELEVATION));
+      clampTarget();
+    }
+    if (scale === goal) { zoomAnchor = null; fit(); } else layout();
+  }
+  /**
+   * Sizes the art (render target) and lays the canvas out at the current scale, centred on the window. While a zoom eases,
+   * the art is sized for the smaller of the current and target pixel sizes, so it covers the window all the way, and only
+   * the canvas's CSS size changes from frame to frame; the art is sized exactly once the zoom comes to rest.
+   */
   function fit() {
-    const px = pixelSize();
+    const px = Math.min(scale, PIXEL_SIZES[zoom]);
     const w = Math.max(1, Math.ceil(innerWidth / px)), h = Math.max(1, Math.ceil(innerHeight / px));
     if (renderer.width !== w || renderer.height !== h) renderer.resize(w, h);
-    canvas.style.width = `${w * px}px`; canvas.style.height = `${h * px}px`;
+    layout();
+  }
+  function layout() {
+    const cw = renderer.width * scale, ch = renderer.height * scale;
+    canvas.style.width = `${cw}px`; canvas.style.height = `${ch}px`;
+    canvas.style.left = `${Math.floor((innerWidth - cw) / 2)}px`; canvas.style.top = `${Math.floor((innerHeight - ch) / 2)}px`;
     repick = 2;
   }
-  addEventListener('resize', fit);
   fit();
 
   // ---- Pointing ----
   const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2(), ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3();
-  /** The map tile under a point of the page, on the ground plane (whatever stands there). */
-  function tileAt(x: number, y: number): { x: number; y: number } | null {
+  /** The point on the ground plane under a point of the page. */
+  function groundAt(x: number, y: number): THREE.Vector3 | null {
     const rect = canvas.getBoundingClientRect();
     ndc.set((x - rect.left) / rect.width * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
     renderer.camera.updateMatrixWorld();
     raycaster.setFromCamera(ndc, renderer.camera);
-    if (!raycaster.ray.intersectPlane(ground, hit)) return null;
-    const t = { x: Math.floor(hit.x), y: Math.floor(hit.z) };
+    return raycaster.ray.intersectPlane(ground, hit) ? hit.clone() : null;
+  }
+  /** The map tile under a point of the page, on the ground plane (whatever stands there). */
+  function tileAt(x: number, y: number): { x: number; y: number } | null {
+    const g = groundAt(x, y);
+    if (!g) return null;
+    const t = { x: Math.floor(g.x), y: Math.floor(g.z) };
     return inMap(state, t.x, t.y) ? t : null;
   }
 
@@ -224,6 +280,7 @@ async function play(initial: GameState) {
         const cx = sp.x + n / 2, cz = sp.y + n / 2;
         ghost(`frame ${okHere} ${n}`, (okHere ? models.frames.ok : models.frames.bad)[n - 1], cx, 0.03, cz);
         ghost(`b ${type}`, models.buildings[type].idle, cx, 0.04, cz, YAW[sp.rot], okHere);
+        if (type === 'belt' || type === 'sorter') ghost('arrow', models.arrow, cx, 0.04 + DECK + 0.005, cz, YAW[sp.rot] - Math.PI / 2, okHere);
       }
       // A pylon's reach, and the pylons it would link to.
       if (type === 'pylon' && spots.length === 1) overlayFor('power');
@@ -338,17 +395,20 @@ async function play(initial: GameState) {
   canvas.addEventListener('pointercancel', release);
   canvas.addEventListener('pointerleave', (e) => { if (!press && e.isPrimary) { pointer = null; repick = 2; } });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-  let wheel = 0, wheelAt = -Infinity, wheelDone = false;
+  // The wheel adds up; every WHEEL_STEP of it is one zoom level, towards the pointer. A trackpad pinch arrives as a wheel
+  // with ctrlKey and small deltas, so it counts for more.
+  let wheel = 0, wheelAt = -Infinity;
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
-    if (e.ctrlKey || e.deltaY === 0) return;
-    if (e.timeStamp - wheelAt > WHEEL_GESTURE_GAP || Math.sign(e.deltaY) !== Math.sign(wheel)) { wheel = 0; wheelDone = false; }
+    if (e.deltaY === 0) return;
+    if (e.timeStamp - wheelAt > WHEEL_GESTURE_GAP || Math.sign(e.deltaY) !== Math.sign(wheel)) wheel = 0;
     wheelAt = e.timeStamp;
-    if (wheelDone) return;
-    wheel += e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? e.deltaY : Math.sign(e.deltaY) * WHEEL_STEP;
-    if (Math.abs(wheel) < WHEEL_STEP) return;
-    setZoom(THREE.MathUtils.clamp(zoom - Math.sign(wheel), 0, PIXEL_SIZES.length - 1));
-    wheelDone = true;
+    wheel += e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? e.deltaY * (e.ctrlKey ? PINCH_GAIN : 1) : Math.sign(e.deltaY) * WHEEL_STEP;
+    // All the steps in one go: the anchor is found on the picture as drawn, before the zoom resizes the canvas.
+    const steps = Math.trunc(wheel / WHEEL_STEP);
+    if (!steps) return;
+    wheel -= steps * WHEEL_STEP;
+    setZoom(zoom - steps, { x: e.clientX, y: e.clientY });
   }, { passive: false });
 
   const keys = new Set<string>();
@@ -371,8 +431,11 @@ async function play(initial: GameState) {
     if (e.code === 'Digit3') { speed = 4; paused = false; }
     if (e.code === 'KeyQ') turn(-1);
     if (e.code === 'KeyE') turn(1);
-    if (e.code === 'KeyZ') setZoom((zoom + 1) % PIXEL_SIZES.length);
+    if (e.code === 'KeyZ') setZoom(e.shiftKey ? zoom - 1 : zoom + 1, pointer ?? undefined);
+    if (e.code === 'Equal' || e.code === 'NumpadAdd') setZoom(zoom + 1, pointer ?? undefined);
+    if (e.code === 'Minus' || e.code === 'NumpadSubtract') setZoom(zoom - 1, pointer ?? undefined);
     if (e.code === 'Tab') { e.preventDefault(); hud.toggleStats(); }
+    if (e.code === 'KeyG') { hud.openGuide(); hud.refresh(); return; }
     if (e.code === 'KeyV') { const order: Overlay[] = ['none', 'fertility', 'power', 'water', 'bees']; overlay = order[(order.indexOf(overlay) + 1) % order.length]; }
     if (e.code === 'KeyX') setTool(tool.kind === 'remove' ? { kind: 'select' } : { kind: 'remove' });
     if (e.code === 'KeyR') {
@@ -443,6 +506,7 @@ async function play(initial: GameState) {
     if (repick > 0) { repick--; pickHover(); }
     showGhosts();
     view.overlay(state, overlay !== 'none' ? overlay : toolOverlay);
+    view.links(state, selected ?? (tool.kind === 'select' ? hoverBuilding : null));
     const hi: number[] = [];
     if (selected !== null) hi.push(selected);
     if (hoverBuilding !== null && hoverBuilding !== selected && (tool.kind === 'select' || tool.kind === 'link' || tool.kind === 'remove')) hi.push(hoverBuilding);
@@ -452,6 +516,7 @@ async function play(initial: GameState) {
     hud.update();
 
     turning();
+    zooming(dt);
     renderer.placeCamera(target, yaw, ELEVATION, renderer.height / ART_PX_PER_METRE);
     renderer.renderGeometry(time);
     renderer.renderStyle(time);

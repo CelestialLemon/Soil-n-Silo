@@ -34,8 +34,9 @@ blueprints and copy-paste, sound, multiple saves per level.
 
 ## Camera, presentation and controls
 
-The camera stays as it was: orthographic, a 3/4 view at about 30° pitch, 4 views 90° apart (Q/E), integer zoom levels (the wheel or
-Z) and panning (drag, right-drag or the arrow keys). Low-poly, flat-colour models drawn as pixel art by `pixel3d-renderer`. Everything is seen
+The camera stays as it was: orthographic, a 3/4 view at about 30° pitch, 4 views 90° apart (Q/E), zoom (the wheel, a trackpad pinch,
++/− or Z) and panning (drag, right-drag or the arrow keys). Zoom eases smoothly towards the pointer but comes to rest on a whole
+number of screen pixels per art pixel, so the art is never resampled while you look at it. Low-poly, flat-colour models drawn as pixel art by `pixel3d-renderer`. Everything is seen
 from 4 sides.
 
 It is build-only and point-and-click. There is no character and no manual farming: you place, rotate, configure and remove.
@@ -50,6 +51,7 @@ It is build-only and point-and-click. There is no character and no manual farmin
 | Esc / right click | Drop what's in hand, close the inspector |
 | Space, 1, 2, 3 | Pause, 1×, 2×, 4× speed. You can build while paused |
 | Tab | Production stats |
+| G | The guide: a page for every building (what it does, how to use it, what it takes and gives, its numbers), the goods, and the basics |
 | V (or the buttons) | Overlays: soil fertility, power reach, sprinkler water, bee range |
 
 ![Laying a belt: the preview is see-through, green where it fits and red on the depot](images/preview.png)
@@ -57,8 +59,17 @@ It is build-only and point-and-click. There is no character and no manual farmin
 **Readability rules**
 
 - Every building shows its state on a small marker above it: working, waiting for input, output blocked, no power, low power.
-- Hover any building for a one-line status ("Mill: waiting for wheat").
+- Hover any building for a one-line status ("Mill: waiting for wheat"). Hover a button in the build bar for a card about that
+  building.
+- Chevrons glide along every belt the way its goods go.
+- Selecting (or hovering) a building tints the belts it takes goods from green and the belts that take its goods blue; the
+  inspector counts them and says when a side isn't wired.
+- The guide (G) has a page for every building; hovering a build button, or "?" in the inspector, leads to it.
 - Soil colour shows fertility under fields. Overlays show fertility everywhere and power coverage.
+
+![A selected mill: green for the belt that feeds it, blue for the belts that take its flour and bran](images/wiring.png)
+
+![The guide's page for the mill](images/guide.png)
 
 ## Time
 
@@ -258,7 +269,7 @@ each commission's best medal and time.
 
 - [ ] Tuning: crop times, machine times, prices and target times are first guesses. A scripted bot run per commission
   (`npm run sim`) should check that each one can be cleared and roughly in its target time.
-- [ ] Do belts need curves drawn at corners, or are straight segments with arrows enough to read?
+- [ ] Do belts need curves drawn at corners, or are straight segments with gliding chevrons enough to read?
 - [ ] Should drones and belts cost power? (Only drone flights do, for now.)
 - [ ] Weather (rain waters fields, storms stop turbines) as a later modifier.
 - [ ] Blueprints/copy-paste once layouts grow large.

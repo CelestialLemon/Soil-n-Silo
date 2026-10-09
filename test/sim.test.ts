@@ -6,7 +6,7 @@ import { generateMap, TERRAIN } from '../src/game/map.ts';
 import { networkOf, networks } from '../src/game/power.ts';
 import { deserialize, readProgress, recordResult, serialize } from '../src/game/save.ts';
 import { CAMPAIGN, randomScenario, SANDBOX, scenarioById, type Scenario } from '../src/game/scenarios.ts';
-import { advance, exposureOf, fieldFertility, goalDone, hourAt, medalFor, ratePerMin, soilHealth, sunAt, windAt } from '../src/game/sim.ts';
+import { advance, exposureOf, goodsFlow, fieldFertility, goalDone, hourAt, medalFor, outputsOf, ratePerMin, receiversOf, soilHealth, suppliersOf, sunAt, windAt } from '../src/game/sim.ts';
 import { buildingAt, newGame, type Building, type Dir, type GameState } from '../src/game/state.ts';
 
 /** A flat, empty test map: no water, rock or trees, even soil. */
@@ -552,4 +552,37 @@ test('random commissions have two to four goals', () => {
     const n = randomScenario(seed, d).goals.length;
     assert.ok(n >= 2 && n <= 4, `seed ${seed} difficulty ${d}: ${n}`);
   }
+});
+
+test('a building takes goods from belts pointing into it and puts them on belts beside it pointing away', () => {
+  const s = flat();
+  const mill = put(s, 'mill', 10, 10);
+  const into = put(s, 'belt', 9, 10, 1);       // west of it, pointing east: into it
+  const away = put(s, 'belt', 12, 11, 1);      // east of it, pointing east: away
+  const past = put(s, 'belt', 10, 12, 3);      // south of it, running past westwards
+  put(s, 'belt', 8, 10, 1);                    // two tiles away: not wired to it
+  const intoN = put(s, 'belt', 11, 9, 2);      // north of it, pointing south: into it
+  assert.deepEqual(suppliersOf(s, mill).map((b) => b.id).sort(), [into.id, intoN.id].sort());
+  assert.deepEqual(outputsOf(s, mill).map((o) => o.belt.id).sort(), [away.id, past.id].sort());
+});
+
+test('a sorter puts goods only on its exits; a sending pad puts none on belts', () => {
+  const s = flat();
+  const sorter = put(s, 'sorter', 10, 10, 1);   // facing east
+  put(s, 'belt', 9, 10, 1);                     // into it from the west
+  const ahead = put(s, 'belt', 11, 10, 1);
+  const north = put(s, 'belt', 10, 9, 0);
+  const south = put(s, 'belt', 10, 11, 2);
+  assert.deepEqual(receiversOf(s, sorter).map((b) => b.id), [ahead.id]);
+  setFilter(sorter, 'wheat');
+  assert.deepEqual(receiversOf(s, sorter).map((b) => b.id).sort(), [ahead.id, north.id, south.id].sort());
+  const pad = put(s, 'pad', 20, 20);
+  setPadMode(pad, 'send');
+  assert.deepEqual(goodsFlow(pad), { takes: true, gives: false });
+  setPadMode(pad, 'receive');
+  assert.deepEqual(goodsFlow(pad), { takes: false, gives: true });
+  // A splitter handing goods straight to a mill counts as its supplier, and the mill as its receiver.
+  const mill = put(s, 'mill', 5, 20), split = put(s, 'splitter', 7, 20);
+  assert.deepEqual(suppliersOf(s, mill).map((b) => b.id), [split.id]);
+  assert.deepEqual(receiversOf(s, split).map((b) => b.id), [mill.id]);
 });

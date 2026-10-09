@@ -252,6 +252,21 @@ export function frame(n: number, hex: number, t = 0.06) {
   return k.build();
 }
 
+/**
+ * Chevrons gliding along a belt's deck the way goods go, at `speed` tiles a second. Built along +x (the renderer's conveyor
+ * motion runs along +x), so it's placed turned a quarter less than the belt. Moving, they show the direction from any view,
+ * where a still arrow seen at 45° reads as a lozenge.
+ */
+export function arrow(speed: number, hex = 0x22302c) {
+  const k = new Kit(true);
+  // Each chevron is two arms meeting at its tip, 0.11 ahead of its centre; dark, to stand out on the timber deck.
+  for (const x0 of [-0.25, 0.25]) {
+    const mo = motion.conveyor([x0, 0, 0], -0.5, 1, speed);
+    k.box(x0, 0, -0.1, 0.3, 0.015, 0.12, hex, { ry: -0.74, flag: FLAG.DECOR, mo }).box(x0, 0, 0.1, 0.3, 0.015, 0.12, hex, { ry: 0.74, flag: FLAG.DECOR, mo });
+  }
+  return k.build();
+}
+
 /** A flat tinted square filling a tile, for overlays. */
 export function tileFill(hex: number) {
   const k = new Kit(false);
