@@ -237,19 +237,6 @@ export function guidePanel(start: GuidePage, host: GuideHost, close: () => void)
 
   const fact = (k: string, v: string) => h('div', null, h('span', null, k), h('b', null, v));
 
-  function powerLine(id: BuildingId): string {
-    const d = BUILDINGS[id];
-    if (id === 'sprinkler') return `uses ${POWER.sprinklerNearWater} W near water, else ${POWER.sprinklerFar} W`;
-    if (id === 'pad') return `uses ${d.power} W while its drone flies`;
-    if (d.power) return `uses ${d.power} W while working`;
-    if (id === 'solar') return `makes up to ${POWER.solar} W in full sun`;
-    if (id === 'turbine') return `makes up to ${POWER.turbine} W`;
-    if (id === 'digester') return `makes ${POWER.digester} W while burning`;
-    if (id === 'battery') return `stores ${POWER.battery.capacity} J`;
-    if (id === 'pylon') return 'carries it';
-    return 'none';
-  }
-
   /** A good, linked to the goods page. */
   const goodLink = (id: ItemId, n?: number) => h('span', { class: 'good' }, swatch(id), link(`${n !== undefined ? `${n} ` : ''}${lc(id)}`, { kind: 'goods' }));
   const ingredient = (ing: Ingredient) => ('item' in ing ? goodLink(ing.item, ing.n) : h('span', { class: 'good' }, `${ing.n} ${GROUP_NAMES[ing.group]}`));
@@ -379,7 +366,7 @@ export function guidePanel(start: GuidePage, host: GuideHost, close: () => void)
         h('h3', null, 'Controls'),
         h('table', { class: 'kvt' }, ...([
           ['Click / drag', 'build, or select a building'], ['R, Shift+R', 'turn what you are placing'], ['X', 'remove (full refund)'],
-          ['Esc', 'drop what is in hand, deselect, close panels'], ['Right click', 'drop what is in hand, deselect'], ['Drag, right-drag, arrows', 'pan'], ['Wheel, pinch, + −, Z', 'zoom'],
+          ['Esc', 'drop what is in hand, deselect, close panels'], ['Right click', 'drop what is in hand, deselect'], ['Drag, right-drag, arrows', 'pan'], ['Wheel, trackpad pinch, + −, Z', 'zoom'],
           ['Q, E', 'turn the view'], ['Space, 1, 2, 3', 'pause, speed'], ['V', 'overlays'], ['Tab', 'production stats'], ['G', 'this guide'],
         ] as const).map(([k, v]) => h('tr', null, h('td', null, k), h('td', null, v)))),
       ];
@@ -473,11 +460,26 @@ function beltDiagram(): HTMLElement {
   return h('div', { class: 'diagram-wrap' }, svg as unknown as HTMLElement, h('p', { class: 'hint' }, 'Seen from above. The green belt feeds the mill; the blue belts take its flour and bran, including the one just running past underneath.'));
 }
 
+/** What a building does with power, in a few words. */
+function powerLine(id: BuildingId): string {
+  const d = BUILDINGS[id];
+  if (id === 'sprinkler') return `uses ${POWER.sprinklerNearWater} W near water, else ${POWER.sprinklerFar} W`;
+  if (id === 'pad') return `uses ${d.power} W while its drone flies`;
+  if (d.power) return `uses ${d.power} W while working`;
+  if (id === 'solar') return `makes up to ${POWER.solar} W in full sun`;
+  if (id === 'turbine') return `makes up to ${POWER.turbine} W`;
+  if (id === 'digester') return `makes ${POWER.digester} W while burning`;
+  if (id === 'battery') return `stores ${POWER.battery.capacity} J`;
+  if (id === 'pylon') return 'carries it';
+  return 'none';
+}
+
 /** A short card about a building, for hovering its button in the build bar. */
 export function buildingCard(id: BuildingId, price: number): HTMLElement {
   const d = BUILDINGS[id], e = ENTRIES[id], rs = recipesFor(id);
   return h('div', null,
-    h('div', { class: 'head' }, h('b', null, d.name), h('span', null, `${price ? `${price} credits` : 'free'} · ${d.size}×${d.size}${d.power ? ` · ${d.power} W` : ''}`)),
+    h('div', { class: 'head' }, h('b', null, d.name), h('span', null, `${price ? `${price} credits` : 'free'} · ${d.size}×${d.size}`)),
+    h('p', { class: 'hint' }, `Power: ${powerLine(id)}`),
     h('p', null, e.what),
     ...rs.map((r) => h('div', { class: 'recipe' },
       ...r.inputs.flatMap((i, k) => [k ? ' + ' : '', 'item' in i ? h('span', { class: 'good' }, swatch(i.item), `${i.n} ${lc(i.item)}`) : `${i.n} ${GROUP_NAMES[i.group].split(' (')[0]}`]),

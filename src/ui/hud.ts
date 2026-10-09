@@ -369,8 +369,8 @@ export class Hud {
   private wiring(s: GameState, b: Building): { el: HTMLElement; update: () => void } | null {
     const { takes, gives } = goodsFlow(b);
     if (!takes && !gives) return null;
-    // A field's compost is optional, so a field without an input belt isn't missing anything.
-    const needsIn = takes && b.type !== 'field';
+    // A field's compost is optional, and a depot may be fed by drones alone, so neither is missing anything without a belt.
+    const needsIn = () => takes && b.type !== 'field' && !(b.type === 'depot' && s.buildings.some((p) => p.type === 'pad' && p.mode === 'send' && p.link === b.id));
     const dot = (hex: number) => h('i', { class: 'dot', style: `background:#${hex.toString(16).padStart(6, '0')}` });
     const inN = h('b'), outN = h('b'), hint = h('p', { class: 'hint warn-hint' });
     const el = h('div', null,
@@ -380,7 +380,7 @@ export class Hud {
     const update = () => {
       const ins = suppliersOf(s, b).length, outs = receiversOf(s, b).length;
       set(inN, String(ins)); set(outN, String(outs));
-      const msg = needsIn && !ins ? 'No belt brings it goods yet: make a belt point into it.'
+      const msg = !ins && needsIn() ? 'No belt brings it goods yet: make a belt point into it.'
         : gives && !outs ? 'Nothing takes its goods yet: run a belt beside it, pointing away.' : '';
       set(hint, msg);
       hint.style.display = msg ? '' : 'none';
@@ -485,7 +485,7 @@ function help() {
     h('li', null, 'Fields grow faster with water (sprinklers) and rich soil; harvests drain the soil. Compost, beans and resting fix it.'),
     h('li', null, 'Markers: ', h('span', { class: 'm red' }, '◆'), ' no power ', h('span', { class: 'm orange' }, '◆'), ' blocked/low power ', h('span', { class: 'm yellow' }, '◆'), ' waiting for input ', h('span', { class: 'm blue' }, '◆'), ' dry ', h('span', { class: 'm purple' }, '◆'), ' not linked'),
     h('li', null, h('b', null, 'Click'), ' a building to inspect it · ', h('b', null, 'X'), ' remove (refunds) · ', h('b', null, 'right click / Esc'), ' cancel'),
-    h('li', null, h('b', null, 'Drag'), ' (or right-drag, arrows) to pan · ', h('b', null, 'Q E'), ' turn · ', h('b', null, 'wheel / pinch / + −'), ' zoom · ', h('b', null, 'Space 1 2 3'), ' pause and speed · ', h('b', null, 'V'), ' overlays · ', h('b', null, 'Tab'), ' stats'),
+    h('li', null, h('b', null, 'Drag'), ' (or right-drag, arrows) to pan · ', h('b', null, 'Q E'), ' turn · ', h('b', null, 'wheel / trackpad pinch / + −'), ' zoom · ', h('b', null, 'Space 1 2 3'), ' pause and speed · ', h('b', null, 'V'), ' overlays · ', h('b', null, 'Tab'), ' stats'),
     h('li', null, 'Not sure what something does? ', h('b', null, 'G'), ' opens the guide: every building, how to use it and its numbers.'),
   );
 }
