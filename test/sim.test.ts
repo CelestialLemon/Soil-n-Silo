@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { beltPath, canPlace, linkPad, place, remove, removeAt, setCrop, setFilter, setPadMode } from '../src/game/build.ts';
+import { beltPath, canPlace, linkPad, place, remove, removeAt, setCrop, setFilter, setPadMode, setRecipe } from '../src/game/build.ts';
 import { BELT, BUILDINGS, DAY_SECONDS, ITEMS, POWER, START_HOUR } from '../src/game/data.ts';
 import { generateMap, TERRAIN } from '../src/game/map.ts';
 import { networkOf, networks } from '../src/game/power.ts';
@@ -417,4 +417,49 @@ test('ground without a field rests back towards its starting fertility', () => {
   assert.ok(Math.abs(s.map.fertility[0] - 20) < 0.5, `resting: ${s.map.fertility[0]}`);
   advance(s, 1000);
   assert.equal(s.map.fertility[0], 60, 'not past where it started');
+});
+
+test('a splitter fed from two sides still shares between both exits', () => {
+  const s = flat();
+  // Inputs from the west and the north; exits east and south.
+  put(s, 'belt', 2, 5, 1); put(s, 'belt', 3, 4, 2);
+  put(s, 'splitter', 3, 5);
+  put(s, 'belt', 4, 5, 1); put(s, 'belt', 5, 5, 1); put(s, 'belt', 3, 6, 2); put(s, 'belt', 3, 7, 2);
+  for (let i = 0; i < 4; i++) {
+    buildingAt(s, 2, 5)!.items!.push({ item: 'egg', pos: 0.9 });
+    buildingAt(s, 3, 4)!.items!.push({ item: 'egg', pos: 0.9 });
+    advance(s, 1.5);
+  }
+  advance(s, 1);
+  const east = [4, 5].reduce((n, x) => n + buildingAt(s, x, 5)!.items!.length, 0), south = [6, 7].reduce((n, y) => n + buildingAt(s, 3, y)!.items!.length, 0);
+  assert.equal(east + south, 8);
+  assert.ok(east >= 3 && south >= 3, `east ${east}, south ${south}`);
+});
+
+test('changing a recipe waits for the batch in progress', () => {
+  const s = flat();
+  powerAt(s, 1, 1);
+  const k = put(s, 'bakery', 2, 3);
+  k.inputs = { flour: 1, egg: 1 };
+  advance(s, 1);
+  assert.notEqual(k.progress, null);
+  assert.equal(setRecipe(k, 'honeycake').ok, false);
+  assert.equal(k.recipe, 'bread');
+  advance(s, 9);
+  assert.equal(k.outputs!.bread, 1);
+  assert.ok(setRecipe(k, 'honeycake').ok);
+});
+
+test('a drone takes its goods home if its target stops receiving', () => {
+  const s = flat();
+  powerAt(s, 1, 1);
+  const a = put(s, 'pad', 2, 3), b = put(s, 'pad', 20, 3);
+  setPadMode(b, 'receive'); linkPad(s, a, b);
+  a.store!.push('egg', 'egg', 'egg', 'egg', 'egg');
+  advance(s, 1);
+  setPadMode(b, 'send');
+  advance(s, 12);
+  assert.equal(b.store!.length, 0);
+  assert.equal(a.drone!.phase, 'home');
+  assert.equal(a.store!.length, 5);
 });

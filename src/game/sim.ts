@@ -355,15 +355,16 @@ function routeOut(s: GameState, b: Building, dt: number) {
     t.t -= dt;
     if (t.t > 0) continue;
     const travel = opposite(t.from);
+    // Exits in a fixed order of compass directions, so goods coming in from several sides still take turns between them.
     let exits: Dir[];
     if (b.type === 'crossing') exits = [travel];
     else if (b.type === 'sorter') exits = b.filter && t.item === b.filter ? [b.rot] : b.filter ? [left(b.rot), right(b.rot)] : [b.rot];
-    else exits = [left(travel), travel, right(travel)];
-    const n = exits.length;
+    else exits = ([0, 1, 2, 3] as Dir[]).filter((d) => d !== t.from);
+    const n = exits.length, start = exits.findIndex((d) => d >= b.turn!);
     for (let k = 0; k < n; k++) {
-      const d = exits[(b.turn! + k) % n];
+      const d = exits[((start < 0 ? 0 : start) + k) % n];
       if (handTo(s, b.x + DX[d], b.y + DY[d], t.item, d)) {
-        b.turn = (b.turn! + k + 1) % Math.max(1, n);
+        b.turn = (d + 1) % 4;
         tr.splice(i, 1); i--;
         break;
       }
@@ -506,7 +507,8 @@ function runPad(s: GameState, p: Building, dt: number) {
       if (d.t >= 1) { d.t = 1; d.phase = 'hover'; }
       return;
     case 'hover':
-      if (!target) { d.phase = 'back'; d.t = 0; return; }
+      // The target may have gone, or stopped receiving, while the drone flew: then it takes the goods home.
+      if (!target || !(target.type === 'depot' || (target.type === 'pad' && target.mode === 'receive'))) { d.phase = 'back'; d.t = 0; return; }
       if (target.type === 'depot') { for (const it of d.cargo) deliver(s, it); d.cargo = []; }
       else if (target.store!.length + d.cargo.length <= PAD.receiveStore) { target.store!.push(...d.cargo); d.cargo = []; }
       if (d.cargo.length) { p.status = 'blocked'; p.need = 'room at the receiving pad'; return; }

@@ -52,6 +52,8 @@ It is build-only and point-and-click. There is no character and no manual farmin
 | Tab | Production stats |
 | V (or the buttons) | Overlays: soil fertility, power reach, sprinkler water, bee range |
 
+![Laying a belt: the preview is see-through, green where it fits and red on the depot](images/preview.png)
+
 **Readability rules**
 
 - Every building shows its state on a small marker above it: working, waiting for input, output blocked, no power, low power.
@@ -236,6 +238,8 @@ A commission has goals, a target time and modifiers. It ends when every goal is 
 The bot (`npm run sim`) clears First Light in about 14 minutes, Morning Bread in about 24 and Linen for the Looms in about 44
 (one spinner; two would be faster), building instantly; a person needs a few minutes more to plan and place. The other
 targets are guesses until they have bot layouts too.
+
+![The level select](images/menu.png)
 
 **Random commission:** any seed and a difficulty (1–3) pick the modifiers and 2–4 goals.
 **Sandbox:** a large calm map, unlimited credits, no goals: for trying things.

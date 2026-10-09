@@ -314,7 +314,7 @@ export class Hud {
     const r = recipeOf(b);
     if (r) {
       const rs = recipesFor(b.type);
-      if (rs.length > 1) body.unshift(h('div', { class: 'choices' }, ...rs.map((x) => button(ITEMS[x.outputs[0].item].name, () => { setRecipe(b, x.id); changed(); }, { active: b.recipe === x.id }))));
+      if (rs.length > 1) body.unshift(h('div', { class: 'choices' }, ...rs.map((x) => button(ITEMS[x.outputs[0].item].name, () => { const r = setRecipe(b, x.id); if (r.message) this.toast(r.message, r.ok); changed(); }, { active: b.recipe === x.id }))));
       body.push(h('div', { class: 'recipe' }, ...r.inputs.flatMap((ing, i) => [i ? ' + ' : '', ingredient(ing)]), ' → ',
         ...(r.outputs.length ? r.outputs.flatMap((o, i) => [i ? ' + ' : '', good(o.item, o.n)]) : [`${POWER.digester} W`]), h('small', null, ` · ${r.time} s`)));
       progress(() => (b.progress ?? 0) / r.time);

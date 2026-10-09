@@ -38,9 +38,13 @@ const params = new URLSearchParams(location.search);
 const startId = params.get('play');
 
 /** Starts a new commission: saves it, then reloads into it (each map builds its own static world). */
+/** Set while the page leaves for a new commission, so the game being left doesn't save over the new one. */
+let leaving = false;
+
 function startNew(id: string) {
   const sc = scenarioById(id);
   if (!sc) return;
+  leaving = true;
   localStorage.setItem(SAVE_KEY, serialize(newGame(sc)));
   location.href = location.pathname;
 }
@@ -73,7 +77,7 @@ async function play(initial: GameState) {
   let speed = 1, paused = false, overlay: Overlay = 'none';
   let tool: Tool = { kind: 'select' };
   let selected: number | null = null;
-  const save = () => localStorage.setItem(SAVE_KEY, serialize(state));
+  const save = () => { if (!leaving) localStorage.setItem(SAVE_KEY, serialize(state)); };
   addEventListener('pagehide', save);
   document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
 

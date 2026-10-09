@@ -26,6 +26,7 @@ const s: GameState = newGame(sc);
 s.map.terrain.fill(TERRAIN.grass);
 s.map.fertility.fill(sc.terrain.soil);
 s.soilBase.fill(sc.terrain.soil);
+s.initialTrees = 0;
 // The depot in the middle of the south edge, so every layout fits (nothing has looked up the layout yet).
 s.map.depot.x = Math.floor(s.map.width / 2);
 s.buildings[0].x = s.map.depot.x;

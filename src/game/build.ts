@@ -102,6 +102,7 @@ export function setRecipe(b: Building, id: string): Result {
   if (b.recipe === id) return no('');
   const r = recipeById(id);
   if (!r || r.building !== b.type) return no('');
+  if (b.progress !== null && b.progress !== undefined) return no('Wait for the batch in progress to finish.');
   b.recipe = id;
   b.progress = null;
   return ok(`Now making ${ITEMS[r.outputs[0].item].name.toLowerCase()}.`);
