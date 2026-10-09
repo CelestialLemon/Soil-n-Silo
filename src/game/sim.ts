@@ -54,6 +54,8 @@ interface Derived {
   nearWater: Set<number>;
   /** Tiles under a field (the rest of the ground rests). */
   fielded: Set<number>;
+  /** Belts in the order they move: each after the belt it feeds (downstream first), so build order never matters. */
+  belts: Building[];
 }
 const derivedCache = new WeakMap<GameState, Derived>();
 
@@ -61,7 +63,7 @@ function derived(s: GameState): Derived {
   const layout = layoutOf(s);
   let d = derivedCache.get(s);
   if (d && d.layout === layout) return d;
-  d = { layout, outs: new Map(), sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), nearWater: new Set(), fielded: new Set() };
+  d = { layout, outs: new Map(), sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), nearWater: new Set(), fielded: new Set(), belts: beltOrder(s) };
   const fields = s.buildings.filter((b) => b.type === 'field');
   const hives = s.buildings.filter((b) => b.type === 'hive');
   const sprinklers = s.buildings.filter((b) => b.type === 'sprinkler');
@@ -114,6 +116,29 @@ function beltsLeading(s: GameState, b: Building): Out[] {
     check(b.x - 1, b.y + i, 3);
   }
   return out;
+}
+
+/** Belts ordered downstream first: a belt comes after the belt it hands to (loops are broken at an arbitrary point). */
+function beltOrder(s: GameState): Building[] {
+  const belts = s.buildings.filter((b) => b.type === 'belt');
+  const next = new Map<Building, Building | null>();
+  for (const b of belts) {
+    const n = buildingAt(s, b.x + DX[b.rot], b.y + DY[b.rot]);
+    next.set(b, n && n.type === 'belt' && n.rot !== opposite(b.rot) ? n : null);
+  }
+  // Depth: how many belts lie ahead before the line leaves the belts.
+  const depth = new Map<Building, number>();
+  const depthOf = (b: Building): number => {
+    const known = depth.get(b);
+    if (known !== undefined) return known;
+    depth.set(b, 0);   // a loop counts from where it was entered
+    const n = next.get(b);
+    const d = n ? depthOf(n) + 1 : 0;
+    depth.set(b, d);
+    return d;
+  };
+  for (const b of belts) depthOf(b);
+  return belts.map((b, i) => ({ b, d: depth.get(b)!, i })).sort((a, c) => a.d - c.d || (a.b.y - c.b.y) || (a.b.x - c.b.x) || a.i - c.i).map((x) => x.b);
 }
 
 /** Whether a belt line runs back into `b` within a few tiles (so `b` would be feeding its own input). */
@@ -291,19 +316,22 @@ function balancePower(s: GameState, sun: number, wind: number, dt: number) {
 
 // ---- Belts and routers ----
 
+/** Goods one belt tile holds. */
+const BELT_CAPACITY = Math.round(1 / BELT.spacing);
+
 /** Puts `item` onto belt `belt` coming from direction `travel` (the way it's moving), if there's room. */
 function ontoBelt(belt: Building, item: ItemId, travel: Dir): boolean {
   if (belt.rot === opposite(travel)) return false;
   const items = belt.items!;
   if (belt.rot === travel) {
     const last = items[items.length - 1];
-    if (last && last.pos < BELT.spacing) return false;
+    if ((last && last.pos < BELT.spacing) || items.length >= BELT_CAPACITY) return false;
     items.push({ item, pos: 0, step: stepNo });
     return true;
   }
   // From the side: it joins in the middle of the belt.
   const at = 0.5;
-  if (items.some((it) => Math.abs(it.pos - at) < BELT.spacing)) return false;
+  if (items.length >= BELT_CAPACITY || items.some((it) => Math.abs(it.pos - at) < BELT.spacing)) return false;
   const i = items.findIndex((it) => it.pos < at);
   items.splice(i < 0 ? items.length : i, 0, { item, pos: at, step: stepNo });
   return true;
@@ -583,7 +611,7 @@ export function tick(s: GameState) {
   if (grown.length) touchLayout(s);
   for (const b of s.buildings) if (b.type !== 'belt' && !isRouter(b)) pushOut(s, b);
   for (const b of s.buildings) if (isRouter(b)) routeOut(s, b, dt);
-  for (const b of s.buildings) if (b.type === 'belt') moveBelt(s, b, dt);
+  for (const b of derived(s).belts) moveBelt(s, b, dt);
   // Once a second, ground without a field recovers a little.
   if (Math.floor(s.time + 1e-6) !== Math.floor(s.time - dt + 1e-6)) rest(s);
   updateStats(s);

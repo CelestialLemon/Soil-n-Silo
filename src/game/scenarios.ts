@@ -150,16 +150,19 @@ export function randomScenario(seed: number, difficulty: 1 | 2 | 3): Scenario {
   for (const i of used) mods[i]();
 
   const pool = PRODUCTS.filter((p) => p.level <= difficulty);
-  const nGoals = 1 + difficulty - (r() < 0.5 ? 1 : 0) + (difficulty === 3 ? 1 : 0);
+  // Two to four goals in all: easy 2–3, medium 3–4, hard 4; a soil goal, if any, is one of them.
+  const total = Math.min(4, 1 + difficulty + (r() < 0.5 ? 1 : 0));
+  const soil = r() < 0.4 + 0.2 * difficulty;
+  const deliveries = total - (soil ? 1 : 0);
   const goals: Goal[] = [];
   const chosen = new Set<ItemId>();
-  while (goals.length < Math.max(1, nGoals) && chosen.size < pool.length) {
+  while (goals.length < deliveries && chosen.size < pool.length) {
     const p = pick(pool);
     if (chosen.has(p.item)) continue;
     chosen.add(p.item);
     goals.push({ kind: 'deliver', item: p.item, n: Math.round(p.n * (0.8 + 0.2 * difficulty) / 5) * 5 });
   }
-  if (r() < 0.4 + 0.2 * difficulty) goals.push({ kind: 'soil', min: 40 + 5 * difficulty });
+  if (soil) goals.push({ kind: 'soil', min: 40 + 5 * difficulty });
   const par = (15 + 12 * difficulty + 6 * goals.length) * MIN;
   return {
     id: `r${seed}-${difficulty}`, name, seed, width: 44 + 4 * difficulty, height: 36 + 3 * difficulty,

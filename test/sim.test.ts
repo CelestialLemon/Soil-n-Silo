@@ -115,9 +115,9 @@ test('a belt keeps its goods apart and stops when the end is blocked', () => {
   beltEast(s, 2, 2, 3);
   const b0 = buildingAt(s, 2, 2)!;
   // Feed one good each step for a while; the last belt leads nowhere.
-  for (let i = 0; i < 100; i++) { if (!b0.items!.length || b0.items![b0.items!.length - 1].pos >= BELT.spacing) b0.items!.push({ item: 'wheat', pos: 0 }); advance(s, 0.1); }
+  for (let i = 0; i < 100; i++) { if (b0.items!.length < 2 && (!b0.items!.length || b0.items![b0.items!.length - 1].pos >= BELT.spacing)) b0.items!.push({ item: 'wheat', pos: 0 }); advance(s, 0.1); }
   const all = [0, 1, 2].flatMap((i) => buildingAt(s, 2 + i, 2)!.items!);
-  assert.ok(all.length >= 3 / BELT.spacing && all.length <= 3 / BELT.spacing + 1, `full: ${all.length}`);
+  assert.equal(all.length, 3 / BELT.spacing, 'full: two goods a tile');
   for (const b of [0, 1, 2].map((i) => buildingAt(s, 2 + i, 2)!)) {
     const items = b.items!;
     for (let i = 1; i < items.length; i++) assert.ok(items[i - 1].pos - items[i].pos >= BELT.spacing - 1e-9);
@@ -524,4 +524,32 @@ test('goods take as long through a row of splitters whichever order it was built
     return Math.round(t * 10);
   });
   assert.equal(times[0], times[1]);
+});
+
+test('a congested belt line clears at the same pace whichever order it was built in', () => {
+  const times = [false, true].map((reverse) => {
+    const s = flat();
+    const d = s.map.depot;
+    const xs = Array.from({ length: 12 }, (_, i) => d.x - 13 + i);
+    for (const x of reverse ? [...xs].reverse() : xs) put(s, 'belt', x, d.y + 1, 1);
+    // The last belt turns away from the depot while the line fills up.
+    const last = put(s, 'belt', d.x - 1, d.y + 1, 0);
+    const first = buildingAt(s, xs[0], d.y + 1)!;
+    for (let i = 0; i < 400 && s.buildings.reduce((n, b) => n + (b.items?.length ?? 0), 0) < 24; i++) {
+      if (!first.items!.length || first.items![first.items!.length - 1].pos >= BELT.spacing) first.items!.push({ item: 'egg', pos: 0 });
+      advance(s, 0.1);
+    }
+    place(s, 'belt', last.x, last.y, 1);
+    let t = 0;
+    while ((s.delivered.egg ?? 0) < 20 && t < 120) { advance(s, 0.1); t += 0.1; }
+    return Math.round(t * 10);
+  });
+  assert.equal(times[0], times[1]);
+});
+
+test('random commissions have two to four goals', () => {
+  for (let seed = 1; seed < 200; seed++) for (const d of [1, 2, 3] as const) {
+    const n = randomScenario(seed, d).goals.length;
+    assert.ok(n >= 2 && n <= 4, `seed ${seed} difficulty ${d}: ${n}`);
+  }
 });
