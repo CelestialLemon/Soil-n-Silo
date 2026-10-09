@@ -160,8 +160,9 @@ async function play(initial: GameState) {
 
   function pickHover() {
     if (!pointer) { hoverTile = null; hoverBuilding = null; return; }
-    hoverTile = tileAt(pointer.x, pointer.y);
     const p = renderer.pick(pointer.x, pointer.y);
+    // A tree or rock under the pointer is its own tile (the ground point behind it is another tile).
+    hoverTile = view.terrainOf(p?.object ?? null) ?? tileAt(pointer.x, pointer.y);
     hoverBuilding = view.buildingOf(p?.object ?? null);
     if (hoverBuilding === null && hoverTile) hoverBuilding = buildingAt(state, hoverTile.x, hoverTile.y)?.id ?? null;
   }

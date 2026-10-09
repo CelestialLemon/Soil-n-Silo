@@ -36,6 +36,8 @@ export class WorldView {
   private readonly drones = new Map<number, PixelObject>();
   private readonly pools = new Map<ItemId, { objs: PixelObject[]; used: number }>();
   private readonly terrain: (Shown | null)[] = [];
+  /** The map tile of each tree and rock object. */
+  private readonly terrainTiles = new Map<PixelObject, { x: number; y: number }>();
   private terrainKey = '';
   private overlayObjs: PixelObject[] = [];
   private overlayKey = '';
@@ -47,6 +49,11 @@ export class WorldView {
   /** The building an object belongs to (id), or null. */
   buildingOf(o: PixelObject | null): number | null {
     return o ? this.targets.get(o) ?? null : null;
+  }
+
+  /** The tile of a tree or rock object, or null. */
+  terrainOf(o: PixelObject | null): { x: number; y: number } | null {
+    return o ? this.terrainTiles.get(o) ?? null : null;
   }
 
   /** Every visible object of a building, to highlight together. */
@@ -194,11 +201,12 @@ export class WorldView {
       const want = t === TERRAIN.tree ? `tree${Math.floor(n * 3)}` : t === TERRAIN.rock ? `rock${Math.floor(n * 3)}` : null;
       const cur = this.terrain[i];
       if (cur && cur.key === want) return;
-      if (cur) { this.drop(cur.obj); this.terrain[i] = null; }
+      if (cur) { this.terrainTiles.delete(cur.obj); this.drop(cur.obj); this.terrain[i] = null; }
       if (!want) return;
       const g = t === TERRAIN.tree ? this.m.trees[n < 0.55 ? 0 : n < 0.85 ? 1 : 2] : this.m.rocks[Math.floor(n * 3) % 3];
       const obj = this.add(g, null);
       obj.setTransform(v.set(x + 0.5, 0, y + 0.5), e.set(0, n * Math.PI * 2, 0), t === TERRAIN.tree ? 0.62 + 0.25 * n : 1);
+      this.terrainTiles.set(obj, { x, y });
       this.terrain[i] = { obj, key: want };
     });
   }

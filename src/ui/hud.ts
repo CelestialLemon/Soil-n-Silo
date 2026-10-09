@@ -280,7 +280,7 @@ export class Hud {
         body.push(h('p', { class: 'hint' }, 'The chosen good goes straight on; every other good goes out left or right.'));
         break;
       case 'pad': {
-        body.push(h('div', { class: 'choices' }, button('Send', () => { setPadMode(b, 'send'); changed(); }, { active: b.mode === 'send' }), button('Receive', () => { setPadMode(b, 'receive'); changed(); }, { active: b.mode === 'receive' })));
+        body.push(h('div', { class: 'choices' }, button('Send', () => { this.padMode(b, 'send'); changed(); }, { active: b.mode === 'send' }), button('Receive', () => { this.padMode(b, 'receive'); changed(); }, { active: b.mode === 'receive' })));
         if (b.mode === 'send') {
           const t = padTarget(s, b);
           body.push(h('div', { class: 'kv' }, h('span', null, 'Sends to'), h('b', null, t ? `${BUILDINGS[t.type].name} (${Math.round(padDistance(b, t))} tiles)` : 'nothing yet')));
@@ -341,6 +341,11 @@ export class Hud {
       h('div', { class: 'head' }, h('b', null, def.name), button('✕', () => { this.host.select(null); this.refresh(); }, { cls: 'close', title: 'Close (Esc)' })),
       h('p', { class: 'hint' }, def.hint), status, ...body, actions);
     return { el, update: () => { for (const l of lines) l(); } };
+  }
+
+  private padMode(b: Building, mode: 'send' | 'receive') {
+    const r = setPadMode(b, mode);
+    if (r.message) this.toast(r.message, r.ok);
   }
 
   // ---- Stats ----
