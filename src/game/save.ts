@@ -61,7 +61,8 @@ function complete(s: GameState): boolean {
     && [s.credits, s.time, s.carry, s.nextId, s.earned, s.initialTrees].every(num)
     && (s.completedAt === null || num(s.completedAt))
     && counts(s.delivered) && counts(s.made) && arr(s.reached) && s.reached.length === s.scenario.goals.length
-    && !!st && num(st.since) && arr(st.made) && arr(st.delivered) && st.made.length > 0 && st.delivered.length > 0 && st.made.every(counts) && st.delivered.every(counts)
+    && !!st && num(st.since) && arr(st.made) && st.made.length > 0 && st.made.every(counts)
+    && !!st.delivered && typeof st.delivered === 'object' && Object.entries(st.delivered).every(([k, v]) => item(k) && arr(v) && v.every(num))
     && arr(s.buildings) && s.buildings.every((b) => validBuilding(b, m.width, m.height));
 }
 

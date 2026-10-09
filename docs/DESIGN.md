@@ -137,7 +137,7 @@ Every building is available from the start. Removing one refunds its full cost, 
 
 | Building | Size | Cost | Notes |
 | --- | --- | --- | --- |
-| Belt | 1 × 1 | 2 | Carries goods at 1.5 tiles/s, up to 3 per tile. Takes goods from behind and both sides |
+| Belt | 1 × 1 | 2 | Carries goods at 1.2 tiles/s, two per tile. Takes goods from behind and both sides |
 | Splitter | 1 × 1 | 15 | Takes goods from any belt leading into it and shares them between the other sides in turn, skipping full or empty exits |
 | Sorter | 1 × 1 | 20 | The chosen good goes ahead; everything else goes left or right |
 | Crossing | 1 × 1 | 10 | Two belts cross without mixing: goods leave on the side opposite the one they came in by |

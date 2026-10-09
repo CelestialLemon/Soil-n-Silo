@@ -16,7 +16,7 @@ export const right = (d: Dir) => ((d + 1) % 4) as Dir;
 /** A good on a belt: how far along it is (0–1), and the step it came on (it doesn't move again that step). */
 export interface BeltItem { item: ItemId; pos: number; step?: number }
 /** A good passing through a splitter, sorter or crossing: where it came in, and how long it has left inside. */
-export interface Transit { item: ItemId; from: Dir; t: number }
+export interface Transit { item: ItemId; from: Dir; t: number; step?: number }
 export interface Drone { phase: 'home' | 'out' | 'back' | 'hover'; t: number; cargo: ItemId[]; target: number }
 
 export type Status = 'ok' | 'idle' | 'input' | 'blocked' | 'power' | 'lowpower' | 'nolink' | 'flowers' | 'dry';
@@ -65,9 +65,10 @@ export interface Building {
 export interface Stats {
   /** Start time of the newest bucket. */
   since: number;
-  /** Ten-second buckets, newest first (the one filling now and six full ones). */
+  /** Goods made, in ten-second buckets, newest first (the one filling now and six full ones). */
   made: Partial<Record<ItemId, number>>[];
-  delivered: Partial<Record<ItemId, number>>[];
+  /** When each good was delivered, over the last minute (exact, for rate goals). */
+  delivered: Partial<Record<ItemId, number[]>>;
 }
 
 /** The current bucket plus six full ones, so a whole minute is always covered. */
@@ -102,7 +103,7 @@ export function newGame(sc: Scenario): GameState {
   const s: GameState = {
     version: 1, scenario: sc, map, soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
     buildings: [], nextId: 1, credits: sc.credits, time: 0, carry: 0, delivered: {}, earned: 0,
-    stats: { since: 0, made: [{}], delivered: [{}] }, reached: sc.goals.map(() => false), completedAt: null, made: {},
+    stats: { since: 0, made: [{}], delivered: {} }, reached: sc.goals.map(() => false), completedAt: null, made: {},
   };
   s.buildings.push(makeBuilding(s, 'depot', map.depot.x, map.depot.y, 0));
   return s;

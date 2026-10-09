@@ -375,15 +375,15 @@ test('a pad cannot switch to receiving while its drone is out', () => {
   assert.equal(b.store!.length, 5);
 });
 
-test('rate goals count deliveries across the last full minute (the oldest ten seconds pro-rated)', () => {
-  const s = flat({ goals: [{ kind: 'rate', item: 'yarn', perMin: 5.5 }] });
+test('rate goals count every delivery in the last minute, and only those', () => {
+  const s = flat({ goals: [{ kind: 'rate', item: 'yarn', perMin: 6 }] });
   s.reached = [false];
   const d = s.map.depot;
   const belt = put(s, 'belt', d.x - 1, d.y + 1, 1);
   advance(s, 1);
   for (let i = 0; i < 6; i++) { belt.items!.push({ item: 'yarn', pos: 1 }); advance(s, 0.1); }
   advance(s, 60 - s.time + 0.05);
-  assert.ok(ratePerMin(s, 'yarn', 'delivered') >= 5.5, `rate ${ratePerMin(s, 'yarn', 'delivered')}`);
+  assert.ok(ratePerMin(s, 'yarn', 'delivered') >= 6, `rate ${ratePerMin(s, 'yarn', 'delivered')}`);
   assert.ok(s.reached[0]);
   advance(s, 15);
   assert.ok(ratePerMin(s, 'yarn', 'delivered') < 6);
@@ -492,6 +492,35 @@ test('goods take as long along a belt line whichever order it was built in', () 
     buildingAt(s, xs[0], d.y + 1)!.items!.push({ item: 'egg', pos: 0 });
     let t = 0;
     while (!s.delivered.egg && t < 60) { advance(s, 0.1); t += 0.1; }
+    return Math.round(t * 10);
+  });
+  assert.equal(times[0], times[1]);
+});
+
+test('a rate goal is not met by deliveries more than a minute apart', () => {
+  const s = flat({ goals: [{ kind: 'rate', item: 'yarn', perMin: 5 }] });
+  s.reached = [false];
+  const d = s.map.depot;
+  const belt = put(s, 'belt', d.x - 1, d.y + 1, 1);
+  advance(s, 60.1);
+  for (let i = 0; i < 4; i++) { belt.items!.push({ item: 'yarn', pos: 1 }); advance(s, 0.1); }
+  advance(s, 121 - s.time);
+  for (let i = 0; i < 2; i++) { belt.items!.push({ item: 'yarn', pos: 1 }); advance(s, 0.1); }
+  advance(s, 0.2);
+  assert.equal(ratePerMin(s, 'yarn', 'delivered'), 2);
+  assert.equal(s.reached[0], false);
+});
+
+test('goods take as long through a row of splitters whichever order it was built in', () => {
+  const times = [false, true].map((reverse) => {
+    const s = flat();
+    const xs = Array.from({ length: 6 }, (_, i) => 4 + i);
+    put(s, 'belt', 3, 5, 1);
+    for (const x of reverse ? [...xs].reverse() : xs) put(s, 'splitter', x, 5);
+    put(s, 'belt', 10, 5, 1); put(s, 'belt', 11, 5, 1);
+    buildingAt(s, 3, 5)!.items!.push({ item: 'egg', pos: 1 });
+    let t = 0;
+    while (!buildingAt(s, 10, 5)!.items!.length && t < 30) { advance(s, 0.1); t += 0.1; }
     return Math.round(t * 10);
   });
   assert.equal(times[0], times[1]);

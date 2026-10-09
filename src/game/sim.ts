@@ -216,8 +216,7 @@ function deliver(s: GameState, item: ItemId) {
   s.delivered[item] = (s.delivered[item] ?? 0) + 1;
   s.credits += ITEMS[item].price;
   s.earned += ITEMS[item].price;
-  const bucket = s.stats.delivered[0];
-  bucket[item] = (bucket[item] ?? 0) + 1;
+  (s.stats.delivered[item] ??= []).push(s.time);
 }
 
 function made(s: GameState, item: ItemId, n: number) {
@@ -322,7 +321,7 @@ function handTo(s: GameState, x: number, y: number, item: ItemId, travel: Dir): 
     if (nb.type === 'crossing') {
       if (nb.transit!.some((t) => t.from % 2 === from % 2)) return false;
     } else if (nb.transit!.length >= 1) return false;
-    nb.transit!.push({ item, from, t: ROUTER_SECONDS });
+    nb.transit!.push({ item, from, t: ROUTER_SECONDS, step: stepNo });
     return true;
   }
   return accept(s, nb, item);
@@ -354,7 +353,8 @@ function routeOut(s: GameState, b: Building, dt: number) {
   const tr = b.transit!;
   for (let i = 0; i < tr.length; i++) {
     const t = tr[i];
-    t.t -= dt;
+    // Goods that came in during this step wait for the next (whichever order the buildings are in).
+    if (t.step !== stepNo) t.t -= dt;
     if (t.t > 0) continue;
     const travel = opposite(t.from);
     // Exits in a fixed order of compass directions, so goods coming in from several sides still take turns between them.
@@ -597,19 +597,27 @@ function rest(s: GameState) {
 
 function updateStats(s: GameState) {
   const st = s.stats;
+  pruneDeliveries(s);
   if (s.time - st.since >= STAT_BUCKET) {
     st.since += STAT_BUCKET;
-    st.made.unshift({}); st.delivered.unshift({});
+    st.made.unshift({});
     if (st.made.length > STAT_BUCKETS) st.made.length = STAT_BUCKETS;
-    if (st.delivered.length > STAT_BUCKETS) st.delivered.length = STAT_BUCKETS;
   }
 }
 
 /** Per-minute rate of a good over the last minute, from the stat buckets. */
 export function ratePerMin(s: GameState, item: ItemId, which: 'made' | 'delivered') {
-  const buckets = s.stats[which], into = s.time - s.stats.since;
   const minute = STAT_BUCKET * (STAT_BUCKETS - 1);
-  // The newest buckets whole; the oldest only for the part of it still inside the last minute.
+  if (which === 'delivered') {
+    // Exact: every delivery in the last minute.
+    const times = s.stats.delivered[item] ?? [], from = s.time - minute;
+    let n = 0;
+    for (const t of times) if (t > from) n++;
+    const span = Math.min(s.time, minute);
+    return span > 0 ? n / span * 60 : 0;
+  }
+  const buckets = s.stats.made, into = s.time - s.stats.since;
+  // Goods made, for the stats: the newest buckets whole, the oldest only for the part of it still inside the last minute.
   let total = 0;
   buckets.forEach((b, i) => {
     const n = b[item] ?? 0;
@@ -617,6 +625,16 @@ export function ratePerMin(s: GameState, item: ItemId, which: 'made' | 'delivere
   });
   const span = Math.min(s.time, minute);
   return span > 0 ? total / span * 60 : 0;
+}
+
+/** Forgets deliveries older than a minute. */
+function pruneDeliveries(s: GameState) {
+  const from = s.time - STAT_BUCKET * (STAT_BUCKETS - 1);
+  for (const times of Object.values(s.stats.delivered)) {
+    let k = 0;
+    while (k < times!.length && times![k] <= from) k++;
+    if (k) times!.splice(0, k);
+  }
 }
 
 export function goalDone(s: GameState, i: number): boolean {
