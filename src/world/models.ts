@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { collectGltf, GeometryCollector, loadGltf, motion, movingPartMotion, namedMeshRule, type Motion } from 'pixel3d-renderer';
-import { BUILDING_IDS, CROP_IDS, CROPS, ITEM_IDS, type BuildingId, type CropId, type ItemId } from '../game/data.ts';
-import { C, cropStandIn, drone, frame, itemShape, marker, rock, SOIL_BANDS, soilTile, standIn, tileFill } from './shapes.ts';
+import { BELT, BUILDING_IDS, CROP_IDS, CROPS, ITEM_IDS, type BuildingId, type CropId, type ItemId } from '../game/data.ts';
+import { arrow, C, cropStandIn, drone, frame, itemShape, marker, rock, SOIL_BANDS, soilTile, standIn, tileFill } from './shapes.ts';
 
 // The game's object geometries, in local space (origin on the ground at the footprint centre, front facing +z). They come
 // from the Blender models in public/models/ (assets/<name>/build.py) where those exist, split by the node names the asset
@@ -27,6 +27,8 @@ export interface Models {
   frames: { ok: Geo[]; bad: Geo[] };
   /** A flat square filling a tile, tinted per overlay. */
   fill: Geo;
+  /** Chevrons gliding along a belt's deck the way goods go (built along +x). */
+  arrow: Geo;
 }
 
 /** Which Blender model draws each building, in order of preference. */
@@ -159,6 +161,7 @@ export async function loadModels(): Promise<Models> {
     cursor: frame(1, 0xfff0c0),
     frames: { ok: [1, 2, 3].map((n) => frame(n, 0xd8ffb0)), bad: [1, 2, 3].map((n) => frame(n, 0xff5040)) },
     fill: tileFill(0xf4f0e0),
+    arrow: arrow(BELT.speed),
   };
 }
 
@@ -167,7 +170,7 @@ export function allGeometries(m: Models): Geo[] {
   return [
     ...Object.values(m.buildings).flatMap((l) => [l.idle, l.running]), ...m.turbine, ...Object.values(m.crops).flat(), ...Object.values(m.items),
     ...m.soil, ...m.trees, ...m.rocks, m.drone, ...Object.values(m.markers), m.cursor, ...m.frames.ok, ...m.frames.bad,
-    m.fill,
+    m.fill, m.arrow,
   ];
 }
 

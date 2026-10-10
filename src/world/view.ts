@@ -3,7 +3,7 @@ import type { PixelObject, PixelRenderer } from 'pixel3d-renderer';
 import { BUILDINGS, CROPS, HIVE, POWER, ROUTER_SECONDS, type BuildingId, type ItemId } from '../game/data.ts';
 import { TERRAIN } from '../game/map.ts';
 import { networks } from '../game/power.ts';
-import { padTarget, windAt } from '../game/sim.ts';
+import { goodsFlow, padTarget, receiversOf, suppliersOf, windAt } from '../game/sim.ts';
 import { buildingById, centre, DX, DY, layoutOf, sizeOf, type Building, type Dir, type GameState } from '../game/state.ts';
 import { hash } from './kit.ts';
 import type { Models } from './models.ts';
@@ -11,7 +11,7 @@ import { soilBand } from './shapes.ts';
 
 // Shows the game state with renderer objects. Every frame it adds, swaps and removes objects so the world matches the state:
 // buildings (idle or running), fields' soil and crops, goods on belts and in splitters, drones in flight, status markers,
-// trees and rocks. It remembers which building each object belongs to, for picking and highlights.
+// trees and rocks, arrows on belts. It remembers which building each object belongs to, for picking and highlights.
 
 /** Height of a belt's deck, where goods ride. */
 export const DECK = 0.16;
@@ -25,6 +25,11 @@ const v = new THREE.Vector3(), e = new THREE.Euler();
 /** Overlay colours: soil from poor (red) to rich (green), pylon reach, sprinkler water, bee range. */
 const FERT = [0xb03020, 0xd07020, 0xd8b020, 0x98c030, 0x50a030, 0x207a30].map((c) => new THREE.Color(c));
 const REACH = new THREE.Color(0xf0d060), WATER = new THREE.Color(0x60a8e8), BEES = new THREE.Color(0xf09030);
+/** Belts of the focused building: belts it takes goods from, and belts it puts goods on. */
+export const LINK_IN = 0x7ee060, LINK_OUT = 0x50b4ff;
+const IN = new THREE.Color(LINK_IN), OUT = new THREE.Color(LINK_OUT), LINK_STRENGTH = 0.6;
+/** Buildings with an arrow on their deck. */
+const ARROWED = new Set<BuildingId>(['belt', 'sorter']);
 
 export type Overlay = 'none' | 'fertility' | 'power' | 'water' | 'bees';
 
@@ -33,6 +38,9 @@ export class WorldView {
   private readonly shown = new Map<number, Shown>();
   private readonly parts = new Map<number, Shown[]>();
   private readonly markers = new Map<number, Shown>();
+  private readonly arrows = new Map<number, Shown>();
+  private linksKey = '';
+  private readonly linked = new Map<number, THREE.Color>();
   private readonly drones = new Map<number, PixelObject>();
   private readonly pools = new Map<ItemId, { objs: PixelObject[]; used: number }>();
   private readonly terrain: (Shown | null)[] = [];
@@ -62,6 +70,8 @@ export class WorldView {
     const main = this.shown.get(id);
     if (main) out.push(main.obj);
     for (const p of this.parts.get(id) ?? []) out.push(p.obj);
+    const a = this.arrows.get(id);
+    if (a) out.push(a.obj);
     return out;
   }
 
@@ -99,7 +109,14 @@ export class WorldView {
       }
       this.shown.set(b.id, this.show(this.shown.get(b.id), key, geo, b.id, (o) => o.setTransform(v.set(cx, 0, cz), e.set(0, YAW[b.rot], 0))));
       if (b.type === 'sorter') this.syncFilter(b, cx, cz);
+      if (ARROWED.has(b.type)) {
+        this.arrows.set(b.id, this.show(this.arrows.get(b.id), `${b.x} ${b.y} ${b.rot}`, () => this.m.arrow, b.id, (o) => {
+          o.castShadow = false;
+          o.setTransform(v.set(cx, DECK + 0.005, cz), e.set(0, YAW[b.rot] - Math.PI / 2, 0));
+        }));
+      }
     }
+    for (const [id, sh] of this.arrows) if (!alive.has(id)) { this.drop(sh.obj); this.arrows.delete(id); }
     for (const [id, sh] of this.shown) if (!alive.has(id)) { this.drop(sh.obj); this.shown.delete(id); }
     for (const [id, ps] of this.parts) if (!alive.has(id)) { for (const p of ps) this.drop(p.obj); this.parts.delete(id); }
     this.syncMarkers(s, alive);
@@ -187,6 +204,30 @@ export class WorldView {
     for (const [id, o] of this.drones) {
       const b = alive.has(id) ? s.buildings.find((x) => x.id === id) : null;
       if (!b || b.mode !== 'send') { this.drop(o); this.drones.delete(id); }
+    }
+  }
+
+  /**
+   * Tints the belts the building `id` takes goods from (green) and puts its goods on (copper), so you can see how it's
+   * wired; none with null. Call after `sync` every frame: a belt's object is swapped when it starts or stops moving goods.
+   */
+  links(s: GameState, id: number | null) {
+    const b = id !== null ? buildingById(s, id) : null;
+    const flow = b ? goodsFlow(b) : null;
+    const key = b && (flow!.takes || flow!.gives) ? `${b.id} ${b.mode} ${b.filter} ${layoutOf(s)}` : '';
+    if (key !== this.linksKey) {
+      this.linksKey = key;
+      this.linked.clear();
+      if (b && key) {
+        if (flow!.takes) for (const x of suppliersOf(s, b)) this.linked.set(x.id, IN);
+        if (flow!.gives) for (const x of receiversOf(s, b)) this.linked.set(x.id, OUT);
+      }
+    }
+    for (const [bid, a] of this.arrows) {
+      const o = this.shown.get(bid)?.obj, tint = this.linked.get(bid) ?? null;
+      for (const x of o ? [o, a.obj] : [a.obj]) {
+        if (x.tint !== tint) { x.tint = tint; x.tintStrength = LINK_STRENGTH; }
+      }
     }
   }
 
