@@ -35,20 +35,15 @@ blueprints and copy-paste, sound, multiple saves per level.
 ## Camera, presentation and controls
 
 The camera stays as it was: orthographic, a 3/4 view at about 30° pitch, 4 views 90° apart (Q/E), zoom (the wheel, a trackpad pinch,
-+/− or Z) and panning (drag, right-drag or the arrow keys). Zoom eases smoothly towards the pointer.
++/− or Z) and panning (drag, right-drag or the arrow keys). Zoom eases smoothly towards the pointer. Low-poly, flat-colour models drawn as
+pixel art by `pixel3d-renderer`. Everything is seen from 4 sides.
 
-How zoom treats the pixel art is still being decided by playing. Three modes can be switched in the HUD (Zoom: Magnify, Detail,
-Free), all over the same range:
+Each art pixel is always drawn as a square of the same size on screen (2×2 screen pixels by default; the pixel size is a
+setting in the menu, 1×1 to 4×4). Zooming changes how much ground fits on the screen, so models are drawn with more art
+pixels close up and fewer far out. Chosen on 2026-10-10 over two other ways, tried side by side in play: magnifying a fixed
+picture (art pixels growing from 1×1 to 6×6) and stepping through six fixed detail levels; the free zoom looked and felt best.
 
-- **Magnify:** the art is drawn at a fixed 16 art pixels per metre and zooming scales whole art pixels (1×1 to 6×6 on
-  screen). The picture never changes, only its size; at rest the art is never resampled.
-- **Detail:** art pixels stay 2×2 on screen and zooming steps through six art densities (8 to 48 per metre), so models are
-  drawn with more pixels close up and fewer far out, at a few known looks. Zooming in scales the picture up and draws the
-  new detail when it settles.
-- **Free:** art pixels stay 2×2 on screen and the density follows the zoom continuously.
-
-![The same mill zoomed in: Magnify, Detail, Free](images/zoom-modes.png) Low-poly, flat-colour models drawn as pixel art by `pixel3d-renderer`. Everything is seen
-from 4 sides.
+![The same mill zoomed in, the three ways tried: magnify, detail steps, free (chosen)](images/zoom-modes.png)
 
 It is build-only and point-and-click. There is no character and no manual farming: you place, rotate, configure and remove.
 
