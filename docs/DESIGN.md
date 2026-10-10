@@ -79,6 +79,10 @@ The build preview is see-through, green where it fits and red where it doesn't.
   placed pylon shows both its ranges: its reach (a square, 3 tiles) and its link range (a dashed circle, 8 tiles).
 - A battery's cells light up from the bottom as it fills, one ring a quarter.
 
+![The power buildings before and after the 2026-10-11 redesign, without and with the power overlay](images/power-before-after.png)
+
+![A selected pylon's reach, link range and network; a drag laying a line of pylons](images/power-network.png)
+
 ![The guide's page for the mill](images/guide.png)
 
 ## Time

@@ -86,9 +86,12 @@ export class PowerView {
   private reachTiles(s: GameState, ghosts: PowerFocus['ghosts']) {
     const { width: w, height: h } = s.map, r = POWER.pylon.reach;
     const owner = new Map<number, THREE.Color>();
-    for (const net of networks(s).list) {
-      const tint = TILE_TINTS[netColour(s, net)];
-      for (const p of net.pylons) for (let y = p.y - r; y <= p.y + r; y++) for (let x = p.x - r; x <= p.x + r; x++) {
+    // Pylons in the order the rules look at them (power.ts), so the first to reach a tile colours it.
+    const of = networks(s).of;
+    for (const p of s.buildings) {
+      if (p.type !== 'pylon') continue;
+      const tint = TILE_TINTS[netColour(s, of.get(p.id)!)];
+      for (let y = p.y - r; y <= p.y + r; y++) for (let x = p.x - r; x <= p.x + r; x++) {
         if (x >= 0 && y >= 0 && x < w && y < h && !owner.has(y * w + x)) owner.set(y * w + x, tint);
       }
     }

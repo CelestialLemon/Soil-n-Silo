@@ -538,7 +538,7 @@ async function play(initial: GameState) {
     // network, or pointing at a pylon or something that makes or stores power.
     const hovered = tool.kind === 'select' && hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;
     power.sync(state, {
-      all: shownOverlay === 'power', tiles: shownOverlay === 'power',
+      all: shownOverlay === 'power' || (tool.kind === 'build' && usesPower(tool.type)), tiles: shownOverlay === 'power',
       focus: selected ?? (hovered && POWER_BUILDINGS.has(hovered.type) ? hovered.id : null), ghosts: pylonGhosts,
     });
     hud.setNetLabels(power.labels().map((l) => ({ ...l, ...toScreen(l.x, l.y, l.z) })));
