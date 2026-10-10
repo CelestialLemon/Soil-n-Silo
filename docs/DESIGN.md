@@ -45,7 +45,9 @@ Free), all over the same range:
 - **Detail:** art pixels stay 2×2 on screen and zooming steps through six art densities (8 to 48 per metre), so models are
   drawn with more pixels close up and fewer far out, at a few known looks. Zooming in scales the picture up and draws the
   new detail when it settles.
-- **Free:** art pixels stay 2×2 on screen and the density follows the zoom continuously. Low-poly, flat-colour models drawn as pixel art by `pixel3d-renderer`. Everything is seen
+- **Free:** art pixels stay 2×2 on screen and the density follows the zoom continuously.
+
+![The same mill zoomed in: Magnify, Detail, Free](images/zoom-modes.png) Low-poly, flat-colour models drawn as pixel art by `pixel3d-renderer`. Everything is seen
 from 4 sides.
 
 It is build-only and point-and-click. There is no character and no manual farming: you place, rotate, configure and remove.
