@@ -1,5 +1,5 @@
 import { BUILDINGS, POWER } from './data.ts';
-import { layoutOf, reachTo, type Building, type GameState } from './state.ts';
+import { layoutOf, reachTo, sizeOf, type Building, type GameState } from './state.ts';
 
 // Power networks: pylons within reach of each other link into a network, and every building that makes, stores or uses
 // power joins the network of the first pylon that reaches one of its tiles. Each network balances on its own (sim.ts).
@@ -63,3 +63,48 @@ export function networks(s: GameState): Networks {
 }
 
 export const networkOf = (s: GameState, b: Building) => networks(s).of.get(b.id) ?? null;
+
+const gap = (a: Building, b: Building) => Math.hypot(a.x - b.x, a.y - b.y);
+
+/**
+ * The pylon a powered building draws through, for showing it: the nearest of its network's pylons that reaches it.
+ * Null when it has no network.
+ */
+export function feederOf(s: GameState, b: Building): Building | null {
+  const net = networkOf(s, b);
+  if (!net) return null;
+  let best: Building | null = null, bestD = Infinity;
+  for (const p of net.pylons) {
+    if (reachTo(b, p.x, p.y) > POWER.pylon.reach) continue;
+    const c = Math.hypot(p.x + 0.5 - (b.x + sizeOf(b) / 2), p.y + 0.5 - (b.y + sizeOf(b) / 2));
+    if (c < bestD) { bestD = c; best = p; }
+  }
+  return best;
+}
+
+/**
+ * The wires to draw between a network's pylons: the shortest links that join them all (a minimum spanning tree), so a
+ * dense cluster of pylons doesn't turn into a web. Every one is within link range.
+ */
+export function wiresOf(net: Network): [Building, Building][] {
+  const ps = net.pylons, n = ps.length;
+  if (n < 2) return [];
+  const inTree = new Array<boolean>(n).fill(false), best = new Array<number>(n).fill(Infinity), from = new Array<number>(n).fill(-1);
+  const out: [Building, Building][] = [];
+  best[0] = 0;
+  for (let k = 0; k < n; k++) {
+    let i = -1;
+    for (let j = 0; j < n; j++) if (!inTree[j] && (i < 0 || best[j] < best[i])) i = j;
+    inTree[i] = true;
+    if (from[i] >= 0) out.push([ps[from[i]], ps[i]]);
+    for (let j = 0; j < n; j++) {
+      const d = gap(ps[i], ps[j]);
+      if (!inTree[j] && d <= POWER.pylon.link && d < best[j]) { best[j] = d; from[j] = i; }
+    }
+  }
+  return out;
+}
+
+/** The pylons a pylon at (x, y) would link to. */
+export const pylonsInLink = (s: GameState, x: number, y: number) =>
+  networks(s).list.flatMap((n) => n.pylons).filter((p) => (p.x !== x || p.y !== y) && Math.hypot(p.x - x, p.y - y) <= POWER.pylon.link);

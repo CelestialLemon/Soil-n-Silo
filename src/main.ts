@@ -1,15 +1,17 @@
 import * as THREE from 'three';
 import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObject } from 'pixel3d-renderer';
 import { canPlace, place, remove, removeAt } from './game/build.ts';
-import { BUILDINGS, type BuildingId } from './game/data.ts';
+import { BUILDINGS, POWER, type BuildingId } from './game/data.ts';
 import { TERRAIN } from './game/map.ts';
+import { POWERED, pylonsInLink } from './game/power.ts';
 import { deserialize, readProgress, recordResult, saveKey, serialize } from './game/save.ts';
 import { scenarioById } from './game/scenarios.ts';
 import { advance, describeStatus, fieldFertility, hourAt, medalFor } from './game/sim.ts';
-import { buildingAt, buildingById, inMap, newGame, sizeOf, terrainAt, type Dir, type GameState } from './game/state.ts';
+import { buildingAt, buildingById, inMap, newGame, reachTo, sizeOf, terrainAt, type Dir, type GameState } from './game/state.ts';
 import { Hud, PIXEL_SIZES, type Tool } from './ui/hud.ts';
 import { showMenu } from './ui/menu.ts';
 import { allGeometries, loadModels } from './world/models.ts';
+import { PowerView } from './world/powerView.ts';
 import { buildWorld } from './world/terrain.ts';
 import { WorldView, type Overlay } from './world/view.ts';
 import './ui/style.css';
@@ -35,6 +37,11 @@ const TURN_SECONDS = 0.3;
 const REPICK_FRAMES = 6;
 const AUTOSAVE_SECONDS = 30;
 const MAX_STEPS_PER_FRAME = 80;
+/** How far apart a drag places pylons: their reaches meet edge to edge, and each links to the next. */
+const PYLON_STEP = 2 * POWER.pylon.reach + 1;
+/** Whether placing a building should show the power networks: it makes, stores, carries or uses power. */
+const POWER_BUILDINGS = new Set<BuildingId>(['pylon', 'solar', 'turbine', 'battery', 'digester']);
+const usesPower = (t: BuildingId) => POWER_BUILDINGS.has(t) || !!BUILDINGS[t].power;
 
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
 const loading = document.querySelector<HTMLElement>('#loading')!;
@@ -79,6 +86,7 @@ async function play(initial: GameState) {
   quantizePalette([...world.geometries, ...allGeometries(models)], 96);
   const renderer = new PixelRenderer(canvas, world.scene, { shadowMapSize: 2048, warmHighlight: true });
   const view = new WorldView(renderer, models);
+  const power = new PowerView(renderer, models);
   const cursor = renderer.addObject(models.cursor);
   cursor.visible = false;
   loading.remove();
@@ -199,6 +207,14 @@ async function play(initial: GameState) {
   }
   fit();
 
+  /** A world point's place on the page. */
+  const projected = new THREE.Vector3();
+  function toScreen(x: number, y: number, z: number) {
+    const rect = canvas.getBoundingClientRect();
+    projected.set(x, y, z).project(renderer.camera);
+    return { sx: rect.left + (projected.x + 1) / 2 * rect.width, sy: rect.top + (1 - projected.y) / 2 * rect.height };
+  }
+
   // ---- Pointing ----
   const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2(), ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3();
   /** The point on the ground plane under a point of the page. */
@@ -257,18 +273,23 @@ async function play(initial: GameState) {
   function clearGhosts() {
     for (const list of ghostPool.values()) for (const o of list) o.visible = false;
     ghostUsed = new Map();
+    pylonGhosts = [];
   }
   const YAW = [Math.PI, Math.PI / 2, 0, -Math.PI / 2];
 
   /** The north-west tile for a building of size n centred under the pointer's tile. */
   const anchor = (t: { x: number; y: number }, n: number) => ({ x: t.x - Math.floor((n - 1) / 2), y: t.y - Math.floor((n - 1) / 2) });
 
-  /** Where a drag in build mode places things: a row of buildings along the drag's longer axis. */
+  /**
+   * Where a drag in build mode places things: a row of buildings along the drag's longer axis. Pylons are spaced so their
+   * reaches meet edge to edge and each links to the next: a drag lays a power line.
+   */
   function plan(type: BuildingId, from: { x: number; y: number }, to: { x: number; y: number }, rot: Dir) {
     const n = BUILDINGS[type].size, a = anchor(from, n), b = anchor(to, n);
+    const step = type === 'pylon' ? PYLON_STEP : n;
     const horizontal = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
-    const steps = Math.floor((horizontal ? Math.abs(b.x - a.x) : Math.abs(b.y - a.y)) / n);
-    const sx = horizontal ? Math.sign(b.x - a.x) * n : 0, sy = horizontal ? 0 : Math.sign(b.y - a.y) * n;
+    const steps = Math.floor((horizontal ? Math.abs(b.x - a.x) : Math.abs(b.y - a.y)) / step);
+    const sx = horizontal ? Math.sign(b.x - a.x) * step : 0, sy = horizontal ? 0 : Math.sign(b.y - a.y) * step;
     return Array.from({ length: steps + 1 }, (_, i) => ({ x: a.x + sx * i, y: a.y + sy * i, rot }));
   }
 
@@ -284,15 +305,17 @@ async function play(initial: GameState) {
       for (const sp of spots) {
         const okHere = canPlace(state, type, sp.x, sp.y).ok && credits >= BUILDINGS[type].cost;
         if (okHere && !state.scenario.sandbox) credits -= BUILDINGS[type].cost;
+        if (type === 'pylon') pylonGhosts.push({ x: sp.x, y: sp.y, ok: okHere });
         const cx = sp.x + n / 2, cz = sp.y + n / 2;
         ghost(`frame ${okHere} ${n}`, (okHere ? models.frames.ok : models.frames.bad)[n - 1], cx, 0.03, cz);
         ghost(`b ${type}`, models.buildings[type].idle, cx, 0.04, cz, YAW[sp.rot], okHere);
       }
-      // A pylon's reach, and the pylons it would link to; the silos' reach.
-      if (type === 'pylon' && spots.length === 1) overlayFor('power');
+      // The silos' reach, the sprinklers' water and the bees' range; anything that makes, stores or uses power shows the
+      // power networks.
       if (type === 'silo') overlayFor('silos');
-      if (type === 'sprinkler') overlayFor('water');
-      if (type === 'hive') overlayFor('bees');
+      else if (type === 'sprinkler') overlayFor('water');
+      else if (type === 'hive') overlayFor('bees');
+      else if (usesPower(type)) overlayFor('power');
     } else if (tool.kind === 'remove' && press?.mode === 'paint' && press.from && press.to) {
       const x0 = Math.min(press.from.x, press.to.x), x1 = Math.max(press.from.x, press.to.x), y0 = Math.min(press.from.y, press.to.y), y1 = Math.max(press.from.y, press.to.y);
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) ghost('frame false 1', models.frames.bad[0], x + 0.5, 0.03, y + 0.5);
@@ -303,6 +326,8 @@ async function play(initial: GameState) {
   }
   let toolOverlay: Overlay = 'none';
   const overlayFor = (o: Overlay) => { toolOverlay = o; };
+  /** Pylons being placed, for the power view. */
+  let pylonGhosts: { x: number; y: number; ok: boolean }[] = [];
 
   // ---- Acting ----
   function act(x: number, y: number) {
@@ -449,7 +474,7 @@ async function play(initial: GameState) {
       const n = BUILDINGS[tool.type].size, a = anchor(hoverTile, n), c = canPlace(state, tool.type, a.x, a.y);
       const head = `${BUILDINGS[tool.type].name} · ${state.scenario.sandbox ? 'free' : `${BUILDINGS[tool.type].cost} credits`}`;
       const soil = tool.type === 'field' ? ` · soil ${Math.round(avgSoil(a.x, a.y))}` : '';
-      return `${head}${soil}\n${c.ok ? 'Click or drag to build · R turns' : c.message}`;
+      return `${head}${soil}${tool.type === 'pylon' && c.ok ? pylonNote(a.x, a.y) : ''}\n${c.ok ? `Click or drag to build${tool.type === 'pylon' ? ' (a drag lays a line)' : ''} · R turns` : c.message}`;
     }
     if (b) return `${BUILDINGS[b.type].name}: ${describeStatus(state, b)}${b.type === 'field' ? ` · soil ${Math.round(fieldFertility(state, b))}` : ''}`;
     if (!hoverTile) return null;
@@ -458,6 +483,13 @@ async function play(initial: GameState) {
     if (t === TERRAIN.tree) return 'A tree: shelters wind turbines nearby. Remove (X) for 5 credits.';
     if (t === TERRAIN.rock) return 'Rock. Remove (X) for 15 credits.';
     return `Grass · soil fertility ${state.map.fertility[hoverTile.y * map.width + hoverTile.x]}`;
+  }
+  /** What a pylon placed at (x, y) would do: link to pylons, start a network, power buildings. */
+  function pylonNote(x: number, y: number) {
+    const links = pylonsInLink(state, x, y).length;
+    const reaches = state.buildings.filter((b) => POWERED(b) && reachTo(b, x, y) <= POWER.pylon.reach).length;
+    const link = links ? ` · links to ${links} pylon${links > 1 ? 's' : ''}` : state.buildings.some((b) => b.type === 'pylon') ? ` · no pylon within ${POWER.pylon.link}: a new network` : '';
+    return `${link} · reaches ${reaches} building${reaches === 1 ? '' : 's'}`;
   }
   function avgSoil(x: number, y: number) {
     let sum = 0, n = 0;
@@ -498,8 +530,18 @@ async function play(initial: GameState) {
     showGhosts();
     // A selected silo shows the silos' reach.
     if (toolOverlay === 'none' && selected !== null && buildingById(state, selected)?.type === 'silo') toolOverlay = 'silos';
-    view.overlay(state, overlay !== 'none' ? overlay : toolOverlay);
-    view.links(state, selected ?? (tool.kind === 'select' ? hoverBuilding : null));
+    const shownOverlay = overlay !== 'none' ? overlay : toolOverlay;
+    view.overlay(state, shownOverlay);
+    const focus = selected ?? (tool.kind === 'select' ? hoverBuilding : null);
+    view.links(state, focus);
+    // Power shows only while you work with it: its overlay, placing something that uses power, selecting a building on a
+    // network, or pointing at a pylon or something that makes or stores power.
+    const hovered = tool.kind === 'select' && hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;
+    power.sync(state, {
+      all: shownOverlay === 'power', tiles: shownOverlay === 'power',
+      focus: selected ?? (hovered && POWER_BUILDINGS.has(hovered.type) ? hovered.id : null), ghosts: pylonGhosts,
+    });
+    hud.setNetLabels(power.labels().map((l) => ({ ...l, ...toScreen(l.x, l.y, l.z) })));
     const hi: number[] = [];
     if (selected !== null) hi.push(selected);
     if (hoverBuilding !== null && hoverBuilding !== selected && (tool.kind === 'select' || tool.kind === 'remove')) hi.push(hoverBuilding);
@@ -518,5 +560,9 @@ async function play(initial: GameState) {
   requestAnimationFrame(frame);
 
   // For checks in the browser console and scripted playtests.
-  Object.assign(window, { game: { get state() { return state; }, set state(s: GameState) { state = s; }, renderer, view, hud, sizeOf } });
+  Object.assign(window, { game: {
+    get state() { return state; }, set state(s: GameState) { state = s; }, renderer, view, hud, sizeOf,
+    /** Points the camera at a ground point, optionally at a zoom (screen pixels per metre). */
+    look: (x: number, z: number, z0?: number) => { target.set(x, 0, z); clampTarget(); if (z0) { setZoom(z0); zoom = zoomGoal; } repick = 2; },
+  } });
 }

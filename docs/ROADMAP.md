@@ -50,6 +50,15 @@ drones collect, feed, fetch from other silos and sell at the depot, charging fro
 depot's sell list (spare or half per good) and a per-input toggle on each building decide who gets what. Saves from before
 are refused (save version 2). Rules in `DESIGN.md`, "Logistics".
 
+## Power, redrawn (2026-10-11)
+
+The power buildings looked bulky and pylons crowded the view, and the power overlay showed only one of a pylon's two
+ranges and not which pylon powers what. New models for the solar panel (sleek, low), wind turbine (a real rotor), battery
+(cells whose rings light up as it charges) and pylon (short and quiet), and a model for the silo. Power is drawn only while
+you work with it: each network in its own colour, with its reach, wires between its pylons, a line to each building it
+powers and a label with its numbers; a focused or placed pylon shows its reach and its link range; a drag lays a line of
+pylons. Rules unchanged. Details in `DESIGN.md`, "Readability rules".
+
 ## Next
 
 - Play every campaign commission and tune: target times, prices, crop and machine times, power numbers. Bot layouts for the
@@ -57,7 +66,6 @@ are refused (save version 2). Rules in `DESIGN.md`, "Logistics".
 - Tune the silos (reach, drones, capacity, charging) by playing, and the commissions with them. With silos the bot clears
   First Light in about 14 minutes, Morning Bread in about 38 (target 35: it needs power early, since drones charge from the
   grid) and Linen for the Looms in about 45.
-- A Blender model for the silo (`docs/ASSET_BRIEF.md`).
 - Copy and paste / blueprints for repeated blocks (a row of fields with sprinklers).
 - Undo for the last few actions.
 - Sound.

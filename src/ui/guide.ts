@@ -121,7 +121,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
     how: ['Place it in the open, within a pylon\'s reach. Trees and tall buildings within 2 tiles shelter it and cost power.'],
   },
   battery: {
-    what: 'Stores spare power and gives it back when the network falls short, such as at night.',
+    what: 'Stores spare power and gives it back when the network falls short, such as at night. Its cells light up from the bottom as it fills: one ring a quarter.',
     how: ['Place it within a pylon\'s reach. It charges whenever its network makes more than it uses.'],
   },
   digester: {
@@ -132,10 +132,11 @@ const ENTRIES: Record<BuildingId, Entry> = {
   pylon: {
     what: 'Carries power. Every building that makes, stores or uses power must be in a pylon\'s reach.',
     how: [
-      'Place pylons so every powered building has a tile within reach. The Power overlay shows the reach.',
+      'Place pylons so every powered building has a tile within reach. Placing one shows its reach (the square) and how far it links (the dashed circle), with the wires it would make.',
       'Pylons close enough to each other link into one network, which shares all its power.',
+      'Drag to lay a line: pylons go down spaced so their reaches meet and each links to the next.',
     ],
-    tips: ['Two networks that don\'t link don\'t share power. The inspector shows each building\'s network.'],
+    tips: ['Two networks that don\'t link don\'t share power. Each network has its own colour on the Power overlay (V): its reach, the wires between its pylons and a line to every building it powers.', 'Select or point at a pylon, or select any powered building, to see its network.'],
   },
   sapling: {
     what: 'Grows into a tree. Trees add to soil health; some commissions ask for it.',
@@ -360,7 +361,7 @@ export function guidePanel(start: GuidePage, host: GuideHost, close: () => void)
           h('li', null, 'Each network adds up what its generators make and what its machines want. Spare power charges its ', bLink('battery'), 's; a shortfall drains them.'),
           h('li', null, 'If that isn\'t enough, every machine on the network slows down to the share it gets (an orange marker).'),
           h('li', null, bLink('solar'), 's make nothing at night, and a ', bLink('turbine'), ' only makes power when there is wind. A ', bLink('digester'), ' is steady, but needs waste to burn.')),
-        P('The top bar shows the power made and used across all networks, and the charge stored in batteries. Select a building to see its own network.'),
+        P('The top bar shows the power made and used across all networks, and the charge stored in batteries. The Power overlay (V) draws each network in its own colour: the ground its pylons reach, the wires between them, a line from a pylon to each building it powers, and a label with what the network makes and uses. Select a building to see its own network.'),
       ];
       case 'soil': return [
         h('h2', null, 'Soil and water'),

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { collectGltf, GeometryCollector, loadGltf, motion, movingPartMotion, namedMeshRule, type Motion } from 'pixel3d-renderer';
 import { BUILDING_IDS, CROP_IDS, CROPS, ITEM_IDS, type BuildingId, type CropId, type ItemId } from '../game/data.ts';
-import { C, cropStandIn, drone, frame, itemShape, marker, rock, SOIL_BANDS, soilTile, standIn, tileFill } from './shapes.ts';
+import { bar, C, cropStandIn, drone, frame, GHOST_WIRE, itemShape, marker, NET_COLOURS, rock, SOIL_BANDS, soilTile, standIn, tileFill } from './shapes.ts';
 
 // The game's object geometries, in local space (origin on the ground at the footprint centre, front facing +z). They come
 // from the Blender models in public/models/ (assets/<name>/build.py) where those exist, split by the node names the asset
@@ -16,6 +16,10 @@ export interface Models {
   buildings: Record<BuildingId, Look>;
   /** Turbine rotors at three wind speeds. */
   turbine: Geo[];
+  /** Batteries with 0 to 4 charge rings lit. */
+  battery: Geo[];
+  /** Bars for drawing power: one per network colour (`NET_COLOURS`), then the build preview's. */
+  wires: Geo[];
   crops: Record<CropId, Geo[]>;
   items: Record<ItemId, Geo>;
   soil: Geo[];
@@ -118,10 +122,16 @@ export async function loadModels(): Promise<Models> {
   });
   // Turbines always turn, faster in stronger wind: three rotor speeds.
   const turbineRoot = roots.get('wind_turbine');
-  const turbine = [0.6, 1.6, 3].map((speed) => {
+  const turbine = [0.45, 1, 1.7].map((speed) => {
     if (turbineRoot) return collect(turbineRoot, () => true, (m) => { const mo = movingPartMotion(m); return mo && mo.anim ? { ...mo, anim: [...(mo.anim as number[]).slice(0, 3), speed] as [number, number, number, number] } : mo; }, true).build();
     return standIn('turbine').running;
   });
+
+  // A battery's charge rings (`charge_<n>`) light from the bottom up: level k shows rings 0..k-1.
+  const batteryRoot = roots.get('battery');
+  const battery = [0, 1, 2, 3, 4].map((level) => batteryRoot
+    ? collect(batteryRoot, (o) => { const m = /^charge_(\d+)/.exec(o.name); return !m || Number(m[1]) < level; }).build()
+    : buildings.battery.idle);
 
   const crops = {} as Record<CropId, Geo[]>;
   for (const id of CROP_IDS) {
@@ -152,7 +162,8 @@ export async function loadModels(): Promise<Models> {
   for (const id of ITEM_IDS) items[id] = itemShape(id);
 
   return {
-    buildings, turbine, crops, items, rocks, trees,
+    buildings, turbine, battery, crops, items, rocks, trees,
+    wires: [...NET_COLOURS, GHOST_WIRE].map(bar),
     soil: Array.from({ length: SOIL_BANDS }, (_, b) => soilTile(b)),
     drone: droneRoot ? collect(droneRoot, () => true, movingPartMotion, true).build() : drone(),
     markers: { red: marker(0xff4a3a), orange: marker(0xffa030), yellow: marker(0xffe060), blue: marker(0x60b8ff), purple: marker(0xc070ff) },
@@ -165,7 +176,7 @@ export async function loadModels(): Promise<Models> {
 /** Every geometry, for choosing the palette together with the scene's. */
 export function allGeometries(m: Models): Geo[] {
   return [
-    ...Object.values(m.buildings).flatMap((l) => [l.idle, l.running]), ...m.turbine, ...Object.values(m.crops).flat(), ...Object.values(m.items),
+    ...Object.values(m.buildings).flatMap((l) => [l.idle, l.running]), ...m.turbine, ...m.battery, ...m.wires, ...Object.values(m.crops).flat(), ...Object.values(m.items),
     ...m.soil, ...m.trees, ...m.rocks, m.drone, ...Object.values(m.markers), m.cursor, ...m.frames.ok, ...m.frames.bad,
     m.fill,
   ];

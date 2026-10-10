@@ -240,6 +240,18 @@ export function frame(n: number, hex: number, t = 0.06) {
   return k.build();
 }
 
+/** Each power network's colour, by its place in the list of networks: its reach, wires and label. */
+export const NET_COLOURS = [0xf2c94c, 0x5fd3e8, 0xf28ab8, 0xa8e063, 0xb59cf5, 0xf5a15a];
+/** Wires a pylon being placed would make. */
+export const GHOST_WIRE = 0xd8ffb0;
+
+/** A glowing unit bar from the origin along +x, scaled and turned into a wire, a feed line or a range mark. */
+export function bar(hex: number) {
+  const k = new Kit(false);
+  k.boxAt(0.5, 0, 0, 1, 1, 1, hex, { flag: FLAG.EMISSIVE });
+  return k.build();
+}
+
 /** A flat tinted square filling a tile, for overlays. */
 export function tileFill(hex: number) {
   const k = new Kit(false);

@@ -4,12 +4,14 @@ import {
   BUILDINGS, CATEGORIES, CROP_IDS, CROPS, FIELD, GROUP_NAMES, GROUPS, HIVE, ITEM_IDS, ITEMS, POWER, recipesFor, SILO,
   type BuildingId, type Ingredient, type ItemId, type SellMode,
 } from '../game/data.ts';
-import { networkOf, networks } from '../game/power.ts';
+import { networkOf, networks, type Network } from '../game/power.ts';
 import {
   dayAt, describeDrone, describeStatus, distance, exposureOf, fieldFertility, fieldPace, flowersNear, goalDone, handlesGoods, hourAt, inputGoods,
   isPollinated, makes, medalFor, ratePerMin, recipeOf, servedBySilo, shareOf, silosServing, soilHealth, sunAt, wants, windAt, type Medal,
 } from '../game/sim.ts';
 import { buildingById, type Building, type Dir, type GameState } from '../game/state.ts';
+import { netColour } from '../world/powerView.ts';
+import { NET_COLOURS } from '../world/shapes.ts';
 import { LINK, type Overlay } from '../world/view.ts';
 import { h } from './dom.ts';
 import { buildingCard, guidePanel, type GuidePage } from './guide.ts';
@@ -85,6 +87,8 @@ export class Hud {
   private inspectKey = '';
   private inspectUpdate: (() => void) | null = null;
   private readonly toasts = h('div', { class: 'toasts' });
+  /** Labels over the power networks shown, one element per network, reused. */
+  private readonly netLabels = h('div', { class: 'net-labels' });
   private readonly layer = h('div', { class: 'layer' });
   private modals: Modal[] = [];
   private statsOpen = false;
@@ -122,7 +126,7 @@ export class Hud {
       h('div', { class: 'buttons' }, button('Guide (G)', () => this.openGuide(), { cls: 'small' }), button('Stats (Tab)', () => this.toggleStats(), { cls: 'small' })));
     // Stacked from the bottom up, so the build bar never moves when the line above it changes.
     const bottom = h('div', { class: 'bottom' }, this.toasts, this.info, this.tip, this.buildbar);
-    root.append(h('div', { class: 'hud' }, h('div', { class: 'top' }, left, mid, right), this.goals, this.inspector, this.stats, bottom), this.layer);
+    root.append(this.netLabels, h('div', { class: 'hud' }, h('div', { class: 'top' }, left, mid, right), this.goals, this.inspector, this.stats, bottom), this.layer);
     this.buildGoals();
     this.refresh();
   }
@@ -159,6 +163,22 @@ export class Hud {
     this.updateGoals();
     this.inspect();
     if (this.statsOpen) this.renderStats();
+  }
+
+  /** Labels over the power networks shown (at page points): what each makes and uses, and how full its batteries are. */
+  setNetLabels(list: { sx: number; sy: number; colour: number; net: Network }[]) {
+    const els = this.netLabels.children;
+    while (els.length < list.length) this.netLabels.append(h('div', { class: 'net-label' }, h('i', { class: 'dot' }), h('span')));
+    for (let i = 0; i < els.length; i++) {
+      const el = els[i] as HTMLElement, l = list[i];
+      if (!l) { el.style.display = 'none'; continue; }
+      el.style.display = '';
+      el.style.transform = `translate(${Math.round(l.sx)}px, ${Math.round(l.sy)}px) translate(-50%, -100%)`;
+      (el.firstChild as HTMLElement).style.background = `#${l.colour.toString(16).padStart(6, '0')}`;
+      const n = l.net, short = n.share < 1 && n.wanted > 0;
+      set(el.lastChild as HTMLElement, `${watts(n.made)} made · ${watts(n.wanted)} used${n.capacity ? ` · ▮ ${Math.round(n.stored / n.capacity * 100)}%` : ''}${short ? ` · ${Math.round(n.share * 100)}%` : ''}`);
+      el.classList.toggle('short', short);
+    }
   }
 
   setHover(text: string | null) {
@@ -367,8 +387,16 @@ export class Hud {
       body.push(ins, outs);
     }
     if (def.power) stat('Power', () => { const net = networkOf(s, b), w = wants(s, b); return !net ? 'not connected' : w ? `using ${watts(w)} now · getting ${Math.round(shareOf(s, b) * 100)}%` : 'none right now'; });
-    if (def.power || b.type === 'battery' || b.type === 'solar' || b.type === 'turbine' || b.type === 'digester') {
-      stat('Network', () => { const net = networkOf(s, b); return net ? `${watts(net.made)} made · ${watts(net.wanted)} used · ${Math.round(net.stored)} J stored` : 'none: no pylon in reach'; });
+    if (def.power || b.type === 'battery' || b.type === 'solar' || b.type === 'turbine' || b.type === 'digester' || b.type === 'pylon') {
+      // The network's colour, as drawn on the map, and its numbers.
+      const dot = h('i', { class: 'dot' }), v = h('span');
+      lines.push(() => {
+        const net = b.type === 'pylon' ? networks(s).of.get(b.id) ?? null : networkOf(s, b);
+        dot.style.display = net ? '' : 'none';
+        if (net) dot.style.background = `#${NET_COLOURS[netColour(s, net)].toString(16).padStart(6, '0')}`;
+        set(v, net ? `${watts(net.made)} made · ${watts(net.wanted)} used · ${Math.round(net.stored)} J stored` : 'none: no pylon in reach');
+      });
+      body.push(h('div', { class: 'kv' }, h('span', null, 'Network'), h('b', null, dot, v)));
     }
 
     // Goods it takes from silos, each with a toggle.

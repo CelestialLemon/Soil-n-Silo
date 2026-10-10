@@ -13,7 +13,8 @@ hopper, a loom's frame, a bakery's chimney).
 From the camera (`DESIGN.md`, "Camera"): low-poly, flat-colour models, seen from 4 sides (the camera turns in 90° steps), so every
 model must read well all the way round. The orthographic camera looks down at 30°, and the renderer turns the scene into pixel art
 at about 16 art pixels per metre of view height, so small details under ~0.06 m disappear or flicker. Prefer bold shapes and a few
-deliberate colours over fine detail. Models are seen packed close together on a grid, so keep each inside its footprint.
+deliberate colours over fine detail. Models are seen packed close together on a grid, so keep each inside its footprint. One exception: a wind turbine's rotor
+sweeps past its tile, high enough (above 2.3 m) to clear the buildings beside it.
 
 ## Pipeline
 
@@ -35,6 +36,7 @@ Besides the renderer's prefixes (`decor_`, `thin_`, `move_spin_` ...), the game 
 - `running_*` / `idle_*`: a machine's parts shown only while it runs / is idle. Its `move_spin_` parts turn only while it runs
   (a wind turbine's rotor always turns).
 - `smoke_emitter`: an Empty where a running machine's steam or smoke leaves (the game adds the puffs).
+- `charge_<n>`: a battery's charge rings, `n` from 0 (lowest) to 3. The game shows rings 0..k−1 for k quarters of charge.
 
 A model that fails to load is drawn from simple shapes built in code (`src/world/shapes.ts`), so the game never waits for a model.
 
@@ -59,11 +61,11 @@ mill's model is `mill_electric` and the coop's `coop_solar` (the season-era `mil
 | `loom` | 2 × 2 | ~1.5 | A timber loom with linen on it |
 | `bakery` | 2 × 2 | ~2.0 | A tiled clay oven with a chimney (`smoke_emitter`), `running_` glow in its mouth |
 | `cannery` | 2 × 2 | ~1.6 | A copper kettle and a rack of red jars, steam (`smoke_emitter`) |
-| `solar_panel` | 2 × 2 | ~1.0 | Tilted deep-blue solar glass on a timber frame, grass beneath |
-| `wind_turbine` | 1 × 1 | ~3.5 | Slim white tower, three-blade rotor (`move_spin_rotor`, local X along the axle) facing +Z |
-| `battery` | 2 × 2 | ~1.2 | A rounded ceramic cabinet with copper bands and a charge window (emissive) |
+| `solar_panel` | 2 × 2 | ~0.95 | Sleek and low: one thin sheet of deep-blue cells in a slim white frame, tilted to the front on a copper rail and two slender posts, meadow beneath (redrawn 2026-10-11) |
+| `wind_turbine` | 1 × 1 | ~4.9 | Slim white tower (hub at 3.6 m), a big three-blade rotor (~2.5 m across, `move_spin_rotor`, local X along the axle) facing +Z, sweeping past the tile above 2.3 m; terracotta blade tips (redrawn 2026-10-11) |
+| `battery` | 2 × 2 | ~1.1 | Four slim ceramic cells on a timber deck, copper bus bars between their terminals, four emissive charge rings per cell (`charge_0`…`charge_3`) (redrawn 2026-10-11) |
 | `digester` | 2 × 2 | ~1.6 | A dome tank with a moss roof and a little flare pipe (`smoke_emitter`) |
-| `pylon` | 1 × 1 | ~2.2 | A timber pole with a copper top and a small solar lantern |
+| `pylon` | 1 × 1 | ~1.45 | Quiet: a short slim timber pole, a ceramic insulator, a copper cap and a tiny lamp. There are many, so they sit in the background; the game draws their wires and reach when you work with power (redrawn 2026-10-11) |
 | `depot` | 3 × 3 | ~2.5 | The freight depot: a station platform with a cargo airship mast or a rail car; the commission's destination |
 | `rock` | 1 × 1 | ~0.6 | Two or three variants as `variant_<n>` roots |
 | `tree_oak`, `tree_pine`, `bush` | | | Exist |
@@ -71,10 +73,10 @@ mill's model is `mill_electric` and the coop's `coop_solar` (the season-era `mil
 
 Goods are small tokens (~0.25 m) built in code, one shape and colour per good, hung under the drone carrying them.
 
-## Needed for the silos (2026-10-10)
+## Needed for the silos (2026-10-10, built 2026-10-11)
 
 Belts, splitters, sorters, crossings and drone pads were removed (their models with them); silos and their drones carry the
-goods now. The silo is drawn from an in-code stand-in until it has a model.
+goods now.
 
 | Model | Footprint | Height | Notes |
 | --- | --- | --- | --- |

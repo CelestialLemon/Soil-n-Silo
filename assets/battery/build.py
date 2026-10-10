@@ -1,22 +1,31 @@
-"""Friendly ceramic energy cabinet, copper bands and paired mint charge windows."""
+"""Four slim ceramic storage cells on a low timber deck, joined by copper bus bars. Each cell wears four charge rings
+that light from the bottom up as the battery fills: `charge_<n>` holds the n-th ring of every cell (the game shows
+rings 0..k-1 for k quarters of charge). An empty battery is plain white cells."""
 import sys
 sys.dont_write_bytecode = True
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from solarpunk import *
 reset(203)
-for x in [-.48,.48]:
-    for y in [-.36,.36]:
-        box('Battery_wood_foot',(x,y,.08),(.19,.19,.16),'wood')
-rounded_box('Battery_ceramic_cabinet',(0,0,.68),(1.28,1.04,1.07),'ceramic',.13)
-for x in [-.44,.44]:
-    rounded_box('Battery_copper_band',(x,0,.69),(.11,1.07,1.10),'copper',.04)
-for y in [-.546,.546]:
-    rounded_box('Battery_charge_recess',(0,y,.68),(.55,.07,.55),'darkwood',.055)
-    for z in [.51,.68,.85]:
-        box('Battery_charge_indicator',(0,y*1.055,z),(.38,.065,.11),material('charge',.7))
-for x in [-.685,.685]:
-    rounded_box('Battery_side_handle',(x,0,.85),(.10,.40,.17),'brass',.04)
-planter(-.65,.68,radius=.16)
-planter(.65,-.68,radius=.16)
+CELLS = [(x,y) for y in [-.4,.4] for x in [-.4,.4]]
+R, BOTTOM, TOP = .26, .12, .92
+RINGS = [.42+i*.12 for i in range(4)]
+rounded_box('Battery_timber_deck',(0,0,.06),(1.56,1.56,.12),'wood',.04)
+for i,y in enumerate([-.5,0,.5]):
+    box('Battery_deck_slat',(0,y,.122),(1.5,.06,.012),'lightwood')
+lit = [[] for _ in RINGS]
+for x,y in CELLS:
+    cylinder('Battery_copper_foot',(x,y,BOTTOM+.04),R+.025,.08,'copper',12)
+    cylinder('Battery_ceramic_cell',(x,y,(BOTTOM+.08+TOP)/2),R,TOP-BOTTOM-.08,'ceramic',12)
+    sphere('Battery_ceramic_cap',(x,y,TOP),(R,R,.09),'ceramic',12,4)
+    cylinder('Battery_brass_terminal',(x,y,TOP+.1),.07,.08,'brass',8)
+    for n,z in enumerate(RINGS):
+        lit[n].append(cylinder('Battery_charge_ring',(x,y,z),R+.018,.1,material('charge',.8),12))
+for n,parts in enumerate(lit):
+    join(parts,f'charge_{n}',(0,0,RINGS[n]))
+# Copper bus bars between the terminals, round the square.
+for (ax,ay),(bx,by) in [(CELLS[0],CELLS[1]),(CELLS[1],CELLS[3]),(CELLS[3],CELLS[2]),(CELLS[2],CELLS[0])]:
+    beam('Battery_copper_bus',(ax,ay,TOP+.12),(bx,by,TOP+.12),.05,'copper',6)
+grass(-.68,.05)
+grass(.05,-.7)
 build_complete('battery',2)

@@ -50,7 +50,7 @@ It is build-only and point-and-click. There is no character and no manual farmin
 | Input | Does |
 | --- | --- |
 | Build bar (bottom) or hotkeys (F field, L silo, P pylon, S solar) | Pick a building to place |
-| Click / drag | Place it; a drag places a row |
+| Click / drag | Place it; a drag places a row (pylons: a power line, spaced so their reaches meet) |
 | R | Turn what you're placing (for looks) |
 | Click a building with nothing in hand | Select it: the inspector shows its status, buffers and settings |
 | X, then click or drag | Remove (full refund) |
@@ -72,6 +72,12 @@ The build preview is see-through, green where it fits and red where it doesn't.
   A building that needs a silo and has none in reach shows a purple marker.
 - The guide (G) has a page for every building; hovering a build button, or "?" in the inspector, leads to it.
 - Soil colour shows fertility under fields. Overlays show fertility everywhere, power coverage and silo reach.
+- Power stays in the background until you work with it: pylons are short, quiet posts and nothing else is drawn. The power
+  overlay, placing anything that makes, stores or uses power, selecting a building on a network, or pointing at a power
+  building shows the networks, each in its own colour: the ground its pylons reach, wires joining its pylons, a line from a
+  pylon to every building it powers, and a label with what it makes and uses and how full its batteries are. A focused or
+  placed pylon shows both its ranges: its reach (a square, 3 tiles) and its link range (a dashed circle, 8 tiles).
+- A battery's cells light up from the bottom as it fills, one ring a quarter.
 
 ![The guide's page for the mill](images/guide.png)
 

@@ -44,6 +44,12 @@ Rock previews show `variant_0`…`variant_2` in separate rows; each variant root
 is at the origin. Beans, sunflower and flax use four `stage_0`…`stage_3` roots
 and each covers one tile. The solar coop has a fixed open entrance.
 
+The battery's charge rings are four joined meshes `charge_0`…`charge_3` (lowest
+first); the game shows rings 0..k−1 for k quarters of charge. The wind turbine's
+rotor sweeps past its one tile: `build_complete(..., overhang_above=2.3)` lets a
+`move_spin_` part do that while its whole swept disc stays above 2.3 m. The silo
+stands in its back-left corner with three drone pads at the game's `SILO_PADS`.
+
 With the Blender Flatpak, use an absolute script path (its working directory
 may differ from the shell's):
 
