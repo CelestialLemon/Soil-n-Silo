@@ -23,17 +23,8 @@ export type Tool =
   | { kind: 'build'; type: BuildingId; rot: Dir }
   | { kind: 'remove' };
 
-/**
- * How zooming works (main.ts): magnify scales a fixed picture; detail keeps art pixels the same size on screen and draws
- * models with more pixels close up, in a few steps; free does the same continuously. Switchable to compare them in play.
- */
-export const ZOOM_MODES = ['magnify', 'detail', 'free'] as const;
-export type ZoomMode = typeof ZOOM_MODES[number];
-const ZOOM_LABELS: Record<ZoomMode, [string, string]> = {
-  magnify: ['Magnify', 'Zoom scales the same picture: art pixels grow from 1×1 to 6×6 on screen'],
-  detail: ['Detail', 'Art pixels stay 2×2 on screen; zooming in draws models with more pixels, in six steps'],
-  free: ['Free', 'Art pixels stay 2×2 on screen; the detail follows the zoom smoothly'],
-};
+/** The pixel size setting's choices: screen pixels per art pixel. */
+export const PIXEL_SIZES = [1, 2, 3, 4] as const;
 
 export interface HudHost {
   state(): GameState;
@@ -50,8 +41,9 @@ export interface HudHost {
   turn(d: 1 | -1): void;
   /** +1 zooms in, -1 out. */
   zoom(d: 1 | -1): void;
-  zoomMode(): ZoomMode;
-  setZoomMode(m: ZoomMode): void;
+  /** Screen pixels per art pixel (a setting). */
+  pixelSize(): number;
+  setPixelSize(n: number): void;
   menu(): void;
   restart(): void;
 }
@@ -79,7 +71,6 @@ export class Hud {
   };
   private readonly speedButtons: HTMLButtonElement[] = [];
   private readonly overlayButtons = new Map<Overlay, HTMLButtonElement>();
-  private readonly zoomButtons = new Map<ZoomMode, HTMLButtonElement>();
   private readonly goals = h('div', { class: 'card goals' });
   private goalRows: { el: HTMLElement; text: HTMLElement; bar: ReturnType<typeof bar> }[] = [];
   private readonly buildbar = h('div', { class: 'buildbar card' });
@@ -128,11 +119,6 @@ export class Hud {
       button('⟲', () => host.turn(-1), { title: 'Turn the view (Q)' }), button('⟳', () => host.turn(1), { title: 'Turn the view (E)' }),
       button('−', () => host.zoom(-1), { title: 'Zoom out (wheel, − or Shift+Z)' }), button('+', () => host.zoom(1), { title: 'Zoom in (wheel, + or Z)' }), button('☰', () => this.openPause(), { title: 'Menu (Esc)' })),
       overlays,
-      h('div', { class: 'buttons zoom-modes' }, h('span', null, 'Zoom'), ...ZOOM_MODES.map((m) => {
-        const b = button(ZOOM_LABELS[m][0], () => host.setZoomMode(m), { cls: 'small', title: ZOOM_LABELS[m][1] });
-        this.zoomButtons.set(m, b);
-        return b;
-      })),
       h('div', { class: 'buttons' }, button('Guide (G)', () => this.openGuide(), { cls: 'small' }), button('Stats (Tab)', () => this.toggleStats(), { cls: 'small' })));
     // Stacked from the bottom up, so the build bar never moves when the line above it changes.
     const bottom = h('div', { class: 'bottom' }, this.toasts, this.info, this.tip, this.buildbar);
@@ -149,7 +135,6 @@ export class Hud {
     const s = this.host.state(), now = performance.now();
     this.speedButtons.forEach((b, i) => b.classList.toggle('active', [0, 1, 2, 4][i] === this.host.speed()));
     for (const [o, b] of this.overlayButtons) b.classList.toggle('active', this.host.overlay() === o);
-    for (const [m, b] of this.zoomButtons) b.classList.toggle('active', this.host.zoomMode() === m);
     this.syncBuildbar();
     if (now - this.lastSlow < 150) return;
     this.lastSlow = now;
@@ -482,6 +467,10 @@ export class Hud {
     const s = this.host.state();
     this.openModal('pause', h('div', { class: 'panel' },
       h('h2', null, s.scenario.name), help(),
+      h('h3', null, 'Settings'),
+      h('div', { class: 'setting' }, h('span', null, 'Pixel size'),
+        h('span', { class: 'choices' }, ...PIXEL_SIZES.map((n) => button(`${n}×${n}`, () => { this.host.setPixelSize(n); this.openPause(); }, { active: this.host.pixelSize() === n })))),
+      h('p', { class: 'sub hint-line' }, 'Screen pixels for each pixel of the art. Smaller pixels show finer detail and cost more to draw.'),
       h('div', { class: 'actions' },
         button('Restart commission', () => this.confirm('Restart this commission?', 'Everything built so far is lost.', () => this.host.restart())),
         button('Level select', () => this.host.menu()),

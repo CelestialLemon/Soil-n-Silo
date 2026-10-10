@@ -7,7 +7,7 @@ import { deserialize, readProgress, recordResult, saveKey, serialize } from './g
 import { scenarioById } from './game/scenarios.ts';
 import { advance, describeStatus, fieldFertility, hourAt, medalFor } from './game/sim.ts';
 import { buildingAt, buildingById, inMap, newGame, sizeOf, terrainAt, type Dir, type GameState } from './game/state.ts';
-import { Hud, ZOOM_MODES, type Tool, type ZoomMode } from './ui/hud.ts';
+import { Hud, PIXEL_SIZES, type Tool } from './ui/hud.ts';
 import { showMenu } from './ui/menu.ts';
 import { allGeometries, loadModels } from './world/models.ts';
 import { buildWorld } from './world/terrain.ts';
@@ -18,30 +18,18 @@ import './ui/style.css';
 // build-only: the player places, configures and removes buildings and the simulation runs on its own. The camera
 // is orthographic at a 30° pitch, turns between four views 90° apart, zooms towards the pointer and pans with the mouse.
 //
-// Zoom has three modes, switched in the HUD, to compare how they play (see ZoomMode in hud.ts). All three zoom over the
-// same range, kept as screen pixels per metre of ground, and ease smoothly:
-// - magnify: the art is always drawn at 16 art pixels per metre; zooming scales whole art pixels (1× to 6× on screen), so
-//   the picture only gets bigger, and at rest the art is never resampled.
-// - detail: art pixels stay 2 × 2 on screen; zooming steps through art densities (8 to 48 art pixels per metre), so models
-//   are drawn with more pixels close up. Zooming out draws the art at the new density straight away and eases it down to
-//   size; zooming in scales the picture up and draws it at the new density when it settles (so the art never needs more
-//   pixels than half the screen's).
-// - free: art pixels stay 2 × 2 on screen and the art density follows the zoom continuously.
+// Each art pixel is drawn as a square of `pixelSize` screen pixels (a setting, 2 by default), whatever the zoom; zooming
+// changes how many metres of ground fit on the screen, so models are drawn with more art pixels close up and fewer far out.
 
-/** Art pixels per metre in magnify mode. */
-const ART_PX_PER_METRE = 16;
-/** Screen pixels per art pixel in detail and free mode. */
-const SCREEN_PX = 2;
-/** Zoom levels, as screen pixels per metre: magnify scales the art 1×–6×; detail steps the art density. */
-const MAGNIFY_LEVELS = [1, 2, 3, 4, 6].map((px) => px * ART_PX_PER_METRE);
-const DETAIL_LEVELS = [8, 12, 16, 24, 32, 48].map((art) => art * SCREEN_PX);
+/** The zoom range, as screen pixels per metre of ground, and where a commission starts. */
 const MIN_ZOOM = 16, MAX_ZOOM = 96, START_ZOOM = 32;
-/** Free mode: how much one wheel notch or key press zooms. */
-const FREE_STEP = 1.25;
+/** How much one wheel notch or key press zooms. */
+const ZOOM_STEP = 1.25;
+const DEFAULT_PIXEL_SIZE = 2;
 const ELEVATION = THREE.MathUtils.degToRad(30);
 const HOME_YAW = THREE.MathUtils.degToRad(45);
 const DRAG_THRESHOLD = 4;
-const WHEEL_STEP = 100, WHEEL_GESTURE_GAP = 200, PINCH_GAIN = 4;
+const WHEEL_STEP = 100, PINCH_GAIN = 4;
 const ZOOM_RATE = 14;               // how fast the zoom eases towards its level (per second, in log space)
 const TURN_SECONDS = 0.3;
 const REPICK_FRAMES = 6;
@@ -50,7 +38,9 @@ const MAX_STEPS_PER_FRAME = 80;
 
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
 const loading = document.querySelector<HTMLElement>('#loading')!;
-const SAVE_KEY = saveKey(location.pathname), PROGRESS_KEY = `${SAVE_KEY}:progress`;
+const SAVE_KEY = saveKey(location.pathname), PROGRESS_KEY = `${SAVE_KEY}:progress`, PIXEL_KEY = `${SAVE_KEY}:pixel`;
+/** A saved pixel size, if it is one of the choices; else the default. */
+const readPixelSize = (v: string | null) => (PIXEL_SIZES as readonly number[]).find((n) => String(n) === v) ?? DEFAULT_PIXEL_SIZE;
 
 const saved = deserialize(localStorage.getItem(SAVE_KEY));
 const params = new URLSearchParams(location.search);
@@ -113,8 +103,8 @@ async function play(initial: GameState) {
     changed: () => { repick = 2; },
     turn: (d) => turn(d),
     zoom: (d) => zoomStep(d),
-    zoomMode: () => zoomMode,
-    setZoomMode: (m) => setZoomMode(m),
+    pixelSize: () => pixelSize,
+    setPixelSize: (n) => setPixelSize(n),
     menu: () => { save(); location.href = `${location.pathname}?menu`; },
     restart: () => startNew(state.scenario.id),
   });
@@ -130,12 +120,10 @@ async function play(initial: GameState) {
   // ---- Camera ----
   const target = new THREE.Vector3(map.depot.x + 1.5, 0, map.depot.y - 4);
   let view4 = 0;
-  const ZOOM_KEY = `${SAVE_KEY}:zoom`;
-  let zoomMode: ZoomMode = ZOOM_MODES.includes(localStorage.getItem(ZOOM_KEY) as ZoomMode) ? localStorage.getItem(ZOOM_KEY) as ZoomMode : 'magnify';
+  /** Screen pixels per art pixel: the pixel size setting. */
+  let pixelSize = readPixelSize(localStorage.getItem(PIXEL_KEY));
   /** The zoom, as screen pixels per metre of ground: `zoom` eases towards `zoomGoal`. */
   let zoom = START_ZOOM, zoomGoal = START_ZOOM;
-  /** Art pixels per metre the world is drawn at (magnify: fixed; detail: set when a zoom starts and settles; free: follows the zoom). */
-  let art = artFor(zoomGoal);
   /** While zooming towards the pointer: the ground point that stays under it, and where the pointer is from the centre. */
   let zoomAnchor: { ground: THREE.Vector3; dx: number; dy: number } | null = null;
   let yaw = HOME_YAW, turnFrom = HOME_YAW, turnAt = -Infinity;
@@ -163,53 +151,31 @@ async function play(initial: GameState) {
     target.x = THREE.MathUtils.clamp(target.x, 0, map.width);
     target.z = THREE.MathUtils.clamp(target.z, 0, map.height);
   }
-  function levels(): number[] | null { return zoomMode === 'magnify' ? MAGNIFY_LEVELS : zoomMode === 'detail' ? DETAIL_LEVELS : null; }
-  /** The art density to draw at, at rest on `goal`. */
-  function artFor(goal: number) { return zoomMode === 'magnify' ? ART_PX_PER_METRE : zoomMode === 'detail' ? goal / SCREEN_PX : zoom / SCREEN_PX; }
-  /** The level closest to `z` (in proportion). */
-  function nearestLevel(ls: number[], z: number) { return ls.reduce((a, b) => (Math.abs(Math.log(b / z)) < Math.abs(Math.log(a / z)) ? b : a)); }
-  /** Zooms in (+1) or out (−1) by one level, or one step in free mode. */
-  function zoomStep(dir: number, at?: { x: number; y: number }) {
-    const ls = levels();
-    if (!ls) { setZoom(zoomGoal * FREE_STEP ** dir, at); return; }
-    const i = ls.indexOf(nearestLevel(ls, zoomGoal));
-    setZoom(ls[THREE.MathUtils.clamp(i + dir, 0, ls.length - 1)], at);
-  }
+  /** Zooms in (+1) or out (−1) by one step. */
+  function zoomStep(dir: number, at?: { x: number; y: number }) { setZoom(zoomGoal * ZOOM_STEP ** dir, at); }
   /** Zooms to `goal` screen pixels per metre, keeping the ground under the page point `at` (the pointer) where it is; the centre without one. */
   function setZoom(goal: number, at?: { x: number; y: number }) {
     goal = THREE.MathUtils.clamp(goal, MIN_ZOOM, MAX_ZOOM);
     if (goal === zoomGoal) return;
     zoomGoal = goal;
     // The ground under the point, from where the camera is now (target, turn and zoom), not from the last picture drawn:
-    // several wheel events can arrive before the next frame, each after the last one resized the canvas.
+    // several wheel events can arrive before the next frame.
     if (at) {
       const dx = at.x - innerWidth / 2, dy = at.y - innerHeight / 2, metres = 1 / zoom;
       cameraAxes();
       const ground = target.clone().addScaledVector(right, dx * metres).addScaledVector(forward, -dy * metres / Math.sin(ELEVATION));
       zoomAnchor = { ground, dx, dy };
     } else zoomAnchor = null;
-    // Detail mode lowers the density at once for a zoom out, and keeps it for a zoom in until the zoom settles.
-    art = zoomMode === 'detail' ? Math.min(art, artFor(goal)) : artFor(goal);
-    fit();
   }
-  /** Switches how zooming works, keeping about the same view (on the new mode's nearest level). */
-  function setZoomMode(m: ZoomMode) {
-    zoomMode = m;
-    localStorage.setItem(ZOOM_KEY, m);
-    const ls = levels();
-    zoom = zoomGoal = ls ? nearestLevel(ls, zoom) : zoom;
-    zoomAnchor = null;
-    art = artFor(zoomGoal);
+  function setPixelSize(n: number) {
+    pixelSize = readPixelSize(String(n));
+    localStorage.setItem(PIXEL_KEY, String(pixelSize));
     fit();
   }
   addEventListener('resize', () => fit());
   /** One frame of the zoom easing towards its goal. */
   function zooming(dt: number) {
-    if (zoom === zoomGoal) {
-      // At rest, the art is at the goal's density (a zoom reversed before the next frame may have left it lower).
-      if (art !== artFor(zoomGoal)) { art = artFor(zoomGoal); zoomAnchor = null; fit(); }
-      return;
-    }
+    if (zoom === zoomGoal) return;
     const k = 1 - Math.exp(-dt * ZOOM_RATE);
     zoom = Math.exp(Math.log(zoom) + Math.log(zoomGoal / zoom) * k);
     if (Math.abs(Math.log(zoomGoal / zoom)) < 0.004) zoom = zoomGoal;
@@ -219,25 +185,14 @@ async function play(initial: GameState) {
       target.copy(zoomAnchor.ground).addScaledVector(right, -zoomAnchor.dx * metres).addScaledVector(forward, zoomAnchor.dy * metres / Math.sin(ELEVATION));
       clampTarget();
     }
-    if (zoomMode === 'free') art = zoom / SCREEN_PX;
-    if (zoom === zoomGoal) { zoomAnchor = null; art = artFor(zoomGoal); fit(); } else layout();
+    if (zoom === zoomGoal) zoomAnchor = null;
+    repick = 2;
   }
-  /**
-   * Sizes the art (render target) and lays the canvas out at the current zoom, centred on the window. In free mode an art
-   * pixel is always SCREEN_PX on screen, so the art is sized for that once. Otherwise, while a zoom eases, the art is sized
-   * for the smaller of the current and target pixel sizes, so it covers the window all the way, and only the canvas's CSS
-   * size changes from frame to frame; the art is sized exactly once the zoom comes to rest.
-   */
+  /** Sizes the art (render target) for the window at the pixel size, and lays the canvas out centred on the window. */
   function fit() {
-    const px = zoomMode === 'free' ? SCREEN_PX : Math.min(zoom, zoomGoal) / art;
-    const w = Math.max(1, Math.ceil(innerWidth / px)), h = Math.max(1, Math.ceil(innerHeight / px));
+    const w = Math.max(1, Math.ceil(innerWidth / pixelSize)), h = Math.max(1, Math.ceil(innerHeight / pixelSize));
     if (renderer.width !== w || renderer.height !== h) renderer.resize(w, h);
-    layout();
-  }
-  /** Screen pixels per art pixel right now. */
-  const pixelSize = () => zoom / art;
-  function layout() {
-    const cw = renderer.width * pixelSize(), ch = renderer.height * pixelSize();
+    const cw = w * pixelSize, ch = h * pixelSize;
     canvas.style.width = `${cw}px`; canvas.style.height = `${ch}px`;
     canvas.style.left = `${Math.floor((innerWidth - cw) / 2)}px`; canvas.style.top = `${Math.floor((innerHeight - ch) / 2)}px`;
     repick = 2;
@@ -442,22 +397,13 @@ async function play(initial: GameState) {
   canvas.addEventListener('pointercancel', release);
   canvas.addEventListener('pointerleave', (e) => { if (!press && e.isPrimary) { pointer = null; repick = 2; } });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-  // The wheel adds up; every WHEEL_STEP of it is one zoom level (in free mode, one FREE_STEP, in proportion), towards the
-  // pointer. A trackpad pinch arrives as a wheel with ctrlKey and small deltas, so it counts for more.
-  let wheel = 0, wheelAt = -Infinity;
+  // Every WHEEL_STEP of wheel is one ZOOM_STEP (in proportion), towards the pointer. A trackpad pinch arrives as a wheel
+  // with ctrlKey and small deltas, so it counts for more.
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     if (e.deltaY === 0) return;
-    if (e.timeStamp - wheelAt > WHEEL_GESTURE_GAP || Math.sign(e.deltaY) !== Math.sign(wheel)) wheel = 0;
-    wheelAt = e.timeStamp;
     const delta = e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? e.deltaY * (e.ctrlKey ? PINCH_GAIN : 1) : Math.sign(e.deltaY) * WHEEL_STEP;
-    if (zoomMode === 'free') { setZoom(zoomGoal * FREE_STEP ** (-delta / WHEEL_STEP), { x: e.clientX, y: e.clientY }); return; }
-    wheel += delta;
-    // All the steps in one go: the anchor is found on the picture as drawn, before the zoom resizes the canvas.
-    const steps = Math.trunc(wheel / WHEEL_STEP);
-    if (!steps) return;
-    wheel -= steps * WHEEL_STEP;
-    zoomStep(-steps, { x: e.clientX, y: e.clientY });
+    setZoom(zoomGoal * ZOOM_STEP ** (-delta / WHEEL_STEP), { x: e.clientX, y: e.clientY });
   }, { passive: false });
 
   const keys = new Set<string>();
@@ -563,7 +509,8 @@ async function play(initial: GameState) {
 
     turning();
     zooming(dt);
-    renderer.placeCamera(target, yaw, ELEVATION, renderer.height / art);
+    // The view is as tall as the art at the zoom's screen pixels per metre.
+    renderer.placeCamera(target, yaw, ELEVATION, renderer.height * pixelSize / zoom);
     renderer.renderGeometry(time);
     renderer.renderStyle(time);
     requestAnimationFrame(frame);
