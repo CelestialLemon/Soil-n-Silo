@@ -5,7 +5,7 @@ Oct 9, 2026 · @Ashutosh Shinde
 ## Overview
 
 Soil n Silo is a build-only automation game in a solarpunk valley. Each level is a commission from a nearby settlement: on a
-seeded map you lay out fields, belts, drones, machines and power, and the farm then runs on its own until the commission's goals
+seeded map you lay out fields, silos, machines and power, and the farm then runs on its own until the commission's goals
 are delivered. A level takes about 30 to 60 minutes.
 
 The game replaced a Stardew-like season (the earlier MVP, decided 2026-10-06, built by 2026-10-07) on 2026-10-09. The reason: the
@@ -23,7 +23,7 @@ few minutes and the wind comes and goes, so power needs storage and a mix of sou
 **In v0.1**
 
 - 18 goods, 5 crops, chickens and bees, 6 processing machines, 4 power sources and storage
-- Belts, splitters, sorters, crossings and drones
+- Silos whose drones carry every good: no belts
 - Pylon power networks, each with its own balance
 - Soil fertility, sprinklers, compost and pollination
 - 8 campaign commissions, random commissions from any seed, a sandbox
@@ -49,31 +49,29 @@ It is build-only and point-and-click. There is no character and no manual farmin
 
 | Input | Does |
 | --- | --- |
-| Build bar (bottom) or hotkeys (B belt, F field, P pylon, S solar) | Pick a building to place |
-| Click / drag | Place it; belts are laid along the drag (an L from where the drag started) |
-| R | Rotate what you're placing (belts, splitters, sorters) |
+| Build bar (bottom) or hotkeys (F field, L silo, P pylon, S solar) | Pick a building to place |
+| Click / drag | Place it; a drag places a row |
+| R | Turn what you're placing (for looks) |
 | Click a building with nothing in hand | Select it: the inspector shows its status, buffers and settings |
 | X, then click or drag | Remove (full refund) |
 | Esc / right click | Drop what's in hand, close the inspector |
 | Space, 1, 2, 3 | Pause, 1×, 2×, 4× speed. You can build while paused |
 | Tab | Production stats |
 | G | The guide: a page for every building (what it does, how to use it, what it takes and gives, its numbers), the goods, and the basics |
-| V (or the buttons) | Overlays: soil fertility, power reach, sprinkler water, bee range |
+| V (or the buttons) | Overlays: soil fertility, power reach, silo reach, sprinkler water, bee range |
 
-![Laying a belt: the preview is see-through, green where it fits and red on the depot](images/preview.png)
+The build preview is see-through, green where it fits and red where it doesn't.
 
 **Readability rules**
 
 - Every building shows its state on a small marker above it: working, waiting for input, output blocked, no power, low power.
 - Hover any building for a one-line status ("Mill: waiting for wheat"). Hover a button in the build bar for a card about that
   building.
-- Chevrons glide along every belt the way its goods go.
-- Selecting (or hovering) a building tints the belts it takes goods from green and the belts that take its goods blue; the
-  inspector counts them and says when a side isn't wired.
+- Drones fly with their cargo hanging under them, so the flow of goods is always visible.
+- Selecting (or hovering) a silo tints the buildings it serves; selecting any other building tints the silos that serve it.
+  A building that needs a silo and has none in reach shows a purple marker.
 - The guide (G) has a page for every building; hovering a build button, or "?" in the inspector, leads to it.
-- Soil colour shows fertility under fields. Overlays show fertility everywhere and power coverage.
-
-![A selected mill: green for the belt that feeds it, blue for the belts that take its flour and bran](images/wiring.png)
+- Soil colour shows fertility under fields. Overlays show fertility everywhere, power coverage and silo reach.
 
 ![The guide's page for the mill](images/guide.png)
 
@@ -96,7 +94,8 @@ Each level is generated from a seed: a grid of about 48 × 40 one-metre tiles.
 | Rock | Not buildable. Can be cleared for 15 credits |
 | Tree | Not buildable. Slows wind turbines next to it. Can be cleared for 5 credits (soil health drops a little) |
 
-A **freight depot** (3 × 3) stands at one edge. Anything a belt or drone delivers into it counts towards the goals and pays credits.
+A **freight depot** (3 × 3) stands at one edge. Anything a drone delivers into it counts towards the goals and pays credits. Its **sell list** says which goods
+silos send it (see Logistics).
 
 ## Goods
 
@@ -152,22 +151,56 @@ Every building is available from the start. Removing one refunds its full cost, 
 
 ### Logistics
 
+There are no belts. Goods move by drone, and every drone belongs to a **silo**.
+
 | Building | Size | Cost | Notes |
 | --- | --- | --- | --- |
-| Belt | 1 × 1 | 2 | Carries goods at 1.2 tiles/s, two per tile. Takes goods from behind and both sides |
-| Splitter | 1 × 1 | 15 | Takes goods from any belt leading into it and shares them between the other sides in turn, skipping full or empty exits |
-| Sorter | 1 × 1 | 20 | The chosen good goes ahead; everything else goes left or right |
-| Crossing | 1 × 1 | 10 | Two belts cross without mixing: goods leave on the side opposite the one they came in by |
-| Drone pad | 2 × 2 | 120 | Set to send or receive. A sending pad's drone carries up to 5 goods to its linked receiving pad, 5 tiles/s, within 40 tiles. Needs 15 W while its drone flies |
+| Silo | 2 × 2 | 150 | Stores up to 20 of each good. Serves every building with a tile within 6 tiles of it. Has 3 drones |
 
-Goods leave a building onto any belt next to it that doesn't point into it or lead back into it within a few tiles, taking turns between them (a belt running past a field collects its harvest). Goods enter a building from
-any belt that points into it, if the building can use them and has room. Buildings never pass goods to each other directly.
+**What the drones do.** A silo's drones fly these jobs, in this order of priority:
+
+1. **Feed:** take a good from the silo to a building it serves that can use it and has room (wheat to a mill, compost to a
+   field). Nearest building first. A good sold by half only on its turn (see "Who gets what").
+2. **Collect:** fetch goods waiting in a building it serves (a field's harvest, a mill's flour and bran) into the silo,
+   fullest building first, while the silo has room for them.
+3. **Fetch:** when a building it serves needs a good this silo doesn't have, fly to the nearest other silo within 40 tiles
+   that has some to spare (more than its own buildings need) and bring it back.
+4. **Sell:** fly the goods on the depot's sell list to the depot, if it is within 40 tiles (a good sold by half only on its turn, a spare one only when no building it serves can take it). A drone waits for a full load
+   (4 goods) or 4 s, whichever comes first.
+
+A drone carries up to 4 goods at 5 tiles/s and spends 0.5 s loading or unloading at its target (at its own silo it
+loads and unloads at once). Buildings never pass goods to each other
+directly, so every good goes through a silo. Two silos can serve the same building; both work for it.
+
+**Power.** A drone charges before every flight from the pylon network of the station it is at: 2 J per tile of the leg, at up to
+20 W per drone charging. At its own silo it charges for the trip out, and for the trip back too unless it is going to another
+silo or the depot. At another silo it charges for the trip home from that silo's network; the depot tops drones up for the trip
+home at once and for free (it is the settlement's). A silo outside every pylon's reach has no power, so its drones don't fly. At night, drones run on what the
+batteries hold, like any machine.
+
+**Who gets what.** Each good on the depot's sell list is sold one of two ways:
+
+- **Spare:** only what no building the silo serves can take goes to the depot. For byproducts and surpluses (the eggs a
+  bakery can't use).
+- **Half:** feeding and selling take turns, about half each, while both want it; when the buildings can't take more, the
+  depot gets the rest (the silo remembers at most 8 goods of either side's lead, so a long run of one doesn't starve the
+  other later). For a good you need both to use and to deliver: on First Light, wheat sold by half goes half to the depot
+  and half to the mill.
+
+A good not on the list stays for your buildings. Each building that takes goods has a toggle per input ("takes bran: yes/no"), so you can send bran to the coop
+rather than the digester. The depot's sell list starts with the four products (bread, honey cake, tomato sauce, linen) sold when
+spare, and every other good the commission asks for sold by half; select the depot to change it.
+
+![The depot selected: its sell list, wheat and flour sold by half, the products when spare](images/sell-list.png)
+
+**Byproducts stay strict.** A mill whose bran no building takes and the depot doesn't buy fills its silo's 20 bran, then its
+own buffer, and stops. Only that chain stops: the silo still has room for every other good.
 
 ### Farming
 
 | Building | Size | Cost | Power | Notes |
 | --- | --- | --- | --- | --- |
-| Field | 3 × 3 | 30 | — | Grows the chosen crop on its 9 tiles. Takes compost from belts |
+| Field | 3 × 3 | 30 | — | Grows the chosen crop on its 9 tiles. Takes compost (a silo brings it) |
 | Sprinkler | 1 × 1 | 25 | 3 W within 8 tiles of water, else 8 W | Waters fields whose centre is within 3 tiles |
 | Coop | 3 × 3 | 150 | — | Four chickens. Every 2 feed (beans, bran or seed cake) give 2 eggs and 1 manure, 16 s |
 | Beehive | 1 × 1 | 60 | — | Makes honey from flowering fields (not wheat) within 4 tiles, faster with more of them (up to 3). Pollinates fields within 4 tiles |
@@ -186,7 +219,7 @@ any belt that points into it, if the building can use them and has room. Buildin
 - Grow times are with water at fertility 60. Growth speed is ×0.4 without water, and from ×0.4 (fertility 0) to ×1.4
   (fertility 100) by the field's average fertility.
 - A pollinated field (a hive within 4 tiles) yields 1 more of a flowering crop.
-- A harvest waits in the field (up to 6) until a belt takes it. A full field stops growing.
+- A harvest waits in the field (up to 6) until a drone collects it. A full field stops growing.
 - A field with compost waiting uses one whenever its average fertility is under 85: +12 on each tile.
 - Ground without a field rests: it regains 0.1 fertility a second (6 a minute), up to what it started at. Moving a field
   lets worn ground recover.
@@ -252,8 +285,8 @@ A commission has goals, a target time and modifiers. It ends when every goal is 
 | 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 55 min | Wet and cramped |
 | 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 60 min | Everything |
 
-The bot (`npm run sim`) clears First Light in about 14 minutes, Morning Bread in about 26 and Linen for the Looms in about 44
-(one spinner; two would be faster), building instantly; a person needs a few minutes more to plan and place. The other
+The bot (`npm run sim`) clears First Light in about 14 minutes, Morning Bread in about 38 (two silos) and Linen for the Looms
+in about 45 (one spinner; two would be faster), building as credits allow; a person needs a few minutes more to plan and place. The other
 targets are guesses until they have bot layouts too.
 
 ![The level select](images/menu.png)
@@ -275,7 +308,8 @@ each commission's best medal and time.
 
 - [ ] Tuning: crop times, machine times, prices and target times are first guesses. A scripted bot run per commission
   (`npm run sim`) should check that each one can be cleared and roughly in its target time.
-- [ ] Do belts need curves drawn at corners, or are straight segments with gliding chevrons enough to read?
-- [ ] Should drones and belts cost power? (Only drone flights do, for now.)
+- [ ] Silo numbers (reach 6, 3 drones, 20 of each good) are first guesses: does one silo per chain feel right, or should drones be
+  bought per silo?
+- [ ] Should a silo relay sell goods for a silo that can't reach the depot? (For now a silo out of the depot's range doesn't sell.)
 - [ ] Weather (rain waters fields, storms stop turbines) as a later modifier.
 - [ ] Blueprints/copy-paste once layouts grow large.

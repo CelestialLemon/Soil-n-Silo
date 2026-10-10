@@ -24,7 +24,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   bran: { name: 'Bran', price: 1, colour: 0xb88a4a, hint: 'A milling byproduct: chicken feed, compost or fuel.' },
   oil: { name: 'Oil', price: 12, colour: 0xe8c040, hint: 'Cooked into sauce.' },
   seedcake: { name: 'Seed cake', price: 2, colour: 0x9a7a4a, hint: 'A pressing byproduct: chicken feed, compost or fuel.' },
-  compost: { name: 'Compost', price: 4, colour: 0x4a3626, hint: 'Feeds the soil: fields take it from belts.' },
+  compost: { name: 'Compost', price: 4, colour: 0x4a3626, hint: 'Feeds the soil: fields take it when their soil drops.' },
   yarn: { name: 'Yarn', price: 10, colour: 0xd8d0e8, hint: 'Woven into linen.' },
   linen: { name: 'Linen', price: 45, colour: 0xece4d0, hint: 'A product. Deliver it.' },
   bread: { name: 'Bread', price: 22, colour: 0xc88a4a, hint: 'A product. Deliver it.' },
@@ -84,7 +84,7 @@ export const FIELD = {
 // ---- Buildings ----
 
 export const BUILDING_IDS = [
-  'belt', 'splitter', 'sorter', 'crossing', 'pad',
+  'silo',
   'field', 'sprinkler', 'coop', 'hive', 'composter',
   'mill', 'press', 'spinner', 'loom', 'bakery', 'cannery',
   'solar', 'turbine', 'battery', 'digester', 'pylon',
@@ -105,8 +105,6 @@ export interface BuildingDef {
   category: Category | null;
   /** Watts it draws while working. */
   power?: number;
-  /** Its direction matters (belts, sorters); others turn only for looks. */
-  directional?: boolean;
   /** Tall: shelters a wind turbine next to it. */
   tall?: boolean;
   /** Can stand on water (a little bridge). */
@@ -116,11 +114,7 @@ export interface BuildingDef {
 }
 
 export const BUILDINGS: Record<BuildingId, BuildingDef> = {
-  belt: { name: 'Belt', size: 1, cost: 2, category: 'logistics', directional: true, onWater: true, key: 'B', hint: 'Carries goods. Drag to lay a line; R turns it.' },
-  splitter: { name: 'Splitter', size: 1, cost: 15, category: 'logistics', onWater: true, hint: 'Shares what comes in between the belts leading out of it.' },
-  sorter: { name: 'Sorter', size: 1, cost: 20, category: 'logistics', directional: true, onWater: true, hint: 'The chosen good goes straight on; the rest go left or right.' },
-  crossing: { name: 'Crossing', size: 1, cost: 10, category: 'logistics', onWater: true, hint: 'Two belts cross without mixing.' },
-  pad: { name: 'Drone pad', size: 2, cost: 120, category: 'logistics', power: 15, hint: 'Sends goods by drone to a linked pad (or the depot), up to 40 tiles away. Power while flying.' },
+  silo: { name: 'Silo', size: 2, cost: 150, category: 'logistics', power: 20, tall: true, key: 'L', hint: 'Its drones carry goods to and from every building within 6 tiles, to other silos and to the depot.' },
   field: { name: 'Field', size: 3, cost: 30, category: 'farming', key: 'F', hint: 'Grows a crop on rich soil. Water it with sprinklers; feed it compost.' },
   sprinkler: { name: 'Sprinkler', size: 1, cost: 25, category: 'farming', power: 3, hint: 'Waters fields within 3 tiles. Cheaper to run near water.' },
   coop: { name: 'Coop', size: 3, cost: 150, category: 'farming', hint: 'Chickens: 2 feed → 2 eggs + manure.' },
@@ -193,14 +187,32 @@ export const SAPLING_SECONDS = 60;
 
 // ---- Logistics ----
 
-export const BELT = {
-  /** Tiles per second. */
-  speed: 1.2,
-  /** Least distance between goods on a belt, in tiles. */
-  spacing: 0.5,
+export const SILO = {
+  /** Serves buildings with a tile within this many tiles of it. */
+  reach: 6,
+  /** Drones fly to other silos and the depot within this many tiles (centre to centre). */
+  range: 40,
+  /** Goods of each kind it holds. */
+  perGood: 20,
+  drones: 3,
 };
-export const ROUTER_SECONDS = 0.35;
-export const PAD = { store: 10, receiveStore: 20, cargo: 5, speed: 5, range: 40, waitSeconds: 4 };
+export const DRONE = {
+  /** Goods a trip, tiles a second, seconds to load or unload. */
+  cargo: 4, speed: 5, loadSeconds: 0.5,
+  /** Joules a tile flown, and the watts a drone charges at. */
+  joulesPerTile: 2, chargeRate: 20,
+  /** A drone selling waits this long for a full load. */
+  sellWait: 4,
+  /** The most a silo remembers of feeding's or selling's lead for a good sold by half, in goods. */
+  shareSlack: 8,
+};
+/**
+ * How the depot's sell list takes a good: `spare` sells only what no building a silo serves can use; `half` shares it,
+ * selling about half even when buildings want it.
+ */
+export type SellMode = 'spare' | 'half';
+/** Products the depot's sell list always starts with. */
+export const PRODUCTS: ItemId[] = ['bread', 'honeycake', 'sauce', 'linen'];
 
 // ---- Clearing ----
 

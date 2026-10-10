@@ -50,13 +50,14 @@ const MIN = 60;
 export const CAMPAIGN: Scenario[] = [
   {
     id: 'c1', name: 'First Light', seed: 1101, width: 44, height: 36, credits: 1200, par: 20 * MIN,
-    blurb: 'Brightwater needs grain and flour to get through the season. Lay your first fields, belts and a powered mill.',
+    blurb: 'Brightwater needs grain and flour to get through the season. Lay your first fields, a silo and a powered mill.',
     terrain: { ...LOAM, forest: 0.08, rock: 0.02 }, weather: CALM, tags: ['Gentle'],
     goals: [{ kind: 'deliver', item: 'wheat', n: 120 }, { kind: 'deliver', item: 'flour', n: 80 }],
     tips: [
-      'Place a few fields (F) on rich soil (V shows it) and run a belt (B) along one side of them: the harvest drops onto it.',
-      'Lead the belt into the depot for wheat. For flour, lead a belt into a mill, and another out of the mill into the depot.',
-      'The mill needs power: a solar panel (S) and a pylon (P) within 3 tiles of both. A battery keeps it going at night.',
+      'Place a few fields (F) on rich soil (V shows it), and a silo (L) within 6 tiles of them: its drones collect the harvest.',
+      'Put a mill in the silo\'s reach too: the drones feed it wheat and collect its flour. Wheat and flour on the depot\'s sell list fly to the depot.',
+      'The silo\'s drones and the mill need power: a solar panel (S) and a pylon (P) within 3 tiles of both. A battery keeps them going at night.',
+      'The mill makes bran too, and stops when the bran has nowhere to go. Select the depot to sell it, or build a coop or composter for it.',
       'Sprinklers near the fields more than double their pace. Watch the markers: yellow waits for input, red has no power.',
     ],
   },
@@ -67,8 +68,8 @@ export const CAMPAIGN: Scenario[] = [
     goals: [{ kind: 'deliver', item: 'bread', n: 150 }, { kind: 'soil', min: 40 }],
     tips: [
       'Bread is flour and an egg. Chickens lay eggs from feed: beans, bran or seed cake, and leave manure.',
-      'A mill makes bran with every flour. A sorter can send the flour one way and the bran another.',
-      'Anything a building can\'t get rid of stops it: send spare bran and manure to a composter, a digester or the depot.',
+      'A mill makes bran with every flour. A coop in the same silo\'s reach takes it as feed.',
+      'Anything a building can\'t get rid of stops it: give spare bran and manure a composter or a digester, or sell it at the depot.',
       'Wheat tires the soil; bean fields and compost bring it back.',
     ],
   },

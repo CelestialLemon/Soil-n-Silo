@@ -1,7 +1,7 @@
 # Soil n Silo
 
-A solarpunk automation game, build-only and point-and-click: each commission is a seeded valley where you lay out fields, belts,
-drones, machines and power until the farm delivers what a nearby settlement asked for. Soil wears out and comes back,
+A solarpunk automation game, build-only and point-and-click: each commission is a seeded valley where you lay out fields, silos
+(whose drones carry every good), machines and power until the farm delivers what a nearby settlement asked for. Soil wears out and comes back,
 byproducts have to go somewhere, and the sun sets every few minutes. A 3D world drawn as pixel art by
 [pixel3d-renderer](https://github.com/CelestialLemon/pixel3d-renderer), for the web.
 
@@ -10,7 +10,7 @@ byproducts have to go somewhere, and the sun sets every few minutes. A 3D world 
 - How to work here: [`AGENTS.md`](AGENTS.md)
 - Models: [`docs/ASSET_BRIEF.md`](docs/ASSET_BRIEF.md)
 
-![Morning Bread at noon: wheat and bean fields, a mill, coop, digester and bakery, solar panels and batteries](docs/screenshot.png)
+![Morning Bread at noon: wheat and bean fields round two silos, a mill, coop, digester and bakery, solar panels, turbines and batteries](docs/screenshot.png)
 
 ```sh
 npm install
@@ -24,10 +24,10 @@ npm run build        # typecheck, then the game into dist/
 Needs Node 22.18 or later (the tests run TypeScript directly, and installing the renderer from git builds it).
 
 **Playing.** Pick a commission (or the sandbox) in the level select. Pick a building in the bar at the bottom, then click or
-drag to place it (belts follow the drag, R turns them); click a building to inspect and configure it (crop, recipe, sorter
-filter, drone link); X removes (refunds), right click or Esc cancels. Drag (or right-drag, arrows) pans, Q/E turn the camera,
+drag to place a row; click a building to inspect and configure it (crop, recipe, which goods it takes from silos; the depot's
+sell list); X removes (refunds), right click or Esc cancels. Drag (or right-drag, arrows) pans, Q/E turn the camera,
 the wheel, a trackpad pinch, +/− or Z zooms towards the pointer (the pixel size is a setting in the menu), Space pauses, 1/2/3 set the speed, V cycles overlays (soil, power,
-water, bees), Tab shows production stats, and G opens the guide (every building: what it does, how to use it, its numbers). The game saves the commission in progress in the browser every 30 s and when the page is hidden; `?menu` opens the level
+silo reach, water, bees), Tab shows production stats, and G opens the guide (every building: what it does, how to use it, its numbers). The game saves the commission in progress in the browser every 30 s and when the page is hidden; `?menu` opens the level
 select and `?play=<id>` (`c1`…`c8`, `sandbox`, `r<seed>-<1..3>`) starts a commission directly.
 
 **Builds online.** Every push to `main` or `dev` is built and deployed to GitHub Pages (`.github/workflows/deploy.yml`):
