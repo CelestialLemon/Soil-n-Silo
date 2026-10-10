@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObject } from 'pixel3d-renderer';
-import { beltPath, canPlace, linkPad, place, remove, removeAt, rotate } from './game/build.ts';
+import { canPlace, place, remove, removeAt } from './game/build.ts';
 import { BUILDINGS, type BuildingId } from './game/data.ts';
 import { TERRAIN } from './game/map.ts';
 import { deserialize, readProgress, recordResult, saveKey, serialize } from './game/save.ts';
@@ -11,11 +11,11 @@ import { Hud, ZOOM_MODES, type Tool, type ZoomMode } from './ui/hud.ts';
 import { showMenu } from './ui/menu.ts';
 import { allGeometries, loadModels } from './world/models.ts';
 import { buildWorld } from './world/terrain.ts';
-import { DECK, WorldView, type Overlay } from './world/view.ts';
+import { WorldView, type Overlay } from './world/view.ts';
 import './ui/style.css';
 
 // The game: owns the loop, the state, input and the camera, and each frame tells the renderer where everything is. It is
-// build-only: the player places, turns, configures and removes buildings and the simulation runs on its own. The camera
+// build-only: the player places, configures and removes buildings and the simulation runs on its own. The camera
 // is orthographic at a 30° pitch, turns between four views 90° apart, zooms towards the pointer and pans with the mouse.
 //
 // Zoom has three modes, switched in the HUD, to compare how they play (see ZoomMode in hud.ts). All three zoom over the
@@ -308,9 +308,8 @@ async function play(initial: GameState) {
   /** The north-west tile for a building of size n centred under the pointer's tile. */
   const anchor = (t: { x: number; y: number }, n: number) => ({ x: t.x - Math.floor((n - 1) / 2), y: t.y - Math.floor((n - 1) / 2) });
 
-  /** Where a drag in build mode places things: a belt line, or a row of buildings along the drag's longer axis. */
+  /** Where a drag in build mode places things: a row of buildings along the drag's longer axis. */
   function plan(type: BuildingId, from: { x: number; y: number }, to: { x: number; y: number }, rot: Dir) {
-    if (type === 'belt') return beltPath(from, to, rot);
     const n = BUILDINGS[type].size, a = anchor(from, n), b = anchor(to, n);
     const horizontal = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
     const steps = Math.floor((horizontal ? Math.abs(b.x - a.x) : Math.abs(b.y - a.y)) / n);
@@ -333,16 +332,16 @@ async function play(initial: GameState) {
         const cx = sp.x + n / 2, cz = sp.y + n / 2;
         ghost(`frame ${okHere} ${n}`, (okHere ? models.frames.ok : models.frames.bad)[n - 1], cx, 0.03, cz);
         ghost(`b ${type}`, models.buildings[type].idle, cx, 0.04, cz, YAW[sp.rot], okHere);
-        if (type === 'belt' || type === 'sorter') ghost('arrow', models.arrow, cx, 0.04 + DECK + 0.005, cz, YAW[sp.rot] - Math.PI / 2, okHere);
       }
-      // A pylon's reach, and the pylons it would link to.
+      // A pylon's reach, and the pylons it would link to; the silos' reach.
       if (type === 'pylon' && spots.length === 1) overlayFor('power');
+      if (type === 'silo') overlayFor('silos');
       if (type === 'sprinkler') overlayFor('water');
       if (type === 'hive') overlayFor('bees');
     } else if (tool.kind === 'remove' && press?.mode === 'paint' && press.from && press.to) {
       const x0 = Math.min(press.from.x, press.to.x), x1 = Math.max(press.from.x, press.to.x), y0 = Math.min(press.from.y, press.to.y), y1 = Math.max(press.from.y, press.to.y);
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) ghost('frame false 1', models.frames.bad[0], x + 0.5, 0.03, y + 0.5);
-    } else if (hoverTile && tool.kind !== 'link') {
+    } else if (hoverTile) {
       cursor.visible = true;
       cursor.setTransform(new THREE.Vector3(hoverTile.x + 0.5, 0.03, hoverTile.y + 0.5));
     }
@@ -375,11 +374,6 @@ async function play(initial: GameState) {
         const r = hb ? remove(state, hb) : removeAt(state, t!.x, t!.y);
         if (r.message) hud.toast(r.message, r.ok);
         if (selected !== null && !buildingById(state, selected)) selected = null;
-        return;
-      }
-      case 'link': {
-        const pad = buildingById(state, tool.pad), dest = hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;
-        if (pad && dest) { const r = linkPad(state, pad, dest); hud.toast(r.message, r.ok); if (r.ok) { setTool({ kind: 'select' }); selected = pad.id; } }
         return;
       }
     }
@@ -491,12 +485,9 @@ async function play(initial: GameState) {
     if (e.code === 'Minus' || e.code === 'NumpadSubtract') zoomStep(-1, pointer ?? undefined);
     if (e.code === 'Tab') { e.preventDefault(); hud.toggleStats(); }
     if (e.code === 'KeyG') { hud.openGuide(); hud.refresh(); return; }
-    if (e.code === 'KeyV') { const order: Overlay[] = ['none', 'fertility', 'power', 'water', 'bees']; overlay = order[(order.indexOf(overlay) + 1) % order.length]; }
+    if (e.code === 'KeyV') { const order: Overlay[] = ['none', 'fertility', 'power', 'silos', 'water', 'bees']; overlay = order[(order.indexOf(overlay) + 1) % order.length]; }
     if (e.code === 'KeyX') setTool(tool.kind === 'remove' ? { kind: 'select' } : { kind: 'remove' });
-    if (e.code === 'KeyR') {
-      if (tool.kind === 'build') { tool = { ...tool, rot: ((tool.rot + (e.shiftKey ? 3 : 1)) % 4) as Dir }; repick = 2; }
-      else if (selected !== null) { const b = buildingById(state, selected); if (b && BUILDINGS[b.type].directional) rotate(state, b); }
-    }
+    if (e.code === 'KeyR' && tool.kind === 'build') { tool = { ...tool, rot: ((tool.rot + (e.shiftKey ? 3 : 1)) % 4) as Dir }; repick = 2; }
     const k = e.code.startsWith('Key') ? e.code.slice(3) : '';
     const hot = (Object.keys(BUILDINGS) as BuildingId[]).find((id) => BUILDINGS[id].key === k);
     if (hot) setTool(tool.kind === 'build' && tool.type === hot ? { kind: 'select' } : { kind: 'build', type: hot, rot: tool.kind === 'build' ? tool.rot : 1 });
@@ -507,18 +498,17 @@ async function play(initial: GameState) {
 
   /** One line about what's under the pointer. */
   function describeHover(): string | null {
-    if (tool.kind === 'link') return 'Click a receiving pad or the depot to link. Esc cancels.';
     const b = hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;
     if (tool.kind === 'build' && hoverTile) {
       const n = BUILDINGS[tool.type].size, a = anchor(hoverTile, n), c = canPlace(state, tool.type, a.x, a.y);
       const head = `${BUILDINGS[tool.type].name} · ${state.scenario.sandbox ? 'free' : `${BUILDINGS[tool.type].cost} credits`}`;
       const soil = tool.type === 'field' ? ` · soil ${Math.round(avgSoil(a.x, a.y))}` : '';
-      return `${head}${soil}\n${c.ok ? (BUILDINGS[tool.type].directional ? 'Click or drag to build · R turns' : 'Click or drag to build') : c.message}`;
+      return `${head}${soil}\n${c.ok ? 'Click or drag to build · R turns' : c.message}`;
     }
     if (b) return `${BUILDINGS[b.type].name}: ${describeStatus(state, b)}${b.type === 'field' ? ` · soil ${Math.round(fieldFertility(state, b))}` : ''}`;
     if (!hoverTile) return null;
     const t = terrainAt(state, hoverTile.x, hoverTile.y);
-    if (t === TERRAIN.water) return 'Water. Belts, crossings and pylons can bridge it.';
+    if (t === TERRAIN.water) return 'Water. Pylons can stand in it; drones fly over it.';
     if (t === TERRAIN.tree) return 'A tree: shelters wind turbines nearby. Remove (X) for 5 credits.';
     if (t === TERRAIN.rock) return 'Rock. Remove (X) for 15 credits.';
     return `Grass · soil fertility ${state.map.fertility[hoverTile.y * map.width + hoverTile.x]}`;
@@ -560,12 +550,13 @@ async function play(initial: GameState) {
     if (pointer && frameNo % REPICK_FRAMES === 0) repick = Math.max(repick, 1);
     if (repick > 0) { repick--; pickHover(); }
     showGhosts();
+    // A selected silo shows the silos' reach.
+    if (toolOverlay === 'none' && selected !== null && buildingById(state, selected)?.type === 'silo') toolOverlay = 'silos';
     view.overlay(state, overlay !== 'none' ? overlay : toolOverlay);
     view.links(state, selected ?? (tool.kind === 'select' ? hoverBuilding : null));
     const hi: number[] = [];
     if (selected !== null) hi.push(selected);
-    if (hoverBuilding !== null && hoverBuilding !== selected && (tool.kind === 'select' || tool.kind === 'link' || tool.kind === 'remove')) hi.push(hoverBuilding);
-    if (tool.kind === 'link') hi.unshift(tool.pad);
+    if (hoverBuilding !== null && hoverBuilding !== selected && (tool.kind === 'select' || tool.kind === 'remove')) hi.push(hoverBuilding);
     highlight(hi);
     hud.setHover(describeHover());
     hud.update();

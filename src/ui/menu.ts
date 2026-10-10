@@ -44,7 +44,7 @@ export function showMenu(root: HTMLElement, host: MenuHost) {
   showPreview();
 
   const menu = h('div', { class: 'menu' },
-    h('header', null, h('h1', null, 'Soil n Silo'), h('p', null, 'A solarpunk valley, one commission at a time: lay out fields, belts, drones and power, and let the farm run itself.')),
+    h('header', null, h('h1', null, 'Soil n Silo'), h('p', null, 'A solarpunk valley, one commission at a time: lay out fields, silos and power, and let the farm run itself.')),
     host.saved ? h('section', { class: 'continue' }, h('button', { class: 'primary big', onclick: host.resume },
       `Continue: ${host.saved.name}`, h('small', null, host.saved.done ? ' (complete, free play)' : ` (${fmt(host.saved.time)} played)`))) : null,
     h('section', null, h('h2', null, 'Campaign'), h('div', { class: 'levels' }, ...CAMPAIGN.map((sc, i) => card(sc, i)))),

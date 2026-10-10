@@ -4,7 +4,7 @@ import { ITEMS } from '../game/data.ts';
 import { Kit } from './kit.ts';
 
 // Stand-in models built in code: every building, crop, good and marker the game shows, in local space (origin on the
-// ground at the footprint centre, front facing +z; goods on a belt travel towards +z). Blender models in public/models/
+// ground at the footprint centre, front facing +z). Blender models in public/models/
 // replace these as they land (models.ts); these keep the game playable without them. Solarpunk palette: timber, white
 // ceramic, copper, solar blue, terracotta and living green.
 
@@ -12,10 +12,13 @@ export const C = {
   timber: 0xa07a50, dark: 0x6a4c34, plank: 0xb8925e, ceramic: 0xeee6d6, cream: 0xe0d4b8, copper: 0xc87a4a, brass: 0xd8a84a,
   solar: 0x2c4c80, solarLight: 0x4a74b0, glass: 0x9ad0d8, moss: 0x6a9a48, leaf: 0x4f8a3a, leafLight: 0x7ab050, terracotta: 0xc8704a,
   slate: 0x4b6470, stone: 0x8a8c84, stoneLight: 0xb0aa98, soil: 0x6a4a30, glow: 0xffd68b, fire: 0xff9c39, red: 0xc84a3a,
-  white: 0xf6f2ea, belt: 0x4a4440, beltLight: 0x6a625a,
+  white: 0xf6f2ea,
 };
 
 type Builder = (k: Kit) => void;
+
+/** Where a silo's drones land, in its local space (x, z), one per drone. */
+export const SILO_PADS: [number, number][] = [[0.5, 0.5], [-0.4, 0.55], [0.55, -0.45]];
 
 /** A green roof: a slab with a moss top. */
 function mossRoof(k: Kit, x: number, y: number, z: number, w: number, d: number) {
@@ -32,33 +35,18 @@ const B: Partial<Record<BuildingId, Builder>> = {
   field: (k) => {
     for (const x of [-1, 0, 1]) for (const z of [-1, 0, 1]) k.box(x, -0.05, z, 0.98, 0.08, 0.98, 0x8a6a46).box(x, 0.03, z, 0.3, 0.12, 0.3, C.leafLight);
   },
-  belt: (k) => {
-    k.box(-0.44, 0, 0, 0.08, 0.18, 1, C.timber).box(0.44, 0, 0, 0.08, 0.18, 1, C.timber)
-      .box(0, 0.06, 0, 0.82, 0.08, 0.98, C.belt);
-    // Chevrons pointing the way the goods go.
-    for (const z of [-0.25, 0.25]) {
-      k.box(-0.12, 0.14, z, 0.26, 0.02, 0.07, C.beltLight, { ry: -0.6 }).box(0.12, 0.14, z, 0.26, 0.02, 0.07, C.beltLight, { ry: 0.6 });
+  silo: (k) => {
+    k.box(0, 0, 0, 1.9, 0.14, 1.9, C.stoneLight)
+      .cyl(-0.35, 0.14, -0.35, 0.5, 1.7, C.ceramic, { seg: 12 })
+      .cyl(-0.35, 0.6, -0.35, 0.53, 0.08, C.copper, { seg: 12 }).cyl(-0.35, 1.25, -0.35, 0.53, 0.08, C.copper, { seg: 12 })
+      .cone(-0.35, 1.84, -0.35, 0.58, 0.5, C.moss, { seg: 12 }).cyl(-0.35, 2.3, -0.35, 0.05, 0.2, C.brass, { seg: 6 })
+      .box(0.15, 0.9, -0.35, 0.3, 0.14, 0.14, C.copper);
+    // Three landing pads for its drones, with a light each.
+    for (const [x, z] of SILO_PADS) {
+      k.cyl(x, 0.14, z, 0.3, 0.06, C.slate, { seg: 10 }).cyl(x, 0.2, z, 0.2, 0.02, C.cream, { seg: 10 })
+        .box(x + 0.22, 0.2, z + 0.22, 0.06, 0.06, 0.06, C.glow, { flag: FLAG.EMISSIVE });
     }
-  },
-  splitter: (k) => {
-    k.box(0, 0, 0, 0.96, 0.16, 0.96, C.timber).cyl(0, 0.16, 0, 0.36, 0.06, C.belt, { seg: 10 })
-      .box(0, 0.22, 0, 0.6, 0.06, 0.08, C.brass).box(0, 0.22, 0, 0.08, 0.06, 0.6, C.brass).cyl(0, 0.22, 0, 0.1, 0.12, C.copper);
-  },
-  sorter: (k) => {
-    k.box(-0.44, 0, 0, 0.08, 0.18, 1, C.timber).box(0.44, 0, 0, 0.08, 0.18, 1, C.timber).box(0, 0.06, 0, 0.82, 0.08, 0.98, C.belt)
-      .box(-0.4, 0.18, -0.2, 0.06, 0.4, 0.06, C.copper).box(0.4, 0.18, -0.2, 0.06, 0.4, 0.06, C.copper).box(0, 0.54, -0.2, 0.86, 0.08, 0.08, C.copper)
-      .box(0.12, 0.14, 0.25, 0.26, 0.02, 0.07, C.brass, { ry: 0.6 }).box(-0.12, 0.14, 0.25, 0.26, 0.02, 0.07, C.brass, { ry: -0.6 });
-  },
-  crossing: (k) => {
-    k.box(0, 0, 0, 0.82, 0.12, 0.98, C.belt).box(-0.44, 0, 0, 0.08, 0.16, 1, C.timber).box(0.44, 0, 0, 0.08, 0.16, 1, C.timber)
-      .box(0, 0.3, 0, 0.98, 0.07, 0.7, C.beltLight).box(0, 0.16, -0.36, 1, 0.14, 0.06, C.plank).box(0, 0.16, 0.36, 1, 0.14, 0.06, C.plank);
-  },
-  pad: (k) => {
-    k.box(0, 0, 0, 1.9, 0.12, 1.9, C.stoneLight).cyl(0, 0.12, 0, 0.8, 0.04, C.slate, { seg: 16 }).cyl(0, 0.16, 0, 0.62, 0.02, C.cream, { seg: 16 })
-      .cyl(0, 0.17, 0, 0.5, 0.02, C.slate, { seg: 16 });
-    for (const [x, z] of [[-0.82, -0.82], [0.82, -0.82], [-0.82, 0.82], [0.82, 0.82]]) k.box(x, 0.12, z, 0.12, 0.08, 0.12, C.glow, { flag: FLAG.EMISSIVE });
-    k.box(-0.8, 0.12, 0, 0.08, 0.7, 0.08, C.copper).box(-0.8, 0.82, 0, 0.18, 0.12, 0.18, C.solar);
-    planter(k, 0.75, 0.0, 0.12);
+    planter(k, 0.62, -0.75, 0.14);
   },
   sprinkler: (k) => {
     k.box(0, 0, 0, 0.36, 0.08, 0.36, C.stone).cyl(0, 0.08, 0, 0.05, 0.55, C.copper, { seg: 6 })
@@ -218,7 +206,7 @@ export function cropStandIn(id: CropId, stage: number, stages: number) {
   return k.build();
 }
 
-// ---- Goods on belts ----
+// ---- Goods (carried under drones) ----
 
 export function itemShape(id: ItemId) {
   const k = new Kit(false), hex = ITEMS[id].colour;
@@ -249,21 +237,6 @@ export function marker(hex: number) {
 export function frame(n: number, hex: number, t = 0.06) {
   const k = new Kit(false), h = n / 2 - t / 2;
   for (const [x, z, w, d] of [[0, -h, n, t], [0, h, n, t], [-h, 0, t, n - 2 * t], [h, 0, t, n - 2 * t]]) k.box(x, 0, z, w, 0.02, d, hex, { flag: FLAG.EMISSIVE });
-  return k.build();
-}
-
-/**
- * Chevrons gliding along a belt's deck the way goods go, at `speed` tiles a second. Built along +x (the renderer's conveyor
- * motion runs along +x), so it's placed turned a quarter less than the belt. Moving, they show the direction from any view,
- * where a still arrow seen at 45° reads as a lozenge.
- */
-export function arrow(speed: number, hex = 0x22302c) {
-  const k = new Kit(true);
-  // Each chevron is two arms meeting at its tip, 0.11 ahead of its centre; dark, to stand out on the timber deck.
-  for (const x0 of [-0.25, 0.25]) {
-    const mo = motion.conveyor([x0, 0, 0], -0.5, 1, speed);
-    k.box(x0, 0, -0.1, 0.3, 0.015, 0.12, hex, { ry: -0.74, flag: FLAG.DECOR, mo }).box(x0, 0, 0.1, 0.3, 0.015, 0.12, hex, { ry: 0.74, flag: FLAG.DECOR, mo });
-  }
   return k.build();
 }
 

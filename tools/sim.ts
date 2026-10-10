@@ -5,9 +5,9 @@
 //
 // Run: npm run sim -- [commission id, default c1] [minutes to run, default 60]
 
-import { place, setCrop, setFilter } from '../src/game/build.ts';
-import { LAYOUTS } from './layouts.ts';
-import { BUILDINGS, ITEMS } from '../src/game/data.ts';
+import { place, setAccept, setCrop, setSell } from '../src/game/build.ts';
+import { LAYOUTS, SELL } from './layouts.ts';
+import { BUILDINGS, ITEMS, type ItemId } from '../src/game/data.ts';
 import { TERRAIN } from '../src/game/map.ts';
 import { networks } from '../src/game/power.ts';
 import { scenarioById } from '../src/game/scenarios.ts';
@@ -31,6 +31,7 @@ s.initialTrees = 0;
 s.map.depot.x = Math.floor(s.map.width / 2);
 s.buildings[0].x = s.map.depot.x;
 const steps = layout(s.map.depot.x, s.map.depot.y);
+for (const [item, mode] of Object.entries(SELL[id] ?? {})) setSell(s.buildings[0], item as ItemId, mode);
 let next = 0;
 const fmt = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 
@@ -40,14 +41,15 @@ for (let t = 0; t < minutes * 60; t += 1) {
     const r = place(s, st.type, st.x, st.y, st.rot ?? 1);
     if (!r.ok) { console.log(`  step ${next} ${st.type} at ${st.x},${st.y}: ${r.message}`); continue; }
     if (st.crop) setCrop(r.building!, st.crop);
-    if (st.filter) setFilter(r.building!, st.filter);
+    for (const item of st.refuse ?? []) setAccept(r.building!, item, false);
     if (next === steps.length) console.log(`${fmt(s.time)}  layout complete (${steps.length} pieces)`);
   }
   advance(s, 1);
   if (Math.round(s.time) % 60 === 0) {
     const nets = networks(s).list, made = nets.reduce((n, x) => n + x.made, 0), wanted = nets.reduce((n, x) => n + x.wanted, 0);
     const goals = sc.goals.map((g, i) => (g.kind === 'deliver' ? `${ITEMS[g.item].name} ${s.delivered[g.item] ?? 0}/${g.n}` : g.kind === 'soil' ? `soil ${Math.round(soilHealth(s))}/${g.min}` : `${g.item}/min ${goalDone(s, i) ? 'done' : '…'}`));
-    console.log(`${fmt(s.time)}  ${goals.join(' · ')} · credits ${Math.floor(s.credits)} · power ${made.toFixed(0)}/${wanted.toFixed(0)} W · stored ${nets.reduce((n, x) => n + x.stored, 0).toFixed(0)} J`);
+    const drones = s.buildings.filter((b) => b.type === 'silo').flatMap((b) => b.drones!);
+    console.log(`${fmt(s.time)}  ${goals.join(' · ')} · credits ${Math.floor(s.credits)} · power ${made.toFixed(0)}/${wanted.toFixed(0)} W · stored ${nets.reduce((n, x) => n + x.stored, 0).toFixed(0)} J · drones busy ${drones.filter((d) => d.phase !== 'idle').length}/${drones.length}`);
   }
   if (s.completedAt !== null) {
     console.log(`\nComplete at ${fmt(s.completedAt)} (target ${fmt(sc.par)}): ${medalFor(sc.par, s.completedAt)}.`);

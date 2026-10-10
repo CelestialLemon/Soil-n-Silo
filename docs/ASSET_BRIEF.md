@@ -23,7 +23,7 @@ per material (no textures, UVs or vertex colours), and a preview PNG. Here they 
 `public/models/<name>.glb`; `assets/README.md` has the conventions and `assets/common.py` the shared palette and helpers.
 
 Scale: 1 Blender unit = 1 m = one tile. Origin on the ground at the model's footprint centre, front facing +Z (glTF), which is −Y in
-Blender. For belts and other directional pieces, goods flow towards the front.
+Blender.
 
 ## Names the game reads
 
@@ -45,11 +45,6 @@ mill's model is `mill_electric` and the coop's `coop_solar` (the season-era `mil
 
 | Model | Footprint | Height | Notes |
 | --- | --- | --- | --- |
-| `belt` | 1 × 1 | ~0.25 | A low conveyor, flow towards +Z. Rollers or slats that read the direction; timber sides |
-| `splitter` | 1 × 1 | ~0.4 | A belt piece with a small three-way turntable or flaps |
-| `sorter` | 1 × 1 | ~0.5 | A belt piece with a little gate and a sign post on top (the game floats the chosen good above it) |
-| `crossing` | 1 × 1 | ~0.4 | Two belts crossing, one stepping over the other |
-| `drone_pad` | 2 × 2 | ~0.6 | A round landing pad with a light ring and a small charging mast |
 | `drone` | ~0.7 | ~0.25 | Four rotors (`move_spin_` each), a cargo basket; seen from above mostly |
 | `field` | 3 × 3 | — | Built in code (soil per tile, coloured by fertility), plus the crop models |
 | `beans`, `sunflower`, `flax` | 1 × 1 | | New crops, 4 `stage_<n>` each. Sunflower tall (~1.4 m ripe) with a big yellow head; beans on a small pole; flax fine blue-flowered |
@@ -74,7 +69,16 @@ mill's model is `mill_electric` and the coop's `coop_solar` (the season-era `mil
 | `tree_oak`, `tree_pine`, `bush` | | | Exist |
 | `sapling` | 1 × 1 | ~0.6 | A staked young tree |
 
-Goods on belts are small tokens (~0.25 m) built in code, one shape and colour per good.
+Goods are small tokens (~0.25 m) built in code, one shape and colour per good, hung under the drone carrying them.
+
+## Needed for the silos (2026-10-10)
+
+Belts, splitters, sorters, crossings and drone pads were removed (their models with them); silos and their drones carry the
+goods now. The silo is drawn from an in-code stand-in until it has a model.
+
+| Model | Footprint | Height | Notes |
+| --- | --- | --- | --- |
+| `silo` | 2 × 2 | ~2.4 | A ceramic grain silo with copper hoops and a green or moss roof, and three small landing pads for its drones at local (x, z) (0.5, 0.5), (−0.4, 0.55) and (0.55, −0.45) (`SILO_PADS` in `src/world/shapes.ts`), each with a small light. The drones park 0.42 m up, so keep the pads clear above that. Tall: it shelters turbines |
 
 **Unused since the pivot** (kept for later chains): `chicken`, `egg_nest`, `manure`, `trough`, `farmhouse`, `shop_stall`,
 `shipping_bin`, `oven`, `pumpkin`, `mill`, `coop`.

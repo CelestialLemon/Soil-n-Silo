@@ -1,18 +1,18 @@
 import {
-  BELT, BUILDINGS, CROPS, DAY_SECONDS, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEMS, OUTPUT_BATCHES, PAD, POWER, recipeById,
-  ROUTER_SECONDS, SAPLING_SECONDS, START_HOUR, TICK, TREE_HEALTH, type Ingredient, type ItemId, type Recipe,
+  BUILDINGS, CROPS, DAY_SECONDS, DRONE, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEMS, OUTPUT_BATCHES, POWER, recipeById,
+  SAPLING_SECONDS, SILO, START_HOUR, TICK, TREE_HEALTH, type Ingredient, type ItemId, type Recipe,
 } from './data.ts';
 import { TERRAIN } from './map.ts';
 import { networkOf, networks } from './power.ts';
 import { noise1 } from './rng.ts';
 import type { Scenario } from './scenarios.ts';
 import {
-  buildingAt, buildingById, centre, countTrees, DX, DY, layoutOf, left, opposite, reachTo, removeBuilding, right, sizeOf,
-  STAT_BUCKET, STAT_BUCKETS, terrainAt, tileIndex, touchLayout, type BeltItem, type Building, type Dir, type GameState,
+  buildingAt, buildingById, centre, countTrees, gapBetween, layoutOf, reachTo, removeBuilding, STAT_BUCKET, STAT_BUCKETS,
+  terrainAt, tileIndex, touchLayout, type Building, type Drone, type GameState, type Task,
 } from './state.ts';
 
-// The simulation: one fixed step of TICK seconds at a time. Each step balances power, runs every building, moves goods
-// out of buildings onto belts, along belts and through splitters, and into buildings, then updates the stats and goals.
+// The simulation: one fixed step of TICK seconds at a time. Each step balances power, runs every building, flies the silos'
+// drones and gives idle ones new jobs, then updates the stats and goals.
 
 // ---- Time, sun and wind ----
 
@@ -36,12 +36,8 @@ export function windAt(sc: Scenario, time: number) {
 
 // ---- Derived lookups, rebuilt when the layout changes ----
 
-interface Out { belt: Building; side: Dir }
-
 interface Derived {
   layout: number;
-  /** Belts next to a building that take its goods, and the side they're on. */
-  outs: Map<number, Out[]>;
   /** Sprinklers watering each field. */
   sprinklers: Map<number, Building[]>;
   /** Fields with a hive near enough to pollinate them. */
@@ -54,8 +50,10 @@ interface Derived {
   nearWater: Set<number>;
   /** Tiles under a field (the rest of the ground rests). */
   fielded: Set<number>;
-  /** Belts in the order they move: each after the belt it feeds (downstream first), so build order never matters. */
-  belts: Building[];
+  /** The buildings each silo serves, nearest first. */
+  serves: Map<number, Building[]>;
+  /** The silos serving each building. */
+  servedBy: Map<number, Building[]>;
 }
 const derivedCache = new WeakMap<GameState, Derived>();
 
@@ -63,14 +61,10 @@ function derived(s: GameState): Derived {
   const layout = layoutOf(s);
   let d = derivedCache.get(s);
   if (d && d.layout === layout) return d;
-  d = { layout, outs: new Map(), sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), nearWater: new Set(), fielded: new Set(), belts: beltOrder(s) };
+  d = { layout, sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), nearWater: new Set(), fielded: new Set(), serves: new Map(), servedBy: new Map() };
   const fields = s.buildings.filter((b) => b.type === 'field');
   const hives = s.buildings.filter((b) => b.type === 'hive');
   const sprinklers = s.buildings.filter((b) => b.type === 'sprinkler');
-  for (const b of s.buildings) {
-    if (b.type === 'belt' || b.type === 'splitter' || b.type === 'sorter' || b.type === 'crossing') continue;
-    d.outs.set(b.id, beltsLeading(s, b));
-  }
   for (const f of fields) {
     for (let y = f.y; y < f.y + 3; y++) for (let x = f.x; x < f.x + 3; x++) d.fielded.add(tileIndex(s, x, y));
     const c = centre(f);
@@ -98,112 +92,30 @@ function derived(s: GameState): Derived {
       if (terrainAt(s, x, y) === TERRAIN.water) { d.nearWater.add(sp.id); break search; }
     }
   }
+  for (const si of s.buildings) {
+    if (si.type !== 'silo') continue;
+    const list = s.buildings.filter((b) => handlesGoods(b) && gapBetween(si, b) <= SILO.reach)
+      .sort((a, c) => distance(si, a) - distance(si, c) || a.id - c.id);
+    d.serves.set(si.id, list);
+    for (const b of list) {
+      const by = d.servedBy.get(b.id);
+      if (by) by.push(si); else d.servedBy.set(b.id, [si]);
+    }
+  }
   derivedCache.set(s, d);
   return d;
 }
 
-/** The belts next to `b` that don't point into it (they take its goods), with the side each is on. */
-function beltsLeading(s: GameState, b: Building): Out[] {
-  const n = sizeOf(b), out: Out[] = [];
-  const check = (x: number, y: number, side: Dir) => {
-    const o = buildingAt(s, x, y);
-    if (o && o.type === 'belt' && o.rot !== opposite(side) && !out.some((e) => e.belt === o) && !leadsInto(s, o, b)) out.push({ belt: o, side });
-  };
-  for (let i = 0; i < n; i++) {
-    check(b.x + i, b.y - 1, 0);
-    check(b.x + n, b.y + i, 1);
-    check(b.x + i, b.y + n, 2);
-    check(b.x - 1, b.y + i, 3);
-  }
-  return out;
-}
-
-/** Belts ordered downstream first: a belt comes after the belt it hands to (loops are broken at an arbitrary point). */
-function beltOrder(s: GameState): Building[] {
-  const belts = s.buildings.filter((b) => b.type === 'belt');
-  const next = new Map<Building, Building | null>();
-  for (const b of belts) {
-    const n = buildingAt(s, b.x + DX[b.rot], b.y + DY[b.rot]);
-    next.set(b, n && n.type === 'belt' && n.rot !== opposite(b.rot) ? n : null);
-  }
-  // Depth: how many belts lie ahead before the line leaves the belts.
-  const depth = new Map<Building, number>();
-  const depthOf = (b: Building): number => {
-    const known = depth.get(b);
-    if (known !== undefined) return known;
-    depth.set(b, 0);   // a loop counts from where it was entered
-    const n = next.get(b);
-    const d = n ? depthOf(n) + 1 : 0;
-    depth.set(b, d);
-    return d;
-  };
-  for (const b of belts) depthOf(b);
-  return belts.map((b, i) => ({ b, d: depth.get(b)!, i })).sort((a, c) => a.d - c.d || (a.b.y - c.b.y) || (a.b.x - c.b.x) || a.i - c.i).map((x) => x.b);
-}
-
-/** Whether a belt line runs back into `b` within a few tiles (so `b` would be feeding its own input). */
-function leadsInto(s: GameState, belt: Building, b: Building) {
-  let cur: Building | null = belt;
-  for (let i = 0; i < 8 && cur && cur.type === 'belt'; i++) {
-    const next = buildingAt(s, cur.x + DX[cur.rot], cur.y + DY[cur.rot]);
-    if (next === b) return true;
-    cur = next;
-  }
-  return false;
-}
-
-export const outputsOf = (s: GameState, b: Building) => derived(s).outs.get(b.id) ?? [];
-
-/** What a building does with goods: whether it takes them from belts, and whether it puts them on belts. */
-export function goodsFlow(b: Building): { takes: boolean; gives: boolean } {
-  if (isRouter(b)) return { takes: true, gives: true };
-  const r = recipeOf(b);
-  return {
-    takes: !!r || b.type === 'depot' || b.type === 'field' || (b.type === 'pad' && b.mode === 'send'),
-    gives: (!!r && r.outputs.length > 0) || b.type === 'field' || b.type === 'hive' || (b.type === 'pad' && b.mode === 'receive'),
-  };
-}
-
-/** The directions a splitter, sorter or crossing can send goods out (a crossing's depends on the side they came in by). */
-function routerExits(r: Building): Dir[] {
-  return r.type === 'sorter' ? (r.filter ? [r.rot, left(r.rot), right(r.rot)] : [r.rot]) : [0, 1, 2, 3];
-}
-
-/** The tiles round a building's edge, each with the direction out of the building towards it. */
-function around(b: Building): { x: number; y: number; d: Dir }[] {
-  const n = sizeOf(b), out: { x: number; y: number; d: Dir }[] = [];
-  for (let i = 0; i < n; i++) {
-    out.push({ x: b.x + i, y: b.y - 1, d: 0 }, { x: b.x + n, y: b.y + i, d: 1 }, { x: b.x + i, y: b.y + n, d: 2 }, { x: b.x - 1, y: b.y + i, d: 3 });
-  }
-  return out;
-}
-
-/**
- * What hands goods to `b`: the belts beside it pointing into it, and the splitters, sorters and crossings beside it with an
- * exit towards it.
- */
-export function suppliersOf(s: GameState, b: Building): Building[] {
-  const out: Building[] = [];
-  for (const t of around(b)) {
-    const o = buildingAt(s, t.x, t.y);
-    if (!o || o === b || out.includes(o)) continue;
-    if (o.type === 'belt' ? o.rot === opposite(t.d) : isRouter(o) && routerExits(o).includes(opposite(t.d))) out.push(o);
-  }
-  return out;
-}
-
-/**
- * What `b` hands its goods to: for a building, the belts beside it that take them (outputsOf); for a splitter, sorter or
- * crossing, whatever on its exits takes goods: belts that don't point back into it, other routers, and buildings that use goods.
- */
-export function receiversOf(s: GameState, b: Building): Building[] {
-  if (!isRouter(b)) return outputsOf(s, b).map((o) => o.belt);
-  const out: Building[] = [];
-  for (const d of routerExits(b)) {
-    const o = buildingAt(s, b.x + DX[d], b.y + DY[d]);
-    if (o && (o.type === 'belt' ? o.rot !== opposite(d) : goodsFlow(o).takes) && !out.includes(o)) out.push(o);
-  }
-  return out;
+/** Whether a building trades goods with silos: it grows, makes or uses goods. */
+export const handlesGoods = (b: Building) => b.type === 'field' || b.type === 'hive' || !!b.recipe;
+/** The buildings a silo serves, nearest first. */
+export const servedBySilo = (s: GameState, silo: Building) => derived(s).serves.get(silo.id) ?? [];
+/** The silos serving a building. */
+export const silosServing = (s: GameState, b: Building) => derived(s).servedBy.get(b.id) ?? [];
+/** Distance between two buildings' centres, in tiles. */
+export function distance(a: Building, b: Building) {
+  const ca = centre(a), cb = centre(b);
+  return Math.hypot(ca.x - cb.x, ca.y - cb.y);
 }
 
 export const sprinklersOf = (s: GameState, b: Building) => derived(s).sprinklers.get(b.id) ?? [];
@@ -271,16 +183,12 @@ function consume(b: Building, r: Recipe) {
   }
 }
 
-/** Whether a building takes `item` from a belt right now. Takes it if so (the depot delivers it at once). */
-export function accept(s: GameState, b: Building, item: ItemId): boolean {
-  switch (b.type) {
-    case 'depot': deliver(s, item); return true;
-    case 'field':
-      if (item !== 'compost' || b.compost! >= FIELD.compostStore) return false;
-      b.compost!++; return true;
-    case 'pad':
-      if (b.mode !== 'send' || b.store!.length >= PAD.store) return false;
-      b.store!.push(item); return true;
+/** Whether a building takes `item` from a drone right now. Takes it if so. */
+function accept(b: Building, item: ItemId): boolean {
+  if (b.refuse?.includes(item)) return false;
+  if (b.type === 'field') {
+    if (item !== 'compost' || b.compost! >= FIELD.compostStore) return false;
+    b.compost!++; return true;
   }
   const r = recipeOf(b);
   if (!r) return false;
@@ -290,7 +198,8 @@ export function accept(s: GameState, b: Building, item: ItemId): boolean {
   return true;
 }
 
-function deliver(s: GameState, item: ItemId) {
+/** Delivers a good to the depot: it counts towards the goals and pays its price. */
+export function deliver(s: GameState, item: ItemId) {
   s.delivered[item] = (s.delivered[item] ?? 0) + 1;
   s.credits += ITEMS[item].price;
   s.earned += ITEMS[item].price;
@@ -317,7 +226,7 @@ export function wants(s: GameState, b: Building): number {
   const def = BUILDINGS[b.type];
   if (!def.power) return 0;
   if (b.type === 'sprinkler') return nearWater(s, b) ? POWER.sprinklerNearWater : POWER.sprinklerFar;
-  if (b.type === 'pad') return b.drone!.phase === 'home' ? 0 : def.power;
+  if (b.type === 'silo') return charging.get(s)?.get(b.id) ?? 0;
   const r = recipeOf(b);
   if (!r) return 0;
   if (b.progress !== null && b.progress !== undefined) return def.power;
@@ -367,130 +276,38 @@ function balancePower(s: GameState, sun: number, wind: number, dt: number) {
   shares.set(s, map);
 }
 
-// ---- Belts and routers ----
+// ---- Goods waiting in buildings ----
 
-/** Goods one belt tile holds. */
-const BELT_CAPACITY = Math.round(1 / BELT.spacing);
-
-/** Puts `item` onto belt `belt` coming from direction `travel` (the way it's moving), if there's room. */
-function ontoBelt(belt: Building, item: ItemId, travel: Dir): boolean {
-  if (belt.rot === opposite(travel)) return false;
-  const items = belt.items!;
-  if (belt.rot === travel) {
-    const last = items[items.length - 1];
-    if ((last && last.pos < BELT.spacing) || items.length >= BELT_CAPACITY) return false;
-    items.push({ item, pos: 0, step: stepNo });
-    return true;
-  }
-  // From the side: it joins in the middle of the belt.
-  const at = 0.5;
-  if (items.length >= BELT_CAPACITY || items.some((it) => Math.abs(it.pos - at) < BELT.spacing)) return false;
-  const i = items.findIndex((it) => it.pos < at);
-  items.splice(i < 0 ? items.length : i, 0, { item, pos: at, step: stepNo });
-  return true;
-}
-
-const isRouter = (b: Building) => b.type === 'splitter' || b.type === 'sorter' || b.type === 'crossing';
-
-/** Hands `item`, moving in direction `travel`, to whatever is on the tile at (x, y). */
-function handTo(s: GameState, x: number, y: number, item: ItemId, travel: Dir): boolean {
-  const nb = buildingAt(s, x, y);
-  if (!nb) return false;
-  if (nb.type === 'belt') return ontoBelt(nb, item, travel);
-  if (isRouter(nb)) {
-    const from = opposite(travel);
-    if (nb.type === 'crossing') {
-      if (nb.transit!.some((t) => t.from % 2 === from % 2)) return false;
-    } else if (nb.transit!.length >= 1) return false;
-    nb.transit!.push({ item, from, t: ROUTER_SECONDS, step: stepNo });
-    return true;
-  }
-  return accept(s, nb, item);
-}
-
-function moveBelt(s: GameState, b: Building, dt: number) {
-  const items = b.items!;
-  if (!items.length) { b.status = 'idle'; return; }
-  const step = BELT.speed * dt;
-  // The front good keeps its distance from the last one on the belt ahead, if that runs the same way.
-  const ahead = buildingAt(s, b.x + DX[b.rot], b.y + DY[b.rot]);
-  const tail = ahead?.type === 'belt' && ahead.rot === b.rot ? ahead.items![ahead.items!.length - 1] : undefined;
-  const frontLimit = tail ? Math.min(1, tail.pos + 1 - BELT.spacing) : 1;
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i];
-    // A good that came onto this belt during this step has moved already (whichever order the belts are in).
-    if (it.step === stepNo) continue;
-    const limit = i === 0 ? frontLimit : items[i - 1].pos - BELT.spacing;
-    it.pos = Math.max(it.pos, Math.min(it.pos + step, limit));
-  }
-  const front = items[0];
-  if (front.pos >= 1) {
-    if (handTo(s, b.x + DX[b.rot], b.y + DY[b.rot], front.item, b.rot)) items.shift();
-  }
-  b.status = items.length && items[0].pos >= 1 && items.length * BELT.spacing >= 1 ? 'blocked' : 'ok';
-}
-
-function routeOut(s: GameState, b: Building, dt: number) {
-  const tr = b.transit!;
-  for (let i = 0; i < tr.length; i++) {
-    const t = tr[i];
-    // Goods that came in during this step wait for the next (whichever order the buildings are in).
-    if (t.step !== stepNo) t.t -= dt;
-    if (t.t > 0) continue;
-    const travel = opposite(t.from);
-    // Exits in a fixed order of compass directions, so goods coming in from several sides still take turns between them.
-    let exits: Dir[];
-    if (b.type === 'crossing') exits = [travel];
-    else if (b.type === 'sorter') exits = b.filter && t.item === b.filter ? [b.rot] : b.filter ? [left(b.rot), right(b.rot)] : [b.rot];
-    else exits = ([0, 1, 2, 3] as Dir[]).filter((d) => d !== t.from);
-    exits.sort((a, c) => a - c);
-    const n = exits.length, start = exits.findIndex((d) => d >= b.turn!);
-    for (let k = 0; k < n; k++) {
-      const d = exits[((start < 0 ? 0 : start) + k) % n];
-      if (handTo(s, b.x + DX[d], b.y + DY[d], t.item, d)) {
-        b.turn = (d + 1) % 4;
-        tr.splice(i, 1); i--;
-        break;
-      }
-    }
-  }
-  b.status = tr.some((t) => t.t <= 0) ? 'blocked' : tr.length ? 'ok' : 'idle';
-}
-
-/** Moves one good from a building's outputs onto each belt beside it that takes goods and has room. */
-function pushOut(s: GameState, b: Building) {
-  const belts = outputsOf(s, b);
-  if (!belts.length) return;
-  const goods = outputGoods(b);
-  if (!goods.length) return;
-  for (let k = 0; k < belts.length; k++) {
-    const { belt, side } = belts[((b.turn ?? 0) + k) % belts.length];
-    // Each belt takes the next kind of good in turn, so a mill's flour and bran share its belts.
-    for (let g = 0; g < goods.length; g++) {
-      const item = goods[((b.turn ?? 0) + g) % goods.length];
-      if (!has(b, item)) continue;
-      if (ontoBelt(belt, item, side)) { take(b, item); b.turn = ((b.turn ?? 0) + 1) % 997; break; }
-    }
-  }
-}
-
-function outputGoods(b: Building): ItemId[] {
+/** The goods a building has waiting for a drone. */
+export function outputGoods(b: Building): ItemId[] {
   if (b.type === 'field') return b.stored! > 0 ? [b.harvest ?? b.crop!] : [];
   if (b.type === 'hive') return b.stored! > 0 ? ['honey'] : [];
-  if (b.type === 'pad') return b.mode === 'receive' && b.store!.length ? [b.store![0]] : [];
   if (b.outputs) return Object.keys(b.outputs).filter((k) => b.outputs![k as ItemId]! > 0) as ItemId[];
   return [];
 }
-function has(b: Building, item: ItemId) {
-  if (b.type === 'field' || b.type === 'hive') return b.stored! > 0;
-  if (b.type === 'pad') return b.store!.length > 0 && b.store![0] === item;
-  return (b.outputs?.[item] ?? 0) > 0;
+/** How many of `item` a building has waiting for a drone. */
+function waiting(b: Building, item: ItemId) {
+  if (b.type === 'field') return (b.harvest ?? b.crop) === item ? b.stored! : 0;
+  if (b.type === 'hive') return item === 'honey' ? b.stored! : 0;
+  return b.outputs?.[item] ?? 0;
 }
 function take(b: Building, item: ItemId) {
   if (b.type === 'field' || b.type === 'hive') { b.stored!--; if (!b.stored) b.harvest = b.crop; return; }
-  if (b.type === 'pad') { b.store!.shift(); return; }
   b.outputs![item]! -= 1;
   if (!b.outputs![item]) delete b.outputs![item];
+}
+
+/** The goods that fill the same input of a building as `item` (its group's members, or just itself). */
+function sameInput(b: Building, item: ItemId): readonly ItemId[] {
+  const ing = recipeOf(b)?.inputs.find((i) => members(i).includes(item));
+  return ing ? members(ing) : [item];
+}
+
+/** The goods a building can take: its recipe's inputs (any member of a group), or compost for a field; less what it refuses. */
+export function inputGoods(b: Building): ItemId[] {
+  if (b.type === 'field') return ['compost'];
+  const r = recipeOf(b);
+  return r ? r.inputs.flatMap((i) => [...members(i)]) : [];
 }
 
 // ---- Buildings ----
@@ -552,62 +369,277 @@ function runHive(s: GameState, h: Building, dt: number) {
   if (h.growth! >= 1) { h.growth = 0; h.stored!++; made(s, 'honey', 1); }
 }
 
-/** Where a pad's drone is flying to: its linked pad or the depot, if it's a valid target. */
-export function padTarget(s: GameState, p: Building): Building | null {
-  const t = p.link ? buildingById(s, p.link) : null;
-  if (!t || !(t.type === 'depot' || (t.type === 'pad' && t.mode === 'receive'))) return null;
-  return padDistance(p, t) <= PAD.range ? t : null;
-}
-export function padDistance(a: Building, b: Building) {
-  const ca = centre(a), cb = centre(b);
-  return Math.hypot(ca.x - cb.x, ca.y - cb.y);
+// ---- Silos and drones ----
+
+/** Goods on their way, by building and good: into buildings (feed), out of buildings (collect, fetch) and into silos. */
+interface Plans { into: Map<string, number>; out: Map<string, number>; home: Map<string, number> }
+const key = (id: number, item: ItemId | '*') => `${id} ${item}`;
+const get = (m: Map<string, number>, id: number, item: ItemId | '*') => m.get(key(id, item)) ?? 0;
+const add = (m: Map<string, number>, id: number, item: ItemId, n: number) => {
+  m.set(key(id, item), get(m, id, item) + n);
+  m.set(key(id, '*'), get(m, id, '*') + n);
+};
+
+/** What every drone has set out to move and not yet moved. */
+function plans(s: GameState): Plans {
+  const p: Plans = { into: new Map(), out: new Map(), home: new Map() };
+  for (const si of s.buildings) {
+    if (si.type !== 'silo') continue;
+    for (const d of si.drones!) {
+      const t = d.task;
+      if (!t) continue;
+      const before = d.phase === 'charge' || d.phase === 'out' || d.phase === 'work';
+      if (t.kind === 'feed' && before) for (const it of d.cargo) add(p.into, t.target, it, 1);
+      if (t.kind === 'collect' || t.kind === 'fetch') {
+        if (before) add(p.out, t.target, t.item, t.n);
+        // On its way home with cargo, or about to fetch it: the silo keeps room for it.
+        add(p.home, si.id, t.item, before ? t.n : d.cargo.length);
+      }
+    }
+  }
+  return p;
 }
 
-function runPad(s: GameState, p: Building, dt: number) {
-  if (p.mode === 'receive') {
-    p.status = p.store!.length >= PAD.receiveStore ? 'blocked' : p.store!.length ? 'ok' : 'idle';
-    p.need = p.status === 'blocked' ? 'its goods' : undefined;
-    return;
+/** How many more of `item` a building can take, counting goods already on their way to it. */
+function room(b: Building, item: ItemId, p: Plans): number {
+  if (b.refuse?.includes(item)) return 0;
+  if (b.type === 'field') return item === 'compost' ? FIELD.compostStore - b.compost! - get(p.into, b.id, 'compost') : 0;
+  const ing = recipeOf(b)?.inputs.find((i) => members(i).includes(item));
+  if (!ing) return 0;
+  return ing.n * INPUT_BATCHES - held(b, ing) - members(ing).reduce((n, it) => n + get(p.into, b.id, it), 0);
+}
+
+/** Room in a silo for more of `item`, counting goods on their way to it. */
+const siloRoom = (si: Building, item: ItemId, p: Plans) => SILO.perGood - (si.store![item] ?? 0) - get(p.home, si.id, item);
+
+/** What a silo can spare of `item` for another silo: what it holds, less what its own buildings can take and drones will fetch. */
+function spare(s: GameState, si: Building, item: ItemId, p: Plans) {
+  let n = (si.store![item] ?? 0) - get(p.out, si.id, item);
+  for (const b of servedBySilo(s, si)) n -= Math.max(0, room(b, item, p));
+  return n;
+}
+
+const depotOf = (s: GameState) => s.buildings.find((b) => b.type === 'depot') ?? null;
+const isStation = (b: Building | null) => !!b && (b.type === 'silo' || b.type === 'depot');
+const legOf = (si: Building, t: Task) => { const c = centre(si); return Math.max(1, Math.hypot(t.tx - c.x, t.ty - c.y)); };
+const taskTo = (kind: Task['kind'], b: Building, item: ItemId, n: number): Task => { const c = centre(b); return { kind, target: b.id, tx: c.x, ty: c.y, item, n }; };
+
+/**
+ * The next job for an idle drone of silo `si`, or null; loads the goods it takes from the silo. A good sold by half that a
+ * building here can use too is shared: feeding and selling take turns (`shared` counts goods fed less goods sold). A good
+ * sold when spare goes to the depot only while no building here can take it.
+ */
+function nextTask(s: GameState, si: Building, d: Drone, p: Plans): Task | null {
+  const store = si.store!, shared = si.shared!;
+  // What the silo holds less what other silos' drones are on their way to fetch.
+  const free = (item: ItemId) => (store[item] ?? 0) - get(p.out, si.id, item);
+  const held = (Object.keys(store) as ItemId[]).filter((i) => free(i) > 0);
+  const served = servedBySilo(s, si);
+  const depot = depotOf(s);
+  const reach = !!depot && distance(si, depot) <= SILO.range;
+  const mode = (item: ItemId) => (reach ? depot!.sell![item] ?? null : null);
+  const tally = (item: ItemId, n: number) => {
+    if (mode(item) === 'half') shared[item] = Math.max(-DRONE.shareSlack, Math.min(DRONE.shareSlack, (shared[item] ?? 0) + n));
+  };
+  const load = (item: ItemId, n: number) => {
+    for (let i = 0; i < n; i++) d.cargo.push(item);
+    store[item]! -= n;
+    if (!store[item]) delete store[item];
+  };
+  // Feed: the nearest building that can use something the silo holds (a shared good only on its turn).
+  for (const b of served) for (const item of held) {
+    if (mode(item) === 'half' && (shared[item] ?? 0) > 0) continue;
+    const n = Math.min(room(b, item, p), free(item), DRONE.cargo);
+    if (n > 0) { load(item, n); add(p.into, b.id, item, n); tally(item, n); return taskTo('feed', b, item, n); }
   }
-  const d = p.drone!, share = shareOf(s, p);
-  const target = d.target ? buildingById(s, d.target) : null;
-  const dist = target ? Math.max(1, padDistance(p, target)) : 1;
+  // Collect: from the building with the most waiting (the nearest of equals), while the silo has room.
+  let best: { b: Building; item: ItemId; n: number; waiting: number } | null = null;
+  for (const b of served) for (const item of outputGoods(b)) {
+    const w = waiting(b, item) - get(p.out, b.id, item), n = Math.min(w, siloRoom(si, item, p), DRONE.cargo);
+    if (n > 0 && (!best || w > best.waiting)) best = { b, item, n, waiting: w };
+  }
+  if (best) { add(p.out, best.b.id, best.item, best.n); add(p.home, si.id, best.item, best.n); return taskTo('collect', best.b, best.item, best.n); }
+  // Fetch: a good a building here needs and this silo doesn't hold (or have coming), from the nearest other silo in range
+  // that can spare it.
+  for (const b of served) for (const item of inputGoods(b)) {
+    // Goods of the same input it takes (a coop's beans, bran or seed cake) here or on their way count against the need.
+    const same = sameInput(b, item).filter((i) => !b.refuse?.includes(i));
+    const want = Math.min(room(b, item, p) - same.reduce((n, i) => n + get(p.home, si.id, i) + Math.max(0, free(i)), 0), siloRoom(si, item, p));
+    if (want <= 0) continue;
+    let from: Building | null = null, fromN = 0;
+    for (const o of s.buildings) {
+      if (o.type !== 'silo' || o === si || !networkOf(s, o) || distance(si, o) > SILO.range) continue;
+      const n = spare(s, o, item, p);
+      if (n > 0 && (!from || distance(si, o) < distance(si, from))) { from = o; fromN = n; }
+    }
+    if (from) {
+      const n = Math.min(want, fromN, DRONE.cargo);
+      add(p.out, from.id, item, n); add(p.home, si.id, item, n);
+      return taskTo('fetch', from, item, n);
+    }
+  }
+  // Sell: goods on the depot's sell list (a shared good on its turn, a spare one when nothing here takes it), a full load or
+  // after a short wait.
+  const wanted = (i: ItemId) => served.some((b) => room(b, i, p) > 0);
+  const sell = held.filter((i) => (mode(i) === 'half' ? (shared[i] ?? 0) >= 0 || !wanted(i) : mode(i) === 'spare' && !wanted(i)));
+  const n = sell.reduce((k, i) => k + free(i), 0);
+  if (depot && (n >= DRONE.cargo || (n > 0 && si.waited! >= DRONE.sellWait))) {
+    // The goods there are most of first; after the wait, the fewest first, so a straggler isn't passed over by full loads.
+    const late = si.waited! >= DRONE.sellWait;
+    sell.sort((a, c) => (late ? free(a) - free(c) : free(c) - free(a)));
+    for (const i of sell) { const k = Math.min(free(i), DRONE.cargo - d.cargo.length); load(i, k); tally(i, -k); }
+    // The wait starts again once nothing to sell is left behind.
+    if (!sell.some((i) => free(i) > 0)) si.waited = 0;
+    return taskTo('sell', depot, d.cargo[0], 0);
+  }
+  return null;
+}
+
+/** Joules a drone charges at home for its task: the way out, and the way back too unless another station charges it. */
+function homeCost(s: GameState, si: Building, t: Task) {
+  const leg = legOf(si, t) * DRONE.joulesPerTile;
+  return isStation(buildingById(s, t.target)) ? leg : leg * 2;
+}
+
+/** Charges a drone at a silo towards `need` joules; true once it has them. */
+function chargeAt(s: GameState, at: Building, d: Drone, need: number, dt: number) {
+  // What it asked the network for this step (countCharging), times the share of it the network gave.
+  if (d.energy < need) d.energy = Math.min(need, d.energy + Math.min(DRONE.chargeRate * dt, need - d.energy) * shareOf(s, at));
+  return d.energy >= need - 1e-9;
+}
+
+/** Moves a drone of silo `si` on by one step. */
+function flyDrone(s: GameState, si: Building, d: Drone, dt: number) {
+  const t = d.task;
+  if (!t) return;
+  const target = buildingById(s, t.target), leg = legOf(si, t);
+  // The target has gone: fly home from wherever it is, without charging again.
+  if (!target && (d.phase === 'out' || d.phase === 'work' || d.phase === 'recharge')) { d.t = d.phase === 'out' ? 1 - d.t : 0; d.phase = 'back'; }
   switch (d.phase) {
-    case 'home': {
-      const t = padTarget(s, p);
-      if (!t) { p.status = 'nolink'; return; }
-      if (!p.store!.length) { p.status = 'input'; p.need = 'goods to send'; p.waited = 0; return; }
-      p.waited! += dt;
-      if (p.store!.length < PAD.cargo && p.waited! < PAD.waitSeconds) { p.status = 'ok'; return; }
-      d.cargo = p.store!.splice(0, PAD.cargo);
-      d.phase = 'out'; d.t = 0; d.target = t.id; p.waited = 0;
-      p.status = 'ok';
+    case 'charge': {
+      if (!target) { home(si, d); return; }
+      const need = homeCost(s, si, t);
+      if (chargeAt(s, si, d, need, dt)) { d.energy = Math.max(0, d.energy - need); d.phase = 'out'; d.t = 0; }
       return;
     }
     case 'out':
-      if (!target) { d.phase = 'back'; return; }
-      d.t += dt * PAD.speed * share / dist;
-      p.status = share <= 0 ? 'power' : share < 1 ? 'lowpower' : 'ok';
-      if (d.t >= 1) { d.t = 1; d.phase = 'hover'; }
+      d.t += dt * DRONE.speed / leg;
+      if (d.t >= 1) { d.phase = 'work'; d.t = 0; }
       return;
-    case 'hover':
-      // The target may have gone, or stopped receiving, while the drone flew: then it takes the goods home.
-      if (!target || !(target.type === 'depot' || (target.type === 'pad' && target.mode === 'receive'))) { d.phase = 'back'; d.t = 0; return; }
-      if (target.type === 'depot') { for (const it of d.cargo) deliver(s, it); d.cargo = []; }
-      else if (target.store!.length + d.cargo.length <= PAD.receiveStore) { target.store!.push(...d.cargo); d.cargo = []; }
-      if (d.cargo.length) { p.status = 'blocked'; p.need = 'room at the receiving pad'; return; }
+    case 'work':
+      d.t += dt;
+      if (d.t < DRONE.loadSeconds) return;
+      work(s, target!, d, t);
+      if (target!.type === 'silo') { d.phase = 'recharge'; return; }
       d.phase = 'back'; d.t = 0;
       return;
+    case 'recharge': {
+      const need = leg * DRONE.joulesPerTile;
+      if (chargeAt(s, target!, d, need, dt)) { d.energy = Math.max(0, d.energy - need); d.phase = 'back'; d.t = 0; }
+      return;
+    }
     case 'back':
-      d.t += dt * PAD.speed * Math.max(share, target ? 0 : 1) / dist;
-      p.status = share <= 0 ? 'power' : 'ok';
-      if (d.t >= 1 || !target) {
-        // Goods it couldn't deliver (the target went) go back on the pad, first in line.
-        if (d.cargo.length) { p.store!.unshift(...d.cargo); d.cargo = []; }
-        d.phase = 'home'; d.t = 0; d.target = 0;
-      }
+      d.t += dt * DRONE.speed / leg;
+      if (d.t >= 1) home(si, d);
       return;
   }
+}
+
+/** A drone's work at its target: unload, load, or sell. */
+function work(s: GameState, b: Building, d: Drone, t: Task) {
+  switch (t.kind) {
+    case 'feed': d.cargo = d.cargo.filter((it) => !accept(b, it)); break;
+    case 'collect': while (d.cargo.length < t.n && waiting(b, t.item) > 0) { take(b, t.item); d.cargo.push(t.item); } break;
+    case 'fetch': {
+      const n = Math.min(t.n, b.store![t.item] ?? 0);
+      for (let i = 0; i < n; i++) d.cargo.push(t.item);
+      b.store![t.item] = (b.store![t.item] ?? 0) - n;
+      if (!b.store![t.item]) delete b.store![t.item];
+      break;
+    }
+    case 'sell': for (const it of d.cargo) deliver(s, it); d.cargo = []; break;
+  }
+}
+
+/**
+ * A drone lands at its silo: its cargo goes into the store, and it is free for the next job. Goods it couldn't deliver (the
+ * target went, or stopped taking them) go back in even past the silo's limit: they had room when they left, and the silo
+ * collects nothing more of that good until it is back under.
+ */
+function home(si: Building, d: Drone) {
+  for (const it of d.cargo) {
+    si.store![it] = (si.store![it] ?? 0) + 1;
+    // Undelivered feed doesn't count as fed.
+    if (d.task?.kind === 'feed' && si.shared![it] !== undefined) si.shared![it] = Math.max(-DRONE.shareSlack, si.shared![it]! - 1);
+  }
+  d.cargo = []; d.task = null; d.phase = 'idle'; d.t = 0;
+}
+
+/** Flies every silo's drones, then gives the idle ones new jobs. */
+function runSilos(s: GameState, dt: number) {
+  const silos = s.buildings.filter((b) => b.type === 'silo');
+  for (const si of silos) for (const d of si.drones!) flyDrone(s, si, d, dt);
+  const p = plans(s);
+  const depot = depotOf(s);
+  for (const si of silos) {
+    const net = networkOf(s, si);
+    const sellable = depot ? (Object.keys(depot.sell!) as ItemId[]).some((i) => (si.store![i] ?? 0) > 0) : false;
+    si.waited = sellable ? si.waited! + dt : 0;
+    if (net) for (const d of si.drones!) {
+      if (d.phase !== 'idle') continue;
+      const t = nextTask(s, si, d, p);
+      if (!t) break;
+      d.task = t; d.phase = 'charge'; d.t = 0;
+    }
+    const busy = si.drones!.filter((d) => d.phase !== 'idle').length, share = shareOf(s, si);
+    // Drones charging here: its own, or other silos' charging for the way home.
+    const waitingPower = (charging.get(s)?.get(si.id) ?? 0) > 0;
+    si.need = undefined;
+    if (!net) si.status = 'power';
+    else if (waitingPower && share <= 0) si.status = 'power';
+    else if (waitingPower && share < 1) si.status = 'lowpower';
+    else if (busy) si.status = 'ok';
+    else {
+      const full = (Object.keys(si.store!) as ItemId[]).find((i) => si.store![i]! >= SILO.perGood);
+      si.status = full ? 'blocked' : 'idle';
+      si.need = full ? ITEMS[full].name.toLowerCase() : undefined;
+    }
+  }
+}
+
+/**
+ * Watts each silo wants for the drones charging there (its own, and others' charging for the way home), worked out before
+ * power is balanced: each drone at most the charge rate, and no more than it needs to finish this step.
+ */
+const charging = new WeakMap<GameState, Map<number, number>>();
+function countCharging(s: GameState) {
+  const m = new Map<number, number>();
+  for (const si of s.buildings) {
+    if (si.type !== 'silo') continue;
+    for (const d of si.drones!) {
+      const t = d.task;
+      if (!t || (d.phase !== 'charge' && d.phase !== 'recharge')) continue;
+      const at = d.phase === 'charge' ? si.id : t.target;
+      const need = d.phase === 'charge' ? homeCost(s, si, t) : legOf(si, t) * DRONE.joulesPerTile;
+      const w = Math.min(DRONE.chargeRate, Math.max(0, need - d.energy) / TICK);
+      if (w > 0) m.set(at, (m.get(at) ?? 0) + w);
+    }
+  }
+  charging.set(s, m);
+}
+
+/** What a drone is doing, in a few words, for the inspector. */
+export function describeDrone(s: GameState, d: Drone): string {
+  const t = d.task;
+  if (!t) return 'waiting for a job';
+  const where = buildingById(s, t.target);
+  const name = where ? BUILDINGS[where.type].name.toLowerCase() : 'its target';
+  const what = ITEMS[t.item]?.name.toLowerCase() ?? 'goods';
+  const job = t.kind === 'feed' ? `taking ${what} to the ${name}` : t.kind === 'collect' ? `collecting ${what} from the ${name}`
+    : t.kind === 'fetch' ? `fetching ${what} from another silo` : 'selling at the depot';
+  if (d.phase === 'charge' || d.phase === 'recharge') return `charging, then ${job}`;
+  if (d.phase === 'back') return d.cargo.length ? `bringing ${d.cargo.length} ${ITEMS[d.cargo[0]].name.toLowerCase()} home` : 'flying home';
+  return job;
 }
 
 // ---- The step ----
@@ -621,22 +653,18 @@ export function advance(s: GameState, seconds: number, maxSteps = Infinity) {
   if (n >= maxSteps) s.carry = 0;
 }
 
-/** Counts steps, so goods handed from belt to belt move once per step. */
-let stepNo = 0;
-
 export function tick(s: GameState) {
-  stepNo++;
   const dt = TICK;
   s.time += dt;
   const sun = sunAt(s.scenario, s.time), wind = windAt(s.scenario, s.time);
+  countCharging(s);
   balancePower(s, sun, wind, dt);
   const grown: Building[] = [];
   for (const b of s.buildings) {
     switch (b.type) {
-      case 'belt': case 'splitter': case 'sorter': case 'crossing': case 'depot': break;
+      case 'depot': case 'silo': break;
       case 'field': runField(s, b, dt); break;
       case 'hive': runHive(s, b, dt); break;
-      case 'pad': runPad(s, b, dt); break;
       case 'sprinkler': case 'battery': case 'pylon': case 'solar': case 'turbine': {
         const net = b.type === 'pylon' ? null : networkOf(s, b);
         if (b.type !== 'pylon' && !net) { b.status = 'nolink'; break; }
@@ -662,9 +690,11 @@ export function tick(s: GameState) {
     s.map.terrain[tileIndex(s, b.x, b.y)] = TERRAIN.tree;
   }
   if (grown.length) touchLayout(s);
-  for (const b of s.buildings) if (b.type !== 'belt' && !isRouter(b)) pushOut(s, b);
-  for (const b of s.buildings) if (isRouter(b)) routeOut(s, b, dt);
-  for (const b of derived(s).belts) moveBelt(s, b, dt);
+  runSilos(s, dt);
+  // A building that trades goods with no silo in reach says so (unless it lacks power or water, which say more).
+  for (const b of s.buildings) {
+    if (['input', 'blocked', 'ok', 'idle'].includes(b.status) && handlesGoods(b) && !silosServing(s, b).length) b.status = 'nosilo';
+  }
   // Once a second, ground without a field recovers a little.
   if (Math.floor(s.time + 1e-6) !== Math.floor(s.time - dt + 1e-6)) rest(s);
   updateStats(s);
@@ -744,20 +774,22 @@ export function describeStatus(s: GameState, b: Building): string {
   const def = BUILDINGS[b.type];
   switch (b.status) {
     case 'input': return `Waiting for ${b.need ?? 'goods'}`;
-    case 'blocked': return `Output blocked: nowhere for ${b.need ?? 'its goods'} to go`;
-    case 'power': return networkOf(s, b) ? 'No power: the network is out of power' : 'No power: not in reach of a pylon';
-    case 'lowpower': return `Low power: running at ${Math.round(shareOf(s, b) * 100)}%`;
-    case 'nolink':
-      if (b.type === 'pad') return 'Not linked: select it and link it to a receiving pad or the depot';
-      return 'Not connected: no pylon in reach';
+    case 'blocked':
+      if (b.type === 'silo') return `Full of ${b.need}: nothing it serves takes it, and the depot doesn't buy it`;
+      return `Output blocked: nowhere for ${b.need ?? 'its goods'} to go`;
+    case 'power': return networkOf(s, b) ? `No power: the network is out of power${b.type === 'silo' ? ', so its drones can\'t charge' : ''}` : 'No power: not in reach of a pylon';
+    case 'lowpower': return `Low power: ${b.type === 'silo' ? 'drones charging' : 'running'} at ${Math.round(shareOf(s, b) * 100)}%`;
+    case 'nolink': return 'Not connected: no pylon in reach';
+    case 'nosilo': return `No silo in reach: build one within ${SILO.reach} tiles so its drones bring and take its goods`;
     case 'flowers': return 'No flowering fields within 4 tiles';
     case 'idle':
       if (b.type === 'solar') return 'Night: no sun';
-      if (b.type === 'belt') return 'Empty';
+      if (b.type === 'silo') return 'Idle: nothing to carry';
       return 'Idle';
     case 'dry': return `Growing ${CROPS[b.crop!].name.toLowerCase()} slowly: no water`;
     case 'ok':
       if (b.type === 'field') return `Growing ${CROPS[b.crop!].name.toLowerCase()}`;
+      if (b.type === 'silo') return `${b.drones!.filter((d) => d.phase !== 'idle').length} of ${b.drones!.length} drones busy`;
       return b.recipe ? 'Working' : def.name;
   }
 }

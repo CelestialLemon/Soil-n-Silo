@@ -1,16 +1,16 @@
 import { hourLabel } from 'pixel3d-renderer';
-import { remove, rotate, setCrop, setFilter, setPadMode, setRecipe, priceOf } from '../game/build.ts';
+import { remove, setAccept, setCrop, setRecipe, setSell, priceOf } from '../game/build.ts';
 import {
-  BUILDINGS, CATEGORIES, CROP_IDS, CROPS, FIELD, GROUP_NAMES, GROUPS, HIVE, ITEM_IDS, ITEMS, PAD, POWER, recipesFor,
-  type BuildingId, type Ingredient, type ItemId,
+  BUILDINGS, CATEGORIES, CROP_IDS, CROPS, FIELD, GROUP_NAMES, GROUPS, HIVE, ITEM_IDS, ITEMS, POWER, recipesFor, SILO,
+  type BuildingId, type Ingredient, type ItemId, type SellMode,
 } from '../game/data.ts';
 import { networkOf, networks } from '../game/power.ts';
 import {
-  dayAt, describeStatus, exposureOf, fieldFertility, fieldPace, flowersNear, goalDone, goodsFlow, hourAt, isPollinated, makes, medalFor, padDistance,
-  padTarget, ratePerMin, receiversOf, recipeOf, shareOf, soilHealth, sunAt, suppliersOf, wants, windAt, type Medal,
+  dayAt, describeDrone, describeStatus, distance, exposureOf, fieldFertility, fieldPace, flowersNear, goalDone, handlesGoods, hourAt, inputGoods,
+  isPollinated, makes, medalFor, ratePerMin, recipeOf, servedBySilo, shareOf, silosServing, soilHealth, sunAt, wants, windAt, type Medal,
 } from '../game/sim.ts';
 import { buildingById, type Building, type Dir, type GameState } from '../game/state.ts';
-import { LINK_IN, LINK_OUT, type Overlay } from '../world/view.ts';
+import { LINK, type Overlay } from '../world/view.ts';
 import { h } from './dom.ts';
 import { buildingCard, guidePanel, type GuidePage } from './guide.ts';
 
@@ -21,8 +21,7 @@ import { buildingCard, guidePanel, type GuidePage } from './guide.ts';
 export type Tool =
   | { kind: 'select' }
   | { kind: 'build'; type: BuildingId; rot: Dir }
-  | { kind: 'remove' }
-  | { kind: 'link'; pad: number };
+  | { kind: 'remove' };
 
 /**
  * How zooming works (main.ts): magnify scales a fixed picture; detail keeps art pixels the same size on screen and draws
@@ -119,7 +118,7 @@ export class Hud {
       this.speedButtons.push(b);
       return b;
     }));
-    const overlays = h('div', { class: 'buttons' }, ...([['fertility', 'Soil'], ['power', 'Power'], ['water', 'Water'], ['bees', 'Bees']] as [Overlay, string][]).map(([o, label]) => {
+    const overlays = h('div', { class: 'buttons' }, ...([['fertility', 'Soil'], ['power', 'Power'], ['silos', 'Silos'], ['water', 'Water'], ['bees', 'Bees']] as [Overlay, string][]).map(([o, label]) => {
       const b = button(label, () => host.setOverlay(o), { title: `Show ${label.toLowerCase()} (V cycles)` });
       this.overlayButtons.set(o, b);
       return b;
@@ -252,7 +251,7 @@ export class Hud {
     const ids = (Object.keys(BUILDINGS) as BuildingId[]).filter((id) => BUILDINGS[id].category === this.category);
     const items = h('div', { class: 'items' }, ...ids.map((id) => {
       const d = BUILDINGS[id], price = priceOf(s, id), active = tool.kind === 'build' && tool.type === id;
-      const b = button(h('span', null, h('b', null, d.name), h('small', null, `${price ? `${price} ◈` : 'free'}${d.power ? ` · ${d.power} W` : ''}${d.key ? ` · ${d.key}` : ''}`)),
+      const b = button(h('span', null, h('b', null, d.name), h('small', null, `${price ? `${price} ◈` : 'free'}${d.power ? ` · ${d.power} W${id === 'silo' ? '/drone' : ''}` : ''}${d.key ? ` · ${d.key}` : ''}`)),
         () => this.host.setTool(active ? { kind: 'select' } : { kind: 'build', type: id, rot: tool.kind === 'build' ? tool.rot : 1 }),
         { active, cls: s.credits < price ? 'poor' : '' });
       b.addEventListener('pointerenter', () => this.showTip(id));
@@ -272,7 +271,7 @@ export class Hud {
       this.inspectKey = ''; this.inspectUpdate = null;
       return;
     }
-    const key = JSON.stringify([b.id, b.type, b.crop, b.recipe, b.filter, b.mode, b.link, b.rot, this.host.tool().kind]);
+    const key = JSON.stringify([b.id, b.type, b.crop, b.recipe, b.refuse, b.sell, this.host.tool().kind]);
     if (key !== this.inspectKey) {
       this.inspectKey = key;
       this.inspector.style.display = 'block';
@@ -288,8 +287,8 @@ export class Hud {
     const status = h('div', { class: 'status' });
     const lines: (() => void)[] = [() => { set(status, describeStatus(s, b)); status.className = `status ${b.status}`; }];
     const body: (Node | null)[] = [];
-    const wiring = this.wiring(s, b);
-    if (wiring) { body.push(wiring.el); lines.push(wiring.update); }
+    const silos = this.silos(s, b);
+    if (silos) { body.push(silos.el); lines.push(silos.update); }
     const stat = (label: string, get: () => string) => {
       const v = h('b'); lines.push(() => set(v, get()));
       body.push(h('div', { class: 'kv' }, h('span', null, label), v));
@@ -313,20 +312,29 @@ export class Hud {
         progress(() => b.growth!);
         stat('Honey waiting', () => `${b.stored} / ${HIVE.store}`);
         break;
-      case 'sorter':
-        body.push(h('label', { class: 'select' }, 'Straight on: ', h('select', { onchange: (e: Event) => { setFilter(b, ((e.target as HTMLSelectElement).value || null) as ItemId | null); changed(); } },
-          h('option', { value: '', selected: !b.filter }, 'everything'), ...ITEM_IDS.map((id) => h('option', { value: id, selected: b.filter === id }, ITEMS[id].name)))));
-        body.push(h('p', { class: 'hint' }, 'The chosen good goes straight on; every other good goes out left or right.'));
-        break;
-      case 'pad': {
-        body.push(h('div', { class: 'choices' }, button('Send', () => { this.padMode(b, 'send'); changed(); }, { active: b.mode === 'send' }), button('Receive', () => { this.padMode(b, 'receive'); changed(); }, { active: b.mode === 'receive' })));
-        if (b.mode === 'send') {
-          const t = padTarget(s, b);
-          body.push(h('div', { class: 'kv' }, h('span', null, 'Sends to'), h('b', null, t ? `${BUILDINGS[t.type].name} (${Math.round(padDistance(b, t))} tiles)` : 'nothing yet')));
-          body.push(button(this.host.tool().kind === 'link' ? 'Click the target…' : 'Link to a pad or the depot', () => this.host.setTool({ kind: 'link', pad: b.id }), { primary: true }));
-          stat('Drone', () => ({ home: 'home', out: 'flying out', hover: 'unloading', back: 'flying back' })[b.drone!.phase]);
-          stat('Waiting to send', () => `${b.store!.length} / ${PAD.store}`);
-        } else stat('Waiting to go out', () => `${b.store!.length} / ${PAD.receiveStore}`);
+      case 'silo': {
+        const held = h('div', { class: 'delivered' });
+        lines.push(() => {
+          const key = JSON.stringify(b.store);
+          if (held.dataset.key === key) return;
+          held.dataset.key = key;
+          const got = (Object.keys(b.store!) as ItemId[]).filter((i) => b.store![i]);
+          held.replaceChildren(...(got.length ? got.map((i) => h('div', null, good(i, `${b.store![i]}/${SILO.perGood}`))) : [h('p', { class: 'hint' }, 'Empty.')]));
+        });
+        body.push(h('h4', null, 'Holds'), held);
+        const drones = h('ol', { class: 'drones' });
+        lines.push(() => {
+          const text = b.drones!.map((d) => describeDrone(s, d));
+          if (drones.dataset.key === text.join('|')) return;
+          drones.dataset.key = text.join('|');
+          drones.replaceChildren(...text.map((t) => h('li', null, t)));
+        });
+        body.push(h('h4', null, 'Drones'), drones);
+        stat('Serves', () => `${servedBySilo(s, b).length} buildings within ${SILO.reach} tiles (tinted)`);
+        stat('Depot', () => {
+          const depot = s.buildings.find((x) => x.type === 'depot'), d = depot ? distance(b, depot) : Infinity;
+          return d <= SILO.range ? `${Math.round(d)} tiles: sells there` : `${Math.ceil(d)} tiles: too far to sell (drones reach ${SILO.range})`;
+        });
         break;
       }
       case 'battery': stat('Charge', () => `${Math.round(b.charge!)} / ${POWER.battery.capacity} J`); progress(() => b.charge! / POWER.battery.capacity); break;
@@ -334,7 +342,6 @@ export class Hud {
         stat('Making', () => watts(makes(s, b, sunAt(s.scenario, s.time), windAt(s.scenario, s.time))));
         if (b.type === 'turbine') stat('Shelter', () => `${Math.round(exposureOf(s, b) * 100)}% of the wind reaches it`);
         break;
-      case 'belt': stat('Goods', () => `${b.items!.length}`); break;
       case 'depot': {
         const list = h('div', { class: 'delivered' });
         lines.push(() => {
@@ -342,9 +349,15 @@ export class Hud {
           if (list.dataset.key === key) return;
           list.dataset.key = key;
           const got = (Object.keys(s.delivered) as ItemId[]).filter((i) => s.delivered[i]);
-          list.replaceChildren(...(got.length ? got.map((i) => h('div', null, good(i, s.delivered[i]))) : [h('p', { class: 'hint' }, 'Nothing delivered yet. Run belts into the depot, or link drone pads to it.')]));
+          list.replaceChildren(...(got.length ? got.map((i) => h('div', null, good(i, s.delivered[i]))) : [h('p', { class: 'hint' }, 'Nothing delivered yet. A silo within 40 tiles sends what is on the sell list.')]));
         });
         stat('Earned', () => `${Math.floor(s.earned).toLocaleString()} credits`);
+        body.push(h('h4', null, 'Sell list'), h('p', { class: 'hint' }, 'Click a good to change how silos sell it: spare (only what no building takes), half (shared with your buildings) or not at all.'),
+          h('div', { class: 'choices sell-list' }, ...ITEM_IDS.map((i) => {
+            const mode = b.sell![i] ?? null;
+            const next: SellMode | null = mode === null ? 'spare' : mode === 'spare' ? 'half' : null;
+            return button(h('span', null, good(i), h('small', null, mode ? ` · ${mode}` : '')), () => { const r = setSell(b, i, next); if (r.message) this.toast(r.message, r.ok); changed(); }, { active: !!mode, title: `Click: ${next ?? 'don\'t sell'}` });
+          })));
         body.push(h('h4', null, 'Delivered'), list);
         break;
       }
@@ -373,8 +386,16 @@ export class Hud {
       stat('Network', () => { const net = networkOf(s, b); return net ? `${watts(net.made)} made · ${watts(net.wanted)} used · ${Math.round(net.stored)} J stored` : 'none: no pylon in reach'; });
     }
 
+    // Goods it takes from silos, each with a toggle.
+    const takes = inputGoods(b);
+    if (takes.length) {
+      body.push(h('h4', null, 'Takes from silos'), h('div', { class: 'choices' }, ...takes.map((i) => {
+        const on = !b.refuse!.includes(i);
+        return button(good(i), () => { const r = setAccept(b, i, !on); if (r.message) this.toast(r.message, r.ok); changed(); }, { active: on, title: on ? 'Click to stop taking it' : 'Click to take it again' });
+      })));
+    }
+
     const actions = h('div', { class: 'actions' },
-      def.directional ? button('Turn (R)', () => { rotate(s, b); changed(); }) : null,
       b.type !== 'depot' ? button('Remove', () => { const res = remove(s, b); this.toast(res.message, res.ok); this.host.select(null); changed(); }, { cls: 'danger' }) : null);
     const el = h('div', null,
       h('div', { class: 'head' }, h('b', null, def.name), h('span', { class: 'head-buttons' },
@@ -384,35 +405,20 @@ export class Hud {
     return { el, update: () => { for (const l of lines) l(); } };
   }
 
-  /**
-   * How many belts (or splitters, sorters, crossings) bring the building goods and take its goods away (they are tinted on
-   * the map), with a hint when one side isn't wired; null for buildings that don't handle goods.
-   */
-  private wiring(s: GameState, b: Building): { el: HTMLElement; update: () => void } | null {
-    const { takes, gives } = goodsFlow(b);
-    if (!takes && !gives) return null;
-    // A field's compost is optional, and a depot may be fed by drones alone, so neither is missing anything without a belt.
-    const needsIn = () => takes && b.type !== 'field' && !(b.type === 'depot' && s.buildings.some((p) => p.type === 'pad' && p.mode === 'send' && p.link === b.id));
-    const dot = (hex: number) => h('i', { class: 'dot', style: `background:#${hex.toString(16).padStart(6, '0')}` });
-    const inN = h('b'), outN = h('b'), hint = h('p', { class: 'hint warn-hint' });
-    const el = h('div', null,
-      h('div', { class: 'kv wiring' }, h('span', null, 'Linked'), h('span', null,
-        takes ? h('span', null, dot(LINK_IN), inN, ' in') : null, takes && gives ? ' · ' : '', gives ? h('span', null, dot(LINK_OUT), outN, ' out') : null)),
-      hint);
+  /** How many silos serve a building that trades goods (they are tinted on the map), with a hint when none does. */
+  private silos(s: GameState, b: Building): { el: HTMLElement; update: () => void } | null {
+    if (!handlesGoods(b)) return null;
+    const dot = h('i', { class: 'dot', style: `background:#${LINK.toString(16).padStart(6, '0')}` });
+    const n = h('b'), hint = h('p', { class: 'hint warn-hint' });
+    const el = h('div', null, h('div', { class: 'kv wiring' }, h('span', null, 'Silos'), h('span', null, dot, n, ' in reach')), hint);
     const update = () => {
-      const ins = suppliersOf(s, b).length, outs = receiversOf(s, b).length;
-      set(inN, String(ins)); set(outN, String(outs));
-      const msg = !ins && needsIn() ? 'No belt brings it goods yet: make a belt point into it.'
-        : gives && !outs ? 'Nothing takes its goods yet: run a belt beside it, pointing away.' : '';
+      const k = silosServing(s, b).length;
+      set(n, String(k));
+      const msg = k ? '' : `No silo in reach: build one within ${SILO.reach} tiles so drones bring and take its goods.`;
       set(hint, msg);
       hint.style.display = msg ? '' : 'none';
     };
     return { el, update };
-  }
-
-  private padMode(b: Building, mode: 'send' | 'receive') {
-    const r = setPadMode(b, mode);
-    if (r.message) this.toast(r.message, r.ok);
   }
 
   // ---- Stats ----
@@ -501,11 +507,11 @@ export class Hud {
 
 function help() {
   return h('ul', { class: 'help' },
-    h('li', null, 'Pick a building in the bar at the bottom, then ', h('b', null, 'click or drag'), ' to place it. Belts follow the drag; ', h('b', null, 'R'), ' turns them.'),
-    h('li', null, 'Goods leave a building onto any belt beside it that doesn\'t lead back into it, and enter from any belt that points into it.'),
-    h('li', null, 'Machines need power: build solar panels, turbines or a digester, and pylons within 3 tiles of everything. Batteries keep the night going.'),
+    h('li', null, 'Pick a building in the bar at the bottom, then ', h('b', null, 'click or drag'), ' to place it (a drag places a row).'),
+    h('li', null, 'A silo\'s drones carry goods: they collect from and feed every building within ', String(SILO.reach), ' tiles, fetch from other silos, and sell at the depot what is on its sell list (click the depot).'),
+    h('li', null, 'Machines and drones need power: build solar panels, turbines or a digester, and pylons within 3 tiles of everything. Batteries keep the night going.'),
     h('li', null, 'Fields grow faster with water (sprinklers) and rich soil; harvests drain the soil. Compost, beans and resting fix it.'),
-    h('li', null, 'Markers: ', h('span', { class: 'm red' }, '◆'), ' no power ', h('span', { class: 'm orange' }, '◆'), ' blocked/low power ', h('span', { class: 'm yellow' }, '◆'), ' waiting for input ', h('span', { class: 'm blue' }, '◆'), ' dry ', h('span', { class: 'm purple' }, '◆'), ' not linked'),
+    h('li', null, 'Markers: ', h('span', { class: 'm red' }, '◆'), ' no power ', h('span', { class: 'm orange' }, '◆'), ' blocked/low power ', h('span', { class: 'm yellow' }, '◆'), ' waiting for input ', h('span', { class: 'm blue' }, '◆'), ' dry ', h('span', { class: 'm purple' }, '◆'), ' no silo in reach'),
     h('li', null, h('b', null, 'Click'), ' a building to inspect it · ', h('b', null, 'X'), ' remove (refunds) · ', h('b', null, 'right click / Esc'), ' cancel'),
     h('li', null, h('b', null, 'Drag'), ' (or right-drag, arrows) to pan · ', h('b', null, 'Q E'), ' turn · ', h('b', null, 'wheel / trackpad pinch / + −'), ' zoom · ', h('b', null, 'Space 1 2 3'), ' pause and speed · ', h('b', null, 'V'), ' overlays · ', h('b', null, 'Tab'), ' stats'),
     h('li', null, 'Not sure what something does? ', h('b', null, 'G'), ' opens the guide: every building, how to use it and its numbers.'),

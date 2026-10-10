@@ -1,7 +1,7 @@
 import type { Medal } from './sim.ts';
-import { BUILDINGS, CROPS, ITEMS, recipesFor } from './data.ts';
+import { BUILDINGS, CROPS, DRONE, ITEMS, recipesFor } from './data.ts';
 import type { Scenario } from './scenarios.ts';
-import type { Building, GameState } from './state.ts';
+import type { Building, Drone, GameState } from './state.ts';
 
 // Saving: the commission in progress (one at a time) and each commission's best result. The game state is plain data, so a
 // save is its JSON.
@@ -22,19 +22,21 @@ export function deserialize(json: string | null): GameState | null {
   if (!json) return null;
   try {
     const s = JSON.parse(json) as GameState;
-    return s?.version === 1 && complete(s) ? s : null;
+    return s?.version === 2 && complete(s) ? s : null;
   } catch {
     return null;
   }
 }
 
 const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
-const nums = (o: unknown) => !!o && typeof o === 'object' && Object.values(o).every(num);
+const nums = (o: unknown) => !!o && typeof o === 'object' && !Array.isArray(o) && Object.values(o).every(num);
 const arr = Array.isArray;
 const item = (v: unknown) => typeof v === 'string' && v in ITEMS;
 const items = (v: unknown) => arr(v) && v.every(item);
 /** Counts by good: every key a good, every value a number. */
 const counts = (o: unknown) => nums(o) && Object.keys(o as object).every(item);
+/** Goods held: counts that are whole and not negative. */
+const stock = (o: unknown) => counts(o) && Object.values(o as object).every((v) => Number.isInteger(v) && v >= 0);
 const crop = (v: unknown) => typeof v === 'string' && v in CROPS;
 const dir = (v: unknown) => v === 0 || v === 1 || v === 2 || v === 3;
 const goal = (g: { kind?: string; item?: unknown; n?: unknown; perMin?: unknown; min?: unknown }) =>
@@ -60,10 +62,36 @@ function complete(s: GameState): boolean {
     && arr(s.soilBase) && s.soilBase.length === m.fertility.length && s.soilBase.every(num) && !!m.depot && num(m.depot.x) && num(m.depot.y)
     && [s.credits, s.time, s.carry, s.nextId, s.earned, s.initialTrees].every(num)
     && (s.completedAt === null || num(s.completedAt))
-    && counts(s.delivered) && counts(s.made) && arr(s.reached) && s.reached.length === s.scenario.goals.length
+    && stock(s.delivered) && stock(s.made) && arr(s.reached) && s.reached.length === s.scenario.goals.length
     && !!st && num(st.since) && arr(st.made) && st.made.length > 0 && st.made.every(counts)
     && !!st.delivered && typeof st.delivered === 'object' && Object.entries(st.delivered).every(([k, v]) => item(k) && arr(v) && v.every(num))
-    && arr(s.buildings) && s.buildings.every((b) => validBuilding(b, m.width, m.height));
+    && arr(s.buildings) && s.buildings.every((b) => validBuilding(b, m.width, m.height)) && tasksFit(s.buildings);
+}
+
+/** Every drone's task flies to the kind of building it works with, if that building is still there. */
+function tasksFit(buildings: Building[]): boolean {
+  const byId = new Map(buildings.map((b) => [b.id, b]));
+  return buildings.every((si) => si.type !== 'silo' || si.drones!.every((d) => {
+    const t = d.task, b = t ? byId.get(t.target) : undefined;
+    if (!t || !b) return true;
+    if (t.kind === 'fetch') return b.type === 'silo' && b !== si;
+    if (t.kind === 'sell') return b.type === 'depot';
+    if (t.kind === 'feed') return b.type === 'field' || !!b.recipe;
+    return b.type === 'field' || b.type === 'hive' || !!b.recipe;
+  }));
+}
+
+const TASKS = ['feed', 'collect', 'fetch', 'sell'];
+const PHASES = ['idle', 'charge', 'out', 'work', 'recharge', 'back'];
+/** A drone is idle with nothing, or has a whole task. */
+function drone(d: Drone): boolean {
+  if (!d || !PHASES.includes(d.phase) || !num(d.t) || !num(d.energy) || d.energy < 0 || !items(d.cargo) || d.cargo.length > DRONE.cargo) return false;
+  const t = d.task;
+  if (d.phase === 'idle') return t === null && !d.cargo.length;
+  return !!t && TASKS.includes(t.kind) && [t.target, t.tx, t.ty].every(num) && item(t.item)
+    && Number.isInteger(t.n) && t.n >= 0 && t.n <= DRONE.cargo && (t.kind === 'sell' || t.kind === 'feed' || t.n > 0)
+    // A drone collecting or fetching flies out empty, and brings back no more than it went for.
+    && ((t.kind !== 'collect' && t.kind !== 'fetch') || (d.phase === 'recharge' || d.phase === 'back' ? d.cargo.length <= t.n : !d.cargo.length));
 }
 
 /** A building has what its type's rules read. */
@@ -72,19 +100,15 @@ function validBuilding(b: Building, w: number, h: number): boolean {
   const n = BUILDINGS[b.type].size;
   if (b.x < 0 || b.y < 0 || b.x + n > w || b.y + n > h) return false;
   switch (b.type) {
-    case 'belt': return arr(b.items) && b.items.every((i) => i && num(i.pos) && item(i.item));
-    case 'splitter': case 'crossing': case 'sorter':
-      return arr(b.transit) && b.transit.every((t) => t && item(t.item) && dir(t.from) && num(t.t)) && num(b.turn)
-        && (b.type !== 'sorter' || b.filter === null || item(b.filter));
-    case 'field': return crop(b.crop) && (b.harvest === undefined || crop(b.harvest)) && num(b.growth) && num(b.stored) && num(b.compost);
+    case 'silo': return stock(b.store) && counts(b.shared) && num(b.waited) && arr(b.drones) && b.drones.length > 0 && b.drones.every(drone);
+    case 'depot': return !!b.sell && typeof b.sell === 'object' && !arr(b.sell) && Object.entries(b.sell).every(([k, v]) => item(k) && (v === 'spare' || v === 'half'));
+    case 'field': return crop(b.crop) && (b.harvest === undefined || crop(b.harvest)) && num(b.growth) && num(b.stored) && num(b.compost) && items(b.refuse);
     case 'hive': return num(b.growth) && num(b.stored);
     case 'battery': return num(b.charge);
-    case 'pad': return (b.mode === 'send' || b.mode === 'receive') && (b.link === null || num(b.link)) && items(b.store) && num(b.waited)
-      && !!b.drone && ['home', 'out', 'back', 'hover'].includes(b.drone.phase) && num(b.drone.t) && items(b.drone.cargo) && num(b.drone.target);
     case 'sapling': return num(b.age);
   }
   if (recipesFor(b.type).length) {
-    return recipesFor(b.type).some((r) => r.id === b.recipe) && counts(b.inputs) && counts(b.outputs) && (b.progress === null || num(b.progress));
+    return recipesFor(b.type).some((r) => r.id === b.recipe) && stock(b.inputs) && stock(b.outputs) && (b.progress === null || num(b.progress)) && items(b.refuse);
   }
   return true;
 }

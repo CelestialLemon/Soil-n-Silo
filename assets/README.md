@@ -37,10 +37,7 @@ checks footprint bounds through a full rotation of every `move_spin_` mesh.
 Solarpunk models use a 3,000-triangle budget per visible stage or variant. `mill_electric` is the
 electric mill; the existing `mill` remains the original windmill.
 
-Logistics decks (`belt`, `splitter`, `sorter`, `crossing`) have a flat top at
-exactly 0.16 m, including flush brass direction inlays. The belt meets adjacent
-tiles at both ends. Crossing bridge shoulders rise above its two flat travel
-axes. The drone is 0.7 m across with its origin at its flying centre; its four
+The drone is 0.7 m across with its origin at its flying centre; its four
 `move_spin_rotor_0`…`move_spin_rotor_3` nodes have local X pointing up and
 `speed = 18`. The sprinkler's `move_spin_head` also has local X up, `speed = 3`.
 Rock previews show `variant_0`…`variant_2` in separate rows; each variant root
@@ -51,7 +48,7 @@ With the Blender Flatpak, use an absolute script path (its working directory
 may differ from the shell's):
 
 ```sh
-flatpak run org.blender.Blender -b --python-exit-code 1 --python "$PWD/assets/belt/build.py"
+flatpak run org.blender.Blender -b --python-exit-code 1 --python "$PWD/assets/drone/build.py"
 ```
 
 | Palette group | Named colours (sRGB hex) |

@@ -1,20 +1,17 @@
 import * as THREE from 'three';
 import type { PixelObject, PixelRenderer } from 'pixel3d-renderer';
-import { BUILDINGS, CROPS, HIVE, POWER, ROUTER_SECONDS, type BuildingId, type ItemId } from '../game/data.ts';
+import { BUILDINGS, CROPS, HIVE, POWER, SILO, type BuildingId, type ItemId } from '../game/data.ts';
 import { TERRAIN } from '../game/map.ts';
 import { networks } from '../game/power.ts';
-import { goodsFlow, padTarget, receiversOf, suppliersOf, windAt } from '../game/sim.ts';
-import { buildingById, centre, DX, DY, layoutOf, sizeOf, type Building, type Dir, type GameState } from '../game/state.ts';
+import { handlesGoods, servedBySilo, silosServing, windAt } from '../game/sim.ts';
+import { buildingById, centre, layoutOf, sizeOf, type Building, type Dir, type Drone, type GameState } from '../game/state.ts';
 import { hash } from './kit.ts';
 import type { Models } from './models.ts';
-import { soilBand } from './shapes.ts';
+import { SILO_PADS, soilBand } from './shapes.ts';
 
 // Shows the game state with renderer objects. Every frame it adds, swaps and removes objects so the world matches the state:
-// buildings (idle or running), fields' soil and crops, goods on belts and in splitters, drones in flight, status markers,
-// trees and rocks, arrows on belts. It remembers which building each object belongs to, for picking and highlights.
-
-/** Height of a belt's deck, where goods ride. */
-export const DECK = 0.16;
+// buildings (idle or running), fields' soil and crops, silos' drones (on their pads or in flight, with their cargo hanging
+// under them), status markers, trees and rocks. It remembers which building each object belongs to, for picking and highlights.
 
 const YAW: Record<Dir, number> = { 0: Math.PI, 1: Math.PI / 2, 2: 0, 3: -Math.PI / 2 };
 
@@ -22,26 +19,27 @@ interface Shown { obj: PixelObject; key: string }
 
 const v = new THREE.Vector3(), e = new THREE.Euler();
 
-/** Overlay colours: soil from poor (red) to rich (green), pylon reach, sprinkler water, bee range. */
+/** Overlay colours: soil from poor (red) to rich (green), pylon reach, silo reach, sprinkler water, bee range. */
 const FERT = [0xb03020, 0xd07020, 0xd8b020, 0x98c030, 0x50a030, 0x207a30].map((c) => new THREE.Color(c));
-const REACH = new THREE.Color(0xf0d060), WATER = new THREE.Color(0x60a8e8), BEES = new THREE.Color(0xf09030);
-/** Belts of the focused building: belts it takes goods from, and belts it puts goods on. */
-export const LINK_IN = 0x7ee060, LINK_OUT = 0x50b4ff;
-const IN = new THREE.Color(LINK_IN), OUT = new THREE.Color(LINK_OUT), LINK_STRENGTH = 0.6;
-/** Buildings with an arrow on their deck. */
-const ARROWED = new Set<BuildingId>(['belt', 'sorter']);
+const REACH = new THREE.Color(0xf0d060), SILOS = new THREE.Color(0xc89cf0), WATER = new THREE.Color(0x60a8e8), BEES = new THREE.Color(0xf09030);
+/** The tint of the buildings a focused silo serves, or of the silos serving a focused building. */
+export const LINK = 0x7ee060;
+const LINKED = new THREE.Color(LINK), LINK_STRENGTH = 0.55;
+/** Drones: height parked on a pad, cruising, and hovering over a target, and how far below a drone its cargo hangs. */
+const PARKED = 0.42, CRUISE = 2.6, HOVER = 1.6, CARGO_DROP = 0.32;
 
-export type Overlay = 'none' | 'fertility' | 'power' | 'water' | 'bees';
+export type Overlay = 'none' | 'fertility' | 'power' | 'silos' | 'water' | 'bees';
 
 export class WorldView {
   private readonly targets = new Map<PixelObject, number>();
   private readonly shown = new Map<number, Shown>();
   private readonly parts = new Map<number, Shown[]>();
   private readonly markers = new Map<number, Shown>();
-  private readonly arrows = new Map<number, Shown>();
   private linksKey = '';
-  private readonly linked = new Map<number, THREE.Color>();
-  private readonly drones = new Map<number, PixelObject>();
+  private readonly linked = new Set<number>();
+  private tinted: PixelObject[] = [];
+  /** Drone objects by silo id, one per drone. */
+  private readonly drones = new Map<number, PixelObject[]>();
   private readonly pools = new Map<ItemId, { objs: PixelObject[]; used: number }>();
   private readonly terrain: (Shown | null)[] = [];
   /** The map tile of each tree and rock object. */
@@ -70,8 +68,7 @@ export class WorldView {
     const main = this.shown.get(id);
     if (main) out.push(main.obj);
     for (const p of this.parts.get(id) ?? []) out.push(p.obj);
-    const a = this.arrows.get(id);
-    if (a) out.push(a.obj);
+    for (const d of this.drones.get(id) ?? []) out.push(d);
     return out;
   }
 
@@ -108,26 +105,17 @@ export class WorldView {
         geo = () => this.m.turbine[speed];
       }
       this.shown.set(b.id, this.show(this.shown.get(b.id), key, geo, b.id, (o) => o.setTransform(v.set(cx, 0, cz), e.set(0, YAW[b.rot], 0))));
-      if (b.type === 'sorter') this.syncFilter(b, cx, cz);
-      if (ARROWED.has(b.type)) {
-        this.arrows.set(b.id, this.show(this.arrows.get(b.id), `${b.x} ${b.y} ${b.rot}`, () => this.m.arrow, b.id, (o) => {
-          o.castShadow = false;
-          o.setTransform(v.set(cx, DECK + 0.005, cz), e.set(0, YAW[b.rot] - Math.PI / 2, 0));
-        }));
-      }
     }
-    for (const [id, sh] of this.arrows) if (!alive.has(id)) { this.drop(sh.obj); this.arrows.delete(id); }
     for (const [id, sh] of this.shown) if (!alive.has(id)) { this.drop(sh.obj); this.shown.delete(id); }
     for (const [id, ps] of this.parts) if (!alive.has(id)) { for (const p of ps) this.drop(p.obj); this.parts.delete(id); }
     this.syncMarkers(s, alive);
-    this.syncGoods(s);
     this.syncDrones(s, alive);
   }
 
   private syncField(s: GameState, f: Building) {
     const list = this.parts.get(f.id) ?? [];
     const crop = CROPS[f.crop!];
-    // Every tile shows the field's stage; a harvest waiting shows ripe until a belt takes it.
+    // Every tile shows the field's stage; a harvest waiting shows ripe until a drone collects it.
     const stage = f.stored! >= crop.yield ? crop.stages - 1 : Math.min(crop.stages - 1, Math.floor(f.growth! * crop.stages));
     let i = 0;
     for (let y = f.y; y < f.y + 3; y++) for (let x = f.x; x < f.x + 3; x++) {
@@ -142,14 +130,6 @@ export class WorldView {
     this.parts.set(f.id, list);
   }
 
-  private syncFilter(b: Building, cx: number, cz: number) {
-    const list = this.parts.get(b.id) ?? [];
-    if (b.filter) {
-      list[0] = this.show(list[0], `filter ${b.filter}`, () => this.m.items[b.filter!], b.id, (o) => o.setTransform(v.set(cx, 0.62, cz), e.set(0, 0, 0), 1.4));
-    } else if (list[0]) { this.drop(list[0].obj); list.length = 0; }
-    this.parts.set(b.id, list);
-  }
-
   private syncMarkers(s: GameState, alive: Set<number>) {
     for (const b of s.buildings) {
       const colour = markerColour(b);
@@ -161,74 +141,78 @@ export class WorldView {
     for (const [id, sh] of this.markers) if (!alive.has(id)) { this.drop(sh.obj); this.markers.delete(id); }
   }
 
-  /** Goods on belts and inside splitters, sorters and crossings, from pools of objects per good. */
-  private syncGoods(s: GameState) {
+  /** A silo's drones: parked on its pads, or flying to their task's target and back, with their cargo hanging under them. */
+  private syncDrones(s: GameState, alive: Set<number>) {
     for (const p of this.pools.values()) p.used = 0;
-    const put = (item: ItemId, x: number, y: number, z: number, yaw: number) => {
-      let p = this.pools.get(item);
-      if (!p) { p = { objs: [], used: 0 }; this.pools.set(item, p); }
-      let o = p.objs[p.used];
-      if (!o) { o = this.add(this.m.items[item], null); o.castShadow = false; p.objs.push(o); }
-      p.used++;
-      o.visible = true;
-      o.setTransform(v.set(x, y, z), e.set(0, yaw, 0));
-    };
     for (const b of s.buildings) {
-      if (b.type === 'belt') {
-        for (const it of b.items!) put(it.item, b.x + 0.5 + DX[b.rot] * (it.pos - 0.5), DECK, b.y + 0.5 + DY[b.rot] * (it.pos - 0.5), YAW[b.rot]);
-      } else if (b.transit) {
-        for (const t of b.transit) {
-          // From the side it came in towards the middle.
-          const k = Math.max(0, t.t) / ROUTER_SECONDS * 0.4;
-          put(t.item, b.x + 0.5 + DX[t.from] * k, DECK + 0.02, b.y + 0.5 + DY[t.from] * k, 0);
-        }
-      }
+      if (b.type !== 'silo') continue;
+      const list = this.drones.get(b.id) ?? [];
+      this.drones.set(b.id, list);
+      b.drones!.forEach((d, i) => {
+        const o = list[i] ?? (list[i] = this.add(this.m.drone, b.id));
+        const at = this.dronePosition(s, b, d, i);
+        o.setTransform(v.set(at.x, at.y, at.z), e.set(0, at.yaw, 0));
+        if (d.cargo.length) this.putGood(d.cargo[0], at.x, at.y - CARGO_DROP, at.z, at.yaw);
+      });
     }
+    for (const [id, list] of this.drones) if (!alive.has(id)) { for (const o of list) this.drop(o); this.drones.delete(id); }
     for (const p of this.pools.values()) for (let i = p.used; i < p.objs.length; i++) p.objs[i].visible = false;
   }
 
-  private syncDrones(s: GameState, alive: Set<number>) {
-    for (const b of s.buildings) {
-      if (b.type !== 'pad' || b.mode !== 'send') continue;
-      let o = this.drones.get(b.id);
-      if (!o) { o = this.add(this.m.drone, b.id); this.drones.set(b.id, o); }
-      const d = b.drone!, home = centre(b);
-      const target = d.target ? buildingById(s, d.target) : padTarget(s, b);
-      const to = target ? centre(target) : home;
-      let t = 0;
-      if (d.phase === 'out') t = d.t; else if (d.phase === 'hover') t = 1; else if (d.phase === 'back') t = 1 - d.t;
-      const x = home.x + (to.x - home.x) * t, z = home.y + (to.y - home.y) * t;
-      const lift = d.phase === 'home' ? 0.35 : 0.35 + Math.min(1, Math.sin(Math.PI * t) * 3) * 2.2 + (d.phase === 'hover' ? 0.8 : 0);
-      o.setTransform(v.set(x, lift, z), e.set(0, Math.atan2(to.x - home.x, to.y - home.y), 0));
-    }
-    for (const [id, o] of this.drones) {
-      const b = alive.has(id) ? s.buildings.find((x) => x.id === id) : null;
-      if (!b || b.mode !== 'send') { this.drop(o); this.drones.delete(id); }
-    }
+  /** Where a drone is: on its pad (its silo turns with the silo), or along its flight, rising to cruise and landing. */
+  private dronePosition(s: GameState, silo: Building, d: Drone, i: number) {
+    const c = centre(silo), yaw = YAW[silo.rot];
+    const [px, pz] = SILO_PADS[i % SILO_PADS.length];
+    const pad = { x: c.x + px * Math.cos(yaw) + pz * Math.sin(yaw), z: c.y - px * Math.sin(yaw) + pz * Math.cos(yaw) };
+    const t = d.task;
+    if (!t || d.phase === 'idle' || d.phase === 'charge') return { x: pad.x, y: PARKED, z: pad.z, yaw };
+    const to = { x: t.tx, z: t.ty };
+    const heading = Math.atan2(to.x - pad.x, to.z - pad.z);
+    // At the target: hovering over it while loading or charging, its cargo clear of the roof.
+    const target = buildingById(s, t.target);
+    const hover = Math.max(HOVER, (target ? this.m.buildings[target.type].height : 0) + CARGO_DROP + 0.35);
+    if (d.phase === 'work' || d.phase === 'recharge') return { x: to.x, y: hover, z: to.z, yaw: heading };
+    // k runs from the pad (0) to the target (1) either way; the drone climbs to cruise soon after leaving and comes down
+    // near the end. Coming back, it faces home.
+    const k = d.phase === 'out' ? d.t : 1 - d.t;
+    const base = PARKED + (hover - PARKED) * k;
+    const y = base + (Math.max(CRUISE, hover) - base) * Math.min(1, Math.sin(Math.PI * k) * 2.5);
+    return { x: pad.x + (to.x - pad.x) * k, y, z: pad.z + (to.z - pad.z) * k, yaw: d.phase === 'out' ? heading : heading + Math.PI };
+  }
+
+  /** A good from the pool of objects for its kind. */
+  private putGood(item: ItemId, x: number, y: number, z: number, yaw: number) {
+    let p = this.pools.get(item);
+    if (!p) { p = { objs: [], used: 0 }; this.pools.set(item, p); }
+    let o = p.objs[p.used];
+    if (!o) { o = this.add(this.m.items[item], null); o.castShadow = false; p.objs.push(o); }
+    p.used++;
+    o.visible = true;
+    o.setTransform(v.set(x, y, z), e.set(0, yaw, 0));
   }
 
   /**
-   * Tints the belts the building `id` takes goods from (green) and puts its goods on (copper), so you can see how it's
-   * wired; none with null. Call after `sync` every frame: a belt's object is swapped when it starts or stops moving goods.
+   * Tints the buildings a focused silo serves, or the silos serving a focused building, so you can see who works for whom;
+   * none with null. Call after `sync` every frame: an object is swapped when its building starts or stops running.
    */
   links(s: GameState, id: number | null) {
     const b = id !== null ? buildingById(s, id) : null;
-    const flow = b ? goodsFlow(b) : null;
-    const key = b && (flow!.takes || flow!.gives) ? `${b.id} ${b.mode} ${b.filter} ${layoutOf(s)}` : '';
+    const relevant = !!b && (b.type === 'silo' || handlesGoods(b));
+    const key = relevant ? `${b!.id} ${layoutOf(s)}` : '';
     if (key !== this.linksKey) {
       this.linksKey = key;
       this.linked.clear();
-      if (b && key) {
-        if (flow!.takes) for (const x of suppliersOf(s, b)) this.linked.set(x.id, IN);
-        if (flow!.gives) for (const x of receiversOf(s, b)) this.linked.set(x.id, OUT);
-      }
+      if (relevant) for (const x of b!.type === 'silo' ? servedBySilo(s, b!) : silosServing(s, b!)) this.linked.add(x.id);
     }
-    for (const [bid, a] of this.arrows) {
-      const o = this.shown.get(bid)?.obj, tint = this.linked.get(bid) ?? null;
-      for (const x of o ? [o, a.obj] : [a.obj]) {
-        if (x.tint !== tint) { x.tint = tint; x.tintStrength = LINK_STRENGTH; }
-      }
+    const want: PixelObject[] = [];
+    for (const bid of this.linked) {
+      const main = this.shown.get(bid);
+      if (main) want.push(main.obj);
+      for (const p of this.parts.get(bid) ?? []) want.push(p.obj);
     }
+    for (const o of this.tinted) if (!want.includes(o)) o.tint = null;
+    for (const o of want) if (o.tint !== LINKED) { o.tint = LINKED; o.tintStrength = LINK_STRENGTH; }
+    this.tinted = want;
   }
 
   /** Trees and rocks on the map, as objects so they can be cleared. */
@@ -282,10 +266,11 @@ export class WorldView {
     }
     for (const b of s.buildings) {
       if (kind === 'power' && b.type === 'pylon') cover(b.x, b.y, 1, POWER.pylon.reach);
+      if (kind === 'silos' && b.type === 'silo') cover(b.x, b.y, 2, SILO.reach);
       if (kind === 'water' && b.type === 'sprinkler') cover(b.x - 1, b.y - 1, 3, POWER.sprinklerReach - 1);
       if (kind === 'bees' && b.type === 'hive') cover(b.x, b.y, 1, HIVE.reach);
     }
-    const tint = kind === 'power' ? REACH : kind === 'water' ? WATER : BEES;
+    const tint = kind === 'power' ? REACH : kind === 'silos' ? SILOS : kind === 'water' ? WATER : BEES;
     for (const i of mark) {
       const o = this.tile(tint);
       o.setTransform(v.set(i % w + 0.5, 0.02, Math.floor(i / w) + 0.5));
@@ -296,20 +281,20 @@ export class WorldView {
 
 /** Is it doing its thing (to show its running look)? */
 function isRunning(b: Building) {
-  if (b.type === 'pad') return b.drone?.phase !== 'home' || (b.mode === 'receive' && b.store!.length > 0);
   if (b.recipe) return b.progress !== null && b.progress !== undefined;
   return b.status === 'ok';
 }
 
-const QUIET = new Set<BuildingId>(['belt', 'splitter', 'sorter', 'crossing', 'depot', 'sapling']);
+const QUIET = new Set<BuildingId>(['depot', 'sapling']);
 
 function markerColour(b: Building): 'red' | 'orange' | 'yellow' | 'blue' | 'purple' | null {
   if (QUIET.has(b.type)) return null;
   switch (b.status) {
-    case 'power': case 'nolink': return b.type === 'pad' && b.status === 'nolink' ? 'purple' : 'red';
+    case 'power': case 'nolink': return 'red';
+    case 'nosilo': return 'purple';
     case 'lowpower': return 'orange';
     case 'blocked': return 'orange';
-    case 'input': return b.type === 'pad' ? null : 'yellow';
+    case 'input': return 'yellow';
     case 'flowers': return 'yellow';
     case 'dry': return 'blue';
     default: return null;

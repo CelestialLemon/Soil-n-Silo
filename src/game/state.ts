@@ -1,25 +1,41 @@
-import { BUILDINGS, recipesFor, type BuildingId, type CropId, type ItemId } from './data.ts';
+import { BUILDINGS, PRODUCTS, recipesFor, SILO, type BuildingId, type CropId, type ItemId, type SellMode } from './data.ts';
 import { DEPOT_SIZE, generateMap, TERRAIN, type MapData } from './map.ts';
 import type { Scenario } from './scenarios.ts';
 
 // The state of a commission in progress: plain data, so it saves as JSON. Lookups that only speed things up (which building
 // is on a tile, the power networks) live in a cache beside it and are rebuilt when the layout changes.
 
-/** North, east, south, west: row −1, column +1, row +1, column −1. */
+/** Which way a building faces (for looks): north, east, south, west. */
 export type Dir = 0 | 1 | 2 | 3;
-export const DX = [0, 1, 0, -1] as const;
-export const DY = [-1, 0, 1, 0] as const;
-export const opposite = (d: Dir) => ((d + 2) % 4) as Dir;
-export const left = (d: Dir) => ((d + 3) % 4) as Dir;
-export const right = (d: Dir) => ((d + 1) % 4) as Dir;
 
-/** A good on a belt: how far along it is (0–1), and the step it came on (it doesn't move again that step). */
-export interface BeltItem { item: ItemId; pos: number; step?: number }
-/** A good passing through a splitter, sorter or crossing: where it came in, and how long it has left inside. */
-export interface Transit { item: ItemId; from: Dir; t: number; step?: number }
-export interface Drone { phase: 'home' | 'out' | 'back' | 'hover'; t: number; cargo: ItemId[]; target: number }
+/**
+ * A silo's job for a drone: feed a building (cargo from the silo), collect from a building or fetch from another silo
+ * (cargo back to the silo), or sell at the depot.
+ */
+export interface Task {
+  kind: 'feed' | 'collect' | 'fetch' | 'sell';
+  /** The building it flies to, and that building's centre (kept, so a drone whose target goes still knows the way home). */
+  target: number; tx: number; ty: number;
+  item: ItemId;
+  /** Goods it set out to bring back (collect, fetch). */
+  n: number;
+}
 
-export type Status = 'ok' | 'idle' | 'input' | 'blocked' | 'power' | 'lowpower' | 'nolink' | 'flowers' | 'dry';
+/**
+ * A silo's drone. At home it is idle or charging for its next flight; it flies out to its task's target, works there
+ * (loading or unloading), charges there for the way back if the target is another silo, and flies back.
+ */
+export interface Drone {
+  phase: 'idle' | 'charge' | 'out' | 'work' | 'recharge' | 'back';
+  /** Flight progress 0–1 while flying; seconds into the work while working. */
+  t: number;
+  /** Joules in hand for the next leg. */
+  energy: number;
+  task: Task | null;
+  cargo: ItemId[];
+}
+
+export type Status = 'ok' | 'idle' | 'input' | 'blocked' | 'power' | 'lowpower' | 'nolink' | 'nosilo' | 'flowers' | 'dry';
 
 export interface Building {
   id: number;
@@ -31,18 +47,14 @@ export interface Building {
   status: Status;
   /** What it's waiting for or blocked by, for the status line. */
   need?: string;
-  // Belts.
-  items?: BeltItem[];
-  // Splitters, sorters and crossings.
-  transit?: Transit[];
-  turn?: number;
-  filter?: ItemId | null;
   // Machines (and the coop, composter and digester).
   recipe?: string;
   inputs?: Partial<Record<ItemId, number>>;
   outputs?: Partial<Record<ItemId, number>>;
   /** Seconds into the batch it's working on; null when it isn't. */
   progress?: number | null;
+  /** Goods it won't take from silos (any building that takes goods). */
+  refuse?: ItemId[];
   // Fields and hives.
   crop?: CropId;
   /** The crop the stored harvest is (it may differ from `crop` just after the crop was changed). */
@@ -52,12 +64,14 @@ export interface Building {
   compost?: number;
   // Batteries.
   charge?: number;
-  // Drone pads.
-  mode?: 'send' | 'receive';
-  link?: number | null;
-  store?: ItemId[];
-  drone?: Drone;
+  // Silos: goods held, drones, and how long sellable goods have waited for a full load. `shared` keeps a good sold by half
+  // fair between buildings and the depot: goods fed less goods sold, per good.
+  store?: Partial<Record<ItemId, number>>;
+  shared?: Partial<Record<ItemId, number>>;
+  drones?: Drone[];
   waited?: number;
+  // The depot: the goods silos send it, and how.
+  sell?: Partial<Record<ItemId, SellMode>>;
   // Saplings.
   age?: number;
 }
@@ -75,7 +89,7 @@ export interface Stats {
 export const STAT_BUCKET = 10, STAT_BUCKETS = 7;
 
 export interface GameState {
-  version: 1;
+  version: 2;
   scenario: Scenario;
   map: MapData;
   /** Each tile's fertility at the start: resting ground recovers up to it. */
@@ -101,11 +115,16 @@ export interface GameState {
 export function newGame(sc: Scenario): GameState {
   const map = generateMap(sc);
   const s: GameState = {
-    version: 1, scenario: sc, map, soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
+    version: 2, scenario: sc, map, soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
     buildings: [], nextId: 1, credits: sc.credits, time: 0, carry: 0, delivered: {}, earned: 0,
     stats: { since: 0, made: [{}], delivered: {} }, reached: sc.goals.map(() => false), completedAt: null, made: {},
   };
-  s.buildings.push(makeBuilding(s, 'depot', map.depot.x, map.depot.y, 0));
+  const depot = makeBuilding(s, 'depot', map.depot.x, map.depot.y, 0);
+  // The depot sells the products, and half of whatever else the commission asks for.
+  depot.sell = {};
+  for (const i of PRODUCTS) depot.sell[i] = 'spare';
+  for (const g of sc.goals) if (g.kind !== 'soil' && !PRODUCTS.includes(g.item)) depot.sell[g.item] = 'half';
+  s.buildings.push(depot);
   return s;
 }
 
@@ -113,17 +132,17 @@ export function newGame(sc: Scenario): GameState {
 export function makeBuilding(s: GameState, type: BuildingId, x: number, y: number, rot: Dir): Building {
   const b: Building = { id: s.nextId++, type, x, y, rot, status: 'idle' };
   switch (type) {
-    case 'belt': b.items = []; break;
-    case 'splitter': case 'crossing': b.transit = []; b.turn = 0; break;
-    case 'sorter': b.transit = []; b.turn = 0; b.filter = null; break;
-    case 'field': b.crop = 'wheat'; b.growth = 0; b.stored = 0; b.compost = 0; break;
+    case 'field': b.crop = 'wheat'; b.growth = 0; b.stored = 0; b.compost = 0; b.refuse = []; break;
     case 'hive': b.growth = 0; b.stored = 0; break;
     case 'battery': b.charge = 0; break;
-    case 'pad': b.mode = 'send'; b.link = null; b.store = []; b.drone = { phase: 'home', t: 0, cargo: [], target: 0 }; b.waited = 0; break;
+    case 'silo':
+      b.store = {}; b.shared = {}; b.waited = 0;
+      b.drones = Array.from({ length: SILO.drones }, () => ({ phase: 'idle' as const, t: 0, energy: 0, task: null, cargo: [] }));
+      break;
     case 'sapling': b.age = 0; break;
     default: {
       const rs = recipesFor(type);
-      if (rs.length) { b.recipe = rs[0].id; b.inputs = {}; b.outputs = {}; b.progress = null; }
+      if (rs.length) { b.recipe = rs[0].id; b.inputs = {}; b.outputs = {}; b.progress = null; b.refuse = []; }
     }
   }
   return b;
@@ -165,7 +184,7 @@ export function addBuilding(s: GameState, b: Building) {
   c.layout = layoutVersion++;
 }
 
-/** Marks the layout changed without adding or removing anything (a belt turned, a tree cleared). */
+/** Marks the layout changed without adding or removing anything (a tree cleared, a sapling grown). */
 export function touchLayout(s: GameState) {
   cache(s).layout = layoutVersion++;
 }
@@ -176,10 +195,6 @@ export function removeBuilding(s: GameState, b: Building) {
   if (i >= 0) s.buildings.splice(i, 1);
   occupy(s, c, b, 0);
   c.layout = layoutVersion++;
-  for (const o of s.buildings) {
-    if (o.link === b.id) o.link = null;
-    if (o.drone && o.drone.target === b.id && o.drone.phase !== 'home') { o.drone.phase = 'back'; o.drone.target = 0; }
-  }
 }
 
 export const inMap = (s: GameState, x: number, y: number) => x >= 0 && y >= 0 && x < s.map.width && y < s.map.height;
@@ -200,6 +215,14 @@ export const terrainAt = (s: GameState, x: number, y: number) => s.map.terrain[y
 export function centre(b: Building) {
   const n = sizeOf(b);
   return { x: b.x + n / 2, y: b.y + n / 2 };
+}
+
+/** The gap in tiles between two buildings' footprints (0 when they touch or overlap), as the larger of the axes. */
+export function gapBetween(a: Building, b: Building) {
+  const na = sizeOf(a), nb = sizeOf(b);
+  const dx = Math.max(0, a.x - (b.x + nb - 1), b.x - (a.x + na - 1));
+  const dy = Math.max(0, a.y - (b.y + nb - 1), b.y - (a.y + na - 1));
+  return Math.max(dx, dy);
 }
 
 /** The distance in tiles from a tile to the nearest tile of a building (0 when on it), as the larger of the axes. */
