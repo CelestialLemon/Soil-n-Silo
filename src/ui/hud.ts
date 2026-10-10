@@ -24,6 +24,18 @@ export type Tool =
   | { kind: 'remove' }
   | { kind: 'link'; pad: number };
 
+/**
+ * How zooming works (main.ts): magnify scales a fixed picture; detail keeps art pixels the same size on screen and draws
+ * models with more pixels close up, in a few steps; free does the same continuously. Switchable to compare them in play.
+ */
+export const ZOOM_MODES = ['magnify', 'detail', 'free'] as const;
+export type ZoomMode = typeof ZOOM_MODES[number];
+const ZOOM_LABELS: Record<ZoomMode, [string, string]> = {
+  magnify: ['Magnify', 'Zoom scales the same picture: art pixels grow from 1×1 to 6×6 on screen'],
+  detail: ['Detail', 'Art pixels stay 2×2 on screen; zooming in draws models with more pixels, in six steps'],
+  free: ['Free', 'Art pixels stay 2×2 on screen; the detail follows the zoom smoothly'],
+};
+
 export interface HudHost {
   state(): GameState;
   tool(): Tool;
@@ -39,6 +51,8 @@ export interface HudHost {
   turn(d: 1 | -1): void;
   /** +1 zooms in, -1 out. */
   zoom(d: 1 | -1): void;
+  zoomMode(): ZoomMode;
+  setZoomMode(m: ZoomMode): void;
   menu(): void;
   restart(): void;
 }
@@ -66,6 +80,7 @@ export class Hud {
   };
   private readonly speedButtons: HTMLButtonElement[] = [];
   private readonly overlayButtons = new Map<Overlay, HTMLButtonElement>();
+  private readonly zoomButtons = new Map<ZoomMode, HTMLButtonElement>();
   private readonly goals = h('div', { class: 'card goals' });
   private goalRows: { el: HTMLElement; text: HTMLElement; bar: ReturnType<typeof bar> }[] = [];
   private readonly buildbar = h('div', { class: 'buildbar card' });
@@ -113,7 +128,13 @@ export class Hud {
       speeds,
       button('⟲', () => host.turn(-1), { title: 'Turn the view (Q)' }), button('⟳', () => host.turn(1), { title: 'Turn the view (E)' }),
       button('−', () => host.zoom(-1), { title: 'Zoom out (wheel, − or Shift+Z)' }), button('+', () => host.zoom(1), { title: 'Zoom in (wheel, + or Z)' }), button('☰', () => this.openPause(), { title: 'Menu (Esc)' })),
-      overlays, h('div', { class: 'buttons' }, button('Guide (G)', () => this.openGuide(), { cls: 'small' }), button('Stats (Tab)', () => this.toggleStats(), { cls: 'small' })));
+      overlays,
+      h('div', { class: 'buttons zoom-modes' }, h('span', null, 'Zoom'), ...ZOOM_MODES.map((m) => {
+        const b = button(ZOOM_LABELS[m][0], () => host.setZoomMode(m), { cls: 'small', title: ZOOM_LABELS[m][1] });
+        this.zoomButtons.set(m, b);
+        return b;
+      })),
+      h('div', { class: 'buttons' }, button('Guide (G)', () => this.openGuide(), { cls: 'small' }), button('Stats (Tab)', () => this.toggleStats(), { cls: 'small' })));
     // Stacked from the bottom up, so the build bar never moves when the line above it changes.
     const bottom = h('div', { class: 'bottom' }, this.toasts, this.info, this.tip, this.buildbar);
     root.append(h('div', { class: 'hud' }, h('div', { class: 'top' }, left, mid, right), this.goals, this.inspector, this.stats, bottom), this.layer);
@@ -129,6 +150,7 @@ export class Hud {
     const s = this.host.state(), now = performance.now();
     this.speedButtons.forEach((b, i) => b.classList.toggle('active', [0, 1, 2, 4][i] === this.host.speed()));
     for (const [o, b] of this.overlayButtons) b.classList.toggle('active', this.host.overlay() === o);
+    for (const [m, b] of this.zoomButtons) b.classList.toggle('active', this.host.zoomMode() === m);
     this.syncBuildbar();
     if (now - this.lastSlow < 150) return;
     this.lastSlow = now;
