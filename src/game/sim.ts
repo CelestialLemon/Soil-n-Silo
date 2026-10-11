@@ -790,6 +790,10 @@ export function describeStatus(s: GameState, b: Building): string {
     case 'ok':
       if (b.type === 'field') return `Growing ${CROPS[b.crop!].name.toLowerCase()}`;
       if (b.type === 'silo') return `${b.drones!.filter((d) => d.phase !== 'idle').length} of ${b.drones!.length} drones busy`;
+      if (b.type === 'pylon') {
+        const net = networks(s).of.get(b.id)!, k = net.pylons.length - 1, n = net.members.length;
+        return `${k ? `Linked to ${k} other pylon${k > 1 ? 's' : ''}` : 'Linked to no other pylon'} · its network powers ${n} building${n === 1 ? '' : 's'}`;
+      }
       return b.recipe ? 'Working' : def.name;
   }
 }

@@ -68,8 +68,11 @@ def solar_tile(name, location, size, tilt=0):
     box(name+'_cell_separator',point(0,0,.11),(w-.13,.065,.025),'solar_light',rot=(tilt,0,0))
 
 
-def build_complete(name, footprint, states=False, budget=3000, airborne=False):
-    """Check static and swept bounds, then use the existing export pipeline."""
+def build_complete(name, footprint, states=False, budget=3000, airborne=False, overhang_above=None):
+    """Check static and swept bounds, then use the existing export pipeline.
+
+    overhang_above lets a move_spin_ part (a turbine's rotor) sweep past the footprint, as long as its whole swept disc
+    stays above that height, clear of the buildings beside it."""
     centre_xy()
     bpy.context.view_layer.update()
     for obj in bpy.context.scene.objects:
@@ -77,13 +80,20 @@ def build_complete(name, footprint, states=False, budget=3000, airborne=False):
             continue
         for v in obj.data.vertices:
             p = obj.matrix_world@v.co
-            assert abs(p.x) <= footprint/2+1e-5, f'{obj.name} outside X footprint'
-            assert abs(p.y) <= footprint/2+1e-5, f'{obj.name} outside Y footprint'
-            if obj.name.startswith('move_spin_'):
+            spins = obj.name.startswith('move_spin_')
+            if not (spins and overhang_above is not None):
+                assert abs(p.x) <= footprint/2+1e-5, f'{obj.name} outside X footprint'
+                assert abs(p.y) <= footprint/2+1e-5, f'{obj.name} outside Y footprint'
+            if spins:
                 axis = (obj.matrix_world.to_3x3()@Vector((1,0,0))).normalized()
                 delta = p-obj.matrix_world.translation
                 axial = obj.matrix_world.translation+axis*delta.dot(axis)
                 radial = (delta-axis*delta.dot(axis)).length
+                if overhang_above is not None:
+                    low = axial.z-radial*math.sqrt(max(0,1-axis.z**2))
+                    assert low >= overhang_above, f'{obj.name} sweeps below {overhang_above} m: {low:.3f}'
+                    assert abs(axial.x) <= footprint/2+1e-5 and abs(axial.y) <= footprint/2+1e-5, f'{obj.name} hub outside footprint'
+                    continue
                 for i in [0,1]:
                     reach = abs(axial[i])+radial*math.sqrt(max(0,1-axis[i]**2))
                     assert reach <= footprint/2+1e-5, f'{obj.name} rotation outside footprint'

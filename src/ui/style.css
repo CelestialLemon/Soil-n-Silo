@@ -184,3 +184,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 .sell-list button { font-size: 11px; }
 .sell-list button:not(.active) { opacity: 0.7; }
 .drones { font-size: 12px; margin: 2px 0 6px; padding-left: 18px; }
+
+/* Labels over the power networks while power is shown: what each makes and uses, its batteries. */
+.net-labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.net-label { position: absolute; left: 0; top: 0; white-space: nowrap; font-size: 11px; color: var(--text);
+  background: rgb(22 40 36 / 0.8); border: 1px solid #3a5a50; border-radius: 6px; padding: 1px 6px; }
+.net-label.short { color: #ffb070; border-color: #a0603a; }

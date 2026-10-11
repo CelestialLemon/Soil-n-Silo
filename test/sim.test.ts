@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { canPlace, place, remove, removeAt, setAccept, setCrop, setRecipe, setSell } from '../src/game/build.ts';
 import { BUILDINGS, DAY_SECONDS, DRONE, ITEMS, POWER, SILO, START_HOUR } from '../src/game/data.ts';
 import { generateMap, TERRAIN } from '../src/game/map.ts';
-import { networkOf, networks } from '../src/game/power.ts';
+import { feederOf, networkOf, networks, pylonsInLink, wiresOf } from '../src/game/power.ts';
 import { deserialize, readProgress, recordResult, serialize } from '../src/game/save.ts';
 import { CAMPAIGN, randomScenario, SANDBOX, scenarioById, type Scenario } from '../src/game/scenarios.ts';
 import {
@@ -519,3 +519,23 @@ test('random commissions have two to four goals', () => {
   }
 });
 
+
+test('power drawing: a network\'s wires join every pylon with the fewest, shortest links; a building is fed by its nearest pylon', () => {
+  const s = flat();
+  const a = put(s, 'pylon', 2, 2), b = put(s, 'pylon', 8, 2), c = put(s, 'pylon', 8, 8), d = put(s, 'pylon', 3, 7);
+  const far = put(s, 'pylon', 25, 25);
+  const net = networkOf(s, put(s, 'mill', 6, 4))!;
+  assert.equal(net.pylons.length, 4);
+  const wires = wiresOf(net);
+  assert.equal(wires.length, 3, 'a spanning tree of 4 pylons');
+  for (const [p, q] of wires) assert.ok(Math.hypot(p.x - q.x, p.y - q.y) <= POWER.pylon.link);
+  // Every pylon is joined.
+  const joined = new Set(wires.flat());
+  for (const p of [a, b, c, d]) assert.ok(joined.has(p));
+  assert.deepEqual(wiresOf(networks(s).of.get(far.id)!), []);
+  // The mill at (6..7, 4..5) is reached by a, b, c and d; b (8, 2) is nearest its centre.
+  assert.equal(feederOf(s, buildingAt(s, 6, 4)!), b);
+  assert.equal(feederOf(s, put(s, 'loom', 15, 15)), null);
+  assert.deepEqual(new Set(pylonsInLink(s, 8, 5)), new Set([a, b, c, d]));
+  assert.deepEqual(pylonsInLink(s, 16, 16), []);
+});

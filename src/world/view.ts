@@ -19,9 +19,9 @@ interface Shown { obj: PixelObject; key: string }
 
 const v = new THREE.Vector3(), e = new THREE.Euler();
 
-/** Overlay colours: soil from poor (red) to rich (green), pylon reach, silo reach, sprinkler water, bee range. */
+/** Overlay colours: soil from poor (red) to rich (green), silo reach, sprinkler water, bee range (power: powerView.ts). */
 const FERT = [0xb03020, 0xd07020, 0xd8b020, 0x98c030, 0x50a030, 0x207a30].map((c) => new THREE.Color(c));
-const REACH = new THREE.Color(0xf0d060), SILOS = new THREE.Color(0xc89cf0), WATER = new THREE.Color(0x60a8e8), BEES = new THREE.Color(0xf09030);
+const SILOS = new THREE.Color(0xc89cf0), WATER = new THREE.Color(0x60a8e8), BEES = new THREE.Color(0xf09030);
 /** The tint of the buildings a focused silo serves, or of the silos serving a focused building. */
 export const LINK = 0x7ee060;
 const LINKED = new THREE.Color(LINK), LINK_STRENGTH = 0.55;
@@ -103,6 +103,12 @@ export class WorldView {
         const speed = wind < 0.35 ? 0 : wind < 0.7 ? 1 : 2;
         key += ` ${speed}`;
         geo = () => this.m.turbine[speed];
+      }
+      if (b.type === 'battery') {
+        // Its charge rings light from the bottom up, one per quarter (any charge at all lights the first).
+        const k = b.charge! / POWER.battery.capacity, level = k < 0.02 ? 0 : Math.min(4, Math.ceil(k * 4 - 0.02));
+        key += ` ${level}`;
+        geo = () => this.m.battery[level];
       }
       this.shown.set(b.id, this.show(this.shown.get(b.id), key, geo, b.id, (o) => o.setTransform(v.set(cx, 0, cz), e.set(0, YAW[b.rot], 0))));
     }
@@ -242,8 +248,9 @@ export class WorldView {
     return o;
   }
 
-  /** Coloured tiles over the map: soil fertility, pylon reach, sprinkler water or bee range. */
+  /** Coloured tiles over the map: soil fertility, silo reach, sprinkler water or bee range. Power is PowerView's. */
   overlay(s: GameState, kind: Overlay) {
+    if (kind === 'power') kind = 'none';
     const key = kind === 'none' ? 'none' : `${kind} ${kind === 'fertility' ? s.map.fertility.map((f) => Math.floor(f / 17)).join('') : ''} ${s.buildings.length} ${networks(s).layout}`;
     if (key === this.overlayKey) return;
     this.overlayKey = key;
@@ -265,12 +272,11 @@ export class WorldView {
       return;
     }
     for (const b of s.buildings) {
-      if (kind === 'power' && b.type === 'pylon') cover(b.x, b.y, 1, POWER.pylon.reach);
       if (kind === 'silos' && b.type === 'silo') cover(b.x, b.y, 2, SILO.reach);
       if (kind === 'water' && b.type === 'sprinkler') cover(b.x - 1, b.y - 1, 3, POWER.sprinklerReach - 1);
       if (kind === 'bees' && b.type === 'hive') cover(b.x, b.y, 1, HIVE.reach);
     }
-    const tint = kind === 'power' ? REACH : kind === 'silos' ? SILOS : kind === 'water' ? WATER : BEES;
+    const tint = kind === 'silos' ? SILOS : kind === 'water' ? WATER : BEES;
     for (const i of mark) {
       const o = this.tile(tint);
       o.setTransform(v.set(i % w + 0.5, 0.02, Math.floor(i / w) + 0.5));
