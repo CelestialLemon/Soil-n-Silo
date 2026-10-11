@@ -3,7 +3,7 @@ import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObjec
 import { canPlace, place, remove, removeAt } from './game/build.ts';
 import { BUILDINGS, POWER, type BuildingId } from './game/data.ts';
 import { TERRAIN } from './game/map.ts';
-import { POWERED, pylonsInLink } from './game/power.ts';
+import { networkOf, POWERED, pylonsInLink } from './game/power.ts';
 import { deserialize, readProgress, recordResult, saveKey, serialize } from './game/save.ts';
 import { scenarioById } from './game/scenarios.ts';
 import { advance, describeStatus, fieldFertility, hourAt, medalFor } from './game/sim.ts';
@@ -487,9 +487,10 @@ async function play(initial: GameState) {
   /** What a pylon placed at (x, y) would do: link to pylons, start a network, power buildings. */
   function pylonNote(x: number, y: number) {
     const links = pylonsInLink(state, x, y).length;
-    const reaches = state.buildings.filter((b) => POWERED(b) && reachTo(b, x, y) <= POWER.pylon.reach).length;
+    const reached = state.buildings.filter((b) => POWERED(b) && reachTo(b, x, y) <= POWER.pylon.reach);
+    const reaches = reached.length, fresh = reached.filter((b) => !networkOf(state, b)).length;
     const link = links ? ` · links to ${links} pylon${links > 1 ? 's' : ''}` : state.buildings.some((b) => b.type === 'pylon') ? ` · no pylon within ${POWER.pylon.link}: a new network` : '';
-    return `${link} · reaches ${reaches} building${reaches === 1 ? '' : 's'}`;
+    return `${link} · reaches ${reaches} building${reaches === 1 ? '' : 's'}${fresh ? `, powers ${fresh} new` : ''}`;
   }
   function avgSoil(x: number, y: number) {
     let sum = 0, n = 0;

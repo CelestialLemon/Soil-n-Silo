@@ -11,7 +11,7 @@ import { NET_COLOURS } from './shapes.ts';
 // - every network has a colour (NET_COLOURS, by its place in the list): its pylons' reach on the ground, the wires
 //   joining its pylons and the feed lines from a pylon to each building it powers;
 // - a focused pylon shows its reach (a square, 3 tiles round it) and its link range (a dashed circle, 8 tiles);
-// - a pylon being placed shows both, and the wires and feeds it would make;
+// - a pylon being placed shows both, the wires it would make and feeds to the buildings it would bring power to;
 // - a label over each network shown says what it makes and uses, and how full its batteries are.
 
 /** Where to draw the power layer, and how much of it. */
@@ -156,11 +156,18 @@ export class PowerView {
    */
   private ghostLinks(s: GameState, ghosts: PowerFocus['ghosts'], top: number) {
     const ok = ghosts.filter((g) => g.ok);
+    // A building joins the network of the first pylon that reaches it (power.ts), and new pylons come last: so a pylon
+    // being placed feeds only buildings without a network yet, each from the first new pylon that reaches it.
+    const fed = new Set<number>();
     ok.forEach((g, i) => {
       for (const p of pylonsInLink(s, g.x, g.y)) this.wire(GHOST, g.x + 0.5, g.y + 0.5, p.x + 0.5, p.y + 0.5, top);
       const prev = ok[i - 1];
       if (prev && Math.hypot(prev.x - g.x, prev.y - g.y) <= POWER.pylon.link) this.wire(GHOST, prev.x + 0.5, prev.y + 0.5, g.x + 0.5, g.y + 0.5, top);
-      for (const b of s.buildings) if (POWERED(b) && reachTo(b, g.x, g.y) <= POWER.pylon.reach) this.feed(GHOST, g.x + 0.5, g.y + 0.5, top, b);
+      for (const b of s.buildings) {
+        if (!POWERED(b) || fed.has(b.id) || networkOf(s, b) || reachTo(b, g.x, g.y) > POWER.pylon.reach) continue;
+        fed.add(b.id);
+        this.feed(GHOST, g.x + 0.5, g.y + 0.5, top, b);
+      }
     });
     const last = ghosts[ghosts.length - 1];
     if (last) this.ranges(GHOST, last.x, last.y);
