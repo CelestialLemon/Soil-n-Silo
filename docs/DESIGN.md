@@ -265,6 +265,12 @@ playing trucks: every level needed many trucks, and routes doing a field-to-mill
 
 ![The roads overlay: the open ground trucks drive on](images/trucks-roads.png)
 
+![The routes panel (O): every route, renamed in place, with its stops, goods, trucks and problems](images/routes-panel.png)
+
+![A coop selected: it takes bran from the mill next door (tinted), no truck needed](images/next-door.png)
+
+![The route editor: its name, each truck's state with a dump button, and its stops](images/route-editor.png)
+
 ### Farming
 
 | Building | Size | Cost | Power | Notes |
