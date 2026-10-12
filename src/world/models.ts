@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { collectGltf, GeometryCollector, loadGltf, motion, movingPartMotion, namedMeshRule, type Motion } from 'pixel3d-renderer';
 import { BUILDING_IDS, CROP_IDS, CROPS, ITEM_IDS, type BuildingId, type CropId, type ItemId } from '../game/data.ts';
-import { bar, C, cropStandIn, drone, frame, GHOST_WIRE, itemShape, marker, NET_COLOURS, rock, SOIL_BANDS, soilTile, standIn, tileFill } from './shapes.ts';
+import { bar, C, cropStandIn, frame, GHOST_WIRE, itemShape, marker, NET_COLOURS, rock, ROUTE_COLOURS, SOIL_BANDS, soilTile, standIn, tileFill, truck } from './shapes.ts';
 
 // The game's object geometries, in local space (origin on the ground at the footprint centre, front facing +z). They come
 // from the Blender models in public/models/ (assets/<name>/build.py) where those exist, split by the node names the asset
@@ -20,12 +20,14 @@ export interface Models {
   battery: Geo[];
   /** Bars for drawing power: one per network colour (`NET_COLOURS`), then the build preview's. */
   wires: Geo[];
+  /** Bars for drawing routes on the ground: one per route colour (`ROUTE_COLOURS`). */
+  routes: Geo[];
   crops: Record<CropId, Geo[]>;
   items: Record<ItemId, Geo>;
   soil: Geo[];
   trees: Geo[];
   rocks: Geo[];
-  drone: Geo;
+  truck: Geo;
   markers: Record<'red' | 'orange' | 'yellow' | 'blue' | 'purple', Geo>;
   cursor: Geo;
   frames: { ok: Geo[]; bad: Geo[] };
@@ -108,7 +110,7 @@ function lookFrom(root: THREE.Group, seed: number): { idle: Geo; running: Geo } 
 const heightOf = (g: Geo) => { g.computeBoundingBox(); return g.boundingBox ? g.boundingBox.max.y : 1; };
 
 export async function loadModels(): Promise<Models> {
-  const names = new Set<string>(['wheat', 'tomato', 'beans', 'sunflower', 'flax', 'rock', 'drone', 'tree_oak', 'tree_pine', 'bush']);
+  const names = new Set<string>(['wheat', 'tomato', 'beans', 'sunflower', 'flax', 'rock', 'truck', 'tree_oak', 'tree_pine', 'bush']);
   for (const list of Object.values(FILES)) for (const n of list!) names.add(n);
   const roots = new Map<string, THREE.Group | null>(await Promise.all([...names].map(async (n) => [n, await load(n)] as const)));
   const missing = [...roots].filter(([, r]) => !r).map(([n]) => n);
@@ -156,16 +158,16 @@ export async function loadModels(): Promise<Models> {
     const r = roots.get(n);
     return r ? collect(r).build() : standIn('sapling').idle;
   });
-  const droneRoot = roots.get('drone');
+  const truckRoot = roots.get('truck');
 
   const items = {} as Record<ItemId, Geo>;
   for (const id of ITEM_IDS) items[id] = itemShape(id);
 
   return {
     buildings, turbine, battery, crops, items, rocks, trees,
-    wires: [...NET_COLOURS, GHOST_WIRE].map(bar),
+    wires: [...NET_COLOURS, GHOST_WIRE].map(bar), routes: ROUTE_COLOURS.map(bar),
     soil: Array.from({ length: SOIL_BANDS }, (_, b) => soilTile(b)),
-    drone: droneRoot ? collect(droneRoot, () => true, movingPartMotion, true).build() : drone(),
+    truck: truckRoot ? collect(truckRoot).build() : truck(),
     markers: { red: marker(0xff4a3a), orange: marker(0xffa030), yellow: marker(0xffe060), blue: marker(0x60b8ff), purple: marker(0xc070ff) },
     cursor: frame(1, 0xfff0c0),
     frames: { ok: [1, 2, 3].map((n) => frame(n, 0xd8ffb0)), bad: [1, 2, 3].map((n) => frame(n, 0xff5040)) },
@@ -176,8 +178,8 @@ export async function loadModels(): Promise<Models> {
 /** Every geometry, for choosing the palette together with the scene's. */
 export function allGeometries(m: Models): Geo[] {
   return [
-    ...Object.values(m.buildings).flatMap((l) => [l.idle, l.running]), ...m.turbine, ...m.battery, ...m.wires, ...Object.values(m.crops).flat(), ...Object.values(m.items),
-    ...m.soil, ...m.trees, ...m.rocks, m.drone, ...Object.values(m.markers), m.cursor, ...m.frames.ok, ...m.frames.bad,
+    ...Object.values(m.buildings).flatMap((l) => [l.idle, l.running]), ...m.turbine, ...m.battery, ...m.wires, ...m.routes, ...Object.values(m.crops).flat(), ...Object.values(m.items),
+    ...m.soil, ...m.trees, ...m.rocks, m.truck, ...Object.values(m.markers), m.cursor, ...m.frames.ok, ...m.frames.bad,
     m.fill,
   ];
 }

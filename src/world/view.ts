@@ -1,17 +1,19 @@
 import * as THREE from 'three';
 import type { PixelObject, PixelRenderer } from 'pixel3d-renderer';
-import { BUILDINGS, CROPS, HIVE, POWER, SILO, type BuildingId, type ItemId } from '../game/data.ts';
+import { BUILDINGS, CROPS, HIVE, POWER, type BuildingId, type ItemId } from '../game/data.ts';
 import { TERRAIN } from '../game/map.ts';
 import { networks } from '../game/power.ts';
-import { handlesGoods, servedBySilo, silosServing, windAt } from '../game/sim.ts';
-import { buildingById, centre, layoutOf, sizeOf, type Building, type Dir, type Drone, type GameState } from '../game/state.ts';
+import { accessTiles, isOpen } from '../game/roads.ts';
+import { isStop, windAt } from '../game/sim.ts';
+import { layoutOf, sizeOf, type Building, type Dir, type GameState, type Truck } from '../game/state.ts';
 import { hash } from './kit.ts';
 import type { Models } from './models.ts';
-import { SILO_PADS, soilBand } from './shapes.ts';
+import { soilBand, TRUCK_BED } from './shapes.ts';
 
 // Shows the game state with renderer objects. Every frame it adds, swaps and removes objects so the world matches the state:
-// buildings (idle or running), fields' soil and crops, silos' drones (on their pads or in flight, with their cargo hanging
-// under them), status markers, trees and rocks. It remembers which building each object belongs to, for picking and highlights.
+// buildings (idle or running), fields' soil and crops, trucks (with their cargo in the bed, queuing in line behind the one
+// loading), status markers, trees and rocks. It remembers which building or truck each object belongs to, for picking and
+// highlights.
 
 const YAW: Record<Dir, number> = { 0: Math.PI, 1: Math.PI / 2, 2: 0, 3: -Math.PI / 2 };
 
@@ -19,16 +21,16 @@ interface Shown { obj: PixelObject; key: string }
 
 const v = new THREE.Vector3(), e = new THREE.Euler();
 
-/** Overlay colours: soil from poor (red) to rich (green), silo reach, sprinkler water, bee range (power: powerView.ts). */
+/** Overlay colours: soil from poor (red) to rich (green), roads (and buildings trucks can't reach), sprinkler water, bee range (power: powerView.ts). */
 const FERT = [0xb03020, 0xd07020, 0xd8b020, 0x98c030, 0x50a030, 0x207a30].map((c) => new THREE.Color(c));
-const SILOS = new THREE.Color(0xc89cf0), WATER = new THREE.Color(0x60a8e8), BEES = new THREE.Color(0xf09030);
-/** The tint of the buildings a focused silo serves, or of the silos serving a focused building. */
+const ROADS = new THREE.Color(0xd8d0b0), CUT_OFF = new THREE.Color(0xff5040), WATER = new THREE.Color(0x60a8e8), BEES = new THREE.Color(0xf09030);
+/** The tint of the buildings and trucks linked to what is focused: a truck's stops, a garage's trucks. */
 export const LINK = 0x7ee060;
 const LINKED = new THREE.Color(LINK), LINK_STRENGTH = 0.55;
-/** Drones: height parked on a pad, cruising, and hovering over a target, and how far below a drone its cargo hangs. */
-const PARKED = 0.42, CRUISE = 2.6, HOVER = 1.6, CARGO_DROP = 0.32;
+/** How far apart trucks queuing at a building stand, one behind the other. */
+const QUEUE_GAP = 0.8;
 
-export type Overlay = 'none' | 'fertility' | 'power' | 'silos' | 'water' | 'bees';
+export type Overlay = 'none' | 'fertility' | 'power' | 'roads' | 'water' | 'bees';
 
 export class WorldView {
   private readonly targets = new Map<PixelObject, number>();
@@ -38,8 +40,8 @@ export class WorldView {
   private linksKey = '';
   private readonly linked = new Set<number>();
   private tinted: PixelObject[] = [];
-  /** Drone objects by silo id, one per drone. */
-  private readonly drones = new Map<number, PixelObject[]>();
+  /** Truck objects by truck id. */
+  private readonly trucks = new Map<number, PixelObject>();
   private readonly pools = new Map<ItemId, { objs: PixelObject[]; used: number }>();
   private readonly terrain: (Shown | null)[] = [];
   /** The map tile of each tree and rock object. */
@@ -52,7 +54,7 @@ export class WorldView {
 
   constructor(r: PixelRenderer, m: Models) { this.r = r; this.m = m; }
 
-  /** The building an object belongs to (id), or null. */
+  /** The building or truck an object belongs to (id), or null. */
   buildingOf(o: PixelObject | null): number | null {
     return o ? this.targets.get(o) ?? null : null;
   }
@@ -62,13 +64,12 @@ export class WorldView {
     return o ? this.terrainTiles.get(o) ?? null : null;
   }
 
-  /** Every visible object of a building, to highlight together. */
+  /** Every visible object of a building or truck, to highlight together. */
   objectsOf(id: number): PixelObject[] {
     const out: PixelObject[] = [];
-    const main = this.shown.get(id);
+    const main = this.shown.get(id) ?? (this.trucks.has(id) ? { obj: this.trucks.get(id)! } : undefined);
     if (main) out.push(main.obj);
     for (const p of this.parts.get(id) ?? []) out.push(p.obj);
-    for (const d of this.drones.get(id) ?? []) out.push(d);
     return out;
   }
 
@@ -115,13 +116,13 @@ export class WorldView {
     for (const [id, sh] of this.shown) if (!alive.has(id)) { this.drop(sh.obj); this.shown.delete(id); }
     for (const [id, ps] of this.parts) if (!alive.has(id)) { for (const p of ps) this.drop(p.obj); this.parts.delete(id); }
     this.syncMarkers(s, alive);
-    this.syncDrones(s, alive);
+    this.syncTrucks(s);
   }
 
   private syncField(s: GameState, f: Building) {
     const list = this.parts.get(f.id) ?? [];
     const crop = CROPS[f.crop!];
-    // Every tile shows the field's stage; a harvest waiting shows ripe until a drone collects it.
+    // Every tile shows the field's stage; a harvest waiting shows ripe until a truck picks it up.
     const stage = f.stored! >= crop.yield ? crop.stages - 1 : Math.min(crop.stages - 1, Math.floor(f.growth! * crop.stages));
     let i = 0;
     for (let y = f.y; y < f.y + 3; y++) for (let x = f.x; x < f.x + 3; x++) {
@@ -147,75 +148,54 @@ export class WorldView {
     for (const [id, sh] of this.markers) if (!alive.has(id)) { this.drop(sh.obj); this.markers.delete(id); }
   }
 
-  /** A silo's drones: parked on its pads, or flying to their task's target and back, with their cargo hanging under them. */
-  private syncDrones(s: GameState, alive: Set<number>) {
+  /** Every truck, facing the way it drives, with its cargo in its bed; trucks queuing stand in line behind the one loading. */
+  private syncTrucks(s: GameState) {
     for (const p of this.pools.values()) p.used = 0;
-    for (const b of s.buildings) {
-      if (b.type !== 'silo') continue;
-      const list = this.drones.get(b.id) ?? [];
-      this.drones.set(b.id, list);
-      b.drones!.forEach((d, i) => {
-        const o = list[i] ?? (list[i] = this.add(this.m.drone, b.id));
-        const at = this.dronePosition(s, b, d, i);
-        o.setTransform(v.set(at.x, at.y, at.z), e.set(0, at.yaw, 0));
-        if (d.cargo.length) this.putGood(d.cargo[0], at.x, at.y - CARGO_DROP, at.z, at.yaw);
+    // Each queuing truck's place in its line: 1 for the first behind the building's bay.
+    const place = new Map<Truck, number>(), lines = new Map<number, Truck[]>();
+    for (const t of s.trucks) if (t.phase === 'queue' && t.target !== null) { const l = lines.get(t.target); if (l) l.push(t); else lines.set(t.target, [t]); }
+    for (const l of lines.values()) l.sort((a, b) => a.arrived - b.arrived || a.id - b.id).forEach((t, i) => place.set(t, i + 1));
+    const alive = new Set<number>();
+    for (const t of s.trucks) {
+      alive.add(t.id);
+      let o = this.trucks.get(t.id);
+      if (!o) { o = this.add(this.m.truck, t.id); this.trucks.set(t.id, o); }
+      const back = (place.get(t) ?? 0) * QUEUE_GAP, x = t.x - Math.sin(t.heading) * back, z = t.y - Math.cos(t.heading) * back;
+      o.setTransform(v.set(x, 0, z), e.set(0, t.heading, 0));
+      t.cargo.forEach((item, i) => {
+        const [sx, sz] = TRUCK_BED.slots[i % TRUCK_BED.slots.length], c = Math.cos(t.heading), sn = Math.sin(t.heading);
+        this.putGood(item, x + sx * c + sz * sn, TRUCK_BED.y, z - sx * sn + sz * c, t.heading, TRUCK_BED.scale);
       });
     }
-    for (const [id, list] of this.drones) if (!alive.has(id)) { for (const o of list) this.drop(o); this.drones.delete(id); }
+    for (const [id, o] of this.trucks) if (!alive.has(id)) { this.drop(o); this.trucks.delete(id); }
     for (const p of this.pools.values()) for (let i = p.used; i < p.objs.length; i++) p.objs[i].visible = false;
   }
 
-  /** Where a drone is: on its pad (its silo turns with the silo), or along its flight, rising to cruise and landing. */
-  private dronePosition(s: GameState, silo: Building, d: Drone, i: number) {
-    const c = centre(silo), yaw = YAW[silo.rot];
-    const [px, pz] = SILO_PADS[i % SILO_PADS.length];
-    const pad = { x: c.x + px * Math.cos(yaw) + pz * Math.sin(yaw), z: c.y - px * Math.sin(yaw) + pz * Math.cos(yaw) };
-    const t = d.task;
-    if (!t || d.phase === 'idle' || d.phase === 'charge') return { x: pad.x, y: PARKED, z: pad.z, yaw };
-    const to = { x: t.tx, z: t.ty };
-    const heading = Math.atan2(to.x - pad.x, to.z - pad.z);
-    // At the target: hovering over it while loading or charging, its cargo clear of the roof.
-    const target = buildingById(s, t.target);
-    const hover = Math.max(HOVER, (target ? this.m.buildings[target.type].height : 0) + CARGO_DROP + 0.35);
-    if (d.phase === 'work' || d.phase === 'recharge') return { x: to.x, y: hover, z: to.z, yaw: heading };
-    // k runs from the pad (0) to the target (1) either way; the drone climbs to cruise soon after leaving and comes down
-    // near the end. Coming back, it faces home.
-    const k = d.phase === 'out' ? d.t : 1 - d.t;
-    const base = PARKED + (hover - PARKED) * k;
-    const y = base + (Math.max(CRUISE, hover) - base) * Math.min(1, Math.sin(Math.PI * k) * 2.5);
-    return { x: pad.x + (to.x - pad.x) * k, y, z: pad.z + (to.z - pad.z) * k, yaw: d.phase === 'out' ? heading : heading + Math.PI };
-  }
-
   /** A good from the pool of objects for its kind. */
-  private putGood(item: ItemId, x: number, y: number, z: number, yaw: number) {
+  private putGood(item: ItemId, x: number, y: number, z: number, yaw: number, scale = 1) {
     let p = this.pools.get(item);
     if (!p) { p = { objs: [], used: 0 }; this.pools.set(item, p); }
     let o = p.objs[p.used];
     if (!o) { o = this.add(this.m.items[item], null); o.castShadow = false; p.objs.push(o); }
     p.used++;
     o.visible = true;
-    o.setTransform(v.set(x, y, z), e.set(0, yaw, 0));
+    o.setTransform(v.set(x, y, z), e.set(0, yaw, 0), scale);
   }
 
   /**
-   * Tints the buildings a focused silo serves, or the silos serving a focused building, so you can see who works for whom;
-   * none with null. Call after `sync` every frame: an object is swapped when its building starts or stops running.
+   * Tints the buildings and trucks linked to what is focused (a truck's stops, a garage's trucks), so you can see who works
+   * with whom; none with an empty list. Call after `sync` every frame: an object is swapped when its building starts or
+   * stops running.
    */
-  links(s: GameState, id: number | null) {
-    const b = id !== null ? buildingById(s, id) : null;
-    const relevant = !!b && (b.type === 'silo' || handlesGoods(b));
-    const key = relevant ? `${b!.id} ${layoutOf(s)}` : '';
+  links(ids: number[]) {
+    const key = ids.join(' ');
     if (key !== this.linksKey) {
       this.linksKey = key;
       this.linked.clear();
-      if (relevant) for (const x of b!.type === 'silo' ? servedBySilo(s, b!) : silosServing(s, b!)) this.linked.add(x.id);
+      for (const id of ids) this.linked.add(id);
     }
     const want: PixelObject[] = [];
-    for (const bid of this.linked) {
-      const main = this.shown.get(bid);
-      if (main) want.push(main.obj);
-      for (const p of this.parts.get(bid) ?? []) want.push(p.obj);
-    }
+    for (const id of this.linked) want.push(...this.objectsOf(id));
     for (const o of this.tinted) if (!want.includes(o)) o.tint = null;
     for (const o of want) if (o.tint !== LINKED) { o.tint = LINKED; o.tintStrength = LINK_STRENGTH; }
     this.tinted = want;
@@ -248,10 +228,13 @@ export class WorldView {
     return o;
   }
 
-  /** Coloured tiles over the map: soil fertility, silo reach, sprinkler water or bee range. Power is PowerView's. */
+  /**
+   * Coloured tiles over the map: soil fertility, roads (the open ground trucks drive on, and red under the buildings they
+   * can't reach), sprinkler water or bee range. Power is PowerView's.
+   */
   overlay(s: GameState, kind: Overlay) {
     if (kind === 'power') kind = 'none';
-    const key = kind === 'none' ? 'none' : `${kind} ${kind === 'fertility' ? s.map.fertility.map((f) => Math.floor(f / 17)).join('') : ''} ${s.buildings.length} ${networks(s).layout}`;
+    const key = kind === 'none' ? 'none' : `${kind} ${kind === 'fertility' ? s.map.fertility.map((f) => Math.floor(f / 17)).join('') : ''} ${s.buildings.length} ${networks(s).layout} ${layoutOf(s)}`;
     if (key === this.overlayKey) return;
     this.overlayKey = key;
     for (const o of this.overlayObjs) o.remove();
@@ -271,12 +254,30 @@ export class WorldView {
       }
       return;
     }
+    if (kind === 'roads') {
+      for (let i = 0; i < w * h; i++) {
+        const x = i % w, y = Math.floor(i / w);
+        if (!isOpen(s, x, y)) continue;
+        const o = this.tile(ROADS);
+        o.opacity = 0.4;
+        o.setTransform(v.set(x + 0.5, 0.02, y + 0.5));
+        this.overlayObjs.push(o);
+      }
+      for (const b of s.buildings) {
+        if ((!isStop(b) && b.type !== 'garage') || accessTiles(s, b).length) continue;
+        for (let y = b.y; y < b.y + sizeOf(b); y++) for (let x = b.x; x < b.x + sizeOf(b); x++) {
+          const o = this.tile(CUT_OFF);
+          o.setTransform(v.set(x + 0.5, 0.05, y + 0.5));
+          this.overlayObjs.push(o);
+        }
+      }
+      return;
+    }
     for (const b of s.buildings) {
-      if (kind === 'silos' && b.type === 'silo') cover(b.x, b.y, 2, SILO.reach);
       if (kind === 'water' && b.type === 'sprinkler') cover(b.x - 1, b.y - 1, 3, POWER.sprinklerReach - 1);
       if (kind === 'bees' && b.type === 'hive') cover(b.x, b.y, 1, HIVE.reach);
     }
-    const tint = kind === 'silos' ? SILOS : kind === 'water' ? WATER : BEES;
+    const tint = kind === 'water' ? WATER : BEES;
     for (const i of mark) {
       const o = this.tile(tint);
       o.setTransform(v.set(i % w + 0.5, 0.02, Math.floor(i / w) + 0.5));
@@ -297,7 +298,7 @@ function markerColour(b: Building): 'red' | 'orange' | 'yellow' | 'blue' | 'purp
   if (QUIET.has(b.type)) return null;
   switch (b.status) {
     case 'power': case 'nolink': return 'red';
-    case 'nosilo': return 'purple';
+    case 'noroad': case 'noroute': return 'purple';
     case 'lowpower': return 'orange';
     case 'blocked': return 'orange';
     case 'input': return 'yellow';

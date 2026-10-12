@@ -82,13 +82,13 @@ goods now.
 | --- | --- | --- | --- |
 | `silo` | 2 × 2 | ~2.4 | A ceramic grain silo with copper hoops and a green or moss roof, and three small landing pads for its drones at local (x, z) (0.5, 0.5), (−0.4, 0.55) and (0.55, −0.45) (`SILO_PADS` in `src/world/shapes.ts`), each with a small light. The drones park 0.42 m up, so keep the pads clear above that. Tall: it shelters turbines |
 
-## Needed for the trucks (planned 2026-10-12)
+## Needed for the trucks (2026-10-12, stand-ins in code until built)
 
 Drones are gone for now (the `drone` model is kept for later); trucks on routes carry the goods, and the silo only stores them.
 
 | Model | Footprint | Height | Notes |
 | --- | --- | --- | --- |
-| `truck` | ~0.8 × 0.5 | ~0.45 | A small electric farm truck: a rounded cab, an open timber bed (the game puts the goods tokens in it, up to 6, so keep the bed's floor flat at a fixed height), solar glass on the cab roof. Front facing +Z. Seen moving in 8 directions |
+| `truck` | ~0.8 × 0.5 | ~0.45 | A small electric farm truck: a rounded cab, an open timber bed (the game puts up to 6 goods tokens on its floor at 0.27 m, `TRUCK_BED` in `src/world/shapes.ts`, so keep the floor flat there), solar glass on the cab roof. Front facing +Z. Seen moving in 8 directions |
 | `garage` | 2 × 2 | ~1.6 | A timber shed with a moss or solar roof, open at the front, room under it for parked trucks, a copper charging post |
 | `silo` | 2 × 2 | | Exists; the drone landing pads aren't needed any more |
 

@@ -238,6 +238,12 @@ go, or a route of its own.
 stop with nothing to do (it neither takes nor gives any of its goods), a truck carrying goods none of its stops takes, a truck that can't reach its garage, and a
 building whose outputs are full with no route picking them up.
 
+![A garage selected: its trucks, each with its route and what it is doing, and the routes' ways on the ground](images/trucks-garage.png)
+
+![Editing a route: its stops numbered on the map, and what each drops and picks up](images/trucks-route.png)
+
+![The roads overlay: the open ground trucks drive on](images/trucks-roads.png)
+
 ### Farming
 
 | Building | Size | Cost | Power | Notes |
@@ -327,9 +333,10 @@ A commission has goals, a target time and modifiers. It ends when every goal is 
 | 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 55 min | Wet and cramped |
 | 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 60 min | Everything |
 
-The bot (`npm run sim`) clears First Light in about 14 minutes, Morning Bread in about 38 (two silos with drones, before trucks) and Linen for the Looms
-in about 45 (one spinner; two would be faster), building as credits allow; a person needs a few minutes more to plan and place. The other
-targets are guesses until they have bot layouts too.
+The bot (`npm run sim`) clears First Light in about 14 minutes, Morning Bread in about 29 and Linen for the Looms in about 26 with
+trucks (with silos and drones it took about 14, 38 and 45), building as credits allow; a person needs a few minutes more to plan and
+place. Trucks made the later commissions much quicker, so their target times may be too generous now. The other targets are guesses
+until they have bot layouts too.
 
 ![The level select](images/menu.png)
 

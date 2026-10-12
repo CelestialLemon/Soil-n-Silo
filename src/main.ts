@@ -1,17 +1,20 @@
 import * as THREE from 'three';
 import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObject } from 'pixel3d-renderer';
-import { canPlace, place, remove, removeAt } from './game/build.ts';
+import { addStop, canPlace, place, remove, removeAt } from './game/build.ts';
 import { BUILDINGS, POWER, type BuildingId } from './game/data.ts';
 import { TERRAIN } from './game/map.ts';
 import { networkOf, POWERED, pylonsInLink } from './game/power.ts';
 import { deserialize, readProgress, recordResult, saveKey, serialize } from './game/save.ts';
 import { scenarioById } from './game/scenarios.ts';
-import { advance, describeStatus, fieldFertility, hourAt, medalFor } from './game/sim.ts';
-import { buildingAt, buildingById, inMap, newGame, reachTo, sizeOf, terrainAt, type Dir, type GameState } from './game/state.ts';
+import { advance, describeStatus, describeTruck, fieldFertility, hourAt, isStop, medalFor, routeOf, routesAt } from './game/sim.ts';
+import {
+  buildingAt, buildingById, inMap, newGame, reachTo, routeById, sizeOf, terrainAt, truckById, type Dir, type GameState, type Route,
+} from './game/state.ts';
 import { Hud, PIXEL_SIZES, type Tool } from './ui/hud.ts';
 import { showMenu } from './ui/menu.ts';
 import { allGeometries, loadModels } from './world/models.ts';
 import { PowerView } from './world/powerView.ts';
+import { RouteView } from './world/routeView.ts';
 import { buildWorld } from './world/terrain.ts';
 import { WorldView, type Overlay } from './world/view.ts';
 import './ui/style.css';
@@ -87,6 +90,7 @@ async function play(initial: GameState) {
   const renderer = new PixelRenderer(canvas, world.scene, { shadowMapSize: 2048, warmHighlight: true });
   const view = new WorldView(renderer, models);
   const power = new PowerView(renderer, models);
+  const routeView = new RouteView(renderer, models);
   const cursor = renderer.addObject(models.cursor);
   cursor.visible = false;
   loading.remove();
@@ -120,7 +124,8 @@ async function play(initial: GameState) {
 
   function setTool(t: Tool) {
     tool = t;
-    if (t.kind !== 'select') selected = null;
+    // Editing a route keeps what is selected (the truck or garage it was opened from).
+    if (t.kind === 'build' || t.kind === 'remove') selected = null;
     clearGhosts();
     repick = 2;
   }
@@ -235,6 +240,7 @@ async function play(initial: GameState) {
 
   let pointer: { x: number; y: number } | null = null;
   let hoverTile: { x: number; y: number } | null = null;
+  /** The building or truck under the pointer (their ids are one count). */
   let hoverBuilding: number | null = null;
   let highlighted: PixelObject[] = [];
 
@@ -310,9 +316,9 @@ async function play(initial: GameState) {
         ghost(`frame ${okHere} ${n}`, (okHere ? models.frames.ok : models.frames.bad)[n - 1], cx, 0.03, cz);
         ghost(`b ${type}`, models.buildings[type].idle, cx, 0.04, cz, YAW[sp.rot], okHere);
       }
-      // The silos' reach, the sprinklers' water and the bees' range; anything that makes, stores or uses power shows the
-      // power networks.
-      if (type === 'silo') overlayFor('silos');
+      // The roads, the sprinklers' water and the bees' range; anything that makes, stores or uses power shows the power
+      // networks.
+      if (type === 'silo') overlayFor('roads');
       else if (type === 'sprinkler') overlayFor('water');
       else if (type === 'hive') overlayFor('bees');
       else if (usesPower(type)) overlayFor('power');
@@ -340,6 +346,16 @@ async function play(initial: GameState) {
         hud.refresh();
         return;
       }
+      case 'route': {
+        // Clicking a building adds it as the route's next stop.
+        const r = routeById(state, tool.route), b = hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;
+        if (!r) { setTool({ kind: 'select' }); return; }
+        if (!b) return;
+        const res = addStop(state, r, b);
+        if (res.message) hud.toast(res.message, res.ok);
+        hud.refresh();
+        return;
+      }
       case 'build': {
         if (!t) return;
         const n = BUILDINGS[tool.type].size, a = anchor(t, n);
@@ -353,7 +369,7 @@ async function play(initial: GameState) {
         if (!hb && !t) return;
         const r = hb ? remove(state, hb) : removeAt(state, t!.x, t!.y);
         if (r.message) hud.toast(r.message, r.ok);
-        if (selected !== null && !buildingById(state, selected)) selected = null;
+        if (selected !== null && !buildingById(state, selected) && !truckById(state, selected)) selected = null;
         return;
       }
     }
@@ -379,7 +395,7 @@ async function play(initial: GameState) {
         if (removeAt(state, x, y).ok) n++;
       }
       if (n) hud.toast(`Removed ${n} thing${n > 1 ? 's' : ''}.`, true);
-      if (selected !== null && !buildingById(state, selected)) selected = null;
+      if (selected !== null && !buildingById(state, selected) && !truckById(state, selected)) selected = null;
     }
   }
 
@@ -456,7 +472,7 @@ async function play(initial: GameState) {
     if (e.code === 'Minus' || e.code === 'NumpadSubtract') zoomStep(-1, pointer ?? undefined);
     if (e.code === 'Tab') { e.preventDefault(); hud.toggleStats(); }
     if (e.code === 'KeyG') { hud.openGuide(); hud.refresh(); return; }
-    if (e.code === 'KeyV') { const order: Overlay[] = ['none', 'fertility', 'power', 'silos', 'water', 'bees']; overlay = order[(order.indexOf(overlay) + 1) % order.length]; }
+    if (e.code === 'KeyV') { const order: Overlay[] = ['none', 'fertility', 'power', 'roads', 'water', 'bees']; overlay = order[(order.indexOf(overlay) + 1) % order.length]; }
     if (e.code === 'KeyX') setTool(tool.kind === 'remove' ? { kind: 'select' } : { kind: 'remove' });
     if (e.code === 'KeyR' && tool.kind === 'build') { tool = { ...tool, rot: ((tool.rot + (e.shiftKey ? 3 : 1)) % 4) as Dir }; repick = 2; }
     const k = e.code.startsWith('Key') ? e.code.slice(3) : '';
@@ -470,6 +486,13 @@ async function play(initial: GameState) {
   /** One line about what's under the pointer. */
   function describeHover(): string | null {
     const b = hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;
+    const truck = hoverBuilding !== null ? truckById(state, hoverBuilding) : null;
+    if (truck) return `Truck${routeOf(state, truck) ? ` on ${routeOf(state, truck)!.name}` : ''}: ${describeTruck(state, truck)}`;
+    if (tool.kind === 'route') {
+      const r = routeById(state, tool.route);
+      if (b && r) return isStop(b) ? `${BUILDINGS[b.type].name}: click to add it as stop ${r.stops.length + 1} of ${r.name}` : `Trucks don't stop at the ${BUILDINGS[b.type].name.toLowerCase()}`;
+      return r ? `Editing ${r.name}: click buildings to add stops · Esc when done` : null;
+    }
     if (tool.kind === 'build' && hoverTile) {
       const n = BUILDINGS[tool.type].size, a = anchor(hoverTile, n), c = canPlace(state, tool.type, a.x, a.y);
       const head = `${BUILDINGS[tool.type].name} · ${state.scenario.sandbox ? 'free' : `${BUILDINGS[tool.type].cost} credits`}`;
@@ -479,11 +502,34 @@ async function play(initial: GameState) {
     if (b) return `${BUILDINGS[b.type].name}: ${describeStatus(state, b)}${b.type === 'field' ? ` · soil ${Math.round(fieldFertility(state, b))}` : ''}`;
     if (!hoverTile) return null;
     const t = terrainAt(state, hoverTile.x, hoverTile.y);
-    if (t === TERRAIN.water) return 'Water. Pylons can stand in it; drones fly over it.';
+    if (t === TERRAIN.water) return 'Water. Pylons can stand in it; trucks drive round it.';
     if (t === TERRAIN.tree) return 'A tree: shelters wind turbines nearby. Remove (X) for 5 credits.';
     if (t === TERRAIN.rock) return 'Rock. Remove (X) for 15 credits.';
     return `Grass · soil fertility ${state.map.fertility[hoverTile.y * map.width + hoverTile.x]}`;
   }
+  /**
+   * The routes to draw: the one being edited, a focused truck's, those of a focused garage's trucks or stopping at a focused
+   * building, or (with the roads overlay) all of them. Stop numbers show when there is one route.
+   */
+  function shownRoutes(focus: number | null, all: boolean): { routes: Route[]; numbers: boolean } {
+    const one = (r: Route | null) => ({ routes: r ? [r] : [], numbers: true });
+    if (tool.kind === 'route') return one(routeById(state, tool.route));
+    const t = focus !== null ? truckById(state, focus) : null, b = focus !== null ? buildingById(state, focus) : null;
+    if (t) return one(routeOf(state, t));
+    let routes: Route[] = [];
+    if (b?.type === 'garage') routes = state.routes.filter((r) => state.trucks.some((x) => x.garage === b.id && x.route === r.id));
+    else if (b) routes = routesAt(state, b);
+    if (all && !routes.length) routes = state.routes;
+    return { routes, numbers: routes.length === 1 };
+  }
+  /** The buildings and trucks to tint for what is focused: a truck's stops, a garage's trucks. */
+  function linkedTo(focus: number | null): number[] {
+    const t = focus !== null ? truckById(state, focus) : null, b = focus !== null ? buildingById(state, focus) : null;
+    if (t) return [...new Set(routeOf(state, t)?.stops.map((st) => st.building) ?? [])];
+    if (b?.type === 'garage') return state.trucks.filter((x) => x.garage === b.id).map((x) => x.id);
+    return [];
+  }
+
   /** What a pylon placed at (x, y) would do: link to pylons, start a network, power buildings. */
   function pylonNote(x: number, y: number) {
     const links = pylonsInLink(state, x, y).length;
@@ -529,12 +575,15 @@ async function play(initial: GameState) {
     if (pointer && frameNo % REPICK_FRAMES === 0) repick = Math.max(repick, 1);
     if (repick > 0) { repick--; pickHover(); }
     showGhosts();
-    // A selected silo shows the silos' reach.
-    if (toolOverlay === 'none' && selected !== null && buildingById(state, selected)?.type === 'silo') toolOverlay = 'silos';
+    // Editing a route shows the roads.
+    if (toolOverlay === 'none' && tool.kind === 'route') toolOverlay = 'roads';
     const shownOverlay = overlay !== 'none' ? overlay : toolOverlay;
     view.overlay(state, shownOverlay);
     const focus = selected ?? (tool.kind === 'select' ? hoverBuilding : null);
-    view.links(state, focus);
+    const shown = shownRoutes(focus, shownOverlay === 'roads');
+    view.links(linkedTo(focus));
+    routeView.sync(state, shown.routes, shown.numbers);
+    hud.setStopLabels(routeView.labels().map((l) => ({ ...l, ...toScreen(l.x, l.y, l.z) })));
     // Power shows only while you work with it: its overlay, placing something that uses power, selecting a building on a
     // network, or pointing at a pylon or something that makes or stores power.
     const hovered = tool.kind === 'select' && hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;

@@ -1,11 +1,11 @@
 import {
-  BUILDINGS, CATEGORIES, CLEAR_COST, CROP_IDS, CROPS, DRONE, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, ITEMS, OUTPUT_BATCHES,
-  POWER, RECIPES, recipesFor, SAPLING_SECONDS, SILO, type BuildingId, type Ingredient, type ItemId, type Recipe,
+  BUILDINGS, CATEGORIES, CLEAR_COST, CROP_IDS, CROPS, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, ITEMS, OUTPUT_BATCHES,
+  POWER, RECIPES, recipesFor, SAPLING_SECONDS, SILO, TRUCK, type BuildingId, type Ingredient, type ItemId, type Recipe,
 } from '../game/data.ts';
 import { h } from './dom.ts';
 
 // The guide: a page for every building (what it does, how to use it, its numbers, what it takes and makes), a page of
-// goods, and a few pages on the basics (silos, power, soil, the markers). The words are written here; every number comes
+// goods, and a few pages on the basics (trucks and routes, power, soil, the markers). The words are written here; every number comes
 // from data.ts, so the guide stays right when the game is tuned.
 
 export type GuidePage = { kind: 'building'; id: BuildingId } | { kind: 'topic'; id: TopicId } | { kind: 'goods' };
@@ -25,16 +25,25 @@ interface Entry {
 
 const ENTRIES: Record<BuildingId, Entry> = {
   silo: {
-    what: 'The farm\'s logistics: its drones carry every good. They collect harvests and products from the buildings near it, bring those buildings what they need, fetch from other silos, and sell at the depot.',
+    what: 'Stores goods. Trucks drop goods into it and pick them up again: a buffer between a chain\'s steps, or a place to gather many fields\' harvest.',
     how: [
-      `Place it among the buildings it should serve: it serves every building with a tile within ${SILO.reach} tiles. The Silos overlay (V) shows its reach.`,
-      'Put it within a pylon\'s reach: its drones charge before every flight.',
-      'Select the depot to choose what the silos sell there.',
+      'Place it with an open tile beside it, so trucks can reach it.',
+      'Make it a stop on a route. A new silo stop drops every good; choose the goods trucks pick up there, and they are no longer dropped.',
     ],
     tips: [
-      'Select a silo to see the buildings it serves tinted on the map; select any other building to see the silos serving it.',
-      `It has ${SILO.drones} drones. When they are all busy all the time, build a second silo nearby: two silos share the buildings both reach.`,
-      'A building far from every silo can still be fed from another silo: its own silo fetches the goods.',
+      'One route can bring goods in (a few fields, then the silo) and another take them out (the silo, then a mill): each runs at its own pace.',
+      'It loads one truck at a time. A queue of trucks beside it means it is busy: a second silo shares the work.',
+    ],
+  },
+  garage: {
+    what: 'Home of the trucks that carry every good. Buy trucks here and give each a route; they come back to charge.',
+    how: [
+      'Place it with an open tile beside it, within a pylon\'s reach: trucks charge here from its network.',
+      `Select it and buy trucks (up to ${TRUCK.perGarage}). Give each a route: pick one, or make a new one and click the buildings it should stop at.`,
+    ],
+    tips: [
+      'Put it near the routes its trucks drive: a truck low on charge drives home before it goes on.',
+      'A truck that gets no charge for a few seconds goes on anyway, and crawls once its battery is empty.',
     ],
   },
   field: {
@@ -42,11 +51,11 @@ const ENTRIES: Record<BuildingId, Entry> = {
     how: [
       'Build it on good soil: the hover line shows its average fertility, and the Soil overlay (V) shows the whole map.',
       'Select it and choose the crop. Wheat is the default.',
-      'Put it within a silo\'s reach: drones collect the harvest. A full field stops growing.',
+      'Make it a stop on a route: trucks pick up the harvest. A full field stops growing. Leave an open tile beside it for trucks.',
       'Put a sprinkler within 3 tiles of its centre: dry fields grow at under half speed.',
     ],
     tips: [
-      'Every harvest wears the soil out, except beans, which restore it. Compost brings it back: a silo brings compost to any field it serves.',
+      'Every harvest wears the soil out, except beans, which restore it. Compost brings it back: a field stop drops compost by itself.',
       'A beehive within 4 tiles adds 1 to every harvest of a flowering crop.',
     ],
   },
@@ -61,8 +70,8 @@ const ENTRIES: Record<BuildingId, Entry> = {
   coop: {
     what: 'Four chickens turn feed (beans, bran or seed cake) into eggs, with manure on the side.',
     how: [
-      'Put it within a silo\'s reach, with feed nearby: beans from a field, or the bran from a mill.',
-      'Its eggs and manure go to the silo. Give the manure somewhere to go: a composter, a digester, or the depot\'s sell list.',
+      'Bring it feed on a route: beans from a field, or the bran from a mill.',
+      'Trucks pick up its eggs and manure. Give the manure somewhere to go: a composter, a digester, or the depot.',
     ],
     tips: ['Its manure must go somewhere. A coop whose manure piles up stops laying.'],
   },
@@ -70,47 +79,47 @@ const ENTRIES: Record<BuildingId, Entry> = {
     what: 'Bees make honey from flowering fields nearby (anything but wheat), and pollinate them for a bigger harvest.',
     how: [
       'Place it within 4 tiles of flowering fields: up to 3 of them count. The Bees overlay shows its range.',
-      'Put it within a silo\'s reach to collect the honey.',
+      'Make it a stop on a route, so trucks pick up the honey.',
     ],
   },
   composter: {
     what: 'Turns waste (manure, bran, seed cake) into compost, which brings tired soil back.',
     how: [
-      'Put it within a silo\'s reach: drones bring it manure, bran or seed cake.',
-      'Fields the silo serves get the compost and use it when their soil drops.',
+      'Bring it manure, bran or seed cake on a route.',
+      'Take its compost to fields on a route: they keep it and use it when their soil drops.',
     ],
   },
   mill: {
     what: 'Grinds wheat into flour, with bran as a byproduct.',
     how: [
-      'Put it within a silo\'s reach: drones bring it wheat and take its flour and bran.',
-      'Give the bran somewhere to go (a coop, a composter, a digester, or the depot\'s sell list), or the mill stops.',
+      'Make it a stop on a route: trucks bring it wheat and take its flour and bran.',
+      'Give the bran somewhere to go (a coop, a composter, a digester, or the depot), or the mill stops.',
       'Put it within a pylon\'s reach.',
     ],
   },
   press: {
     what: 'Presses sunflowers into oil, with seed cake as a byproduct.',
-    how: ['Put it within a silo\'s reach: drones bring it sunflowers and take its oil and seed cake.', 'Give the seed cake somewhere to go.', 'Put it within a pylon\'s reach.'],
+    how: ['Make it a stop on a route: trucks bring it sunflowers and take its oil and seed cake.', 'Give the seed cake somewhere to go.', 'Put it within a pylon\'s reach.'],
   },
   spinner: {
     what: 'Spins flax into yarn.',
-    how: ['Put it within a silo\'s reach: drones bring it flax and take its yarn.', 'Put it within a pylon\'s reach.'],
+    how: ['Make it a stop on a route: trucks bring it flax and take its yarn.', 'Put it within a pylon\'s reach.'],
   },
   loom: {
     what: 'Weaves yarn into linen, a valuable product.',
-    how: ['Put it within a silo\'s reach: drones bring it yarn and take its linen.', 'Put it within a pylon\'s reach.'],
+    how: ['Make it a stop on a route: trucks bring it yarn and take its linen.', 'Put it within a pylon\'s reach.'],
   },
   bakery: {
     what: 'Bakes flour and eggs into bread, or, with honey as well, into honey cake.',
     how: [
       'Select it and choose bread or honey cake.',
-      'Put it within a silo\'s reach: drones bring it flour and eggs (and honey for cake) and take what it bakes.',
+      'Make it a stop on a route: trucks bring it flour and eggs (and honey for cake) and take what it bakes.',
       'Put it within a pylon\'s reach.',
     ],
   },
   cannery: {
     what: 'Cooks tomatoes and oil into tomato sauce, a valuable product.',
-    how: ['Put it within a silo\'s reach: drones bring it tomatoes and oil and take its sauce.', 'Put it within a pylon\'s reach.'],
+    how: ['Make it a stop on a route: trucks bring it tomatoes and oil and take its sauce.', 'Put it within a pylon\'s reach.'],
   },
   solar: {
     what: 'Makes power from the sun: most at midday, nothing at night. The top bar shows how strong the sun is now; on some commissions it is weak.',
@@ -126,7 +135,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
   },
   digester: {
     what: 'Burns waste (manure, bran or seed cake) for steady power, day and night.',
-    how: ['Put it within a silo\'s reach: drones bring it manure, bran or seed cake.', 'Place it within a pylon\'s reach.'],
+    how: ['Bring it manure, bran or seed cake on a route.', 'Place it within a pylon\'s reach.'],
     tips: ['A good home for byproducts you have no other use for.'],
   },
   pylon: {
@@ -146,15 +155,16 @@ const ENTRIES: Record<BuildingId, Entry> = {
   depot: {
     what: 'Where goods go to count. Every good delivered here counts towards the commission and pays its price.',
     how: [
-      'Select it to set the sell list. Every silo within 40 tiles flies the goods on it here.',
-      'Spare sells only what no building a silo serves can take: for byproducts and surpluses. Half shares a good: about half goes to your buildings and half is sold.',
+      'Make it the last stop of a route: trucks drop their goods here and the depot buys them all.',
+      'Choose what a route drops here: a route can drop only the product and keep the rest aboard for its other stops.',
     ],
+    tips: ['It loads two trucks at a time.'],
   },
 };
 
-export type TopicId = 'start' | 'silos' | 'power' | 'soil' | 'markers';
+export type TopicId = 'start' | 'trucks' | 'power' | 'soil' | 'markers';
 const TOPICS: { id: TopicId; name: string }[] = [
-  { id: 'start', name: 'How to play' }, { id: 'silos', name: 'Silos and drones' }, { id: 'power', name: 'Power' },
+  { id: 'start', name: 'How to play' }, { id: 'trucks', name: 'Trucks and routes' }, { id: 'power', name: 'Power' },
   { id: 'soil', name: 'Soil and water' }, { id: 'markers', name: 'Markers' },
 ];
 
@@ -223,7 +233,7 @@ export function guidePanel(start: GuidePage, host: GuideHost, close: () => void)
     if (id === 'hive') return [h('li', null, goodLink('honey'))];
     if (id === 'digester') return [h('li', null, `${POWER.digester} W of power`)];
     if (id === 'depot') return [h('li', null, 'credits, and progress on the commission')];
-    if (id === 'silo') return [h('li', null, 'the same goods, where they are needed')];
+    if (id === 'silo') return [h('li', null, 'the goods it holds, to trucks that pick them up')];
     const outs = new Set<ItemId>();
     for (const r of recipesFor(id)) for (const o of r.outputs) outs.add(o.item);
     return [...outs].map((o) => h('li', null, goodLink(o)));
@@ -236,11 +246,11 @@ export function guidePanel(start: GuidePage, host: GuideHost, close: () => void)
     const rs = recipesFor(id);
     if (rs.length) out.push(h('h3', null, rs.length > 1 ? 'Recipes' : 'Recipe'), recipeTable(rs));
     switch (id) {
-      case 'silo':
-        rows.push(['Serves', `buildings with a tile within ${SILO.reach} tiles`], ['Holds', `${SILO.perGood} of each good`], ['Drones', String(SILO.drones)],
-          ['A drone carries', `up to ${DRONE.cargo} goods, at ${DRONE.speed} tiles a second`], ['Loading or unloading', `${DRONE.loadSeconds} s at its target`],
-          ['Flies to other silos and the depot', `within ${SILO.range} tiles`],
-          ['Charging', `${DRONE.joulesPerTile} J a tile flown, at up to ${DRONE.chargeRate} W a drone`]);
+      case 'silo': rows.push(['Holds', `${SILO.perGood} of each good`], ['Loads', 'one truck at a time']); break;
+      case 'garage':
+        rows.push(['Holds', `${TRUCK.perGarage} trucks`], ['A truck costs', `${TRUCK.cost} credits`], ['A truck carries', `${TRUCK.cargo} goods, of any mix`],
+          ['Speed', `${TRUCK.speed} tiles a second (${TRUCK.crawl} on an empty battery)`], ['Loading and unloading', `${TRUCK.moveRate} goods a second`],
+          ['Battery', `${TRUCK.battery} J, ${TRUCK.joulesPerTile} J a tile driven`], ['Charging', `${TRUCK.chargeRate} W a truck`]);
         break;
       case 'field':
         out.push(h('h3', null, 'Crops'), h('table', null,
@@ -264,7 +274,7 @@ export function guidePanel(start: GuidePage, host: GuideHost, close: () => void)
       case 'battery': rows.push(['Stores', `${POWER.battery.capacity} J (${Math.round(POWER.battery.capacity / 60)} W for a minute)`], ['Charges and gives', `up to ${POWER.battery.rate} W`]); break;
       case 'pylon': rows.push(['Powers', `buildings with a tile within ${POWER.pylon.reach} tiles`], ['Links to', `pylons within ${POWER.pylon.link} tiles`]); break;
       case 'sapling': rows.push(['Grows into a tree in', `${SAPLING_SECONDS} s`]); break;
-      case 'depot': rows.push(['Pays', 'each good\'s price (see Goods)']); break;
+      case 'depot': rows.push(['Pays', 'each good\'s price (see Goods)'], ['Loads', 'two trucks at a time']); break;
     }
     if (rs.length && id !== 'digester') rows.push(['Buffers', `${INPUT_BATCHES} batches of each input, ${OUTPUT_BATCHES} of each output`]);
     if (BUILDINGS[id].tall) rows.push(['Tall', 'shelters wind turbines within 2 tiles']);
@@ -302,7 +312,7 @@ export function guidePanel(start: GuidePage, host: GuideHost, close: () => void)
   function goodsPage(): Node[] {
     return [
       h('h2', null, 'Goods'),
-      h('p', { class: 'lead' }, 'Every good drones carry, where it comes from and where it goes. Any good delivered to the depot pays its price.'),
+      h('p', { class: 'lead' }, 'Every good trucks carry, where it comes from and where it goes. Any good delivered to the depot pays its price.'),
       h('table', { class: 'goods-table' },
         h('tr', null, h('th', null, 'Good'), h('th', null, 'Made by'), h('th', null, 'Used by'), h('th', null, 'Pays')),
         ...ITEM_IDS.map((i) => h('tr', null,
@@ -319,11 +329,11 @@ export function guidePanel(start: GuidePage, host: GuideHost, close: () => void)
     switch (id) {
       case 'start': return [
         h('h2', null, 'How to play'),
-        h('p', { class: 'lead' }, 'Each commission asks for goods. You build a farm that makes them by itself: fields grow crops, silos\' drones carry them to machines, machines make products, and the drones fly those to the depot.'),
+        h('p', { class: 'lead' }, 'Each commission asks for goods. You build a farm that makes them by itself: fields grow crops, trucks carry them to machines on the routes you set, machines make products, and trucks take those to the depot.'),
         h('ol', null,
           h('li', null, 'Pick a building in the bar at the bottom. Hover a button to see what it does; ', B('G'), ' opens its page here.'),
           h('li', null, B('Click'), ' to place it, or ', B('drag'), ' to place a row. Green means it fits, red means it doesn\'t (the line at the bottom left says why).'),
-          h('li', null, 'Build a ', bLink('silo'), ' among them, and power it and the machines with ', bLink('solar'), 's and ', bLink('pylon'), 's.'),
+          h('li', null, 'Build a ', bLink('garage'), ', buy a truck and give it a route through them (see ', link('Trucks and routes', { kind: 'topic', id: 'trucks' }), '). Power the garage and the machines with ', bLink('solar'), 's and ', bLink('pylon'), 's.'),
           h('li', null, 'Watch it run. A coloured diamond over a building means something is wrong; ', B('click'), ' the building to see what.'),
           h('li', null, 'Find the slowest step and add to it. ', B('Tab'), ' shows what is being made and delivered a minute.')),
         h('h3', null, 'Controls'),
@@ -333,29 +343,27 @@ export function guidePanel(start: GuidePage, host: GuideHost, close: () => void)
           ['Q, E', 'turn the view'], ['Space, 1, 2, 3', 'pause, speed'], ['V', 'overlays'], ['Tab', 'production stats'], ['G', 'this guide'],
         ] as const).map(([k, v]) => h('tr', null, h('td', null, k), h('td', null, v)))),
       ];
-      case 'silos': return [
-        h('h2', null, 'Silos and drones'),
-        h('p', { class: 'lead' }, 'There are no belts: drones carry every good, and every drone belongs to a ', bLink('silo'), '. Buildings never pass goods to each other directly; everything goes through a silo.'),
-        h('h3', null, 'What the drones do'),
-        P(`A silo serves every building with a tile within ${SILO.reach} tiles of it. Its ${SILO.drones} drones take the first job they find, in this order:`),
-        h('ol', null,
-          h('li', null, B('Feed:'), ' take a good from the silo to a building it serves that can use it and has room. Nearest building first.'),
-          h('li', null, B('Collect:'), ' fetch goods waiting in a building it serves (a harvest, a mill\'s flour and bran) into the silo, fullest building first.'),
-          h('li', null, B('Fetch:'), ` when a building it serves needs a good this silo doesn't have, bring it from the nearest other silo within ${SILO.range} tiles that can spare some.`),
-          h('li', null, B('Sell:'), ` fly the goods on the `, bLink('depot'), `'s sell list to the depot, if it is within ${SILO.range} tiles.`)),
-        P('Select a silo to see what it holds and what each drone is doing; the buildings it serves are tinted. Select any other building to see the silos serving it.'),
-        h('h3', null, 'Who gets what'),
+      case 'trucks': return [
+        h('h2', null, 'Trucks and routes'),
+        h('p', { class: 'lead' }, 'There are no belts and no roads to build: trucks carry every good, over the open ground between buildings, along the routes you give them. ', bLink('silo'), 's store goods; trucks are bought at a ', bLink('garage'), '.'),
+        h('h3', null, 'Routes'),
+        P(`A route is a loop of up to ${TRUCK.maxStops} stops. At each stop its trucks `, B('drop'), ' some goods (only what the building takes) and ', B('pick up'), ' others; a good is dropped or picked up, never both. They drive stop 1, 2, … the last, then stop 1 again.'),
         h('ul', null,
-          h('li', null, 'Each building that takes goods has a toggle for each one (in the inspector, "Takes from silos"). Turn bran off at the digester and it all goes to the coop.'),
-          h('li', null, 'On the depot\'s sell list, ', B('spare'), ' sells only what no building a silo serves can take; ', B('half'), ' shares a good, so about half goes to your buildings and half to the depot.')),
-        h('h3', null, 'Power'),
-        P(`A drone charges before every flight from the pylon network of the silo it is at: ${DRONE.joulesPerTile} J for every tile of the trip. Going to another silo, it charges there for the way home; the depot tops drones up at once, for free. A silo out of every pylon's reach has no power, and its drones don't fly.`),
+          h('li', null, 'Make one: select a garage or a truck, choose "New route", then click buildings on the map, in order. Esc when done.'),
+          h('li', null, 'A new stop picks up everything the building makes and drops everything it takes: a field, then a mill, then the ', bLink('depot'), ' is a whole route. A silo stop drops everything; choose what to take from it.'),
+          h('li', null, `At a stop a truck drops first, then picks up into the room left. It leaves when it has nothing more to do, or after waiting ${TRUCK.wait} s (you can change it) for room or goods.`),
+          h('li', null, 'More trucks make a route faster. Two routes picking up the same good share it by how often their trucks come.')),
+        h('h3', null, 'Roads'),
+        P('Trucks drive on any open grass, the shortest way, and pass through each other. To load, a truck parks on an open tile next to the building: a building with none can\'t be reached (a purple marker). The Roads overlay (V) shows the open ground.'),
+        P('A building loads one truck at a time (the depot two); the others queue beside it. A queue is a bottleneck: split the route, or put a silo between.'),
+        h('h3', null, 'Charging'),
+        P(`A truck's battery holds ${TRUCK.battery} J, ${TRUCK.joulesPerTile} J a tile. When it would run short, it drives home to its garage and charges, from the garage's pylon network. With no power there it goes on after ${TRUCK.giveUp} s, and crawls once empty.`),
         h('h3', null, 'Byproducts'),
-        P(`A machine stops when an output has nowhere to go. A silo holds ${SILO.perGood} of each good, so a mill whose bran nothing takes fills the silo's bran and then stops. Give every byproduct a home: a `, bLink('coop'), ', a ', bLink('composter'), ', a ', bLink('digester'), ' or the depot\'s sell list.'),
+        P('A machine stops when an output has nowhere to go, so give every byproduct a home: a ', bLink('coop'), ', a ', bLink('composter'), ', a ', bLink('digester'), ' or the depot. Trucks share their room, so a truck full of something no stop takes carries nothing else: give it a stop that takes it, or its own route.'),
       ];
       case 'power': return [
         h('h2', null, 'Power'),
-        h('p', { class: 'lead' }, 'Machines, sprinklers and silos (for their drones) need power. Power travels only through pylons.'),
+        h('p', { class: 'lead' }, 'Machines, sprinklers and garages (to charge their trucks) need power. Power travels only through pylons.'),
         h('ul', null,
           h('li', null, 'A building is powered when one of its tiles is within ', String(POWER.pylon.reach), ' tiles of a ', bLink('pylon'), '. Pylons within ', String(POWER.pylon.link), ' tiles of each other link into one network.'),
           h('li', null, 'Each network adds up what its generators make and what its machines want. Spare power charges its ', bLink('battery'), 's; a shortfall drains them.'),
@@ -379,7 +387,7 @@ export function guidePanel(start: GuidePage, host: GuideHost, close: () => void)
         h('p', { class: 'lead' }, 'A diamond floats over any building that isn\'t working. Its colour says why; click the building for the details.'),
         h('table', { class: 'kvt' },
           ...([['red', 'No power: out of a pylon\'s reach, or its network has none'], ['orange', 'Output blocked (nowhere for its goods to go), or low power'],
-            ['yellow', 'Waiting for input (or, for a beehive, no flowering fields)'], ['blue', 'A field without water'], ['purple', 'Waiting for goods, or full, with no silo in reach']] as const)
+            ['yellow', 'Waiting for input (or, for a beehive, no flowering fields)'], ['blue', 'A field without water'], ['purple', 'Trucks can\'t reach it (no open tile beside it), or its outputs are full and no route picks them up']] as const)
             .map(([c, t]) => h('tr', null, h('td', null, h('span', { class: `m ${c}` }, '◆'), ` ${c}`), h('td', null, t)))),
         P('Hover any building for a one-line status at the bottom of the screen.'),
       ];
@@ -396,7 +404,7 @@ export function guidePanel(start: GuidePage, host: GuideHost, close: () => void)
 function powerLine(id: BuildingId): string {
   const d = BUILDINGS[id];
   if (id === 'sprinkler') return `uses ${POWER.sprinklerNearWater} W near water, else ${POWER.sprinklerFar} W`;
-  if (id === 'silo') return `up to ${DRONE.chargeRate} W for each drone charging`;
+  if (id === 'garage') return `up to ${TRUCK.chargeRate} W for each truck charging`;
   if (d.power) return `uses ${d.power} W while working`;
   if (id === 'solar') return `makes up to ${POWER.solar} W in full sun`;
   if (id === 'turbine') return `makes up to ${POWER.turbine} W`;
