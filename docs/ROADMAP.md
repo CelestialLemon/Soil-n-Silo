@@ -59,13 +59,31 @@ you work with it: each network in its own colour, with its reach, wires between 
 powers and a label with its numbers; a focused or placed pylon shows its reach and its link range; a drag lays a line of
 pylons. Rules unchanged. Details in `DESIGN.md`, "Readability rules".
 
+## Trucks instead of drones (planned 2026-10-12)
+
+Silos and their drones did two jobs in one building: more carrying meant more storage, each silo held whatever its drones had
+grabbed (so processors were fed badly), and drones each chose their own job, so several did the same one while others sat
+idle. Storage and transport are now separate, and you set how goods move: trucks run routes you give them, over the open
+ground between buildings (no roads to build), queuing only at the building they load at. Drones come back later, as automatic
+helpers, once trucks have been played. Rules in `DESIGN.md`, "Logistics". Steps:
+
+1. Rules (`src/game/`): the silo as storage only, the garage, trucks with batteries, routes and stops, the shortest way over
+   open tiles (worked out again only when the layout changes), one truck at a time per building and the queue; drones, the
+   depot's sell list and the per-input toggles removed. Save version 3 (older saves are refused). Tests for paths, queues,
+   the wait rules, charging, and a building cut off.
+2. The world: trucks with their cargo (a stand-in shape first), the garage (stand-in), queues beside buildings, a selected
+   route's way and stops on the ground, the roads overlay and the "can't be reached" marker.
+3. The HUD: the garage's inspector (buy trucks, give them routes), the route editor, the routes list in the stats with goods
+   a minute per route, and the guide's pages.
+4. `npm run sim`: bot layouts with routes for First Light, Morning Bread and Linen for the Looms; tune the truck numbers and
+   the target times by playing.
+5. Models: `truck` and `garage`, and the silo without its drone pads (`ASSET_BRIEF.md`).
+
 ## Next
 
 - Play every campaign commission and tune: target times, prices, crop and machine times, power numbers. Bot layouts for the
   other five commissions in `tools/layouts.ts`, so `npm run sim` checks them all.
-- Tune the silos (reach, drones, capacity, charging) by playing, and the commissions with them. With silos the bot clears
-  First Light in about 14 minutes, Morning Bread in about 38 (target 35: it needs power early, since drones charge from the
-  grid) and Linen for the Looms in about 45.
+- Drones as automatic helpers beside the trucks (`DESIGN.md`, Open questions), once trucks have been played.
 - Copy and paste / blueprints for repeated blocks (a row of fields with sprinklers).
 - Undo for the last few actions.
 - Sound.

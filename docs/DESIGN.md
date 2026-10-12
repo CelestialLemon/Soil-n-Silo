@@ -5,7 +5,7 @@ Oct 9, 2026 · @Ashutosh Shinde
 ## Overview
 
 Soil n Silo is a build-only automation game in a solarpunk valley. Each level is a commission from a nearby settlement: on a
-seeded map you lay out fields, silos, machines and power, and the farm then runs on its own until the commission's goals
+seeded map you lay out fields, machines, power and the trucks' routes, and the farm then runs on its own until the commission's goals
 are delivered. A level takes about 30 to 60 minutes.
 
 The game replaced a Stardew-like season (the earlier MVP, decided 2026-10-06, built by 2026-10-07) on 2026-10-09. The reason: the
@@ -23,7 +23,7 @@ few minutes and the wind comes and goes, so power needs storage and a mix of sou
 **In v0.1**
 
 - 18 goods, 5 crops, chickens and bees, 6 processing machines, 4 power sources and storage
-- Silos whose drones carry every good: no belts
+- Trucks on routes you set, over the open ground between buildings: no belts and no roads to build; silos to store goods
 - Pylon power networks, each with its own balance
 - Soil fertility, sprinklers, compost and pollination
 - 8 campaign commissions, random commissions from any seed, a sandbox
@@ -49,16 +49,18 @@ It is build-only and point-and-click. There is no character and no manual farmin
 
 | Input | Does |
 | --- | --- |
-| Build bar (bottom) or hotkeys (F field, L silo, P pylon, S solar) | Pick a building to place |
+| Build bar (bottom) or hotkeys (F field, L silo, T garage, P pylon, S solar) | Pick a building to place |
 | Click / drag | Place it; a drag places a row (pylons: a power line, spaced so their reaches meet) |
 | R | Turn what you're placing (for looks) |
 | Click a building with nothing in hand | Select it: the inspector shows its status, buffers and settings |
+| A garage's inspector | Buy a truck; give each of its trucks a route, or none |
+| A route's editor (from a truck, or the routes list in the stats) | Add a stop by clicking a building; set what it drops and picks up and its wait; reorder or remove stops; add or take away trucks |
 | X, then click or drag | Remove (full refund) |
 | Esc / right click | Drop what's in hand, close the inspector |
 | Space, 1, 2, 3 | Pause, 1×, 2×, 4× speed. You can build while paused |
 | Tab | Production stats |
 | G | The guide: a page for every building (what it does, how to use it, what it takes and gives, its numbers), the goods, and the basics |
-| V (or the buttons) | Overlays: soil fertility, power reach, silo reach, sprinkler water, bee range |
+| V (or the buttons) | Overlays: soil fertility, power reach, roads, sprinkler water, bee range |
 
 The build preview is see-through, green where it fits and red where it doesn't.
 
@@ -67,11 +69,15 @@ The build preview is see-through, green where it fits and red where it doesn't.
 - Every building shows its state on a small marker above it: working, waiting for input, output blocked, no power, low power.
 - Hover any building for a one-line status ("Mill: waiting for wheat"). Hover a button in the build bar for a card about that
   building.
-- Drones fly with their cargo hanging under them, so the flow of goods is always visible.
-- Selecting (or hovering) a silo tints the buildings it serves; selecting any other building tints the silos that serve it.
-  A building that needs a silo and has none in reach shows a purple marker.
+- Trucks carry their cargo in an open bed, so the flow of goods is always visible, and trucks queuing at a building show
+  where it is stuck.
+- Selecting a truck or a route draws the route's way on the ground, its numbered stops and its trucks. Selecting a building
+  lists the routes that stop there. The inspector says what each truck is doing ("taking 6 wheat to the mill", "waiting at the
+  field for wheat", "2nd in the queue at the mill", "charging at the garage").
+- A building trucks can't reach, or whose outputs are full with no route picking them up, shows a purple marker.
+- The roads overlay shows the open ground trucks can drive on, and the buildings they can't reach.
 - The guide (G) has a page for every building; hovering a build button, or "?" in the inspector, leads to it.
-- Soil colour shows fertility under fields. Overlays show fertility everywhere, power coverage and silo reach.
+- Soil colour shows fertility under fields. Overlays show fertility everywhere, power coverage and roads.
 - Power stays in the background until you work with it: pylons are short, quiet posts and nothing else is drawn. The power
   overlay, placing anything that makes, stores or uses power, selecting a building on a network, or pointing at a power
   building shows the networks, each in its own colour: the ground its pylons reach, wires joining its pylons, a line from a
@@ -104,8 +110,7 @@ Each level is generated from a seed: a grid of about 48 × 40 one-metre tiles.
 | Rock | Not buildable. Can be cleared for 15 credits |
 | Tree | Not buildable. Slows wind turbines next to it. Can be cleared for 5 credits (soil health drops a little) |
 
-A **freight depot** (3 × 3) stands at one edge. Anything a drone delivers into it counts towards the goals and pays credits. Its **sell list** says which goods
-silos send it (see Logistics).
+A **freight depot** (3 × 3) stands at one edge. Anything a truck drops at it counts towards the goals and pays credits (see Logistics).
 
 ## Goods
 
@@ -161,56 +166,83 @@ Every building is available from the start. Removing one refunds its full cost, 
 
 ### Logistics
 
-There are no belts. Goods move by drone, and every drone belongs to a **silo**.
+There are no belts and no roads to build. Goods move by **truck**, along **routes** you set, over the open ground between
+buildings. Storing goods is a building of its own, the **silo**, and carrying them is the trucks' job, so you buy each
+separately: a slow route wants more trucks, not more storage. (Chosen on 2026-10-12 over silos whose own drones carried every
+good: they swarmed the nearest jobs, left far ones waiting, held whatever their drones happened to grab, and the only way to
+more drones was more storage. Drones come back later as automatic helpers, see Open questions.)
 
-| Building | Size | Cost | Notes |
-| --- | --- | --- | --- |
-| Silo | 2 × 2 | 150 | Stores up to 20 of each good. Serves every building with a tile within 6 tiles of it. Has 3 drones |
+| Building | Size | Cost | Power | Notes |
+| --- | --- | --- | --- | --- |
+| Silo | 2 × 2 | 80 | — | Stores up to 30 of each good. Trucks drop goods into it and pick them up |
+| Garage | 2 × 2 | 100 | 20 W per truck charging | Home of up to 4 trucks, bought here for 60 each. Charges them |
 
-**What the drones do.** A silo's drones fly these jobs, in this order of priority:
+**Roads are the empty ground.** A truck drives on any grass tile with nothing on it; water, rock, trees and every building
+(fields, pylons, sprinklers and saplings too) block it. It goes the shortest way, from tile centre to tile centre in 8
+directions (a diagonal only when both tiles beside it are open), at 3 tiles/s. Trucks pass through each other on the road.
 
-1. **Feed:** take a good from the silo to a building it serves that can use it and has room (wheat to a mill, compost to a
-   field). Nearest building first. A good sold by half only on its turn (see "Who gets what").
-2. **Collect:** fetch goods waiting in a building it serves (a field's harvest, a mill's flour and bran) into the silo,
-   fullest building first, while the silo has room for them.
-3. **Fetch:** when a building it serves needs a good this silo doesn't have, fly to the nearest other silo within 40 tiles
-   that has some to spare (more than its own buildings need) and bring it back.
-4. **Sell:** fly the goods on the depot's sell list to the depot, if it is within 40 tiles (a good sold by half only on its turn, a spare one only when no building it serves can take it). A drone waits for a full load
-   (4 goods) or 4 s, whichever comes first.
+To load or unload, a truck parks on an open tile next to the building: the nearest one it can drive to. A building with no
+open tile next to it, or only ones walled off from where the truck is, can't be reached: the truck skips that stop and goes on
+to the next, and if it can reach none of its stops it waits where it is. Its way is worked out again whenever the layout
+changes, so a building placed across its way sends it round, and a truck on a tile you build on moves to the nearest open
+tile. Packing buildings tightly saves ground but makes trucks drive further round, or cuts a building off.
 
-A drone carries up to 4 goods at 5 tiles/s and spends 0.5 s loading or unloading at its target (at its own silo it
-loads and unloads at once). Buildings never pass goods to each other
-directly, so every good goes through a silo. Two silos can serve the same building; both work for it.
+**One truck at a time.** A building loads or unloads one truck at a time (the depot two); the others queue beside it in the
+order they came. A queue is the sign of a bottleneck: split the route, or put a silo between.
 
-**Power.** A drone charges before every flight from the pylon network of the station it is at: 2 J per tile of the leg, at up to
-20 W per drone charging. At its own silo it charges for the trip out, and for the trip back too unless it is going to another
-silo or the depot. At another silo it charges for the trip home from that silo's network; the depot tops drones up for the trip
-home at once and for free (it is the settlement's). A silo outside every pylon's reach has no power, so its drones don't fly. At night, drones run on what the
-batteries hold, like any machine.
+**Routes.** A route is a loop of up to 8 stops. Each stop is a building and what to do there:
 
-**Who gets what.** Each good on the depot's sell list is sold one of two ways:
+- **Drop:** the goods to unload. The building takes only what it uses and has room for; the depot takes everything and buys it.
+- **Pick up:** the goods to load: a field's harvest, a machine's outputs, a silo's stock.
 
-- **Spare:** only what no building the silo serves can take goes to the depot. For byproducts and surpluses (the eggs a
-  bakery can't use).
-- **Half:** feeding and selling take turns, about half each, while both want it; when the buildings can't take more, the
-  depot gets the rest (the silo remembers at most 8 goods of either side's lead, so a long run of one doesn't starve the
-  other later). For a good you need both to use and to deliver: on First Light, wheat sold by half goes half to the depot
-  and half to the mill.
+A good is either dropped or picked up at a stop, never both.
 
-A good not on the list stays for your buildings. Each building that takes goods has a toggle per input ("takes bran: yes/no"), so you can send bran to the coop
-rather than the digester. The depot's sell list starts with the four products (bread, honey cake, tomato sauce, linen) sold when
-spare, and every other good the commission asks for sold by half; select the depot to change it.
+A stop can do both: drop compost at a field and pick up its wheat. A truck carries 6 goods, of any mix. It drives to stop 1,
+2, …, the last, then stop 1 again. At a stop it drops what the building takes, then picks up into the room it has left (goods the building won't take yet stay
+aboard), 4 goods a second; picking up several goods, it
+takes one of each in turn (in the stop's order, skipping any the building has none of), so a mix comes out even. It is **done** when it carries none of the stop's
+drop goods and is full (or the stop picks up nothing), and then leaves at once. Until it is done it waits for room in the
+building or for more goods, up to the stop's **wait** (5 s unless you set it, 0 to 60 s) after the last good moved; with a
+wait of 0 it moves what it can and leaves. If another truck is queued for the building, a truck with nothing to move right
+now leaves at once, so a truck waiting for a full mill to make room never blocks the truck that would empty it. Goods a truck
+couldn't drop ride on to the next stops. Picking up fills the truck: a route that picks up tomatoes at a field and then oil
+at a silo, both for a cannery, can arrive at the silo already full of tomatoes. Give each ingredient its own route.
 
-![The depot selected: its sell list, wheat and flour sold by half, the products when spare](images/sell-list.png)
+A new stop starts out picking up everything the building makes and dropping everything it takes, which suits most stops: a
+field, then a mill, then the depot. A silo stop starts out dropping everything and picking up nothing; a good you set it to pick up is no longer dropped there.
 
-**Byproducts stay strict.** A mill whose bran no building takes and the depot doesn't buy fills its silo's 20 bran, then its
-own buffer, and stops. Only that chain stops: the silo still has room for every other good.
+**Trucks.** Every truck belongs to a garage and runs one route at a time, or none (it drives home and waits at its garage).
+Several trucks can run the same route: adding trucks is how a route goes faster. A truck given another route, or none, leaves
+any building or queue at once and keeps its cargo; it drops it at the first stop that takes it. Selling a truck refunds it,
+and removing a garage sells its trucks; goods they carry are lost, like goods in any building removed. Removing a building
+takes it out of every route that stops there. A truck whose current stop goes away (its building removed, or the stop taken
+out of the route) leaves the building or its queue at once and goes on to the next stop; a route left with no stops sends its
+trucks home. Two routes that pick up the same good share it by how often
+their trucks come, so on First Light one truck taking wheat to the depot and one taking it to the mill split it about half
+each. Routes decide where every good goes; there is no sell list and no per-building input toggle.
+
+**Power.** A truck has a 300 J battery and uses 1 J a tile. Before it leaves a stop it checks that after the next leg it could
+still drive home to its garage; if not, it drives home first, charges full (at 20 W, so 15 s from empty) and then drives
+straight to that next stop, without checking again. A truck that runs empty on the way crawls on at 0.5 tiles/s, so a route
+too long for its battery is slow but never stuck. A truck that can't drive to its garage (the layout walled it off) can't
+charge: it carries on its route without the check, crawling once empty, and shows that it can't reach home. A garage outside every pylon's reach, or on a network out of power, can't
+charge: a truck that has charged nothing for 5 s goes on anyway, crawling once empty, so a garage whose power comes from a
+digester its own trucks feed never locks up. Trucks are bought fully charged. At night trucks charge from what the batteries hold, like any machine.
+
+**Byproducts stay strict.** A mill whose bran no route picks up fills its own buffer and stops. A silo full of one good takes no
+more of it, but still takes every other good, so only that chain stops. Trucks share their room, though: a truck full of bran
+that none of its stops takes has no room for anything else, and stops every chain on its route. Give a byproduct somewhere to
+go, or a route of its own.
+
+**Problems a route shows** (on the route, on its trucks, and as a marker on the building): a stop that can't be reached, a
+stop with nothing to do (it neither takes nor gives any of its goods), a truck carrying goods none of its stops takes, a truck that can't reach its garage, and a
+building whose outputs are full with no route picking them up.
 
 ### Farming
 
 | Building | Size | Cost | Power | Notes |
 | --- | --- | --- | --- | --- |
-| Field | 3 × 3 | 30 | — | Grows the chosen crop on its 9 tiles. Takes compost (a silo brings it) |
+| Field | 3 × 3 | 30 | — | Grows the chosen crop on its 9 tiles. Takes compost (a truck brings it) |
 | Sprinkler | 1 × 1 | 25 | 3 W within 8 tiles of water, else 8 W | Waters fields whose centre is within 3 tiles |
 | Coop | 3 × 3 | 150 | — | Four chickens. Every 2 feed (beans, bran or seed cake) give 2 eggs and 1 manure, 16 s |
 | Beehive | 1 × 1 | 60 | — | Makes honey from flowering fields (not wheat) within 4 tiles, faster with more of them (up to 3). Pollinates fields within 4 tiles |
@@ -229,7 +261,7 @@ own buffer, and stops. Only that chain stops: the silo still has room for every 
 - Grow times are with water at fertility 60. Growth speed is ×0.4 without water, and from ×0.4 (fertility 0) to ×1.4
   (fertility 100) by the field's average fertility.
 - A pollinated field (a hive within 4 tiles) yields 1 more of a flowering crop.
-- A harvest waits in the field (up to 6) until a drone collects it. A full field stops growing.
+- A harvest waits in the field (up to 6) until a truck picks it up. A full field stops growing.
 - A field with compost waiting uses one whenever its average fertility is under 85: +12 on each tile.
 - Ground without a field rests: it regains 0.1 fertility a second (6 a minute), up to what it started at. Moving a field
   lets worn ground recover.
@@ -295,7 +327,7 @@ A commission has goals, a target time and modifiers. It ends when every goal is 
 | 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 55 min | Wet and cramped |
 | 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 60 min | Everything |
 
-The bot (`npm run sim`) clears First Light in about 14 minutes, Morning Bread in about 38 (two silos) and Linen for the Looms
+The bot (`npm run sim`) clears First Light in about 14 minutes, Morning Bread in about 38 (two silos with drones, before trucks) and Linen for the Looms
 in about 45 (one spinner; two would be faster), building as credits allow; a person needs a few minutes more to plan and place. The other
 targets are guesses until they have bot layouts too.
 
@@ -318,8 +350,14 @@ each commission's best medal and time.
 
 - [ ] Tuning: crop times, machine times, prices and target times are first guesses. A scripted bot run per commission
   (`npm run sim`) should check that each one can be cleared and roughly in its target time.
-- [ ] Silo numbers (reach 6, 3 drones, 20 of each good) are first guesses: does one silo per chain feel right, or should drones be
-  bought per silo?
-- [ ] Should a silo relay sell goods for a silo that can't reach the depot? (For now a silo out of the depot's range doesn't sell.)
+- [ ] Truck numbers (6 goods, 3 tiles/s, 300 J, 5 s wait, 4 per garage) and the silo's 30 of each good are first guesses.
+- [ ] Should a stop cover several buildings (say every field in a box, the truck going to whichever has the most waiting),
+  so a row of fields isn't one stop each?
+- [ ] One truck at a time per building makes a busy silo the bottleneck. A puzzle (build a second silo) or a chore (give
+  silos two bays)?
+- [ ] Should a pick-up have a limit ("up to 3 oil"), so one route can carry two ingredients without the first filling it?
+- [ ] Should buildings load on one side only, the one they face (R)? It would make turning a building matter.
+- [ ] Drones, once trucks have been played: automatic helpers from a drone hub that fly straight over water and crowded
+  ground, carry little and use more power, and are assigned jobs by the hub as a whole, so none chase the same job.
 - [ ] Weather (rain waters fields, storms stop turbines) as a later modifier.
 - [ ] Blueprints/copy-paste once layouts grow large.
