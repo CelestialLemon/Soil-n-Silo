@@ -38,7 +38,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 .bar { height: 7px; background: #0007; border: 1px solid #0009; border-radius: 3px; overflow: hidden; flex: 1; min-width: 60px; }
 .bar .fill { height: 100%; width: 0; background: linear-gradient(#c8f080, #6aa840); }
 
-.goals { position: absolute; left: 12px; top: 112px; width: 280px; }
+/* The left column: the goals, and under them the routes panel (O). */
+.left-col { position: absolute; left: 12px; top: 112px; bottom: 150px; width: 340px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; pointer-events: none; }
+.goals { width: 280px; box-sizing: border-box; flex: none; }
 .goals .title { font-weight: bold; color: var(--honey); margin-bottom: 4px; }
 .goal { margin: 6px 0; font-size: 13px; }
 .goal .bar { margin-top: 3px; }
@@ -203,3 +205,28 @@ button:disabled { opacity: 0.45; cursor: default; }
   background: rgb(22 40 36 / 0.8); border: 1px solid #3a5a50; border-radius: 6px; padding: 1px 6px; }
 .net-label.short { color: #ffb070; border-color: #a0603a; }
 .inspector .glink { color: var(--honey); }
+
+/* The routes panel: every route at a glance. */
+.routes-panel { display: none; width: 100%; box-sizing: border-box; min-height: 0; flex: 0 1 auto; overflow: auto; }
+.routes-panel .head { display: flex; justify-content: space-between; align-items: center; font-size: 15px; color: var(--honey); margin-bottom: 4px; }
+.routes-panel .close { padding: 0 6px; }
+.route-filter { width: 100%; box-sizing: border-box; font: inherit; font-size: 12px; margin: 2px 0 6px; padding: 3px 6px; background: var(--paper); color: var(--ink); border: 2px solid #12241f; border-radius: 4px; }
+.route-row { margin: 6px 0; padding: 4px 6px 5px; border: 1px solid #ffffff1c; border-radius: 6px; background: #0002; cursor: pointer; }
+.route-row:hover { border-color: #ffffff50; background: #ffffff0c; }
+.route-row.editing { border-color: var(--honey); }
+.route-line { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.route-line .head-buttons { margin-left: auto; }
+.route-title { font: inherit; font-size: 13px; font-weight: bold; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 4px;
+  padding: 1px 3px; min-width: 0; flex: 1; cursor: text; }
+.route-title:hover { border-color: #ffffff40; }
+.route-title:focus { background: var(--paper); color: var(--ink); border-color: #12241f; outline: none; }
+.inspector .head .route-line { flex: 1; min-width: 0; }
+.inspector .head .route-title { color: var(--honey); font-size: 15px; }
+.route-warn { color: #ffc080; font-size: 12px; cursor: help; }
+.route-stops { margin: 2px 0 !important; }
+.route-goods { display: flex; flex-wrap: wrap; gap: 2px 8px; flex: 1; min-width: 0; }
+.route-trucks { white-space: nowrap; }
+.route-trucks b { font-weight: normal; }
+.route-trucks button { padding: 0 6px; }
+.route-rate { color: var(--dim); white-space: nowrap; min-width: 56px; text-align: right; }
+.route-doing { margin: 2px 0 0 !important; }

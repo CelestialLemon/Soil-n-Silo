@@ -6,7 +6,9 @@ import { TERRAIN } from './game/map.ts';
 import { networkOf, POWERED, pylonsInLink } from './game/power.ts';
 import { deserialize, readProgress, recordResult, saveKey, serialize } from './game/save.ts';
 import { scenarioById } from './game/scenarios.ts';
-import { advance, describeStatus, describeTruck, fieldFertility, hourAt, isStop, medalFor, routeOf, routesAt } from './game/sim.ts';
+import {
+  advance, describeLinks, describeStatus, describeTruck, fieldFertility, hourAt, isStop, linksAt, linksOf, medalFor, routeOf, routesAt,
+} from './game/sim.ts';
 import {
   buildingAt, buildingById, inMap, newGame, reachTo, routeById, sizeOf, terrainAt, truckById, type Dir, type GameState, type Route,
 } from './game/state.ts';
@@ -98,6 +100,8 @@ async function play(initial: GameState) {
   let speed = 1, paused = false, overlay: Overlay = 'none';
   let tool: Tool = { kind: 'select' };
   let selected: number | null = null;
+  /** The route under the pointer in the routes panel, drawn on the map. */
+  let previewRoute: number | null = null;
   const save = () => { if (!leaving) localStorage.setItem(SAVE_KEY, serialize(state)); };
   addEventListener('pagehide', save);
   document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
@@ -119,6 +123,7 @@ async function play(initial: GameState) {
     setPixelSize: (n) => setPixelSize(n),
     menu: () => { save(); location.href = `${location.pathname}?menu`; },
     restart: () => startNew(state.scenario.id),
+    previewRoute: (id) => { previewRoute = id; },
   });
   if (state.time === 0) hud.showIntro();
 
@@ -302,12 +307,18 @@ async function play(initial: GameState) {
   function showGhosts() {
     clearGhosts();
     cursor.visible = false;
+    ghostLinks = [];
     if (!hoverTile && !press) return;
     if (tool.kind === 'build') {
       const type = tool.type, n = BUILDINGS[type].size;
       const spots = press?.mode === 'paint' && press.from && press.to ? plan(type, press.from, press.to, tool.rot)
         : hoverTile ? [{ ...anchor(hoverTile, n), rot: tool.rot }] : [];
       let credits = state.credits;
+      // One building in hand shows who it would trade with next door.
+      if (spots.length === 1 && canPlace(state, type, spots[0].x, spots[0].y).ok) {
+        const l = linksAt(state, type, spots[0].x, spots[0].y);
+        ghostLinks = [...new Set([...l.from, ...l.to].map((x) => x.b.id))];
+      }
       for (const sp of spots) {
         const okHere = canPlace(state, type, sp.x, sp.y).ok && credits >= BUILDINGS[type].cost;
         if (okHere && !state.scenario.sandbox) credits -= BUILDINGS[type].cost;
@@ -332,6 +343,8 @@ async function play(initial: GameState) {
   }
   let toolOverlay: Overlay = 'none';
   const overlayFor = (o: Overlay) => { toolOverlay = o; };
+  /** The buildings next door that the building in hand would trade with, tinted. */
+  let ghostLinks: number[] = [];
   /** Pylons being placed, for the power view. */
   let pylonGhosts: { x: number; y: number; ok: boolean }[] = [];
 
@@ -471,6 +484,7 @@ async function play(initial: GameState) {
     if (e.code === 'Equal' || e.code === 'NumpadAdd') zoomStep(1, pointer ?? undefined);
     if (e.code === 'Minus' || e.code === 'NumpadSubtract') zoomStep(-1, pointer ?? undefined);
     if (e.code === 'Tab') { e.preventDefault(); hud.toggleStats(); }
+    if (e.code === 'KeyO') hud.toggleRoutes();
     if (e.code === 'KeyG') { hud.openGuide(); hud.refresh(); return; }
     if (e.code === 'KeyV') { const order: Overlay[] = ['none', 'fertility', 'power', 'roads', 'water', 'bees']; overlay = order[(order.indexOf(overlay) + 1) % order.length]; }
     if (e.code === 'KeyX') setTool(tool.kind === 'remove' ? { kind: 'select' } : { kind: 'remove' });
@@ -497,7 +511,8 @@ async function play(initial: GameState) {
       const n = BUILDINGS[tool.type].size, a = anchor(hoverTile, n), c = canPlace(state, tool.type, a.x, a.y);
       const head = `${BUILDINGS[tool.type].name} · ${state.scenario.sandbox ? 'free' : `${BUILDINGS[tool.type].cost} credits`}`;
       const soil = tool.type === 'field' ? ` · soil ${Math.round(avgSoil(a.x, a.y))}` : '';
-      return `${head}${soil}${tool.type === 'pylon' && c.ok ? pylonNote(a.x, a.y) : ''}\n${c.ok ? `Click or drag to build${tool.type === 'pylon' ? ' (a drag lays a line)' : ''} · R turns` : c.message}`;
+      const next = c.ok ? describeLinks(linksAt(state, tool.type, a.x, a.y)) : [];
+      return `${head}${soil}${tool.type === 'pylon' && c.ok ? pylonNote(a.x, a.y) : ''}${next.length ? `\nNext door: ${next.join(' · ').toLowerCase()}` : ''}\n${c.ok ? `Click or drag to build${tool.type === 'pylon' ? ' (a drag lays a line)' : ''} · R turns` : c.message}`;
     }
     if (b) return `${BUILDINGS[b.type].name}: ${describeStatus(state, b)}${b.type === 'field' ? ` · soil ${Math.round(fieldFertility(state, b))}` : ''}`;
     if (!hoverTile) return null;
@@ -513,6 +528,8 @@ async function play(initial: GameState) {
    */
   function shownRoutes(focus: number | null, all: boolean): { routes: Route[]; numbers: boolean } {
     const one = (r: Route | null) => ({ routes: r ? [r] : [], numbers: true });
+    const preview = routeById(state, previewRoute);
+    if (preview) return one(preview);
     if (tool.kind === 'route') return one(routeById(state, tool.route));
     const t = focus !== null ? truckById(state, focus) : null, b = focus !== null ? buildingById(state, focus) : null;
     if (t) return one(routeOf(state, t));
@@ -522,11 +539,16 @@ async function play(initial: GameState) {
     if (all && !routes.length) routes = state.routes;
     return { routes, numbers: routes.length === 1 };
   }
-  /** The buildings and trucks to tint for what is focused: a truck's stops, a garage's trucks. */
+  /**
+   * The buildings and trucks to tint for what is focused: a truck's stops, a garage's trucks, the buildings next door a
+   * building trades with (or would, while placing it).
+   */
   function linkedTo(focus: number | null): number[] {
+    if (tool.kind === 'build') return ghostLinks;
     const t = focus !== null ? truckById(state, focus) : null, b = focus !== null ? buildingById(state, focus) : null;
     if (t) return [...new Set(routeOf(state, t)?.stops.map((st) => st.building) ?? [])];
     if (b?.type === 'garage') return state.trucks.filter((x) => x.garage === b.id).map((x) => x.id);
+    if (b) { const l = linksOf(state, b); return [...new Set([...l.from, ...l.to].map((x) => x.b.id))]; }
     return [];
   }
 

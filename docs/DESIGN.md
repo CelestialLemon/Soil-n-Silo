@@ -24,6 +24,7 @@ few minutes and the wind comes and goes, so power needs storage and a mix of sou
 
 - 18 goods, 5 crops, chickens and bees, 6 processing machines, 4 power sources and storage
 - Trucks on routes you set, over the open ground between buildings: no belts and no roads to build; silos to store goods
+- Buildings next door trade directly: a mill between wheat fields takes their wheat without a truck
 - Pylon power networks, each with its own balance
 - Soil fertility, sprinklers, compost and pollination
 - 8 campaign commissions, random commissions from any seed, a sandbox
@@ -54,7 +55,9 @@ It is build-only and point-and-click. There is no character and no manual farmin
 | R | Turn what you're placing (for looks) |
 | Click a building with nothing in hand | Select it: the inspector shows its status, buffers and settings |
 | A garage's inspector | Buy a truck; give each of its trucks a route, or none |
-| A route's editor (from a truck, or the routes list in the stats) | Add a stop by clicking a building; set what it drops and picks up and its wait; reorder or remove stops; add or take away trucks |
+| O, or the Routes button | The routes panel: every route with its stops, goods, trucks, goods a minute and problems. Click a name to rename it; + and − add or send home trucks; ⧉ copies a route; point at one to draw it on the map; click it to edit |
+| A route's editor (from a truck, a building, or the routes panel) | Rename it; add a stop by clicking a building; set what it drops and picks up and its wait; reorder or remove stops; add or take away trucks; see what each truck is doing, and dump its cargo; copy or delete the route |
+| A truck's inspector | Its route, cargo and battery; dump its cargo (the goods are lost); sell it |
 | X, then click or drag | Remove (full refund) |
 | Esc / right click | Drop what's in hand, close the inspector |
 | Space, 1, 2, 3 | Pause, 1×, 2×, 4× speed. You can build while paused |
@@ -74,7 +77,10 @@ The build preview is see-through, green where it fits and red where it doesn't.
 - Selecting a truck or a route draws the route's way on the ground, its numbered stops and its trucks. Selecting a building
   lists the routes that stop there. The inspector says what each truck is doing ("taking 6 wheat to the mill", "waiting at the
   field for wheat", "2nd in the queue at the mill", "charging at the garage").
-- A building trucks can't reach, or whose outputs are full with no route picking them up, shows a purple marker.
+- A building trucks can't reach, or whose outputs are full with no route or building next door taking them, shows a purple marker.
+- Goods handed to a building next door hop over the edge the two share. Selecting or pointing at a building tints the
+  neighbours it trades with, and its inspector lists them ("Takes wheat from 2 fields", "Gives bran to the coop"); a
+  building in hand tints the ones it would trade with, and the hover line says so.
 - The roads overlay shows the open ground trucks can drive on, and the buildings they can't reach.
 - The guide (G) has a page for every building; hovering a build button, or "?" in the inspector, leads to it.
 - Soil colour shows fertility under fields. Overlays show fertility everywhere, power coverage and roads.
@@ -219,7 +225,7 @@ takes it out of every route that stops there. A truck whose current stop goes aw
 out of the route) leaves the building or its queue at once and goes on to the next stop; a route left with no stops sends its
 trucks home. Two routes that pick up the same good share it by how often
 their trucks come, so on First Light one truck taking wheat to the depot and one taking it to the mill split it about half
-each. Routes decide where every good goes; there is no sell list and no per-building input toggle.
+each. Routes and neighbours decide where every good goes; there is no sell list and no per-building input toggle.
 
 **Power.** A truck has a 300 J battery and uses 1 J a tile. Before it leaves a stop it checks that after the next leg it could
 still drive home to its garage; if not, it drives home first, charges full (at 20 W, so 15 s from empty) and then drives
@@ -234,15 +240,37 @@ more of it, but still takes every other good, so only that chain stops. Trucks s
 that none of its stops takes has no room for anything else, and stops every chain on its route. Give a byproduct somewhere to
 go, or a route of its own.
 
-**Problems a route shows** (on the route, on its trucks, and as a marker on the building): a stop that can't be reached, a
-stop with nothing to do (it neither takes nor gives any of its goods), a truck carrying goods none of its stops takes, a truck that can't reach its garage, and a
-building whose outputs are full with no route picking them up.
+**Problems a route shows** (on the route, on its trucks, in the routes panel, and as a marker on the building): a stop that
+can't be reached, a stop with nothing to do (it neither takes nor gives any of its goods), a truck carrying goods none of its
+stops takes, a truck that can't reach its garage, a route with no trucks, and a building whose outputs are full with no
+route or neighbour taking them. A truck stuck with goods no stop takes can **dump** its cargo: the goods are lost.
+
+**Next door.** Buildings that share an edge (touching only at a corner doesn't count) trade without trucks. Each step, every
+machine takes up to one of each good its recipe uses from the buildings next door that have it waiting, from whichever has
+the most, and a field takes compost the same way. Buildings sharing a giver take turns: the one that took a good longest
+ago goes first, so two coops beside one mill both get its bran. Fields, hives and machines give (a harvest, honey, a machine's outputs);
+machines and fields take. Silos and the depot don't trade next door: storing and selling stay the trucks' job, so a farm
+still needs trucks for the long hops and the last one. Next door comes first: it runs before trucks load, so a mill beside
+a field gets its wheat before a truck that stops there. A walled-in building needs no road when no route stops there and it
+trades with its neighbours.
+
+So the short, dull hops (fields to the mill, bran to the coop, flour and eggs to the bakery, manure to the composter) can be
+built into the layout, and trucks are left for the far and specific ones. Packing buildings together costs open tiles, so
+it is a trade: a mill boxed in by fields gets their wheat, but no truck can bring it more. Byproducts stay strict next door
+too: a composter whose only taker is one full field stops, and with it the coop that feeds it. (Chosen on 2026-10-12, after
+playing trucks: every level needed many trucks, and routes doing a field-to-mill hop were the bulk of them.)
 
 ![A garage selected: its trucks, each with its route and what it is doing, and the routes' ways on the ground](images/trucks-garage.png)
 
 ![Editing a route: its stops numbered on the map, and what each drops and picks up](images/trucks-route.png)
 
 ![The roads overlay: the open ground trucks drive on](images/trucks-roads.png)
+
+![The routes panel (O): every route, renamed in place, with its stops, goods, trucks and problems](images/routes-panel.png)
+
+![A coop selected: it takes bran from the mill next door (tinted), no truck needed](images/next-door.png)
+
+![The route editor: its name, each truck's state with a dump button, and its stops](images/route-editor.png)
 
 ### Farming
 
@@ -334,7 +362,9 @@ A commission has goals, a target time and modifiers. It ends when every goal is 
 | 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 60 min | Everything |
 
 The bot (`npm run sim`) clears First Light in about 14 minutes, Morning Bread in about 29 and Linen for the Looms in about 26 with
-trucks (with silos and drones it took about 14, 38 and 45), building as credits allow; a person needs a few minutes more to plan and
+trucks (with silos and drones it took about 14, 38 and 45), building as credits allow. Its Morning Bread layout built round
+neighbours (`npm run sim -- c2:next`: a mill between two fields, a bakery beside it, a coop under both, a composter beside the
+coop) clears it in about 25 minutes with 3 trucks on 2 routes, where the all-truck layout uses 4 on 3; a person needs a few minutes more to plan and
 place. Trucks made the later commissions much quicker, so their target times may be too generous now. The other targets are guesses
 until they have bot layouts too.
 
@@ -358,6 +388,10 @@ each commission's best medal and time.
 - [ ] Tuning: crop times, machine times, prices and target times are first guesses. A scripted bot run per commission
   (`npm run sim`) should check that each one can be cleared and roughly in its target time.
 - [ ] Truck numbers (6 goods, 3 tiles/s, 300 J, 5 s wait, 4 per garage) and the silo's 30 of each good are first guesses.
+- [ ] Next door: should it reach further (a radius, or through a silo next to both), and should silos or the depot ever take
+  from neighbours? Kept to machines and fields for now, so storing and selling stay the trucks' job.
+- [ ] Next door: a producer with two hungry neighbours feeds them in turn, one good a step each; a machine boxed in by fields
+  can't also get wheat by truck. Is that the right puzzle?
 - [ ] Should a stop cover several buildings (say every field in a box, the truck going to whichever has the most waiting),
   so a row of fields isn't one stop each?
 - [ ] One truck at a time per building makes a busy silo the bottleneck. A puzzle (build a second silo) or a chore (give

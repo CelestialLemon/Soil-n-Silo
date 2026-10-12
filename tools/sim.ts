@@ -3,7 +3,7 @@
 // commissions can be cleared and roughly how long they take (DESIGN.md, "Open questions"). The map is flattened (no
 // water, rock or trees, even soil at the scenario's mean), since the layout is the bot's, not the map's.
 //
-// Run: npm run sim -- [commission id, default c1] [minutes to run, default 60]
+// Run: npm run sim -- [layout: a commission id, or id:variant such as c2:next; default c1] [minutes to run, default 60]
 
 import { addStop, buyTruck, newRoute, place, setCrop, setTruckRoute, truckPrice } from '../src/game/build.ts';
 import { LAYOUTS, type Step } from './layouts.ts';
@@ -16,7 +16,8 @@ import { newGame, type Building, type GameState, type Route } from '../src/game/
 
 const id = process.argv[2] ?? 'c1';
 const minutes = Number(process.argv[3] ?? 60);
-const sc = scenarioById(id);
+// A layout may be one of several for a commission: `c2:next` plays c2.
+const sc = scenarioById(id.split(':')[0]);
 if (!sc) throw new Error(`no commission ${id}`);
 
 const layout = LAYOUTS[id];

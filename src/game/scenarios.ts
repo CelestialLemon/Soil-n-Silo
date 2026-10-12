@@ -56,7 +56,7 @@ export const CAMPAIGN: Scenario[] = [
     tips: [
       'Place a few fields (F) on rich soil (V shows it). Leave open ground between buildings: trucks drive on it.',
       'Build a garage (T) and buy a truck. Give it a new route and click the fields, then the depot: it takes their wheat to the depot.',
-      'Build a mill and a second route: fields, then the mill, then the depot. The mill gets the wheat; its flour and bran go to the depot.',
+      'Build a mill right beside a couple of fields: it takes their wheat without a truck. A second route takes its flour and bran to the depot.',
       'The mill and the garage (trucks charge there) need power: a solar panel (S) and a pylon (P) within 3 tiles of both. A battery keeps them going at night.',
       'Sprinklers near the fields more than double their pace. Watch the markers: yellow waits for input, red has no power.',
     ],
@@ -68,7 +68,7 @@ export const CAMPAIGN: Scenario[] = [
     goals: [{ kind: 'deliver', item: 'bread', n: 150 }, { kind: 'soil', min: 40 }],
     tips: [
       'Bread is flour and an egg. Chickens lay eggs from feed: beans, bran or seed cake, and leave manure.',
-      'A mill makes bran with every flour. A route from the mill to the coop takes it there as feed.',
+      'A mill makes bran with every flour. A coop built beside the mill eats it as feed; a bakery beside both takes the flour and eggs.',
       'Anything a building can\'t get rid of stops it: give spare bran and manure a composter or a digester, or drop it at the depot.',
       'Wheat tires the soil; bean fields and compost bring it back.',
     ],
