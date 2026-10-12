@@ -80,7 +80,19 @@ every route with its stops, goods, trucks, goods a minute and problems: rename a
 copy a route, point at one to see it on the map. The route editor names the route, lists what each of its trucks is doing,
 and copies it; a truck can dump its cargo. Rules in `DESIGN.md`, "Logistics" ("Next door").
 
+## Building history (2026-10-12)
+
+Managing a growing farm, a mill could run at half speed for minutes before anyone noticed, and by then its marker only said
+what was wrong at that moment. Each building now keeps its last ten minutes (`src/game/history.ts`, in memory, not saved), and
+its inspector shows them over 1, 5 or 10 minutes: a strip of its statuses, the share of time in each, the goods it made a
+minute against full speed; generators and batteries chart their watts or charge. Rules in `DESIGN.md`, "Readability rules".
+
 ## Next
+
+- A **trouble list** built on the building history: buildings that spent much of the last few minutes not working (say below
+  70%), worst first, with their main cause ("Mill · 45% · waiting for wheat"); clicking one selects it and moves the camera to
+  it. Perhaps grouped by cause ("3 buildings waiting for wheat" points at one fix upstream), and a gentle nudge when a building
+  has been stuck for a while.
 
 - Play every campaign commission and tune: target times, prices, crop and machine times, power numbers. Bot layouts for the
   other five commissions in `tools/layouts.ts`, so `npm run sim` checks them all.

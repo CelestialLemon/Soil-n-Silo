@@ -7,6 +7,7 @@ import {
   BUILDINGS, CATEGORIES, CROP_IDS, CROPS, FIELD, GROUP_NAMES, GROUPS, HIVE, ITEM_IDS, ITEMS, POWER, recipesFor, SILO, TRUCK,
   type BuildingId, type Ingredient, type ItemId,
 } from '../game/data.ts';
+import { hasHistory } from '../game/history.ts';
 import { networkOf, networks, type Network } from '../game/power.ts';
 import {
   cargoText, dayAt, describeLinks, describeStatus, describeTruck, exposureOf, fieldFertility, fieldPace, flowersNear, givesGoods, goalDone, hourAt, isPollinated,
@@ -20,6 +21,7 @@ import { NET_COLOURS, ROUTE_COLOURS } from '../world/shapes.ts';
 import type { Overlay } from '../world/view.ts';
 import { h } from './dom.ts';
 import { buildingCard, guidePanel, type GuidePage } from './guide.ts';
+import { historyView, type HistoryWindow } from './historyView.ts';
 
 // The HUD over the canvas: the commission and its clock, power and weather, the goals, the build bar, what's under the
 // pointer, the inspector for the selected building or truck (or the route being edited), messages, and the modal screens
@@ -154,6 +156,8 @@ export class Hud {
   private readonly inspector = h('div', { class: 'card inspector' });
   private inspectKey = '';
   private inspectUpdate: (() => void) | null = null;
+  /** The inspector history's window, in seconds (kept from building to building). */
+  private historyWindow: HistoryWindow = 300;
   private readonly toasts = h('div', { class: 'toasts' });
   /** Labels over the power networks shown, one element per network, reused. */
   private readonly netLabels = h('div', { class: 'net-labels' });
@@ -600,6 +604,10 @@ export class Hud {
         set(v, net ? `${watts(net.made)} made · ${watts(net.wanted)} used · ${Math.round(net.stored)} J stored` : 'none: no pylon in reach');
       });
       body.push(h('div', { class: 'kv' }, h('span', null, 'Network'), h('b', null, dot, v)));
+    }
+    if (hasHistory(b)) {
+      const hist = historyView(s, b, () => this.historyWindow, (w) => { this.historyWindow = w; });
+      body.push(hist.el); lines.push(hist.update);
     }
     if (isStop(b) && b.type !== 'silo' && b.type !== 'depot') body.push(this.nextDoor(s, b, lines));
     if (isStop(b)) body.push(this.stopsHere(s, b));
