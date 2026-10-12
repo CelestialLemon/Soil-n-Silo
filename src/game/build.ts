@@ -53,8 +53,10 @@ export function remove(s: GameState, b: Building): Result {
   // It leaves every route that stops there.
   for (const r of s.routes) {
     if (!r.stops.some((st) => st.building === b.id)) continue;
+    let k = 0;
+    const kept = r.stops.map((st) => (st.building === b.id ? null : k++));
     r.stops = r.stops.filter((st) => st.building !== b.id);
-    routeChanged(s, r);
+    routeChanged(s, r, kept);
   }
   return ok(`Removed the ${BUILDINGS[b.type].name.toLowerCase()}${trucks.length ? ` and its ${trucks.length} truck${trucks.length > 1 ? 's' : ''}` : ''} (refunded).`);
 }
@@ -166,15 +168,17 @@ function defaultStop(b: Building): Stop {
 export function addStop(s: GameState, r: Route, b: Building): Result {
   if (!isStop(b)) return no(`Trucks don't stop at the ${lc(b)}: it has no goods.`);
   if (r.stops.length >= TRUCK.maxStops) return no(`A route has at most ${TRUCK.maxStops} stops.`);
+  const kept = r.stops.map((_, i) => i);
   r.stops.push(defaultStop(b));
-  routeChanged(s, r);
+  routeChanged(s, r, kept);
   return ok(`Added the ${lc(b)} as stop ${r.stops.length} of ${r.name}.${accessTiles(s, b).length ? '' : ' Trucks can\'t reach it yet: leave an open tile beside it.'}`);
 }
 
 export function removeStop(s: GameState, r: Route, i: number): Result {
   if (!r.stops[i]) return no('');
+  const kept = r.stops.map((_, k) => (k === i ? null : k < i ? k : k - 1));
   r.stops.splice(i, 1);
-  routeChanged(s, r);
+  routeChanged(s, r, kept);
   return ok(`Took stop ${i + 1} out of ${r.name}.`);
 }
 
@@ -183,7 +187,7 @@ export function moveStop(s: GameState, r: Route, i: number, by: -1 | 1): Result 
   const j = i + by;
   if (!r.stops[i] || !r.stops[j]) return no('');
   [r.stops[i], r.stops[j]] = [r.stops[j], r.stops[i]];
-  routeChanged(s, r);
+  routeChanged(s, r, r.stops.map((_, k) => (k === i ? j : k === j ? i : k)));
   return ok('');
 }
 

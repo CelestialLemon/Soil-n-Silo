@@ -723,3 +723,42 @@ test('a save with a queuing truck that is going nowhere is refused', () => {
   json.trucks[0].phase = 'queue'; json.trucks[0].target = null;
   assert.equal(deserialize(JSON.stringify(json)), null);
 });
+
+test('route edits keep each truck\'s own stop: a repeated building, or a stop it is charging before', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const a = put(s, 'silo', 8, 18), b = put(s, 'silo', 14, 18), c = put(s, 'silo', 20, 18);
+  const r = route(s, [t], [a, { wait: 30 }], [b, { wait: 0 }], [a, { wait: 0 }], [c, { wait: 0 }]);
+  until(s, () => t.phase === 'dock' && t.target === a.id && t.stop === 0);
+  assert.ok(removeStop(s, r, 0).ok);
+  assert.equal(t.target, b.id, 'its stop went: on to the next, not the other stop at the same silo');
+  t.phase = 'charge'; t.stop = 2; t.target = t.garage;   // charging before going to c
+  assert.ok(removeStop(s, r, 0).ok);
+  assert.equal(r.stops[t.stop].building, c.id);
+});
+
+test('a truck beside its garage still charges when its battery is low', () => {
+  const s = flat();
+  const { g, trucks: [t] } = garageAt(s, 2, 24);
+  const silo = put(s, 'silo', 2, 21);   // north of the garage: they share open tiles
+  silo.store!.wheat = 30;
+  route(s, [t], [silo, { pick: ['wheat'], drop: [] }], depotOf(s));
+  until(s, () => t.phase === 'dock');
+  t.energy = 1;
+  until(s, () => t.phase !== 'dock');
+  assert.equal(t.target, g.id);
+});
+
+test('a stop the trucks\' garage can\'t reach is flagged, and a save with a stop at a garage is refused', () => {
+  const s = flat();
+  const { g, trucks: [t] } = garageAt(s, 2, 24);
+  const silo = put(s, 'silo', 20, 10);
+  // A ring of pylons one tile out: the silo has open tiles beside it, but no way in.
+  for (let x = 18; x <= 23; x++) for (const y of [8, 13]) put(s, 'pylon', x, y);
+  for (let y = 9; y <= 12; y++) for (const x of [18, 23]) put(s, 'pylon', x, y);
+  const r = route(s, [t], silo);
+  assert.match(stopProblems(s, r)[0]!, /from their garage/);
+  const json = JSON.parse(serialize(s));
+  json.routes[0].stops[0].building = g.id;
+  assert.equal(deserialize(JSON.stringify(json)), null);
+});

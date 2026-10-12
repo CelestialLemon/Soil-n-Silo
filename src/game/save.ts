@@ -1,4 +1,4 @@
-import type { Medal } from './sim.ts';
+import { isStop, type Medal } from './sim.ts';
 import { BUILDINGS, CROPS, ITEMS, recipesFor, TRUCK } from './data.ts';
 import type { Scenario } from './scenarios.ts';
 import type { Building, GameState, Route, Truck } from './state.ts';
@@ -66,7 +66,7 @@ function complete(s: GameState): boolean {
     && !!st && num(st.since) && arr(st.made) && st.made.length > 0 && st.made.every(counts)
     && !!st.delivered && typeof st.delivered === 'object' && Object.entries(st.delivered).every(([k, v]) => item(k) && arr(v) && v.every(num))
     && arr(s.buildings) && s.buildings.every((b) => validBuilding(b, m.width, m.height))
-    && arr(s.routes) && s.routes.every(validRoute) && arr(s.trucks) && s.trucks.every((t) => validTruck(s, t)) && uniqueIds(s);
+    && arr(s.routes) && s.routes.every(validRoute) && stopsExist(s) && arr(s.trucks) && s.trucks.every((t) => validTruck(s, t)) && uniqueIds(s);
 }
 
 const int = (v: unknown) => Number.isInteger(v);
@@ -76,6 +76,12 @@ function validRoute(r: Route): boolean {
   return !!r && num(r.id) && str(r.name) && arr(r.moved) && r.moved.every(num) && arr(r.stops) && r.stops.length <= TRUCK.maxStops
     && r.stops.every((st) => !!st && num(st.building) && items(st.drop) && items(st.pick) && !st.drop.some((i) => st.pick.includes(i))
       && num(st.wait) && st.wait >= 0 && st.wait <= TRUCK.maxWait);
+}
+
+/** Every stop is at a building there is, one trucks stop at. */
+function stopsExist(s: GameState): boolean {
+  const byId = new Map(s.buildings.map((b) => [b.id, b]));
+  return s.routes.every((r) => r.stops.every((st) => { const b = byId.get(st.building); return !!b && isStop(b); }));
 }
 
 const PHASES = ['parked', 'charge', 'drive', 'queue', 'dock', 'stuck'];

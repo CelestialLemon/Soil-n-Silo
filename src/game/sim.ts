@@ -402,7 +402,7 @@ function setOff(s: GameState, t: Truck, from: number) {
   t.stop = i;
   const b = buildingById(s, r.stops[i].building)!;
   const leg = distanceTo(s, b, here), back = legLength(s, b, g);
-  if (!t.charged && back < Infinity && distanceTo(s, g, here) > 0 && distanceTo(s, g, here) < Infinity
+  if (!t.charged && back < Infinity && distanceTo(s, g, here) < Infinity
     && t.energy < (leg + back) * TRUCK.joulesPerTile) { goHome(s, t); return; }
   t.charged = false;
   driveTo(s, t, b);
@@ -475,20 +475,19 @@ export function redirect(s: GameState, t: Truck) {
 }
 
 /**
- * After a route's stops changed: each of its trucks keeps going to the building it was going to if that is still a stop
- * (at the stop nearest its old place), and otherwise leaves for the stop now in its place.
+ * After a route's stops changed (`kept[i]` is where old stop i is now, or null if it went): each of its trucks keeps its
+ * stop, at its new place; a truck whose stop went goes on to the one that came after it (stop 1 after the last).
  */
-export function routeChanged(s: GameState, r: Route) {
+export function routeChanged(s: GameState, r: Route, kept: (number | null)[]) {
+  const n = r.stops.length;
   for (const t of trucksOn(s, r)) {
-    const n = r.stops.length;
     if (!n) { t.stop = 0; redirect(s, t); continue; }
+    const now = kept[t.stop];
+    if (now !== null && now !== undefined) { t.stop = now; if (t.phase === 'stuck') redirect(s, t); continue; }
+    // The stops before it that are left: the next one is now at that place.
+    t.stop = kept.slice(0, t.stop).filter((k) => k !== null).length % n;
     const away = t.phase === 'drive' || t.phase === 'queue' || t.phase === 'dock';
-    const at = away && t.target !== t.garage ? r.stops.map((st, i) => (st.building === t.target ? i : -1)).filter((i) => i >= 0) : [];
-    if (at.length) { t.stop = at.reduce((a, i) => (Math.abs(i - t.stop) < Math.abs(a - t.stop) ? i : a)); continue; }
-    // Its stop went: the one after it has moved into its place (or, if it was the last, stop 1 comes next).
-    t.stop %= n;
-    if (away && t.target !== t.garage) setOff(s, t, t.stop);
-    else if (t.phase === 'stuck') redirect(s, t);
+    if ((away && t.target !== t.garage) || t.phase === 'stuck') { if (t.phase !== 'drive') t.phase = 'stuck'; setOff(s, t, t.stop); }
   }
 }
 
@@ -624,6 +623,8 @@ export function stopProblems(s: GameState, r: Route): (string | null)[] {
     if (!accessTiles(s, b).length) return 'No open tile beside it: trucks can\'t reach it.';
     const prev = buildingById(s, r.stops[(i + r.stops.length - 1) % r.stops.length].building);
     if (prev && prev !== b && legLength(s, prev, b) === Infinity) return 'Trucks can\'t drive here from the stop before.';
+    const homes = new Set(trucksOn(s, r).map((t) => buildingById(s, t.garage)));
+    if ([...homes].some((g) => g && legLength(s, g, b) === Infinity)) return 'Trucks can\'t drive here from their garage.';
     const takes = takesGoods(b), gives = givesGoods(b);
     if (!st.drop.some((it) => takes.includes(it)) && !st.pick.some((it) => gives.includes(it))) return 'Nothing to do: it takes none of the goods dropped and gives none of those picked up.';
     return null;
