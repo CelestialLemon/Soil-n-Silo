@@ -70,6 +70,16 @@ per-input toggles are gone: routes decide where every good goes. Saves from befo
 the garage are stand-ins drawn in code until their models are built. Drones come back later, as automatic helpers, once
 trucks have been played. Rules in `DESIGN.md`, "Logistics".
 
+## Next door and the routes panel (2026-10-12)
+
+Playing trucks: every level needed many trucks, most of them on routes doing one short hop (fields to the mill), and
+managing their routes got cumbersome. Buildings that share an edge now trade directly: a machine takes its inputs from the
+fields, hives and machines next door, a field takes compost (silos and the depot still trade only with trucks), shown by
+goods hopping over the shared edge and by tinting the neighbours a building trades with. A **routes panel** (O) lists
+every route with its stops, goods, trucks, goods a minute and problems: rename a route in place, add or send home trucks,
+copy a route, point at one to see it on the map. The route editor names the route, lists what each of its trucks is doing,
+and copies it; a truck can dump its cargo. Rules in `DESIGN.md`, "Logistics" ("Next door").
+
 ## Next
 
 - Play every campaign commission and tune: target times, prices, crop and machine times, power numbers. Bot layouts for the

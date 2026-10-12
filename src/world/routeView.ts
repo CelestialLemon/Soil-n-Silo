@@ -31,7 +31,7 @@ export class RouteView {
 
   /** Draws `routes` (none hides them all); with `numbers`, labels their stops. */
   sync(s: GameState, routes: Route[], numbers: boolean) {
-    const key = `${layoutOf(s)} ${numbers} ${routes.map((r) => `${r.id}:${r.stops.map((st) => st.building).join(',')}`).join(';')}`;
+    const key = `${layoutOf(s)} ${numbers} ${routes.map((r) => `${r.id}:${routeColour(s, r)}:${r.stops.map((st) => st.building).join(',')}`).join(';')}`;
     if (key === this.key) return;
     this.key = key;
     for (const o of this.objs) o.remove();

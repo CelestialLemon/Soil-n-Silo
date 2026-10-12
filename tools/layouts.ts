@@ -80,6 +80,31 @@ export const LAYOUTS: Record<string, Layout> = {
     { truck: 'bread', garage: 'garage' },
     { type: 'solar', x: dx + 13, y: dy - 13 }, { type: 'turbine', x: dx + 16, y: dy - 7 },
   ],
+  // Bread with neighbours doing the short hops: a mill between two wheat fields, a bakery beside it (flour), a coop under
+  // both (bran in, eggs out), and a composter beside the coop and a field (manure in, compost out). Trucks only bring the
+  // wheat of three more fields (and compost to them) and take the bread to the depot: 3 trucks on 2 routes, where the
+  // layout with every hop by truck (c2) needs 4 on 3.
+  'c2:next': (dx, dy) => [
+    { type: 'field', x: dx - 3, y: dy - 8, as: 'w' }, { type: 'field', x: dx - 2, y: dy - 11, as: 'n' },
+    { type: 'sprinkler', x: dx - 3, y: dy - 9 }, { type: 'pylon', x: dx - 3, y: dy - 10 },
+    { type: 'mill', x: dx, y: dy - 8, as: 'mill' }, { type: 'pylon', x: dx + 4, y: dy - 8 },
+    { type: 'solar', x: dx + 5, y: dy - 8 }, { type: 'coop', x: dx, y: dy - 6, as: 'coop' },
+    { type: 'garage', x: dx + 5, y: dy - 11, as: 'garage' },
+    { type: 'bakery', x: dx + 2, y: dy - 8, as: 'bakery' }, { type: 'solar', x: dx + 5, y: dy - 6 },
+    { route: 'bread', garage: 'garage', trucks: 1, stops: [{ at: 'bakery', drop: [], pick: ['bread'] }, { at: 'depot', drop: ['bread'] }] },
+    { type: 'composter', x: dx - 2, y: dy - 5, as: 'composter' },
+    { type: 'battery', x: dx + 7, y: dy - 8 }, { type: 'pylon', x: dx + 9, y: dy - 9 },
+    ...[-4, -1, 2].map((x, i) => ({ type: 'field' as const, x: dx + x, y: dy - 15, as: `f${i + 1}` })),
+    { type: 'pylon', x: dx + 4, y: dy - 12 }, { type: 'pylon', x: dx + 4, y: dy - 16 },
+    { type: 'sprinkler', x: dx - 2, y: dy - 16 }, { type: 'sprinkler', x: dx + 3, y: dy - 16 },
+    {
+      route: 'wheat', garage: 'garage', trucks: 1,
+      stops: [{ at: 'composter', pick: ['compost'], drop: [] }, { at: 'f1' }, { at: 'f2' }, { at: 'f3' }, { at: 'n' }, { at: 'mill', pick: [] }],
+    },
+    ...morePower(dx, dy),
+    { truck: 'wheat', garage: 'garage' },
+    { type: 'solar', x: dx + 13, y: dy - 13 }, { type: 'turbine', x: dx + 16, y: dy - 7 },
+  ],
   // Linen and yarn: six flax fields feed a spinner; one route takes yarn to the loom and its linen to the depot, another
   // takes yarn straight to the depot (a commission goal), sharing it by how often their trucks come.
   c4: (dx, dy) => [

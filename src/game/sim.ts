@@ -1,6 +1,6 @@
 import {
   bays, BUILDINGS, CROPS, DAY_SECONDS, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, ITEMS, OUTPUT_BATCHES, POWER, recipeById,
-  recipesFor, SAPLING_SECONDS, SILO, START_HOUR, TICK, TREE_HEALTH, TRUCK, type Ingredient, type ItemId, type Recipe,
+  recipesFor, SAPLING_SECONDS, SILO, START_HOUR, TICK, TREE_HEALTH, TRUCK, type BuildingId, type Ingredient, type ItemId, type Recipe,
 } from './data.ts';
 import { TERRAIN } from './map.ts';
 import { networkOf, networks } from './power.ts';
@@ -12,8 +12,9 @@ import {
   terrainAt, tileIndex, touchLayout, type Building, type GameState, type Route, type Stop, type Truck,
 } from './state.ts';
 
-// The simulation: one fixed step of TICK seconds at a time. Each step balances power, runs every building, drives the
-// trucks along their routes (docking, moving goods, charging), then updates the stats and goals.
+// The simulation: one fixed step of TICK seconds at a time. Each step balances power, runs every building, hands goods to
+// the buildings next door that take them, drives the trucks along their routes (docking, moving goods, charging), then
+// updates the stats and goals.
 
 // ---- Time, sun and wind ----
 
@@ -51,6 +52,8 @@ interface Derived {
   nearWater: Set<number>;
   /** Tiles under a field (the rest of the ground rests). */
   fielded: Set<number>;
+  /** The buildings sharing an edge with each building. */
+  neighbours: Map<number, Building[]>;
 }
 const derivedCache = new WeakMap<GameState, Derived>();
 
@@ -58,7 +61,7 @@ function derived(s: GameState): Derived {
   const layout = layoutOf(s);
   let d = derivedCache.get(s);
   if (d && d.layout === layout) return d;
-  d = { layout, sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), nearWater: new Set(), fielded: new Set() };
+  d = { layout, sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), nearWater: new Set(), fielded: new Set(), neighbours: new Map() };
   const fields = s.buildings.filter((b) => b.type === 'field');
   const hives = s.buildings.filter((b) => b.type === 'hive');
   const sprinklers = s.buildings.filter((b) => b.type === 'sprinkler');
@@ -89,8 +92,21 @@ function derived(s: GameState): Derived {
       if (terrainAt(s, x, y) === TERRAIN.water) { d.nearWater.add(sp.id); break search; }
     }
   }
+  for (const b of s.buildings) d.neighbours.set(b.id, besides(s, b));
   derivedCache.set(s, d);
   return d;
+}
+
+/** The buildings sharing an edge with a footprint (a building, or one about to be placed). */
+export function besides(s: GameState, b: { type: BuildingId; x: number; y: number }): Building[] {
+  const n = BUILDINGS[b.type].size, out = new Set<Building>();
+  for (let k = 0; k < n; k++) {
+    for (const [x, y] of [[b.x + k, b.y - 1], [b.x + k, b.y + n], [b.x - 1, b.y + k], [b.x + n, b.y + k]]) {
+      const o = buildingAt(s, x, y);
+      if (o) out.add(o);
+    }
+  }
+  return [...out];
 }
 
 /** Whether a building trades goods with trucks: it grows, makes or uses goods. */
@@ -279,6 +295,89 @@ export function inputGoods(b: Building): ItemId[] {
   if (b.type === 'field') return ['compost'];
   const r = recipeOf(b);
   return r ? r.inputs.flatMap((i) => [...members(i)]) : [];
+}
+
+// ---- Next door: buildings sharing an edge trade goods without a truck ----
+
+/** Whether a building hands its goods straight to buildings next door: it grows or makes them. */
+const producer = (b: Building) => b.type === 'field' || b.type === 'hive' || !!b.recipe;
+/** Whether it takes goods straight from buildings next door: a machine its inputs, a field compost. */
+const consumer = (b: Building) => b.type === 'field' || !!b.recipe;
+
+/** The goods `from` hands straight to `to`, a building next door, with the crop and recipe each has now. */
+export function passes(from: Building, to: Building): ItemId[] {
+  if (from === to || !producer(from) || !consumer(to)) return [];
+  const takes = takesNow(to);
+  return givesNow(from).filter((i) => takes.includes(i));
+}
+
+/** The buildings sharing an edge with a building. */
+export const neighboursOf = (s: GameState, b: Building) => derived(s).neighbours.get(b.id) ?? besides(s, b);
+
+export interface Link { b: Building; goods: ItemId[] }
+/** What a building takes from each building next door, and gives to each (only those it trades with). */
+export function linksOf(s: GameState, b: Building, near: Building[] = neighboursOf(s, b)): { from: Link[]; to: Link[] } {
+  const from: Link[] = [], to: Link[] = [];
+  for (const n of near) {
+    const i = passes(n, b), o = passes(b, n);
+    if (i.length) from.push({ b: n, goods: i });
+    if (o.length) to.push({ b: n, goods: o });
+  }
+  return { from, to };
+}
+
+/** What a building about to be placed at (x, y) would trade with the buildings next door (with its first recipe, a field wheat). */
+export function linksAt(s: GameState, type: BuildingId, x: number, y: number): { from: Link[]; to: Link[] } {
+  const r = recipesFor(type)[0];
+  const b: Building = { id: 0, type, x, y, rot: 0, status: 'idle' };
+  if (type === 'field') { b.crop = 'wheat'; b.stored = 0; }
+  if (r) { b.recipe = r.id; b.inputs = {}; b.outputs = {}; b.progress = null; }
+  return linksOf(s, b, besides(s, b));
+}
+
+/** Links in a few words, one line per kind of building and goods: "Takes wheat from 2 fields", "Gives bran to the coop". */
+export function describeLinks(links: { from: Link[]; to: Link[] }): string[] {
+  const says = (list: Link[], verb: string, word: string) => {
+    const groups = new Map<string, Link & { n: number }>();
+    for (const l of list) { const k = `${l.b.type} ${l.goods.join(',')}`, g = groups.get(k); if (g) g.n++; else groups.set(k, { ...l, n: 1 }); }
+    return [...groups.values()].map((g) => {
+      const name = BUILDINGS[g.b.type].name.toLowerCase(), who = g.n === 1 ? `the ${name}` : `${g.n} ${name}${name.endsWith('s') ? 'es' : 's'}`;
+      return `${verb} ${g.goods.map(lcItem).join(', ')} ${word} ${who}`;
+    });
+  };
+  return [...says(links.from, 'Takes', 'from'), ...says(links.to, 'Gives', 'to')];
+}
+
+/** Whether a building trades any good with a building next door. */
+export const tradesNextDoor = (s: GameState, b: Building) => neighboursOf(s, b).some((n) => passes(n, b).length > 0 || passes(b, n).length > 0);
+
+/** A good handed next door, for the view to show it crossing over. Kept for a moment, not saved. */
+export interface Handoff { from: number; to: number; item: ItemId; time: number }
+const handoffs = new WeakMap<GameState, Handoff[]>();
+/** How long a handoff stays in the list (seconds of play). */
+export const HANDOFF_SECONDS = 0.8;
+export const recentHandoffs = (s: GameState): readonly Handoff[] => handoffs.get(s) ?? [];
+
+/**
+ * Each building that takes goods takes, each step, up to one of each good it takes from the buildings next door that have
+ * it waiting (from whichever has the most). This runs before trucks load, so a neighbour comes first.
+ */
+function feedNeighbours(s: GameState) {
+  let list = handoffs.get(s);
+  if (!list) { list = []; handoffs.set(s, list); }
+  let old = 0;
+  while (old < list.length && (list[old].time < s.time - HANDOFF_SECONDS || list[old].time > s.time)) old++;
+  if (old) list.splice(0, old);
+  for (const c of s.buildings) {
+    if (!consumer(c)) continue;
+    const near = neighboursOf(s, c).filter(producer);
+    if (!near.length) continue;
+    for (const item of takesNow(c)) {
+      let best: Building | null = null, most = 0;
+      for (const p of near) { const n = waiting(p, item); if (n > most) { most = n; best = p; } }
+      if (best && accept(s, c, item)) { take(best, item); list.push({ from: best.id, to: c.id, item, time: s.time }); }
+    }
+  }
 }
 
 // ---- Buildings ----
@@ -585,12 +684,13 @@ function countCharging(s: GameState) {
 }
 
 /**
- * Whether trucks can't reach a building that needs them: no open tile beside it, or (a stop) the garage of a truck on one of
- * its routes has no way there.
+ * Whether trucks can't reach a building that needs them: no open tile beside it (unless it trades only with the buildings
+ * next door), or (a stop) the garage of a truck on one of its routes has no way there.
  */
 export function cutOff(s: GameState, b: Building): boolean {
   if (!isStop(b) && b.type !== 'garage') return false;
-  if (!accessTiles(s, b).length) return true;
+  // Walled in, it needs no trucks if no route stops there and it trades with the buildings next door instead.
+  if (!accessTiles(s, b).length) return b.type === 'garage' || routesAt(s, b).length > 0 || !tradesNextDoor(s, b);
   return routesAt(s, b).some((r) => trucksOn(s, r).some((t) => { const g = garageOf(s, t); return !!g && legLength(s, g, b) === Infinity; }));
 }
 
@@ -613,8 +713,9 @@ function blockedGood(b: Building): ItemId | null {
   return r ? outputsFit(b, r)?.item ?? null : null;
 }
 
-/** Whether some route with trucks picks `item` up at a building (or drops it there). */
+/** Whether a building next door takes `item` from it (or gives it), or some route with trucks picks it up there (or drops it). */
 function served(s: GameState, b: Building, item: ItemId, how: 'pick' | 'drop') {
+  if (neighboursOf(s, b).some((n) => (how === 'pick' ? passes(b, n) : passes(n, b)).includes(item))) return true;
   return s.routes.some((r) => r.stops.some((st) => st.building === b.id && st[how].includes(item)) && s.trucks.some((t) => t.route === r.id));
 }
 
@@ -731,6 +832,7 @@ export function tick(s: GameState) {
     s.map.terrain[tileIndex(s, b.x, b.y)] = TERRAIN.tree;
   }
   if (grown.length) touchLayout(s);
+  feedNeighbours(s);
   runTrucks(s, dt);
   runGarages(s);
   // A building trucks can't reach, or whose outputs are full with no route picking them up, says so (unless it lacks power
@@ -828,14 +930,14 @@ export function describeStatus(s: GameState, b: Building): string {
     case 'input': {
       const r = recipeOf(b), lack = r ? missing(b, r) : null;
       const brought = !lack || members(lack).some((i) => served(s, b, i, 'drop'));
-      return `Waiting for ${b.need ?? 'goods'}${brought ? '' : ': no route brings it'}`;
+      return `Waiting for ${b.need ?? 'goods'}${brought ? '' : ': no route or building next door brings it'}`;
     }
     case 'blocked': return `Output blocked: nowhere for ${b.need ?? 'its goods'} to go`;
     case 'power': return networkOf(s, b) ? `No power: the network is out of power${b.type === 'garage' ? ', so its trucks can\'t charge' : ''}` : 'No power: not in reach of a pylon';
     case 'lowpower': return `Low power: ${b.type === 'garage' ? 'trucks charging' : 'running'} at ${Math.round(shareOf(s, b) * 100)}%`;
     case 'nolink': return 'Not connected: no pylon in reach';
     case 'noroad': return 'No road: trucks can\'t reach it. Leave an open tile beside it, and a way there from the garage';
-    case 'noroute': return `Full of ${b.need}: no route with trucks picks it up`;
+    case 'noroute': return `Full of ${b.need}: no route with trucks or building next door takes it`;
     case 'flowers': return 'No flowering fields within 4 tiles';
     case 'idle':
       if (b.type === 'solar') return 'Night: no sun';

@@ -4,8 +4,8 @@ import { BUILDINGS, CROPS, HIVE, POWER, type BuildingId, type ItemId } from '../
 import { TERRAIN } from '../game/map.ts';
 import { networks } from '../game/power.ts';
 import { isOpen } from '../game/roads.ts';
-import { cutOff, windAt } from '../game/sim.ts';
-import { layoutOf, sizeOf, type Building, type Dir, type GameState, type Truck } from '../game/state.ts';
+import { cutOff, HANDOFF_SECONDS, recentHandoffs, windAt } from '../game/sim.ts';
+import { buildingById, layoutOf, sizeOf, type Building, type Dir, type GameState, type Truck } from '../game/state.ts';
 import { hash } from './kit.ts';
 import type { Models } from './models.ts';
 import { soilBand, TRUCK_BED } from './shapes.ts';
@@ -168,17 +168,31 @@ export class WorldView {
       });
     }
     for (const [id, o] of this.trucks) if (!alive.has(id)) { this.drop(o); this.trucks.delete(id); }
+    this.syncHandoffs(s);
     for (const p of this.pools.values()) for (let i = p.used; i < p.objs.length; i++) p.objs[i].visible = false;
   }
 
-  /** A good from the pool of objects for its kind; picking it picks `owner` (the truck carrying it). */
-  private putGood(item: ItemId, x: number, y: number, z: number, yaw: number, scale: number, owner: number) {
+  /** Goods handed to a building next door, each hopping over the edge the two share. */
+  private syncHandoffs(s: GameState) {
+    for (const hd of recentHandoffs(s)) {
+      const a = buildingById(s, hd.from), b = buildingById(s, hd.to);
+      if (!a || !b) continue;
+      const k = Math.min(1, Math.max(0, (s.time - hd.time) / HANDOFF_SECONDS));
+      const ex = edge(a.x, sizeOf(a), b.x, sizeOf(b)), ez = edge(a.y, sizeOf(a), b.y, sizeOf(b));
+      // From half a tile inside the giver to half a tile inside the taker, in an arc.
+      const x = ex.at + ex.dir * (k - 0.5), z = ez.at + ez.dir * (k - 0.5);
+      this.putGood(hd.item, x, 0.35 + Math.sin(Math.PI * k) * 0.5, z, 0, 0.6, null);
+    }
+  }
+
+  /** A good from the pool of objects for its kind; picking it picks `owner` (the truck carrying it), if any. */
+  private putGood(item: ItemId, x: number, y: number, z: number, yaw: number, scale: number, owner: number | null) {
     let p = this.pools.get(item);
     if (!p) { p = { objs: [], used: 0 }; this.pools.set(item, p); }
     let o = p.objs[p.used];
     if (!o) { o = this.add(this.m.items[item], null); o.castShadow = false; p.objs.push(o); }
     p.used++;
-    this.targets.set(o, owner);
+    if (owner === null) this.targets.delete(o); else this.targets.set(o, owner);
     o.visible = true;
     o.setTransform(v.set(x, y, z), e.set(0, yaw, 0), scale);
   }
@@ -285,6 +299,16 @@ export class WorldView {
       this.overlayObjs.push(o);
     }
   }
+}
+
+/**
+ * Where two footprints meet along one axis (a from `a0`, b from `b0`, `na` and `nb` tiles long): the line between them and
+ * which way it is crossed from a to b, or the middle of their overlap (not crossed) when they lie side by side on it.
+ */
+function edge(a0: number, na: number, b0: number, nb: number): { at: number; dir: number } {
+  if (a0 + na <= b0) return { at: b0, dir: 1 };
+  if (b0 + nb <= a0) return { at: a0, dir: -1 };
+  return { at: (Math.max(a0, b0) + Math.min(a0 + na, b0 + nb)) / 2, dir: 0 };
 }
 
 /** Is it doing its thing (to show its running look)? */

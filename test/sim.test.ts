@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  addStop, buyTruck, canPlace, deleteRoute, moveStop, newRoute, place, remove, removeAt, removeStop, sellTruck, setCrop, setRecipe,
+  addStop, buyTruck, canPlace, copyRoute, deleteRoute, dumpCargo, moveStop, newRoute, place, remove, removeAt, removeStop, renameRoute, ROUTE_NAME_MAX,
+  sellTruck, setCrop, setRecipe,
   setStopGood, setStopWait, setTruckRoute, truckPrice,
 } from '../src/game/build.ts';
 import { BUILDINGS, DAY_SECONDS, ITEMS, POWER, SILO, START_HOUR, TRUCK, type ItemId } from '../src/game/data.ts';
@@ -11,7 +12,8 @@ import { deserialize, readProgress, recordResult, serialize } from '../src/game/
 import { CAMPAIGN, randomScenario, SANDBOX, scenarioById, type Scenario } from '../src/game/scenarios.ts';
 import { accessTiles, distanceTo, isOpen, pathTo } from '../src/game/roads.ts';
 import {
-  advance, deliver, describeStatus, exposureOf, fieldFertility, goalDone, hourAt, medalFor, ratePerMin, routeRate, soilHealth, stopProblems,
+  advance, deliver, describeLinks, describeStatus, exposureOf, linksAt, fieldFertility, goalDone, hourAt, linksOf, medalFor, passes, ratePerMin, routeRate, soilHealth, stopProblems,
+  tradesNextDoor,
   sunAt, truckProblems, windAt,
 } from '../src/game/sim.ts';
 import { buildingAt, newGame, type Building, type Dir, type GameState, type Route, type Truck } from '../src/game/state.ts';
@@ -383,7 +385,7 @@ test('a building whose outputs are full with no route picking them up says so; s
   assert.match(describeStatus(s, mill), /Full of bran: no route/);
   assert.ok(setStopGood(r, 0, 'bran', 'pick').ok);
   until(s, () => mill.status === 'input', 60);
-  assert.match(describeStatus(s, mill), /Waiting for wheat: no route brings it/);
+  assert.match(describeStatus(s, mill), /Waiting for wheat: no route or building next door brings it/);
   assert.ok(setStopGood(r, 0, 'wheat', 'drop').ok);
   assert.doesNotMatch(describeStatus(s, mill), /no route/);
 });
@@ -790,4 +792,82 @@ test('with room for one good a visit, a truck still takes each of a stop\'s good
   t.cargo = ['egg', 'egg', 'egg', 'egg', 'egg'];   // never dropped: one free slot
   route(s, [t], [silo, { pick: ['flour', 'bran'], drop: [] }], [other, { drop: ['flour', 'bran'], wait: 0 }]);
   until(s, () => (other.store!.flour ?? 0) >= 2 && (other.store!.bran ?? 0) >= 2, 200);
+});
+
+test('a mill beside wheat fields takes their wheat without a truck; touching corners is not beside', () => {
+  const s = flat();
+  powerAt(s, 8, 5);
+  const mill = put(s, 'mill', 5, 5);
+  const west = put(s, 'field', 2, 4), south = put(s, 'field', 5, 7), corner = put(s, 'field', 7, 2);
+  for (const f of [west, south, corner]) { f.stored = 6; f.harvest = 'wheat'; }
+  assert.deepEqual(linksOf(s, mill).from.map((l) => l.b).sort((a, b) => a.id - b.id), [west, south]);
+  assert.deepEqual(passes(west, mill), ['wheat']);
+  assert.deepEqual(passes(mill, west), [], 'a field takes only compost');
+  until(s, () => (s.made.flour ?? 0) >= 3, 60);
+  assert.equal(corner.stored, 6, 'a field touching only at a corner keeps its wheat');
+  assert.ok(west.stored! < 6 && south.stored! < 6, 'both fields next door give');
+});
+
+test('byproducts go next door too: a coop beside a mill eats its bran, and a composter beside a coop and a field feeds the field', () => {
+  const s = flat();
+  powerAt(s, 5, 8);
+  const mill = put(s, 'mill', 5, 5), coop = put(s, 'coop', 7, 5), comp = put(s, 'composter', 10, 5), f = put(s, 'field', 12, 5);
+  mill.inputs = { wheat: 6 }; coop.inputs = { beans: 2 };
+  until(s, () => (s.made.egg ?? 0) >= 4, 60);
+  assert.equal(mill.outputs!.bran ?? 0, 0, 'the coop took the bran');
+  s.map.fertility.fill(40);
+  until(s, () => (s.made.compost ?? 0) >= 1 && f.compost === 0, 120);
+  assert.ok(fieldFertility(s, f) > 40, 'the field used the compost from next door');
+  assert.equal(comp.outputs!.compost ?? 0, 0);
+});
+
+test('silos and the depot trade only with trucks; a walled-in building fed from next door needs no road', () => {
+  const s = flat();
+  powerAt(s, 1, 1);
+  const silo = put(s, 'silo', 5, 9), f = put(s, 'field', 7, 9);
+  f.stored = 6; f.harvest = 'wheat';
+  advance(s, 1);
+  assert.deepEqual(silo.store, {});
+  assert.equal(f.stored, 6);
+  // A mill boxed in by fields on every side: no truck can reach it, but it needs none.
+  const mill = put(s, 'mill', 16, 16);
+  for (const [x, y] of [[14, 13], [17, 13], [18, 16], [15, 18]] as const) put(s, 'field', x, y);
+  put(s, 'pylon', 15, 16); put(s, 'pylon', 15, 17);
+  advance(s, 0.2);
+  assert.equal(accessTiles(s, mill).length, 0);
+  assert.notEqual(mill.status, 'noroad');
+  assert.ok(tradesNextDoor(s, mill));
+});
+
+test('placing a building shows who it would trade with next door', () => {
+  const s = flat();
+  put(s, 'field', 2, 4); put(s, 'field', 5, 7);
+  put(s, 'coop', 7, 4);
+  assert.deepEqual(describeLinks(linksAt(s, 'mill', 5, 5)), ['Takes wheat from 2 fields', 'Gives bran to the coop']);
+  assert.deepEqual(describeLinks(linksAt(s, 'silo', 5, 5)), [], 'a silo trades only with trucks');
+});
+
+test('routes can be renamed and copied; a truck can dump its cargo', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const f = put(s, 'field', 8, 18);
+  const r = route(s, [t], f, depotOf(s));
+  assert.ok(renameRoute(r, '  Wheat   to market ').ok);
+  assert.equal(r.name, 'Wheat to market');
+  assert.equal(renameRoute(r, '   ').ok, false);
+  assert.equal(renameRoute(r, 'x'.repeat(40)).ok, true);
+  assert.equal(r.name.length, ROUTE_NAME_MAX);
+  renameRoute(r, 'Wheat');
+  const c = copyRoute(s, r);
+  assert.equal(c.name, 'Wheat (copy)');
+  assert.equal(copyRoute(s, r).name, 'Wheat (copy 2)');
+  assert.deepEqual(c.stops.map((st) => st.building), r.stops.map((st) => st.building));
+  c.stops[0].pick.push('beans');
+  assert.ok(!r.stops[0].pick.includes('beans'), 'the copy has its own stops');
+  assert.equal(s.trucks.filter((x) => x.route === c.id).length, 0, 'a copy has no trucks');
+  t.cargo = ['wheat', 'wheat'];
+  assert.ok(dumpCargo(t).ok);
+  assert.deepEqual(t.cargo, []);
+  assert.equal(dumpCargo(t).ok, false);
+  assert.ok(deserialize(serialize(s)), 'still saves');
 });

@@ -51,7 +51,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
     how: [
       'Build it on good soil: the hover line shows its average fertility, and the Soil overlay (V) shows the whole map.',
       'Select it and choose the crop. Wheat is the default.',
-      'Make it a stop on a route: trucks pick up the harvest. A full field stops growing. Leave an open tile beside it for trucks.',
+      'Build it beside the machine that uses its crop (a mill for wheat), and the machine takes the harvest itself. Or make it a stop on a route: trucks pick up the harvest. A full field stops growing.',
       'Put a sprinkler within 3 tiles of its centre: dry fields grow at under half speed.',
     ],
     tips: [
@@ -70,8 +70,8 @@ const ENTRIES: Record<BuildingId, Entry> = {
   coop: {
     what: 'Four chickens turn feed (beans, bran or seed cake) into eggs, with manure on the side.',
     how: [
-      'Bring it feed on a route: beans from a field, or the bran from a mill.',
-      'Trucks pick up its eggs and manure. Give the manure somewhere to go: a composter, a digester, or the depot.',
+      'Build it beside a mill (bran) or a bean field, and it takes its feed from them; or bring feed on a route.',
+      'A bakery or composter beside it takes its eggs or manure; trucks pick up the rest. Give the manure somewhere to go: a composter, a digester, or the depot.',
     ],
     tips: ['Its manure must go somewhere. A coop whose manure piles up stops laying.'],
   },
@@ -79,20 +79,20 @@ const ENTRIES: Record<BuildingId, Entry> = {
     what: 'Bees make honey from flowering fields nearby (anything but wheat), and pollinate them for a bigger harvest.',
     how: [
       'Place it within 4 tiles of flowering fields: up to 3 of them count. The Bees overlay shows its range.',
-      'Make it a stop on a route, so trucks pick up the honey.',
+      'Build it beside a bakery making honey cake, or make it a stop on a route, so trucks pick up the honey.',
     ],
   },
   composter: {
     what: 'Turns waste (manure, bran, seed cake) into compost, which brings tired soil back.',
     how: [
-      'Bring it manure, bran or seed cake on a route.',
-      'Take its compost to fields on a route: they keep it and use it when their soil drops.',
+      'Build it beside a coop or mill, or bring it manure, bran or seed cake on a route.',
+      'A field beside it takes its compost. Take the rest to fields on a route: they keep it and use it when their soil drops.',
     ],
   },
   mill: {
     what: 'Grinds wheat into flour, with bran as a byproduct.',
     how: [
-      'Make it a stop on a route: trucks bring it wheat and take its flour and bran.',
+      'Build it beside wheat fields and it takes their wheat; a bakery, coop or digester beside it takes its flour or bran. Or make it a stop on a route: trucks bring it wheat and take its flour and bran.',
       'Give the bran somewhere to go (a coop, a composter, a digester, or the depot), or the mill stops.',
       'Put it within a pylon\'s reach.',
     ],
@@ -135,7 +135,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
   },
   digester: {
     what: 'Burns waste (manure, bran or seed cake) for steady power, day and night.',
-    how: ['Bring it manure, bran or seed cake on a route.', 'Place it within a pylon\'s reach.'],
+    how: ['Build it beside a coop or a mill, or bring it manure, bran or seed cake on a route.', 'Place it within a pylon\'s reach.'],
     tips: ['A good home for byproducts you have no other use for.'],
   },
   pylon: {
@@ -340,7 +340,7 @@ export function guidePanel(start: GuidePage, host: GuideHost, close: () => void)
         h('table', { class: 'kvt' }, ...([
           ['Click / drag', 'build (a drag places a row), or select a building'], ['R, Shift+R', 'turn what you are placing'], ['X', 'remove (full refund)'],
           ['Esc', 'drop what is in hand, deselect, close panels'], ['Right click', 'drop what is in hand, deselect'], ['Drag, right-drag, arrows', 'pan'], ['Wheel, trackpad pinch, + −, Z', 'zoom'],
-          ['Q, E', 'turn the view'], ['Space, 1, 2, 3', 'pause, speed'], ['V', 'overlays'], ['Tab', 'production stats'], ['G', 'this guide'],
+          ['Q, E', 'turn the view'], ['Space, 1, 2, 3', 'pause, speed'], ['V', 'overlays'], ['O', 'every route, to rename and edit'], ['Tab', 'production stats'], ['G', 'this guide'],
         ] as const).map(([k, v]) => h('tr', null, h('td', null, k), h('td', null, v)))),
       ];
       case 'trucks': return [
@@ -352,7 +352,12 @@ export function guidePanel(start: GuidePage, host: GuideHost, close: () => void)
           h('li', null, 'Make one: select a garage or a truck, choose "New route", then click buildings on the map, in order. Esc when done.'),
           h('li', null, 'A new stop picks up everything the building makes and drops everything it takes: a field, then a mill, then the ', bLink('depot'), ' is a whole route. A silo stop drops everything; choose what to take from it.'),
           h('li', null, `At a stop a truck drops first, then picks up into the room left. It leaves when it has nothing more to do, or after waiting ${TRUCK.wait} s (you can change it) for room or goods.`),
-          h('li', null, 'More trucks make a route faster. Two routes picking up the same good share it by how often their trucks come.')),
+          h('li', null, 'More trucks make a route faster. Two routes picking up the same good share it by how often their trucks come.'),
+          h('li', null, B('O'), ' opens every route in a list: click a name to rename it, + and − to add or send home trucks, ⧉ to copy a route, and point at one to see it on the map.'),
+          h('li', null, 'A truck stuck with goods no stop takes can dump its cargo (in its inspector, or the route\'s): the goods are lost.')),
+        h('h3', null, 'Next door'),
+        P('Buildings that share an edge trade without trucks: a machine takes what it uses from the buildings next door, a field takes compost. A ', bLink('mill'), ' between wheat fields grinds their wheat, a ', bLink('coop'), ' beside the mill eats its bran, a ', bLink('bakery'), ' beside both bakes their flour and eggs. Touching only at a corner doesn\'t count; ', bLink('silo'), 's and the ', bLink('depot'), ' trade only with trucks.'),
+        P('A building takes from its neighbours before trucks load there, from whichever has the most. Selecting a building tints the neighbours it trades with, and placing one says who it would. Packed buildings leave trucks fewer open tiles, so keep a way in for the goods that still go by truck.'),
         h('h3', null, 'Roads'),
         P('Trucks drive on any open grass, the shortest way, and pass through each other. To load, a truck parks on an open tile next to the building: a building with none can\'t be reached (a purple marker). The Roads overlay (V) shows the open ground.'),
         P('A building loads one truck at a time (the depot two); the others queue beside it. A queue is a bottleneck: split the route, or put a silo between.'),

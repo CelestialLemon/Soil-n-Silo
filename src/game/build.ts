@@ -141,6 +141,36 @@ export function setTruckRoute(s: GameState, t: Truck, route: Route | null): Resu
   return ok(route ? `The truck now runs ${route.name}.` : 'The truck drives home and waits there.');
 }
 
+/** Throws away the goods a truck carries (they are lost), so it has room again. */
+export function dumpCargo(t: Truck): Result {
+  if (!t.cargo.length) return no('The truck is empty.');
+  const n = t.cargo.length;
+  t.cargo = [];
+  return ok(`Dumped ${n} good${n > 1 ? 's' : ''}.`);
+}
+
+/** The longest a route's name can be. */
+export const ROUTE_NAME_MAX = 24;
+
+/** Renames a route (trimmed, at most ROUTE_NAME_MAX characters, not empty). */
+export function renameRoute(r: Route, name: string): Result {
+  const n = name.replace(/\s+/g, ' ').trim().slice(0, ROUTE_NAME_MAX);
+  if (!n) return no('A route needs a name.');
+  if (n === r.name) return no('');
+  r.name = n;
+  return ok(`Renamed the route to ${n}.`);
+}
+
+/** A copy of a route's stops under a new name, with no trucks yet. */
+export function copyRoute(s: GameState, r: Route): Route {
+  const base = `${r.name.slice(0, ROUTE_NAME_MAX - 7)} (copy)`;
+  let name = base;
+  for (let k = 2; s.routes.some((x) => x.name === name); k++) name = `${r.name.slice(0, ROUTE_NAME_MAX - 9)} (copy ${k})`;
+  const c: Route = { id: s.nextId++, name: name.slice(0, ROUTE_NAME_MAX), stops: r.stops.map((st) => ({ ...st, drop: [...st.drop], pick: [...st.pick], turn: 0 })), moved: [] };
+  s.routes.push(c);
+  return c;
+}
+
 /** A new route with no stops, named after the first free number. */
 export function newRoute(s: GameState): Route {
   let k = 1;
