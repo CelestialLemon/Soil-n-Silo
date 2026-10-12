@@ -358,24 +358,31 @@ const handoffs = new WeakMap<GameState, Handoff[]>();
 export const HANDOFF_SECONDS = 0.8;
 export const recentHandoffs = (s: GameState): readonly Handoff[] => handoffs.get(s) ?? [];
 
+/** When each building last took a good from next door, so neighbours sharing a giver take turns. Not saved. */
+const lastFed = new WeakMap<GameState, Map<number, number>>();
+
 /**
  * Each building that takes goods takes, each step, up to one of each good it takes from the buildings next door that have
- * it waiting (from whichever has the most). This runs before trucks load, so a neighbour comes first.
+ * it waiting (from whichever has the most). The one that took longest ago goes first, so two buildings sharing a slow giver
+ * take turns. This runs before trucks load, so a neighbour comes first.
  */
 function feedNeighbours(s: GameState) {
+  let fed = lastFed.get(s);
+  if (!fed) { fed = new Map(); lastFed.set(s, fed); }
   let list = handoffs.get(s);
   if (!list) { list = []; handoffs.set(s, list); }
   let old = 0;
   while (old < list.length && (list[old].time < s.time - HANDOFF_SECONDS || list[old].time > s.time)) old++;
   if (old) list.splice(0, old);
-  for (const c of s.buildings) {
-    if (!consumer(c)) continue;
+  const order = s.buildings.filter((c) => consumer(c) && neighboursOf(s, c).length > 0);
+  order.sort((a, b) => (fed.get(a.id) ?? -1) - (fed.get(b.id) ?? -1) || a.id - b.id);
+  for (const c of order) {
     const near = neighboursOf(s, c).filter(producer);
     if (!near.length) continue;
     for (const item of takesNow(c)) {
       let best: Building | null = null, most = 0;
       for (const p of near) { const n = waiting(p, item); if (n > most) { most = n; best = p; } }
-      if (best && accept(s, c, item)) { take(best, item); list.push({ from: best.id, to: c.id, item, time: s.time }); }
+      if (best && accept(s, c, item)) { take(best, item); fed.set(c.id, s.time); list.push({ from: best.id, to: c.id, item, time: s.time }); }
     }
   }
 }

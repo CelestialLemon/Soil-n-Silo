@@ -871,3 +871,18 @@ test('routes can be renamed and copied; a truck can dump its cargo', () => {
   assert.equal(dumpCargo(t).ok, false);
   assert.ok(deserialize(serialize(s)), 'still saves');
 });
+
+test('two buildings sharing a slow giver next door take turns', () => {
+  const s = flat();
+  powerAt(s, 5, 2);
+  const mill = put(s, 'mill', 5, 5), a = put(s, 'coop', 2, 5), b = put(s, 'coop', 7, 5);
+  // A trickle of wheat: the mill makes one bran at a time (its flour is cleared away).
+  until(s, () => {
+    if (!mill.inputs!.wheat && mill.progress === null) mill.inputs!.wheat = 2;
+    delete mill.outputs!.flour;
+    return (s.made.bran ?? 0) >= 4;
+  }, 200);
+  advance(s, 0.2);
+  const took = (c: Building) => (c.inputs!.bran ?? 0) + (c.outputs!.egg ?? 0) + (c.progress !== null ? 2 : 0);
+  assert.ok(took(a) > 0 && took(b) > 0, 'both coops got bran');
+});

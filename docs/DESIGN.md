@@ -247,7 +247,8 @@ route or neighbour taking them. A truck stuck with goods no stop takes can **dum
 
 **Next door.** Buildings that share an edge (touching only at a corner doesn't count) trade without trucks. Each step, every
 machine takes up to one of each good its recipe uses from the buildings next door that have it waiting, from whichever has
-the most, and a field takes compost the same way. Fields, hives and machines give (a harvest, honey, a machine's outputs);
+the most, and a field takes compost the same way. Buildings sharing a giver take turns: the one that took a good longest
+ago goes first, so two coops beside one mill both get its bran. Fields, hives and machines give (a harvest, honey, a machine's outputs);
 machines and fields take. Silos and the depot don't trade next door: storing and selling stay the trucks' job, so a farm
 still needs trucks for the long hops and the last one. Next door comes first: it runs before trucks load, so a mill beside
 a field gets its wheat before a truck that stops there. A walled-in building needs no road when no route stops there and it
