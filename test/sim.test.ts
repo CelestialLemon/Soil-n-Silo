@@ -764,3 +764,16 @@ test('a stop the trucks\' garage can\'t reach is flagged, and a save with a stop
   json.routes[0].stops[0].building = g.id;
   assert.equal(deserialize(JSON.stringify(json)), null);
 });
+
+test('a stop its trucks\' garage can\'t reach says so, though it has open tiles beside it', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const silo = put(s, 'silo', 20, 10);
+  for (let x = 18; x <= 23; x++) for (const y of [8, 13]) put(s, 'pylon', x, y);
+  for (let y = 9; y <= 12; y++) for (const x of [18, 23]) put(s, 'pylon', x, y);
+  advance(s, 0.2);
+  assert.equal(silo.status, 'idle', 'no route yet: nothing needs to reach it');
+  route(s, [t], silo);
+  advance(s, 0.2);
+  assert.equal(silo.status, 'noroad');
+});

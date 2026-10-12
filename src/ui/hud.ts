@@ -550,6 +550,14 @@ export class Hud {
     const done = () => { this.host.setTool({ kind: 'select' }); this.refresh(); };
     const trucks = trucksOn(s, r), rate = h('b');
     lines.push(() => set(rate, `${routeRate(s, r).toFixed(1)} goods a minute`));
+    // What its trucks can't do (cargo no stop takes, no way home), as it changes.
+    const truckWarnings = h('div');
+    lines.push(() => {
+      const ps = [...new Set(trucks.flatMap((t, k) => truckProblems(s, t).map((p) => `Truck ${k + 1}: ${p}`)))];
+      if (truckWarnings.dataset.key === ps.join('|')) return;
+      truckWarnings.dataset.key = ps.join('|');
+      truckWarnings.replaceChildren(...ps.map((p) => h('p', { class: 'hint warn-hint' }, p)));
+    });
     const problems = stopProblems(s, r);
     // The goods this route moves anywhere but a silo or the depot, which take and give anything: those are the choices
     // at a silo or the depot (with every good a button away).
@@ -600,6 +608,7 @@ export class Hud {
         h('b', null, ` ${trucks.length} `),
         button('+', () => this.did(this.addTruck(s, r)), { cls: 'small', title: 'Add a truck: one with no route, else a new one' }))),
       h('div', { class: 'kv' }, h('span', null, 'Moved'), rate),
+      truckWarnings,
       ...(stops.length ? stops : [h('p', { class: 'hint' }, 'No stops yet.')]),
       h('div', { class: 'actions' },
         button('Delete route', () => { this.did(deleteRoute(s, r)); done(); }, { cls: 'danger' }),

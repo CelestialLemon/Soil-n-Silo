@@ -3,8 +3,8 @@ import type { PixelObject, PixelRenderer } from 'pixel3d-renderer';
 import { BUILDINGS, CROPS, HIVE, POWER, type BuildingId, type ItemId } from '../game/data.ts';
 import { TERRAIN } from '../game/map.ts';
 import { networks } from '../game/power.ts';
-import { accessTiles, isOpen } from '../game/roads.ts';
-import { isStop, windAt } from '../game/sim.ts';
+import { isOpen } from '../game/roads.ts';
+import { cutOff, windAt } from '../game/sim.ts';
 import { layoutOf, sizeOf, type Building, type Dir, type GameState, type Truck } from '../game/state.ts';
 import { hash } from './kit.ts';
 import type { Models } from './models.ts';
@@ -235,7 +235,7 @@ export class WorldView {
    */
   overlay(s: GameState, kind: Overlay) {
     if (kind === 'power') kind = 'none';
-    const key = kind === 'none' ? 'none' : `${kind} ${kind === 'fertility' ? s.map.fertility.map((f) => Math.floor(f / 17)).join('') : ''} ${s.buildings.length} ${networks(s).layout} ${layoutOf(s)}`;
+    const key = kind === 'none' ? 'none' : `${kind} ${kind === 'fertility' ? s.map.fertility.map((f) => Math.floor(f / 17)).join('') : ''} ${s.buildings.length} ${networks(s).layout} ${layoutOf(s)}${kind === 'roads' ? ` ${s.buildings.filter((b) => cutOff(s, b)).map((b) => b.id).join(',')}` : ''}`;
     if (key === this.overlayKey) return;
     this.overlayKey = key;
     for (const o of this.overlayObjs) o.remove();
@@ -265,7 +265,7 @@ export class WorldView {
         this.overlayObjs.push(o);
       }
       for (const b of s.buildings) {
-        if ((!isStop(b) && b.type !== 'garage') || accessTiles(s, b).length) continue;
+        if (!cutOff(s, b)) continue;
         for (let y = b.y; y < b.y + sizeOf(b); y++) for (let x = b.x; x < b.x + sizeOf(b); x++) {
           const o = this.tile(CUT_OFF);
           o.setTransform(v.set(x + 0.5, 0.05, y + 0.5));

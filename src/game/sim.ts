@@ -583,6 +583,16 @@ function countCharging(s: GameState) {
   charging.set(s, m);
 }
 
+/**
+ * Whether trucks can't reach a building that needs them: no open tile beside it, or (a stop) the garage of a truck on one of
+ * its routes has no way there.
+ */
+export function cutOff(s: GameState, b: Building): boolean {
+  if (!isStop(b) && b.type !== 'garage') return false;
+  if (!accessTiles(s, b).length) return true;
+  return routesAt(s, b).some((r) => trucksOn(s, r).some((t) => { const g = garageOf(s, t); return !!g && legLength(s, g, b) === Infinity; }));
+}
+
 /** A garage's status: charging its trucks, short of power for them, or idle. */
 function runGarages(s: GameState) {
   const want = charging.get(s);
@@ -726,7 +736,7 @@ export function tick(s: GameState) {
   // or water, which say more).
   for (const b of s.buildings) {
     if (!['input', 'blocked', 'ok', 'idle'].includes(b.status) || b.type === 'depot') continue;
-    if ((isStop(b) || b.type === 'garage') && !accessTiles(s, b).length) { b.status = 'noroad'; continue; }
+    if (cutOff(s, b)) { b.status = 'noroad'; continue; }
     const g = b.status === 'blocked' ? blockedGood(b) : null;
     if (g && !served(s, b, g, 'pick')) { b.status = 'noroute'; b.need = ITEMS[g].name.toLowerCase(); }
   }
@@ -823,7 +833,7 @@ export function describeStatus(s: GameState, b: Building): string {
     case 'power': return networkOf(s, b) ? `No power: the network is out of power${b.type === 'garage' ? ', so its trucks can\'t charge' : ''}` : 'No power: not in reach of a pylon';
     case 'lowpower': return `Low power: ${b.type === 'garage' ? 'trucks charging' : 'running'} at ${Math.round(shareOf(s, b) * 100)}%`;
     case 'nolink': return 'Not connected: no pylon in reach';
-    case 'noroad': return 'No road: trucks can\'t reach it. Leave an open tile beside it';
+    case 'noroad': return 'No road: trucks can\'t reach it. Leave an open tile beside it, and a way there from the garage';
     case 'noroute': return `Full of ${b.need}: no route with trucks picks it up`;
     case 'flowers': return 'No flowering fields within 4 tiles';
     case 'idle':
