@@ -53,7 +53,7 @@ It is build-only and point-and-click. There is no character and no manual farmin
 | Build bar (bottom) or hotkeys (F field, L silo, T garage, P pylon, S solar) | Pick a building to place |
 | Click / drag | Place it; a drag places a row (pylons: a power line, spaced so their reaches meet) |
 | R | Turn what you're placing (for looks) |
-| Click a building with nothing in hand | Select it: the inspector shows its status, buffers and settings |
+| Click a building with nothing in hand | Select it: the inspector shows its status, buffers, settings and history |
 | A garage's inspector | Buy a truck; give each of its trucks a route, or none |
 | O, or the Routes button | The routes panel: every route with its stops, goods, trucks, goods a minute and problems. Click a name to rename it; + and − add or send home trucks; ⧉ copies a route; point at one to draw it on the map; click it to edit |
 | A route's editor (from a truck, a building, or the routes panel) | Rename it; add a stop by clicking a building; set what it drops and picks up and its wait; reorder or remove stops; add or take away trucks; see what each truck is doing, and dump its cargo; copy or delete the route |
@@ -82,6 +82,12 @@ The build preview is see-through, green where it fits and red where it doesn't.
   neighbours it trades with, and its inspector lists them ("Takes wheat from 2 fields", "Gives bran to the coop"); a
   building in hand tints the ones it would trade with, and the hover line says so.
 - The roads overlay shows the open ground trucks can drive on, and the buildings they can't reach.
+- The inspector keeps each building's history over the last 1, 5 or 10 minutes of play (5 by default, the choice kept from
+  building to building), so a problem noticed late can be traced: a strip of its statuses in time (problems hatched, so they
+  don't rely on colour), pointing at it says what happened then and for how long, and below it the share of the time in each
+  status ("Waiting for wheat 27%", "Low power (got 60%)") and the goods it made a minute, against full speed for machines.
+  Solar panels and turbines chart the watts they made and batteries their charge instead. Pylons, silos, the depot and
+  saplings have none. The history lives in memory, not in the save: after a reload it fills again.
 - The guide (G) has a page for every building; hovering a build button, or "?" in the inspector, leads to it.
 - Soil colour shows fertility under fields. Overlays show fertility everywhere, power coverage and roads.
 - Power stays in the background until you work with it: pylons are short, quiet posts and nothing else is drawn. The power
@@ -96,6 +102,8 @@ The build preview is see-through, green where it fits and red where it doesn't.
 ![A selected pylon's reach, link range and network; a drag laying a line of pylons](images/power-network.png)
 
 ![The guide's page for the mill](images/guide.png)
+
+![A bakery's history over 5 minutes, pointing at the strip; a wind turbine's watts](images/history-bakery.png) ![](images/history-turbine.png)
 
 ## Time
 

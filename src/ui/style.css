@@ -230,3 +230,30 @@ button:disabled { opacity: 0.45; cursor: default; }
 .route-trucks button { padding: 0 6px; }
 .route-rate { color: var(--dim); white-space: nowrap; min-width: 56px; text-align: right; }
 .route-doing { margin: 2px 0 0 !important; }
+
+/* The inspector's history: a strip of statuses (or bars of a reading) over the last few minutes. Problems are hatched, so they
+   stand apart from working time without relying on colour; the breakdown below names each. */
+.hist-head { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+.hist-head h4 { margin: 0 !important; }
+.hist-windows { display: flex; gap: 3px; }
+.hist-windows button { font-size: 11px; padding: 0 6px; }
+.hist-plot { position: relative; margin-top: 5px; background: #0005; border: 1px solid #0009; border-radius: 3px; cursor: crosshair; pointer-events: auto; }
+.hist-strip { position: relative; height: 16px; overflow: hidden; }
+.hist-bars { position: relative; height: 44px; overflow: hidden; }
+.hist-strip .seg { position: absolute; top: 0; bottom: 0; box-shadow: inset -1px 0 #0006; }
+.hist-bars .bar-col { position: absolute; bottom: 0; background: var(--honey); box-shadow: inset -1px 0 #0008; }
+.hist-bars .bar-col.none { height: 0; }
+.hist-cursor { position: absolute; top: -2px; bottom: -2px; width: 0; border-left: 2px solid var(--text); pointer-events: none; }
+.hist-axis { display: flex; justify-content: space-between; font-size: 10px; color: var(--dim); }
+.hist-readout { font-size: 12px; min-height: 16px; margin: 1px 0 3px; }
+.hist-breakdown .kv span { display: flex; align-items: center; }
+.swatch { display: inline-block; width: 12px; height: 10px; margin-right: 5px; border: 1px solid #0008; border-radius: 2px; flex: none; }
+.seg.ok, .swatch.ok { background: #7fc05a; }
+.seg.idle, .swatch.idle { background: #5f6f69; }
+.seg.input, .swatch.input, .seg.flowers, .swatch.flowers { --c: #f2d24e; }
+.seg.blocked, .swatch.blocked { --c: #e8843a; }
+.seg.noroute, .swatch.noroute, .seg.noroad, .swatch.noroad { --c: #b27ae6; }
+.seg.power, .swatch.power, .seg.nolink, .swatch.nolink { --c: #d8443a; }
+.seg.lowpower, .swatch.lowpower { --c: #f2a6c8; }
+.seg.dry, .swatch.dry { --c: #4aa6f0; }
+:is(.seg, .swatch):not(.ok, .idle) { background: repeating-linear-gradient(135deg, var(--c) 0 4px, color-mix(in srgb, var(--c) 55%, #000) 4px 6px); }

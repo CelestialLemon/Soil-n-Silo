@@ -395,6 +395,7 @@ export function guidePanel(start: GuidePage, host: GuideHost, close: () => void)
             ['yellow', 'Waiting for input (or, for a beehive, no flowering fields)'], ['blue', 'A field without water'], ['purple', 'Trucks can\'t reach it (no open tile beside it), or its outputs are full and no route picks them up']] as const)
             .map(([c, t]) => h('tr', null, h('td', null, h('span', { class: `m ${c}` }, '◆'), ` ${c}`), h('td', null, t)))),
         P('Hover any building for a one-line status at the bottom of the screen.'),
+        P('Missed what went wrong? A building\'s inspector has its history: a strip of what it was doing over the last 1, 5 or 10 minutes (problems are hatched), the share of the time it spent on each, and the goods it made a minute (for machines, against their full speed). Point at the strip to see what happened when. Solar panels, turbines and batteries chart their power or charge instead.'),
       ];
     }
   }

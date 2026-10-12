@@ -2,6 +2,7 @@ import {
   bays, BUILDINGS, CROPS, DAY_SECONDS, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, ITEMS, OUTPUT_BATCHES, POWER, recipeById,
   recipesFor, SAPLING_SECONDS, SILO, START_HOUR, TICK, TREE_HEALTH, TRUCK, type BuildingId, type Ingredient, type ItemId, type Recipe,
 } from './data.ts';
+import { hasHistory, noteMade, noteStep, pruneHistory } from './history.ts';
 import { TERRAIN } from './map.ts';
 import { networkOf, networks } from './power.ts';
 import { accessTiles, distanceTo, isOpen, legLength, nearestOpen, pathTo } from './roads.ts';
@@ -204,8 +205,9 @@ export function deliver(s: GameState, item: ItemId) {
   (s.stats.delivered[item] ??= []).push(s.time);
 }
 
-function made(s: GameState, item: ItemId, n: number) {
+function made(s: GameState, b: Building, item: ItemId, n: number) {
   s.made[item] = (s.made[item] ?? 0) + n;
+  noteMade(s, b, item, n, TICK);
   const bucket = s.stats.made[0];
   bucket[item] = (bucket[item] ?? 0) + n;
 }
@@ -407,7 +409,7 @@ function runMachine(s: GameState, b: Building, dt: number) {
   b.status = pace <= 0 ? 'power' : pace < 1 ? 'lowpower' : 'ok';
   b.need = undefined;
   if (b.progress! >= r.time) {
-    for (const o of r.outputs) { b.outputs![o.item] = (b.outputs![o.item] ?? 0) + o.n; made(s, o.item, o.n); }
+    for (const o of r.outputs) { b.outputs![o.item] = (b.outputs![o.item] ?? 0) + o.n; made(s, b, o.item, o.n); }
     b.progress = null;
   }
 }
@@ -427,7 +429,7 @@ function runField(s: GameState, f: Building, dt: number) {
     f.growth = 0;
     f.stored! += crop.yield + bonus;
     f.harvest = f.crop;
-    made(s, f.crop!, crop.yield + bonus);
+    made(s, f, f.crop!, crop.yield + bonus);
     changeSoil(s, f, crop.soil);
   }
 }
@@ -443,7 +445,7 @@ function runHive(s: GameState, h: Building, dt: number) {
   if (h.stored! >= HIVE.store) { h.status = 'blocked'; h.need = 'honey'; return; }
   h.growth! += dt * flowers / HIVE.honeySeconds;
   h.status = 'ok';
-  if (h.growth! >= 1) { h.growth = 0; h.stored!++; made(s, 'honey', 1); }
+  if (h.growth! >= 1) { h.growth = 0; h.stored!++; made(s, h, 'honey', 1); }
 }
 
 // ---- Trucks ----
@@ -850,10 +852,21 @@ export function tick(s: GameState) {
     const g = b.status === 'blocked' ? blockedGood(b) : null;
     if (g && !served(s, b, g, 'pick')) { b.status = 'noroute'; b.need = ITEMS[g].name.toLowerCase(); }
   }
+  recordHistory(s, sun, wind, dt);
   // Once a second, ground without a field recovers a little.
   if (Math.floor(s.time + 1e-6) !== Math.floor(s.time - dt + 1e-6)) rest(s);
   updateStats(s);
   updateGoals(s);
+}
+
+/** Each building's step for its history: its status, and a reading where one tells more (a generator's watts, a battery's charge). */
+function recordHistory(s: GameState, sun: number, wind: number, dt: number) {
+  for (const b of s.buildings) {
+    if (!hasHistory(b)) continue;
+    const value = b.type === 'solar' || b.type === 'turbine' ? (networkOf(s, b) ? makes(s, b, sun, wind) : 0) : b.type === 'battery' ? b.charge! : null;
+    noteStep(s, b, dt, shareOf(s, b), value);
+  }
+  pruneHistory(s);
 }
 
 function rest(s: GameState) {
