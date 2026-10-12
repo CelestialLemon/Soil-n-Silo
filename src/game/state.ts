@@ -15,6 +15,8 @@ export interface Stop {
   pick: ItemId[];
   /** Seconds a truck waits for room or goods after the last good moved. */
   wait: number;
+  /** The next of its pick-up goods to take, so a mix comes out even, across every visit and truck. */
+  turn: number;
 }
 
 /** A loop of stops that trucks drive, stop 1 to the last and round again. */
@@ -49,8 +51,6 @@ export interface Truck {
   idle: number;
   /** Goods it may move now at a stop (moveRate a second, at most one in hand). */
   budget: number;
-  /** The next of the stop's pick-up goods to take, so a mix comes out even. */
-  turn: number;
   /** When it came to the queue, so trucks dock in the order they came. */
   arrived: number;
   /** Leaving its garage after charging: it goes on without checking its battery again. */

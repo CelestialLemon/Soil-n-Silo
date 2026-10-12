@@ -75,7 +75,7 @@ const int = (v: unknown) => Number.isInteger(v);
 function validRoute(r: Route): boolean {
   return !!r && num(r.id) && str(r.name) && arr(r.moved) && r.moved.every(num) && arr(r.stops) && r.stops.length <= TRUCK.maxStops
     && r.stops.every((st) => !!st && num(st.building) && items(st.drop) && items(st.pick) && !st.drop.some((i) => st.pick.includes(i))
-      && num(st.wait) && st.wait >= 0 && st.wait <= TRUCK.maxWait);
+      && num(st.wait) && st.wait >= 0 && st.wait <= TRUCK.maxWait && int(st.turn) && st.turn >= 0);
 }
 
 /** No building has more trucks docked than it has bays. */
@@ -98,7 +98,7 @@ function validTruck(s: GameState, t: Truck): boolean {
   return !!t && num(t.id) && s.buildings.some((b) => b.id === t.garage && b.type === 'garage')
     && (t.route === null || s.routes.some((r) => r.id === t.route)) && int(t.stop) && t.stop >= 0 && PHASES.includes(t.phase)
     && [t.x, t.y, t.heading, t.energy, t.idle, t.budget, t.arrived].every(num) && t.x >= 0 && t.y >= 0 && t.x <= w && t.y <= h
-    && t.energy >= 0 && t.energy <= TRUCK.battery && int(t.turn) && t.turn >= 0 && typeof t.charged === 'boolean'
+    && t.energy >= 0 && t.energy <= TRUCK.battery && typeof t.charged === 'boolean'
     && t.idle >= 0 && t.budget >= 0 && t.budget <= 2
     && arr(t.path) && t.path.every((i) => int(i) && i >= 0 && i < w * h) && (t.target === null || num(t.target))
     // Driving, queuing or docked, it is going to or at a building; queuing or docked, at a stop of its route.

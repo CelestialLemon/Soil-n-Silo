@@ -425,8 +425,8 @@ function moveOne(s: GameState, t: Truck, st: Stop, b: Building, r: Route): boole
   if (t.cargo.length >= TRUCK.cargo) return false;
   const n = st.pick.length;
   for (let k = 0; k < n; k++) {
-    const it = st.pick[(t.turn + k) % n];
-    if (waiting(b, it) > 0) { take(b, it); t.cargo.push(it); t.turn = (t.turn + k + 1) % n; return true; }
+    const it = st.pick[(st.turn + k) % n];
+    if (waiting(b, it) > 0) { take(b, it); t.cargo.push(it); st.turn = (st.turn + k + 1) % n; return true; }
   }
   return false;
 }
@@ -564,7 +564,7 @@ function runTrucks(s: GameState, dt: number) {
     q.sort((a, c) => a.arrived - c.arrived || a.id - c.id);
     for (let free = bays(b.type) - (docked.get(id) ?? 0), k = 0; free > 0 && k < q.length; free--, k++) {
       const t = q[k];
-      t.phase = 'dock'; t.budget = 0; t.idle = 0; t.turn = 0;
+      t.phase = 'dock'; t.budget = 0; t.idle = 0;
     }
   }
 }

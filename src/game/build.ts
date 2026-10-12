@@ -113,7 +113,7 @@ export function buyTruck(s: GameState, g: Building): Result & { truck?: Truck } 
   s.credits -= truckPrice(s);
   const t: Truck = {
     id: s.nextId++, garage: g.id, route: null, stop: 0, phase: 'parked', x: at % w + 0.5, y: Math.floor(at / w) + 0.5, heading: 0,
-    path: [], target: g.id, energy: TRUCK.battery, cargo: [], idle: 0, budget: 0, turn: 0, arrived: 0, charged: false,
+    path: [], target: g.id, energy: TRUCK.battery, cargo: [], idle: 0, budget: 0, arrived: 0, charged: false,
   };
   s.trucks.push(t);
   return { ...ok(accessTiles(s, g).length ? 'Bought a truck. Give it a route.' : 'Bought a truck, but trucks can\'t reach the garage: leave an open tile beside it.'), truck: t };
@@ -161,9 +161,9 @@ export function deleteRoute(s: GameState, r: Route): Result {
 
 /** What a new stop does: picks up everything the building makes and drops everything it takes; a silo only drops. */
 function defaultStop(b: Building): Stop {
-  if (b.type === 'silo' || b.type === 'depot') return { building: b.id, drop: [...ITEM_IDS], pick: [], wait: TRUCK.wait };
+  if (b.type === 'silo' || b.type === 'depot') return { building: b.id, drop: [...ITEM_IDS], pick: [], wait: TRUCK.wait, turn: 0 };
   const pick = givesGoods(b);
-  return { building: b.id, drop: takesGoods(b).filter((i) => !pick.includes(i)), pick, wait: TRUCK.wait };
+  return { building: b.id, drop: takesGoods(b).filter((i) => !pick.includes(i)), pick, wait: TRUCK.wait, turn: 0 };
 }
 
 /** Adds a building as the route's last stop. */

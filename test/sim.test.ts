@@ -178,7 +178,7 @@ test('a route takes wheat from a field to a mill, and the mill\'s flour and bran
   const mill = put(s, 'mill', 12, 20);
   powerAt(s, 14, 21);
   const r = route(s, [t], f, mill, depotOf(s));
-  assert.deepEqual(r.stops[1], { building: mill.id, drop: ['wheat'], pick: ['flour', 'bran'], wait: TRUCK.wait }, 'a stop drops what it takes and picks up what it makes');
+  assert.deepEqual(r.stops[1], { building: mill.id, drop: ['wheat'], pick: ['flour', 'bran'], wait: TRUCK.wait, turn: 0 }, 'a stop drops what it takes and picks up what it makes');
   until(s, () => (s.delivered.flour ?? 0) === 3 && (s.delivered.bran ?? 0) === 3, 200);
   assert.equal(s.made.flour, 3);
 });
@@ -780,4 +780,14 @@ test('a stop its trucks\' garage can\'t reach says so, though it has open tiles 
   route(s, [t], silo);
   advance(s, 0.2);
   assert.equal(silo.status, 'noroad');
+});
+
+test('with room for one good a visit, a truck still takes each of a stop\'s goods in turn', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const silo = put(s, 'silo', 8, 18), other = put(s, 'silo', 20, 18);
+  silo.store = { flour: 10, bran: 10 };
+  t.cargo = ['egg', 'egg', 'egg', 'egg', 'egg'];   // never dropped: one free slot
+  route(s, [t], [silo, { pick: ['flour', 'bran'], drop: [] }], [other, { drop: ['flour', 'bran'], wait: 0 }]);
+  until(s, () => (other.store!.flour ?? 0) >= 2 && (other.store!.bran ?? 0) >= 2, 200);
 });
