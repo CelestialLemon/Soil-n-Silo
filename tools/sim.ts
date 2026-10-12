@@ -5,14 +5,14 @@
 //
 // Run: npm run sim -- [commission id, default c1] [minutes to run, default 60]
 
-import { place, setAccept, setCrop, setSell } from '../src/game/build.ts';
-import { LAYOUTS, SELL } from './layouts.ts';
-import { BUILDINGS, ITEMS, type ItemId } from '../src/game/data.ts';
+import { addStop, buyTruck, newRoute, place, setCrop, setTruckRoute, truckPrice } from '../src/game/build.ts';
+import { LAYOUTS, type Step } from './layouts.ts';
+import { BUILDINGS, ITEMS } from '../src/game/data.ts';
 import { TERRAIN } from '../src/game/map.ts';
 import { networks } from '../src/game/power.ts';
 import { scenarioById } from '../src/game/scenarios.ts';
 import { advance, goalDone, medalFor, soilHealth } from '../src/game/sim.ts';
-import { newGame, type GameState } from '../src/game/state.ts';
+import { newGame, type Building, type GameState, type Route } from '../src/game/state.ts';
 
 const id = process.argv[2] ?? 'c1';
 const minutes = Number(process.argv[3] ?? 60);
@@ -31,25 +31,64 @@ s.initialTrees = 0;
 s.map.depot.x = Math.floor(s.map.width / 2);
 s.buildings[0].x = s.map.depot.x;
 const steps = layout(s.map.depot.x, s.map.depot.y);
-for (const [item, mode] of Object.entries(SELL[id] ?? {})) setSell(s.buildings[0], item as ItemId, mode);
 let next = 0;
 const fmt = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+const named = new Map<string, Building>([['depot', s.buildings[0]]]);
+const routes = new Map<string, Route>();
+
+/** What a step costs; a move costs nothing, but waits for its goal. */
+const cost = (st: Step) => ('type' in st ? BUILDINGS[st.type].cost : 'route' in st ? st.trucks * truckPrice(s) : 'truck' in st ? truckPrice(s) : 0);
+const ready = (st: Step) => s.credits >= cost(st) && (!('move' in st) || goalDone(s, st.goal));
+
+/** Takes a step: places a building, makes a route and buys its trucks, or adds a truck to a route. */
+function take(st: Step) {
+  if ('move' in st) {
+    for (const tr of s.trucks) if (tr.route === routes.get(st.move)!.id) setTruckRoute(s, tr, routes.get(st.to)!);
+    console.log(`${fmt(s.time)}  ${st.move}'s trucks move to ${st.to}`);
+    return;
+  }
+  if ('type' in st) {
+    const r = place(s, st.type, st.x, st.y, st.rot ?? 1);
+    if (!r.ok) { console.log(`  step ${next} ${st.type} at ${st.x},${st.y}: ${r.message}`); return; }
+    if (st.crop) setCrop(s, r.building!, st.crop);
+    if (st.as) named.set(st.as, r.building!);
+    return;
+  }
+  const garage = named.get(st.garage)!;
+  const route = 'route' in st ? newRoute(s) : routes.get(st.truck)!;
+  if ('route' in st) {
+    routes.set(st.route, route);
+    route.name = st.route;
+    for (const sp of st.stops) {
+      const b = named.get(sp.at);
+      if (!b) throw new Error(`route ${st.route}: no building named ${sp.at}`);
+      const res = addStop(s, route, b);
+      if (!res.ok) throw new Error(`route ${st.route}: ${res.message}`);
+      const stop = route.stops[route.stops.length - 1];
+      if (sp.pick) { stop.pick = sp.pick; stop.drop = stop.drop.filter((i) => !sp.pick!.includes(i)); }
+      if (sp.drop) { stop.drop = sp.drop; stop.pick = stop.pick.filter((i) => !sp.drop!.includes(i)); }
+      if (sp.wait !== undefined) stop.wait = sp.wait;
+    }
+  }
+  for (let k = 0; k < ('route' in st ? st.trucks : 1); k++) {
+    const r = buyTruck(s, garage);
+    if (!r.ok) { console.log(`  step ${next}: ${r.message}`); return; }
+    setTruckRoute(s, r.truck!, route);
+  }
+}
 
 for (let t = 0; t < minutes * 60; t += 1) {
-  while (next < steps.length && s.credits >= BUILDINGS[steps[next].type].cost) {
-    const st = steps[next++];
-    const r = place(s, st.type, st.x, st.y, st.rot ?? 1);
-    if (!r.ok) { console.log(`  step ${next} ${st.type} at ${st.x},${st.y}: ${r.message}`); continue; }
-    if (st.crop) setCrop(r.building!, st.crop);
-    for (const item of st.refuse ?? []) setAccept(r.building!, item, false);
-    if (next === steps.length) console.log(`${fmt(s.time)}  layout complete (${steps.length} pieces)`);
+  while (next < steps.length && ready(steps[next])) {
+    take(steps[next++]);
+    if (next === steps.length) console.log(`${fmt(s.time)}  layout complete (${steps.length} steps)`);
   }
   advance(s, 1);
   if (Math.round(s.time) % 60 === 0) {
     const nets = networks(s).list, made = nets.reduce((n, x) => n + x.made, 0), wanted = nets.reduce((n, x) => n + x.wanted, 0);
     const goals = sc.goals.map((g, i) => (g.kind === 'deliver' ? `${ITEMS[g.item].name} ${s.delivered[g.item] ?? 0}/${g.n}` : g.kind === 'soil' ? `soil ${Math.round(soilHealth(s))}/${g.min}` : `${g.item}/min ${goalDone(s, i) ? 'done' : '…'}`));
-    const drones = s.buildings.filter((b) => b.type === 'silo').flatMap((b) => b.drones!);
-    console.log(`${fmt(s.time)}  ${goals.join(' · ')} · credits ${Math.floor(s.credits)} · power ${made.toFixed(0)}/${wanted.toFixed(0)} W · stored ${nets.reduce((n, x) => n + x.stored, 0).toFixed(0)} J · drones busy ${drones.filter((d) => d.phase !== 'idle').length}/${drones.length}`);
+    const phases = new Map<string, number>();
+    for (const tr of s.trucks) phases.set(tr.phase, (phases.get(tr.phase) ?? 0) + 1);
+    console.log(`${fmt(s.time)}  ${goals.join(' · ')} · credits ${Math.floor(s.credits)} · power ${made.toFixed(0)}/${wanted.toFixed(0)} W · stored ${nets.reduce((n, x) => n + x.stored, 0).toFixed(0)} J · trucks ${[...phases].map(([p, n]) => `${n} ${p}`).join(', ')}`);
   }
   if (s.completedAt !== null) {
     console.log(`\nComplete at ${fmt(s.completedAt)} (target ${fmt(sc.par)}): ${medalFor(sc.par, s.completedAt)}.`);
@@ -57,5 +96,5 @@ for (let t = 0; t < minutes * 60; t += 1) {
   }
 }
 if (s.completedAt === null) console.log(`\nNot complete after ${minutes} minutes.`);
-const stalled = s.buildings.filter((b) => b.status === 'blocked' || b.status === 'input' || b.status === 'power').map((b) => `${b.type}@${b.x},${b.y}: ${b.status}${b.need ? ` (${b.need})` : ''}`);
+const stalled = s.buildings.filter((b) => ['blocked', 'input', 'power', 'noroad', 'noroute'].includes(b.status)).map((b) => `${b.type}@${b.x},${b.y}: ${b.status}${b.need ? ` (${b.need})` : ''}`);
 if (stalled.length) console.log(`Not working at the end: ${stalled.slice(0, 12).join('; ')}`);
