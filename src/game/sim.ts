@@ -535,7 +535,8 @@ function runTrucks(s: GameState, dt: number) {
     switch (t.phase) {
       case 'parked': {
         charge(s, t, dt);
-        if (routeOf(s, t)?.stops.length) { t.charged = true; setOff(s, t, t.stop); }
+        // Given a route: off it goes (home again to charge first, if its battery is short).
+        if (routeOf(s, t)?.stops.length) { t.charged = false; setOff(s, t, t.stop); }
         break;
       }
       case 'charge': {
@@ -563,7 +564,7 @@ function runTrucks(s: GameState, dt: number) {
     q.sort((a, c) => a.arrived - c.arrived || a.id - c.id);
     for (let free = bays(b.type) - (docked.get(id) ?? 0), k = 0; free > 0 && k < q.length; free--, k++) {
       const t = q[k];
-      t.phase = 'dock'; t.budget = 1; t.idle = 0; t.turn = 0;
+      t.phase = 'dock'; t.budget = 0; t.idle = 0; t.turn = 0;
     }
   }
 }

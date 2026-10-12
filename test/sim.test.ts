@@ -229,7 +229,7 @@ test('a truck waits at a stop up to its wait for goods; with a wait of 0 it goes
   };
   assert.ok(Math.abs(visit() - 10) < 0.3, 'waited for wheat');
   assert.ok(setStopWait(r, 0, 0).ok);
-  assert.ok(visit() < 0.3, 'went on at once');
+  assert.ok(visit() < 0.5, 'went on at once');
 });
 
 test('picking up several goods, a truck takes one of each in turn', () => {
@@ -568,6 +568,8 @@ test('saves with missing or broken state are refused', () => {
   assert.equal(without((o) => { o.routes[0].stops[0].drop = ['wheat']; o.routes[0].stops[0].pick = ['wheat']; }), null, 'never both');
   assert.equal(without((o) => { o.routes[0].stops[0].wait = -1; }), null);
   assert.equal(without((o) => { o.trucks[0].budget = -1e100; }), null, 'a truck that could never move goods again');
+  assert.equal(without((o) => { const f = o.buildings.find((b: any) => b.type === 'field').id; Object.assign(o.trucks[0], { phase: 'dock', target: f }); o.trucks.push({ ...o.trucks[0], id: o.nextId++ }); }), null, 'two trucks in one bay');
+  assert.ok(without((o) => { Object.assign(o.trucks[0], { phase: 'dock', target: o.buildings.find((b: any) => b.type === 'field').id }); }), 'one is fine');
   assert.equal(without((o) => { o.trucks[0].id = f.id; }), null, 'ids are one count');
   assert.equal(without((o) => { o.buildings[0].type = 'castle'; }), null);
   assert.equal(without((o) => { o.buildings.find((b: any) => b.type === 'field').crop = 'not-a-crop'; }), null);

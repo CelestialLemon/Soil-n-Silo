@@ -135,6 +135,8 @@ export function setTruckRoute(s: GameState, t: Truck, route: Route | null): Resu
   t.stop = 0;
   // It leaves any building or queue at once.
   if (t.phase === 'queue' || t.phase === 'dock') t.phase = 'stuck';
+  // Charging at home, it sets off at once (and charges on only if its battery is short for the new route).
+  if (t.phase === 'charge') t.phase = 'parked';
   redirect(s, t);
   return ok(route ? `The truck now runs ${route.name}.` : 'The truck drives home and waits there.');
 }
