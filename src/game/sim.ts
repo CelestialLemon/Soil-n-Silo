@@ -352,6 +352,10 @@ export function takesGoods(b: Building): ItemId[] {
   return [...new Set(recipesFor(b.type).flatMap((r) => r.inputs.flatMap((i) => [...members(i)])))];
 }
 
+/** The goods a building takes or gives with the recipe it has now (any recipe's, for one without). */
+const takesNow = (b: Building) => (b.recipe ? inputGoods(b) : takesGoods(b));
+const givesNow = (b: Building) => (b.recipe ? [...new Set([...recipeOf(b)!.outputs.map((o) => o.item), ...(Object.keys(b.outputs!) as ItemId[])])] : givesGoods(b));
+
 /** Every good a building could ever give a truck: a field's crop (and a waiting harvest of another), products, stock. */
 export function givesGoods(b: Building): ItemId[] {
   if (b.type === 'silo') return [...ITEM_IDS];
@@ -401,11 +405,12 @@ function setOff(s: GameState, t: Truck, from: number) {
   if (i < 0) { t.phase = 'stuck'; t.path = []; t.target = null; return; }
   t.stop = i;
   const b = buildingById(s, r.stops[i].building)!;
-  const leg = distanceTo(s, b, here), back = legLength(s, b, g);
+  // The way there, and home from the tile it will stop at.
+  const path = pathTo(s, b, here)!, leg = distanceTo(s, b, here), back = distanceTo(s, g, path.length ? path[path.length - 1] : here);
   if (!t.charged && back < Infinity && distanceTo(s, g, here) < Infinity
     && t.energy < (leg + back) * TRUCK.joulesPerTile) { goHome(s, t); return; }
   t.charged = false;
-  driveTo(s, t, b);
+  t.path = path; t.target = b.id; t.phase = 'drive'; t.idle = 0;
 }
 
 /** Whether a truck is done at its stop: it carries none of the stop's drop goods, and is full or picks nothing up there. */
@@ -609,7 +614,7 @@ export function truckProblems(s: GameState, t: Truck): string[] {
   else if (g && distanceTo(s, g, tileOf(s, t)) === Infinity) out.push('It can\'t reach its garage to charge.');
   const dead = [...new Set(t.cargo)].filter((i) => !(r?.stops ?? []).some((st) => {
     const b = buildingById(s, st.building);
-    return b && st.drop.includes(i) && takesGoods(b).includes(i);
+    return b && st.drop.includes(i) && takesNow(b).includes(i);
   }));
   if (dead.length) out.push(`It carries ${dead.map((i) => ITEMS[i].name.toLowerCase()).join(', ')}, which none of its stops takes.`);
   return out;
@@ -625,7 +630,7 @@ export function stopProblems(s: GameState, r: Route): (string | null)[] {
     if (prev && prev !== b && legLength(s, prev, b) === Infinity) return 'Trucks can\'t drive here from the stop before.';
     const homes = new Set(trucksOn(s, r).map((t) => buildingById(s, t.garage)));
     if ([...homes].some((g) => g && legLength(s, g, b) === Infinity)) return 'Trucks can\'t drive here from their garage.';
-    const takes = takesGoods(b), gives = givesGoods(b);
+    const takes = takesNow(b), gives = givesNow(b);
     if (!st.drop.some((it) => takes.includes(it)) && !st.pick.some((it) => gives.includes(it))) return 'Nothing to do: it takes none of the goods dropped and gives none of those picked up.';
     return null;
   });

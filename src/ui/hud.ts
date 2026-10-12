@@ -324,7 +324,9 @@ export class Hud {
     }
     // Made again when what it shows changes: the building's settings, the trucks and routes it lists, the route's stops.
     const routes = s.routes.map((r) => [r.id, r.name, r.stops.length]);
-    const key = JSON.stringify(editing ? ['route', editing.id, editing.stops, trucksOn(s, editing).length, [...this.allGoods]]
+    // The route editor also follows what its warnings and goods choices depend on: the stops' problems, the silos' stock.
+    const key = JSON.stringify(editing ? ['route', editing.id, editing.stops, trucksOn(s, editing).length, [...this.allGoods], stopProblems(s, editing),
+      editing.stops.map((st) => { const b = buildingById(s, st.building); return b?.type === 'silo' ? Object.keys(b.store!) : b?.type === 'field' ? [b.crop, b.harvest] : null; })]
       : t ? ['truck', t.id, t.route, routes]
         : [b!.id, b!.type, b!.crop, b!.recipe, tool.kind, routes, s.trucks.filter((x) => x.garage === b!.id).map((x) => [x.id, x.route]),
           routesAt(s, b!).map((r) => r.stops.filter((st) => st.building === b!.id))]);
