@@ -153,7 +153,7 @@ export function deleteRoute(s: GameState, r: Route): Result {
   const i = s.routes.indexOf(r);
   if (i < 0) return no('');
   s.routes.splice(i, 1);
-  for (const t of s.trucks) if (t.route === r.id) { t.route = null; if (t.phase === 'queue' || t.phase === 'dock') t.phase = 'stuck'; redirect(s, t); }
+  for (const t of s.trucks) if (t.route === r.id) { t.route = null; t.stop = 0; if (t.phase === 'queue' || t.phase === 'dock') t.phase = 'stuck'; redirect(s, t); }
   return ok(`Deleted ${r.name}.`);
 }
 

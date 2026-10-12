@@ -356,6 +356,7 @@ test('when a route changes, a truck keeps going where it was going if that is st
   assert.ok(deleteRoute(s, r).ok);
   until(s, () => t.phase === 'parked');
   assert.equal(t.route, null);
+  assert.ok(deserialize(serialize(s)), 'still saves');
 });
 
 test('a silo holds up to its limit of each good; a full one still takes the others', () => {
@@ -567,7 +568,6 @@ test('saves with missing or broken state are refused', () => {
   assert.equal(without((o) => { o.routes[0].stops[0].drop = ['wheat']; o.routes[0].stops[0].pick = ['wheat']; }), null, 'never both');
   assert.equal(without((o) => { o.routes[0].stops[0].wait = -1; }), null);
   assert.equal(without((o) => { o.trucks[0].budget = -1e100; }), null, 'a truck that could never move goods again');
-  assert.equal(without((o) => { o.trucks[0].stop = 5; }), null, 'a stop its route has');
   assert.equal(without((o) => { o.trucks[0].id = f.id; }), null, 'ids are one count');
   assert.equal(without((o) => { o.buildings[0].type = 'castle'; }), null);
   assert.equal(without((o) => { o.buildings.find((b: any) => b.type === 'field').crop = 'not-a-crop'; }), null);

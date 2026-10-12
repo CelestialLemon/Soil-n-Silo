@@ -564,11 +564,13 @@ export class Hud {
       const b = buildingById(s, st.building);
       if (!b) return null;
       const open = this.allGoods.has(`${r.id}:${i}`), anything = b.type === 'silo' || b.type === 'depot';
-      const choices = (all: ItemId[]) => (anything && !open ? ITEM_IDS.filter((x) => moved.has(x) || st.pick.includes(x) || (b.type === 'silo' && b.store![x])) : all);
+      // Always with the goods it is set to, so any of them can be turned off (a field's old crop, say).
+      const choices = (all: ItemId[], how: 'drop' | 'pick') => (anything && !open ? ITEM_IDS.filter((x) => moved.has(x) || st.pick.includes(x) || (b.type === 'silo' && b.store![x]))
+        : ITEM_IDS.filter((x) => all.includes(x) || st[how].includes(x)));
       const chip = (item: ItemId, how: 'drop' | 'pick') => button(good(item), () => this.did(setStopGood(r, i, item, st[how].includes(item) ? null : how)),
         { active: st[how].includes(item), title: `${st[how].includes(item) ? 'Click to stop' : 'Click to start'} ${how === 'drop' ? 'dropping' : 'picking up'} ${ITEMS[item].name.toLowerCase()} here` });
       const row = (label: string, how: 'drop' | 'pick', all: ItemId[]) => {
-        const list = choices(all), hidden = anything && !open ? st[how].filter((x) => !list.includes(x)).length : 0;
+        const list = choices(all, how), hidden = anything && !open ? st[how].filter((x) => !list.includes(x)).length : 0;
         return h('div', { class: 'choices stop-goods' }, h('span', { class: 'lbl' }, label), ...list.map((x) => chip(x, how)),
           list.length ? null : h('small', { class: 'hint' }, 'none yet'),
           hidden ? h('small', { class: 'hint' }, `+ ${hidden} more`) : null);
