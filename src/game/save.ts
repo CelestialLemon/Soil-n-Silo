@@ -109,7 +109,8 @@ function validTruck(s: GameState, t: Truck): boolean {
 /** Buildings, routes and trucks share one count of ids, below the next one. */
 function uniqueIds(s: GameState): boolean {
   const ids = [...s.buildings, ...s.routes, ...s.trucks].map((x) => x.id);
-  return new Set(ids).size === ids.length && ids.every((id) => id < s.nextId);
+  // Whole and above 0: the building cache marks an empty tile with 0.
+  return int(s.nextId) && new Set(ids).size === ids.length && ids.every((id) => int(id) && id > 0 && id < s.nextId);
 }
 
 /** A building has what its type's rules read. */
