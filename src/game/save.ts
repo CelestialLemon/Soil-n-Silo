@@ -87,6 +87,8 @@ function validTruck(s: GameState, t: Truck): boolean {
     && [t.x, t.y, t.heading, t.energy, t.idle, t.budget, t.arrived].every(num) && t.x >= 0 && t.y >= 0 && t.x <= w && t.y <= h
     && t.energy >= 0 && t.energy <= TRUCK.battery && int(t.turn) && t.turn >= 0 && typeof t.charged === 'boolean'
     && arr(t.path) && t.path.every((i) => int(i) && i >= 0 && i < w * h) && (t.target === null || num(t.target))
+    // Driving, queuing or docked, it is going to or at a building; queuing or docked, at a stop of its route.
+    && (!['drive', 'queue', 'dock'].includes(t.phase) || t.target !== null) && (!['queue', 'dock'].includes(t.phase) || t.route !== null)
     && items(t.cargo) && t.cargo.length <= TRUCK.cargo;
 }
 

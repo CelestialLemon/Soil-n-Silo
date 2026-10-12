@@ -485,7 +485,8 @@ export function routeChanged(s: GameState, r: Route) {
     const away = t.phase === 'drive' || t.phase === 'queue' || t.phase === 'dock';
     const at = away && t.target !== t.garage ? r.stops.map((st, i) => (st.building === t.target ? i : -1)).filter((i) => i >= 0) : [];
     if (at.length) { t.stop = at.reduce((a, i) => (Math.abs(i - t.stop) < Math.abs(a - t.stop) ? i : a)); continue; }
-    t.stop = Math.min(t.stop, n - 1);
+    // Its stop went: the one after it has moved into its place (or, if it was the last, stop 1 comes next).
+    t.stop %= n;
     if (away && t.target !== t.garage) setOff(s, t, t.stop);
     else if (t.phase === 'stuck') redirect(s, t);
   }
@@ -514,8 +515,12 @@ function runTrucks(s: GameState, dt: number) {
         const i = nearestOpen(s, Math.floor(t.x), Math.floor(t.y));
         if (i !== null) { t.x = i % s.map.width + 0.5; t.y = Math.floor(i / s.map.width) + 0.5; }
       }
+      const b = t.target !== null ? buildingById(s, t.target) : null, here = tileOf(s, t);
+      // At a building or its garage, but no longer beside it (moved off a tile built on, or walled off): it drives back,
+      // or on to its next stop if it can't.
+      if (t.phase === 'queue' || t.phase === 'dock') { if (!b || distanceTo(s, b, here) !== 0) { t.phase = 'stuck'; redirect(s, t); } continue; }
+      if (t.phase === 'parked' || t.phase === 'charge') { if (distanceTo(s, garageOf(s, t)!, here) !== 0) goHome(s, t); continue; }
       if (t.phase !== 'drive') continue;
-      const b = t.target !== null ? buildingById(s, t.target) : null;
       if (b && driveTo(s, t, b)) continue;
       if (b?.id === t.garage) { t.phase = 'stuck'; t.path = []; t.target = null; } else redirect(s, t);
     }

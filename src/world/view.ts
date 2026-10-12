@@ -164,20 +164,21 @@ export class WorldView {
       o.setTransform(v.set(x, 0, z), e.set(0, t.heading, 0));
       t.cargo.forEach((item, i) => {
         const [sx, sz] = TRUCK_BED.slots[i % TRUCK_BED.slots.length], c = Math.cos(t.heading), sn = Math.sin(t.heading);
-        this.putGood(item, x + sx * c + sz * sn, TRUCK_BED.y, z - sx * sn + sz * c, t.heading, TRUCK_BED.scale);
+        this.putGood(item, x + sx * c + sz * sn, TRUCK_BED.y, z - sx * sn + sz * c, t.heading, TRUCK_BED.scale, t.id);
       });
     }
     for (const [id, o] of this.trucks) if (!alive.has(id)) { this.drop(o); this.trucks.delete(id); }
     for (const p of this.pools.values()) for (let i = p.used; i < p.objs.length; i++) p.objs[i].visible = false;
   }
 
-  /** A good from the pool of objects for its kind. */
-  private putGood(item: ItemId, x: number, y: number, z: number, yaw: number, scale = 1) {
+  /** A good from the pool of objects for its kind; picking it picks `owner` (the truck carrying it). */
+  private putGood(item: ItemId, x: number, y: number, z: number, yaw: number, scale: number, owner: number) {
     let p = this.pools.get(item);
     if (!p) { p = { objs: [], used: 0 }; this.pools.set(item, p); }
     let o = p.objs[p.used];
     if (!o) { o = this.add(this.m.items[item], null); o.castShadow = false; p.objs.push(o); }
     p.used++;
+    this.targets.set(o, owner);
     o.visible = true;
     o.setTransform(v.set(x, y, z), e.set(0, yaw, 0), scale);
   }

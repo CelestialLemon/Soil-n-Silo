@@ -689,3 +689,37 @@ test('power drawing: a network\'s wires join every pylon with the fewest, shorte
   assert.deepEqual(new Set(pylonsInLink(s, 8, 5)), new Set([a, b, c, d]));
   assert.deepEqual(pylonsInLink(s, 16, 16), []);
 });
+
+test('a docked truck walled off from its building stops loading there and goes on', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const silo = put(s, 'silo', 8, 18), other = put(s, 'silo', 20, 18);
+  silo.store!.wheat = 30;
+  route(s, [t], [silo, { pick: ['wheat'], drop: [], wait: 60 }], [other, { wait: 0 }]);
+  until(s, () => t.phase === 'dock' && t.target === silo.id);
+  for (const i of accessTiles(s, silo)) put(s, 'pylon', i % 30, Math.floor(i / 30));
+  advance(s, 0.2);
+  assert.notEqual(t.phase, 'dock');
+  const wheat = silo.store!.wheat;
+  advance(s, 10);
+  assert.equal(silo.store!.wheat, wheat, 'no loading from afar');
+});
+
+test('taking out the last stop while a truck is there sends it on to stop 1', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const a = put(s, 'silo', 8, 18), b = put(s, 'silo', 14, 18), c = put(s, 'silo', 20, 18);
+  const r = route(s, [t], [a, { wait: 0 }], [b, { wait: 0 }], [c, { wait: 30 }]);
+  until(s, () => t.phase === 'dock' && t.target === c.id);
+  assert.ok(removeStop(s, r, 2).ok);
+  assert.equal(t.target, a.id);
+});
+
+test('a save with a queuing truck that is going nowhere is refused', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  route(s, [t], put(s, 'silo', 8, 18));
+  const json = JSON.parse(serialize(s));
+  json.trucks[0].phase = 'queue'; json.trucks[0].target = null;
+  assert.equal(deserialize(JSON.stringify(json)), null);
+});
