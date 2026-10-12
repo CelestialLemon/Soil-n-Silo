@@ -4,80 +4,94 @@ import type { Dir } from '../src/game/state.ts';
 // The bot's layouts for `npm run sim` (tools/sim.ts), one per commission, relative to the depot's north-west tile and in
 // build order. Also handy for scripted playtests in the browser (the dev server serves this file).
 
-import type { SellMode } from '../src/game/data.ts';
-
-/** A building to place; `refuse` lists goods it won't take from silos. */
-export interface Step { type: BuildingId; x: number; y: number; rot?: Dir; crop?: CropId; refuse?: ItemId[] }
+/** A building to place; `as` names it for the routes. */
+export interface Place { type: BuildingId; x: number; y: number; rot?: Dir; crop?: CropId; as?: string }
+/** A stop: a named building (or the depot), with the goods and wait it has unless given. */
+export interface StopStep { at: string; drop?: ItemId[]; pick?: ItemId[]; wait?: number }
+/** A route through named buildings, with `trucks` new trucks from the named garage. */
+export interface RouteStep { route: string; garage: string; trucks: number; stops: StopStep[] }
+/** One more truck from a garage on a route made before. */
+export interface TruckStep { truck: string; garage: string }
+/** Once the commission's goal `goal` is met, a route's trucks move to another route. */
+export interface MoveStep { move: string; to: string; goal: number }
+export type Step = Place | RouteStep | TruckStep | MoveStep;
 export type Layout = (dx: number, dy: number) => Step[];
 
-/** A row of n fields, west to east from (x0, y). */
-const fields = (x0: number, y: number, n: number, crop?: CropId): Step[] =>
-  Array.from({ length: n }, (_, i) => ({ type: 'field' as const, x: x0 + 3 * i, y, crop }));
+/**
+ * The shared core: two rows of three fields north of the depot (west of it and above it), one sprinkler between the rows
+ * watering all six, with open rows above, between and below them for the trucks. Fields are named f1..f6.
+ */
+const fields = (dx: number, dy: number, crop?: CropId): Step[] => [
+  ...[-6, -3, 0].flatMap((x, i) => [
+    { type: 'field' as const, x: dx + x, y: dy - 5, crop, as: `f${i + 1}` },
+    { type: 'field' as const, x: dx + x, y: dy - 11, crop, as: `f${i + 4}` },
+  ]),
+  { type: 'sprinkler', x: dx - 2, y: dy - 7 }, { type: 'pylon', x: dx - 1, y: dy - 7 },
+];
+const allFields = (o: Omit<StopStep, 'at'> = {}): StopStep[] => ['f1', 'f2', 'f3', 'f6', 'f5', 'f4'].map((at) => ({ at, ...o }));
 
 /**
- * The shared core: a silo ten tiles north of the depot with a row of five fields above it, three sprinklers between, and
- * pylons along the sprinklers. (ox, oy) is the silo's north-west tile.
+ * East of the fields, past an open column: a garage, a machine (`a`, named by its type) and power: pylons linking back to
+ * the sprinkler's, and a solar panel. A second machine goes east of the first, past another open column.
  */
-const core = (ox: number, oy: number, crop?: CropId): Step[] => [
-  { type: 'silo', x: ox, y: oy }, { type: 'pylon', x: ox + 2, y: oy - 1 }, { type: 'solar', x: ox + 5, y: oy },
-  ...fields(ox - 6, oy - 5, 5, crop),
-  { type: 'sprinkler', x: ox + 1, y: oy - 2 }, { type: 'pylon', x: ox + 6, y: oy - 1 }, { type: 'sprinkler', x: ox + 7, y: oy - 2 },
-  { type: 'pylon', x: ox - 2, y: oy - 1 }, { type: 'sprinkler', x: ox - 4, y: oy - 2 },
+const block = (dx: number, dy: number, a: BuildingId): Step[] => [
+  { type: 'garage', x: dx + 4, y: dy - 11, as: 'garage' }, { type: 'pylon', x: dx + 6, y: dy - 10 },
+  { type: 'solar', x: dx + 7, y: dy - 13 },
+  { type: a, x: dx + 4, y: dy - 7, as: a }, { type: 'pylon', x: dx + 6, y: dy - 6 },
+];
+
+/** More power east of the block: a battery, solar panels and turbines on their own pylon. */
+const morePower = (dx: number, dy: number): Step[] => [
+  { type: 'battery', x: dx + 7, y: dy - 11 }, { type: 'pylon', x: dx + 12, y: dy - 9 },
+  { type: 'battery', x: dx + 10, y: dy - 11 }, { type: 'solar', x: dx + 13, y: dy - 11 },
+  { type: 'turbine', x: dx + 14, y: dy - 8 }, { type: 'turbine', x: dx + 14, y: dy - 6 },
 ];
 
 /** Layouts by commission, relative to the depot's north-west tile, in build order. */
 export const LAYOUTS: Record<string, Layout> = {
-  // Six wheat fields round one silo, with a mill beside it. Wheat is sold by half (a commission goal), so the silo shares
-  // it between the mill and the depot; the bran is sold when spare.
-  c1: (dx, dy) => {
-    const ox = dx, oy = dy - 10;
-    return [
-      ...core(ox, oy),
-      { type: 'mill', x: ox + 3, y: oy },
-      { type: 'field', x: ox - 4, y: oy },
-      { type: 'battery', x: ox + 3, y: oy + 2 }, { type: 'solar', x: ox + 5, y: oy + 2 }, { type: 'battery', x: ox + 7, y: oy },
-      { type: 'turbine', x: ox + 9, y: oy - 1 }, { type: 'turbine', x: ox + 9, y: oy + 1 },
-    ];
-  },
-  // Bread with the loop closed: five wheat fields feed a mill; the coop takes its bran and the beans from three fields;
-  // the bakery bakes flour and eggs; the eggs and bran nothing takes are sold, and the digester burns only the manure. A
-  // second silo by the coop shares the work.
-  c2: (dx, dy) => {
-    const ox = dx, oy = dy - 10;
-    return [
-      ...core(ox, oy),
-      { type: 'mill', x: ox + 3, y: oy },
-      { type: 'coop', x: ox, y: oy + 3 },
-      ...fields(ox - 6, oy + 3, 2, 'beans'),
-      { type: 'sprinkler', x: ox - 4, y: oy + 2 },
-      { type: 'bakery', x: ox - 3, y: oy },
-      // Power for the night before anything else.
-      { type: 'battery', x: ox + 7, y: oy }, { type: 'turbine', x: ox + 8, y: oy + 2 },
-      { type: 'digester', x: ox - 6, y: oy, refuse: ['bran'] },
-      // A second silo by the coop: three drones aren't enough for the whole chain.
-      { type: 'pylon', x: ox + 7, y: oy + 3 }, { type: 'silo', x: ox + 6, y: oy + 4 },
-      { type: 'field', x: ox + 3, y: oy + 3, crop: 'beans' }, { type: 'sprinkler', x: ox + 2, y: oy + 2 },
-      { type: 'solar', x: ox + 9, y: oy }, { type: 'battery', x: ox + 9, y: oy + 2 },
-      { type: 'turbine', x: ox + 8, y: oy + 3 }, { type: 'hive', x: ox - 1, y: oy + 6 },
-      // More power, once bread pays for it.
-      { type: 'pylon', x: ox + 11, y: oy - 1 }, { type: 'solar', x: ox + 11, y: oy }, { type: 'solar', x: ox + 13, y: oy },
-      { type: 'battery', x: ox + 11, y: oy + 2 }, { type: 'turbine', x: ox + 13, y: oy - 2 }, { type: 'turbine', x: ox + 13, y: oy + 2 },
-    ];
-  },
-  // Linen and yarn: six flax fields round a silo with a spinner and a loom. Yarn is sold by half (a commission goal), so
-  // the silo shares it between the loom and the depot.
-  c4: (dx, dy) => {
-    const ox = dx, oy = dy - 10;
-    return [
-      ...core(ox, oy, 'flax'),
-      { type: 'spinner', x: ox + 3, y: oy },
-      { type: 'field', x: ox - 4, y: oy, crop: 'flax' },
-      { type: 'loom', x: ox + 3, y: oy + 2 }, { type: 'battery', x: ox + 7, y: oy },
-      { type: 'solar', x: ox + 5, y: oy + 2 }, { type: 'battery', x: ox + 7, y: oy + 2 },
-      { type: 'turbine', x: ox + 9, y: oy - 1 }, { type: 'turbine', x: ox + 9, y: oy + 1 }, { type: 'solar', x: ox + 5, y: oy + 4 },
-    ];
-  },
+  // Six wheat fields: one truck takes the near row's wheat to the depot, another the far row's to a mill and the mill's
+  // flour and bran to the depot.
+  c1: (dx, dy) => [
+    ...fields(dx, dy),
+    ...block(dx, dy, 'mill').slice(0, 3),
+    { route: 'wheat', garage: 'garage', trucks: 1, stops: [{ at: 'f1' }, { at: 'f2' }, { at: 'f3' }, { at: 'depot' }] },
+    { type: 'mill', x: dx + 4, y: dy - 7, as: 'mill' }, { type: 'pylon', x: dx + 6, y: dy - 6 },
+    { route: 'flour', garage: 'garage', trucks: 1, stops: [{ at: 'f6' }, { at: 'f5' }, { at: 'f4' }, { at: 'mill' }, { at: 'depot' }] },
+    { type: 'battery', x: dx + 7, y: dy - 11 },
+    { truck: 'flour', garage: 'garage' },
+    { type: 'solar', x: dx + 8, y: dy - 7 }, { type: 'turbine', x: dx + 8, y: dy - 4 },
+  ],
+  // Bread with the loop closed: six wheat fields feed a mill; its bran feeds the coop, whose eggs and the mill's flour go to
+  // the bakery and its bread to the depot; the coop's manure is composted and the compost goes back to the fields.
+  c2: (dx, dy) => [
+    ...fields(dx, dy),
+    ...block(dx, dy, 'mill'),
+    { type: 'composter', x: dx + 8, y: dy - 4, as: 'composter' },
+    { route: 'wheat', garage: 'garage', trucks: 1, stops: [{ at: 'composter', pick: ['compost'], drop: [] }, ...allFields(), { at: 'mill', pick: [] }] },
+    { type: 'coop', x: dx + 4, y: dy - 4, as: 'coop' },
+    { type: 'bakery', x: dx + 8, y: dy - 7, as: 'bakery' }, { type: 'battery', x: dx + 7, y: dy - 11 },
+    {
+      route: 'bread', garage: 'garage', trucks: 1, stops: [
+        { at: 'mill', drop: [] }, { at: 'coop', pick: ['egg'] }, { at: 'bakery' }, { at: 'depot', drop: ['bread'] },
+      ],
+    },
+    { route: 'manure', garage: 'garage', trucks: 1, stops: [{ at: 'coop', pick: ['manure'], drop: [] }, { at: 'composter', pick: [] }] },
+    ...morePower(dx, dy).slice(1),
+    { truck: 'bread', garage: 'garage' },
+    { type: 'solar', x: dx + 13, y: dy - 13 }, { type: 'turbine', x: dx + 16, y: dy - 7 },
+  ],
+  // Linen and yarn: six flax fields feed a spinner; one route takes yarn to the loom and its linen to the depot, another
+  // takes yarn straight to the depot (a commission goal), sharing it by how often their trucks come.
+  c4: (dx, dy) => [
+    ...fields(dx, dy, 'flax'),
+    ...block(dx, dy, 'spinner'),
+    { route: 'flax', garage: 'garage', trucks: 1, stops: [...allFields(), { at: 'spinner', pick: [] }] },
+    { type: 'loom', x: dx + 8, y: dy - 7, as: 'loom' }, { type: 'battery', x: dx + 7, y: dy - 11 },
+    { route: 'weave', garage: 'garage', trucks: 1, stops: [{ at: 'spinner', drop: [] }, { at: 'loom' }, { at: 'depot', drop: ['linen'] }] },
+    { route: 'yarn', garage: 'garage', trucks: 1, stops: [{ at: 'spinner', drop: [] }, { at: 'depot', drop: ['yarn'] }] },
+    ...morePower(dx, dy).slice(1),
+    { truck: 'flax', garage: 'garage' },
+    // Once the yarn rate is reached, all the yarn goes to the loom.
+    { move: 'yarn', to: 'weave', goal: 1 },
+  ],
 };
-
-/** Goods the bot adds to the depot's sell list, by commission. */
-export const SELL: Record<string, Partial<Record<ItemId, SellMode>>> = { c1: { bran: 'spare' }, c2: { egg: 'spare', bran: 'spare' } };

@@ -84,7 +84,7 @@ export const FIELD = {
 // ---- Buildings ----
 
 export const BUILDING_IDS = [
-  'silo',
+  'silo', 'garage',
   'field', 'sprinkler', 'coop', 'hive', 'composter',
   'mill', 'press', 'spinner', 'loom', 'bakery', 'cannery',
   'solar', 'turbine', 'battery', 'digester', 'pylon',
@@ -114,7 +114,8 @@ export interface BuildingDef {
 }
 
 export const BUILDINGS: Record<BuildingId, BuildingDef> = {
-  silo: { name: 'Silo', size: 2, cost: 150, category: 'logistics', power: 20, tall: true, key: 'L', hint: 'Its drones carry goods to and from every building within 6 tiles, to other silos and to the depot.' },
+  silo: { name: 'Silo', size: 2, cost: 80, category: 'logistics', tall: true, key: 'L', hint: 'Stores goods: trucks drop them here and pick them up again.' },
+  garage: { name: 'Garage', size: 2, cost: 100, category: 'logistics', power: 20, key: 'T', hint: 'Home of up to 4 trucks: buy them here, give them routes. Charges them.' },
   field: { name: 'Field', size: 3, cost: 30, category: 'farming', key: 'F', hint: 'Grows a crop on rich soil. Water it with sprinklers; feed it compost.' },
   sprinkler: { name: 'Sprinkler', size: 1, cost: 25, category: 'farming', power: 3, hint: 'Waters fields within 3 tiles. Cheaper to run near water.' },
   coop: { name: 'Coop', size: 3, cost: 150, category: 'farming', hint: 'Chickens: 2 feed → 2 eggs + manure.' },
@@ -188,31 +189,28 @@ export const SAPLING_SECONDS = 60;
 // ---- Logistics ----
 
 export const SILO = {
-  /** Serves buildings with a tile within this many tiles of it. */
-  reach: 6,
-  /** Drones fly to other silos and the depot within this many tiles (centre to centre). */
-  range: 40,
   /** Goods of each kind it holds. */
-  perGood: 20,
-  drones: 3,
+  perGood: 30,
 };
-export const DRONE = {
-  /** Goods a trip, tiles a second, seconds to load or unload. */
-  cargo: 4, speed: 5, loadSeconds: 0.5,
-  /** Joules a tile flown, and the watts a drone charges at. */
-  joulesPerTile: 2, chargeRate: 20,
-  /** A drone selling waits this long for a full load. */
-  sellWait: 4,
-  /** The most a silo remembers of feeding's or selling's lead for a good sold by half, in goods. */
-  shareSlack: 8,
+export const TRUCK = {
+  cost: 60,
+  /** Trucks a garage holds. */
+  perGarage: 4,
+  /** Goods it carries (any mix), and goods a second it moves at a stop. */
+  cargo: 6, moveRate: 4,
+  /** Tiles a second, and on an empty battery. */
+  speed: 3, crawl: 0.5,
+  /** Joules its battery holds, joules a tile driven, and the watts it charges at. */
+  battery: 300, joulesPerTile: 1, chargeRate: 20,
+  /** A stop's wait unless set, and the longest it can be, in seconds. */
+  wait: 5, maxWait: 60,
+  /** At a garage that gives it no charge for this long, it goes on anyway. */
+  giveUp: 5,
+  /** Stops a route can have. */
+  maxStops: 8,
 };
-/**
- * How the depot's sell list takes a good: `spare` sells only what no building a silo serves can use; `half` shares it,
- * selling about half even when buildings want it.
- */
-export type SellMode = 'spare' | 'half';
-/** Products the depot's sell list always starts with. */
-export const PRODUCTS: ItemId[] = ['bread', 'honeycake', 'sauce', 'linen'];
+/** Trucks a building loads or unloads at once; the rest queue. */
+export const bays = (b: BuildingId) => (b === 'depot' ? 2 : 1);
 
 // ---- Clearing ----
 

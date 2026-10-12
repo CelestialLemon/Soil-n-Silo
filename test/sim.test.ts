@@ -1,15 +1,20 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { canPlace, place, remove, removeAt, setAccept, setCrop, setRecipe, setSell } from '../src/game/build.ts';
-import { BUILDINGS, DAY_SECONDS, DRONE, ITEMS, POWER, SILO, START_HOUR } from '../src/game/data.ts';
+import {
+  addStop, buyTruck, canPlace, deleteRoute, moveStop, newRoute, place, remove, removeAt, removeStop, sellTruck, setCrop, setRecipe,
+  setStopGood, setStopWait, setTruckRoute, truckPrice,
+} from '../src/game/build.ts';
+import { BUILDINGS, DAY_SECONDS, ITEMS, POWER, SILO, START_HOUR, TRUCK, type ItemId } from '../src/game/data.ts';
 import { generateMap, TERRAIN } from '../src/game/map.ts';
 import { feederOf, networkOf, networks, pylonsInLink, wiresOf } from '../src/game/power.ts';
 import { deserialize, readProgress, recordResult, serialize } from '../src/game/save.ts';
 import { CAMPAIGN, randomScenario, SANDBOX, scenarioById, type Scenario } from '../src/game/scenarios.ts';
+import { accessTiles, distanceTo, isOpen, pathTo } from '../src/game/roads.ts';
 import {
-  advance, deliver, exposureOf, fieldFertility, goalDone, hourAt, medalFor, ratePerMin, servedBySilo, silosServing, soilHealth, sunAt, windAt,
+  advance, deliver, describeStatus, exposureOf, fieldFertility, goalDone, hourAt, medalFor, ratePerMin, routeRate, soilHealth, stopProblems,
+  sunAt, truckProblems, windAt,
 } from '../src/game/sim.ts';
-import { buildingAt, newGame, type Building, type Dir, type GameState } from '../src/game/state.ts';
+import { buildingAt, newGame, type Building, type Dir, type GameState, type Route, type Truck } from '../src/game/state.ts';
 
 /** A flat, empty test map: no water, rock or trees, even soil. */
 function flat(extra: Partial<Scenario> = {}): GameState {
@@ -91,190 +96,324 @@ test('placing checks terrain, room and credits, and removing refunds', () => {
   assert.equal(canPlace(s, 'mill', 5, 5).ok, false);
 });
 
-test('a silo serves buildings with a tile within its reach', () => {
-  const s = flat();
-  const silo = put(s, 'silo', 10, 10);
-  const near = put(s, 'field', 10 + 2 + SILO.reach - 1, 10);   // its west column is `reach` tiles from the silo's east one
-  const far = put(s, 'field', 10 + 2 + SILO.reach, 14);
-  put(s, 'pylon', 4, 4);
-  assert.deepEqual(servedBySilo(s, silo).map((b) => b.id), [near.id]);
-  assert.deepEqual(silosServing(s, near).map((b) => b.id), [silo.id]);
-  assert.equal(silosServing(s, far).length, 0);
-});
-
-test('a silo collects a field\'s harvest and sells what is on the sell list at the depot', () => {
-  const s = flat();
-  const d = s.map.depot;
-  powerAt(s, d.x - 7, d.y - 2);
-  const silo = put(s, 'silo', d.x - 4, d.y - 2);
-  const f = put(s, 'field', d.x - 8, d.y - 6);
-  f.stored = 6; f.harvest = 'wheat';
-  advance(s, 10);
-  assert.equal(f.stored, 0, 'collected');
-  assert.equal(silo.store!.wheat, 6, 'not on the sell list: kept');
-  assert.ok(setSell(depotOf(s), 'wheat', 'spare').ok);
-  const credits = s.credits;
-  advance(s, 15);
-  assert.equal(s.delivered.wheat, 6);
-  assert.equal(s.credits, credits + 6 * ITEMS.wheat.price);
-  assert.equal(silo.store!.wheat ?? 0, 0);
-});
-
-test('drones feed a mill wheat and collect its flour and bran', () => {
-  const s = flat();
-  powerAt(s, 2, 2);
-  put(s, 'pylon', 7, 3);
-  const silo = put(s, 'silo', 4, 4);
-  const mill = put(s, 'mill', 8, 4);
-  silo.store!.wheat = 6;
-  advance(s, 30);
-  assert.equal(s.made.flour, 3);
-  assert.equal(silo.store!.flour, 3);
-  assert.equal(silo.store!.bran, 3);
-  assert.equal(mill.status, 'input');
-});
-
-test('a mill whose bran nothing takes fills its silo and stops; without a silo it says so', () => {
-  const s = flat();
-  powerAt(s, 2, 2);
-  put(s, 'pylon', 7, 3);
-  const silo = put(s, 'silo', 4, 4);
-  const mill = put(s, 'mill', 8, 4);
-  silo.store = { wheat: 12, bran: SILO.perGood - 2 };
-  setSell(depotOf(s), 'flour', 'spare');
-  advance(s, 120);
-  assert.equal(silo.store!.bran, SILO.perGood, 'the silo took what it had room for');
-  assert.equal(mill.outputs!.bran, 3, 'the mill holds the rest');
-  assert.equal(mill.status, 'blocked');
-  assert.ok(mill.inputs!.wheat! > 0);
-  remove(s, silo);
-  advance(s, 1);
-  assert.equal(mill.status, 'nosilo');
-});
-
-test('a silo out of a pylon\'s reach flies nothing; a powered one draws power while its drones charge', () => {
-  const s = flat({ weather: { ...SANDBOX.weather, sun: 0, wind: 0.05, gust: 0 } });
-  const silo = put(s, 'silo', 4, 4);
-  const mill = put(s, 'mill', 8, 4);
-  silo.store!.wheat = 6;
-  advance(s, 5);
-  assert.equal(silo.status, 'power');
-  assert.equal(silo.store!.wheat, 6);
-  const bat = powerAt(s, 2, 2);
-  advance(s, 0.2);
-  assert.ok(networkOf(s, silo)!.wanted >= DRONE.chargeRate, `wanted ${networkOf(s, silo)!.wanted}`);
-  advance(s, 10);
-  assert.ok((mill.inputs!.wheat ?? 0) + (s.made.flour ?? 0) * 2 >= 4, 'fed');
-  assert.ok(bat.charge! < POWER.battery.capacity, 'the battery paid for the flights');
-});
-
-test('a silo fetches what its buildings need from another silo in range', () => {
-  const s = flat();
-  powerAt(s, 1, 1);
-  powerAt(s, 1, 20);
-  put(s, 'pylon', 1, 9); put(s, 'pylon', 1, 15);
-  const a = put(s, 'silo', 2, 4), b = put(s, 'silo', 2, 22);
-  const mill = put(s, 'mill', 4, 22);
-  a.store!.wheat = 8;
-  assert.equal(silosServing(s, mill).length, 1);
-  advance(s, 30);
-  assert.ok((s.made.flour ?? 0) >= 2, `flour ${s.made.flour}`);
-  assert.equal(a.store!.wheat ?? 0, 0);
-  assert.ok(b.store!.flour! >= 2);
-});
-
-test('a silo doesn\'t sell or feed goods another silo\'s drone is on its way to fetch', () => {
-  const s = flat();
-  const d = s.map.depot;
-  powerAt(s, d.x - 7, d.y - 3);
-  powerAt(s, 1, 1);
-  // Built first, so its drones choose first: it reserves the wheat before the other silo looks for something to sell.
-  const b = put(s, 'silo', 2, 4);
-  const a = put(s, 'silo', d.x - 4, d.y - 2);   // by the depot, selling wheat
-  put(s, 'mill', 4, 4);
-  setSell(depotOf(s), 'wheat', 'spare');
-  a.store!.wheat = 4;
-  advance(s, 0.1);
-  assert.ok(b.drones!.some((x) => x.task?.kind === 'fetch'), 'b fetches');
-  advance(s, 20);
-  assert.equal(s.delivered.wheat ?? 0, 0, 'a kept the wheat for b');
-  assert.ok((s.made.flour ?? 0) + (s.buildings.find((x) => x.type === 'mill')!.inputs!.wheat ?? 0) >= 2);
-});
-
-test('a silo fetching a good sold by half keeps feeding it, even when its turn is the depot\'s', () => {
-  const s = flat();
-  powerAt(s, 2, 2);
-  put(s, 'pylon', 7, 3); put(s, 'pylon', 2, 10); put(s, 'pylon', 2, 17);
-  const a = put(s, 'silo', 4, 4), src = put(s, 'silo', 4, 19);
-  const mill = put(s, 'mill', 8, 4);
-  setSell(depotOf(s), 'wheat', 'half');
-  a.shared!.wheat = 2;                                // ahead on feeding, with nothing left to sell
-  src.store!.wheat = 14;
-  advance(s, 60);
-  // The source silo sells its own wheat too (it is sold by half and nothing there uses it), so not all of it comes here.
-  assert.ok((s.made.flour ?? 0) >= 1, `flour ${s.made.flour}; mill ${JSON.stringify(mill.inputs)}`);
-  assert.equal(a.shared!.wheat, 0, 'the turns evened out');
-});
-
-test('a building that refuses a good isn\'t fed it; another one gets it', () => {
-  const s = flat();
-  powerAt(s, 2, 2);
-  const silo = put(s, 'silo', 4, 4);
-  const coop = put(s, 'coop', 7, 4);       // nearer than the digester
-  const dig = put(s, 'digester', 11, 4);
-  assert.ok(setAccept(coop, 'bran', false).ok);
-  silo.store!.bran = 4;
-  advance(s, 15);
-  assert.equal(coop.inputs!.bran ?? 0, 0);
-  assert.ok((dig.inputs!.bran ?? 0) + (dig.progress !== null ? 1 : 0) >= 1);
-  assert.equal(setAccept(coop, 'egg', false).ok, false, 'not one of its inputs');
-});
-
-test('a drone whose target goes flies home with its cargo', () => {
-  const s = flat();
-  powerAt(s, 2, 2);
-  const silo = put(s, 'silo', 4, 4);
-  const mill = put(s, 'mill', 9, 4);
-  silo.store!.wheat = 4;
-  advance(s, 1.5);
-  const d = silo.drones!.find((x) => x.task)!;
-  assert.equal(d.task!.kind, 'feed');
-  remove(s, mill);
-  advance(s, 10);
-  assert.ok(silo.drones!.every((x) => x.phase === 'idle'));
-  assert.equal(silo.store!.wheat, 4);
-});
-
-test('the depot starts selling the products, and half of what else the commission asks for', () => {
-  const s = flat({ goals: [{ kind: 'deliver', item: 'flour', n: 5 }, { kind: 'deliver', item: 'bread', n: 5 }, { kind: 'soil', min: 40 }] });
-  assert.deepEqual(depotOf(s).sell, { bread: 'spare', honeycake: 'spare', sauce: 'spare', linen: 'spare', flour: 'half' });
-  assert.equal(setSell(depotOf(s), 'flour', 'half').ok, false, 'already so');
-  assert.ok(setSell(depotOf(s), 'flour', null).ok);
-  assert.equal(depotOf(s).sell!.flour, undefined);
-});
-
-/** A silo beside the depot holding `n` wheat, with a powered mill it serves, and wheat sold as `mode`. */
-function wheatAndMill(mode: 'spare' | 'half', n: number) {
-  const s = flat();
-  const d = s.map.depot;
-  powerAt(s, d.x - 9, d.y - 2);
-  put(s, 'pylon', d.x - 5, d.y - 3);
-  const silo = put(s, 'silo', d.x - 4, d.y - 2);
-  const mill = put(s, 'mill', d.x - 7, d.y - 4);
-  setSell(depotOf(s), 'wheat', mode);
-  silo.store!.wheat = n;
-  return { s, silo, mill };
+/** A powered garage at (x, y) (a pylon and a charged battery to its east) with `n` trucks. */
+function garageAt(s: GameState, x: number, y: number, n = 1, powered = true) {
+  const g = put(s, 'garage', x, y);
+  if (powered) powerAt(s, x + 2, y);
+  const trucks = Array.from({ length: n }, () => { const r = buyTruck(s, g); assert.ok(r.ok, r.message); return r.truck!; });
+  return { g, trucks };
 }
 
-test('a good sold when spare goes to buildings first; sold by half, the silo shares it', () => {
-  const spare = wheatAndMill('spare', 20);
-  advance(spare.s, 60);
-  assert.equal(spare.s.delivered.wheat ?? 0, 20 - 2 * (spare.s.made.flour ?? 0) - (spare.mill.inputs!.wheat ?? 0) - (spare.mill.progress !== null ? 2 : 0));
-  assert.ok((spare.s.made.flour ?? 0) >= 4, 'the mill got wheat first');
-  const half = wheatAndMill('half', 20);
-  advance(half.s, 60);
-  const sold = half.s.delivered.wheat ?? 0;
-  assert.ok(sold >= 6 && sold <= 14, `sold ${sold} of 20`);
+type StopSpec = Building | [Building, { drop?: ItemId[]; pick?: ItemId[]; wait?: number }];
+/** A route through `stops` (each with its defaults, or the goods and wait given), run by `trucks`. */
+function route(s: GameState, trucks: Truck[], ...stops: StopSpec[]): Route {
+  const r = newRoute(s);
+  for (const spec of stops) {
+    const [b, o] = Array.isArray(spec) ? spec : [spec, {}];
+    assert.ok(addStop(s, r, b).ok);
+    const st = r.stops[r.stops.length - 1];
+    if (o.drop) st.drop = o.drop;
+    if (o.pick) st.pick = o.pick;
+    if (o.wait !== undefined) st.wait = o.wait;
+  }
+  for (const t of trucks) setTruckRoute(s, t, r);
+  return r;
+}
+
+/** Steps the game 0.1 s at a time until `done` (or `seconds` pass); returns the time it took. */
+function until(s: GameState, done: () => boolean, seconds = 120) {
+  const start = s.time;
+  while (!done()) {
+    assert.ok(s.time - start < seconds, `not within ${seconds} s`);
+    advance(s, 0.1);
+  }
+  return s.time - start;
+}
+
+const count = (cargo: ItemId[], item: ItemId) => cargo.filter((i) => i === item).length;
+const tile = (x: number, y: number) => y * 30 + x;
+
+test('trucks drive on open ground: round buildings, and past a diagonal only between open tiles', () => {
+  const s = flat();
+  const mill = put(s, 'mill', 20, 20);
+  assert.equal(isOpen(s, 20, 20), false);
+  assert.equal(isOpen(s, 19, 20), true);
+  assert.equal(accessTiles(s, mill).length, 8, 'the tiles sharing an edge with it');
+  // A diagonal line of pylons, corner to corner: trucks can't squeeze between two of them, so they go round its end.
+  for (let i = 0; i < 10; i++) put(s, 'pylon', i, i);
+  const silo = put(s, 'silo', 6, 1);
+  const p = pathTo(s, silo, tile(1, 6))!;
+  assert.ok(p, 'there is a way');
+  assert.ok(p.some((i) => i % 30 >= 10 && Math.floor(i / 30) >= 10), 'round the end of the line');
+  assert.ok(p.every((i) => isOpen(s, i % 30, Math.floor(i / 30))));
+  assert.equal(distanceTo(s, silo, p[p.length - 1]), 0, 'it ends beside the silo');
+  // Walled in: no open tile beside it.
+  const boxed = put(s, 'silo', 24, 2);
+  for (const [x, y] of [[24, 1], [25, 1], [26, 2], [26, 3], [24, 4], [25, 4], [23, 2], [23, 3]]) put(s, 'pylon', x, y);
+  assert.equal(accessTiles(s, boxed).length, 0);
+  assert.equal(pathTo(s, boxed, tile(20, 10)), null);
+  advance(s, 0.1);
+  assert.equal(boxed.status, 'noroad');
+  assert.match(describeStatus(s, boxed), /trucks can't reach it/);
+});
+
+test('a truck on a route picks up a field\'s harvest and sells it at the depot', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const f = put(s, 'field', 8, 20);
+  f.stored = 6; f.harvest = 'wheat';
+  const r = route(s, [t], f, depotOf(s));
+  const credits = s.credits;
+  until(s, () => (s.delivered.wheat ?? 0) === 6);
+  assert.equal(s.credits, credits + 6 * ITEMS.wheat.price);
+  assert.equal(f.stored, 0);
+  assert.ok(routeRate(s, r) > 0);
+});
+
+test('a route takes wheat from a field to a mill, and the mill\'s flour and bran to the depot', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const f = put(s, 'field', 8, 18);
+  f.stored = 6; f.harvest = 'wheat';
+  const mill = put(s, 'mill', 12, 20);
+  powerAt(s, 14, 21);
+  const r = route(s, [t], f, mill, depotOf(s));
+  assert.deepEqual(r.stops[1], { building: mill.id, drop: ['wheat'], pick: ['flour', 'bran'], wait: TRUCK.wait, turn: 0 }, 'a stop drops what it takes and picks up what it makes');
+  until(s, () => (s.delivered.flour ?? 0) === 3 && (s.delivered.bran ?? 0) === 3, 200);
+  assert.equal(s.made.flour, 3);
+});
+
+test('a building loads one truck at a time (the depot two); the others queue in turn', () => {
+  const s = flat();
+  const { trucks } = garageAt(s, 2, 24, 3);
+  const silo = put(s, 'silo', 8, 18);
+  silo.store!.wheat = 30;
+  route(s, trucks, [silo, { pick: ['wheat'], drop: [] }], depotOf(s));
+  let atSilo = 0, atDepot = 0, queued = false;
+  until(s, () => {
+    const docked = (b: Building) => trucks.filter((t) => t.phase === 'dock' && t.target === b.id).length;
+    atSilo = Math.max(atSilo, docked(silo)); atDepot = Math.max(atDepot, docked(depotOf(s)));
+    queued ||= trucks.some((t) => t.phase === 'queue');
+    return (s.delivered.wheat ?? 0) === 30;
+  }, 200);
+  assert.equal(atSilo, 1);
+  assert.ok(atDepot <= 2);
+  assert.ok(queued, 'trucks arriving together queue');
+});
+
+test('a truck with nothing to move gives the building to the truck queued behind it', () => {
+  const s = flat();
+  const { trucks: [a, b] } = garageAt(s, 2, 24, 2);
+  const mill = put(s, 'mill', 8, 18);
+  powerAt(s, 11, 18);
+  mill.inputs = { wheat: 6 }; mill.outputs = { flour: 3, bran: 3 };
+  const silo = put(s, 'silo', 20, 18);
+  a.cargo = ['wheat', 'wheat'];
+  // A waits up to a minute to drop wheat at the full mill; B comes to empty it.
+  route(s, [a], [mill, { drop: ['wheat'], pick: [], wait: 60 }], silo);
+  advance(s, 1);
+  route(s, [b], [mill, { drop: [], pick: ['flour', 'bran'] }], depotOf(s));
+  const took = until(s, () => (s.delivered.flour ?? 0) >= 3, 60);
+  assert.ok(took < 25, `B was served after ${took.toFixed(1)} s`);
+});
+
+test('a truck waits at a stop up to its wait for goods; with a wait of 0 it goes on at once', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const f = put(s, 'field', 8, 18);
+  const silo = put(s, 'silo', 14, 18);
+  const r = route(s, [t], [f, { wait: 10 }], silo);
+  const visit = () => {
+    until(s, () => t.phase === 'dock' && t.target === f.id);
+    return until(s, () => t.target !== f.id);
+  };
+  assert.ok(Math.abs(visit() - 10) < 0.3, 'waited for wheat');
+  assert.ok(setStopWait(r, 0, 0).ok);
+  assert.ok(visit() < 0.5, 'went on at once');
+});
+
+test('picking up several goods, a truck takes one of each in turn', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const silo = put(s, 'silo', 8, 18);
+  silo.store = { flour: 10, egg: 10 };
+  route(s, [t], [silo, { pick: ['flour', 'egg'], drop: [] }], depotOf(s));
+  until(s, () => t.phase === 'drive' && t.target === depotOf(s).id);
+  assert.equal(count(t.cargo, 'flour'), 3);
+  assert.equal(count(t.cargo, 'egg'), 3);
+});
+
+test('goods a building won\'t take stay aboard while the truck picks up into the room it has left', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const mill = put(s, 'mill', 8, 18);     // unpowered: it never makes room for wheat
+  mill.inputs = { wheat: 6 }; mill.outputs = { flour: 3, bran: 3 };
+  t.cargo = ['wheat', 'wheat', 'wheat'];
+  route(s, [t], [mill, { wait: 2 }], [depotOf(s), { drop: ['flour', 'bran'] }]);
+  until(s, () => t.phase === 'drive' && t.target === depotOf(s).id);
+  assert.equal(t.cargo.length, TRUCK.cargo);
+  assert.equal(count(t.cargo, 'wheat'), 3);
+  until(s, () => (s.delivered.flour ?? 0) + (s.delivered.bran ?? 0) === 3);
+  assert.equal(count(t.cargo, 'wheat'), 3, 'still aboard: the depot stop doesn\'t drop it');
+  assert.deepEqual(truckProblems(s, t), [], 'the mill takes wheat, so it isn\'t stuck aboard');
+});
+
+test('a truck low on charge goes home to charge first, drawing on its garage\'s network', () => {
+  const s = flat();
+  const { g, trucks: [t] } = garageAt(s, 2, 24);
+  const silo = put(s, 'silo', 8, 18);
+  silo.store!.wheat = 30;
+  route(s, [t], [silo, { pick: ['wheat'], drop: [] }], depotOf(s));
+  until(s, () => t.phase === 'dock');
+  t.energy = 2;
+  until(s, () => t.phase === 'drive');
+  assert.equal(t.target, g.id, 'home first');
+  until(s, () => t.phase === 'charge');
+  advance(s, 0.2);
+  assert.ok(networkOf(s, g)!.wanted >= TRUCK.chargeRate - 1e-6, `wanted ${networkOf(s, g)!.wanted}`);
+  until(s, () => t.phase === 'drive', 20);
+  assert.equal(t.target, depotOf(s).id, 'then straight on to the stop it was going to');
+  assert.ok(t.energy > TRUCK.battery - 5);
+});
+
+test('at a garage without power a truck gives up after a while and crawls on empty', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24, 1, false);
+  const silo = put(s, 'silo', 8, 18);
+  silo.store!.wheat = 30;
+  route(s, [t], [silo, { pick: ['wheat'], drop: [] }], depotOf(s));
+  until(s, () => t.phase === 'dock');
+  t.energy = 0;
+  until(s, () => t.phase === 'charge', 60);
+  const waited = until(s, () => t.phase === 'drive');
+  assert.ok(Math.abs(waited - TRUCK.giveUp) < 0.3, `waited ${waited}`);
+  const x = t.x, y = t.y;
+  advance(s, 1);
+  assert.ok(Math.abs(Math.hypot(t.x - x, t.y - y) - TRUCK.crawl) < 0.05, 'crawling');
+});
+
+test('a truck skips a stop it can\'t reach; with none it can, it waits and says so', () => {
+  const s = flat();
+  const { trucks: [a, b] } = garageAt(s, 2, 24, 2);
+  const boxed = put(s, 'silo', 24, 2);
+  boxed.store!.wheat = 10;
+  const walls = [[24, 1], [25, 1], [26, 2], [26, 3], [24, 4], [25, 4], [23, 2], [23, 3]].map(([x, y]) => put(s, 'pylon', x, y));
+  const silo = put(s, 'silo', 8, 18);
+  const r = route(s, [a], [boxed, { pick: ['wheat'], drop: [] }], silo);
+  route(s, [b], [boxed, { pick: ['wheat'], drop: [] }]);
+  for (let i = 0; i < 100; i++) { advance(s, 0.1); assert.notEqual(a.target, boxed.id); }
+  assert.match(stopProblems(s, r)[0]!, /No open tile/);
+  assert.equal(b.phase, 'stuck');
+  assert.match(truckProblems(s, b)[0], /none of its stops/);
+  remove(s, walls[0]);
+  until(s, () => b.phase === 'dock' && b.target === boxed.id, 60);
+});
+
+test('a truck finds its way again when the layout changes, and moves off a tile built on', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const silo = put(s, 'silo', 24, 4);
+  route(s, [t], [silo, { pick: [], drop: [], wait: 0 }]);
+  until(s, () => t.phase === 'drive' && t.path.length > 8);
+  put(s, 'pylon', Math.floor(t.x), Math.floor(t.y));
+  advance(s, 0.1);
+  assert.ok(isOpen(s, Math.floor(t.x), Math.floor(t.y)), 'off the pylon');
+  // A wall right across its way: it goes round.
+  const y = Math.floor(t.y) - 2;
+  for (let x = 0; x < 28; x++) if (canPlace(s, 'pylon', x, y).ok) put(s, 'pylon', x, y);
+  until(s, () => t.phase === 'dock' && t.target === silo.id, 60);
+});
+
+test('removing a building takes it out of its routes; removing a garage sells its trucks', () => {
+  const s = flat();
+  const { g, trucks: [t, u] } = garageAt(s, 2, 24, 2);
+  const f = put(s, 'field', 8, 18);
+  const r = route(s, [t, u], f, depotOf(s));
+  until(s, () => t.target === f.id);
+  remove(s, f);
+  assert.deepEqual(r.stops.map((st) => st.building), [depotOf(s).id]);
+  advance(s, 0.5);
+  assert.equal(t.target, depotOf(s).id);
+  t.cargo = ['wheat'];
+  const credits = s.credits;
+  assert.ok(remove(s, g).ok);
+  assert.equal(s.trucks.length, 0);
+  assert.equal(s.credits, credits + BUILDINGS.garage.cost + 2 * truckPrice(s));
+});
+
+test('when a route changes, a truck keeps going where it was going if that is still a stop', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const a = put(s, 'silo', 8, 18), b = put(s, 'silo', 20, 10);
+  a.store!.wheat = 30;
+  const r = route(s, [t], [a, { pick: ['wheat'], drop: [] }], [b, { wait: 0 }], depotOf(s));
+  until(s, () => t.phase === 'drive' && t.target === b.id);
+  assert.ok(moveStop(s, r, 1, -1).ok);
+  assert.equal(t.target, b.id);
+  assert.equal(t.stop, 0);
+  assert.ok(removeStop(s, r, 0).ok);
+  assert.equal(t.target, a.id, 'its stop went: on to the one now in its place');
+  assert.ok(deleteRoute(s, r).ok);
+  until(s, () => t.phase === 'parked');
+  assert.equal(t.route, null);
+  assert.ok(deserialize(serialize(s)), 'still saves');
+});
+
+test('a silo holds up to its limit of each good; a full one still takes the others', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const silo = put(s, 'silo', 8, 18);
+  silo.store!.wheat = SILO.perGood - 2;
+  t.cargo = ['wheat', 'wheat', 'wheat', 'wheat', 'flour', 'flour'];
+  route(s, [t], [silo, { wait: 1 }], [depotOf(s), { drop: [] }]);
+  until(s, () => t.phase === 'drive' && t.target === depotOf(s).id);
+  assert.deepEqual(silo.store, { wheat: SILO.perGood, flour: 2 });
+  assert.deepEqual(t.cargo, ['wheat', 'wheat']);
+});
+
+test('a building whose outputs are full with no route picking them up says so; so does one no route feeds', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const mill = put(s, 'mill', 8, 18);
+  powerAt(s, 11, 18);
+  mill.inputs = { wheat: 6 }; mill.outputs = { bran: 3 };
+  const r = route(s, [t], [mill, { pick: ['flour'], drop: [] }], depotOf(s));
+  advance(s, 0.2);
+  assert.equal(mill.status, 'noroute');
+  assert.match(describeStatus(s, mill), /Full of bran: no route/);
+  assert.ok(setStopGood(r, 0, 'bran', 'pick').ok);
+  until(s, () => mill.status === 'input', 60);
+  assert.match(describeStatus(s, mill), /Waiting for wheat: no route brings it/);
+  assert.ok(setStopGood(r, 0, 'wheat', 'drop').ok);
+  assert.doesNotMatch(describeStatus(s, mill), /no route/);
+});
+
+test('garages hold a few trucks; trucks cost credits and refund them', () => {
+  const s = flat();
+  const { g } = garageAt(s, 2, 24, 0);
+  const credits = s.credits;
+  for (let i = 0; i < TRUCK.perGarage; i++) assert.ok(buyTruck(s, g).ok);
+  assert.equal(s.credits, credits - TRUCK.perGarage * TRUCK.cost);
+  assert.equal(buyTruck(s, g).ok, false, 'full');
+  assert.ok(sellTruck(s, s.trucks[0]).ok);
+  assert.equal(s.credits, credits - (TRUCK.perGarage - 1) * TRUCK.cost);
+  assert.ok(s.trucks.every((t) => t.energy === TRUCK.battery && t.phase === 'parked'));
+});
+
+test('a good is dropped or picked up at a stop, never both', () => {
+  const s = flat();
+  const silo = put(s, 'silo', 8, 18);
+  const r = newRoute(s);
+  addStop(s, r, silo);
+  assert.ok(r.stops[0].drop.includes('wheat'));
+  assert.ok(setStopGood(r, 0, 'wheat', 'pick').ok);
+  assert.ok(!r.stops[0].drop.includes('wheat') && r.stops[0].pick.includes('wheat'));
+  assert.equal(setStopGood(r, 0, 'wheat', 'pick').ok, false, 'already so');
+  assert.ok(setStopGood(r, 0, 'wheat', null).ok);
+  assert.ok(!r.stops[0].drop.includes('wheat') && !r.stops[0].pick.includes('wheat'));
+  assert.equal(addStop(s, r, put(s, 'pylon', 1, 1)).ok, false, 'no goods at a pylon');
+  for (let i = 1; i < TRUCK.maxStops; i++) assert.ok(addStop(s, r, silo).ok);
+  assert.equal(addStop(s, r, silo).ok, false, 'at most maxStops');
 });
 
 test('a powered mill turns wheat into flour and bran', () => {
@@ -405,34 +544,50 @@ test('saves round-trip, and progress keeps the best result', () => {
   assert.equal(p.c1.time, 800);
 });
 
-test('saves with missing state are refused', () => {
+test('saves with missing or broken state are refused', () => {
   const s = flat();
-  const silo = put(s, 'silo', 6, 6);
-  silo.drones![0] = { phase: 'out', t: 0.5, energy: 0, task: { kind: 'sell', target: 1, tx: 3, ty: 3, item: 'egg', n: 0 }, cargo: ['egg'] };
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const f = put(s, 'field', 8, 18);
+  route(s, [t], f, depotOf(s));
+  advance(s, 3);
+  t.cargo = ['wheat'];
   const json = JSON.parse(serialize(s));
-  const without = (f: (o: any) => void) => { const o = structuredClone(json); f(o); return deserialize(JSON.stringify(o)); };
-  const siloOf = (o: any) => o.buildings.find((b: any) => b.type === 'silo');
-  assert.ok(without(() => {}));
-  assert.equal(without((o) => { delete siloOf(o).drones; }), null);
+  const without = (fn: (o: any) => void) => { const o = structuredClone(json); fn(o); return deserialize(JSON.stringify(o)); };
+  const back = without(() => {})!;
+  assert.ok(back);
+  assert.deepEqual(back.trucks, s.trucks);
+  assert.deepEqual(back.routes, s.routes);
+  assert.equal(without((o) => { delete o.trucks; }), null);
+  assert.equal(without((o) => { delete o.routes; }), null);
   assert.equal(without((o) => { delete o.carry; }), null);
-  assert.equal(without((o) => { siloOf(o).drones[0].task = null; }), null, 'a flying drone has a task');
+  assert.equal(without((o) => { o.trucks[0].garage = f.id; }), null, 'a truck\'s home is a garage');
+  assert.equal(without((o) => { o.trucks[0].route = 999; }), null, 'a route there is');
+  assert.equal(without((o) => { o.trucks[0].phase = 'flying'; }), null);
+  assert.equal(without((o) => { o.trucks[0].cargo = Array(TRUCK.cargo + 1).fill('wheat'); }), null);
+  assert.equal(without((o) => { o.trucks[0].cargo = ['gold']; }), null);
+  assert.equal(without((o) => { o.routes[0].stops[0].drop = ['wheat']; o.routes[0].stops[0].pick = ['wheat']; }), null, 'never both');
+  assert.equal(without((o) => { o.routes[0].stops[0].wait = -1; }), null);
+  assert.equal(without((o) => { o.trucks[0].budget = -1e100; }), null, 'a truck that could never move goods again');
+  assert.equal(without((o) => { const f = o.buildings.find((b: any) => b.type === 'field').id; Object.assign(o.trucks[0], { phase: 'dock', target: f }); o.trucks.push({ ...o.trucks[0], id: o.nextId++ }); }), null, 'two trucks in one bay');
+  assert.ok(without((o) => { Object.assign(o.trucks[0], { phase: 'dock', target: o.buildings.find((b: any) => b.type === 'field').id }); }), 'one is fine');
+  assert.equal(without((o) => { o.trucks[0].id = f.id; }), null, 'ids are one count');
+  assert.equal(without((o) => { o.nextId += 0.5; }), null, 'whole ids');
+  assert.equal(without((o) => { o.routes[0].id = 0; }), null, 'ids above 0');
   assert.equal(without((o) => { o.buildings[0].type = 'castle'; }), null);
-  assert.equal(without((o) => { siloOf(o).store.gold = 1; }), null);
-  assert.equal(without((o) => { delete o.buildings.find((b: any) => b.type === 'depot').sell; }), null);
-  assert.equal(without((o) => { o.buildings.find((b: any) => b.type === 'depot').sell = []; }), null);
-  assert.equal(without((o) => { siloOf(o).store = []; }), null);
-  assert.equal(without((o) => { siloOf(o).store.wheat = 0.5; }), null);
-  assert.equal(without((o) => { o.version = 1; }), null, 'saves from before silos are refused');
-  assert.equal(without((o) => { siloOf(o).drones[0].task.kind = 'fetch'; }), null, 'a fetch flies to a silo, not the depot');
+  assert.equal(without((o) => { o.buildings.find((b: any) => b.type === 'field').crop = 'not-a-crop'; }), null);
+  assert.equal(without((o) => { o.version = 2; }), null, 'saves from before trucks are refused');
   assert.equal(without((o) => { delete o.soilBase; }), null);
   assert.equal(without((o) => { delete o.scenario.tags; }), null);
   assert.equal(without((o) => { delete o.scenario.weather.wind; }), null);
-  const f = flat();
-  put(f, 'field', 4, 4); put(f, 'mill', 10, 10);
-  const fj = JSON.parse(serialize(f));
-  assert.ok(deserialize(JSON.stringify(fj)));
-  assert.equal(deserialize(JSON.stringify({ ...fj, buildings: fj.buildings.map((b: any) => (b.type === 'field' ? { ...b, crop: 'not-a-crop' } : b)) })), null);
-  assert.equal(deserialize(JSON.stringify({ ...fj, buildings: fj.buildings.map((b: any) => (b.type === 'mill' ? { ...b, recipe: 'bread' } : b)) })), null);
+  const m = flat();
+  put(m, 'mill', 10, 10);
+  const mj = JSON.parse(serialize(m));
+  assert.equal(deserialize(JSON.stringify({ ...mj, buildings: mj.buildings.map((b: any) => (b.type === 'mill' ? { ...b, recipe: 'bread' } : b)) })), null);
+  const k = flat();
+  const silo = put(k, 'silo', 6, 6);
+  const kj = JSON.parse(serialize(k));
+  assert.ok(deserialize(JSON.stringify(kj)));
+  assert.equal(deserialize(JSON.stringify({ ...kj, buildings: kj.buildings.map((b: any) => (b.id === silo.id ? { ...b, store: { wheat: 0.5 } } : b)) })), null);
 });
 
 test('removing a building twice refunds it once', () => {
@@ -443,15 +598,16 @@ test('removing a building twice refunds it once', () => {
   assert.equal(s.credits, credits + BUILDINGS.field.cost);
 });
 
-test('a field keeps the kind of its harvest when its crop changes', () => {
+test('a field keeps the kind of its harvest when its crop changes, and its stops pick up both', () => {
   const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
   const f = put(s, 'field', 4, 4);
   f.stored = 3; f.harvest = 'wheat';
-  setCrop(f, 'tomato');
-  powerAt(s, 8, 1);
   const silo = put(s, 'silo', 8, 4);
-  advance(s, 10);
-  assert.deepEqual(silo.store, { wheat: 3 });
+  const r = route(s, [t], f, [silo, { wait: 0 }]);
+  setCrop(s, f, 'tomato');
+  assert.deepEqual(r.stops[0].pick, ['wheat', 'tomato']);
+  until(s, () => (silo.store!.wheat ?? 0) === 3, 60);
   assert.equal(f.stored, 0);
   assert.equal(f.harvest, 'tomato');
 });
@@ -538,4 +694,100 @@ test('power drawing: a network\'s wires join every pylon with the fewest, shorte
   assert.equal(feederOf(s, put(s, 'loom', 15, 15)), null);
   assert.deepEqual(new Set(pylonsInLink(s, 8, 5)), new Set([a, b, c, d]));
   assert.deepEqual(pylonsInLink(s, 16, 16), []);
+});
+
+test('a docked truck walled off from its building stops loading there and goes on', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const silo = put(s, 'silo', 8, 18), other = put(s, 'silo', 20, 18);
+  silo.store!.wheat = 30;
+  route(s, [t], [silo, { pick: ['wheat'], drop: [], wait: 60 }], [other, { wait: 0 }]);
+  until(s, () => t.phase === 'dock' && t.target === silo.id);
+  for (const i of accessTiles(s, silo)) put(s, 'pylon', i % 30, Math.floor(i / 30));
+  advance(s, 0.2);
+  assert.notEqual(t.phase, 'dock');
+  const wheat = silo.store!.wheat;
+  advance(s, 10);
+  assert.equal(silo.store!.wheat, wheat, 'no loading from afar');
+});
+
+test('taking out the last stop while a truck is there sends it on to stop 1', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const a = put(s, 'silo', 8, 18), b = put(s, 'silo', 14, 18), c = put(s, 'silo', 20, 18);
+  const r = route(s, [t], [a, { wait: 0 }], [b, { wait: 0 }], [c, { wait: 30 }]);
+  until(s, () => t.phase === 'dock' && t.target === c.id);
+  assert.ok(removeStop(s, r, 2).ok);
+  assert.equal(t.target, a.id);
+});
+
+test('a save with a queuing truck that is going nowhere is refused', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  route(s, [t], put(s, 'silo', 8, 18));
+  const json = JSON.parse(serialize(s));
+  json.trucks[0].phase = 'queue'; json.trucks[0].target = null;
+  assert.equal(deserialize(JSON.stringify(json)), null);
+});
+
+test('route edits keep each truck\'s own stop: a repeated building, or a stop it is charging before', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const a = put(s, 'silo', 8, 18), b = put(s, 'silo', 14, 18), c = put(s, 'silo', 20, 18);
+  const r = route(s, [t], [a, { wait: 30 }], [b, { wait: 0 }], [a, { wait: 0 }], [c, { wait: 0 }]);
+  until(s, () => t.phase === 'dock' && t.target === a.id && t.stop === 0);
+  assert.ok(removeStop(s, r, 0).ok);
+  assert.equal(t.target, b.id, 'its stop went: on to the next, not the other stop at the same silo');
+  t.phase = 'charge'; t.stop = 2; t.target = t.garage;   // charging before going to c
+  assert.ok(removeStop(s, r, 0).ok);
+  assert.equal(r.stops[t.stop].building, c.id);
+});
+
+test('a truck beside its garage still charges when its battery is low', () => {
+  const s = flat();
+  const { g, trucks: [t] } = garageAt(s, 2, 24);
+  const silo = put(s, 'silo', 2, 21);   // north of the garage: they share open tiles
+  silo.store!.wheat = 30;
+  route(s, [t], [silo, { pick: ['wheat'], drop: [] }], depotOf(s));
+  until(s, () => t.phase === 'dock');
+  t.energy = 1;
+  until(s, () => t.phase !== 'dock');
+  assert.equal(t.target, g.id);
+});
+
+test('a stop the trucks\' garage can\'t reach is flagged, and a save with a stop at a garage is refused', () => {
+  const s = flat();
+  const { g, trucks: [t] } = garageAt(s, 2, 24);
+  const silo = put(s, 'silo', 20, 10);
+  // A ring of pylons one tile out: the silo has open tiles beside it, but no way in.
+  for (let x = 18; x <= 23; x++) for (const y of [8, 13]) put(s, 'pylon', x, y);
+  for (let y = 9; y <= 12; y++) for (const x of [18, 23]) put(s, 'pylon', x, y);
+  const r = route(s, [t], silo);
+  assert.match(stopProblems(s, r)[0]!, /from their garage/);
+  const json = JSON.parse(serialize(s));
+  json.routes[0].stops[0].building = g.id;
+  assert.equal(deserialize(JSON.stringify(json)), null);
+});
+
+test('a stop its trucks\' garage can\'t reach says so, though it has open tiles beside it', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const silo = put(s, 'silo', 20, 10);
+  for (let x = 18; x <= 23; x++) for (const y of [8, 13]) put(s, 'pylon', x, y);
+  for (let y = 9; y <= 12; y++) for (const x of [18, 23]) put(s, 'pylon', x, y);
+  advance(s, 0.2);
+  assert.equal(silo.status, 'idle', 'no route yet: nothing needs to reach it');
+  route(s, [t], silo);
+  advance(s, 0.2);
+  assert.equal(silo.status, 'noroad');
+});
+
+test('with room for one good a visit, a truck still takes each of a stop\'s goods in turn', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const silo = put(s, 'silo', 8, 18), other = put(s, 'silo', 20, 18);
+  silo.store = { flour: 10, bran: 10 };
+  t.cargo = ['egg', 'egg', 'egg', 'egg', 'egg'];   // never dropped: one free slot
+  route(s, [t], [silo, { pick: ['flour', 'bran'], drop: [] }], [other, { drop: ['flour', 'bran'], wait: 0 }]);
+  until(s, () => (other.store!.flour ?? 0) >= 2 && (other.store!.bran ?? 0) >= 2, 200);
 });

@@ -1,4 +1,4 @@
-import { BUILDINGS, PRODUCTS, recipesFor, SILO, type BuildingId, type CropId, type ItemId, type SellMode } from './data.ts';
+import { BUILDINGS, recipesFor, type BuildingId, type CropId, type ItemId } from './data.ts';
 import { DEPOT_SIZE, generateMap, TERRAIN, type MapData } from './map.ts';
 import type { Scenario } from './scenarios.ts';
 
@@ -8,34 +8,56 @@ import type { Scenario } from './scenarios.ts';
 /** Which way a building faces (for looks): north, east, south, west. */
 export type Dir = 0 | 1 | 2 | 3;
 
-/**
- * A silo's job for a drone: feed a building (cargo from the silo), collect from a building or fetch from another silo
- * (cargo back to the silo), or sell at the depot.
- */
-export interface Task {
-  kind: 'feed' | 'collect' | 'fetch' | 'sell';
-  /** The building it flies to, and that building's centre (kept, so a drone whose target goes still knows the way home). */
-  target: number; tx: number; ty: number;
-  item: ItemId;
-  /** Goods it set out to bring back (collect, fetch). */
-  n: number;
+/** A stop on a route: a building, the goods to drop there and to pick up (never both for one good), and how long to wait. */
+export interface Stop {
+  building: number;
+  drop: ItemId[];
+  pick: ItemId[];
+  /** Seconds a truck waits for room or goods after the last good moved. */
+  wait: number;
+  /** The next of its pick-up goods to take, so a mix comes out even, across every visit and truck. */
+  turn: number;
+}
+
+/** A loop of stops that trucks drive, stop 1 to the last and round again. */
+export interface Route {
+  id: number;
+  name: string;
+  stops: Stop[];
+  /** When each good was dropped by its trucks, over the last minute (for goods a minute). */
+  moved: number[];
 }
 
 /**
- * A silo's drone. At home it is idle or charging for its next flight; it flies out to its task's target, works there
- * (loading or unloading), charges there for the way back if the target is another silo, and flies back.
+ * A truck. It belongs to a garage and runs a route, or none. `parked` and `charge` are at its garage; `drive` follows `path`
+ * to `target` (a stop's building, or its garage); `queue` waits beside a building for its turn, `dock` moves goods there;
+ * `stuck` can reach none of its stops.
  */
-export interface Drone {
-  phase: 'idle' | 'charge' | 'out' | 'work' | 'recharge' | 'back';
-  /** Flight progress 0–1 while flying; seconds into the work while working. */
-  t: number;
-  /** Joules in hand for the next leg. */
+export interface Truck {
+  id: number;
+  garage: number;
+  route: number | null;
+  /** The stop it is heading to or at. */
+  stop: number;
+  phase: 'parked' | 'charge' | 'drive' | 'queue' | 'dock' | 'stuck';
+  /** Where it is, in tiles (a tile's centre is at +0.5), and which way it faces (radians, 0 towards +y). */
+  x: number; y: number; heading: number;
+  /** Tiles still to drive through, by index, the last one beside its target. */
+  path: number[];
+  target: number | null;
   energy: number;
-  task: Task | null;
   cargo: ItemId[];
+  /** At a stop: seconds with nothing to move; at its garage: seconds without charge. */
+  idle: number;
+  /** Goods it may move now at a stop (moveRate a second, at most one in hand). */
+  budget: number;
+  /** When it came to the queue, so trucks dock in the order they came. */
+  arrived: number;
+  /** Leaving its garage after charging: it goes on without checking its battery again. */
+  charged: boolean;
 }
 
-export type Status = 'ok' | 'idle' | 'input' | 'blocked' | 'power' | 'lowpower' | 'nolink' | 'nosilo' | 'flowers' | 'dry';
+export type Status = 'ok' | 'idle' | 'input' | 'blocked' | 'power' | 'lowpower' | 'nolink' | 'noroad' | 'noroute' | 'flowers' | 'dry';
 
 export interface Building {
   id: number;
@@ -53,8 +75,6 @@ export interface Building {
   outputs?: Partial<Record<ItemId, number>>;
   /** Seconds into the batch it's working on; null when it isn't. */
   progress?: number | null;
-  /** Goods it won't take from silos (any building that takes goods). */
-  refuse?: ItemId[];
   // Fields and hives.
   crop?: CropId;
   /** The crop the stored harvest is (it may differ from `crop` just after the crop was changed). */
@@ -64,14 +84,8 @@ export interface Building {
   compost?: number;
   // Batteries.
   charge?: number;
-  // Silos: goods held, drones, and how long sellable goods have waited for a full load. `shared` keeps a good sold by half
-  // fair between buildings and the depot: goods fed less goods sold, per good.
+  // Silos: goods held.
   store?: Partial<Record<ItemId, number>>;
-  shared?: Partial<Record<ItemId, number>>;
-  drones?: Drone[];
-  waited?: number;
-  // The depot: the goods silos send it, and how.
-  sell?: Partial<Record<ItemId, SellMode>>;
   // Saplings.
   age?: number;
 }
@@ -89,13 +103,16 @@ export interface Stats {
 export const STAT_BUCKET = 10, STAT_BUCKETS = 7;
 
 export interface GameState {
-  version: 2;
+  version: 3;
   scenario: Scenario;
   map: MapData;
   /** Each tile's fertility at the start: resting ground recovers up to it. */
   soilBase: number[];
   initialTrees: number;
   buildings: Building[];
+  routes: Route[];
+  trucks: Truck[];
+  /** The next id for a building, route or truck (they share one count, so an id names one thing). */
   nextId: number;
   credits: number;
   /** Seconds of play. */
@@ -115,16 +132,11 @@ export interface GameState {
 export function newGame(sc: Scenario): GameState {
   const map = generateMap(sc);
   const s: GameState = {
-    version: 2, scenario: sc, map, soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
-    buildings: [], nextId: 1, credits: sc.credits, time: 0, carry: 0, delivered: {}, earned: 0,
+    version: 3, scenario: sc, map, soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
+    buildings: [], routes: [], trucks: [], nextId: 1, credits: sc.credits, time: 0, carry: 0, delivered: {}, earned: 0,
     stats: { since: 0, made: [{}], delivered: {} }, reached: sc.goals.map(() => false), completedAt: null, made: {},
   };
-  const depot = makeBuilding(s, 'depot', map.depot.x, map.depot.y, 0);
-  // The depot sells the products, and half of whatever else the commission asks for.
-  depot.sell = {};
-  for (const i of PRODUCTS) depot.sell[i] = 'spare';
-  for (const g of sc.goals) if (g.kind !== 'soil' && !PRODUCTS.includes(g.item)) depot.sell[g.item] = 'half';
-  s.buildings.push(depot);
+  s.buildings.push(makeBuilding(s, 'depot', map.depot.x, map.depot.y, 0));
   return s;
 }
 
@@ -132,17 +144,14 @@ export function newGame(sc: Scenario): GameState {
 export function makeBuilding(s: GameState, type: BuildingId, x: number, y: number, rot: Dir): Building {
   const b: Building = { id: s.nextId++, type, x, y, rot, status: 'idle' };
   switch (type) {
-    case 'field': b.crop = 'wheat'; b.growth = 0; b.stored = 0; b.compost = 0; b.refuse = []; break;
+    case 'field': b.crop = 'wheat'; b.growth = 0; b.stored = 0; b.compost = 0; break;
     case 'hive': b.growth = 0; b.stored = 0; break;
     case 'battery': b.charge = 0; break;
-    case 'silo':
-      b.store = {}; b.shared = {}; b.waited = 0;
-      b.drones = Array.from({ length: SILO.drones }, () => ({ phase: 'idle' as const, t: 0, energy: 0, task: null, cargo: [] }));
-      break;
+    case 'silo': b.store = {}; break;
     case 'sapling': b.age = 0; break;
     default: {
       const rs = recipesFor(type);
-      if (rs.length) { b.recipe = rs[0].id; b.inputs = {}; b.outputs = {}; b.progress = null; b.refuse = []; }
+      if (rs.length) { b.recipe = rs[0].id; b.inputs = {}; b.outputs = {}; b.progress = null; }
     }
   }
   return b;
@@ -208,6 +217,8 @@ export function buildingAt(s: GameState, x: number, y: number): Building | null 
 }
 
 export const buildingById = (s: GameState, id: number) => cache(s).byId.get(id) ?? null;
+export const routeById = (s: GameState, id: number | null) => (id === null ? null : s.routes.find((r) => r.id === id) ?? null);
+export const truckById = (s: GameState, id: number | null) => (id === null ? null : s.trucks.find((t) => t.id === id) ?? null);
 
 export const terrainAt = (s: GameState, x: number, y: number) => s.map.terrain[y * s.map.width + x];
 

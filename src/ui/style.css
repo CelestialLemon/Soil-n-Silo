@@ -53,7 +53,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .warn-hint { color: #ffc080 !important; }
 .inspector .hint, .hint { color: var(--dim); font-size: 12px; margin: 2px 0 6px; }
 .status { padding: 3px 6px; border-radius: 4px; background: #0003; margin: 4px 0; }
-.status.input, .status.flowers { color: #ffe080; } .status.blocked, .status.lowpower { color: #ffb050; } .status.power, .status.nolink { color: #ff7a60; } .status.dry { color: #80c8ff; } .status.ok { color: #c8f0a0; }
+.status.input, .status.flowers { color: #ffe080; } .status.blocked, .status.lowpower { color: #ffb050; } .status.power, .status.nolink { color: #ff7a60; } .status.dry { color: #80c8ff; } .status.ok { color: #c8f0a0; } .status.noroad, .status.noroute { color: #d8a0ff; }
 .kv { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; margin: 3px 0; }
 .kv b { color: var(--text); font-weight: normal; text-align: right; }
 .choices { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
@@ -181,12 +181,25 @@ button:disabled { opacity: 0.45; cursor: default; }
 .diagram { width: 100%; max-width: 420px; display: block; margin: 0 auto; }
 .diagram-wrap .hint { color: var(--dim) !important; text-align: center; }
 .goods-table td:first-child { width: 34%; }
-.sell-list button { font-size: 11px; }
-.sell-list button:not(.active) { opacity: 0.7; }
-.drones { font-size: 12px; margin: 2px 0 6px; padding-left: 18px; }
+/* Trucks and routes in the inspector, and routes in the stats. */
+.route-name { white-space: nowrap; }
+.truck-row { margin: 4px 0; padding: 2px 0 4px; border-bottom: 1px solid #ffffff14; }
+.truck-row .hint { margin: 0; }
+.inspector .kv select { max-width: 60%; }
+.stop { margin: 8px 0; padding: 4px 6px 6px; border: 1px solid #ffffff1c; border-radius: 6px; background: #0002; }
+.stop .head { font-size: 13px; color: var(--text); }
+.stop .head button { padding: 0 6px; }
+.stop-goods { margin: 4px 0; align-items: center; }
+.stop-goods .lbl { font-size: 11px; color: var(--dim); width: 48px; }
+.stop-goods button:not(.active) { opacity: 0.6; }
+.stop-goods small.hint { margin: 0; }
+.stats-panel h4 { margin: 10px 0 2px; color: var(--honey); }
+.stats-panel td.stops { text-align: left; color: var(--dim); max-width: 220px; }
+.stop-label { font-weight: bold; font-size: 12px; border-width: 2px; }
 
 /* Labels over the power networks while power is shown: what each makes and uses, its batteries. */
 .net-labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
 .net-label { position: absolute; left: 0; top: 0; white-space: nowrap; font-size: 11px; color: var(--text);
   background: rgb(22 40 36 / 0.8); border: 1px solid #3a5a50; border-radius: 6px; padding: 1px 6px; }
 .net-label.short { color: #ffb070; border-color: #a0603a; }
+.inspector .glink { color: var(--honey); }

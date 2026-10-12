@@ -1,7 +1,7 @@
-import type { Medal } from './sim.ts';
-import { BUILDINGS, CROPS, DRONE, ITEMS, recipesFor } from './data.ts';
+import { isStop, type Medal } from './sim.ts';
+import { bays, BUILDINGS, CROPS, ITEMS, recipesFor, TRUCK } from './data.ts';
 import type { Scenario } from './scenarios.ts';
-import type { Building, Drone, GameState } from './state.ts';
+import type { Building, GameState, Route, Truck } from './state.ts';
 
 // Saving: the commission in progress (one at a time) and each commission's best result. The game state is plain data, so a
 // save is its JSON.
@@ -22,7 +22,7 @@ export function deserialize(json: string | null): GameState | null {
   if (!json) return null;
   try {
     const s = JSON.parse(json) as GameState;
-    return s?.version === 2 && complete(s) ? s : null;
+    return s?.version === 3 && complete(s) ? s : null;
   } catch {
     return null;
   }
@@ -65,33 +65,52 @@ function complete(s: GameState): boolean {
     && stock(s.delivered) && stock(s.made) && arr(s.reached) && s.reached.length === s.scenario.goals.length
     && !!st && num(st.since) && arr(st.made) && st.made.length > 0 && st.made.every(counts)
     && !!st.delivered && typeof st.delivered === 'object' && Object.entries(st.delivered).every(([k, v]) => item(k) && arr(v) && v.every(num))
-    && arr(s.buildings) && s.buildings.every((b) => validBuilding(b, m.width, m.height)) && tasksFit(s.buildings);
+    && arr(s.buildings) && s.buildings.every((b) => validBuilding(b, m.width, m.height))
+    && arr(s.routes) && s.routes.every(validRoute) && stopsExist(s) && docksFit(s) && arr(s.trucks) && s.trucks.every((t) => validTruck(s, t)) && uniqueIds(s);
 }
 
-/** Every drone's task flies to the kind of building it works with, if that building is still there. */
-function tasksFit(buildings: Building[]): boolean {
-  const byId = new Map(buildings.map((b) => [b.id, b]));
-  return buildings.every((si) => si.type !== 'silo' || si.drones!.every((d) => {
-    const t = d.task, b = t ? byId.get(t.target) : undefined;
-    if (!t || !b) return true;
-    if (t.kind === 'fetch') return b.type === 'silo' && b !== si;
-    if (t.kind === 'sell') return b.type === 'depot';
-    if (t.kind === 'feed') return b.type === 'field' || !!b.recipe;
-    return b.type === 'field' || b.type === 'hive' || !!b.recipe;
-  }));
+const int = (v: unknown) => Number.isInteger(v);
+
+/** A route: stops at buildings (each good dropped or picked up, never both), with a wait in range. */
+function validRoute(r: Route): boolean {
+  return !!r && num(r.id) && str(r.name) && arr(r.moved) && r.moved.every(num) && arr(r.stops) && r.stops.length <= TRUCK.maxStops
+    && r.stops.every((st) => !!st && num(st.building) && items(st.drop) && items(st.pick) && !st.drop.some((i) => st.pick.includes(i))
+      && num(st.wait) && st.wait >= 0 && st.wait <= TRUCK.maxWait && int(st.turn) && st.turn >= 0);
 }
 
-const TASKS = ['feed', 'collect', 'fetch', 'sell'];
-const PHASES = ['idle', 'charge', 'out', 'work', 'recharge', 'back'];
-/** A drone is idle with nothing, or has a whole task. */
-function drone(d: Drone): boolean {
-  if (!d || !PHASES.includes(d.phase) || !num(d.t) || !num(d.energy) || d.energy < 0 || !items(d.cargo) || d.cargo.length > DRONE.cargo) return false;
-  const t = d.task;
-  if (d.phase === 'idle') return t === null && !d.cargo.length;
-  return !!t && TASKS.includes(t.kind) && [t.target, t.tx, t.ty].every(num) && item(t.item)
-    && Number.isInteger(t.n) && t.n >= 0 && t.n <= DRONE.cargo && (t.kind === 'sell' || t.kind === 'feed' || t.n > 0)
-    // A drone collecting or fetching flies out empty, and brings back no more than it went for.
-    && ((t.kind !== 'collect' && t.kind !== 'fetch') || (d.phase === 'recharge' || d.phase === 'back' ? d.cargo.length <= t.n : !d.cargo.length));
+/** No building has more trucks docked than it has bays. */
+function docksFit(s: GameState): boolean {
+  const n = new Map<number, number>();
+  for (const t of s.trucks) if (t.phase === 'dock' && t.target !== null) n.set(t.target, (n.get(t.target) ?? 0) + 1);
+  return [...n].every(([id, k]) => { const b = s.buildings.find((x) => x.id === id); return !!b && k <= bays(b.type); });
+}
+
+/** Every stop is at a building there is, one trucks stop at. */
+function stopsExist(s: GameState): boolean {
+  const byId = new Map(s.buildings.map((b) => [b.id, b]));
+  return s.routes.every((r) => r.stops.every((st) => { const b = byId.get(st.building); return !!b && isStop(b); }));
+}
+
+const PHASES = ['parked', 'charge', 'drive', 'queue', 'dock', 'stuck'];
+/** A truck: at home in a garage there is, on the map, with a route there is (or none) and a cargo it can carry. */
+function validTruck(s: GameState, t: Truck): boolean {
+  const { width: w, height: h } = s.map;
+  return !!t && num(t.id) && s.buildings.some((b) => b.id === t.garage && b.type === 'garage')
+    && (t.route === null || s.routes.some((r) => r.id === t.route)) && int(t.stop) && t.stop >= 0 && PHASES.includes(t.phase)
+    && [t.x, t.y, t.heading, t.energy, t.idle, t.budget, t.arrived].every(num) && t.x >= 0 && t.y >= 0 && t.x <= w && t.y <= h
+    && t.energy >= 0 && t.energy <= TRUCK.battery && typeof t.charged === 'boolean'
+    && t.idle >= 0 && t.budget >= 0 && t.budget <= 2
+    && arr(t.path) && t.path.every((i) => int(i) && i >= 0 && i < w * h) && (t.target === null || num(t.target))
+    // Driving, queuing or docked, it is going to or at a building; queuing or docked, at a stop of its route.
+    && (!['drive', 'queue', 'dock'].includes(t.phase) || t.target !== null) && (!['queue', 'dock'].includes(t.phase) || t.route !== null)
+    && items(t.cargo) && t.cargo.length <= TRUCK.cargo;
+}
+
+/** Buildings, routes and trucks share one count of ids, below the next one. */
+function uniqueIds(s: GameState): boolean {
+  const ids = [...s.buildings, ...s.routes, ...s.trucks].map((x) => x.id);
+  // Whole and above 0: the building cache marks an empty tile with 0.
+  return int(s.nextId) && new Set(ids).size === ids.length && ids.every((id) => int(id) && id > 0 && id < s.nextId);
 }
 
 /** A building has what its type's rules read. */
@@ -100,15 +119,14 @@ function validBuilding(b: Building, w: number, h: number): boolean {
   const n = BUILDINGS[b.type].size;
   if (b.x < 0 || b.y < 0 || b.x + n > w || b.y + n > h) return false;
   switch (b.type) {
-    case 'silo': return stock(b.store) && counts(b.shared) && num(b.waited) && arr(b.drones) && b.drones.length > 0 && b.drones.every(drone);
-    case 'depot': return !!b.sell && typeof b.sell === 'object' && !arr(b.sell) && Object.entries(b.sell).every(([k, v]) => item(k) && (v === 'spare' || v === 'half'));
-    case 'field': return crop(b.crop) && (b.harvest === undefined || crop(b.harvest)) && num(b.growth) && num(b.stored) && num(b.compost) && items(b.refuse);
+    case 'silo': return stock(b.store);
+    case 'field': return crop(b.crop) && (b.harvest === undefined || crop(b.harvest)) && num(b.growth) && num(b.stored) && num(b.compost);
     case 'hive': return num(b.growth) && num(b.stored);
     case 'battery': return num(b.charge);
     case 'sapling': return num(b.age);
   }
   if (recipesFor(b.type).length) {
-    return recipesFor(b.type).some((r) => r.id === b.recipe) && stock(b.inputs) && stock(b.outputs) && (b.progress === null || num(b.progress)) && items(b.refuse);
+    return recipesFor(b.type).some((r) => r.id === b.recipe) && stock(b.inputs) && stock(b.outputs) && (b.progress === null || num(b.progress));
   }
   return true;
 }

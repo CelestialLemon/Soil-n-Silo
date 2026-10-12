@@ -1,18 +1,19 @@
 import {
-  BUILDINGS, CROPS, DAY_SECONDS, DRONE, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEMS, OUTPUT_BATCHES, POWER, recipeById,
-  SAPLING_SECONDS, SILO, START_HOUR, TICK, TREE_HEALTH, type Ingredient, type ItemId, type Recipe,
+  bays, BUILDINGS, CROPS, DAY_SECONDS, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, ITEMS, OUTPUT_BATCHES, POWER, recipeById,
+  recipesFor, SAPLING_SECONDS, SILO, START_HOUR, TICK, TREE_HEALTH, TRUCK, type Ingredient, type ItemId, type Recipe,
 } from './data.ts';
 import { TERRAIN } from './map.ts';
 import { networkOf, networks } from './power.ts';
+import { accessTiles, distanceTo, isOpen, legLength, nearestOpen, pathTo } from './roads.ts';
 import { noise1 } from './rng.ts';
 import type { Scenario } from './scenarios.ts';
 import {
-  buildingAt, buildingById, centre, countTrees, gapBetween, layoutOf, reachTo, removeBuilding, STAT_BUCKET, STAT_BUCKETS,
-  terrainAt, tileIndex, touchLayout, type Building, type Drone, type GameState, type Task,
+  buildingAt, buildingById, centre, countTrees, layoutOf, reachTo, removeBuilding, routeById, STAT_BUCKET, STAT_BUCKETS,
+  terrainAt, tileIndex, touchLayout, type Building, type GameState, type Route, type Stop, type Truck,
 } from './state.ts';
 
-// The simulation: one fixed step of TICK seconds at a time. Each step balances power, runs every building, flies the silos'
-// drones and gives idle ones new jobs, then updates the stats and goals.
+// The simulation: one fixed step of TICK seconds at a time. Each step balances power, runs every building, drives the
+// trucks along their routes (docking, moving goods, charging), then updates the stats and goals.
 
 // ---- Time, sun and wind ----
 
@@ -50,10 +51,6 @@ interface Derived {
   nearWater: Set<number>;
   /** Tiles under a field (the rest of the ground rests). */
   fielded: Set<number>;
-  /** The buildings each silo serves, nearest first. */
-  serves: Map<number, Building[]>;
-  /** The silos serving each building. */
-  servedBy: Map<number, Building[]>;
 }
 const derivedCache = new WeakMap<GameState, Derived>();
 
@@ -61,7 +58,7 @@ function derived(s: GameState): Derived {
   const layout = layoutOf(s);
   let d = derivedCache.get(s);
   if (d && d.layout === layout) return d;
-  d = { layout, sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), nearWater: new Set(), fielded: new Set(), serves: new Map(), servedBy: new Map() };
+  d = { layout, sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), nearWater: new Set(), fielded: new Set() };
   const fields = s.buildings.filter((b) => b.type === 'field');
   const hives = s.buildings.filter((b) => b.type === 'hive');
   const sprinklers = s.buildings.filter((b) => b.type === 'sprinkler');
@@ -92,31 +89,12 @@ function derived(s: GameState): Derived {
       if (terrainAt(s, x, y) === TERRAIN.water) { d.nearWater.add(sp.id); break search; }
     }
   }
-  for (const si of s.buildings) {
-    if (si.type !== 'silo') continue;
-    const list = s.buildings.filter((b) => handlesGoods(b) && gapBetween(si, b) <= SILO.reach)
-      .sort((a, c) => distance(si, a) - distance(si, c) || a.id - c.id);
-    d.serves.set(si.id, list);
-    for (const b of list) {
-      const by = d.servedBy.get(b.id);
-      if (by) by.push(si); else d.servedBy.set(b.id, [si]);
-    }
-  }
   derivedCache.set(s, d);
   return d;
 }
 
-/** Whether a building trades goods with silos: it grows, makes or uses goods. */
+/** Whether a building trades goods with trucks: it grows, makes or uses goods. */
 export const handlesGoods = (b: Building) => b.type === 'field' || b.type === 'hive' || !!b.recipe;
-/** The buildings a silo serves, nearest first. */
-export const servedBySilo = (s: GameState, silo: Building) => derived(s).serves.get(silo.id) ?? [];
-/** The silos serving a building. */
-export const silosServing = (s: GameState, b: Building) => derived(s).servedBy.get(b.id) ?? [];
-/** Distance between two buildings' centres, in tiles. */
-export function distance(a: Building, b: Building) {
-  const ca = centre(a), cb = centre(b);
-  return Math.hypot(ca.x - cb.x, ca.y - cb.y);
-}
 
 export const sprinklersOf = (s: GameState, b: Building) => derived(s).sprinklers.get(b.id) ?? [];
 export const isPollinated = (s: GameState, b: Building) => derived(s).pollinated.has(b.id);
@@ -183,9 +161,13 @@ function consume(b: Building, r: Recipe) {
   }
 }
 
-/** Whether a building takes `item` from a drone right now. Takes it if so. */
-function accept(b: Building, item: ItemId): boolean {
-  if (b.refuse?.includes(item)) return false;
+/** Whether a building takes `item` from a truck right now. Takes it if so: the depot buys it, a silo stores it. */
+function accept(s: GameState, b: Building, item: ItemId): boolean {
+  if (b.type === 'depot') { deliver(s, item); return true; }
+  if (b.type === 'silo') {
+    if ((b.store![item] ?? 0) >= SILO.perGood) return false;
+    b.store![item] = (b.store![item] ?? 0) + 1; return true;
+  }
   if (b.type === 'field') {
     if (item !== 'compost' || b.compost! >= FIELD.compostStore) return false;
     b.compost!++; return true;
@@ -226,7 +208,7 @@ export function wants(s: GameState, b: Building): number {
   const def = BUILDINGS[b.type];
   if (!def.power) return 0;
   if (b.type === 'sprinkler') return nearWater(s, b) ? POWER.sprinklerNearWater : POWER.sprinklerFar;
-  if (b.type === 'silo') return charging.get(s)?.get(b.id) ?? 0;
+  if (b.type === 'garage') return charging.get(s)?.get(b.id) ?? 0;
   const r = recipeOf(b);
   if (!r) return 0;
   if (b.progress !== null && b.progress !== undefined) return def.power;
@@ -278,32 +260,21 @@ function balancePower(s: GameState, sun: number, wind: number, dt: number) {
 
 // ---- Goods waiting in buildings ----
 
-/** The goods a building has waiting for a drone. */
-export function outputGoods(b: Building): ItemId[] {
-  if (b.type === 'field') return b.stored! > 0 ? [b.harvest ?? b.crop!] : [];
-  if (b.type === 'hive') return b.stored! > 0 ? ['honey'] : [];
-  if (b.outputs) return Object.keys(b.outputs).filter((k) => b.outputs![k as ItemId]! > 0) as ItemId[];
-  return [];
-}
-/** How many of `item` a building has waiting for a drone. */
+/** How many of `item` a building has waiting for a truck: a harvest, products, or a silo's stock. */
 function waiting(b: Building, item: ItemId) {
   if (b.type === 'field') return (b.harvest ?? b.crop) === item ? b.stored! : 0;
   if (b.type === 'hive') return item === 'honey' ? b.stored! : 0;
+  if (b.type === 'silo') return b.store![item] ?? 0;
   return b.outputs?.[item] ?? 0;
 }
 function take(b: Building, item: ItemId) {
   if (b.type === 'field' || b.type === 'hive') { b.stored!--; if (!b.stored) b.harvest = b.crop; return; }
-  b.outputs![item]! -= 1;
-  if (!b.outputs![item]) delete b.outputs![item];
+  const from = b.type === 'silo' ? b.store! : b.outputs!;
+  from[item]! -= 1;
+  if (!from[item]) delete from[item];
 }
 
-/** The goods that fill the same input of a building as `item` (its group's members, or just itself). */
-function sameInput(b: Building, item: ItemId): readonly ItemId[] {
-  const ing = recipeOf(b)?.inputs.find((i) => members(i).includes(item));
-  return ing ? members(ing) : [item];
-}
-
-/** The goods a building can take: its recipe's inputs (any member of a group), or compost for a field; less what it refuses. */
+/** The goods a building can take now: its recipe's inputs (any member of a group), or compost for a field. */
 export function inputGoods(b: Building): ItemId[] {
   if (b.type === 'field') return ['compost'];
   const r = recipeOf(b);
@@ -369,277 +340,346 @@ function runHive(s: GameState, h: Building, dt: number) {
   if (h.growth! >= 1) { h.growth = 0; h.stored!++; made(s, 'honey', 1); }
 }
 
-// ---- Silos and drones ----
+// ---- Trucks ----
 
-/** Goods on their way, by building and good: into buildings (feed), out of buildings (collect, fetch) and into silos. */
-interface Plans { into: Map<string, number>; out: Map<string, number>; home: Map<string, number> }
-const key = (id: number, item: ItemId | '*') => `${id} ${item}`;
-const get = (m: Map<string, number>, id: number, item: ItemId | '*') => m.get(key(id, item)) ?? 0;
-const add = (m: Map<string, number>, id: number, item: ItemId, n: number) => {
-  m.set(key(id, item), get(m, id, item) + n);
-  m.set(key(id, '*'), get(m, id, '*') + n);
-};
+/** Whether trucks can stop at a building: it grows, makes, uses or stores goods, or is the depot. */
+export const isStop = (b: Building) => b.type === 'silo' || b.type === 'depot' || handlesGoods(b);
 
-/** What every drone has set out to move and not yet moved. */
-function plans(s: GameState): Plans {
-  const p: Plans = { into: new Map(), out: new Map(), home: new Map() };
-  for (const si of s.buildings) {
-    if (si.type !== 'silo') continue;
-    for (const d of si.drones!) {
-      const t = d.task;
-      if (!t) continue;
-      const before = d.phase === 'charge' || d.phase === 'out' || d.phase === 'work';
-      if (t.kind === 'feed' && before) for (const it of d.cargo) add(p.into, t.target, it, 1);
-      if (t.kind === 'collect' || t.kind === 'fetch') {
-        if (before) add(p.out, t.target, t.item, t.n);
-        // On its way home with cargo, or about to fetch it: the silo keeps room for it.
-        add(p.home, si.id, t.item, before ? t.n : d.cargo.length);
+/** Every good a building could ever take from a truck (for a stop's defaults and choices). */
+export function takesGoods(b: Building): ItemId[] {
+  if (b.type === 'silo' || b.type === 'depot') return [...ITEM_IDS];
+  if (b.type === 'field') return ['compost'];
+  return [...new Set(recipesFor(b.type).flatMap((r) => r.inputs.flatMap((i) => [...members(i)])))];
+}
+
+/** The goods a building takes or gives with the recipe it has now (any recipe's, for one without). */
+const takesNow = (b: Building) => (b.recipe ? inputGoods(b) : takesGoods(b));
+const givesNow = (b: Building) => (b.recipe ? [...new Set([...recipeOf(b)!.outputs.map((o) => o.item), ...(Object.keys(b.outputs!) as ItemId[])])] : givesGoods(b));
+
+/** Every good a building could ever give a truck: a field's crop (and a waiting harvest of another), products, stock. */
+export function givesGoods(b: Building): ItemId[] {
+  if (b.type === 'silo') return [...ITEM_IDS];
+  if (b.type === 'field') return [...new Set([b.crop!, b.harvest ?? b.crop!])];
+  if (b.type === 'hive') return ['honey'];
+  return [...new Set(recipesFor(b.type).flatMap((r) => r.outputs.map((o) => o.item)))];
+}
+
+const tileOf = (s: GameState, t: Truck) => tileIndex(s, Math.floor(t.x), Math.floor(t.y));
+const garageOf = (s: GameState, t: Truck) => buildingById(s, t.garage);
+export const routeOf = (s: GameState, t: Truck) => routeById(s, t.route);
+/** The routes that stop at a building. */
+export const routesAt = (s: GameState, b: Building) => s.routes.filter((r) => r.stops.some((st) => st.building === b.id));
+/** The trucks running a route. */
+export const trucksOn = (s: GameState, r: Route) => s.trucks.filter((t) => t.route === r.id);
+
+/** Sends a truck along the shortest way to a building; false if there is none. */
+function driveTo(s: GameState, t: Truck, b: Building): boolean {
+  const p = pathTo(s, b, tileOf(s, t));
+  if (!p) return false;
+  t.path = p; t.target = b.id; t.phase = 'drive'; t.idle = 0;
+  return true;
+}
+
+/** Sends a truck home to its garage (to park, or to charge); if it can't get there it waits where it is. */
+function goHome(s: GameState, t: Truck) {
+  const g = garageOf(s, t)!;
+  t.path = [];
+  if (distanceTo(s, g, tileOf(s, t)) === 0) { t.phase = routeOf(s, t)?.stops.length ? 'charge' : 'parked'; t.target = g.id; t.idle = 0; return; }
+  if (!driveTo(s, t, g)) { t.phase = 'stuck'; t.target = null; }
+}
+
+/**
+ * Sets a truck off for stop `from` of its route, or the next one after it that it can reach. If its battery wouldn't get it
+ * there and then home, it goes home to charge first (unless it has just charged, or can't get home).
+ */
+function setOff(s: GameState, t: Truck, from: number) {
+  const r = routeOf(s, t), g = garageOf(s, t)!;
+  if (!r || !r.stops.length) { goHome(s, t); return; }
+  const here = tileOf(s, t), n = r.stops.length;
+  let i = -1;
+  for (let k = 0; k < n; k++) {
+    const b = buildingById(s, r.stops[(from + k) % n].building);
+    if (b && distanceTo(s, b, here) < Infinity) { i = (from + k) % n; break; }
+  }
+  t.stop = ((from % n) + n) % n;
+  if (i < 0) { t.phase = 'stuck'; t.path = []; t.target = null; return; }
+  t.stop = i;
+  const b = buildingById(s, r.stops[i].building)!;
+  // The way there, and home from the tile it will stop at.
+  const path = pathTo(s, b, here)!, leg = distanceTo(s, b, here), back = distanceTo(s, g, path.length ? path[path.length - 1] : here);
+  if (!t.charged && back < Infinity && distanceTo(s, g, here) < Infinity
+    && t.energy < (leg + back) * TRUCK.joulesPerTile) { goHome(s, t); return; }
+  t.charged = false;
+  t.path = path; t.target = b.id; t.phase = 'drive'; t.idle = 0;
+}
+
+/** Whether a truck is done at its stop: it carries none of the stop's drop goods, and is full or picks nothing up there. */
+const doneAt = (t: Truck, st: Stop) => !t.cargo.some((i) => st.drop.includes(i)) && (t.cargo.length >= TRUCK.cargo || !st.pick.length);
+
+/** Moves one good at a stop: drops one the building takes, else picks up the next of the stop's goods there is. */
+function moveOne(s: GameState, t: Truck, st: Stop, b: Building, r: Route): boolean {
+  for (let k = 0; k < t.cargo.length; k++) {
+    const it = t.cargo[k];
+    if (st.drop.includes(it) && accept(s, b, it)) { t.cargo.splice(k, 1); r.moved.push(s.time); return true; }
+  }
+  if (t.cargo.length >= TRUCK.cargo) return false;
+  const n = st.pick.length;
+  for (let k = 0; k < n; k++) {
+    const it = st.pick[(st.turn + k) % n];
+    if (waiting(b, it) > 0) { take(b, it); t.cargo.push(it); st.turn = (st.turn + k + 1) % n; return true; }
+  }
+  return false;
+}
+
+/** A docked truck's step at its stop: moves goods, and leaves when done or when it has waited long enough. */
+function atStop(s: GameState, t: Truck, dt: number, queued: boolean) {
+  const r = routeOf(s, t), st = r?.stops[t.stop], b = t.target !== null ? buildingById(s, t.target) : null;
+  if (!r || !st || !b || st.building !== b.id) { redirect(s, t); return; }
+  t.budget += TRUCK.moveRate * dt;
+  let stuck = false;
+  while (t.budget >= 1) {
+    if (moveOne(s, t, st, b, r)) { t.budget -= 1; t.idle = 0; } else { stuck = true; t.budget = 1; break; }
+  }
+  if (doneAt(t, st)) { setOff(s, t, t.stop + 1); return; }
+  if (stuck) {
+    t.idle += dt;
+    if (t.idle >= st.wait - 1e-9 || queued) setOff(s, t, t.stop + 1);
+  }
+}
+
+/** Drives a truck along its path; at the end it parks at its garage or joins the queue at its stop. */
+function drive(s: GameState, t: Truck, dt: number) {
+  const w = s.map.width;
+  let left = (t.energy > 0 ? TRUCK.speed : TRUCK.crawl) * dt;
+  while (left > 1e-9 && t.path.length) {
+    const i = t.path[0], tx = i % w + 0.5, ty = Math.floor(i / w) + 0.5;
+    const dx = tx - t.x, dy = ty - t.y, d = Math.hypot(dx, dy);
+    if (d > 1e-6) t.heading = Math.atan2(dx, dy);
+    const step = Math.min(d, left);
+    if (d > 1e-9) { t.x += dx / d * step; t.y += dy / d * step; }
+    left -= step;
+    t.energy = Math.max(0, t.energy - step * TRUCK.joulesPerTile);
+    if (step >= d - 1e-9) { t.x = tx; t.y = ty; t.path.shift(); }
+  }
+  if (t.path.length) return;
+  const b = t.target !== null ? buildingById(s, t.target) : null;
+  if (!b) { redirect(s, t); return; }
+  if (b.id === t.garage) { t.phase = routeOf(s, t)?.stops.length ? 'charge' : 'parked'; t.idle = 0; return; }
+  t.phase = 'queue'; t.arrived = s.time; t.idle = 0;
+}
+
+/**
+ * Points a truck at what it should do now: after its route changed, its target went, or it was given another route. A
+ * truck at its garage starts from there on the next step; one elsewhere heads for its current stop (or home, with no route).
+ */
+export function redirect(s: GameState, t: Truck) {
+  const r = routeOf(s, t);
+  if (t.phase === 'parked' || t.phase === 'charge') { if (!r?.stops.length) t.phase = 'parked'; return; }
+  if (!r?.stops.length) { goHome(s, t); return; }
+  setOff(s, t, t.stop);
+}
+
+/**
+ * After a route's stops changed (`kept[i]` is where old stop i is now, or null if it went): each of its trucks keeps its
+ * stop, at its new place; a truck whose stop went goes on to the one that came after it (stop 1 after the last).
+ */
+export function routeChanged(s: GameState, r: Route, kept: (number | null)[]) {
+  const n = r.stops.length;
+  for (const t of trucksOn(s, r)) {
+    if (!n) { t.stop = 0; redirect(s, t); continue; }
+    const now = kept[t.stop];
+    if (now !== null && now !== undefined) { t.stop = now; if (t.phase === 'stuck') redirect(s, t); continue; }
+    // The stops before it that are left: the next one is now at that place.
+    t.stop = kept.slice(0, t.stop).filter((k) => k !== null).length % n;
+    const away = t.phase === 'drive' || t.phase === 'queue' || t.phase === 'dock';
+    if ((away && t.target !== t.garage) || t.phase === 'stuck') { if (t.phase !== 'drive') t.phase = 'stuck'; setOff(s, t, t.stop); }
+  }
+}
+
+/** Charges a truck at its garage from the garage's network; true if it got any charge this step. */
+function charge(s: GameState, t: Truck, dt: number) {
+  const g = garageOf(s, t)!;
+  const give = Math.min(TRUCK.chargeRate * dt, TRUCK.battery - t.energy) * (networkOf(s, g) ? shareOf(s, g) : 0);
+  t.energy = Math.min(TRUCK.battery, t.energy + give);
+  return give > 1e-9;
+}
+
+/** The layout each game's trucks last found their ways on. */
+const truckLayout = new WeakMap<GameState, number>();
+
+/** Drives, docks and charges every truck, then lets queued trucks dock where a building has room. */
+function runTrucks(s: GameState, dt: number) {
+  // The layout changed: a truck on a tile that was built on moves to the nearest open one, and driving trucks find their
+  // way again (a building may stand across it, or a new way be shorter).
+  const layout = layoutOf(s);
+  if (truckLayout.get(s) !== layout) {
+    truckLayout.set(s, layout);
+    for (const t of s.trucks) {
+      if (!isOpen(s, Math.floor(t.x), Math.floor(t.y))) {
+        const i = nearestOpen(s, Math.floor(t.x), Math.floor(t.y));
+        if (i !== null) { t.x = i % s.map.width + 0.5; t.y = Math.floor(i / s.map.width) + 0.5; }
       }
+      const b = t.target !== null ? buildingById(s, t.target) : null, here = tileOf(s, t);
+      // At a building or its garage, but no longer beside it (moved off a tile built on, or walled off): it drives back,
+      // or on to its next stop if it can't.
+      if (t.phase === 'queue' || t.phase === 'dock') { if (!b || distanceTo(s, b, here) !== 0) { t.phase = 'stuck'; redirect(s, t); } continue; }
+      if (t.phase === 'parked' || t.phase === 'charge') { if (distanceTo(s, garageOf(s, t)!, here) !== 0) goHome(s, t); continue; }
+      if (t.phase !== 'drive') continue;
+      if (b && driveTo(s, t, b)) continue;
+      if (b?.id === t.garage) { t.phase = 'stuck'; t.path = []; t.target = null; } else redirect(s, t);
     }
   }
-  return p;
-}
-
-/** How many more of `item` a building can take, counting goods already on their way to it. */
-function room(b: Building, item: ItemId, p: Plans): number {
-  if (b.refuse?.includes(item)) return 0;
-  if (b.type === 'field') return item === 'compost' ? FIELD.compostStore - b.compost! - get(p.into, b.id, 'compost') : 0;
-  const ing = recipeOf(b)?.inputs.find((i) => members(i).includes(item));
-  if (!ing) return 0;
-  return ing.n * INPUT_BATCHES - held(b, ing) - members(ing).reduce((n, it) => n + get(p.into, b.id, it), 0);
-}
-
-/** Room in a silo for more of `item`, counting goods on their way to it. */
-const siloRoom = (si: Building, item: ItemId, p: Plans) => SILO.perGood - (si.store![item] ?? 0) - get(p.home, si.id, item);
-
-/** What a silo can spare of `item` for another silo: what it holds, less what its own buildings can take and drones will fetch. */
-function spare(s: GameState, si: Building, item: ItemId, p: Plans) {
-  let n = (si.store![item] ?? 0) - get(p.out, si.id, item);
-  for (const b of servedBySilo(s, si)) n -= Math.max(0, room(b, item, p));
-  return n;
-}
-
-const depotOf = (s: GameState) => s.buildings.find((b) => b.type === 'depot') ?? null;
-const isStation = (b: Building | null) => !!b && (b.type === 'silo' || b.type === 'depot');
-const legOf = (si: Building, t: Task) => { const c = centre(si); return Math.max(1, Math.hypot(t.tx - c.x, t.ty - c.y)); };
-const taskTo = (kind: Task['kind'], b: Building, item: ItemId, n: number): Task => { const c = centre(b); return { kind, target: b.id, tx: c.x, ty: c.y, item, n }; };
-
-/**
- * The next job for an idle drone of silo `si`, or null; loads the goods it takes from the silo. A good sold by half that a
- * building here can use too is shared: feeding and selling take turns (`shared` counts goods fed less goods sold). A good
- * sold when spare goes to the depot only while no building here can take it.
- */
-function nextTask(s: GameState, si: Building, d: Drone, p: Plans): Task | null {
-  const store = si.store!, shared = si.shared!;
-  // What the silo holds less what other silos' drones are on their way to fetch.
-  const free = (item: ItemId) => (store[item] ?? 0) - get(p.out, si.id, item);
-  const held = (Object.keys(store) as ItemId[]).filter((i) => free(i) > 0);
-  const served = servedBySilo(s, si);
-  const depot = depotOf(s);
-  const reach = !!depot && distance(si, depot) <= SILO.range;
-  const mode = (item: ItemId) => (reach ? depot!.sell![item] ?? null : null);
-  const tally = (item: ItemId, n: number) => {
-    if (mode(item) === 'half') shared[item] = Math.max(-DRONE.shareSlack, Math.min(DRONE.shareSlack, (shared[item] ?? 0) + n));
-  };
-  const load = (item: ItemId, n: number) => {
-    for (let i = 0; i < n; i++) d.cargo.push(item);
-    store[item]! -= n;
-    if (!store[item]) delete store[item];
-  };
-  // Feed: the nearest building that can use something the silo holds (a shared good only on its turn).
-  for (const b of served) for (const item of held) {
-    if (mode(item) === 'half' && (shared[item] ?? 0) > 0) continue;
-    const n = Math.min(room(b, item, p), free(item), DRONE.cargo);
-    if (n > 0) { load(item, n); add(p.into, b.id, item, n); tally(item, n); return taskTo('feed', b, item, n); }
-  }
-  // Collect: from the building with the most waiting (the nearest of equals), while the silo has room.
-  let best: { b: Building; item: ItemId; n: number; waiting: number } | null = null;
-  for (const b of served) for (const item of outputGoods(b)) {
-    const w = waiting(b, item) - get(p.out, b.id, item), n = Math.min(w, siloRoom(si, item, p), DRONE.cargo);
-    if (n > 0 && (!best || w > best.waiting)) best = { b, item, n, waiting: w };
-  }
-  if (best) { add(p.out, best.b.id, best.item, best.n); add(p.home, si.id, best.item, best.n); return taskTo('collect', best.b, best.item, best.n); }
-  // Fetch: a good a building here needs and this silo doesn't hold (or have coming), from the nearest other silo in range
-  // that can spare it.
-  for (const b of served) for (const item of inputGoods(b)) {
-    // Goods of the same input it takes (a coop's beans, bran or seed cake) here or on their way count against the need.
-    const same = sameInput(b, item).filter((i) => !b.refuse?.includes(i));
-    const want = Math.min(room(b, item, p) - same.reduce((n, i) => n + get(p.home, si.id, i) + Math.max(0, free(i)), 0), siloRoom(si, item, p));
-    if (want <= 0) continue;
-    let from: Building | null = null, fromN = 0;
-    for (const o of s.buildings) {
-      if (o.type !== 'silo' || o === si || !networkOf(s, o) || distance(si, o) > SILO.range) continue;
-      const n = spare(s, o, item, p);
-      if (n > 0 && (!from || distance(si, o) < distance(si, from))) { from = o; fromN = n; }
-    }
-    if (from) {
-      const n = Math.min(want, fromN, DRONE.cargo);
-      add(p.out, from.id, item, n); add(p.home, si.id, item, n);
-      return taskTo('fetch', from, item, n);
+  const queued = new Set<number>();
+  for (const t of s.trucks) if (t.phase === 'queue' && t.target !== null) queued.add(t.target);
+  for (const t of s.trucks) {
+    switch (t.phase) {
+      case 'parked': {
+        charge(s, t, dt);
+        // Given a route: off it goes (home again to charge first, if its battery is short).
+        if (routeOf(s, t)?.stops.length) { t.charged = false; setOff(s, t, t.stop); }
+        break;
+      }
+      case 'charge': {
+        if (charge(s, t, dt)) t.idle = 0; else t.idle += dt;
+        if (!routeOf(s, t)?.stops.length) { t.phase = 'parked'; break; }
+        if (t.energy >= TRUCK.battery - 1e-6 || t.idle >= TRUCK.giveUp) { t.charged = true; setOff(s, t, t.stop); }
+        break;
+      }
+      case 'drive': drive(s, t, dt); break;
+      case 'dock': atStop(s, t, dt, queued.has(t.target!)); break;
+      case 'stuck': redirect(s, t); break;
+      case 'queue': break;
     }
   }
-  // Sell: goods on the depot's sell list (a shared good on its turn, a spare one when nothing here takes it), a full load or
-  // after a short wait.
-  const wanted = (i: ItemId) => served.some((b) => room(b, i, p) > 0);
-  const sell = held.filter((i) => (mode(i) === 'half' ? (shared[i] ?? 0) >= 0 || !wanted(i) : mode(i) === 'spare' && !wanted(i)));
-  const n = sell.reduce((k, i) => k + free(i), 0);
-  if (depot && (n >= DRONE.cargo || (n > 0 && si.waited! >= DRONE.sellWait))) {
-    // The goods there are most of first; after the wait, the fewest first, so a straggler isn't passed over by full loads.
-    const late = si.waited! >= DRONE.sellWait;
-    sell.sort((a, c) => (late ? free(a) - free(c) : free(c) - free(a)));
-    for (const i of sell) { const k = Math.min(free(i), DRONE.cargo - d.cargo.length); load(i, k); tally(i, -k); }
-    // The wait starts again once nothing to sell is left behind.
-    if (!sell.some((i) => free(i) > 0)) si.waited = 0;
-    return taskTo('sell', depot, d.cargo[0], 0);
+  // Queued trucks dock in the order they came, while the building has a free bay.
+  const docked = new Map<number, number>(), waitingAt = new Map<number, Truck[]>();
+  for (const t of s.trucks) {
+    if (t.target === null) continue;
+    if (t.phase === 'dock') docked.set(t.target, (docked.get(t.target) ?? 0) + 1);
+    if (t.phase === 'queue') { const q = waitingAt.get(t.target); if (q) q.push(t); else waitingAt.set(t.target, [t]); }
   }
-  return null;
-}
-
-/** Joules a drone charges at home for its task: the way out, and the way back too unless another station charges it. */
-function homeCost(s: GameState, si: Building, t: Task) {
-  const leg = legOf(si, t) * DRONE.joulesPerTile;
-  return isStation(buildingById(s, t.target)) ? leg : leg * 2;
-}
-
-/** Charges a drone at a silo towards `need` joules; true once it has them. */
-function chargeAt(s: GameState, at: Building, d: Drone, need: number, dt: number) {
-  // What it asked the network for this step (countCharging), times the share of it the network gave.
-  if (d.energy < need) d.energy = Math.min(need, d.energy + Math.min(DRONE.chargeRate * dt, need - d.energy) * shareOf(s, at));
-  return d.energy >= need - 1e-9;
-}
-
-/** Moves a drone of silo `si` on by one step. */
-function flyDrone(s: GameState, si: Building, d: Drone, dt: number) {
-  const t = d.task;
-  if (!t) return;
-  const target = buildingById(s, t.target), leg = legOf(si, t);
-  // The target has gone: fly home from wherever it is, without charging again.
-  if (!target && (d.phase === 'out' || d.phase === 'work' || d.phase === 'recharge')) { d.t = d.phase === 'out' ? 1 - d.t : 0; d.phase = 'back'; }
-  switch (d.phase) {
-    case 'charge': {
-      if (!target) { home(si, d); return; }
-      const need = homeCost(s, si, t);
-      if (chargeAt(s, si, d, need, dt)) { d.energy = Math.max(0, d.energy - need); d.phase = 'out'; d.t = 0; }
-      return;
-    }
-    case 'out':
-      d.t += dt * DRONE.speed / leg;
-      if (d.t >= 1) { d.phase = 'work'; d.t = 0; }
-      return;
-    case 'work':
-      d.t += dt;
-      if (d.t < DRONE.loadSeconds) return;
-      work(s, target!, d, t);
-      if (target!.type === 'silo') { d.phase = 'recharge'; return; }
-      d.phase = 'back'; d.t = 0;
-      return;
-    case 'recharge': {
-      const need = leg * DRONE.joulesPerTile;
-      if (chargeAt(s, target!, d, need, dt)) { d.energy = Math.max(0, d.energy - need); d.phase = 'back'; d.t = 0; }
-      return;
-    }
-    case 'back':
-      d.t += dt * DRONE.speed / leg;
-      if (d.t >= 1) home(si, d);
-      return;
-  }
-}
-
-/** A drone's work at its target: unload, load, or sell. */
-function work(s: GameState, b: Building, d: Drone, t: Task) {
-  switch (t.kind) {
-    case 'feed': d.cargo = d.cargo.filter((it) => !accept(b, it)); break;
-    case 'collect': while (d.cargo.length < t.n && waiting(b, t.item) > 0) { take(b, t.item); d.cargo.push(t.item); } break;
-    case 'fetch': {
-      const n = Math.min(t.n, b.store![t.item] ?? 0);
-      for (let i = 0; i < n; i++) d.cargo.push(t.item);
-      b.store![t.item] = (b.store![t.item] ?? 0) - n;
-      if (!b.store![t.item]) delete b.store![t.item];
-      break;
-    }
-    case 'sell': for (const it of d.cargo) deliver(s, it); d.cargo = []; break;
-  }
-}
-
-/**
- * A drone lands at its silo: its cargo goes into the store, and it is free for the next job. Goods it couldn't deliver (the
- * target went, or stopped taking them) go back in even past the silo's limit: they had room when they left, and the silo
- * collects nothing more of that good until it is back under.
- */
-function home(si: Building, d: Drone) {
-  for (const it of d.cargo) {
-    si.store![it] = (si.store![it] ?? 0) + 1;
-    // Undelivered feed doesn't count as fed.
-    if (d.task?.kind === 'feed' && si.shared![it] !== undefined) si.shared![it] = Math.max(-DRONE.shareSlack, si.shared![it]! - 1);
-  }
-  d.cargo = []; d.task = null; d.phase = 'idle'; d.t = 0;
-}
-
-/** Flies every silo's drones, then gives the idle ones new jobs. */
-function runSilos(s: GameState, dt: number) {
-  const silos = s.buildings.filter((b) => b.type === 'silo');
-  for (const si of silos) for (const d of si.drones!) flyDrone(s, si, d, dt);
-  const p = plans(s);
-  const depot = depotOf(s);
-  for (const si of silos) {
-    const net = networkOf(s, si);
-    const sellable = depot ? (Object.keys(depot.sell!) as ItemId[]).some((i) => (si.store![i] ?? 0) > 0) : false;
-    si.waited = sellable ? si.waited! + dt : 0;
-    if (net) for (const d of si.drones!) {
-      if (d.phase !== 'idle') continue;
-      const t = nextTask(s, si, d, p);
-      if (!t) break;
-      d.task = t; d.phase = 'charge'; d.t = 0;
-    }
-    const busy = si.drones!.filter((d) => d.phase !== 'idle').length, share = shareOf(s, si);
-    // Drones charging here: its own, or other silos' charging for the way home.
-    const waitingPower = (charging.get(s)?.get(si.id) ?? 0) > 0;
-    si.need = undefined;
-    if (!net) si.status = 'power';
-    else if (waitingPower && share <= 0) si.status = 'power';
-    else if (waitingPower && share < 1) si.status = 'lowpower';
-    else if (busy) si.status = 'ok';
-    else {
-      const full = (Object.keys(si.store!) as ItemId[]).find((i) => si.store![i]! >= SILO.perGood);
-      si.status = full ? 'blocked' : 'idle';
-      si.need = full ? ITEMS[full].name.toLowerCase() : undefined;
+  for (const [id, q] of waitingAt) {
+    const b = buildingById(s, id);
+    if (!b) { for (const t of q) redirect(s, t); continue; }
+    q.sort((a, c) => a.arrived - c.arrived || a.id - c.id);
+    for (let free = bays(b.type) - (docked.get(id) ?? 0), k = 0; free > 0 && k < q.length; free--, k++) {
+      const t = q[k];
+      t.phase = 'dock'; t.budget = 0; t.idle = 0;
     }
   }
 }
 
 /**
- * Watts each silo wants for the drones charging there (its own, and others' charging for the way home), worked out before
- * power is balanced: each drone at most the charge rate, and no more than it needs to finish this step.
+ * Watts each garage wants for the trucks charging there, worked out before power is balanced: each truck at most the charge
+ * rate, and no more than it needs to fill up this step.
  */
 const charging = new WeakMap<GameState, Map<number, number>>();
 function countCharging(s: GameState) {
   const m = new Map<number, number>();
-  for (const si of s.buildings) {
-    if (si.type !== 'silo') continue;
-    for (const d of si.drones!) {
-      const t = d.task;
-      if (!t || (d.phase !== 'charge' && d.phase !== 'recharge')) continue;
-      const at = d.phase === 'charge' ? si.id : t.target;
-      const need = d.phase === 'charge' ? homeCost(s, si, t) : legOf(si, t) * DRONE.joulesPerTile;
-      const w = Math.min(DRONE.chargeRate, Math.max(0, need - d.energy) / TICK);
-      if (w > 0) m.set(at, (m.get(at) ?? 0) + w);
-    }
+  for (const t of s.trucks) {
+    if (t.phase !== 'parked' && t.phase !== 'charge') continue;
+    const w = Math.min(TRUCK.chargeRate, Math.max(0, TRUCK.battery - t.energy) / TICK);
+    if (w > 0) m.set(t.garage, (m.get(t.garage) ?? 0) + w);
   }
   charging.set(s, m);
 }
 
-/** What a drone is doing, in a few words, for the inspector. */
-export function describeDrone(s: GameState, d: Drone): string {
-  const t = d.task;
-  if (!t) return 'waiting for a job';
-  const where = buildingById(s, t.target);
-  const name = where ? BUILDINGS[where.type].name.toLowerCase() : 'its target';
-  const what = ITEMS[t.item]?.name.toLowerCase() ?? 'goods';
-  const job = t.kind === 'feed' ? `taking ${what} to the ${name}` : t.kind === 'collect' ? `collecting ${what} from the ${name}`
-    : t.kind === 'fetch' ? `fetching ${what} from another silo` : 'selling at the depot';
-  if (d.phase === 'charge' || d.phase === 'recharge') return `charging, then ${job}`;
-  if (d.phase === 'back') return d.cargo.length ? `bringing ${d.cargo.length} ${ITEMS[d.cargo[0]].name.toLowerCase()} home` : 'flying home';
-  return job;
+/**
+ * Whether trucks can't reach a building that needs them: no open tile beside it, or (a stop) the garage of a truck on one of
+ * its routes has no way there.
+ */
+export function cutOff(s: GameState, b: Building): boolean {
+  if (!isStop(b) && b.type !== 'garage') return false;
+  if (!accessTiles(s, b).length) return true;
+  return routesAt(s, b).some((r) => trucksOn(s, r).some((t) => { const g = garageOf(s, t); return !!g && legLength(s, g, b) === Infinity; }));
+}
+
+/** A garage's status: charging its trucks, short of power for them, or idle. */
+function runGarages(s: GameState) {
+  const want = charging.get(s);
+  for (const g of s.buildings) {
+    if (g.type !== 'garage') continue;
+    const w = want?.get(g.id) ?? 0, share = shareOf(s, g);
+    g.need = undefined;
+    g.status = !networkOf(s, g) ? 'power' : w > 0 && share <= 0 ? 'power' : w > 0 && share < 1 ? 'lowpower' : w > 0 ? 'ok' : 'idle';
+  }
+}
+
+/** The good a building can't get rid of, if its outputs are full. */
+function blockedGood(b: Building): ItemId | null {
+  if (b.type === 'field') return b.stored ? b.harvest ?? b.crop! : null;
+  if (b.type === 'hive') return 'honey';
+  const r = recipeOf(b);
+  return r ? outputsFit(b, r)?.item ?? null : null;
+}
+
+/** Whether some route with trucks picks `item` up at a building (or drops it there). */
+function served(s: GameState, b: Building, item: ItemId, how: 'pick' | 'drop') {
+  return s.routes.some((r) => r.stops.some((st) => st.building === b.id && st[how].includes(item)) && s.trucks.some((t) => t.route === r.id));
+}
+
+/** Goods a truck carries that none of its route's stops takes, and what it can't do, in a few words (for the inspector). */
+export function truckProblems(s: GameState, t: Truck): string[] {
+  const out: string[] = [], r = routeOf(s, t), g = garageOf(s, t);
+  if (t.phase === 'stuck') out.push(r?.stops.length ? 'It can reach none of its stops.' : 'It can\'t reach its garage.');
+  else if (g && distanceTo(s, g, tileOf(s, t)) === Infinity) out.push('It can\'t reach its garage to charge.');
+  const dead = [...new Set(t.cargo)].filter((i) => !(r?.stops ?? []).some((st) => {
+    const b = buildingById(s, st.building);
+    return b && st.drop.includes(i) && takesNow(b).includes(i);
+  }));
+  if (dead.length) out.push(`It carries ${dead.map((i) => ITEMS[i].name.toLowerCase()).join(', ')}, which none of its stops takes.`);
+  return out;
+}
+
+/** What's wrong with a route's stops, by stop: it can't be reached, or it has nothing to do. */
+export function stopProblems(s: GameState, r: Route): (string | null)[] {
+  return r.stops.map((st, i) => {
+    const b = buildingById(s, st.building);
+    if (!b) return 'Gone.';
+    if (!accessTiles(s, b).length) return 'No open tile beside it: trucks can\'t reach it.';
+    const prev = buildingById(s, r.stops[(i + r.stops.length - 1) % r.stops.length].building);
+    if (prev && prev !== b && legLength(s, prev, b) === Infinity) return 'Trucks can\'t drive here from the stop before.';
+    const homes = new Set(trucksOn(s, r).map((t) => buildingById(s, t.garage)));
+    if ([...homes].some((g) => g && legLength(s, g, b) === Infinity)) return 'Trucks can\'t drive here from their garage.';
+    const takes = takesNow(b), gives = givesNow(b);
+    if (!st.drop.some((it) => takes.includes(it)) && !st.pick.some((it) => gives.includes(it))) return 'Nothing to do: it takes none of the goods dropped and gives none of those picked up.';
+    return null;
+  });
+}
+
+const lcItem = (i: ItemId) => ITEMS[i].name.toLowerCase();
+/** A truck's cargo in a few words: "6 wheat", "3 flour and 3 bran". */
+export function cargoText(cargo: ItemId[]) {
+  const n = new Map<ItemId, number>();
+  for (const i of cargo) n.set(i, (n.get(i) ?? 0) + 1);
+  const parts = [...n].map(([i, k]) => `${k} ${lcItem(i)}`);
+  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0] ?? 'nothing';
+}
+
+/** What a truck is doing, in a few words, for the inspector. */
+export function describeTruck(s: GameState, t: Truck): string {
+  const b = t.target !== null ? buildingById(s, t.target) : null, name = b ? BUILDINGS[b.type].name.toLowerCase() : '';
+  const full = Math.round(t.energy / TRUCK.battery * 100);
+  switch (t.phase) {
+    case 'parked': return t.energy < TRUCK.battery - 1e-6 ? `Parked at its garage, charging (${full}%)` : 'Parked at its garage';
+    case 'charge': return t.idle > 0.5 ? 'At its garage, waiting for power to charge' : `Charging at its garage (${full}%)`;
+    case 'stuck': return truckProblems(s, t)[0] ?? 'Waiting';
+    case 'drive':
+      if (b?.id === t.garage) return routeOf(s, t)?.stops.length ? 'Driving home to charge' : 'Driving home';
+      return t.cargo.length ? `Taking ${cargoText(t.cargo)} to the ${name}` : `Driving to the ${name}`;
+    case 'queue': {
+      const ahead = s.trucks.filter((o) => o !== t && o.target === t.target && (o.phase === 'dock' || (o.phase === 'queue' && (o.arrived < t.arrived || (o.arrived === t.arrived && o.id < t.id))))).length;
+      return `Waiting for its turn at the ${name} (${ahead} ahead)`;
+    }
+    case 'dock': {
+      const st = routeOf(s, t)?.stops[t.stop];
+      if (t.idle > 0.2 && st) {
+        const drop = t.cargo.filter((i) => st.drop.includes(i));
+        return drop.length ? `Waiting at the ${name} for room for ${lcItem(drop[0])}` : `Waiting at the ${name} for ${st.pick.map(lcItem).join(' or ')}`;
+      }
+      return `Loading and unloading at the ${name}`;
+    }
+  }
 }
 
 // ---- The step ----
@@ -662,7 +702,8 @@ export function tick(s: GameState) {
   const grown: Building[] = [];
   for (const b of s.buildings) {
     switch (b.type) {
-      case 'depot': case 'silo': break;
+      case 'depot': break;
+      case 'silo': b.status = 'idle'; break;
       case 'field': runField(s, b, dt); break;
       case 'hive': runHive(s, b, dt); break;
       case 'sprinkler': case 'battery': case 'pylon': case 'solar': case 'turbine': {
@@ -690,10 +731,15 @@ export function tick(s: GameState) {
     s.map.terrain[tileIndex(s, b.x, b.y)] = TERRAIN.tree;
   }
   if (grown.length) touchLayout(s);
-  runSilos(s, dt);
-  // A building that trades goods with no silo in reach says so (unless it lacks power or water, which say more).
+  runTrucks(s, dt);
+  runGarages(s);
+  // A building trucks can't reach, or whose outputs are full with no route picking them up, says so (unless it lacks power
+  // or water, which say more).
   for (const b of s.buildings) {
-    if (['input', 'blocked', 'ok', 'idle'].includes(b.status) && handlesGoods(b) && !silosServing(s, b).length) b.status = 'nosilo';
+    if (!['input', 'blocked', 'ok', 'idle'].includes(b.status) || b.type === 'depot') continue;
+    if (cutOff(s, b)) { b.status = 'noroad'; continue; }
+    const g = b.status === 'blocked' ? blockedGood(b) : null;
+    if (g && !served(s, b, g, 'pick')) { b.status = 'noroute'; b.need = ITEMS[g].name.toLowerCase(); }
   }
   // Once a second, ground without a field recovers a little.
   if (Math.floor(s.time + 1e-6) !== Math.floor(s.time - dt + 1e-6)) rest(s);
@@ -738,14 +784,20 @@ export function ratePerMin(s: GameState, item: ItemId, which: 'made' | 'delivere
   return span > 0 ? total / span * 60 : 0;
 }
 
-/** Forgets deliveries older than a minute. */
+/** Forgets deliveries, and goods routes moved, older than a minute. */
 function pruneDeliveries(s: GameState) {
   const from = s.time - STAT_BUCKET * (STAT_BUCKETS - 1);
-  for (const times of Object.values(s.stats.delivered)) {
+  for (const times of [...Object.values(s.stats.delivered), ...s.routes.map((r) => r.moved)]) {
     let k = 0;
     while (k < times!.length && times![k] <= from) k++;
     if (k) times!.splice(0, k);
   }
+}
+
+/** Goods a route's trucks dropped over the last minute, a minute. */
+export function routeRate(s: GameState, r: Route) {
+  const span = Math.min(s.time, STAT_BUCKET * (STAT_BUCKETS - 1));
+  return span > 0 ? r.moved.filter((t) => t > s.time - span).length / span * 60 : 0;
 }
 
 export function goalDone(s: GameState, i: number): boolean {
@@ -773,23 +825,33 @@ export function medalFor(par: number, time: number): Medal {
 export function describeStatus(s: GameState, b: Building): string {
   const def = BUILDINGS[b.type];
   switch (b.status) {
-    case 'input': return `Waiting for ${b.need ?? 'goods'}`;
-    case 'blocked':
-      if (b.type === 'silo') return `Full of ${b.need}: nothing it serves takes it, and the depot doesn't buy it`;
-      return `Output blocked: nowhere for ${b.need ?? 'its goods'} to go`;
-    case 'power': return networkOf(s, b) ? `No power: the network is out of power${b.type === 'silo' ? ', so its drones can\'t charge' : ''}` : 'No power: not in reach of a pylon';
-    case 'lowpower': return `Low power: ${b.type === 'silo' ? 'drones charging' : 'running'} at ${Math.round(shareOf(s, b) * 100)}%`;
+    case 'input': {
+      const r = recipeOf(b), lack = r ? missing(b, r) : null;
+      const brought = !lack || members(lack).some((i) => served(s, b, i, 'drop'));
+      return `Waiting for ${b.need ?? 'goods'}${brought ? '' : ': no route brings it'}`;
+    }
+    case 'blocked': return `Output blocked: nowhere for ${b.need ?? 'its goods'} to go`;
+    case 'power': return networkOf(s, b) ? `No power: the network is out of power${b.type === 'garage' ? ', so its trucks can\'t charge' : ''}` : 'No power: not in reach of a pylon';
+    case 'lowpower': return `Low power: ${b.type === 'garage' ? 'trucks charging' : 'running'} at ${Math.round(shareOf(s, b) * 100)}%`;
     case 'nolink': return 'Not connected: no pylon in reach';
-    case 'nosilo': return `No silo in reach: build one within ${SILO.reach} tiles so its drones bring and take its goods`;
+    case 'noroad': return 'No road: trucks can\'t reach it. Leave an open tile beside it, and a way there from the garage';
+    case 'noroute': return `Full of ${b.need}: no route with trucks picks it up`;
     case 'flowers': return 'No flowering fields within 4 tiles';
     case 'idle':
       if (b.type === 'solar') return 'Night: no sun';
-      if (b.type === 'silo') return 'Idle: nothing to carry';
+      if (b.type === 'silo') {
+        const n = Object.values(b.store!).reduce((a, k) => a + k!, 0);
+        return n ? `Holds ${n} goods` : 'Empty';
+      }
+      if (b.type === 'garage') { const n = s.trucks.filter((t) => t.garage === b.id).length; return n ? `${n} truck${n > 1 ? 's' : ''}, none charging` : 'No trucks yet: buy one'; }
       return 'Idle';
     case 'dry': return `Growing ${CROPS[b.crop!].name.toLowerCase()} slowly: no water`;
     case 'ok':
       if (b.type === 'field') return `Growing ${CROPS[b.crop!].name.toLowerCase()}`;
-      if (b.type === 'silo') return `${b.drones!.filter((d) => d.phase !== 'idle').length} of ${b.drones!.length} drones busy`;
+      if (b.type === 'garage') {
+        const mine = s.trucks.filter((t) => t.garage === b.id), k = mine.filter((t) => t.phase === 'parked' || t.phase === 'charge').length;
+        return `Charging ${k} of ${mine.length} truck${mine.length > 1 ? 's' : ''}`;
+      }
       if (b.type === 'pylon') {
         const net = networks(s).of.get(b.id)!, k = net.pylons.length - 1, n = net.members.length;
         return `${k ? `Linked to ${k} other pylon${k > 1 ? 's' : ''}` : 'Linked to no other pylon'} · its network powers ${n} building${n === 1 ? '' : 's'}`;

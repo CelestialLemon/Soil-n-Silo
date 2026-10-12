@@ -17,8 +17,8 @@ export const C = {
 
 type Builder = (k: Kit) => void;
 
-/** Where a silo's drones land, in its local space (x, z), one per drone. */
-export const SILO_PADS: [number, number][] = [[0.5, 0.5], [-0.4, 0.55], [0.55, -0.45]];
+/** A truck's bed, in its local space: the height of its floor, and where its goods sit (x, z), one per good it can carry. */
+export const TRUCK_BED = { y: 0.27, scale: 0.55, slots: [[-0.1, -0.08], [0.1, -0.08], [-0.1, -0.2], [0.1, -0.2], [-0.1, -0.32], [0.1, -0.32]] as [number, number][] };
 
 /** A green roof: a slab with a moss top. */
 function mossRoof(k: Kit, x: number, y: number, z: number, w: number, d: number) {
@@ -40,13 +40,21 @@ const B: Partial<Record<BuildingId, Builder>> = {
       .cyl(-0.35, 0.14, -0.35, 0.5, 1.7, C.ceramic, { seg: 12 })
       .cyl(-0.35, 0.6, -0.35, 0.53, 0.08, C.copper, { seg: 12 }).cyl(-0.35, 1.25, -0.35, 0.53, 0.08, C.copper, { seg: 12 })
       .cone(-0.35, 1.84, -0.35, 0.58, 0.5, C.moss, { seg: 12 }).cyl(-0.35, 2.3, -0.35, 0.05, 0.2, C.brass, { seg: 6 })
-      .box(0.15, 0.9, -0.35, 0.3, 0.14, 0.14, C.copper);
-    // Three landing pads for its drones, with a light each.
-    for (const [x, z] of SILO_PADS) {
-      k.cyl(x, 0.14, z, 0.3, 0.06, C.slate, { seg: 10 }).cyl(x, 0.2, z, 0.2, 0.02, C.cream, { seg: 10 })
-        .box(x + 0.22, 0.2, z + 0.22, 0.06, 0.06, 0.06, C.glow, { flag: FLAG.EMISSIVE });
-    }
+      .box(0.15, 0.9, -0.35, 0.3, 0.14, 0.14, C.copper)
+      .cyl(0.45, 0.14, 0.45, 0.4, 1.0, C.ceramic, { seg: 10 }).cyl(0.45, 0.5, 0.45, 0.42, 0.06, C.copper, { seg: 10 })
+      .cone(0.45, 1.14, 0.45, 0.45, 0.35, C.moss, { seg: 10 });
     planter(k, 0.62, -0.75, 0.14);
+  },
+  // A timber shed open at the front, a moss and solar roof, and a copper charging post for its trucks.
+  garage: (k) => {
+    k.box(0, 0, 0, 1.94, 0.08, 1.94, C.stoneLight).box(0, 0.08, -0.9, 1.8, 1.05, 0.12, C.plank);
+    for (const x of [-0.9, 0.9]) k.box(x, 0.08, -0.15, 0.1, 1.05, 1.4, C.timber);
+    for (const x of [-0.9, 0.9]) k.box(x, 0.08, 0.82, 0.12, 1.05, 0.12, C.timber);
+    k.box(0, 1.13, 0, 2.0, 0.08, 1.98, C.dark).box(0, 1.21, -0.45, 1.9, 0.08, 1.0, C.moss)
+      .box(0, 1.21, 0.48, 1.8, 0.05, 0.86, C.solar).box(0, 1.25, 0.48, 0.04, 0.02, 0.86, C.solarLight);
+    k.box(0.6, 0.08, -0.6, 0.16, 0.6, 0.16, C.copper).box(0.6, 0.5, -0.51, 0.1, 0.08, 0.02, C.glow, { flag: FLAG.EMISSIVE })
+      .box(0, 0.08, -0.2, 0.06, 0.01, 1.0, C.cream);
+    planter(k, -0.72, 0.75, 0.08);
   },
   sprinkler: (k) => {
     k.box(0, 0, 0, 0.36, 0.08, 0.36, C.stone).cyl(0, 0.08, 0, 0.05, 0.55, C.copper, { seg: 6 })
@@ -206,7 +214,7 @@ export function cropStandIn(id: CropId, stage: number, stages: number) {
   return k.build();
 }
 
-// ---- Goods (carried under drones) ----
+// ---- Goods (carried in trucks) ----
 
 export function itemShape(id: ItemId) {
   const k = new Kit(false), hex = ITEMS[id].colour;
@@ -244,6 +252,8 @@ export function frame(n: number, hex: number, t = 0.06) {
 export const NET_COLOURS = [0xf2c94c, 0x5fd3e8, 0xf28ab8, 0xa8e063, 0xb59cf5, 0xf5a15a];
 /** Wires a pylon being placed would make. */
 export const GHOST_WIRE = 0xd8ffb0;
+/** Each route's colour, by its place in the list of routes: its way on the ground and the numbers over its stops. */
+export const ROUTE_COLOURS = [0xffe08a, 0x8ad8ff, 0xffa8d0, 0xb8f08a, 0xd0b0ff, 0xffb880];
 
 /** A glowing unit bar from the origin along +x, scaled and turned into a wire, a feed line or a range mark. */
 export function bar(hex: number) {
@@ -259,14 +269,19 @@ export function tileFill(hex: number) {
   return k.build();
 }
 
-export function drone() {
-  const k = new Kit(true);
-  k.box(0, 0, 0, 0.32, 0.1, 0.32, C.white).box(0, -0.1, 0, 0.26, 0.1, 0.26, C.plank);
-  for (const [x, z] of [[-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]]) {
-    k.box(x / 2, 0.04, z / 2, Math.abs(x) + 0.04, 0.03, 0.04, C.dark, { ry: Math.atan2(x, z) });
-    k.box(x, 0.08, z, 0.3, 0.015, 0.05, C.cream, { mo: motion.spin([x, 0.09, z], [0, 1, 0], 18) });
-  }
-  k.box(0, 0.1, 0.12, 0.08, 0.03, 0.06, C.glow, { flag: FLAG.EMISSIVE });
+/** A small electric farm truck facing +z: a rounded ceramic cab with solar glass on its roof, and an open timber bed. */
+export function truck() {
+  const k = new Kit(false);
+  for (const [x, z] of [[-0.2, 0.22], [0.2, 0.22], [-0.2, -0.24], [0.2, -0.24]]) k.cyl(x, 0.09, z, 0.09, 0.07, C.dark, { seg: 8, rz: Math.PI / 2 });
+  k.box(0, 0.08, 0, 0.42, 0.08, 0.86, C.slate)
+    // The cab.
+    .box(0, 0.16, 0.24, 0.42, 0.24, 0.32, C.ceramic).box(0, 0.4, 0.2, 0.38, 0.06, 0.26, C.solar)
+    .box(0, 0.25, 0.405, 0.32, 0.1, 0.02, C.glass, { flag: FLAG.EMISSIVE }).box(0, 0.16, 0.41, 0.36, 0.05, 0.02, C.copper)
+    .box(-0.14, 0.2, 0.415, 0.06, 0.04, 0.02, C.glow, { flag: FLAG.EMISSIVE }).box(0.14, 0.2, 0.415, 0.06, 0.04, 0.02, C.glow, { flag: FLAG.EMISSIVE })
+    // The bed: a flat floor with low timber sides.
+    .box(0, 0.16, -0.2, 0.42, TRUCK_BED.y - 0.16, 0.46, C.plank);
+  for (const x of [-0.2, 0.2]) k.box(x, TRUCK_BED.y, -0.2, 0.03, 0.07, 0.46, C.timber);
+  k.box(0, TRUCK_BED.y, -0.415, 0.42, 0.07, 0.03, C.timber).box(0, TRUCK_BED.y, 0.02, 0.42, 0.09, 0.03, C.timber);
   return k.build();
 }
 

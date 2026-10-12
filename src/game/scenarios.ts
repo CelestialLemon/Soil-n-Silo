@@ -50,14 +50,14 @@ const MIN = 60;
 export const CAMPAIGN: Scenario[] = [
   {
     id: 'c1', name: 'First Light', seed: 1101, width: 44, height: 36, credits: 1200, par: 20 * MIN,
-    blurb: 'Brightwater needs grain and flour to get through the season. Lay your first fields, a silo and a powered mill.',
+    blurb: 'Brightwater needs grain and flour to get through the season. Lay your first fields, a powered mill, and trucks to carry it all.',
     terrain: { ...LOAM, forest: 0.08, rock: 0.02 }, weather: CALM, tags: ['Gentle'],
     goals: [{ kind: 'deliver', item: 'wheat', n: 120 }, { kind: 'deliver', item: 'flour', n: 80 }],
     tips: [
-      'Place a few fields (F) on rich soil (V shows it), and a silo (L) within 6 tiles of them: its drones collect the harvest.',
-      'Put a mill in the silo\'s reach too: the drones feed it wheat and collect its flour. Wheat and flour on the depot\'s sell list fly to the depot.',
-      'The silo\'s drones and the mill need power: a solar panel (S) and a pylon (P) within 3 tiles of both. A battery keeps them going at night.',
-      'The mill makes bran too, and stops when the bran has nowhere to go. Select the depot to sell it, or build a coop or composter for it.',
+      'Place a few fields (F) on rich soil (V shows it). Leave open ground between buildings: trucks drive on it.',
+      'Build a garage (T) and buy a truck. Give it a new route and click the fields, then the depot: it takes their wheat to the depot.',
+      'Build a mill and a second route: fields, then the mill, then the depot. The mill gets the wheat; its flour and bran go to the depot.',
+      'The mill and the garage (trucks charge there) need power: a solar panel (S) and a pylon (P) within 3 tiles of both. A battery keeps them going at night.',
       'Sprinklers near the fields more than double their pace. Watch the markers: yellow waits for input, red has no power.',
     ],
   },
@@ -68,8 +68,8 @@ export const CAMPAIGN: Scenario[] = [
     goals: [{ kind: 'deliver', item: 'bread', n: 150 }, { kind: 'soil', min: 40 }],
     tips: [
       'Bread is flour and an egg. Chickens lay eggs from feed: beans, bran or seed cake, and leave manure.',
-      'A mill makes bran with every flour. A coop in the same silo\'s reach takes it as feed.',
-      'Anything a building can\'t get rid of stops it: give spare bran and manure a composter or a digester, or sell it at the depot.',
+      'A mill makes bran with every flour. A route from the mill to the coop takes it there as feed.',
+      'Anything a building can\'t get rid of stops it: give spare bran and manure a composter or a digester, or drop it at the depot.',
       'Wheat tires the soil; bean fields and compost bring it back.',
     ],
   },
