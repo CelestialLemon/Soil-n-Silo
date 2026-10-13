@@ -2,11 +2,15 @@ import {
   bays, BUILDINGS, CROPS, DAY_SECONDS, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, ITEMS, OUTPUT_BATCHES, POWER, recipeById,
   recipesFor, SAPLING_SECONDS, SILO, START_HOUR, TICK, TREE_HEALTH, TRUCK, type BuildingId, type Ingredient, type ItemId, type Recipe,
 } from './data.ts';
-import { hasHistory, noteMade, noteStep, pruneHistory } from './history.ts';
+import { noteArrival, noteTrucks } from './fleet.ts';
+import { noteFlow, tickFlows } from './flows.ts';
+import { hasHistory, noteMade, noteStep, noteTaken, pruneHistory } from './history.ts';
 import { TERRAIN } from './map.ts';
 import { networkOf, networks } from './power.ts';
+import { notePower, type PowerStep } from './powerlog.ts';
 import { accessTiles, distanceTo, isOpen, legLength, nearestOpen, pathTo } from './roads.ts';
 import { noise1 } from './rng.ts';
+import { noteRun, noteRunUse } from './runlog.ts';
 import type { Scenario } from './scenarios.ts';
 import {
   buildingAt, buildingById, centre, countTrees, layoutOf, reachTo, removeBuilding, routeById, STAT_BUCKET, STAT_BUCKETS,
@@ -165,7 +169,7 @@ function outputsFit(b: Building, r: Recipe) {
   return r.outputs.find((o) => (b.outputs![o.item] ?? 0) + o.n > o.n * OUTPUT_BATCHES) ?? null;
 }
 
-function consume(b: Building, r: Recipe) {
+function consume(s: GameState, b: Building, r: Recipe) {
   for (const ing of r.inputs) {
     let need = ing.n;
     // Take from whichever member there's most of.
@@ -173,9 +177,16 @@ function consume(b: Building, r: Recipe) {
       const it = [...members(ing)].sort((a, c) => (b.inputs![c] ?? 0) - (b.inputs![a] ?? 0))[0];
       b.inputs![it] = (b.inputs![it] ?? 0) - 1;
       if (!b.inputs![it]) delete b.inputs![it];
+      used(s, it);
       need--;
     }
   }
+}
+
+/** Notes a good used up by a building (for the ledger, and the run's milestones). */
+function used(s: GameState, item: ItemId) {
+  noteFlow(s, 'used', item);
+  noteRunUse(s, item);
 }
 
 /** Whether a building takes `item` from a truck right now. Takes it if so: the depot buys it, a silo stores it. */
@@ -203,11 +214,13 @@ export function deliver(s: GameState, item: ItemId) {
   s.credits += ITEMS[item].price;
   s.earned += ITEMS[item].price;
   (s.stats.delivered[item] ??= []).push(s.time);
+  noteFlow(s, 'delivered', item);
 }
 
 function made(s: GameState, b: Building, item: ItemId, n: number) {
   s.made[item] = (s.made[item] ?? 0) + n;
   noteMade(s, b, item, n, TICK);
+  noteFlow(s, 'made', item, n);
   const bucket = s.stats.made[0];
   bucket[item] = (bucket[item] ?? 0) + n;
 }
@@ -245,20 +258,25 @@ export function makes(s: GameState, b: Building, sun: number, wind: number): num
 
 function balancePower(s: GameState, sun: number, wind: number, dt: number) {
   const map = new Map<number, number>();
+  const step: PowerStep = { solar: 0, wind: 0, digester: 0, given: 0, taken: 0, wanted: 0, used: 0, short: 0, stored: 0, capacity: 0, night: sun <= 0 };
+  const use: Partial<Record<BuildingId, number>> = {};
   for (const net of networks(s).list) {
-    let made = 0, wanted = 0, stored = 0, capacity = 0;
-    const batteries: Building[] = [];
+    let made = 0, wanted = 0, capacity = 0;
+    const batteries: Building[] = [], want = new Map<Building, number>();
     for (const b of net.members) {
-      made += makes(s, b, sun, wind);
-      wanted += wants(s, b);
-      if (b.type === 'battery') { batteries.push(b); stored += b.charge!; capacity += POWER.battery.capacity; }
+      const w = makes(s, b, sun, wind), u = wants(s, b);
+      made += w;
+      if (b.type === 'solar' || b.type === 'turbine' || b.type === 'digester') step[b.type === 'turbine' ? 'wind' : b.type] += w;
+      wanted += u;
+      if (u > 0) want.set(b, u);
+      if (b.type === 'battery') { batteries.push(b); capacity += POWER.battery.capacity; }
     }
     let share = 1;
     if (made >= wanted) {
       let spare = (made - wanted) * dt;
       for (const bat of batteries) {
         const add = Math.min(spare, POWER.battery.rate * dt, POWER.battery.capacity - bat.charge!);
-        bat.charge! += add; spare -= add;
+        bat.charge! += add; spare -= add; step.taken += add / dt;
       }
     } else {
       let short = (wanted - made) * dt, given = 0;
@@ -266,14 +284,19 @@ function balancePower(s: GameState, sun: number, wind: number, dt: number) {
         const take = Math.min(short, POWER.battery.rate * dt, bat.charge!);
         bat.charge! -= take; short -= take; given += take;
       }
+      step.given += given / dt;
       share = wanted > 0 ? Math.min(1, (made + given / dt) / wanted) : 1;
       if (share > 0.999) share = 1;
     }
     net.made = made; net.wanted = wanted; net.share = share;
     net.stored = batteries.reduce((n, b) => n + b.charge!, 0); net.capacity = capacity;
+    step.wanted += wanted; step.used += wanted * share; step.short += wanted * (1 - share);
+    step.stored += net.stored; step.capacity += capacity;
     for (const b of net.members) map.set(b.id, share);
+    for (const [b, u] of want) use[b.type] = (use[b.type] ?? 0) + u * share;
   }
   shares.set(s, map);
+  notePower(s, step, use, dt);
 }
 
 // ---- Goods waiting in buildings ----
@@ -285,7 +308,8 @@ function waiting(b: Building, item: ItemId) {
   if (b.type === 'silo') return b.store![item] ?? 0;
   return b.outputs?.[item] ?? 0;
 }
-function take(b: Building, item: ItemId) {
+function take(s: GameState, b: Building, item: ItemId) {
+  noteTaken(s, b, item);
   if (b.type === 'field' || b.type === 'hive') { b.stored!--; if (!b.stored) b.harvest = b.crop; return; }
   const from = b.type === 'silo' ? b.store! : b.outputs!;
   from[item]! -= 1;
@@ -384,7 +408,7 @@ function feedNeighbours(s: GameState) {
     for (const item of takesNow(c)) {
       let best: Building | null = null, most = 0;
       for (const p of near) { const n = waiting(p, item); if (n > most) { most = n; best = p; } }
-      if (best && accept(s, c, item)) { take(best, item); fed.set(c.id, s.time); list.push({ from: best.id, to: c.id, item, time: s.time }); }
+      if (best && accept(s, c, item)) { take(s, best, item); fed.set(c.id, s.time); list.push({ from: best.id, to: c.id, item, time: s.time }); }
     }
   }
 }
@@ -400,7 +424,7 @@ function runMachine(s: GameState, b: Building, dt: number) {
     if (lack) { b.status = 'input'; b.need = ingName(lack); return; }
     if (full) { b.status = 'blocked'; b.need = ITEMS[full.item].name.toLowerCase(); return; }
     if (def.power && share <= 0) { b.status = 'power'; b.need = undefined; return; }
-    consume(b, r);
+    consume(s, b, r);
     b.progress = 0;
   }
   // The digester is a generator: it burns at its own pace.
@@ -416,7 +440,7 @@ function runMachine(s: GameState, b: Building, dt: number) {
 
 function runField(s: GameState, f: Building, dt: number) {
   const crop = CROPS[f.crop!];
-  if (f.compost! > 0 && fieldFertility(s, f) < FIELD.compostBelow) { f.compost!--; changeSoil(s, f, FIELD.compostGain); }
+  if (f.compost! > 0 && fieldFertility(s, f) < FIELD.compostBelow) { f.compost!--; changeSoil(s, f, FIELD.compostGain); used(s, 'compost'); }
   const bonus = crop.flowers && isPollinated(s, f) ? 1 : 0;
   // A harvest of the old crop waits to go before the new one can join it.
   const old = f.stored! > 0 && (f.harvest ?? f.crop) !== f.crop;
@@ -534,7 +558,7 @@ function moveOne(s: GameState, t: Truck, st: Stop, b: Building, r: Route): boole
   const n = st.pick.length;
   for (let k = 0; k < n; k++) {
     const it = st.pick[(st.turn + k) % n];
-    if (waiting(b, it) > 0) { take(b, it); t.cargo.push(it); st.turn = (st.turn + k + 1) % n; return true; }
+    if (waiting(b, it) > 0) { take(s, b, it); t.cargo.push(it); st.turn = (st.turn + k + 1) % n; return true; }
   }
   return false;
 }
@@ -574,6 +598,7 @@ function drive(s: GameState, t: Truck, dt: number) {
   if (!b) { redirect(s, t); return; }
   if (b.id === t.garage) { t.phase = routeOf(s, t)?.stops.length ? 'charge' : 'parked'; t.idle = 0; return; }
   t.phase = 'queue'; t.arrived = s.time; t.idle = 0;
+  noteArrival(s, t);
 }
 
 /**
@@ -857,6 +882,9 @@ export function tick(s: GameState) {
   if (Math.floor(s.time + 1e-6) !== Math.floor(s.time - dt + 1e-6)) rest(s);
   updateStats(s);
   updateGoals(s);
+  noteTrucks(s, dt);
+  tickFlows(s, () => soilHealth(s));
+  noteRun(s, dt, sun <= 0, networks(s).list.some((n) => n.share < 1 && n.wanted > 0), () => s.scenario.goals.map((_, i) => goalDone(s, i)));
 }
 
 /** Each building's step for its history: its status, and a reading where one tells more (a generator's watts, a battery's charge). */

@@ -1,5 +1,6 @@
 import { BUILDINGS, recipesFor, type BuildingId, type CropId, type ItemId } from './data.ts';
 import { DEPOT_SIZE, generateMap, TERRAIN, type MapData } from './map.ts';
+import { newRunLog, type RunLog } from './runlog.ts';
 import type { Scenario } from './scenarios.ts';
 
 // The state of a commission in progress: plain data, so it saves as JSON. Lookups that only speed things up (which building
@@ -127,6 +128,8 @@ export interface GameState {
   completedAt: number | null;
   /** Total made of each good over the commission. */
   made: Partial<Record<ItemId, number>>;
+  /** The run so far, for the results (runlog.ts). */
+  run: RunLog;
 }
 
 export function newGame(sc: Scenario): GameState {
@@ -134,7 +137,7 @@ export function newGame(sc: Scenario): GameState {
   const s: GameState = {
     version: 3, scenario: sc, map, soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
     buildings: [], routes: [], trucks: [], nextId: 1, credits: sc.credits, time: 0, carry: 0, delivered: {}, earned: 0,
-    stats: { since: 0, made: [{}], delivered: {} }, reached: sc.goals.map(() => false), completedAt: null, made: {},
+    stats: { since: 0, made: [{}], delivered: {} }, reached: sc.goals.map(() => false), completedAt: null, made: {}, run: newRunLog(),
   };
   s.buildings.push(makeBuilding(s, 'depot', map.depot.x, map.depot.y, 0));
   return s;

@@ -1,5 +1,6 @@
 import { isStop, type Medal } from './sim.ts';
 import { bays, BUILDINGS, CROPS, ITEMS, recipesFor, TRUCK } from './data.ts';
+import { startedRunLog, type RunLog } from './runlog.ts';
 import type { Scenario } from './scenarios.ts';
 import type { Building, GameState, Route, Truck } from './state.ts';
 
@@ -22,7 +23,10 @@ export function deserialize(json: string | null): GameState | null {
   if (!json) return null;
   try {
     const s = JSON.parse(json) as GameState;
-    return s?.version === 3 && complete(s) ? s : null;
+    if (s?.version !== 3 || !complete(s)) return null;
+    // Saved before the run was logged: it is logged from now on.
+    if (s.run === undefined) s.run = startedRunLog(s);
+    return validRun(s.run) ? s : null;
   } catch {
     return null;
   }
@@ -70,6 +74,17 @@ function complete(s: GameState): boolean {
 }
 
 const int = (v: unknown) => Number.isInteger(v);
+
+const MARKS = ['first', 'night', 'truck', 'second', 'loop', 'goal'];
+/** The run's log: milestones, the curve, and seconds by kind of building, problem and night. */
+function validRun(r: RunLog): boolean {
+  const kinds = (o: unknown) => nums(o) && Object.keys(o as object).every((k) => k in BUILDINGS);
+  return !!r && arr(r.marks) && r.marks.every((m) => !!m && num(m.t) && MARKS.includes(m.kind) && (m.item === undefined || item(m.item))
+      && (m.type === undefined || m.type in BUILDINGS) && (m.goal === undefined || int(m.goal)) && (m.n === undefined || num(m.n)))
+    && num(r.curveFrom) && arr(r.curve) && r.curve.every(num) && kinds(r.time) && nums(r.problems)
+    && arr(r.nights) && r.nights.every((n) => !!n && num(n.day) && num(n.short) && arr(n.types) && n.types.every((t) => t in BUILDINGS))
+    && !!r.trucks && num(r.trucks.total) && num(r.trucks.wait) && kinds(r.trucks.at);
+}
 
 /** A route: stops at buildings (each good dropped or picked up, never both), with a wait in range. */
 function validRoute(r: Route): boolean {
