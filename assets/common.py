@@ -22,6 +22,9 @@ PALETTE = {
     'iron': '#38484a', 'black': '#262d2c', 'clay': '#cb7852', 'brick': '#aa523c',
     'sack': '#c5aa70', 'glow': '#ffd68b', 'fire': '#ff9c39',
     'dung': '#68412e', 'dung_light': '#8a5835',
+    'ceramic': '#f4f5e9', 'copper': '#b96c49', 'brass': '#d4ad60',
+    'solar': '#234c83', 'solar_light': '#4c85b0', 'glass': '#8ecac6',
+    'moss': '#638456', 'linen': '#dddcc2', 'charge': '#a7e5b3',
 }
 MATERIAL_NAMES = {
     'feather': 'Hen ivory feathers', 'chalk': 'Eggshell warm white', 'cream': 'Cream linen and trim',
@@ -35,6 +38,11 @@ MATERIAL_NAMES = {
     'iron': 'Forged blue iron', 'black': 'Charcoal eyes and interior', 'clay': 'Warm terracotta clay',
     'brick': 'Fired red brick', 'sack': 'Seed sack burlap', 'glow': 'Warm window light',
     'fire': 'Oven amber fire', 'dung': 'Manure cocoa brown', 'dung_light': 'Manure warm brown',
+    'ceramic': 'Solarpunk white ceramic', 'copper': 'Warm crafted copper',
+    'brass': 'Honey brass fittings', 'solar': 'Deep blue solar glass',
+    'solar_light': 'Solar cell blue highlights', 'glass': 'Sea glass teal',
+    'moss': 'Living moss roof', 'linen': 'Unbleached flax linen',
+    'charge': 'Mint charge indicator',
 }
 _MATERIALS = {}
 
@@ -291,12 +299,15 @@ def _canonical_glb(path):
     path.write_bytes(data)
 
 
-def export_and_preview(name, budget, stages=False):
+def export_and_preview(name, budget, stages=False, states=False, root_prefix='stage_', airborne=False):
     """Validate geometry, export ALL states, then render cardinal contact sheets.
 
     Static sheets: front/back/left/right in a 2x2 grid. Crop sheets: stages
     top to bottom, same four directions left to right. Coop/oven sheets have
-    closed/open and idle/running rows respectively. Camera pitch = 30 deg.
+    closed/open and idle/running rows respectively; states=True also enables
+    idle/running rows for other machines. root_prefix='variant_' shows rock
+    variants in separate rows. airborne=True allows a centred flying origin
+    with geometry below it. Camera pitch = 30 deg.
     """
     bpy.context.view_layer.update()
     meshes = [o for o in bpy.context.scene.objects if o.type=='MESH']
@@ -316,7 +327,8 @@ def export_and_preview(name, budget, stages=False):
         assert all(not f.use_smooth for f in obj.data.polygons), 'Smooth mesh '+obj.name
     low = Vector(tuple(min(p[i] for p in points) for i in range(3)))
     high = Vector(tuple(max(p[i] for p in points) for i in range(3)))
-    assert low.z >= -.001, f'Below ground: {low.z}'
+    if not airborne:
+        assert low.z >= -.001, f'Below ground: {low.z}'
     assert abs(low.x+high.x)<.1 and abs(low.y+high.y)<.1, 'Footprint not centred'
     assert max(counts.values()) <= budget, f'Triangle budget: {counts} > {budget}'
     output = ROOT/'public'/'models'/f'{name}.glb'
@@ -352,8 +364,8 @@ def export_and_preview(name, budget, stages=False):
     target = (low+high)/2
     # Same framing for every direction and stage, so growth stays comparable.
     camera.data.ortho_scale = max(high.x-low.x,high.y-low.y,high.z-low.z)*1.38
-    stage_roots = sorted([o for o in scene.objects if o.name.startswith('stage_')], key=lambda o:o.name)
-    stateful = name in ('coop', 'oven')
+    stage_roots = sorted([o for o in scene.objects if o.name.startswith(root_prefix)], key=lambda o:o.name)
+    stateful = name in ('coop', 'oven') or states
     rows = len(stage_roots) if stages else 2
     columns = 4 if stages or stateful else 2
     sheet_width, sheet_height = columns*size, rows*size

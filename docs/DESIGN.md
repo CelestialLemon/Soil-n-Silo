@@ -1,273 +1,412 @@
-# Farming Game — MVP Design Doc
+# Soil n Silo — Design (v0.1, the solarpunk pivot)
 
-Oct 6, 2026 · @Ashutosh Shinde
+Oct 9, 2026 · @Ashutosh Shinde
 
 ## Overview
 
-The MVP is one 28-day season where the player earns 20,000g by growing crops, raising chickens and processing goods. It exists to prove one thing: that farming and production chains are fun on their own, without a social layer.
+Soil n Silo is a build-only automation game in a solarpunk valley. Each level is a commission from a nearby settlement: on a
+seeded map you lay out fields, machines, power and the trucks' routes, and the farm then runs on its own until the commission's goals
+are delivered. A level takes about 30 to 60 minutes.
 
-The game is a cozy farming sim in the vein of Stardew Valley, with depth moved from relationships into soil, animals and processing. Visuals use a 3D scene rendered to pixel art.
+The game replaced a Stardew-like season (the earlier MVP, decided 2026-10-06, built by 2026-10-07) on 2026-10-09. The reason: the
+only player is also the designer, so a reward loop of unlocking new crops, items and machines doesn't work: the designer already knows all of
+them. An automation loop does: the fun is in building a layout, finding its bottleneck, fixing it and watching the throughput rise,
+and that stays fun when every rule is known. Short, seeded levels are also quick to test, where a full season was hours.
 
-**Core loop:** plant → water → harvest → feed chickens → fertilize → process goods → sell → buy upgrades → repeat with better margins.
+**Core loop:** read the map (soil, water, wind, space) → lay out a chain → power it → watch it run → find the bottleneck → fix it →
+deliver the commission faster.
 
-```mermaid
-flowchart LR
-  Shop -- seeds, feed --> Fields
-  Fields -- crops --> Bin[Shipping bin]
-  Fields -- wheat --> Mill
-  Fields -- scraps --> Chickens
-  Shop -- feed --> Chickens
-  Chickens -- eggs --> Oven
-  Chickens -- manure --> Fields
-  Mill -- flour --> Oven
-  Fields -- pumpkin --> Oven
-  Oven -- bread, pie --> Bin
-  Bin -- gold --> Shop
-```
+**What makes it not Factorio:** farming. Soil is a resource that wears out and comes back, so fields need compost, resting or beans;
+byproducts must go somewhere (feed, compost or the digester), so the closed loops of a real farm are the puzzle; the sun sets every
+few minutes and the wind comes and goes, so power needs storage and a mix of sources.
 
-*(The original doc embeds this as a 7-part diagram; this is a text version of it.)*
+**In v0.1**
 
-Manure from chickens is what restores the fields, so animals and soil quality stay tied together all season.
+- 18 goods, 5 crops, chickens and bees, 6 processing machines, 4 power sources and storage
+- Trucks on routes you set, over the open ground between buildings: no belts and no roads to build; silos to store goods
+- Buildings next door trade directly: a mill between wheat fields takes their wheat without a truck
+- Pylon power networks, each with its own balance
+- Soil fertility, sprinklers, compost and pollination
+- 8 campaign commissions, random commissions from any seed, a sandbox
+- A soft timer: the commission always finishes; gold, silver or bronze by how long it took
 
-**In scope**
+**Not in v0.1:** research or unlocks (every building is available from the start), pipes and fluids, weather events, trains,
+blueprints and copy-paste, sound, multiple saves per level.
 
-- 3 crops: wheat, tomato, pumpkin
-- Soil fertility and crop quality
-- 1 animal: chickens, with eggs and manure
-- 2 machines: mill and oven, 3 recipes
-- Shop, shipping bin, day/night clock
-- 20,000g money target with bronze/silver/gold tiers
+## Camera, presentation and controls
 
-**Out of scope for the MVP**
+The camera stays as it was: orthographic, a 3/4 view at about 30° pitch, 4 views 90° apart (Q/E), zoom (the wheel, a trackpad pinch,
++/− or Z) and panning (drag, right-drag or the arrow keys). Zoom eases smoothly towards the pointer. Low-poly, flat-colour models drawn as
+pixel art by `pixel3d-renderer`. Everything is seen from 4 sides.
 
-- Energy/stamina
-- Seasons and weather
-- NPCs, relationships, quests
-- Composter and other extra machines
-- Farm expansion, multiple save slots
-- Animal sickness or death
+Each art pixel is always drawn as a square of the same size on screen (2×2 screen pixels by default; the pixel size is a
+setting in the menu, 1×1 to 4×4). Zooming changes how much ground fits on the screen, so models are drawn with more art
+pixels close up and fewer far out. Chosen on 2026-10-10 over two other ways, tried side by side in play: magnifying a fixed
+picture (art pixels growing from 1×1 to 6×6) and stepping through six fixed detail levels; the free zoom looked and felt best.
 
-## Camera and presentation
+![The same mill zoomed in, the three ways tried: magnify, detail steps, free (chosen)](images/zoom-modes.png)
 
-The camera is an orthographic, isometric-style 3/4 view over the farm. The player turns it between 4 preset views 90° apart and pans it with the mouse. This keeps the diorama look while letting players see behind buildings.
+It is build-only and point-and-click. There is no character and no manual farming: you place, rotate, configure and remove.
 
-| Setting | Decision | Why |
-| --- | --- | --- |
-| Projection | Orthographic | No perspective distortion; clean pixel output |
-| Default yaw | 45° | Gives the classic iso diamond look as the home view |
-| Pitch | Fixed, about 30° | Produces clean 2:1 pixel lines |
-| Rotation | Snapped 90° steps (4 views) | Free orbit makes pixel art shimmer |
-| Zoom | Fixed integer levels (1x, 2x, 3x) | Smooth zoom breaks pixel crispness |
-| Panning | Drag with the mouse, kept over the farm; snapped to pixel-size steps | Point-and-click needs the whole farm in reach; snapping prevents shimmer |
+| Input | Does |
+| --- | --- |
+| Build bar (bottom) or hotkeys (F field, L silo, T garage, P pylon, S solar) | Pick a building to place |
+| Click / drag | Place it; a drag places a row (pylons: a power line, spaced so their reaches meet) |
+| R | Turn what you're placing (for looks) |
+| Click a building with nothing in hand | Select it: the inspector shows its status, buffers, settings and history |
+| A garage's inspector | Buy a truck; give each of its trucks a route, or none |
+| O, or the Routes button | The routes panel: every route with its stops, goods, trucks, goods a minute and problems. Click a name to rename it; + and − add or send home trucks; ⧉ copies a route; point at one to draw it on the map; click it to edit |
+| A route's editor (from a truck, a building, or the routes panel) | Rename it; add a stop by clicking a building; set what it drops and picks up and its wait; reorder or remove stops; add or take away trucks; see what each truck is doing, and dump its cargo; copy or delete the route |
+| A truck's inspector | Its route, cargo and battery; dump its cargo (the goods are lost); sell it |
+| X, then click or drag | Remove (full refund) |
+| Esc / right click | Drop what's in hand, close the inspector |
+| Space, 1, 2, 3 | Pause, 1×, 2×, 4× speed. You can build while paused |
+| Tab | Production stats |
+| G | The guide: a page for every building (what it does, how to use it, what it takes and gives, its numbers), the goods, and the basics |
+| V (or the buttons) | Overlays: soil fertility, power reach, roads, sprinkler water, bee range |
+
+The build preview is see-through, green where it fits and red where it doesn't.
 
 **Readability rules**
 
-- The tile under the pointer is always highlighted. With diamond tiles this is essential.
-- Buildings and trees fade or cut away when they hide the tile under the pointer, if turning the camera turns out not to be enough.
-- Soil color shows fertility (see Crops), so fields can be read without UI.
+- Every building shows its state on a small marker above it: working, waiting for input, output blocked, no power, low power.
+- Hover any building for a one-line status ("Mill: waiting for wheat"). Hover a button in the build bar for a card about that
+  building.
+- Trucks carry their cargo in an open bed, so the flow of goods is always visible, and trucks queuing at a building show
+  where it is stuck.
+- Selecting a truck or a route draws the route's way on the ground, its numbered stops and its trucks. Selecting a building
+  lists the routes that stop there. The inspector says what each truck is doing ("taking 6 wheat to the mill", "waiting at the
+  field for wheat", "2nd in the queue at the mill", "charging at the garage").
+- A building trucks can't reach, or whose outputs are full with no route or building next door taking them, shows a purple marker.
+- Goods handed to a building next door hop over the edge the two share. Selecting or pointing at a building tints the
+  neighbours it trades with, and its inspector lists them ("Takes wheat from 2 fields", "Gives bran to the coop"); a
+  building in hand tints the ones it would trade with, and the hover line says so.
+- The roads overlay shows the open ground trucks can drive on, and the buildings they can't reach.
+- The inspector keeps each building's history over the last 1, 5 or 10 minutes of play (5 by default, the choice kept from
+  building to building), so a problem noticed late can be traced: a strip of its statuses in time (problems hatched, so they
+  don't rely on colour), pointing at it says what happened then and for how long, and below it the share of the time in each
+  status ("Waiting for wheat 27%", "Low power (got 60%)") and the goods it made a minute, against full speed for machines.
+  Solar panels and turbines chart the watts they made and batteries their charge instead. Pylons, silos, the depot and
+  saplings have none. The history lives in memory, not in the save: after a reload it fills again.
+- The guide (G) has a page for every building; hovering a build button, or "?" in the inspector, leads to it.
+- Soil colour shows fertility under fields. Overlays show fertility everywhere, power coverage and roads.
+- Power stays in the background until you work with it: pylons are short, quiet posts and nothing else is drawn. The power
+  overlay, placing anything that makes, stores or uses power, selecting a building on a network, or pointing at a power
+  building shows the networks, each in its own colour: the ground its pylons reach, wires joining its pylons, a line from a
+  pylon to every building it powers, and a label with what it makes and uses and how full its batteries are. A focused or
+  placed pylon shows both its ranges: its reach (a square, 3 tiles) and its link range (a dashed circle, 8 tiles).
+- A battery's cells light up from the bottom as it fills, one ring a quarter.
 
-**Art note:** every model is seen from 4 sides, so it must read well all the way around. Low-poly, flat-color models are the target style.
+![The power buildings before and after the 2026-10-11 redesign, without and with the power overlay](images/power-before-after.png)
 
-## Player controls and interaction
+![A selected pylon's reach, link range and network; a drag laying a line of pylons](images/power-network.png)
 
-The game is point-and-click (decided 2026-10-06). There is no player character in the scene: the player is the hand on the farm, pointing at one grid tile or object at a time and clicking to act. There is no energy or stamina in the MVP; time is the only daily limit.
+![The guide's page for the mill](images/guide.png)
 
-- **No avatar and no walking.** Anything on the farm can be reached from anywhere, as long as it is on screen.
-- **Camera:** drag to pan (off the field; right-drag or Shift-drag pans anywhere); Q/E (or on-screen buttons) turn between the 4 views; the mouse wheel steps through the zoom levels.
-- **Pointing:** the tile or object under the pointer is highlighted.
-- **Clicking:**
-  - On a tile, click *uses* the held tool or item there (hoe, water, plant, fertilize).
-  - On a thing, click *interacts* with it (machines, shop, shipping bin, trough, chickens for petting, eggs and manure for collecting).
-  - A press that moves more than a few pixels is a pan, not a click.
-  - Playtesting shortcut: a drag that starts on the field marks a rectangle of tiles and, on release, uses what is in hand
-    on each of them (the hoe leaves growing crops alone). It may become the area-tool upgrade, or go before release.
-- **Tools:** hoe, watering can, hand. Each affects one tile per click. Area tools are a post-MVP upgrade.
-- **Inventory:** a hotbar plus a small backpack. Items stack.
+![A bakery's history over 5 minutes, pointing at the strip; a wind turbine's watts](images/history-bakery.png) ![](images/history-turbine.png)
 
-## Time and day structure
+## Time
 
-A day lasts about 13 real minutes, from 6 AM to a 2 AM cutoff. The clock pauses whenever a menu is open.
+The simulation runs in fixed steps of 0.1 s. A day lasts 240 s at 1× (4 minutes); a commission starts at 7 AM, and the sun shines
+from 6 AM to 8 PM (scenarios change this), so night is about 40% of a day. The level timer counts simulated time, so speed controls only change
+how long you wait, and pausing to plan is free.
 
-- **Day length:** ~13 real minutes. Tune in playtests.
-- **Paused in menus:** inventory, shop, and machine screens stop the clock.
-- **Ending the day:** the player can end the day at any time (clicking the farmhouse or an "End day" button). At 2 AM the day ends automatically, with a penalty the next morning (exact penalty to tune).
-- **Machines run on in-game hours**, so players can run several batches per day.
+The wind follows a smooth seeded curve between about 0.15 and 1.0 of full strength.
 
-**Overnight, in this order:**
+## The map
 
-1. Watered crops advance one growth stage.
-2. Empty tilled tiles recover fertility.
-3. Fed chickens lay eggs and leave manure.
-4. Shipping bin contents are sold and paid out.
-5. Watered status resets on all tiles.
+Each level is generated from a seed: a grid of about 48 × 40 one-metre tiles.
 
-**Morning summary:** each day opens with a screen showing what sold, for how much, and progress toward the money target. This is a key reward moment, so it should feel good.
-
-## Crops and soil fertility
-
-Crops grow one stage per watered day, and every tile's fertility decides the quality of what it produces. Fertility is the system that makes this game more farming-focused than its peers.
-
-### Crops
-
-| Crop | Role | Grow time | Yield | Fertility drain |
-| --- | --- | --- | --- | --- |
-| Wheat | Fast, light, feeds the mill | 4 days | 1 per harvest | −5 |
-| Tomato | Regrowing cash crop | 8 days, then every 3 days | 2 per harvest | −5 per harvest |
-| Pumpkin | Slow, high value, hungry | 12 days | 1 per harvest | −15 |
-
-**Growth rules**
-
-- A crop advances only on days it was watered. Unwatered crops pause; they never die in the MVP.
-- Each crop has 3–5 visible growth stages, built as separate low-poly meshes.
-- Harvesting sometimes drops crop scraps, which can be fed to chickens.
-- No seasons: every crop can be planted on any day.
-
-### Soil fertility
-
-- Each tile has fertility from 0 to 100. Freshly tilled ground starts at 50.
-- Each harvest lowers it by the crop's drain value (table above).
-- Manure used as fertilizer adds +25, capped at 100.
-- A tilled tile left empty for a day recovers +5, so resting land is a real choice.
-- Soil color shifts from pale to rich dark brown as fertility rises. An inspect action shows the exact number.
-
-### Crop quality
-
-Quality is rolled at harvest from the tile's fertility:
-
-| Fertility | Likely result |
+| Tile | Notes |
 | --- | --- |
-| Below 30 | Mostly normal |
-| 30–70 | Good chance of silver |
-| Above 70 | Gold becomes possible |
+| Grass | Buildable. Has a fertility (0–100) from noise, which fields use |
+| Water | A river or ponds. Not buildable. Sprinklers near water use less power |
+| Rock | Not buildable. Can be cleared for 15 credits |
+| Tree | Not buildable. Slows wind turbines next to it. Can be cleared for 5 credits (soil health drops a little) |
 
-Exact odds are for tuning. Quality carries into processed goods (see Processing).
+A **freight depot** (3 × 3) stands at one edge. Anything a truck drops at it counts towards the goals and pays credits (see Logistics).
 
-## Animals: chickens
+## Goods
 
-Chickens are the only animal in the MVP. They turn feed and scraps into eggs for the oven and manure for the fields, tying animals into farming.
-
-- **Housing:** one coop holding up to 6 chickens. The player starts with the coop and 2 chickens; more are bought from the shop.
-- **Feeding:** a trough inside the coop, filled with bought feed or crop scraps. Each chicken eats 1 unit per day automatically.
-- **Happiness (0–100):**
-  - Up: fed, let outside (the player opens the coop door), petted once a day, manure collected.
-  - Down: not fed.
-- **Eggs:** each fed chicken lays 1 egg per day, collected by hand. Happiness sets egg quality, the same way fertility sets crop quality.
-- **Manure:** each chicken leaves 1 manure per day in the coop. It is used directly on a tile as fertilizer (+25 fertility). No composter in the MVP.
-- **Failure state:** an unfed chicken stops laying and loses happiness. No sickness or death.
-- **Onboarding:** the starting chickens provide manure on day 1–2, so players discover fertilizer naturally.
-
-## Processing machines and recipes
-
-Two machines turn raw goods into higher-value products. Processing is always the better money path, just slower, and it is the game's signature system.
-
-| Machine | Recipe | Time | Shop price |
+| Good | From | Used by | Pays |
 | --- | --- | --- | --- |
-| Mill | Wheat → flour | 2 in-game hours | 1,000g |
-| Oven | Flour + egg → bread | 3 in-game hours | 2,500g |
-| Oven | Flour + egg + pumpkin → pumpkin pie | 5 in-game hours | (same oven) |
+| Wheat | Field | Mill | 2 |
+| Beans | Field (restores soil) | Coop (feed) | 2 |
+| Tomato | Field | Cannery | 3 |
+| Sunflower | Field | Oil press | 3 |
+| Flax | Field | Spinner | 3 |
+| Egg | Coop | Bakery | 6 |
+| Manure | Coop | Composter, digester | 1 |
+| Honey | Beehive | Bakery | 10 |
+| Flour | Mill | Bakery | 7 |
+| Bran | Mill (byproduct) | Coop (feed), composter, digester | 1 |
+| Oil | Oil press | Cannery | 12 |
+| Seed cake | Oil press (byproduct) | Coop (feed), composter, digester | 2 |
+| Compost | Composter | Fields | 4 |
+| Yarn | Spinner | Loom | 10 |
+| Linen | Loom | (product) | 45 |
+| Bread | Bakery | (product) | 22 |
+| Tomato sauce | Cannery | (product) | 40 |
+| Honey cake | Bakery | (product) | 60 |
 
-**How machines work**
+Prices and timings are starting values; they live in `src/game/data.ts`.
 
-- The player loads ingredients, the machine runs on the in-game clock, and the player collects the result.
-- One batch at a time per machine.
-- Machines show progress visually (smoke, glow, small timer icon) so the farm can be read at a glance.
-- Machines are placed on the farm like any object. The player starts with neither; buying the first is an early goal.
-- All recipes are defined as data, so new recipes can be added without code changes.
+```mermaid
+flowchart LR
+  Field -- wheat --> Mill
+  Mill -- flour --> Bakery
+  Mill -- bran --> Coop
+  Field -- beans --> Coop
+  Coop -- egg --> Bakery
+  Coop -- manure --> Composter
+  Composter -- compost --> Field
+  Hive -- honey --> Bakery
+  Field -- sunflower --> Press[Oil press]
+  Press -- oil --> Cannery
+  Press -- seed cake --> Coop
+  Field -- tomato --> Cannery
+  Field -- flax --> Spinner
+  Spinner -- yarn --> Loom
+  Bakery -- bread, honey cake --> Depot
+  Cannery -- sauce --> Depot
+  Loom -- linen --> Depot
+  Mill -- bran --> Digester
+  Digester -- power --> Grid
+```
 
-**Quality through processing**
+## Buildings
 
-- Output quality = the average of the inputs' quality, rounded down. Gold flour + silver egg = silver bread.
-- This rewards both good soil and happy chickens, and encourages matching quality.
+Every building is available from the start. Removing one refunds its full cost, so trying layouts is free.
 
-Tomatoes have no recipe in the MVP; they are a raw cash crop.
+### Logistics
+
+There are no belts and no roads to build. Goods move by **truck**, along **routes** you set, over the open ground between
+buildings. Storing goods is a building of its own, the **silo**, and carrying them is the trucks' job, so you buy each
+separately: a slow route wants more trucks, not more storage. (Chosen on 2026-10-12 over silos whose own drones carried every
+good: they swarmed the nearest jobs, left far ones waiting, held whatever their drones happened to grab, and the only way to
+more drones was more storage. Drones come back later as automatic helpers, see Open questions.)
+
+| Building | Size | Cost | Power | Notes |
+| --- | --- | --- | --- | --- |
+| Silo | 2 × 2 | 80 | — | Stores up to 30 of each good. Trucks drop goods into it and pick them up |
+| Garage | 2 × 2 | 100 | 20 W per truck charging | Home of up to 4 trucks, bought here for 60 each. Charges them |
+
+**Roads are the empty ground.** A truck drives on any grass tile with nothing on it; water, rock, trees and every building
+(fields, pylons, sprinklers and saplings too) block it. It goes the shortest way, from tile centre to tile centre in 8
+directions (a diagonal only when both tiles beside it are open), at 3 tiles/s. Trucks pass through each other on the road.
+
+To load or unload, a truck parks on an open tile next to the building: the nearest one it can drive to. A building with no
+open tile next to it, or only ones walled off from where the truck is, can't be reached: the truck skips that stop and goes on
+to the next, and if it can reach none of its stops it waits where it is. Its way is worked out again whenever the layout
+changes, so a building placed across its way sends it round, and a truck on a tile you build on moves to the nearest open
+tile. Packing buildings tightly saves ground but makes trucks drive further round, or cuts a building off.
+
+**One truck at a time.** A building loads or unloads one truck at a time (the depot two); the others queue beside it in the
+order they came. A queue is the sign of a bottleneck: split the route, or put a silo between.
+
+**Routes.** A route is a loop of up to 8 stops. Each stop is a building and what to do there:
+
+- **Drop:** the goods to unload. The building takes only what it uses and has room for; the depot takes everything and buys it.
+- **Pick up:** the goods to load: a field's harvest, a machine's outputs, a silo's stock.
+
+A good is either dropped or picked up at a stop, never both.
+
+A stop can do both: drop compost at a field and pick up its wheat. A truck carries 6 goods, of any mix. It drives to stop 1,
+2, …, the last, then stop 1 again. At a stop it drops what the building takes, then picks up into the room it has left (goods the building won't take yet stay
+aboard), 4 goods a second; picking up several goods, it
+takes one of each in turn (in the stop's order, skipping any the building has none of), so a mix comes out even. It is **done** when it carries none of the stop's
+drop goods and is full (or the stop picks up nothing), and then leaves at once. Until it is done it waits for room in the
+building or for more goods, up to the stop's **wait** (5 s unless you set it, 0 to 60 s) after the last good moved; with a
+wait of 0 it moves what it can and leaves. If another truck is queued for the building, a truck with nothing to move right
+now leaves at once, so a truck waiting for a full mill to make room never blocks the truck that would empty it. Goods a truck
+couldn't drop ride on to the next stops. Picking up fills the truck: a route that picks up tomatoes at a field and then oil
+at a silo, both for a cannery, can arrive at the silo already full of tomatoes. Give each ingredient its own route.
+
+A new stop starts out picking up everything the building makes and dropping everything it takes, which suits most stops: a
+field, then a mill, then the depot. A silo stop starts out dropping everything and picking up nothing; a good you set it to pick up is no longer dropped there.
+
+**Trucks.** Every truck belongs to a garage and runs one route at a time, or none (it drives home and waits at its garage).
+Several trucks can run the same route: adding trucks is how a route goes faster. A truck given another route, or none, leaves
+any building or queue at once and keeps its cargo; it drops it at the first stop that takes it. Selling a truck refunds it,
+and removing a garage sells its trucks; goods they carry are lost, like goods in any building removed. Removing a building
+takes it out of every route that stops there. A truck whose current stop goes away (its building removed, or the stop taken
+out of the route) leaves the building or its queue at once and goes on to the next stop; a route left with no stops sends its
+trucks home. Two routes that pick up the same good share it by how often
+their trucks come, so on First Light one truck taking wheat to the depot and one taking it to the mill split it about half
+each. Routes and neighbours decide where every good goes; there is no sell list and no per-building input toggle.
+
+**Power.** A truck has a 300 J battery and uses 1 J a tile. Before it leaves a stop it checks that after the next leg it could
+still drive home to its garage; if not, it drives home first, charges full (at 20 W, so 15 s from empty) and then drives
+straight to that next stop, without checking again. A truck that runs empty on the way crawls on at 0.5 tiles/s, so a route
+too long for its battery is slow but never stuck. A truck that can't drive to its garage (the layout walled it off) can't
+charge: it carries on its route without the check, crawling once empty, and shows that it can't reach home. A garage outside every pylon's reach, or on a network out of power, can't
+charge: a truck that has charged nothing for 5 s goes on anyway, crawling once empty, so a garage whose power comes from a
+digester its own trucks feed never locks up. Trucks are bought fully charged. At night trucks charge from what the batteries hold, like any machine.
+
+**Byproducts stay strict.** A mill whose bran no route picks up fills its own buffer and stops. A silo full of one good takes no
+more of it, but still takes every other good, so only that chain stops. Trucks share their room, though: a truck full of bran
+that none of its stops takes has no room for anything else, and stops every chain on its route. Give a byproduct somewhere to
+go, or a route of its own.
+
+**Problems a route shows** (on the route, on its trucks, in the routes panel, and as a marker on the building): a stop that
+can't be reached, a stop with nothing to do (it neither takes nor gives any of its goods), a truck carrying goods none of its
+stops takes, a truck that can't reach its garage, a route with no trucks, and a building whose outputs are full with no
+route or neighbour taking them. A truck stuck with goods no stop takes can **dump** its cargo: the goods are lost.
+
+**Next door.** Buildings that share an edge (touching only at a corner doesn't count) trade without trucks. Each step, every
+machine takes up to one of each good its recipe uses from the buildings next door that have it waiting, from whichever has
+the most, and a field takes compost the same way. Buildings sharing a giver take turns: the one that took a good longest
+ago goes first, so two coops beside one mill both get its bran. Fields, hives and machines give (a harvest, honey, a machine's outputs);
+machines and fields take. Silos and the depot don't trade next door: storing and selling stay the trucks' job, so a farm
+still needs trucks for the long hops and the last one. Next door comes first: it runs before trucks load, so a mill beside
+a field gets its wheat before a truck that stops there. A walled-in building needs no road when no route stops there and it
+trades with its neighbours.
+
+So the short, dull hops (fields to the mill, bran to the coop, flour and eggs to the bakery, manure to the composter) can be
+built into the layout, and trucks are left for the far and specific ones. Packing buildings together costs open tiles, so
+it is a trade: a mill boxed in by fields gets their wheat, but no truck can bring it more. Byproducts stay strict next door
+too: a composter whose only taker is one full field stops, and with it the coop that feeds it. (Chosen on 2026-10-12, after
+playing trucks: every level needed many trucks, and routes doing a field-to-mill hop were the bulk of them.)
+
+![A garage selected: its trucks, each with its route and what it is doing, and the routes' ways on the ground](images/trucks-garage.png)
+
+![Editing a route: its stops numbered on the map, and what each drops and picks up](images/trucks-route.png)
+
+![The roads overlay: the open ground trucks drive on](images/trucks-roads.png)
+
+![The routes panel (O): every route, renamed in place, with its stops, goods, trucks and problems](images/routes-panel.png)
+
+![A coop selected: it takes bran from the mill next door (tinted), no truck needed](images/next-door.png)
+
+![The route editor: its name, each truck's state with a dump button, and its stops](images/route-editor.png)
+
+### Farming
+
+| Building | Size | Cost | Power | Notes |
+| --- | --- | --- | --- | --- |
+| Field | 3 × 3 | 30 | — | Grows the chosen crop on its 9 tiles. Takes compost (a truck brings it) |
+| Sprinkler | 1 × 1 | 25 | 3 W within 8 tiles of water, else 8 W | Waters fields whose centre is within 3 tiles |
+| Coop | 3 × 3 | 150 | — | Four chickens. Every 2 feed (beans, bran or seed cake) give 2 eggs and 1 manure, 16 s |
+| Beehive | 1 × 1 | 60 | — | Makes honey from flowering fields (not wheat) within 4 tiles, faster with more of them (up to 3). Pollinates fields within 4 tiles |
+| Composter | 2 × 2 | 60 | — | Any 2 of manure, bran and seed cake → 1 compost, 20 s |
+
+**Crops**
+
+| Crop | Grows in | Yield | Soil per harvest |
+| --- | --- | --- | --- |
+| Wheat | 40 s | 3 | −1 |
+| Beans | 50 s | 2 | +2.5 (restores) |
+| Tomato | 60 s | 4 | −1.5 |
+| Sunflower | 70 s | 3 | −2 |
+| Flax | 55 s | 3 | −1.5 |
+
+- Grow times are with water at fertility 60. Growth speed is ×0.4 without water, and from ×0.4 (fertility 0) to ×1.4
+  (fertility 100) by the field's average fertility.
+- A pollinated field (a hive within 4 tiles) yields 1 more of a flowering crop.
+- A harvest waits in the field (up to 6) until a truck picks it up. A full field stops growing.
+- A field with compost waiting uses one whenever its average fertility is under 85: +12 on each tile.
+- Ground without a field rests: it regains 0.1 fertility a second (6 a minute), up to what it started at. Moving a field
+  lets worn ground recover.
+
+### Processing (powered)
+
+| Building | Size | Cost | Power | Recipe |
+| --- | --- | --- | --- | --- |
+| Mill | 2 × 2 | 200 | 12 W | 2 wheat → flour + bran, 6 s |
+| Oil press | 2 × 2 | 220 | 15 W | 2 sunflower → oil + seed cake, 8 s |
+| Spinner | 2 × 2 | 200 | 10 W | 2 flax → yarn, 6 s |
+| Loom | 2 × 2 | 300 | 20 W | 3 yarn → linen, 10 s |
+| Bakery | 2 × 2 | 350 | 25 W | flour + egg → bread, 8 s; or flour + egg + honey → honey cake, 12 s (choose) |
+| Cannery | 2 × 2 | 300 | 18 W | 3 tomato + oil → tomato sauce, 10 s |
+
+A machine holds a small buffer of each input and each output. It starts a batch when it has the inputs and room for every output.
+**Byproducts are strict:** a mill whose bran has nowhere to go stops, which is the point: route it to chickens, compost or the
+digester.
+
+### Power
+
+| Building | Size | Cost | Notes |
+| --- | --- | --- | --- |
+| Solar panel | 2 × 2 | 70 | 30 W at noon, following the sun; nothing at night |
+| Wind turbine | 1 × 1 | 120 | 40 W at full wind; each tree or tall building within 2 tiles costs 10% (down to 40%) |
+| Battery | 2 × 2 | 150 | Stores 2.4 kJ, charges and discharges at up to 40 W |
+| Digester | 2 × 2 | 180 | Burns one manure, bran or seed cake every 10 s for a steady 30 W |
+| Pylon | 1 × 1 | 10 | Powers buildings with any tile within 3 tiles; links to pylons within 8 tiles |
+
+Pylons that link form a network. Each network adds up what its generators make and what its machines want; surplus charges its
+batteries, a shortfall drains them, and if that isn't enough every machine on it slows to the share it gets. A building outside
+every pylon's reach has no power.
+
+### Ecology
+
+| Building | Size | Cost | Notes |
+| --- | --- | --- | --- |
+| Sapling | 1 × 1 | 5 | Grows into a tree in 60 s |
+
+**Soil health** is the average fertility of all field tiles (50 before you have a field), plus 0.25 for every tree more than
+the map started with (minus for every tree fewer), at most 10 either way. Some commissions need it above a level when the rest
+is delivered.
+
+## Commissions (levels)
+
+A commission has goals, a target time and modifiers. It ends when every goal is met.
+
+- **Goals:** deliver *n* of a good; reach a delivery rate of a good (per minute, over the last minute); keep soil health above a
+  level at the end.
+- **Medals:** gold within the target time, silver within 1.5×, bronze any time after. There is no failing.
+- **Modifiers:** sun strength and hours, wind strength, soil richness, how much rock, water and forest the map has, starting credits.
+
+**Campaign** (seeds fixed, so each plays the same every time; goals, credits and target times in `src/game/scenarios.ts`):
+
+| # | Name | Goals | Target | Modifiers |
+| --- | --- | --- | --- | --- |
+| 1 | First Light | 120 wheat, 80 flour | 20 min | Gentle |
+| 2 | Morning Bread | 150 bread; soil health ≥ 40 | 35 min | |
+| 3 | Windy Ridge | 90 oil, 80 bread | 40 min | Weak sun, strong wind, rocky |
+| 4 | Linen for the Looms | 50 linen; 5 yarn/min | 50 min | |
+| 5 | Long Nights | 60 honey cake | 45 min | Short days |
+| 6 | Tired Soil | 50 sauce; soil health ≥ 55 | 45 min | Poor soil |
+| 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 55 min | Wet and cramped |
+| 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 60 min | Everything |
+
+The bot (`npm run sim`) clears First Light in about 14 minutes, Morning Bread in about 29 and Linen for the Looms in about 26 with
+trucks (with silos and drones it took about 14, 38 and 45), building as credits allow. Its Morning Bread layout built round
+neighbours (`npm run sim -- c2:next`: a mill between two fields, a bakery beside it, a coop under both, a composter beside the
+coop) clears it in about 25 minutes with 3 trucks on 2 routes, where the all-truck layout uses 4 on 3; a person needs a few minutes more to plan and
+place. Trucks made the later commissions much quicker, so their target times may be too generous now. The other targets are guesses
+until they have bot layouts too.
+
+![The level select](images/menu.png)
+
+**Random commission:** any seed and a difficulty (1–3) pick the modifiers and 2–4 goals.
+**Sandbox:** a large calm map, unlimited credits, no goals: for trying things.
 
 ## Economy
 
-Wheat is quick, safe money; tomatoes pay best for low effort; pumpkins are worth the most but strip the soil. All prices are starting values to tune in playtests.
+You start with credits (1,100–1,800 by commission). Everything costs credits; every good delivered to the depot pays its price.
+Early on, raw goods are the way to afford the first machines; products pay far better per field.
 
-### Sell prices (normal quality)
+## Saving
 
-| Item | Sell price | Input value | Notes |
-| --- | --- | --- | --- |
-| Wheat | 25g | 10g seed |  |
-| Tomato | 20g each | 40g seed | 2 per harvest, regrows |
-| Pumpkin | 250g | 80g seed |  |
-| Egg | 30g | 5g feed |  |
-| Flour | 40g | 25g (1 wheat) |  |
-| Bread | 120g | 70g (flour + egg) |  |
-| Pumpkin pie | 500g | 320g (flour + egg + pumpkin) |  |
+The game saves the commission in progress (one at a time) in the browser every 30 s and when the page is hidden, and remembers
+each commission's best medal and time.
 
-**Quality multiplier:** silver ×1.25, gold ×1.5.
+## Open questions
 
-### Shop
-
-| Item | Price |
-| --- | --- |
-| Wheat seed | 10g |
-| Tomato seed | 40g |
-| Pumpkin seed | 80g |
-| Chicken feed | 5g per unit |
-| Chicken | 500g |
-| Mill | 1,000g |
-| Oven | 2,500g |
-
-**Selling:** items go in the shipping bin and are paid out overnight.
-
-### Starting state
-
-- 500g
-- A coop with 2 chickens
-- 15 wheat seeds
-- Hoe, watering can
-- A farm with about 300 tillable tiles
-
-**Expected pacing:** mill around week 1, oven around week 2, pumpkin pie as the late-season goal.
-
-## Win condition and progression
-
-The goal is to earn 20,000g in total sales by the end of day 28. Total earnings count, not gold on hand, so investing in machines and chickens is never punished.
-
-| Tier | Total earned by day 28 |
-| --- | --- |
-| Bronze | 10,000g |
-| Silver (main goal) | 20,000g |
-| Gold | 35,000g |
-
-- **HUD tracker:** progress is always visible, e.g. "8,420 / 20,000g".
-- **Target difficulty:** a skilled player should reach 20,000g around day 24–26; a new player may just miss it. Confirm with a spreadsheet sim before playtests.
-- **End of day 28:** a results screen shows total earned, tier reached, best day, and items sold by type.
-- **Free mode:** win or lose, the player can keep playing after day 28. This also gives longer playtest data.
-
-## Open questions and post-MVP
-
-### Open questions
-
-Decided for the MVP build (2026-10-07), as starting values to tune in playtests. The numbers live in `src/game/`.
-
-- [x] Exact quality odds per fertility band: below 30, 10% silver; 30–70, silver from 25% rising to 55%; above 70, 50% silver and
-  gold from 10% rising to 45% at 100 (`qualityOdds` in `crops.ts`).
-- [x] Penalty for hitting the 2 AM cutoff: the next day starts late, at 9 AM instead of 6 AM.
-- [ ] Without walking, what makes distance on the farm matter, if anything? (For now layout is about readability.)
-- [x] How often harvests drop crop scraps: one scrap, 35% of wheat harvests, 25% of tomato, 60% of pumpkin.
-- [x] Happiness values per action, and how happiness maps to egg quality: chickens start at 60; overnight, fed +4, hungry −15,
-  let outside that day +4, coop clean of manure +3; petting +5 once a day. Egg quality uses the crop odds with happiness in place of
-  fertility. The starting trough holds 2 nights of feed and the coop starts with 2 manure, so fertilizer is found on day 1.
-- [x] Does the 20,000g target hold up in a spreadsheet sim? A scripted season on the real rules (`npm run sim`): a bot clicking
-  300 times a day reaches 20,000g on day 22 and ends near 31,600g; 200 clicks a day reaches it on day 28. That is a little easier
-  than "day 24–26". Most of the money is wheat compounding early, and buying the mill before about day 10 slows the bot down
-  (flour adds only 15g per wheat at one per 2 hours), so "processing is always the better money path" holds for pie but not yet
-  for flour. Prices are unchanged from this doc; tuning them is the next step.
-- [x] Farm layout: farmhouse, shipping bin and shop stall along the north; coop and its fenced chicken run on the west; a 20 × 15
-  field (300 tiles) in the middle; open grass on the west and north for machines (`src/game/layout.ts`).
-- [x] UI and HUD layout: day, clock, gold and the season tracker (with tier marks) top left; turn, zoom and menu buttons top right;
-  the hotbar bottom centre; what's under the pointer (with exact soil fertility) bottom left; backpack and "End day" bottom right.
-
-### Candidates after the MVP
-
-- Composter machine (manure + scraps → fertilizer)
-- Seasons, weather, and crop seasonality
-- More animals (cows, sheep) and their product chains
-- More recipes, including tomato products
-- Area tools (3x3 hoe and watering can)
-- Energy/stamina, if playtests show days need more structure
-- Farm expansion and building upgrades
+- [ ] Tuning: crop times, machine times, prices and target times are first guesses. A scripted bot run per commission
+  (`npm run sim`) should check that each one can be cleared and roughly in its target time.
+- [ ] Truck numbers (6 goods, 3 tiles/s, 300 J, 5 s wait, 4 per garage) and the silo's 30 of each good are first guesses.
+- [ ] Next door: should it reach further (a radius, or through a silo next to both), and should silos or the depot ever take
+  from neighbours? Kept to machines and fields for now, so storing and selling stay the trucks' job.
+- [ ] Next door: a producer with two hungry neighbours feeds them in turn, one good a step each; a machine boxed in by fields
+  can't also get wheat by truck. Is that the right puzzle?
+- [ ] Should a stop cover several buildings (say every field in a box, the truck going to whichever has the most waiting),
+  so a row of fields isn't one stop each?
+- [ ] One truck at a time per building makes a busy silo the bottleneck. A puzzle (build a second silo) or a chore (give
+  silos two bays)?
+- [ ] Should a pick-up have a limit ("up to 3 oil"), so one route can carry two ingredients without the first filling it?
+- [ ] Should buildings load on one side only, the one they face (R)? It would make turning a building matter.
+- [ ] Drones, once trucks have been played: automatic helpers from a drone hub that fly straight over water and crowded
+  ground, carry little and use more power, and are assigned jobs by the hub as a whole, so none chase the same job.
+- [ ] Weather (rain waters fields, storms stop turbines) as a later modifier.
+- [ ] Blueprints/copy-paste once layouts grow large.

@@ -15,7 +15,7 @@ and dimensions and rejects degenerate, smooth, below-ground or over-budget meshe
 Metres, Blender Z-up, front −Y, footprint centred at the origin. GLB exports are
 Y-up, apply modifiers, retain custom properties, and contain no cameras, lights,
 UVs or images. All surfaces use flat shading and a single Principled Base Color;
-windows and fire use emission strength ≥ 0.5. The single 31-colour palette lives
+windows and fire use emission strength ≥ 0.5. The single shared palette lives
 in `common.py`; material names describe their intended appearance. No ground slabs.
 
 Crop GLBs contain overlapping `stage_0`… roots, each at (0,0,0); show exactly one
@@ -31,6 +31,31 @@ Static previews are 512×512: front/back on the top row, left/right below. Crop
 previews have stage rows top to bottom and front/back/left/right columns. Coop
 previews have closed/open rows; oven previews have idle/running rows. All cameras
 are orthographic, 30° above the ground. Preview state changes happen after export.
+Solarpunk machines with state-specific parts also use idle/running rows and four
+columns (front/back/left/right). Their shared details live in `solarpunk.py`, which
+checks footprint bounds through a full rotation of every `move_spin_` mesh.
+Solarpunk models use a 3,000-triangle budget per visible stage or variant. `mill_electric` is the
+electric mill; the existing `mill` remains the original windmill.
+
+The drone is 0.7 m across with its origin at its flying centre; its four
+`move_spin_rotor_0`…`move_spin_rotor_3` nodes have local X pointing up and
+`speed = 18`. The sprinkler's `move_spin_head` also has local X up, `speed = 3`.
+Rock previews show `variant_0`…`variant_2` in separate rows; each variant root
+is at the origin. Beans, sunflower and flax use four `stage_0`…`stage_3` roots
+and each covers one tile. The solar coop has a fixed open entrance.
+
+The battery's charge rings are four joined meshes `charge_0`…`charge_3` (lowest
+first); the game shows rings 0..k−1 for k quarters of charge. The wind turbine's
+rotor sweeps past its one tile: `build_complete(..., overhang_above=2.3)` lets a
+`move_spin_` part do that while its whole swept disc stays above 2.3 m. The silo
+stands in its back-left corner with three drone pads at the game's `SILO_PADS`.
+
+With the Blender Flatpak, use an absolute script path (its working directory
+may differ from the shell's):
+
+```sh
+flatpak run org.blender.Blender -b --python-exit-code 1 --python "$PWD/assets/drone/build.py"
+```
 
 | Palette group | Named colours (sRGB hex) |
 | --- | --- |
@@ -42,4 +67,6 @@ are orthographic, 30° above the ground. Preview state changes happen after expo
 | Stone/metal | stone `#898c83`, stone_light `#b5ad94`, slate `#4b6470`, slate_light `#627c84`, iron `#38484a`, black `#262d2c` |
 | Clay/cloth/light | clay `#cb7852`, brick `#aa523c`, sack `#c5aa70`, glow `#ffd68b`, fire `#ff9c39` |
 | Manure | dung `#68412e`, dung_light `#8a5835` |
-
+| Solarpunk ceramic/metal | ceramic `#f4f5e9`, copper `#b96c49`, brass `#d4ad60` |
+| Solar/glass | solar `#234c83`, solar_light `#4c85b0`, glass `#8ecac6` |
+| Living roofs/linen/light | moss `#638456`, linen `#dddcc2`, charge `#a7e5b3` |

@@ -1,406 +1,642 @@
 import * as THREE from 'three';
 import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObject } from 'pixel3d-renderer';
-import { collectEggs, collectManure, fillTrough, petChicken, toggleDoor, useOnArea, useOnTile, type Result, type TileAt } from './game/actions.ts';
-import { hourOfDay } from './game/clock.ts';
-import { CROPS, cropForSeed, daysToRipe, isRipe } from './game/crops.ts';
-import { endDay, passTime } from './game/day.ts';
-import { ITEMS, QUALITY_NAMES } from './game/items.ts';
-import { at, DEPTH, FIELD_BOUNDS, isField, isOpenGrass, WIDTH } from './game/layout.ts';
-import { canPlace, collect, isReady, isRunning, MACHINE_NAMES, placeMachine, recipe } from './game/machines.ts';
-import { deserialize, saveKey, serialize } from './game/save.ts';
-import { held, newGame, tileAt, type GameState } from './game/state.ts';
-import { Ui } from './ui/ui.ts';
-import { buildFarm } from './world/farm.ts';
-import { allGeometries, loadModels, SOIL_TOP } from './world/models.ts';
-import { FarmView, type Target } from './world/view.ts';
+import { addStop, canPlace, place, remove, removeAt } from './game/build.ts';
+import { BUILDINGS, POWER, type BuildingId } from './game/data.ts';
+import { TERRAIN } from './game/map.ts';
+import { networkOf, POWERED, pylonsInLink } from './game/power.ts';
+import { deserialize, readProgress, recordResult, saveKey, serialize } from './game/save.ts';
+import { scenarioById } from './game/scenarios.ts';
+import {
+  advance, describeLinks, describeStatus, describeTruck, fieldFertility, hourAt, isStop, linksAt, linksOf, medalFor, routeOf, routesAt,
+} from './game/sim.ts';
+import {
+  buildingAt, buildingById, inMap, newGame, reachTo, routeById, sizeOf, terrainAt, truckById, type Dir, type GameState, type Route,
+} from './game/state.ts';
+import { Hud, PIXEL_SIZES, type Tool } from './ui/hud.ts';
+import { showMenu } from './ui/menu.ts';
+import { allGeometries, loadModels } from './world/models.ts';
+import { PowerView } from './world/powerView.ts';
+import { RouteView } from './world/routeView.ts';
+import { buildWorld } from './world/terrain.ts';
+import { WorldView, type Overlay } from './world/view.ts';
 import './ui/style.css';
 
-// The game: owns the loop, the state, input and the camera, and each frame tells the renderer where everything is. The
-// game is point-and-click with no player character: a click on a field tile uses what is in hand there, a click on a thing
-// interacts with it. The camera follows the design doc: orthographic, 45° home yaw, 30° pitch (clean 2:1 lines), four
-// preset views 90° apart, integer zoom levels that scale whole art pixels, and panning with the mouse.
+// The game: owns the loop, the state, input and the camera, and each frame tells the renderer where everything is. It is
+// build-only: the player places, configures and removes buildings and the simulation runs on its own. The camera
+// is orthographic at a 30° pitch, turns between four views 90° apart, zooms towards the pointer and pans with the mouse.
+//
+// Each art pixel is drawn as a square of `pixelSize` screen pixels (a setting, 2 by default), whatever the zoom; zooming
+// changes how many metres of ground fit on the screen, so models are drawn with more art pixels close up and fewer far out.
 
-const ART_PX_PER_METRE = 16;        // art pixels per metre of view height: fixed, so zooming never resamples the art
-const ZOOMS = [1, 2, 3];
-const BASE_PIXEL = 2;               // screen pixels per art pixel at 1x
+/** The zoom range, as screen pixels per metre of ground, and where a commission starts. */
+const MIN_ZOOM = 16, MAX_ZOOM = 96, START_ZOOM = 32;
+/** How much one wheel notch or key press zooms. */
+const ZOOM_STEP = 1.25;
+const DEFAULT_PIXEL_SIZE = 2;
 const ELEVATION = THREE.MathUtils.degToRad(30);
 const HOME_YAW = THREE.MathUtils.degToRad(45);
-const DRAG_THRESHOLD = 4;           // CSS pixels the pointer moves before a press becomes a pan rather than a click
-const WHEEL_STEP = 100;             // wheel delta per zoom level
-const WHEEL_GESTURE_GAP = 200;      // ms without wheel events that end a gesture; one gesture zooms one level at most
-const REPICK_FRAMES = 8;            // things move under a still pointer, so the hover is re-picked this often too
-const TURN_SECONDS = 0.3;           // how long the camera takes to turn to the next view
+const DRAG_THRESHOLD = 4;
+const WHEEL_STEP = 100, PINCH_GAIN = 4;
+const ZOOM_RATE = 14;               // how fast the zoom eases towards its level (per second, in log space)
+const TURN_SECONDS = 0.3;
+const REPICK_FRAMES = 6;
+const AUTOSAVE_SECONDS = 30;
+const MAX_STEPS_PER_FRAME = 80;
+/** How far apart a drag places pylons: their reaches meet edge to edge, and each links to the next. */
+const PYLON_STEP = 2 * POWER.pylon.reach + 1;
+/** Whether placing a building should show the power networks: it makes, stores, carries or uses power. */
+const POWER_BUILDINGS = new Set<BuildingId>(['pylon', 'solar', 'turbine', 'battery', 'digester']);
+const usesPower = (t: BuildingId) => POWER_BUILDINGS.has(t) || !!BUILDINGS[t].power;
 
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
 const loading = document.querySelector<HTMLElement>('#loading')!;
+const SAVE_KEY = saveKey(location.pathname), PROGRESS_KEY = `${SAVE_KEY}:progress`, PIXEL_KEY = `${SAVE_KEY}:pixel`;
+/** A saved pixel size, if it is one of the choices; else the default. */
+const readPixelSize = (v: string | null) => (PIXEL_SIZES as readonly number[]).find((n) => String(n) === v) ?? DEFAULT_PIXEL_SIZE;
 
-const models = await loadModels();
-const farm = buildFarm(models);
-quantizePalette([...farm.geometries, ...allGeometries(models)], 80);
-const renderer = new PixelRenderer(canvas, farm.scene, { shadowMapSize: 2048, warmHighlight: true });
-const view = new FarmView(renderer, models);
-const cursor = renderer.addObject(models.cursor);
-const placeOk = renderer.addObject(models.place.ok), placeBad = renderer.addObject(models.place.bad);
-cursor.visible = placeOk.visible = placeBad.visible = false;
+const saved = deserialize(localStorage.getItem(SAVE_KEY));
+const params = new URLSearchParams(location.search);
+/** A commission to start straight away (`?play=<id>`); an unknown id falls through to the menu or the saved game. */
+const startId = params.get('play');
+const startSc = startId ? scenarioById(startId) : null;
 
-const SAVE_KEY = saveKey(location.pathname);
-let state: GameState = deserialize(localStorage.getItem(SAVE_KEY)) ?? newGame();
-const save = () => localStorage.setItem(SAVE_KEY, serialize(state));
+/** Starts a new commission: saves it, then reloads into it (each map builds its own static world). */
+/** Set while the page leaves for a new commission, so the game being left doesn't save over the new one. */
+let leaving = false;
 
-const ui = new Ui(document.body, {
-  state: () => state,
-  changed: () => { repick = 2; save(); },
-  endDay: () => sleep(false),
-  newGame: () => { state = newGame(); save(); ui.showWelcome(); },
-  turn: (dir) => turn(dir),
-  zoom: () => setZoom((zoom + 1) % ZOOMS.length),
-});
-if (!localStorage.getItem(SAVE_KEY)) ui.showWelcome();
-else if (state.seasonOver && !state.resultsSeen) ui.showResults();
-save();
-addEventListener('pagehide', save);
-document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
-loading.remove();
-
-function sleep(passedOut: boolean) {
-  const summary = endDay(state, passedOut);
-  save();
-  ui.showSummary(summary);
+function startNew(id: string) {
+  const sc = scenarioById(id);
+  if (!sc) return;
+  leaving = true;
+  localStorage.setItem(SAVE_KEY, serialize(newGame(sc)));
+  location.href = location.pathname;
 }
 
-// ---- Camera ----
-const target = farm.home.clone();   // the ground point the camera looks at
-let view4 = 0, zoom = 1;            // view4: quarter turns from the home yaw (any integer); zoom indexes ZOOMS
-/** The camera turns smoothly to the view: from `turnFrom` (radians) at `turnAt` (the loop's `time`) to `view4`'s yaw. */
-let yaw = HOME_YAW, turnFrom = HOME_YAW, turnAt = -Infinity;
-/**
- * Frames left to pick on. Picking reads back from the GPU, so it runs only after the pointer, the camera or the farm
- * changed: on the next frame, and on the one after it, which reads the image drawn with the new camera.
- */
-let repick = 2;
-
-const pixelSize = () => BASE_PIXEL * ZOOMS[zoom];
-const forward = new THREE.Vector3(), right = new THREE.Vector3();
-function cameraAxes() {
-  forward.set(-Math.sin(yaw), 0, -Math.cos(yaw));
-  right.set(-forward.z, 0, forward.x);
-}
-/** Starts turning to the next view; a turn asked for mid-turn goes on from where the camera is. */
-function turn(dir: 1 | -1) { view4 += dir; turnFrom = yaw; turnAt = time; repick = 2; }
-/** Moves the camera along its turn (easing out, so it answers at once and settles gently). */
-function turning() {
-  const k = Math.min(1, (time - turnAt) / TURN_SECONDS);
-  const next = turnFrom + (HOME_YAW + view4 * Math.PI / 2 - turnFrom) * (1 - (1 - k) ** 3);
-  if (next !== yaw) repick = 2;   // the farm moves under the pointer
-  yaw = next;
+if (startId && startSc) startNew(startId);
+else if (!saved || params.has('menu')) {
+  loading.remove();
+  showMenu(document.body, {
+    saved: saved ? { name: saved.scenario.name, time: saved.time, done: saved.completedAt !== null } : null,
+    progress: readProgress(localStorage.getItem(PROGRESS_KEY)),
+    resume: () => { location.href = location.pathname; },
+    start: startNew,
+  });
+} else {
+  await play(saved);
 }
 
-/** Moves the camera over the ground by a pointer movement in CSS pixels, so the ground follows the pointer. */
-function pan(dx: number, dy: number) {
-  cameraAxes();
-  const metres = 1 / (pixelSize() * ART_PX_PER_METRE);
-  // A vertical screen step covers more ground than a horizontal one, because the ground is seen at ELEVATION.
-  target.addScaledVector(right, -dx * metres).addScaledVector(forward, dy * metres / Math.sin(ELEVATION));
-  target.x = THREE.MathUtils.clamp(target.x, 0, WIDTH);
-  target.z = THREE.MathUtils.clamp(target.z, 0, DEPTH);
-  repick = 2;
-}
+async function play(initial: GameState) {
+  let state = initial;
+  const map = state.map;
+  const models = await loadModels();
+  const world = buildWorld(map, models.trees);
+  quantizePalette([...world.geometries, ...allGeometries(models)], 96);
+  const renderer = new PixelRenderer(canvas, world.scene, { shadowMapSize: 2048, warmHighlight: true });
+  const view = new WorldView(renderer, models);
+  const power = new PowerView(renderer, models);
+  const routeView = new RouteView(renderer, models);
+  const cursor = renderer.addObject(models.cursor);
+  cursor.visible = false;
+  loading.remove();
 
-function setZoom(z: number) {
-  zoom = z;
+  let speed = 1, paused = false, overlay: Overlay = 'none';
+  let tool: Tool = { kind: 'select' };
+  let selected: number | null = null;
+  /** The route under the pointer in the routes panel, drawn on the map. */
+  let previewRoute: number | null = null;
+  const save = () => { if (!leaving) localStorage.setItem(SAVE_KEY, serialize(state)); };
+  addEventListener('pagehide', save);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
+
+  const hud = new Hud(document.body, {
+    state: () => state,
+    tool: () => tool,
+    setTool: (t) => setTool(t),
+    speed: () => (paused ? 0 : speed),
+    setSpeed: (n) => { if (n === 0) paused = !paused; else { speed = n; paused = false; } },
+    overlay: () => overlay,
+    setOverlay: (o) => { overlay = overlay === o ? 'none' : o; },
+    selected: () => selected,
+    select: (id) => { selected = id; },
+    changed: () => { repick = 2; },
+    turn: (d) => turn(d),
+    zoom: (d) => zoomStep(d),
+    pixelSize: () => pixelSize,
+    setPixelSize: (n) => setPixelSize(n),
+    menu: () => { save(); location.href = `${location.pathname}?menu`; },
+    restart: () => startNew(state.scenario.id),
+    previewRoute: (id) => { previewRoute = id; },
+  });
+  if (state.time === 0) hud.showIntro();
+
+  function setTool(t: Tool) {
+    tool = t;
+    // Editing a route keeps what is selected (the truck or garage it was opened from).
+    if (t.kind === 'build' || t.kind === 'remove') selected = null;
+    clearGhosts();
+    repick = 2;
+  }
+
+  // ---- Camera ----
+  const target = new THREE.Vector3(map.depot.x + 1.5, 0, map.depot.y - 4);
+  let view4 = 0;
+  /** Screen pixels per art pixel: the pixel size setting. */
+  let pixelSize = readPixelSize(localStorage.getItem(PIXEL_KEY));
+  /** The zoom, as screen pixels per metre of ground: `zoom` eases towards `zoomGoal`. */
+  let zoom = START_ZOOM, zoomGoal = START_ZOOM;
+  /** While zooming towards the pointer: the ground point that stays under it, and where the pointer is from the centre. */
+  let zoomAnchor: { ground: THREE.Vector3; dx: number; dy: number } | null = null;
+  let yaw = HOME_YAW, turnFrom = HOME_YAW, turnAt = -Infinity;
+  let repick = 2;
+  const forward = new THREE.Vector3(), right = new THREE.Vector3();
+  function cameraAxes() { forward.set(-Math.sin(yaw), 0, -Math.cos(yaw)); right.set(-forward.z, 0, forward.x); }
+  function turn(dir: 1 | -1) { view4 += dir; turnFrom = yaw; turnAt = time; repick = 2; }
+  function turning() {
+    const k = Math.min(1, (time - turnAt) / TURN_SECONDS);
+    const next = turnFrom + (HOME_YAW + view4 * Math.PI / 2 - turnFrom) * (1 - (1 - k) ** 3);
+    if (next !== yaw) repick = 2;
+    yaw = next;
+  }
+  function pan(dx: number, dy: number) {
+    cameraAxes();
+    const metres = 1 / zoom;
+    const before = target.clone();
+    target.addScaledVector(right, -dx * metres).addScaledVector(forward, dy * metres / Math.sin(ELEVATION));
+    clampTarget();
+    // A pan during a zoom carries the zoom's anchor along, so the two don't fight.
+    if (zoomAnchor) zoomAnchor.ground.add(target.clone().sub(before));
+    repick = 2;
+  }
+  function clampTarget() {
+    target.x = THREE.MathUtils.clamp(target.x, 0, map.width);
+    target.z = THREE.MathUtils.clamp(target.z, 0, map.height);
+  }
+  /** Zooms in (+1) or out (−1) by one step. */
+  function zoomStep(dir: number, at?: { x: number; y: number }) { setZoom(zoomGoal * ZOOM_STEP ** dir, at); }
+  /** Zooms to `goal` screen pixels per metre, keeping the ground under the page point `at` (the pointer) where it is; the centre without one. */
+  function setZoom(goal: number, at?: { x: number; y: number }) {
+    goal = THREE.MathUtils.clamp(goal, MIN_ZOOM, MAX_ZOOM);
+    if (goal === zoomGoal) return;
+    zoomGoal = goal;
+    // The ground under the point, from where the camera is now (target, turn and zoom), not from the last picture drawn:
+    // several wheel events can arrive before the next frame.
+    if (at) {
+      const dx = at.x - innerWidth / 2, dy = at.y - innerHeight / 2, metres = 1 / zoom;
+      cameraAxes();
+      const ground = target.clone().addScaledVector(right, dx * metres).addScaledVector(forward, -dy * metres / Math.sin(ELEVATION));
+      zoomAnchor = { ground, dx, dy };
+    } else zoomAnchor = null;
+  }
+  function setPixelSize(n: number) {
+    pixelSize = readPixelSize(String(n));
+    localStorage.setItem(PIXEL_KEY, String(pixelSize));
+    fit();
+  }
+  addEventListener('resize', () => fit());
+  /** One frame of the zoom easing towards its goal. */
+  function zooming(dt: number) {
+    if (zoom === zoomGoal) return;
+    const k = 1 - Math.exp(-dt * ZOOM_RATE);
+    zoom = Math.exp(Math.log(zoom) + Math.log(zoomGoal / zoom) * k);
+    if (Math.abs(Math.log(zoomGoal / zoom)) < 0.004) zoom = zoomGoal;
+    if (zoomAnchor) {
+      cameraAxes();
+      const metres = 1 / zoom;
+      target.copy(zoomAnchor.ground).addScaledVector(right, -zoomAnchor.dx * metres).addScaledVector(forward, zoomAnchor.dy * metres / Math.sin(ELEVATION));
+      clampTarget();
+    }
+    if (zoom === zoomGoal) zoomAnchor = null;
+    repick = 2;
+  }
+  /** Sizes the art (render target) for the window at the pixel size, and lays the canvas out centred on the window. */
+  function fit() {
+    const w = Math.max(1, Math.ceil(innerWidth / pixelSize)), h = Math.max(1, Math.ceil(innerHeight / pixelSize));
+    if (renderer.width !== w || renderer.height !== h) renderer.resize(w, h);
+    const cw = w * pixelSize, ch = h * pixelSize;
+    canvas.style.width = `${cw}px`; canvas.style.height = `${ch}px`;
+    canvas.style.left = `${Math.floor((innerWidth - cw) / 2)}px`; canvas.style.top = `${Math.floor((innerHeight - ch) / 2)}px`;
+    repick = 2;
+  }
   fit();
-}
 
-function fit() {
-  const px = pixelSize();
-  const w = Math.max(1, Math.ceil(innerWidth / px)), h = Math.max(1, Math.ceil(innerHeight / px));
-  if (renderer.width !== w || renderer.height !== h) renderer.resize(w, h);
-  canvas.style.width = `${w * px}px`; canvas.style.height = `${h * px}px`;
-  repick = 2;
-}
-addEventListener('resize', fit);
-fit();
-
-// ---- Input ----
-addEventListener('keydown', (e) => {
-  if (e.ctrlKey || e.metaKey || e.altKey) return;
-  if (e.code === 'Escape') { if (press?.mode === 'area') endArea(false); else if (ui.busy) ui.close(); else ui.openMenu(); return; }
-  if (e.repeat) return;
-  if (e.code === 'KeyB' || e.code === 'KeyI') { if (!ui.busy || ui.panelName === 'backpack') ui.openBackpack(); return; }
-  if (ui.busy) return;
-  if (e.code === 'KeyQ') turn(-1);
-  if (e.code === 'KeyE') turn(1);
-  if (e.code === 'KeyZ') setZoom((zoom + 1) % ZOOMS.length);
-  if (e.code === 'KeyT' && passTime(state, 0, 1)) sleep(true);
-  const digit = /^Digit(\d)$/.exec(e.code);
-  if (digit) { state.selected = (Number(digit[1]) + 9) % 10; repick = 2; }
-});
-
-let pointer: { x: number; y: number } | null = null;
-/**
- * The press in progress, of one pointer at a time (the primary one), so a second finger neither pans twice nor ends the
- * drag. It starts as a click; moved far enough it becomes a pan, or an area when it began on the field with the left button
- * (without Shift): the tiles from `from` to `to` get what is in hand on release (useOnArea). A cancelled area is `void`.
- */
-let press: { id: number; x: number; y: number; mode: 'click' | 'pan' | 'area' | 'void'; from: TileAt | null; to: TileAt | null } | null = null;
-canvas.addEventListener('pointerdown', (e) => {
-  if (!e.isPrimary || press) return;
-  press = { id: e.pointerId, x: e.clientX, y: e.clientY, mode: 'click', from: null, to: null };
-  pointer = { x: e.clientX, y: e.clientY };   // a tap may come with no pointermove at all
-  repick = 2;
-  canvas.setPointerCapture(e.pointerId);
-  if (e.button === 0 && !e.shiftKey && !ui.busy && !holdingMachine()) {
-    pickHover(e.clientX, e.clientY);
-    if (hover?.kind === 'tile' && isField(hover.col, hover.row)) press.from = press.to = { col: hover.col, row: hover.row };
+  /** A world point's place on the page. */
+  const projected = new THREE.Vector3();
+  function toScreen(x: number, y: number, z: number) {
+    const rect = canvas.getBoundingClientRect();
+    projected.set(x, y, z).project(renderer.camera);
+    return { sx: rect.left + (projected.x + 1) / 2 * rect.width, sy: rect.top + (1 - projected.y) / 2 * rect.height };
   }
-});
-canvas.addEventListener('pointermove', (e) => {
-  if (press && e.pointerId === press.id) {
-    if (press.mode === 'click' && Math.hypot(e.clientX - press.x, e.clientY - press.y) >= DRAG_THRESHOLD) {
-      press.mode = press.from ? 'area' : 'pan';
-      if (press.mode === 'pan') {
-        canvas.style.cursor = 'grabbing';
-        pan(e.clientX - press.x, e.clientY - press.y);   // from the press, so the ground stays under the pointer
+
+  // ---- Pointing ----
+  const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2(), ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3();
+  /** The point on the ground plane under a point of the page. */
+  function groundAt(x: number, y: number): THREE.Vector3 | null {
+    const rect = canvas.getBoundingClientRect();
+    ndc.set((x - rect.left) / rect.width * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
+    renderer.camera.updateMatrixWorld();
+    raycaster.setFromCamera(ndc, renderer.camera);
+    return raycaster.ray.intersectPlane(ground, hit) ? hit.clone() : null;
+  }
+  /** The map tile under a point of the page, on the ground plane (whatever stands there). */
+  function tileAt(x: number, y: number): { x: number; y: number } | null {
+    const g = groundAt(x, y);
+    if (!g) return null;
+    const t = { x: Math.floor(g.x), y: Math.floor(g.z) };
+    return inMap(state, t.x, t.y) ? t : null;
+  }
+
+  let pointer: { x: number; y: number } | null = null;
+  let hoverTile: { x: number; y: number } | null = null;
+  /** The building or truck under the pointer (their ids are one count). */
+  let hoverBuilding: number | null = null;
+  let highlighted: PixelObject[] = [];
+
+  function pickHover() {
+    if (!pointer) { hoverTile = null; hoverBuilding = null; return; }
+    const p = renderer.pick(pointer.x, pointer.y);
+    // A tree or rock under the pointer is its own tile (the ground point behind it is another tile).
+    hoverTile = view.terrainOf(p?.object ?? null) ?? tileAt(pointer.x, pointer.y);
+    hoverBuilding = view.buildingOf(p?.object ?? null);
+    if (hoverBuilding === null && hoverTile) hoverBuilding = buildingAt(state, hoverTile.x, hoverTile.y)?.id ?? null;
+  }
+
+  function highlight(ids: number[]) {
+    const next = ids.flatMap((id) => view.objectsOf(id)).slice(0, MAX_HIGHLIGHTS);
+    for (const o of highlighted) if (!next.includes(o)) o.highlight = false;
+    for (const o of next) o.highlight = true;
+    highlighted = next;
+  }
+
+  // ---- Ghosts: what would be built ----
+  const ghostPool = new Map<string, PixelObject[]>();
+  let ghostUsed = new Map<string, number>();
+  const GOOD = new THREE.Color(0x90ff90), BAD = new THREE.Color(0xff5040);
+  /** Shows a preview object; `fits` draws it see-through and tinted green (fits) or red (doesn't). */
+  function ghost(key: string, g: THREE.BufferGeometry, x: number, y: number, z: number, yaw = 0, fits?: boolean) {
+    const list = ghostPool.get(key) ?? [];
+    ghostPool.set(key, list);
+    const i = ghostUsed.get(key) ?? 0;
+    ghostUsed.set(key, i + 1);
+    let o = list[i];
+    if (!o) { o = renderer.addObject(g); o.castShadow = false; list.push(o); }
+    o.visible = true;
+    if (fits !== undefined) { o.opacity = 0.6; o.tint = fits ? GOOD : BAD; o.tintStrength = 0.45; }
+    o.setTransform(new THREE.Vector3(x, y, z), new THREE.Euler(0, yaw, 0));
+  }
+  function clearGhosts() {
+    for (const list of ghostPool.values()) for (const o of list) o.visible = false;
+    ghostUsed = new Map();
+    pylonGhosts = [];
+  }
+  const YAW = [Math.PI, Math.PI / 2, 0, -Math.PI / 2];
+
+  /** The north-west tile for a building of size n centred under the pointer's tile. */
+  const anchor = (t: { x: number; y: number }, n: number) => ({ x: t.x - Math.floor((n - 1) / 2), y: t.y - Math.floor((n - 1) / 2) });
+
+  /**
+   * Where a drag in build mode places things: a row of buildings along the drag's longer axis. Pylons are spaced so their
+   * reaches meet edge to edge and each links to the next: a drag lays a power line.
+   */
+  function plan(type: BuildingId, from: { x: number; y: number }, to: { x: number; y: number }, rot: Dir) {
+    const n = BUILDINGS[type].size, a = anchor(from, n), b = anchor(to, n);
+    const step = type === 'pylon' ? PYLON_STEP : n;
+    const horizontal = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
+    const steps = Math.floor((horizontal ? Math.abs(b.x - a.x) : Math.abs(b.y - a.y)) / step);
+    const sx = horizontal ? Math.sign(b.x - a.x) * step : 0, sy = horizontal ? 0 : Math.sign(b.y - a.y) * step;
+    return Array.from({ length: steps + 1 }, (_, i) => ({ x: a.x + sx * i, y: a.y + sy * i, rot }));
+  }
+
+  function showGhosts() {
+    clearGhosts();
+    cursor.visible = false;
+    ghostLinks = [];
+    if (!hoverTile && !press) return;
+    if (tool.kind === 'build') {
+      const type = tool.type, n = BUILDINGS[type].size;
+      const spots = press?.mode === 'paint' && press.from && press.to ? plan(type, press.from, press.to, tool.rot)
+        : hoverTile ? [{ ...anchor(hoverTile, n), rot: tool.rot }] : [];
+      let credits = state.credits;
+      // One building in hand shows who it would trade with next door.
+      if (spots.length === 1 && canPlace(state, type, spots[0].x, spots[0].y).ok) {
+        const l = linksAt(state, type, spots[0].x, spots[0].y);
+        ghostLinks = [...new Set([...l.from, ...l.to].map((x) => x.b.id))];
       }
-    } else if (press.mode === 'pan') pan(e.clientX - pointer!.x, e.clientY - pointer!.y);
-    // The left button let go while another is held: that is the release (pointerup waits for the last button).
-    if (press.mode === 'area' && !(e.buttons & 1)) { dragArea(e.clientX, e.clientY); endArea(true); }
-  }
-  if (e.isPrimary) { pointer = { x: e.clientX, y: e.clientY }; repick = 2; }
-});
-function release(e: PointerEvent) {
-  if (e.pointerId !== press?.id) return;
-  const click = press.mode === 'click' && e.type === 'pointerup' && e.button === 0;
-  if (press.mode === 'area') {
-    // The far corner where the release is, as for a click: the last pick may be a frame old.
-    if (e.type === 'pointerup') dragArea(e.clientX, e.clientY);
-    endArea(e.type === 'pointerup');
-  }
-  press = null;
-  canvas.style.cursor = '';
-  repick = 2;
-  // Pick again where the click is: the hover may be a frame old, and the click must act on what is under it now.
-  if (click && !ui.busy) { pickHover(e.clientX, e.clientY); act(); }
-}
-canvas.addEventListener('pointerup', release);
-canvas.addEventListener('pointercancel', release);
-canvas.addEventListener('pointerleave', (e) => { if (!press && e.isPrimary) { pointer = null; repick = 2; } });
-// The wheel steps whole zoom levels, one per gesture, so an inertial trackpad flick doesn't run through every level.
-let wheel = 0, wheelAt = -Infinity, wheelDone = false;
-canvas.addEventListener('wheel', (e) => {
-  e.preventDefault();
-  if (e.ctrlKey || e.deltaY === 0) return;   // a pinch and sideways scrolling are not zoom
-  if (e.timeStamp - wheelAt > WHEEL_GESTURE_GAP || Math.sign(e.deltaY) !== Math.sign(wheel)) { wheel = 0; wheelDone = false; }
-  wheelAt = e.timeStamp;
-  if (wheelDone) return;
-  wheel += e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? e.deltaY : Math.sign(e.deltaY) * WHEEL_STEP;
-  if (Math.abs(wheel) < WHEEL_STEP) return;
-  setZoom(THREE.MathUtils.clamp(zoom - Math.sign(wheel), 0, ZOOMS.length - 1));
-  wheelDone = true;
-}, { passive: false });
-canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-
-// ---- Pointing and clicking ----
-
-/** What the pointer is over: a thing, or a ground tile inside the fence. */
-let hover: Target | null = null;
-let highlighted: PixelObject[] = [];
-
-/** The ground tile at a picked point, if it is one: the top of grass, path or soil inside the fence. */
-function tileUnder(world: THREE.Vector3, normal: THREE.Vector3): Target | null {
-  if (normal.y < 0.7 || Math.abs(world.y) > 0.1) return null;
-  const col = Math.floor(world.x), row = Math.floor(world.z);
-  return col > 0 && row > 0 && col < WIDTH - 1 && row < DEPTH - 1 && at(col, row) !== '#' && at(col, row) !== 'f' ? { kind: 'tile', col, row } : null;
-}
-
-const holdingMachine = () => { const st = held(state); return !!st && ITEMS[st.item].kind === 'machine'; };
-/** A machine goes with its north-west tile under the pointer. */
-const placeAt = (t: Target & { kind: 'tile' }) => ({ col: t.col, row: t.row });
-
-function setHover(t: Target | null, picked: PixelObject | null) {
-  hover = t;
-  const objs = t && t.kind !== 'tile' ? view.objectsOf(t) : [];
-  // The hovered object first, so it is among the ones highlighted when a thing has more than the renderer allows.
-  if (picked) objs.sort((a, b) => (a === picked ? -1 : b === picked ? 1 : 0));
-  const next = objs.slice(0, MAX_HIGHLIGHTS);
-  for (const o of highlighted) if (!next.includes(o)) o.highlight = false;
-  for (const o of next) o.highlight = true;
-  highlighted = next;
-
-  cursor.visible = placeOk.visible = placeBad.visible = false;
-  if (t?.kind === 'tile') {
-    if (holdingMachine()) {
-      const p = placeAt(t), frame = canPlace(state, p.col, p.row) ? placeOk : placeBad;
-      frame.visible = true;
-      frame.setTransform(new THREE.Vector3(p.col + 1, 0.01, p.row + 1));
-    } else {
+      for (const sp of spots) {
+        const okHere = canPlace(state, type, sp.x, sp.y).ok && credits >= BUILDINGS[type].cost;
+        if (okHere && !state.scenario.sandbox) credits -= BUILDINGS[type].cost;
+        if (type === 'pylon') pylonGhosts.push({ x: sp.x, y: sp.y, ok: okHere });
+        const cx = sp.x + n / 2, cz = sp.y + n / 2;
+        ghost(`frame ${okHere} ${n}`, (okHere ? models.frames.ok : models.frames.bad)[n - 1], cx, 0.03, cz);
+        ghost(`b ${type}`, models.buildings[type].idle, cx, 0.04, cz, YAW[sp.rot], okHere);
+      }
+      // The roads, the sprinklers' water and the bees' range; anything that makes, stores or uses power shows the power
+      // networks.
+      if (type === 'silo') overlayFor('roads');
+      else if (type === 'sprinkler') overlayFor('water');
+      else if (type === 'hive') overlayFor('bees');
+      else if (usesPower(type)) overlayFor('power');
+    } else if (tool.kind === 'remove' && press?.mode === 'paint' && press.from && press.to) {
+      const x0 = Math.min(press.from.x, press.to.x), x1 = Math.max(press.from.x, press.to.x), y0 = Math.min(press.from.y, press.to.y), y1 = Math.max(press.from.y, press.to.y);
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) ghost('frame false 1', models.frames.bad[0], x + 0.5, 0.03, y + 0.5);
+    } else if (hoverTile) {
       cursor.visible = true;
-      cursor.setTransform(new THREE.Vector3(t.col + 0.5, (tileAt(state, t.col, t.row)?.tilled ? SOIL_TOP : 0) + 0.01, t.row + 0.5));
+      cursor.setTransform(new THREE.Vector3(hoverTile.x + 0.5, 0.03, hoverTile.y + 0.5));
     }
   }
-  ui.setInfo(t ? describe(t) : null);
-}
+  let toolOverlay: Overlay = 'none';
+  const overlayFor = (o: Overlay) => { toolOverlay = o; };
+  /** The buildings next door that the building in hand would trade with, tinted. */
+  let ghostLinks: number[] = [];
+  /** Pylons being placed, for the power view. */
+  let pylonGhosts: { x: number; y: number; ok: boolean }[] = [];
 
-/** The hover line: what the thing is and what a click does. */
-function describe(t: Target): string | null {
-  const s = state;
-  switch (t.kind) {
-    case 'tile': {
-      if (holdingMachine()) return canPlace(s, t.col, t.row) ? `Click to place the ${ITEMS[held(s)!.item].name.toLowerCase()} here.` : 'A machine needs 2 x 2 tiles of open grass.';
-      const tile = tileAt(s, t.col, t.row);
-      if (!tile) return isOpenGrass(t.col, t.row) ? 'Grass. Machines can go here.' : null;
-      if (!tile.tilled) return 'Field. Till it with the hoe.';
-      const lines = [`Soil fertility ${tile.fertility}${tile.watered ? ' · watered' : ' · dry'}`];
-      const c = tile.crop;
-      if (c) {
-        const name = ITEMS[CROPS[c.id].produce].name;
-        lines.push(isRipe(c) ? `${name}: ripe! Click to harvest.` : `${name}: ${daysToRipe(c)} watered day${daysToRipe(c) > 1 ? 's' : ''} to go.`);
-      } else lines.push('Empty: plant seeds, or let it rest (+5 a night).');
-      return lines.join('\n');
-    }
-    case 'building':
-      return {
-        farmhouse: 'Farmhouse. Click to sleep and end the day.',
-        shop: 'Shop. Seeds, feed, chickens and machines.',
-        bin: `Shipping bin: ${s.bin.reduce((n, b) => n + b.count, 0)} items. Sold overnight.`,
-        coop: `Coop: ${s.coop.chickens.length} chickens, trough ${s.coop.trough}.`,
-      }[t.building];
-    case 'door': return `Coop door (${s.coop.doorOpen ? 'open' : 'closed'}). Click to ${s.coop.doorOpen ? 'close' : 'let the chickens out'}.`;
-    case 'trough': return `Trough: ${s.coop.trough} food. Click with feed or scraps in hand to fill it.`;
-    case 'eggs': return `${s.coop.eggs.length} egg${s.coop.eggs.length > 1 ? 's' : ''}. Click to collect.`;
-    case 'manure': return `${s.coop.manure} manure. Click to collect: fertilizer for the field.`;
-    case 'chicken': {
-      const c = s.coop.chickens.find((c) => c.id === t.id);
-      return c ? `${c.name} · happiness ${c.happiness}${c.pettedToday ? '' : ' · click to pet'}` : null;
-    }
-    case 'machine': {
-      const m = s.machines.find((m) => m.id === t.id);
-      if (!m) return null;
-      const name = MACHINE_NAMES[m.kind];
-      if (isReady(m)) return `${name}: ${ITEMS[recipe(m.batch!.recipe).output].name.toLowerCase()} ready! Click to collect.`;
-      if (isRunning(m)) return `${name}: making ${ITEMS[recipe(m.batch!.recipe).output].name.toLowerCase()}, ${Math.ceil(m.batch!.hoursLeft)}h left.`;
-      return `${name}: idle. Click to start a recipe.`;
-    }
-  }
-}
-
-/** The frames marking the tiles of an area being dragged out, made as they're first needed. */
-const areaMarks: PixelObject[] = [];
-
-/** Moves the dragged area's far corner to the field tile under the pointer (the nearest one, off the field), and marks it. */
-function dragArea(x: number, y: number) {
-  const a = press!;
-  const hit = renderer.pick(x, y), t = view.targetOf(hit?.object ?? null);
-  // A crop or soil object is its tile; any other ground (the fence's too) is the tile it's in. Over a building or a tree,
-  // the corner stays where it was.
-  const ground = !t && hit?.world && hit.normal!.y >= 0.7 && Math.abs(hit.world.y) <= 0.1 ? hit.world : null;
-  const tile = t?.kind === 'tile' ? t : ground ? { col: Math.floor(ground.x), row: Math.floor(ground.z) } : null;
-  if (tile) {
-    const f = FIELD_BOUNDS;
-    a.to = { col: THREE.MathUtils.clamp(tile.col, f.col, f.col + f.cols - 1), row: THREE.MathUtils.clamp(tile.row, f.row, f.row + f.rows - 1) };
-  }
-  setHover(null, null);
-  const from = a.from!, to = a.to!;
-  const c0 = Math.min(from.col, to.col), c1 = Math.max(from.col, to.col), r0 = Math.min(from.row, to.row), r1 = Math.max(from.row, to.row);
-  let n = 0;
-  for (let row = r0; row <= r1; row++) for (let col = c0; col <= c1; col++) {
-    const mark = areaMarks[n++] ??= renderer.addObject(models.cursor);
-    mark.visible = true;
-    mark.setTransform(new THREE.Vector3(col + 0.5, (tileAt(state, col, row)?.tilled ? SOIL_TOP : 0) + 0.01, row + 0.5));
-  }
-  for (let i = n; i < areaMarks.length; i++) areaMarks[i].visible = false;
-  const st = held(state), item = st?.item;
-  const verb = item === 'hoe' ? 'till' : item === 'can' ? 'water' : item === 'manure' ? 'fertilize' : item && cropForSeed(item) ? 'plant' : 'harvest';
-  ui.setInfo(`${c1 - c0 + 1} × ${r1 - r0 + 1} tiles: release to ${verb}.\nEsc cancels.`);
-}
-
-/** Ends the area drag: uses what is in hand on its tiles, or (cancelled) leaves them be. */
-function endArea(apply: boolean) {
-  const a = press!;
-  for (const m of areaMarks) m.visible = false;
-  if (apply && !ui.busy) ui.toast(useOnArea(state, a.from!, a.to!));
-  a.mode = 'void';
-  repick = 2;
-}
-
-/** Finds what is under a point of the page and makes it the hover. */
-function pickHover(x: number, y: number) {
-  const hit = renderer.pick(x, y), picked = hit?.object ?? null;
-  // The cursor frames are objects too: under them is the ground.
-  setHover(view.targetOf(picked) ?? (hit?.world ? tileUnder(hit.world, hit.normal!) : null), picked);
-}
-
-function act() {
-  const t = hover;
-  if (!t) return;
-  const s = state, st = held(s);
-  let r: Result | null = null;
-  switch (t.kind) {
-    case 'tile':
-      if (holdingMachine()) {
-        const p = placeAt(t), m = placeMachine(s, s.selected, p.col, p.row);
-        r = m ? { ok: true, message: `Placed the ${MACHINE_NAMES[m.kind].toLowerCase()}.` } : { ok: false, message: 'A machine needs 2 x 2 tiles of open grass.' };
-      } else if (isField(t.col, t.row)) r = useOnTile(s, t.col, t.row);
-      break;
-    case 'building':
-      if (t.building === 'farmhouse') ui.confirmEndDay();
-      else if (t.building === 'shop') ui.openShop();
-      else if (t.building === 'bin') ui.openBin();
-      else ui.openCoop();
-      break;
-    case 'door': r = toggleDoor(s); break;
-    case 'trough':
-      if (st && (st.item === 'feed' || st.item === 'scraps')) r = fillTrough(s, st.item, st.count);
-      else ui.openCoop();
-      break;
-    case 'eggs': r = collectEggs(s); break;
-    case 'manure': r = collectManure(s); break;
-    case 'chicken': r = petChicken(s, t.id); break;
-    case 'machine': {
-      const m = s.machines.find((m) => m.id === t.id);
-      if (m && isReady(m)) {
-        const out = recipe(m.batch!.recipe).output, q = m.batch!.quality;
-        r = collect(s, m) ? { ok: true, message: `+1 ${q ? `${QUALITY_NAMES[q].toLowerCase()} ` : ''}${ITEMS[out].name.toLowerCase()}` } : { ok: false, message: 'The backpack is full.' };
-      } else if (m) ui.openMachine(m.id);
-      break;
+  // ---- Acting ----
+  function act(x: number, y: number) {
+    pointer = { x, y };
+    pickHover();
+    const t = hoverTile;
+    switch (tool.kind) {
+      case 'select': {
+        selected = hoverBuilding;
+        hud.refresh();
+        return;
+      }
+      case 'route': {
+        // Clicking a building adds it as the route's next stop.
+        const r = routeById(state, tool.route), b = hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;
+        if (!r) { setTool({ kind: 'select' }); return; }
+        if (!b) return;
+        const res = addStop(state, r, b);
+        if (res.message) hud.toast(res.message, res.ok);
+        hud.refresh();
+        return;
+      }
+      case 'build': {
+        if (!t) return;
+        const n = BUILDINGS[tool.type].size, a = anchor(t, n);
+        const r = place(state, tool.type, a.x, a.y, tool.rot);
+        if (r.message) hud.toast(r.message, r.ok);
+        return;
+      }
+      case 'remove': {
+        // The building under the pointer (it may stand in front of another's ground tile), else the tile's tree or rock.
+        const hb = hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;
+        if (!hb && !t) return;
+        const r = hb ? remove(state, hb) : removeAt(state, t!.x, t!.y);
+        if (r.message) hud.toast(r.message, r.ok);
+        if (selected !== null && !buildingById(state, selected) && !truckById(state, selected)) selected = null;
+        return;
+      }
     }
   }
-  if (r) ui.toast(r);
-  repick = 2;
-}
 
-// ---- Loop ----
-let last = performance.now(), time = 0, lookHour = Number.NaN, frameNo = 0;
-
-function frame(now: number) {
-  const dt = Math.min((now - last) / 1000, 0.1);
-  last = now; time += dt; frameNo++;
-
-  state.clock.paused = ui.busy;
-  if (passTime(state, dt)) sleep(true);
-  const hour = hourOfDay(state.clock);
-  // Every frame the clock moves, so shadows creep with the sun rather than stepping (the low morning sun moves them fast).
-  if (hour !== lookHour) { renderer.setLook(lookAt(hour)); lookHour = hour; }
-
-  view.sync(state, ui.busy ? 0 : dt);
-  ui.update();
-
-  // The hover is picked from last frame's image, which is what the player is looking at.
-  if (pointer && frameNo % REPICK_FRAMES === 0) repick = Math.max(repick, 1);
-  if (repick > 0) {
-    repick -= 1;
-    if (press?.mode === 'area' && pointer) dragArea(pointer.x, pointer.y);
-    else if (pointer && (!press || press.mode === 'click') && !ui.busy) pickHover(pointer.x, pointer.y);
-    else setHover(null, null);
+  function applyDrag() {
+    if (!press?.from || !press.to) return;
+    if (tool.kind === 'build') {
+      let built = 0, last = '';
+      for (const sp of plan(tool.type, press.from, press.to, tool.rot)) {
+        const r = place(state, tool.type, sp.x, sp.y, sp.rot);
+        if (r.ok) built++; else if (r.message) last = r.message;
+      }
+      if (built) hud.toast(`Built ${built} × ${BUILDINGS[tool.type].name.toLowerCase()}.`, true);
+      else if (last) hud.toast(last, false);
+    } else if (tool.kind === 'remove') {
+      const x0 = Math.min(press.from.x, press.to.x), x1 = Math.max(press.from.x, press.to.x), y0 = Math.min(press.from.y, press.to.y), y1 = Math.max(press.from.y, press.to.y);
+      let n = 0;
+      const seen = new Set<number>();
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+        const b = buildingAt(state, x, y);
+        if (b) { if (seen.has(b.id) || b.type === 'depot') continue; seen.add(b.id); }
+        if (removeAt(state, x, y).ok) n++;
+      }
+      if (n) hud.toast(`Removed ${n} thing${n > 1 ? 's' : ''}.`, true);
+      if (selected !== null && !buildingById(state, selected) && !truckById(state, selected)) selected = null;
+    }
   }
 
-  turning();
-  renderer.placeCamera(target, yaw, ELEVATION, renderer.height / ART_PX_PER_METRE);
-  renderer.renderGeometry(time);
-  renderer.renderStyle(time);
+  // ---- Input ----
+  let press: { id: number; x: number; y: number; button: number; mode: 'click' | 'pan' | 'paint' | 'void'; from: { x: number; y: number } | null; to: { x: number; y: number } | null } | null = null;
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!e.isPrimary || press) return;
+    pointer = { x: e.clientX, y: e.clientY };
+    const t = tileAt(e.clientX, e.clientY);
+    press = { id: e.pointerId, x: e.clientX, y: e.clientY, button: e.button, mode: 'click', from: t, to: t };
+    canvas.setPointerCapture(e.pointerId);
+    repick = 2;
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (press && e.pointerId === press.id) {
+      const moved = Math.hypot(e.clientX - press.x, e.clientY - press.y) >= DRAG_THRESHOLD;
+      if (press.mode === 'click' && moved) {
+        const paints = press.button === 0 && !e.shiftKey && (tool.kind === 'build' || tool.kind === 'remove') && press.from;
+        press.mode = paints ? 'paint' : 'pan';
+        if (press.mode === 'pan') { canvas.style.cursor = 'grabbing'; pan(e.clientX - press.x, e.clientY - press.y); }
+      } else if (press.mode === 'pan') pan(e.clientX - pointer!.x, e.clientY - pointer!.y);
+      if (press.mode === 'paint') press.to = tileAt(e.clientX, e.clientY) ?? press.to;
+    }
+    if (e.isPrimary) { pointer = { x: e.clientX, y: e.clientY }; repick = 2; }
+  });
+  function release(e: PointerEvent) {
+    if (!press || e.pointerId !== press.id) return;
+    const p = press;
+    press = null;
+    canvas.style.cursor = '';
+    if (e.type !== 'pointerup') return;
+    if (p.mode === 'paint') { press = p; applyDrag(); press = null; }
+    else if (p.mode === 'click') {
+      if (p.button === 0) act(e.clientX, e.clientY);
+      else if (p.button === 2) { if (tool.kind !== 'select') setTool({ kind: 'select' }); else selected = null; hud.refresh(); }
+    }
+    repick = 2;
+  }
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
+  canvas.addEventListener('pointerleave', (e) => { if (!press && e.isPrimary) { pointer = null; repick = 2; } });
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  // Every WHEEL_STEP of wheel is one ZOOM_STEP (in proportion), towards the pointer. A trackpad pinch arrives as a wheel
+  // with ctrlKey and small deltas, so it counts for more.
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (e.deltaY === 0) return;
+    const delta = e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? e.deltaY * (e.ctrlKey ? PINCH_GAIN : 1) : Math.sign(e.deltaY) * WHEEL_STEP;
+    setZoom(zoomGoal * ZOOM_STEP ** (-delta / WHEEL_STEP), { x: e.clientX, y: e.clientY });
+  }, { passive: false });
+
+  const keys = new Set<string>();
+  addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'SELECT') return;
+    keys.add(e.code);
+    if (e.code === 'Escape') {
+      if (press?.mode === 'paint') { press.mode = 'void'; return; }
+      if (hud.closeTop()) return;
+      if (tool.kind !== 'select') { setTool({ kind: 'select' }); hud.refresh(); return; }
+      if (selected !== null) { selected = null; hud.refresh(); return; }
+      hud.openPause();
+      return;
+    }
+    if (e.repeat) return;
+    if (e.code === 'Space') { e.preventDefault(); paused = !paused; return; }
+    if (e.code === 'Digit1') { speed = 1; paused = false; }
+    if (e.code === 'Digit2') { speed = 2; paused = false; }
+    if (e.code === 'Digit3') { speed = 4; paused = false; }
+    if (e.code === 'KeyQ') turn(-1);
+    if (e.code === 'KeyE') turn(1);
+    if (e.code === 'KeyZ') zoomStep(e.shiftKey ? -1 : 1, pointer ?? undefined);
+    if (e.code === 'Equal' || e.code === 'NumpadAdd') zoomStep(1, pointer ?? undefined);
+    if (e.code === 'Minus' || e.code === 'NumpadSubtract') zoomStep(-1, pointer ?? undefined);
+    if (e.code === 'Tab') { e.preventDefault(); hud.toggleStats(); }
+    if (e.code === 'KeyO') hud.toggleRoutes();
+    if (e.code === 'KeyG') { hud.openGuide(); hud.refresh(); return; }
+    if (e.code === 'KeyV') { const order: Overlay[] = ['none', 'fertility', 'power', 'roads', 'water', 'bees']; overlay = order[(order.indexOf(overlay) + 1) % order.length]; }
+    if (e.code === 'KeyX') setTool(tool.kind === 'remove' ? { kind: 'select' } : { kind: 'remove' });
+    if (e.code === 'KeyR' && tool.kind === 'build') { tool = { ...tool, rot: ((tool.rot + (e.shiftKey ? 3 : 1)) % 4) as Dir }; repick = 2; }
+    const k = e.code.startsWith('Key') ? e.code.slice(3) : '';
+    const hot = (Object.keys(BUILDINGS) as BuildingId[]).find((id) => BUILDINGS[id].key === k);
+    if (hot) setTool(tool.kind === 'build' && tool.type === hot ? { kind: 'select' } : { kind: 'build', type: hot, rot: tool.kind === 'build' ? tool.rot : 1 });
+    hud.refresh();
+  });
+  addEventListener('keyup', (e) => keys.delete(e.code));
+  addEventListener('blur', () => keys.clear());
+
+  /** One line about what's under the pointer. */
+  function describeHover(): string | null {
+    const b = hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;
+    const truck = hoverBuilding !== null ? truckById(state, hoverBuilding) : null;
+    if (truck) return `Truck${routeOf(state, truck) ? ` on ${routeOf(state, truck)!.name}` : ''}: ${describeTruck(state, truck)}`;
+    if (tool.kind === 'route') {
+      const r = routeById(state, tool.route);
+      if (b && r) return isStop(b) ? `${BUILDINGS[b.type].name}: click to add it as stop ${r.stops.length + 1} of ${r.name}` : `Trucks don't stop at the ${BUILDINGS[b.type].name.toLowerCase()}`;
+      return r ? `Editing ${r.name}: click buildings to add stops · Esc when done` : null;
+    }
+    if (tool.kind === 'build' && hoverTile) {
+      const n = BUILDINGS[tool.type].size, a = anchor(hoverTile, n), c = canPlace(state, tool.type, a.x, a.y);
+      const head = `${BUILDINGS[tool.type].name} · ${state.scenario.sandbox ? 'free' : `${BUILDINGS[tool.type].cost} credits`}`;
+      const soil = tool.type === 'field' ? ` · soil ${Math.round(avgSoil(a.x, a.y))}` : '';
+      const next = c.ok ? describeLinks(linksAt(state, tool.type, a.x, a.y)) : [];
+      return `${head}${soil}${tool.type === 'pylon' && c.ok ? pylonNote(a.x, a.y) : ''}${next.length ? `\nNext door: ${next.join(' · ').toLowerCase()}` : ''}\n${c.ok ? `Click or drag to build${tool.type === 'pylon' ? ' (a drag lays a line)' : ''} · R turns` : c.message}`;
+    }
+    if (b) return `${BUILDINGS[b.type].name}: ${describeStatus(state, b)}${b.type === 'field' ? ` · soil ${Math.round(fieldFertility(state, b))}` : ''}`;
+    if (!hoverTile) return null;
+    const t = terrainAt(state, hoverTile.x, hoverTile.y);
+    if (t === TERRAIN.water) return 'Water. Pylons can stand in it; trucks drive round it.';
+    if (t === TERRAIN.tree) return 'A tree: shelters wind turbines nearby. Remove (X) for 5 credits.';
+    if (t === TERRAIN.rock) return 'Rock. Remove (X) for 15 credits.';
+    return `Grass · soil fertility ${state.map.fertility[hoverTile.y * map.width + hoverTile.x]}`;
+  }
+  /**
+   * The routes to draw: the one being edited, a focused truck's, those of a focused garage's trucks or stopping at a focused
+   * building, or (with the roads overlay) all of them. Stop numbers show when there is one route.
+   */
+  function shownRoutes(focus: number | null, all: boolean): { routes: Route[]; numbers: boolean } {
+    const one = (r: Route | null) => ({ routes: r ? [r] : [], numbers: true });
+    const preview = routeById(state, previewRoute);
+    if (preview) return one(preview);
+    if (tool.kind === 'route') return one(routeById(state, tool.route));
+    const t = focus !== null ? truckById(state, focus) : null, b = focus !== null ? buildingById(state, focus) : null;
+    if (t) return one(routeOf(state, t));
+    let routes: Route[] = [];
+    if (b?.type === 'garage') routes = state.routes.filter((r) => state.trucks.some((x) => x.garage === b.id && x.route === r.id));
+    else if (b) routes = routesAt(state, b);
+    if (all && !routes.length) routes = state.routes;
+    return { routes, numbers: routes.length === 1 };
+  }
+  /**
+   * The buildings and trucks to tint for what is focused: a truck's stops, a garage's trucks, the buildings next door a
+   * building trades with (or would, while placing it).
+   */
+  function linkedTo(focus: number | null): number[] {
+    if (tool.kind === 'build') return ghostLinks;
+    const t = focus !== null ? truckById(state, focus) : null, b = focus !== null ? buildingById(state, focus) : null;
+    if (t) return [...new Set(routeOf(state, t)?.stops.map((st) => st.building) ?? [])];
+    if (b?.type === 'garage') return state.trucks.filter((x) => x.garage === b.id).map((x) => x.id);
+    if (b) { const l = linksOf(state, b); return [...new Set([...l.from, ...l.to].map((x) => x.b.id))]; }
+    return [];
+  }
+
+  /** What a pylon placed at (x, y) would do: link to pylons, start a network, power buildings. */
+  function pylonNote(x: number, y: number) {
+    const links = pylonsInLink(state, x, y).length;
+    const reached = state.buildings.filter((b) => POWERED(b) && reachTo(b, x, y) <= POWER.pylon.reach);
+    const reaches = reached.length, fresh = reached.filter((b) => !networkOf(state, b)).length;
+    const link = links ? ` · links to ${links} pylon${links > 1 ? 's' : ''}` : state.buildings.some((b) => b.type === 'pylon') ? ` · no pylon within ${POWER.pylon.link}: a new network` : '';
+    return `${link} · reaches ${reaches} building${reaches === 1 ? '' : 's'}${fresh ? `, powers ${fresh} new` : ''}`;
+  }
+  function avgSoil(x: number, y: number) {
+    let sum = 0, n = 0;
+    for (let ty = y; ty < y + 3; ty++) for (let tx = x; tx < x + 3; tx++) if (inMap(state, tx, ty)) { sum += state.map.fertility[ty * map.width + tx]; n++; }
+    return n ? sum / n : 0;
+  }
+
+  // ---- Loop ----
+  let last = performance.now(), time = 0, frameNo = 0, lookHour = Number.NaN, sinceSave = 0;
+  let wasComplete = state.completedAt !== null;
+
+  function frame(now: number) {
+    const dt = Math.min((now - last) / 1000, 0.1);
+    last = now; time += dt; frameNo++;
+
+    if (!paused && !hud.modal) advance(state, dt * speed, MAX_STEPS_PER_FRAME);
+    if (!wasComplete && state.completedAt !== null) {
+      wasComplete = true;
+      const medal = medalFor(state.scenario.par, state.completedAt);
+      localStorage.setItem(PROGRESS_KEY, JSON.stringify(recordResult(readProgress(localStorage.getItem(PROGRESS_KEY)), state.scenario.id, medal, state.completedAt)));
+      save();
+      hud.showComplete(medal);
+    }
+    sinceSave += dt;
+    if (sinceSave > AUTOSAVE_SECONDS) { sinceSave = 0; save(); }
+
+    // Arrow keys pan.
+    const kx = (keys.has('ArrowRight') ? 1 : 0) - (keys.has('ArrowLeft') ? 1 : 0), ky = (keys.has('ArrowDown') ? 1 : 0) - (keys.has('ArrowUp') ? 1 : 0);
+    if (kx || ky) pan(-kx * dt * 600, -ky * dt * 600);
+
+    const hour = hourAt(state.time);
+    if (!(Math.abs(hour - lookHour) <= 0.02)) { renderer.setLook(lookAt(hour)); lookHour = hour; }
+
+    view.sync(state);
+    toolOverlay = 'none';
+    if (pointer && frameNo % REPICK_FRAMES === 0) repick = Math.max(repick, 1);
+    if (repick > 0) { repick--; pickHover(); }
+    showGhosts();
+    // Editing a route shows the roads.
+    if (toolOverlay === 'none' && tool.kind === 'route') toolOverlay = 'roads';
+    const shownOverlay = overlay !== 'none' ? overlay : toolOverlay;
+    view.overlay(state, shownOverlay);
+    const focus = selected ?? (tool.kind === 'select' ? hoverBuilding : null);
+    const shown = shownRoutes(focus, shownOverlay === 'roads');
+    view.links(linkedTo(focus));
+    routeView.sync(state, shown.routes, shown.numbers);
+    hud.setStopLabels(routeView.labels().map((l) => ({ ...l, ...toScreen(l.x, l.y, l.z) })));
+    // Power shows only while you work with it: its overlay, placing something that uses power, selecting a building on a
+    // network, or pointing at a pylon or something that makes or stores power.
+    const hovered = tool.kind === 'select' && hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;
+    power.sync(state, {
+      all: shownOverlay === 'power' || (tool.kind === 'build' && usesPower(tool.type)), tiles: shownOverlay === 'power',
+      focus: selected ?? (hovered && POWER_BUILDINGS.has(hovered.type) ? hovered.id : null), ghosts: pylonGhosts,
+    });
+    hud.setNetLabels(power.labels().map((l) => ({ ...l, ...toScreen(l.x, l.y, l.z) })));
+    const hi: number[] = [];
+    if (selected !== null) hi.push(selected);
+    if (hoverBuilding !== null && hoverBuilding !== selected && (tool.kind === 'select' || tool.kind === 'remove')) hi.push(hoverBuilding);
+    highlight(hi);
+    hud.setHover(describeHover());
+    hud.update();
+
+    turning();
+    zooming(dt);
+    // The view is as tall as the art at the zoom's screen pixels per metre.
+    renderer.placeCamera(target, yaw, ELEVATION, renderer.height * pixelSize / zoom);
+    renderer.renderGeometry(time);
+    renderer.renderStyle(time);
+    requestAnimationFrame(frame);
+  }
   requestAnimationFrame(frame);
-}
-requestAnimationFrame(frame);
 
-// For checks in the browser console and scripted playtests.
-Object.assign(window, { game: { get state() { return state; }, get hover() { return hover; }, renderer, view, ui } });
+  // For checks in the browser console and scripted playtests.
+  Object.assign(window, { game: {
+    get state() { return state; }, set state(s: GameState) { state = s; }, renderer, view, hud, sizeOf,
+    /** Points the camera at a ground point, optionally at a zoom (screen pixels per metre). */
+    look: (x: number, z: number, z0?: number) => { target.set(x, 0, z); clampTarget(); if (z0) { setZoom(z0); zoom = zoomGoal; } repick = 2; },
+  } });
+}
