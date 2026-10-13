@@ -9,6 +9,8 @@ byproducts have to go somewhere, and the sun sets every few minutes. A 3D world 
 - Plan: [`docs/ROADMAP.md`](docs/ROADMAP.md), including the renderer gaps
 - How to work here: [`AGENTS.md`](AGENTS.md)
 - Models: [`docs/ASSET_BRIEF.md`](docs/ASSET_BRIEF.md)
+- UI revamp (designed, not built yet): [`docs/ui-revamp/`](docs/ui-revamp/README.md), with the design system in
+  [`src/ui/clearday/`](src/ui/clearday/README.md)
 
 ![Morning Bread at noon: wheat and bean fields round two silos, a mill, coop, digester and bakery, solar panels, turbines and batteries](docs/screenshot.png)
 
@@ -43,10 +45,12 @@ src/
   game/         game rules and state as pure TypeScript (no DOM, no renderer), unit-tested in test/
   world/        what the renderer draws: the static farm, the models, and the view that mirrors the state into objects
   ui/           the HTML HUD and menus over the canvas, and the item icons
+    clearday/   the new design system (tokens, components, icons), not wired in yet (docs/ui-revamp/)
 assets/         Blender build scripts for the models (the source of truth), exported to public/models/
 tools/          the commission bot (npm run sim) and its layouts
+  clearday/     generators for the Clearday tokens and icons (Python 3)
 test/           unit tests (Node's test runner)
-docs/           design, roadmap, asset brief
+docs/           design, roadmap, asset brief, the UI revamp
 ```
 
 ## The renderer

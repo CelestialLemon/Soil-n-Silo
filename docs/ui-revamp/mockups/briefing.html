@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- A static mockup from the UI revamp (docs/ui-revamp/README.md), built on src/ui/clearday. Open it in a browser at 1920 × 1080. -->
+<title>Briefing: a letter from the schoolhouse</title>
+<link rel="stylesheet" href="../../../src/ui/clearday/tokens.css">
+<link rel="stylesheet" href="../../../src/ui/clearday/clearday.css">
+<link rel="stylesheet" href="../../../src/ui/clearday/icons.css">
+</head>
+<body>
+<style>
+body { margin: 0; }
+.letter p { margin: 0 0 22px; font: 500 21px/1.65 var(--font-ui); color: var(--ink); }
+.mrow { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--chalk-3); }
+.mrow:last-child { border-bottom: 0; }
+.mrow .cd-medal { --d: 34px; font-size: 12px; box-shadow: none; }
+.mrow b { margin-left: auto; font: 700 18px/1 var(--font-ui); font-variant-numeric: tabular-nums; }
+</style>
+<div class="cd-root" style="position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #5f7d4c;">
+  <img src="../backdrops/world-far.webp" alt="" style="position: absolute; inset: -40px; width: 2000px; height: 1160px; image-rendering: pixelated; filter: blur(16px) saturate(.8);">
+  <div style="position: absolute; inset: 0; background: var(--scrim);"></div>
+
+  <div class="cd-sheet" style="inset: 110px 200px; padding: 0; display: grid; grid-template-columns: 1fr 520px;">
+    <!-- The letter -->
+    <div style="padding: 60px 72px 52px 84px; display: flex; flex-direction: column;">
+      <div style="display: flex; align-items: baseline; justify-content: space-between;">
+        <span class="cd-label">Commission 2 of 8 · a letter for the co-op</span>
+        <span class="cd-small cd-faint">The schoolhouse, Loam Valley · Monday</span>
+      </div>
+      <h1 class="cd-display" style="margin-top: 22px; font-size: 60px;">Morning Bread</h1>
+      <div class="letter" style="margin-top: 36px; max-width: 820px;">
+        <p>Dear friends at the co-op,</p>
+        <p>The schoolhouse opens again next week, and a great many of my pupils arrive with nothing in their stomachs. I would like each of them to start the day with fresh bread. One hundred and fifty loaves, delivered to the depot, would see us through the term.</p>
+        <p>I am told the chickens will want feeding, and that the mill makes bran along with its flour. I leave the how of it to you.</p>
+        <p>One thing more. The children will farm this valley after us. Please leave the soil in good heart.</p>
+      </div>
+      <div style="display: flex; align-items: flex-end; gap: 18px; margin-top: 8px;">
+        <div>
+          <div class="cd-small">With thanks, and warm regards,</div>
+          <div style="font: 700 22px/1.2 var(--font-ui); margin-top: 10px;">Ada Thorne</div>
+          <div class="cd-small" style="margin-top: 2px;">Schoolmistress</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- The terms -->
+    <div style="padding: 60px 56px 52px; background: var(--chalk-2); display: flex; flex-direction: column;">
+      <div class="cd-label">What she asks</div>
+      <div style="display: flex; gap: 40px; margin-top: 22px; justify-content: center;">
+        <div style="display: grid; justify-items: center; gap: 10px;">
+          <span class="cd-gauge" style="--v: 0; --d: 168px; --w: 10px;"><span class="cd-gauge__in"><span class="cd-i cd-i--bread" style="--s: 40px;"></span><div class="cd-figure" style="font-size: 40px; margin-top: 2px;">0</div><div class="cd-small">of 150</div></span></span>
+          <b style="font-size: 15px;">Deliver 150 bread</b>
+        </div>
+        <div style="display: grid; justify-items: center; gap: 10px;">
+          <span class="cd-gauge" style="--v: 0; --d: 168px; --w: 10px; --col: var(--tide);"><span class="cd-gauge__in"><span class="cd-i cd-i--soil" style="--s: 40px;"></span><div class="cd-figure" style="font-size: 40px; margin-top: 2px;">40+</div><div class="cd-small">at the end</div></span></span>
+          <b style="font-size: 15px;">Keep the soil 40+</b>
+        </div>
+      </div>
+
+      <div class="cd-label" style="margin-top: 40px;">Medal times</div>
+      <div style="margin-top: 6px;">
+        <div class="mrow"><span class="cd-medal">G</span><span>Gold</span><b>within 35:00</b></div>
+        <div class="mrow"><span class="cd-medal is-silver">S</span><span>Silver</span><b>within 52:30</b></div>
+        <div class="mrow"><span class="cd-medal is-bronze">B</span><span>Bronze</span><b style="color: var(--ink-2);">after</b></div>
+      </div>
+
+      <div class="cd-label" style="margin-top: 30px;">To start</div>
+      <div class="mrow" style="border: 0;"><span class="cd-i cd-i--coin" style="--s: 34px;"></span><span>Credits</span><b>1,600</b></div>
+
+      <span style="flex: 1;"></span>
+      <div style="display: grid; gap: 12px;">
+        <button class="cd-btn is-primary is-lg" style="width: 100%;">Begin</button>
+        <button class="cd-btn is-ghost is-lg" style="width: 100%;"><span class="cd-i cd-i--book" style="--s: 22px;"></span>Read the guide</button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

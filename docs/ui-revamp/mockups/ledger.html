@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- A static mockup from the UI revamp (docs/ui-revamp/README.md), built on src/ui/clearday. Open it in a browser at 1920 × 1080. -->
+<title>Ledger: the valley and its goods</title>
+<link rel="stylesheet" href="../../../src/ui/clearday/tokens.css">
+<link rel="stylesheet" href="../../../src/ui/clearday/clearday.css">
+<link rel="stylesheet" href="../../../src/ui/clearday/icons.css">
+</head>
+<body>
+<style>
+body { margin: 0; }
+.vr { display: flex; align-items: center; gap: 24px; }
+.vr__big { font: 300 54px/1 var(--font-ui); letter-spacing: -0.03em; }
+.vr__txt { display: grid; gap: 6px; }
+.gt { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.gt th { padding: 0 14px 12px; text-align: right; font: 800 11px/1.3 var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); border-bottom: 1.5px solid var(--chalk-3); vertical-align: bottom; }
+.gt th:first-child, .gt td:first-child { text-align: left; padding-left: 0; }
+.gt th.l, .gt td.l { text-align: left; }
+.gt td { padding: 13px 14px; border-bottom: 1px solid var(--chalk-2); font-size: 15px; color: var(--ink-2); }
+.gt td.n { text-align: right; }
+.gt td b { color: var(--ink); font-weight: 700; }
+.gt .sepl { border-left: 1px solid var(--chalk-3); }
+.gt tr.is-goal td { background: color-mix(in srgb, var(--ochre) 9%, transparent); color: var(--ink); font-weight: 700; }
+.gt tr.is-goal td:first-child { border-radius: 14px 0 0 14px; padding-left: 12px; }
+.gt tr.is-goal td:last-child { border-radius: 0 14px 14px 0; }
+.gt tr:last-child td { border-bottom: 0; }
+.gname { display: inline-flex; align-items: center; gap: 12px; font: 700 15px/1 var(--font-ui); color: var(--ink); }
+.gname .cd-i { --s: 30px; }
+</style>
+<div class="cd-root" style="position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #5f7d4c;">
+  <img src="../backdrops/world-day.webp" alt="" style="position: absolute; inset: -40px; width: 2000px; height: 1160px; image-rendering: pixelated; filter: blur(18px) saturate(.8);">
+  <div style="position: absolute; inset: 0; background: var(--scrim);"></div>
+
+  <div class="cd-sheet" style="padding: 40px 56px 36px;">
+    <!-- header -->
+    <div class="cd-sheet__head" style="margin-bottom: 0;">
+      <div><div class="cd-label">Morning Bread · day 4, 13:00</div><h1 class="cd-display" style="margin-top: 12px;">Ledger</h1></div>
+      <span style="flex: 1;"></span>
+      <button class="cd-btn" style="padding: 0 10px 0 16px; margin-bottom: 4px;"><span class="cd-i cd-i--bolt" style="--s: 20px;"></span>Power<span class="cd-small" style="font-weight: 600;">151 W made · 128 used · 74% stored</span>›</button>
+      <button class="cd-btn is-icon" aria-label="Close (Esc)" style="margin-bottom: 4px;"><span class="cd-i cd-i--close" style="--s: 16px;"></span></button>
+    </div>
+
+    <!-- the valley's health -->
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; margin-top: 30px; padding-bottom: 26px; border-bottom: 1px solid var(--chalk-3);">
+      <div class="vr">
+        <span class="cd-ringbox"><span class="cd-ring" style="--v: 0.62; --d: 132px; --w: 10px; --col: var(--tide);"></span><span class="cd-ring__in"><span class="cd-i cd-i--soil" style="--s: 48px;"></span></span></span>
+        <div class="vr__txt"><div class="cd-label">Soil health</div><div class="vr__big">62</div><div class="cd-small">fields average 58 over 112 tiles, trees +4<br>started at 55 · goal <b style="color: var(--ink);">40+</b> at the end</div><div class="cd-small cd-bad" style="font-weight: 700;">↓ 0.5 a minute now</div></div>
+      </div>
+      <div class="vr">
+        <span class="cd-ringbox"><span class="cd-ring" style="--v: 0.71; --d: 132px; --w: 10px; --col: var(--pine);"></span><span class="cd-ring__in"><span class="cd-i cd-i--sapling" style="--s: 48px;"></span></span></span>
+        <div class="vr__txt"><div class="cd-label">Trees</div><div class="vr__big">214</div><div class="cd-small">71% of the woods the valley can hold<br>6 saplings growing, 2 felled for the depot road</div><div class="cd-small cd-good" style="font-weight: 700;">↑ 18 since the start</div></div>
+      </div>
+      <div class="vr">
+        <span class="cd-ringbox"><span class="cd-ring" style="--v: 0.643; --d: 132px; --w: 10px; --col: var(--ochre);"></span><span class="cd-ring__in"><span class="cd-i cd-i--bee" style="--s: 48px;"></span></span></span>
+        <div class="vr__txt"><div class="cd-label">Pollination</div><div class="vr__big">9<span style="font-size: 26px; color: var(--ink-3);"> of 14</span></div><div class="cd-small">flowering fields reached by 3 hives<br>flowering crops there give one more a harvest</div><div class="cd-small" style="font-weight: 700; color: var(--ink-2);">unchanged in 10 minutes</div></div>
+      </div>
+    </div>
+
+    <!-- goods -->
+    <div style="display: flex; align-items: baseline; justify-content: space-between; margin-top: 26px;">
+      <span class="cd-label" style="color: var(--ink-2);">Goods · made and delivered</span>
+      <span class="cd-small cd-faint">a minute: average of the last 5 minutes · lines: the last 10 minutes</span>
+    </div>
+    <table class="gt" style="margin-top: 14px;">
+      <thead>
+        <tr><th>Good</th><th style="width: 130px;">Made<br>a minute</th><th class="l" style="width: 150px;"></th><th style="width: 200px;">Used by your<br>buildings a minute</th><th style="width: 170px;">To the depot<br>a minute</th><th class="sepl" style="width: 170px;">Made<br>in all</th><th style="width: 170px;">To the depot<br>in all</th><th style="width: 190px;">In stores<br>and trucks now</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="gname"><span class="cd-i cd-i--wheat"></span>Wheat</span></td>
+          <td class="n"><b>10.2</b></td><td><svg width="110" height="28" viewBox="0 0 110 28" aria-hidden="true"><polyline points="0,13.2 12,10.5 24,7.5 36,5.9 48,5.0 60,4.2 72,4.8 84,4.6 96,4.4 108,4.6" fill="none" stroke="#2f6b55" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline><circle cx="108" cy="4.6" r="2.5" fill="#2f6b55"></circle></svg></td><td class="n">10.2</td><td class="n">—</td>
+          <td class="n sepl">172</td><td class="n">—</td><td class="n">6</td>
+        </tr>
+        <tr>
+          <td><span class="gname"><span class="cd-i cd-i--flour"></span>Flour</span></td>
+          <td class="n"><b>5.1</b></td><td><svg width="110" height="28" viewBox="0 0 110 28" aria-hidden="true"><polyline points="0,17.6 12,13.0 24,9.2 36,6.7 48,5.0 60,4.2 72,4.6 84,5.0 96,4.6 108,4.6" fill="none" stroke="#2f6b55" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline><circle cx="108" cy="4.6" r="2.5" fill="#2f6b55"></circle></svg></td><td class="n">4.2</td><td class="n">—</td>
+          <td class="n sepl">79</td><td class="n">—</td><td class="n">11</td>
+        </tr>
+        <tr>
+          <td><span class="gname"><span class="cd-i cd-i--bran"></span>Bran</span></td>
+          <td class="n"><b>5.1</b></td><td><svg width="110" height="28" viewBox="0 0 110 28" aria-hidden="true"><polyline points="0,17.6 12,13.0 24,9.2 36,6.7 48,5.0 60,4.2 72,4.6 84,5.0 96,4.6 108,4.6" fill="none" stroke="#2f6b55" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline><circle cx="108" cy="4.6" r="2.5" fill="#2f6b55"></circle></svg></td><td class="n">5.1</td><td class="n">—</td>
+          <td class="n sepl">79</td><td class="n">—</td><td class="n">2</td>
+        </tr>
+        <tr>
+          <td><span class="gname"><span class="cd-i cd-i--egg"></span>Egg</span></td>
+          <td class="n"><b>4.2</b></td><td><svg width="110" height="28" viewBox="0 0 110 28" aria-hidden="true"><polyline points="0,18.4 12,11.8 24,7.7 36,5.2 48,4.2 60,4.7 72,5.2 84,4.7 96,4.7 108,4.7" fill="none" stroke="#2f6b55" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline><circle cx="108" cy="4.7" r="2.5" fill="#2f6b55"></circle></svg></td><td class="n">4.2</td><td class="n">—</td>
+          <td class="n sepl">71</td><td class="n">—</td><td class="n">3</td>
+        </tr>
+        <tr>
+          <td><span class="gname"><span class="cd-i cd-i--manure"></span>Manure</span></td>
+          <td class="n"><b>2.1</b></td><td><svg width="110" height="28" viewBox="0 0 110 28" aria-hidden="true"><polyline points="0,17.7 12,11.5 24,7.3 36,5.2 48,4.2 60,4.2 72,5.2 84,4.2 96,4.2 108,4.2" fill="none" stroke="#2f6b55" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline><circle cx="108" cy="4.2" r="2.5" fill="#2f6b55"></circle></svg></td><td class="n">2.1</td><td class="n">—</td>
+          <td class="n sepl">36</td><td class="n">—</td><td class="n">1</td>
+        </tr>
+        <tr>
+          <td><span class="gname"><span class="cd-i cd-i--compost"></span>Compost</span></td>
+          <td class="n"><b>1.5</b></td><td><svg width="110" height="28" viewBox="0 0 110 28" aria-hidden="true"><polyline points="0,26.0 12,26.0 24,20.2 36,12.9 48,8.5 60,4.2 72,5.6 84,4.2 96,4.2 108,4.2" fill="none" stroke="#2f6b55" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline><circle cx="108" cy="4.2" r="2.5" fill="#2f6b55"></circle></svg></td><td class="n">1.5</td><td class="n">—</td>
+          <td class="n sepl">15</td><td class="n">—</td><td class="n">0</td>
+        </tr>
+        <tr class="is-goal">
+          <td><span class="gname"><span class="cd-i cd-i--bread"></span>Bread <span class="cd-chip" style="height: 22px; padding: 0 9px; font-size: 11px; background: var(--pine-soft); margin-left: 6px;">goal</span></span></td>
+          <td class="n"><b>4.2</b></td><td><svg width="110" height="28" viewBox="0 0 110 28" aria-hidden="true"><polyline points="0,19.9 12,12.8 24,8.2 36,5.7 48,4.2 60,4.7 72,5.2 84,4.7 96,4.2 108,4.7" fill="none" stroke="#c08a2e" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline><circle cx="108" cy="4.7" r="2.5" fill="#c08a2e"></circle></svg></td><td class="n">—</td><td class="n">4.2</td>
+          <td class="n sepl">68</td><td class="n">64</td><td class="n">4</td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="display: flex; align-items: center; gap: 22px; margin-top: 14px; padding-top: 14px; border-top: 1.5px solid var(--chalk-3);" class="cd-small">
+      <span><span class="cd-i cd-i--depot" style="--s: 26px;"></span> Earned at the depot <b style="color: var(--ink);">1,408</b> credits <span class="cd-faint">(64 bread × 22)</span></span>
+      <span style="flex: 1;"></span>
+      <span>Spent on buildings and trucks <b style="color: var(--ink);">1,768</b></span>
+      <span>Credits now <b style="color: var(--ink);">1,240</b></span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- A static mockup from the UI revamp (docs/ui-revamp/README.md), built on src/ui/clearday. Open it in a browser at 1920 × 1080. -->
+<title>Guide: the bakery page</title>
+<link rel="stylesheet" href="../../../src/ui/clearday/tokens.css">
+<link rel="stylesheet" href="../../../src/ui/clearday/clearday.css">
+<link rel="stylesheet" href="../../../src/ui/clearday/icons.css">
+</head>
+<body>
+<style>
+body { margin: 0; }
+.topics { display: flex; flex-wrap: wrap; gap: 8px; }
+.topic { display: inline-flex; align-items: center; height: 34px; padding: 0 14px; border-radius: 99px; font: 700 13px/1 var(--font-ui); color: var(--ink-2); box-shadow: inset 0 0 0 1.5px var(--chalk-3); }
+.topic.is-on { background: var(--ink); color: var(--chalk); box-shadow: none; }
+.cat { margin-top: 18px; }
+.cat .cd-label { margin-bottom: 10px; }
+.gtiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.gt { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 8px 4px 9px; border-radius: 14px; background: var(--chalk-2); font: 700 11px/1.1 var(--font-ui); text-align: center; color: var(--ink); }
+.gt .cd-i { --s: 40px; }
+.gt.is-on { background: var(--ink); color: var(--chalk); }
+.gt.is-here { box-shadow: inset 0 0 0 1.5px var(--pine); }
+.rec { display: flex; align-items: center; gap: 10px; }
+.rec .cd-chip { white-space: nowrap; height: 40px; padding: 0 16px 0 6px; font-size: 14px; background: var(--chalk-2); }
+.rec .cd-chip .cd-i { --s: 30px; }
+.rec__time { display: flex; align-items: center; gap: 8px; flex: none; color: var(--ink-3); font: 700 12px/1 var(--font-ui); }
+.rec__time::before, .rec__time::after { content: ""; width: 26px; height: 2px; border-radius: 2px; background: var(--chalk-3); }
+.nums { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; border-top: 1px solid var(--chalk-3); border-bottom: 1px solid var(--chalk-3); }
+.nums > div { padding: 16px 18px; border-left: 1px solid var(--chalk-3); }
+.nums > div:first-child { border-left: 0; padding-left: 0; }
+.nums .cd-figure { font-size: 30px; margin-top: 8px; }
+/* Where a loaf comes from */
+.chain { position: relative; height: 300px; margin-top: 14px; }
+.chain svg { position: absolute; inset: 0; }
+.node { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 5px; width: 76px; margin-left: -38px; font: 700 12px/1.1 var(--font-ui); text-align: center; }
+.node__disc { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 99px; background: var(--chalk-2); }
+.node__disc .cd-i { --s: 36px; }
+.node.is-bld .node__disc { border-radius: 16px; background: var(--chalk); box-shadow: inset 0 0 0 1.5px var(--chalk-3); }
+.node.is-key .node__disc { width: 64px; height: 64px; border-radius: 18px; background: var(--ink); }
+.node.is-key .node__disc .cd-i { --s: 46px; }
+.link { position: absolute; transform: translateX(-50%); font: 700 11px/1.15 var(--font-ui); color: var(--ink-2); text-align: center; white-space: nowrap; }
+.link b { display: block; font: 300 17px/1.1 var(--font-ui); color: var(--ink); letter-spacing: -0.01em; }
+.link.is-truck { color: var(--tide); }
+.vrow { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #36423b; }
+.vrow .cd-btn { white-space: nowrap; }
+.fact { display: grid; grid-template-columns: 24px 1fr; gap: 10px; font-size: 14px; line-height: 1.45; color: var(--ink-2); }
+.fact .cd-i { --s: 22px; margin-top: 1px; }
+</style>
+<div class="cd-root" style="position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #5f7d4c;">
+  <img src="../backdrops/world-day.webp" alt="" style="position: absolute; inset: -40px; width: 2000px; height: 1160px; image-rendering: pixelated; filter: blur(18px) saturate(.8);">
+  <div style="position: absolute; inset: 0; background: var(--scrim);"></div>
+
+  <div class="cd-card" style="position: absolute; left: 80px; top: 56px; width: 1760px; height: 968px; padding: 0; border-radius: 30px; display: grid; grid-template-columns: 600px 1fr; overflow: hidden;">
+    <!-- Left: index -->
+    <div style="padding: 44px 40px; background: color-mix(in srgb, var(--chalk-2) 55%, var(--chalk));">
+      <div style="display: flex; align-items: center; justify-content: space-between;"><div class="cd-label">The guide</div></div>
+      <div style="display: flex; align-items: center; gap: 10px; height: 46px; margin-top: 18px; padding: 0 18px; border-radius: 99px; background: var(--chalk); box-shadow: inset 0 0 0 1.5px var(--chalk-3);"><span class="cd-i cd-i--zoom" style="--s: 20px;"></span><span class="cd-faint">Search buildings, goods, keys…</span></div>
+      <div class="topics" style="margin-top: 18px;">
+        <span class="topic">First steps</span><span class="topic is-on">Buildings</span><span class="topic">Goods</span><span class="topic">Power</span><span class="topic">Routes</span><span class="topic">Soil</span><span class="topic">Statuses</span><span class="topic">Keys</span>
+      </div>
+
+      <div class="cat"><div class="cd-label">Logistics</div><div class="gtiles">
+        <span class="gt is-here"><span class="cd-i cd-i--silo"></span>Silo</span><span class="gt is-here"><span class="cd-i cd-i--garage"></span>Garage</span><span class="gt is-here"><span class="cd-i cd-i--depot"></span>Depot</span>
+      </div></div>
+      <div class="cat"><div class="cd-label">Farming</div><div class="gtiles">
+        <span class="gt is-here"><span class="cd-i cd-i--field"></span>Field</span><span class="gt is-here"><span class="cd-i cd-i--sprinkler"></span>Sprinkler</span><span class="gt is-here"><span class="cd-i cd-i--coop"></span>Coop</span><span class="gt"><span class="cd-i cd-i--hive"></span>Beehive</span><span class="gt is-here"><span class="cd-i cd-i--composter"></span>Composter</span>
+      </div></div>
+      <div class="cat"><div class="cd-label">Processing</div><div class="gtiles">
+        <span class="gt is-here"><span class="cd-i cd-i--mill"></span>Mill</span><span class="gt"><span class="cd-i cd-i--press"></span>Oil press</span><span class="gt"><span class="cd-i cd-i--spinner"></span>Spinner</span><span class="gt"><span class="cd-i cd-i--loom"></span>Loom</span><span class="gt is-on"><span class="cd-i cd-i--bakery"></span>Bakery</span><span class="gt"><span class="cd-i cd-i--cannery"></span>Cannery</span>
+      </div></div>
+      <div class="cat"><div class="cd-label">Power</div><div class="gtiles">
+        <span class="gt is-here"><span class="cd-i cd-i--solar"></span>Solar</span><span class="gt is-here"><span class="cd-i cd-i--turbine"></span>Turbine</span><span class="gt is-here"><span class="cd-i cd-i--battery"></span>Battery</span><span class="gt"><span class="cd-i cd-i--digester"></span>Digester</span><span class="gt is-here"><span class="cd-i cd-i--pylon"></span>Pylon</span><span class="gt"><span class="cd-i cd-i--station"></span>Station</span>
+      </div></div>
+      <div class="cat"><div class="cd-label">Ecology</div><div class="gtiles">
+        <span class="gt"><span class="cd-i cd-i--sapling"></span>Sapling</span>
+      </div></div>
+      <div class="cd-small" style="margin-top: 18px; display: flex; align-items: center; gap: 8px;"><span style="width: 14px; height: 14px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--pine);"></span>Outlined: you have one in this valley</div>
+      <div class="cd-inset" style="margin-top: 22px; padding: 16px 18px; background: var(--chalk);">
+        <div class="cd-label">Worth reading for Morning Bread</div>
+        <div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;"><span class="cd-chip"><span class="cd-i cd-i--soil" style="--s: 20px;"></span>Soil and compost</span><span class="cd-chip"><span class="cd-i cd-i--loop" style="--s: 20px;"></span>Closing a loop</span><span class="cd-chip"><span class="cd-i cd-i--moon" style="--s: 20px;"></span>Nights</span></div>
+      </div>
+    </div>
+
+    <!-- Right: the bakery spread -->
+    <div style="position: relative; padding: 44px 56px 40px 60px;">
+      <button class="cd-btn is-icon" aria-label="Close" style="position: absolute; right: 36px; top: 36px;"><span class="cd-i cd-i--close" style="--s: 16px;"></span></button>
+      <div class="cd-small cd-faint">Buildings · Processing</div>
+
+      <div style="display: grid; grid-template-columns: 1fr 380px; gap: 40px; margin-top: 18px;">
+        <div>
+          <div style="display: flex; align-items: center; gap: 30px;">
+            <span style="display: grid; place-items: center; width: 150px; height: 150px; border-radius: 36px; background: var(--chalk-2);"><span class="cd-i cd-i--bakery" style="--s: 116px;"></span></span>
+            <div>
+              <h1 class="cd-display" style="font-size: 76px; letter-spacing: -0.035em;">Bakery</h1>
+              <p style="margin: 14px 0 0; font-size: 18px; line-height: 1.5; color: var(--ink-2); max-width: 520px;">Turns flour and egg into bread, and with honey into honey cake. The last step of every bread commission.</p>
+            </div>
+          </div>
+
+          <div class="cd-label" style="margin-top: 32px;">Recipes</div>
+          <div style="display: grid; gap: 12px; margin-top: 14px;">
+            <div class="rec"><span class="cd-chip"><span class="cd-i cd-i--flour"></span>1 flour</span><span class="cd-faint" style="font-weight: 700;">+</span><span class="cd-chip"><span class="cd-i cd-i--egg"></span>1 egg</span><span class="rec__time">8 s</span><span class="cd-chip" style="background: var(--ink); color: var(--chalk);"><span class="cd-i cd-i--bread"></span>1 bread</span><span class="cd-small" style="margin-left: 6px;">7.5 a minute at most</span></div>
+            <div class="rec"><span class="cd-chip"><span class="cd-i cd-i--flour"></span>1 flour</span><span class="cd-faint" style="font-weight: 700;">+</span><span class="cd-chip"><span class="cd-i cd-i--egg"></span>1 egg</span><span class="cd-faint" style="font-weight: 700;">+</span><span class="cd-chip"><span class="cd-i cd-i--honey"></span>1 honey</span><span class="rec__time">12 s</span><span class="cd-chip" style="background: var(--ink); color: var(--chalk);"><span class="cd-i cd-i--honeycake"></span>1 honey cake</span></div>
+          </div>
+
+          <div class="nums" style="margin-top: 28px;">
+            <div><div class="cd-label">Cost</div><div class="cd-figure">350</div><div class="cd-small">credits · full refund</div></div>
+            <div><div class="cd-label">Power</div><div class="cd-figure">25 W</div><div class="cd-small">while baking</div></div>
+            <div><div class="cd-label">Size</div><div class="cd-figure">2 × 2</div><div class="cd-small">tiles · tall</div></div>
+            <div><div class="cd-label">Holds</div><div class="cd-figure">3</div><div class="cd-small">of each in, 3 out</div></div>
+            <div><div class="cd-label">Feeds on</div><div class="cd-figure">2</div><div class="cd-small">flour + egg</div></div>
+          </div>
+
+          <!-- New: where a loaf comes from -->
+          <div style="display: flex; align-items: baseline; justify-content: space-between; margin-top: 30px;"><span class="cd-label">Where a loaf comes from</span><span class="cd-small cd-faint">times in general, at full speed</span></div>
+          <div class="chain">
+            <svg viewBox="0 0 624 300" width="624" height="300" aria-hidden="true">
+              <g fill="none" stroke-width="2.5" stroke-linecap="round">
+                <path d="M 66 62 L 120 62" stroke="#858e87"></path>
+                <path d="M 176 62 L 230 62" stroke="#3d7a91" stroke-dasharray="5 6"></path>
+                <path d="M 286 62 L 340 62" stroke="#858e87"></path>
+                <path d="M 396 62 C 432 62, 430 128, 454 138" stroke="#3d7a91" stroke-dasharray="5 6"></path>
+                <path d="M 176 222 L 230 222" stroke="#858e87"></path>
+                <path d="M 286 222 C 380 222, 428 172, 454 154" stroke="#3d7a91" stroke-dasharray="5 6"></path>
+                <path d="M 258 96 C 258 140, 148 150, 148 190" stroke="#3d7a91" stroke-dasharray="2 6" opacity="0.6"></path>
+                <path d="M 522 145 L 558 145" stroke="#858e87"></path>
+              </g>
+            </svg>
+            <div class="node is-bld" style="left: 38px; top: 36px;"><span class="node__disc"><span class="cd-i cd-i--field"></span></span>Field</div>
+            <div class="node" style="left: 148px; top: 36px;"><span class="node__disc"><span class="cd-i cd-i--wheat"></span></span>Wheat</div>
+            <div class="node is-bld" style="left: 258px; top: 36px;"><span class="node__disc"><span class="cd-i cd-i--mill"></span></span>Mill</div>
+            <div class="node" style="left: 368px; top: 36px;"><span class="node__disc"><span class="cd-i cd-i--flour"></span></span>Flour</div>
+            <div class="node is-bld" style="left: 148px; top: 196px;"><span class="node__disc"><span class="cd-i cd-i--coop"></span></span>Coop</div>
+            <div class="node" style="left: 258px; top: 196px;"><span class="node__disc"><span class="cd-i cd-i--egg"></span></span>Egg</div>
+            <div class="node is-key" style="left: 488px; top: 113px;"><span class="node__disc"><span class="cd-i cd-i--bakery"></span></span>Bakery</div>
+            <div class="node" style="left: 586px; top: 119px;"><span class="node__disc"><span class="cd-i cd-i--bread"></span></span>Bread</div>
+
+            <span class="link" style="left: 93px; top: 18px;"><b>40 s</b>grow</span>
+            <span class="link is-truck" style="left: 203px; top: 32px;">next door<br>or truck</span>
+            <span class="link" style="left: 313px; top: 18px;"><b>6 s</b>mill</span>
+            <span class="link is-truck" style="left: 478px; top: 50px;">next door<br>or truck</span>
+            <span class="link" style="left: 203px; top: 178px;"><b>16 s</b>lay</span>
+            <span class="link is-truck" style="left: 372px; top: 222px;">next door or truck</span>
+            <span class="link" style="left: 540px; top: 92px;"><b>8 s</b>bake</span>
+            <span class="link is-truck" style="left: 312px; top: 140px; opacity: 0.85;">bran from the mill feeds the coop</span>
+          </div>
+          <div class="cd-small" style="display: flex; gap: 22px; margin-top: 4px;">
+            <span><span style="display: inline-block; width: 22px; height: 2.5px; border-radius: 2px; background: var(--ink-3); vertical-align: 3px; margin-right: 6px;"></span>inside a building</span>
+            <span><span style="display: inline-block; width: 22px; border-top: 2.5px dashed var(--tide); vertical-align: 3px; margin-right: 6px;"></span>next door: straight across a shared edge · by truck: depends on your routes</span>
+            <span>Then by truck to the depot.</span>
+          </div>
+        </div>
+
+        <!-- In your valley now: several bakeries -->
+        <div style="display: flex; flex-direction: column; gap: 22px; padding-top: 6px;">
+          <div class="cd-card is-ink" style="box-shadow: none; padding: 24px;">
+            <div style="display: flex; align-items: center; justify-content: space-between;"><span class="cd-label" style="color: #e6c98f;">In your valley now</span><span class="cd-small">13:00 · day 4</span></div>
+            <div style="display: flex; align-items: center; gap: 20px; margin-top: 18px; margin-bottom: 18px;">
+              <span class="cd-ringbox"><span class="cd-ring" style="--v: 0.487; --d: 96px; --w: 8px; --col: var(--ochre);"></span><span class="cd-ring__in"><div><div style="font: 300 30px/1 var(--font-ui);">7.3</div><div class="cd-small" style="margin-top: 2px;">of 15</div></div></span></span>
+              <div><div style="font: 700 18px/1.25 var(--font-ui);">2 bakeries · 7.3 bread a minute together</div><div class="cd-small" style="margin-top: 4px;">at full speed they would make 15</div></div>
+            </div>
+            <div class="vrow">
+              <div><div style="font: 700 15px/1.2 var(--font-ui);">By the mill</div><div class="cd-small" style="margin-top: 5px; display: flex; align-items: center; gap: 8px;"><span class="cd-status is-wait" style="height: 24px; background: #3a3a28; color: var(--chalk); font-size: 12px;">Waiting for egg</span></div></div>
+              <span><span style="font: 300 24px/1 var(--font-ui);" class="cd-num">4.2</span> <span class="cd-small">/ min</span></span>
+              <button class="cd-btn is-sm" style="background: var(--chalk);">Show ›</button>
+            </div>
+            <div class="vrow">
+              <div><div style="font: 700 15px/1.2 var(--font-ui);">East, by the river</div><div class="cd-small" style="margin-top: 5px; display: flex; align-items: center; gap: 8px;"><span class="cd-status" style="height: 24px; background: #23392f; color: var(--chalk); font-size: 12px;">Working</span></div></div>
+              <span><span style="font: 300 24px/1 var(--font-ui);" class="cd-num">3.1</span> <span class="cd-small">/ min</span></span>
+              <button class="cd-btn is-sm" style="background: var(--chalk);">Show ›</button>
+            </div>
+          </div>
+
+          <div>
+            <div class="cd-label">Works with</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px;">
+              <span class="cd-chip" style="height: 34px; padding-right: 14px;"><span class="cd-i cd-i--coop" style="--s: 24px;"></span>Coop</span>
+              <span class="cd-chip" style="height: 34px; padding-right: 14px;"><span class="cd-i cd-i--mill" style="--s: 24px;"></span>Mill</span>
+              <span class="cd-chip" style="height: 34px; padding-right: 14px;"><span class="cd-i cd-i--hive" style="--s: 24px;"></span>Beehive · honey cake</span>
+              <span class="cd-chip" style="height: 34px; padding-right: 14px;"><span class="cd-i cd-i--garage" style="--s: 24px;"></span>Garage</span>
+            </div>
+          </div>
+
+          <div>
+            <div class="cd-label">Good to know</div>
+            <div style="display: grid; gap: 12px; margin-top: 14px;">
+              <div class="fact"><span class="cd-i cd-i--bread"></span><span>When its store of 3 bread is full, it stops until a truck takes some.</span></div>
+              <div class="fact"><span class="cd-i cd-i--bolt"></span><span>It draws 25 W only while an oven is baking; waiting costs nothing.</span></div>
+              <div class="fact"><span class="cd-i cd-i--honeycake"></span><span>Honey cake takes 12 s and the same flour and egg, plus honey from a beehive.</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
