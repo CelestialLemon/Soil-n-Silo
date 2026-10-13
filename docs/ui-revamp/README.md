@@ -22,7 +22,7 @@ itself lives where the code will use it, in [`src/ui/clearday/`](../../src/ui/cl
 4. The new numbers (below) are pure functions in `src/game/`, unit-tested in `test/`, like `history.ts`. Build each with the
    screen that first needs it. A screen can ship without a number it doesn't have yet: leave the block out rather than fake it.
 5. Every number in the mockups is from one running example (Morning Bread, day 4, 13:00, from the bot's layout). Treat them
-   as placeholders for the real values.
+   as placeholders for the real values. Mind the two clocks (below).
 6. When the revamp is done, follow the cleanup list at the end.
 
 ## Principles
@@ -64,16 +64,22 @@ with the power and roads overlays).
 
 All read-only, from the simulation, as pure functions in `src/game/` (no DOM). Grouped by the screen that first needs them.
 
+**Two clocks, and watts not energy.** A game day lasts `DAY_SECONDS` = 240 s of play, so an in-game hour is 10 s. Anything
+measured over minutes of play (building history, rates a minute, idle shares, the commission clock, results milestones) is in
+play time and its axes say "5 min ago … now" or `8:00` of play, never a time of day. Times of day (`dusk 20:00`, `dry at
+02:40`, the power panel's 24-hour ring) are in-game hours. Energy over a game day is tiny in real units (a battery holds
+2,400 J), so screens show average watts and battery percentages, never Wh or kWh.
+
 - **Play · placement forecast.** For the building in hand at the pointer: its output a minute here, the soil under it now and
   in 10 minutes, whether a sprinkler reaches it and the growth factor that gives. Facts about the tile, no advice.
 - **Play · readouts.** Credits a minute (income averaged over the last minute or so).
 - **Inspector · History.** Already in `history.ts` (status strip, shares, output against full speed). New: since when the
-  current status has held (`egg store empty since 12:46`), made, delivered and in store totals, and *What it waits for*: the
+  current status has held (`egg store empty for 0:14`), made, delivered and in store totals, and *What it waits for*: the
   share of the last 5 minutes spent waiting for each input or short of power, ranked, with a one-line fact for each.
 - **Routes.** Loop time of a route, how often a truck reaches each stop (loop time over trucks), idle share per truck over
   the last 10 minutes.
 - **Power panel.** Per network: made, used, stored, short. Power by source an hour over the last 24 hours (solar, wind, from
-  batteries, short), and kWh made and used. Use by building, averaged over 24 h and now. Each night's lowest charge and when
+  batteries, short), and the average watts made and used over it. Use by building, averaged over 24 h and now. Each night's lowest charge and when
   the batteries ran dry. Tonight's charge until sunrise, the time it runs dry and the shortfall in W, from the weather curves
   (the game knows tonight's weather; showing it here is the "now" view, the full forecast is the weather station's).
 - **Ledger.** Per good a minute (5-minute average) and in all: made, used by buildings, delivered, in stores and trucks;
