@@ -1,10 +1,44 @@
-# Soil n Silo — UI revamp: requirements and design directions
+# Soil n Silo — UI revamp: requirements, design directions and decisions
 
 Oct 13, 2026
 
 The HUD and menus in `src/ui/` were built for the proof of concept. This document lists what the UI has to do today
 (gathered from `src/ui/*.ts`, `src/main.ts` and `DESIGN.md`) and points to complete design directions, each a design
 system plus every screen at 1920 × 1080, with a matrix for mixing parts of one into another.
+
+## Round 3: Clearday chosen, Clearday v2
+
+Clearday is the design system. Every element of all six directions went through a pick list
+([UI picks](https://claude.ai/artifact/UhiGixGR2mjeAaufDU3sgg)); the result is **Clearday v2**:
+[system](https://claude.ai/artifact/7BMUHmCvycXaLDhWD1G8BL) (updated in place) and
+[screens](https://claude.ai/artifact/QbBAEAEFYKUX1ogDgLbHWu), with the open choices in a second pick list
+([Clearday v2 review](https://claude.ai/artifact/4QpDFTEZyw3cNgakCu8NAr)).
+
+### Principles from the review
+
+- **Don't play the game for the player.** No plans, bills of materials, "first hour" steps, bottleneck answers or "one more X
+  would…" suggestions before or during play. State facts; analysis belongs on the results screen.
+- **Projections are optional**: "done by" and gold/silver pace ticks sit behind a *Show pace* setting.
+- **Keep the HUD quiet; heavy data gets its own place**: a **Power panel** (new, key W), a **weather station** building for the
+  forecast, the **guide** for production chains and lead times, the **inspector** for building rates (no rate labels over the map).
+- Goals are 270° gauges; hotkeys are shown wherever an action has one; route stops use icon toggles for drop and pick-up.
+
+### New things this asks of the game
+
+- A **weather station** building (proposed 1×1, 80 credits, 2 W): owning one unlocks the forecast (sun and wind by hour from the
+  seeded weather curves); without one the game shows only the weather now.
+- A **Power panel**: per-network made/used/stored/short, charge through tonight and when it runs dry, power by source over the
+  last 24 hours, use by building, how early the batteries ran dry each night.
+- **Inspector · Losses**: per building, the share of the last 5 minutes spent waiting for each input or short of power, and the
+  goods not made because of it.
+- **Guide · where it comes from**: a product's chain with the time each link takes; "in your valley" for several buildings.
+- **Results**: milestones recorded during the run on the curve; a depot receipt.
+- **Route timing**: loop time, how often a truck reaches each stop, idle share per truck.
+
+### Roadmap (set aside for later)
+
+Difficulty fingerprint (an advanced option), soil map and soil forecast, valley-health forecast, the route loop diagram and each
+stop's share of the loop.
 
 ## Round 2: Ironbloom, Clearday, Glasshouse
 
