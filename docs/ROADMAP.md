@@ -89,6 +89,10 @@ minute against full speed; generators and batteries chart their watts or charge.
 
 ## Next
 
+- **The UI revamp (Clearday).** Replace the proof-of-concept HUD and menus with the agreed design: the system is in
+  `src/ui/clearday/`, the screens, mockups, decisions and the new numbers the game must compute in
+  [`ui-revamp/`](ui-revamp/README.md). Adds a Power panel, a routes side card with timing, a guide page per building with its
+  chain, a ledger with valley health, and results with the run's milestones.
 - A **trouble list** built on the building history: buildings that spent much of the last few minutes not working (say below
   70%), worst first, with their main cause ("Mill · 45% · waiting for wheat"); clicking one selects it and moves the camera to
   it. Perhaps grouped by cause ("3 buildings waiting for wheat" points at one fix upstream), and a gentle nudge when a building
@@ -107,6 +111,11 @@ minute against full speed; generators and batteries chart their watts or charge.
 
 ## Later
 
+- A **weather station** building (proposed 1×1, 80 credits, 2 W): owning one unlocks the forecast, sun and wind by hour from
+  the seeded weather curves, in its inspector and in a Weather panel opened from the sun and wind chips by the dial. Without one
+  you see only the weather now. Mockup: [`ui-revamp/mockups/roadmap-weather.html`](ui-revamp/mockups/roadmap-weather.html).
+- From the UI revamp, set aside: a **difficulty fingerprint** for each commission (an advanced option in the level select);
+  a **soil map and soil forecast** in the ledger; a **route loop diagram** with each stop's share of the loop.
 - Weather events (rain waters fields, storms stop turbines), seasons as commission modifiers.
 - Pipes for water, so sprinklers need a source.
 - More chains: tomatoes into ketchup, flax into rope, bees into candles; animals (goats for milk and cheese).

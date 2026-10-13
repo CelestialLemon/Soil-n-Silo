@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- A static mockup from the UI revamp (docs/ui-revamp/README.md), built on src/ui/clearday. Open it in a browser at 1920 × 1080. -->
+<title>Results: gold, the run and the receipt</title>
+<link rel="stylesheet" href="../../../src/ui/clearday/tokens.css">
+<link rel="stylesheet" href="../../../src/ui/clearday/clearday.css">
+<link rel="stylesheet" href="../../../src/ui/clearday/icons.css">
+</head>
+<body>
+<style>
+body { margin: 0; }
+.fac { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; padding: 14px 0; border-bottom: 1px solid var(--chalk-3); }
+.fac:last-of-type { border-bottom: 0; }
+.fac__big { font: 300 30px/1 var(--font-ui); letter-spacing: -0.02em; text-align: right; }
+.fac b { font: 700 15px/1.2 var(--font-ui); display: flex; align-items: center; gap: 10px; }
+.ms text { font: 700 12px var(--font-ui); fill: #1c2520; }
+.ms .t { font-weight: 600; fill: #858e87; }
+.mi { position: absolute; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 99px; background: var(--chalk); box-shadow: 0 0 0 2px var(--ink), 0 4px 10px rgba(20, 30, 25, 0.25); display: grid; place-items: center; }
+.mi .cd-i { --s: 24px; }
+.mi.is-bad { box-shadow: 0 0 0 2.5px var(--rust), 0 4px 10px rgba(20, 30, 25, 0.25); }
+.mi.is-gold { width: 46px; height: 46px; margin: -23px 0 0 -23px; box-shadow: 0 0 0 3px var(--medal-gold), 0 6px 14px rgba(20, 30, 25, 0.3); }
+.mi.is-gold .cd-i { --s: 30px; }
+</style>
+<div class="cd-root" style="position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #2b3a33;">
+  <img src="../backdrops/world-dusk.webp" alt="" style="position: absolute; inset: -40px; width: 2000px; height: 1160px; image-rendering: pixelated; filter: blur(18px) saturate(.8);">
+  <div style="position: absolute; inset: 0; background: linear-gradient(180deg, rgba(28, 37, 32, 0.30), rgba(28, 37, 32, 0.55));"></div>
+  <div style="position: absolute; left: 660px; top: -220px; width: 600px; height: 600px; border-radius: 50%; background: radial-gradient(circle, rgba(201, 154, 58, 0.35), rgba(201, 154, 58, 0) 65%);"></div>
+
+  <!-- Hero: medal and time -->
+  <div style="position: absolute; left: 0; right: 0; top: 40px; display: flex; flex-direction: column; align-items: center; color: var(--chalk);">
+    <span class="cd-medal" style="--d: 132px; font-size: 40px; box-shadow: inset 0 0 0 10px color-mix(in srgb, var(--medal-gold) 70%, #fff), 0 0 0 6px rgba(243, 241, 234, 0.18), 0 18px 40px rgba(0, 0, 0, 0.35);"><span class="cd-i cd-i--medal" style="--s: 76px; filter: brightness(0) invert(1);"></span></span>
+    <div class="cd-label" style="margin-top: 22px; color: #e6c98f;">Gold · commission 2 complete</div>
+    <h1 class="cd-display" style="margin-top: 12px; font-size: 76px; letter-spacing: -0.035em;">Morning Bread</h1>
+    <div style="display: flex; align-items: center; gap: 26px; margin-top: 26px;">
+      <div style="text-align: right;"><div style="font: 300 48px/1 var(--font-ui); letter-spacing: -0.02em;">31:48</div><div style="font: 600 12px/1 var(--font-ui); color: #cfd6cf; margin-top: 6px;">3:12 inside gold</div></div>
+      <div style="width: 620px;">
+        <div class="cd-bar" style="--v: 0.6057; --col: var(--medal-gold); height: 12px; background: rgba(243, 241, 234, 0.22);"><i></i><span class="cd-bar__mark" style="left: 66.67%; top: -6px; bottom: -6px; box-shadow: 0 0 0 2px #2b3a33;"></span><span class="cd-bar__mark is-silver" style="left: calc(100% - 3px); top: -6px; bottom: -6px; box-shadow: 0 0 0 2px #2b3a33;"></span></div>
+        <div style="position: relative; height: 18px; margin-top: 10px; font: 600 12px/1 var(--font-ui); color: #cfd6cf;"><span style="position: absolute; left: 0;">0:00</span><span style="position: absolute; left: 66.67%; transform: translateX(-50%); color: #e6c98f;">gold 35:00</span><span style="position: absolute; right: 0;">silver 52:30</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- The depot receipt -->
+  <div class="cd-receipt" style="position: absolute; right: 80px; top: 44px; width: 360px; transform: rotate(1.2deg);">
+    <div style="display: flex; align-items: center; justify-content: space-between;"><span class="cd-label">Freight depot · receipt</span><span class="cd-i cd-i--depot" style="--s: 30px;"></span></div>
+    <div class="cd-small" style="margin-top: 4px;">Morning Bread · 0:00 to 31:48</div>
+    <div style="margin-top: 10px;">
+      <div class="cd-receipt__row"><span class="cd-i cd-i--bread"></span><span>Bread</span><span class="cd-small">150 × 22</span><b>3,300</b></div>
+      <div class="cd-receipt__row"><span class="cd-i cd-i--flour"></span><span>Flour</span><span class="cd-small">18 × 7</span><b>126</b></div>
+      <div class="cd-receipt__row"><span class="cd-i cd-i--egg"></span><span>Egg</span><span class="cd-small">6 × 6</span><b>36</b></div>
+      <div class="cd-receipt__row"><span class="cd-i cd-i--bran"></span><span>Bran</span><span class="cd-small">24 × 1</span><b>24</b></div>
+      <div class="cd-receipt__row"><span class="cd-i cd-i--manure"></span><span>Manure</span><span class="cd-small">12 × 1</span><b>12</b></div>
+    </div>
+    <div class="cd-receipt__total"><span>Earned</span><span>3,498 credits</span></div>
+  </div>
+
+  <!-- The run -->
+  <div class="cd-card" style="position: absolute; left: 80px; top: 432px; width: 1760px; height: 512px; padding: 30px 40px; display: grid; grid-template-columns: 1040px 1px 1fr; gap: 40px;">
+    <div>
+      <div style="display: flex; align-items: baseline; justify-content: space-between;"><div><div class="cd-label" style="color: var(--ochre);">The run</div><h2 class="cd-title" style="margin-top: 8px;">150 bread over 31 minutes</h2></div><span class="cd-small" style="display: inline-flex; gap: 16px; align-items: center;"><span>bread delivered · nights shaded</span><span style="display: inline-flex; align-items: center; gap: 6px;"><i style="width: 18px; height: 6px; border-radius: 3px; background: var(--rust);"></i>night short of power</span></span></div>
+      <div style="position: relative; width: 1040px; height: 380px; margin-top: 10px;">
+        <svg class="cd-chart ms" width="1040" height="380" viewBox="0 0 1040 380" style="position: absolute; inset: 0;" aria-label="Bread delivered over time, with milestones">
+          <defs><linearGradient id="ar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c99a3a" stop-opacity="0.38"></stop><stop offset="1" stop-color="#c99a3a" stop-opacity="0.04"></stop></linearGradient></defs>
+          <g transform="translate(44 70)">
+            <g fill="#2e3d52" opacity="0.045"><rect x="59" width="46" height="230"/><rect x="169" width="46" height="230"/><rect x="279" width="46" height="230"/><rect x="389" width="46" height="230"/><rect x="498" width="46" height="230"/><rect x="608" width="46" height="230"/><rect x="718" width="46" height="230"/><rect x="827" width="46" height="230"/></g>
+            <line class="grid" x1="0" y1="77" x2="960" y2="77"></line><line class="grid" x1="0" y1="153" x2="960" y2="153"></line>
+            <line class="axis" x1="0" y1="230" x2="960" y2="230"></line>
+            <polygon points="0,230 131,230 137,228 144,225 151,223 158,220 165,217 172,215 179,213 185,211 192,210 199,208 206,206 213,205 220,202 227,199 233,197 240,194 247,191 254,188 261,185 268,181 275,176 281,172 288,169 295,166 302,163 309,160 316,158 323,155 329,151 336,146 343,141 350,136 357,132 364,130 371,127 377,125 384,123 391,121 398,120 405,119 412,118 419,116 425,115 432,114 439,112 446,110 453,108 460,105 467,103 473,101 480,99 487,97 494,95 501,93 508,92 515,90 521,89 528,88 535,87 542,85 549,83 556,81 563,79 569,77 576,75 583,73 590,71 597,69 604,66 611,65 617,63 624,62 631,61 638,59 645,58 652,57 659,55 665,53 672,51 679,49 686,47 693,44 700,42 707,40 713,38 720,36 727,35 734,34 741,32 748,31 755,30 761,29 768,27 775,25 782,22 789,20 796,18 803,16 809,14 816,12 823,10 830,8 837,7 844,5 851,4 857,3 864,1 872,0 872,230" fill="url(#ar)"></polygon>
+            <polyline points="0,230 131,230 137,228 144,225 151,223 158,220 165,217 172,215 179,213 185,211 192,210 199,208 206,206 213,205 220,202 227,199 233,197 240,194 247,191 254,188 261,185 268,181 275,176 281,172 288,169 295,166 302,163 309,160 316,158 323,155 329,151 336,146 343,141 350,136 357,132 364,130 371,127 377,125 384,123 391,121 398,120 405,119 412,118 419,116 425,115 432,114 439,112 446,110 453,108 460,105 467,103 473,101 480,99 487,97 494,95 501,93 508,92 515,90 521,89 528,88 535,87 542,85 549,83 556,81 563,79 569,77 576,75 583,73 590,71 597,69 604,66 611,65 617,63 624,62 631,61 638,59 645,58 652,57 659,55 665,53 672,51 679,49 686,47 693,44 700,42 707,40 713,38 720,36 727,35 734,34 741,32 748,31 755,30 761,29 768,27 775,25 782,22 789,20 796,18 803,16 809,14 816,12 823,10 830,8 837,7 844,5 851,4 857,3 864,1 872,0" fill="none" stroke="#c99a3a" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></polyline>
+            <!-- nights short of power: 1, 2, 4, 5 -->
+            <g fill="#b4523a"><rect x="59" y="236" width="46" height="6" rx="3"/><rect x="169" y="236" width="46" height="6" rx="3"/><rect x="389" y="236" width="46" height="6" rx="3"/><rect x="498" y="236" width="46" height="6" rx="3"/></g>
+            <text x="606" y="256" style="fill: #b4523a; font-weight: 600;">third battery, day 6: no night short after</text>
+            <!-- gold line -->
+            <line x1="960" y1="-34" x2="960" y2="230" stroke="#c99a3a" stroke-width="1.5" stroke-dasharray="3 5"></line>
+            <text x="956" y="-40" text-anchor="end" style="fill: #a07a2e;">gold 35:00</text>
+            <!-- milestone leaders and labels -->
+            <text x="64" y="268" text-anchor="middle">First flour</text><text class="t" x="64" y="282" text-anchor="middle">2:20</text>
+            <line x1="102" y1="211" x2="102" y2="150" stroke="#1c2520" stroke-width="1.2"></line>
+            <text x="108" y="150">First night short</text><text class="t" x="108" y="164">day 1 · 3:43</text>
+            <line x1="260.6" y1="166" x2="260.6" y2="112" stroke="#1c2520" stroke-width="1.2"></line>
+            <text x="266" y="112">Second truck</text><text class="t" x="266" y="126">9:30</text>
+            <line x1="338.4" y1="126" x2="338.4" y2="54" stroke="#1c2520" stroke-width="1.2"></line>
+            <text x="344" y="54">Bran loop closed</text><text class="t" x="344" y="68">12:20</text>
+            <line x1="594" y1="50" x2="594" y2="22" stroke="#1c2520" stroke-width="1.2"></line>
+            <text x="600" y="18">Second coop</text><text class="t" x="600" y="32">21:40</text>
+            <text x="848" y="-20" text-anchor="end">150 bread <tspan class="t">· 31:48</tspan></text>
+            <!-- axes -->
+            <text x="-10" y="4" text-anchor="end">150</text><text x="-10" y="81" text-anchor="end">100</text><text x="-10" y="157" text-anchor="end">50</text>
+            <text x="0" y="302">0:00</text><text x="274" y="302" text-anchor="middle">10:00</text><text x="549" y="302" text-anchor="middle">20:00</text><text x="823" y="302" text-anchor="middle">30:00</text>
+          </g>
+        </svg>
+        <!-- milestone icons, each in a chalk disc on the curve (svg coords + 44, 70) -->
+        <span class="mi" style="left: 108px; top: 300px;" title="First flour"><span class="cd-i cd-i--flour"></span></span>
+        <span class="mi is-bad" style="left: 146px; top: 300px;" title="First night short"><span class="cd-i cd-i--moon"></span></span>
+        <span class="mi" style="left: 304.6px; top: 255px;" title="Second truck"><span class="cd-i cd-i--truck"></span></span>
+        <span class="mi" style="left: 382.4px; top: 215px;" title="Bran loop closed"><span class="cd-i cd-i--bran"></span></span>
+        <span class="mi" style="left: 638px; top: 139.6px;" title="Second coop"><span class="cd-i cd-i--coop"></span></span>
+        <span class="mi is-gold" style="left: 916px; top: 70px;" title="150 bread"><span class="cd-i cd-i--bread"></span></span>
+      </div>
+    </div>
+
+    <div style="background: var(--chalk-3);"></div>
+
+    <div style="display: flex; flex-direction: column;">
+      <div class="cd-label" style="color: var(--ochre);">What made the difference</div>
+      <div style="margin-top: 2px;">
+        <div class="fac">
+          <b><span class="cd-i cd-i--egg" style="--s: 24px;"></span>Bakery waiting on egg</b><span class="fac__big cd-bad">41%</span>
+          <div style="grid-column: 1 / -1;"><div class="cd-bar" style="--v: 0.41; --col: var(--rust);"><i></i></div><div class="cd-small" style="margin-top: 8px;">One coop until 21:40: bread at 4.2 a minute, then 5.1 with two.</div></div>
+        </div>
+        <div class="fac">
+          <b><span class="cd-i cd-i--moon" style="--s: 24px;"></span>Nights short of power</b><span class="fac__big">4<span style="font-size: 16px; color: var(--ink-3);"> of 8</span></span>
+          <div style="grid-column: 1 / -1;"><div style="display: flex; gap: 6px;"><i style="flex: 1; height: 8px; border-radius: 9px; background: var(--rust);"></i><i style="flex: 1; height: 8px; border-radius: 9px; background: var(--rust);"></i><i style="flex: 1; height: 8px; border-radius: 9px; background: var(--chalk-3);"></i><i style="flex: 1; height: 8px; border-radius: 9px; background: var(--rust);"></i><i style="flex: 1; height: 8px; border-radius: 9px; background: var(--rust);"></i><i style="flex: 1; height: 8px; border-radius: 9px; background: var(--chalk-3);"></i><i style="flex: 1; height: 8px; border-radius: 9px; background: var(--chalk-3);"></i><i style="flex: 1; height: 8px; border-radius: 9px; background: var(--chalk-3);"></i></div><div class="cd-small" style="margin-top: 8px;">Mill and bakery stopped 1:25 of play in all, on still nights.</div></div>
+        </div>
+        <div class="fac">
+          <b><span class="cd-i cd-i--truck" style="--s: 24px;"></span>Trucks idle</b><span class="fac__big">18%</span>
+          <div style="grid-column: 1 / -1;"><div class="cd-bar" style="--v: 0.18; --col: var(--ink-3);"><i></i></div><div class="cd-small" style="margin-top: 8px;">Mostly waiting for full loads at the field silo.</div></div>
+        </div>
+        <div class="cd-small" style="padding: 10px 0 0; border-top: 1px solid var(--chalk-3); color: var(--ink);"><b style="color: var(--ochre);">Next time</b> · a second coop by 13:00 would have finished near 29:50.</div>
+      </div>
+      <div style="flex: 1;"></div>
+      <div class="cd-inset" style="display: flex; align-items: center; gap: 18px; padding: 12px 18px; background: color-mix(in srgb, var(--pine) 12%, var(--chalk));">
+        <span class="cd-gauge" style="--v: 0.58; --d: 64px; --w: 6px; --col: var(--tide);"><span class="cd-gauge__in" style="margin-top: 0;"><b style="font-size: 18px;">58</b></span></span>
+        <div style="flex: 1;"><div class="cd-label" style="color: var(--pine);">The valley, left better</div><div style="font: 700 15px/1.3 var(--font-ui); margin-top: 6px;">Soil 58 at the end · trees +31</div><div class="cd-small">Goal was 40+. 6 saplings still growing.</div></div>
+        <span class="cd-i cd-i--sapling" style="--s: 40px;"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Buttons -->
+  <div style="position: absolute; left: 0; right: 0; top: 972px; display: flex; justify-content: center; gap: 14px;">
+    <button class="cd-btn is-lg" style="background: var(--chalk); box-shadow: var(--float); min-width: 220px;">Keep playing</button>
+    <button class="cd-btn is-primary is-lg" style="min-width: 300px; box-shadow: var(--float), 0 0 0 2px rgba(243, 241, 234, 0.65);">Next commission · Windy Ridge<span class="cd-i cd-i--play" style="--s: 14px; filter: invert(1);"></span></button>
+    <button class="cd-btn is-lg" style="background: var(--chalk); box-shadow: var(--float); min-width: 220px;">Level select</button>
+  </div>
+</div>
+</body>
+</html>

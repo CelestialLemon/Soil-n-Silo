@@ -1,0 +1,203 @@
+/* Clearday components (prefix cd-): plain CSS classes over tokens.css. Icons are in icons.css (generated). See README.md. */
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap");
+
+.cd-root { font-family: var(--font-ui); font-size: 16px; line-height: 1.45; font-weight: 500; color: var(--ink); -webkit-font-smoothing: antialiased; }
+.cd-root *, .cd-root *::before, .cd-root *::after { box-sizing: border-box; }
+.cd-label { font: 800 11px/1 var(--font-ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); }
+.cd-title { margin: 0; font: 700 26px/1.15 var(--font-ui); letter-spacing: -0.01em; }
+.cd-display { margin: 0; font: 300 64px/1 var(--font-ui); letter-spacing: -0.02em; }
+.cd-figure { font: 300 34px/1 var(--font-ui); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.cd-num { font-variant-numeric: tabular-nums; }
+.cd-small { font-size: 13px; line-height: 1.35; color: var(--ink-2); }
+.cd-soft { color: var(--ink-2); } .cd-faint { color: var(--ink-3); }
+.cd-good { color: var(--pine); } .cd-bad { color: var(--rust); } .cd-now { color: var(--ochre); } .cd-info { color: var(--tide); }
+
+/* ---- Card: frosted chalk, big soft corners ---- */
+.cd-card { position: relative; padding: var(--s4); border-radius: var(--r-card); background: color-mix(in srgb, var(--chalk) 94%, transparent); backdrop-filter: blur(14px) saturate(1.1); box-shadow: var(--float); }
+.cd-card.is-ink { background: var(--ink); color: var(--chalk); }
+.cd-card.is-ink .cd-label { color: #9aa59d; } .cd-card.is-ink .cd-small { color: #b9c2bb; }
+.cd-card.is-tight { padding: 14px 16px; }
+.cd-inset { padding: var(--s3); border-radius: var(--r-tile); background: var(--chalk-2); }
+.cd-divider { height: 1px; margin: var(--s3) 0; border: 0; background: var(--chalk-3); }
+
+/* ---- Pill: small rounded readouts and chips ---- */
+.cd-pill { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px 0 8px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--chalk) 94%, transparent); backdrop-filter: blur(14px); box-shadow: var(--float); font-weight: 700; font-variant-numeric: tabular-nums; }
+.cd-pill small { font-weight: 600; font-size: 12px; color: var(--ink-3); }
+.cd-pill.is-flat { box-shadow: none; background: var(--chalk-2); backdrop-filter: none; }
+.cd-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px 0 6px; border-radius: var(--r-pill); background: var(--chalk-2); font: 700 13px/1 var(--font-ui); }
+
+/* ---- Ring: a goal or a share as a circle that fills ---- */
+.cd-ring { --d: 96px; --v: 0.5; --col: var(--pine); --w: 7px; position: relative; flex: none; display: inline-grid; place-items: center; width: var(--d); height: var(--d); border-radius: var(--r-pill);
+  background: conic-gradient(var(--col) calc(var(--v) * 1turn), var(--chalk-3) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--w)), #000 calc(100% - var(--w) + 0.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - var(--w)), #000 calc(100% - var(--w) + 0.5px)); }
+.cd-ringbox { position: relative; display: inline-grid; place-items: center; }
+.cd-ringbox > .cd-ring { grid-area: 1 / 1; }
+.cd-ringbox > .cd-ring__in { grid-area: 1 / 1; display: grid; place-items: center; text-align: center; }
+.cd-ring__tick { position: absolute; left: 50%; top: 0; width: 2px; height: 50%; margin-left: -1px; transform-origin: 50% 100%; transform: rotate(calc(var(--at) * 1turn)); }
+.cd-ring__tick::before { content: ""; position: absolute; left: -2px; top: -3px; width: 6px; height: 14px; border-radius: 3px; background: var(--medal-gold); box-shadow: 0 0 0 2px var(--chalk); }
+.cd-ring__tick.is-silver::before { background: var(--medal-silver); }
+.cd-ring.is-done { --col: var(--pine); }
+
+/* ---- Buttons ---- */
+.cd-btn { appearance: none; border: 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0 22px; border-radius: var(--r-pill); font: 700 15px/1 var(--font-ui); color: var(--ink); background: var(--chalk-2); cursor: pointer; transition: transform var(--quick) var(--spring); }
+.cd-btn:hover { background: var(--chalk-3); }
+.cd-btn.is-primary { color: var(--chalk); background: var(--ink); }
+.cd-btn.is-primary:hover { background: #2c3831; }
+.cd-btn.is-danger { color: var(--rust); background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
+.cd-btn.is-ghost { background: transparent; box-shadow: inset 0 0 0 1.5px var(--chalk-3); }
+.cd-btn.is-lg { height: 56px; padding: 0 30px; font-size: 17px; }
+.cd-btn.is-sm { height: 32px; padding: 0 14px; font-size: 13px; }
+.cd-btn.is-icon { width: 44px; padding: 0; }
+.cd-btn.is-on { color: var(--chalk); background: var(--ink); }
+.cd-btn:focus-visible, .cd-tile:focus-visible, .cd-seg button:focus-visible { outline: 3px solid var(--ochre); outline-offset: 3px; }
+
+/* ---- Segmented control: speed, tabs, ranges ---- */
+.cd-seg { display: inline-flex; padding: 4px; gap: 2px; border-radius: var(--r-pill); background: var(--chalk-2); }
+.cd-seg button { appearance: none; border: 0; height: 34px; min-width: 40px; padding: 0 14px; border-radius: var(--r-pill); background: transparent; font: 700 13px/1 var(--font-ui); color: var(--ink-2); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.cd-seg button.is-on { background: var(--chalk); color: var(--ink); box-shadow: 0 1px 3px rgba(20, 30, 25, 0.18); }
+
+/* ---- Tile: a building in the dock ---- */
+.cd-tile { appearance: none; border: 0; position: relative; display: inline-flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; width: 96px; height: 104px; padding: 8px 6px 10px; border-radius: var(--r-tile); background: var(--chalk); box-shadow: var(--rest); color: var(--ink); font: 700 13px/1 var(--font-ui); cursor: pointer; transition: transform var(--quick) var(--spring); }
+.cd-tile .cd-i { --s: 52px; }
+.cd-tile:hover { transform: translateY(-4px); }
+.cd-tile.is-on { background: var(--ink); color: var(--chalk); transform: translateY(-6px); }
+.cd-tile.is-on .cd-tile__cost { color: #b9c2bb; }
+.cd-tile.is-poor { color: var(--ink-3); } .cd-tile.is-poor .cd-i { opacity: 0.4; filter: grayscale(1); } .cd-tile.is-poor .cd-tile__cost { color: var(--rust); }
+.cd-tile__cost { font: 600 12px/1 var(--font-ui); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.cd-tile__key { position: absolute; top: 6px; left: 6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 6px; display: grid; place-items: center; font: 800 11px/1 var(--font-ui); color: var(--ink-2); background: var(--chalk-2); }
+.cd-tile.is-on .cd-tile__key { background: #36423b; color: var(--chalk); }
+.cd-tile__dot { position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; border-radius: 99px; background: var(--ochre); }
+
+/* ---- Rows ---- */
+.cd-row { display: flex; align-items: baseline; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--chalk-3); }
+.cd-row > span { color: var(--ink-2); }
+.cd-row > i { flex: 1; }
+.cd-row > b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.cd-row:last-child { border-bottom: 0; }
+
+/* ---- Status: a shape plus a word ---- */
+.cd-status { --col: var(--status-ok); display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 12px 0 10px; border-radius: var(--r-pill); font: 700 13px/1 var(--font-ui); color: var(--ink); background: color-mix(in srgb, var(--col) 16%, var(--chalk)); }
+.cd-status::before { content: ""; width: 10px; height: 10px; background: var(--col); border-radius: 99px; }
+.cd-status.is-wait { --col: var(--status-wait); } .cd-status.is-wait::before { border-radius: 10px 10px 0 0; height: 5px; margin-top: 5px; }
+.cd-status.is-blocked { --col: var(--status-blocked); } .cd-status.is-blocked::before { border-radius: 2px; }
+.cd-status.is-nopower { --col: var(--status-nopower); } .cd-status.is-nopower::before { border-radius: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.cd-status.is-dry { --col: var(--status-dry); } .cd-status.is-dry::before { border-radius: 50% 0 50% 50%; transform: rotate(-45deg); }
+.cd-status.is-unreachable { --col: var(--status-unreachable); } .cd-status.is-unreachable::before { background: transparent; box-shadow: inset 0 0 0 2.5px var(--col); }
+
+/* ---- Key ---- */
+.cd-key { display: inline-grid; place-items: center; min-width: 26px; height: 26px; padding: 0 8px; border-radius: 8px; font: 800 12px/1 var(--font-ui); color: var(--ink); background: var(--chalk); box-shadow: inset 0 0 0 1.5px var(--chalk-3), 0 2px 0 var(--chalk-3); }
+
+/* ---- Callout: a label in the world, tied to its building by a leader ---- */
+.cd-callout { --col: var(--ink); position: absolute; display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: var(--r-pill); background: var(--chalk); box-shadow: 0 6px 16px rgba(20, 30, 25, 0.28); font: 700 13px/1 var(--font-ui); white-space: nowrap; }
+.cd-callout .cd-i { --s: 26px; }
+.cd-callout small { font: 600 12px/1 var(--font-ui); color: var(--ink-3); }
+.cd-callout::after { content: ""; position: absolute; left: var(--tail, 50%); top: 100%; width: 2px; height: var(--lead, 26px); margin-left: -1px; background: var(--chalk); box-shadow: 0 2px 4px rgba(20, 30, 25, 0.25); }
+.cd-callout::before { content: ""; position: absolute; left: var(--tail, 50%); top: calc(100% + var(--lead, 26px) - 4px); width: 8px; height: 8px; margin-left: -4px; border-radius: 99px; background: var(--chalk); box-shadow: 0 0 0 2px var(--col); }
+.cd-callout.is-alert { --col: var(--rust); color: var(--chalk); background: var(--rust); } .cd-callout.is-alert small { color: #f1d3ca; }
+.cd-callout.is-alert::after { background: var(--rust); } .cd-callout.is-alert::before { background: var(--rust); box-shadow: 0 0 0 2px var(--chalk); }
+.cd-callout.is-ink { color: var(--chalk); background: var(--ink); } .cd-callout.is-ink::after { background: var(--ink); } .cd-callout.is-ink::before { background: var(--ink); box-shadow: 0 0 0 2px var(--chalk); }
+
+/* ---- Bar: a soft progress bar ---- */
+.cd-bar { --v: 0.5; --col: var(--pine); position: relative; height: 8px; border-radius: 99px; background: var(--chalk-3); overflow: visible; }
+.cd-bar > i { position: absolute; inset: 0 auto 0 0; width: calc(var(--v) * 100%); border-radius: inherit; background: var(--col); }
+.cd-bar__mark { position: absolute; top: -4px; bottom: -4px; width: 3px; border-radius: 2px; background: var(--medal-gold); box-shadow: 0 0 0 2px var(--chalk); }
+.cd-bar__mark.is-silver { background: var(--medal-silver); }
+
+/* ---- Medal ---- */
+.cd-medal { --m: var(--medal-gold); --d: 64px; display: inline-grid; place-items: center; width: var(--d); height: var(--d); border-radius: 99px; background: var(--m); color: #fff; font: 800 calc(var(--d) * 0.32)/1 var(--font-ui); box-shadow: inset 0 0 0 calc(var(--d) * 0.07) color-mix(in srgb, var(--m) 70%, #fff), 0 6px 14px rgba(20, 30, 25, 0.2); }
+.cd-medal.is-silver { --m: var(--medal-silver); } .cd-medal.is-bronze { --m: var(--medal-bronze); }
+.cd-medal.is-none { background: var(--chalk-2); color: var(--ink-3); box-shadow: inset 0 0 0 2px var(--chalk-3); }
+
+/* ---- Charts ---- */
+.cd-chart text { font: 600 12px var(--font-ui); fill: var(--ink-3); }
+.cd-chart .axis { stroke: var(--chalk-3); stroke-width: 1.5; }
+.cd-chart .grid { stroke: var(--chalk-2); stroke-width: 1; }
+
+/* ======== v2 additions ======== */
+
+/* ---- Gauge: a goal as a 270° speedometer arc ---- */
+.cd-gauge { --d: 112px; --v: 0.5; --col: var(--pine); --w: 8px; position: relative; flex: none; display: inline-grid; place-items: center; width: var(--d); height: var(--d); }
+.cd-gauge::before { content: ""; position: absolute; inset: 0; border-radius: 99px;
+  background: conic-gradient(from 225deg, var(--col) 0 calc(var(--v) * 270deg), var(--chalk-3) 0 270deg, transparent 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--w)), #000 calc(100% - var(--w) + 0.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - var(--w)), #000 calc(100% - var(--w) + 0.5px)); }
+.cd-gauge__in { position: relative; text-align: center; margin-top: 6px; }
+.cd-gauge__tick { position: absolute; left: 50%; top: 0; width: 2px; height: 50%; margin-left: -1px; transform-origin: 50% 100%; transform: rotate(calc(-135deg + var(--at) * 270deg)); }
+.cd-gauge__tick::before { content: ""; position: absolute; left: -2px; top: -3px; width: 6px; height: 14px; border-radius: 3px; background: var(--medal-gold); box-shadow: 0 0 0 2px var(--chalk); }
+.cd-gauge__tick.is-silver::before { background: var(--medal-silver); }
+.cd-gauge__foot { position: absolute; bottom: 4px; left: 0; right: 0; text-align: center; font: 700 11px/1 var(--font-ui); color: var(--ink-3); }
+
+/* ---- Dial: the day as a clock face, beside the speed control ---- */
+.cd-dial { --d: 120px; --t: 0.54; position: relative; width: var(--d); height: var(--d); border-radius: 99px; background: var(--chalk); box-shadow: var(--float); }
+.cd-dial__sky { position: absolute; inset: 7px; border-radius: 99px; background: conic-gradient(from 180deg, #2e3d52 0 25%, #c4a36b 25% 30%, #eadfb8 40% 70%, #c4a36b 78% 83.3%, #2e3d52 83.3%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 9px), #000 calc(100% - 8.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 9px), #000 calc(100% - 8.5px)); }
+.cd-dial__sun { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform: rotate(calc(var(--t) * 360deg)); }
+.cd-dial__sun::after { content: ""; position: absolute; left: -9px; top: calc(var(--d) / 2 - 20px); width: 18px; height: 18px; border-radius: 99px; background: var(--ochre); box-shadow: 0 0 0 3px var(--chalk); }
+.cd-dial__face { position: absolute; inset: 22%; display: grid; place-items: center; text-align: center; }
+
+/* ---- Key rows: every control as action + keys ---- */
+.cd-keyrows { display: grid; gap: 2px; }
+.cd-keyrow { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--chalk-2); font-size: 14px; }
+.cd-keyrow > span:first-child { flex: 1; color: var(--ink-2); }
+.cd-keyrow .cd-key + .cd-key { margin-left: -4px; }
+
+/* ---- Toggle chip: a good to drop or pick up, on or off ---- */
+.cd-gtoggle { appearance: none; border: 0; display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--chalk-2); box-shadow: inset 0 0 0 1.5px transparent; cursor: pointer; }
+.cd-gtoggle .cd-i { --s: 26px; opacity: 0.35; filter: grayscale(1); }
+.cd-gtoggle[aria-pressed="true"] { background: var(--chalk); box-shadow: inset 0 0 0 2px var(--ink); }
+.cd-gtoggle[aria-pressed="true"] .cd-i { opacity: 1; filter: none; }
+.cd-gtoggle.is-sm { width: 32px; height: 32px; border-radius: 10px; } .cd-gtoggle.is-sm .cd-i { --s: 20px; }
+
+/* ---- Receipt: what reached the depot ---- */
+.cd-receipt { position: relative; padding: 22px 22px 26px; background: var(--chalk); border-radius: 6px 6px 0 0; box-shadow: var(--float); font-variant-numeric: tabular-nums;
+  -webkit-mask: radial-gradient(circle 7px at 10px 100%, transparent 98%, #000) -10px 0 / 20px 100% repeat-x; mask: radial-gradient(circle 7px at 10px 100%, transparent 98%, #000) -10px 0 / 20px 100% repeat-x; }
+.cd-receipt__row { display: grid; grid-template-columns: 26px 1fr auto auto; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px dashed var(--chalk-3); font-size: 14px; }
+.cd-receipt__row .cd-i { --s: 24px; }
+.cd-receipt__row b { font-weight: 700; text-align: right; min-width: 64px; }
+.cd-receipt__total { display: flex; justify-content: space-between; padding-top: 10px; font: 700 16px/1 var(--font-ui); }
+
+/* ---- Forecast: sun and wind as simple bars by hour ---- */
+.cd-forecast { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; align-items: end; }
+.cd-forecast__h { display: grid; gap: 4px; justify-items: center; font: 600 11px/1 var(--font-ui); color: var(--ink-3); }
+.cd-forecast__bars { display: flex; gap: 3px; align-items: flex-end; height: 56px; }
+.cd-forecast__bars i { display: block; width: 9px; border-radius: 3px 3px 1px 1px; }
+.cd-forecast__bars .sun { background: var(--ochre); } .cd-forecast__bars .wind { background: var(--tide); }
+.cd-forecast__h.is-night .cd-forecast__bars { background: linear-gradient(transparent, color-mix(in srgb, #2e3d52 18%, transparent)); border-radius: 4px; }
+.cd-forecast__h.is-now { color: var(--ink); }
+
+/* ---- Toast: a short message at the bottom of the screen ---- */
+.cd-toast { --col: var(--ink); display: inline-flex; align-items: center; gap: 10px; height: 44px; padding: 0 18px 0 8px; border-radius: 99px; background: var(--ink); color: var(--chalk); box-shadow: var(--float); font: 600 14px/1 var(--font-ui); }
+.cd-toast .cd-i { --s: 28px; }
+.cd-toast small { font-weight: 500; color: #b9c2bb; }
+.cd-toast.is-bad { background: var(--rust); } .cd-toast.is-bad small { color: #f1d3ca; }
+
+/* ---- Sheet: a full-screen panel over the blurred world ---- */
+.cd-sheet { position: absolute; inset: 56px 80px; padding: 40px 48px; border-radius: 28px; background: color-mix(in srgb, var(--chalk) 97%, transparent); box-shadow: var(--float); overflow: hidden; }
+.cd-sheet__head { display: flex; align-items: flex-end; gap: 24px; margin-bottom: 28px; }
+.cd-sheet__head .cd-display { font-size: 52px; }
+
+/* ======== final additions ======== */
+
+/* ---- Panel button: opens a panel (Ledger, Routes, Power, Guide). No key shown: keys live in the controls list. ---- */
+.cd-panelbtn { appearance: none; border: 0; display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px 0 14px; border-radius: 99px; background: var(--chalk); box-shadow: var(--float); font: 700 13px/1 var(--font-ui); color: var(--ink); cursor: pointer; }
+.cd-panelbtn .cd-i { --s: 20px; }
+.cd-panelbtn.is-on { background: var(--ink); color: var(--chalk); }
+
+/* ---- View bar: the map overlays as icon-and-word pills ---- */
+.cd-viewbar { display: inline-flex; align-items: center; gap: 2px; padding: 6px; border-radius: 99px; background: color-mix(in srgb, var(--chalk) 94%, transparent); backdrop-filter: blur(14px); box-shadow: var(--float); }
+.cd-viewbar button { appearance: none; border: 0; display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px 0 8px; border-radius: 99px; background: transparent; font: 700 13px/1 var(--font-ui); color: var(--ink-2); cursor: pointer; }
+.cd-viewbar button .cd-i { --s: 22px; }
+.cd-viewbar button.is-off { padding: 0 12px; }
+.cd-viewbar button.is-on { background: var(--ink); color: var(--chalk); }
+
+/* ---- Problems strip (experimental, opt-in): a shape per problem on the right edge; hover opens it ---- */
+.cd-pstrip { position: absolute; right: 16px; width: 44px; padding: 10px 0 12px; border-radius: 99px; display: flex; flex-direction: column; align-items: center; gap: 12px; background: color-mix(in srgb, var(--chalk) 94%, transparent); backdrop-filter: blur(14px); box-shadow: var(--float); }
+.cd-pstrip__n { width: 28px; height: 28px; border-radius: 99px; display: grid; place-items: center; background: var(--ink); color: var(--chalk); font: 800 13px/1 var(--font-ui); }
+.cd-pstrip__it { --col: var(--status-ok); appearance: none; border: 0; padding: 0; width: 28px; height: 28px; border-radius: 99px; display: grid; place-items: center; background: color-mix(in srgb, var(--col) 18%, var(--chalk)); cursor: pointer; }
+.cd-pstrip__it i { display: block; width: 12px; height: 12px; border-radius: 99px; background: var(--col); }
+.cd-pstrip__it.is-wait { --col: var(--status-wait); } .cd-pstrip__it.is-wait i { height: 6px; margin-top: 6px; border-radius: 12px 12px 0 0; }
+.cd-pstrip__it.is-blocked { --col: var(--status-blocked); } .cd-pstrip__it.is-blocked i { border-radius: 2px; }
+.cd-pstrip__it.is-nopower { --col: var(--status-nopower); } .cd-pstrip__it.is-nopower i { border-radius: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.cd-pstrip__it.is-dry { --col: var(--status-dry); } .cd-pstrip__it.is-dry i { border-radius: 50% 0 50% 50%; transform: rotate(-45deg); }
+.cd-pstrip__it.is-unreachable { --col: var(--status-unreachable); } .cd-pstrip__it.is-unreachable i { background: transparent; box-shadow: inset 0 0 0 2.5px var(--col); }
+.cd-pstrip__it:hover, .cd-pstrip__it.is-hover { box-shadow: 0 0 0 2px var(--ink); }
+.cd-pstrip__pop { position: absolute; right: 52px; width: 300px; padding: 12px 14px; border-radius: 16px; background: var(--chalk); box-shadow: var(--float); font-size: 14px; }
