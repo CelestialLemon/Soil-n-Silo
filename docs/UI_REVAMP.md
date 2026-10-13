@@ -1,12 +1,72 @@
-# Soil n Silo — UI revamp: requirements and three directions
+# Soil n Silo — UI revamp: requirements and design directions
 
 Oct 13, 2026
 
 The HUD and menus in `src/ui/` were built for the proof of concept. This document lists what the UI has to do today
-(gathered from `src/ui/*.ts`, `src/main.ts` and `DESIGN.md`), then points to three complete design directions, each a
-design system plus every screen at 1920 × 1080, and a matrix for mixing parts of one into another.
+(gathered from `src/ui/*.ts`, `src/main.ts` and `DESIGN.md`) and points to complete design directions, each a design
+system plus every screen at 1920 × 1080, with a matrix for mixing parts of one into another.
 
-## The designs
+## Round 2: Ironbloom, Clearday, Glasshouse
+
+Round 1 (below) read as a website, a dashboard or old software, and a textured hand-made draft that followed it read as a
+children's game. Round 2 answers that with game UI in the spirit of **Frostpunk** (structure, gravity) and **Terra Nil**
+(stylised, clean, never childish), balanced density, no textures, and the illustrated icon set drawn three ways.
+
+| Direction | Design system | Screens (9 artboards) |
+| --- | --- | --- |
+| **Ironbloom**: Frostpunk's structure for a valley that grows back. Opaque soot panels, brass hairlines, cut corners, engraved small caps, one warm sun accent; icons with dark outlines in bone roundels. Grave, exact, warm. | [Ironbloom system](https://claude.ai/artifact/9WNHgDSL7YCRa7eNPp6TPu) | [Ironbloom screens](https://claude.ai/artifact/WeZ2PefdWuMGJse5NXQCpC) |
+| **Clearday**: open daylight, close to Terra Nil in spirit. Frosted chalk cards, Manrope with light figures, muted mineral colours, goal rings, information standing in the world on callouts; flat icons with no outline. Airy, calm, adult. | [Clearday system](https://claude.ai/artifact/7BMUHmCvycXaLDhWD1G8BL) | [Clearday screens](https://claude.ai/artifact/RpSYfqvNqVviFVAeh3UgFW) |
+| **Glasshouse**: a solarpunk glasshouse. Bottle-green blurred glass, gilt hairlines, arched panes, Cormorant Garamond and Jost, a sun arc across the top of the screen, a radial build wheel at the pointer; icons with glowing gilt edges in glass lenses. Elegant, ceremonial. | [Glasshouse system](https://claude.ai/artifact/Ca2HGCozUHkYNXzd852vjQ) | [Glasshouse screens](https://claude.ai/artifact/UZQ3vULZ54XMEc1KYP34K9) |
+
+Each is built like round 1 (tokens, brand book, plain CSS components with previews; screens built from those classes over
+real captures of the game). Every screen also proposes something the game does not compute today; the list is below.
+
+### Mix and match, round 2
+
+| Facet | Ironbloom | Clearday | Glasshouse |
+| --- | --- | --- | --- |
+| Look | Opaque soot, brass hairline, chamfers, vignette | Frosted chalk, 22 px corners, soft float shadow | Blurred green glass, gilt double hairline, arches |
+| Type | Spectral SC + Spectral + Barlow Semi Condensed | Manrope (300 figures, 800 labels) | Cormorant Garamond + Jost |
+| Icons | Outlined, on bone roundels | Flat, muted, no outline | Gilt-edged with a glow, in glass lenses |
+| HUD layout (3) | Full-width top strip, day medallion hanging from it, build bar at the bottom | Corners only: commission card, readouts, dock; the middle stays the world's | Sun arc across the top, commission under its crown, side arches |
+| Time of day | A medallion: day/night ring and a hand | A day bar with the sun on it | The sun moving along a real arc over the screen |
+| Goals | Segmented meter with gold/silver marks; "done by" | Rings with gold/silver pace ticks; "done by" on an ink chip | Thin bar under the commission name; "done by" |
+| Problems | Dispatches with a countdown; the pressure line | Notices that fold to rings; red callouts on the map | Glass alert pills with a countdown |
+| Build flow | Bottom bar: category tabs and slots | Dock: category segments and tiles; the bottleneck's building dotted | **Radial wheel at the pointer** (hold B); slim hotkey bar |
+| Placement feedback | Forecast panel on the ghost | Ink forecast card standing on the ghost | The wheel's hub forecasts the hovered building here |
+| Inspector (4) | Right drawer, engraved tabs; **lineage** open | Side card plus callouts on the neighbours; **history** open | Arched pane; the recipe as a circle; **workings** open |
+| Routes (5) | Loop diagram with drive times and stop shares | Lines on the land with flow labels; editor in a side card | **Route clock**: arc length is time, trucks as dots |
+| Production (6) | Burn-up vs pace; closed loops; power by source | **Valley health** and a soil forecast | Radial 24-hour power chart; where the watts go |
+| Status cue | Diamond + word + colour edge | Shape per status (circle, half, square, triangle, drop, ring) | Glowing shape per status |
+| Motion | Panels slide; meters light segment by segment; nothing bounces | Cards and callouts grow from their anchor with a spring | Panes and the wheel bloom from their centre; the sun drifts |
+
+### New information these designs ask the game to compute
+
+All are read-only numbers from the simulation (pure functions in `src/game/`, no DOM), in addition to round 1's list:
+
+- **Projections**: "done by" at the current rate; the medal it lands; where soil will end; when a goal line is crossed.
+- **Pressure line / upcoming events**: over the next 36 game hours, dusk and sunrise, when batteries run dry (and the
+  shortfall in W), when a store fills, when soil under a group of fields reaches the goal line, the next round number of
+  goods.
+- **Bottleneck and what-if**: the chain for each goal per minute, its slowest input, and the effect of one more of that
+  building (new rate, new "done by").
+- **Placement forecast**: for the building in hand at the pointer, its output, the soil change under it over 10 minutes,
+  its nearest taker, sprinkler cover, and the effect on the goal good.
+- **Tonight's power budget**: stored charge through the night from the weather curves, the time it runs out, the bread
+  that costs, and costed ways through (a digester, a battery, resting a machine).
+- **Lineage and lead time**: for a product, where one unit comes from and how long each link takes (grow, process, drive,
+  wait), and the slowest link.
+- **Waits and losses**: per building, its waits ranked by cause and the goods lost to each cause today.
+- **Routes**: loop time, how often a truck reaches each stop, each stop's share of the loop, truck spacing and bunching,
+  idle share, goods per loop.
+- **Closed loops**: for each byproduct (bran, manure, seed cake), the share reused, sold and wasted.
+- **Valley health**: soil (with trend by area), trees planted and grown, pollination cover; a soil forecast.
+- **Power by source** over the last day, and where the watts go by building.
+- **Run story**: milestones the game records (first of each good, first short night, a loop closed, a truck bought,
+  round numbers), and what held the run back longest, for the results screen.
+- **Commission previews**: a difficulty fingerprint, day length and wind, and a small abstract map from the seed.
+
+## Round 1 (superseded)
 
 | Direction | Design system | Screens (9 artboards) |
 | --- | --- | --- |
@@ -88,7 +148,7 @@ The artifacts are private until shared from their Share menu.
 - **Architecture**: game rules stay in `src/game/` with no DOM; the UI reads state and calls the rules in
   `build.ts`. Several proposals need new read-only numbers from the simulation (below).
 
-## Mix and match
+## Mix and match, round 1
 
 Every row is independent: a layout, a visualisation or a flow from one column can be built in another column's look.
 Screen numbers refer to the artboards (1 menu, 2 briefing, 3 play, 4 inspector, 5 routes, 6 production, 7 guide,
@@ -123,7 +183,7 @@ Screen numbers refer to the artboards (1 menu, 2 briefing, 3 play, 4 inspector, 
 
 These appear in the designs and need a decision before they are built:
 
-- **Keys**: Riso adds B (hold) for the build wheel. Canopy uses 1–9 for dock slots and moves speed to `[` and `]`.
+- **Keys**: Riso and Glasshouse add B (hold) for the build wheel; Glasshouse also opens it on a right-drag. Canopy uses 1–9 for dock slots and moves speed to `[` and `]`.
   Switchboard uses `[` and `]` to fold the docks and A to acknowledge an alert.
 - **Settings**: Interface size (all three); sheet motion or glass clarity (Riso, Canopy); night theme following the sun,
   dock layout and steady alarm lamps (Switchboard).
