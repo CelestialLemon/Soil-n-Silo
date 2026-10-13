@@ -72,7 +72,7 @@ function startNew(id: string) {
   location.href = location.pathname;
 }
 
-if (startSc) startNew(startSc.id);
+if (startId && startSc) startNew(startId);
 else if (!saved || params.has('menu')) {
   loading.remove();
   showMenu(document.body, {
