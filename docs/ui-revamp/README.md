@@ -11,7 +11,8 @@ itself lives where the code will use it, in [`src/ui/clearday/`](../../src/ui/cl
 
 ## Picking up the work
 
-1. Read the principles below and the system's [`README.md`](../../src/ui/clearday/README.md).
+1. Read the principles below, the [implementation review checklist](#implementation-review-checklist), and the system's
+   [`README.md`](../../src/ui/clearday/README.md).
 2. Open a mockup in a browser (`docs/ui-revamp/mockups/*.html`, straight from disk, no server needed). Each is a static
    1920 × 1080 page built only from the Clearday classes over a real capture of the game; read its markup for the classes a
    screen uses. `screens/*.webp` are the same pages rendered.
@@ -96,6 +97,25 @@ play time and its axes say "5 min ago … now" or `8:00` of play, never a time o
   second of a building, the goal reached), the goal good's curve, the depot receipt per good, and *What made the difference*:
   the longest waits, nights short and their cost, truck idle share. A "next time" line is allowed here and only here.
 - **Level select.** Each commission's sun, wind and soil against a normal valley, from its seed.
+
+## Implementation review checklist
+
+These five points came from the [local Codex review of PR #23](https://github.com/CelestialLemon/Soil-n-Silo/pull/23#pullrequestreview-5508089471).
+The specification and mockups now reflect them; verify them in the real UI as each screen is implemented. They are
+implementation checks, not requests for further mockup revisions. This checklist goes with the rest of this folder during
+the revamp cleanup.
+
+- **Soil goals use soil health.** Compare the goal with `soilHealth()` from `src/game/sim.ts`, including the trees' adjustment
+  (capped at ±10). Show raw field fertility separately; an average fertility above the goal does not guarantee it is met.
+- **Power includes every generator.** Include digesters in source charts, legends and totals alongside solar and wind,
+  following `makes()` in `src/game/sim.ts`. Check a digester-only network; account for battery discharge separately.
+- **Route arrivals are measured per stop.** Use observed arrival gaps over the last 10 minutes, with the unavailable states
+  specified above. Check routes without trucks and skipped or unreachable stops, as well as charging detours, queues and
+  crawling trucks. A route-wide loop time divided by truck count does not describe service at every stop.
+- **Pollination adds to harvest yield.** A hive adds one good per harvest of a flowering crop, not a fixed percentage or a
+  growth-speed bonus. Use `CROPS` in `src/game/data.ts` and the field simulation when displaying yields and rates.
+- **The guide explains both transport methods.** Show direct transfers across a shared edge as well as truck routes between
+  eligible buildings. Keep delivery to the depot truck-only, and check the guide against a layout fed by neighbours.
 
 ## Requirements the new UI must keep
 
