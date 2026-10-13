@@ -93,10 +93,12 @@ minute against full speed; generators and batteries chart their watts or charge.
   `src/ui/clearday/`, the screens, mockups, decisions and the new numbers the game must compute in
   [`ui-revamp/`](ui-revamp/README.md). Adds a Power panel, a routes side card with timing, a guide page per building with its
   chain, a ledger with valley health, and results with the run's milestones.
-- A **trouble list** built on the building history: buildings that spent much of the last few minutes not working (say below
-  70%), worst first, with their main cause ("Mill · 45% · waiting for wheat"); clicking one selects it and moves the camera to
-  it. Perhaps grouped by cause ("3 buildings waiting for wheat" points at one fix upstream), and a gentle nudge when a building
-  has been stuck for a while.
+- The **problems strip** (experimental, off by default; a setting in the revamp's pause screen, mockup
+  [`ui-revamp/mockups/play-problems.html`](ui-revamp/mockups/play-problems.html)). Problems are found on the map by default;
+  with the setting on, a strip on the right edge lists them, built on the building history: buildings that spent much of the
+  last few minutes not working (say below 70%), worst first, each with its main cause and for how long ("Mill · 45% · waiting
+  for wheat"); clicking one selects it and moves the camera to it. Perhaps grouped by cause ("3 buildings waiting for wheat").
+  Facts only, no suggested fix. Built with the UI revamp; play it to decide whether it stays.
 
 - Play every campaign commission and tune: target times, prices, crop and machine times, power numbers. Bot layouts for the
   other five commissions in `tools/layouts.ts`, so `npm run sim` checks them all.
