@@ -1,14 +1,14 @@
 /* Clearday components (prefix cd-): plain CSS classes over tokens.css. Icons are in icons.css (generated). See README.md. */
 @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap");
 
-.cd-root { font-family: var(--font-ui); font-size: 16px; line-height: 1.45; font-weight: 500; color: var(--ink); -webkit-font-smoothing: antialiased; }
+.cd-root { font: var(--type-body); color: var(--ink); -webkit-font-smoothing: antialiased; }
 .cd-root *, .cd-root *::before, .cd-root *::after { box-sizing: border-box; }
-.cd-label { font: 800 11px/1 var(--font-ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); }
-.cd-title { margin: 0; font: 700 26px/1.15 var(--font-ui); letter-spacing: -0.01em; }
-.cd-display { margin: 0; font: 300 64px/1 var(--font-ui); letter-spacing: -0.02em; }
-.cd-figure { font: 300 34px/1 var(--font-ui); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.cd-label { font: var(--type-label); letter-spacing: var(--type-label-tracking); text-transform: uppercase; color: var(--ink-3); }
+.cd-title { margin: 0; font: var(--type-title); letter-spacing: var(--type-title-tracking); }
+.cd-display { margin: 0; font: var(--type-display); letter-spacing: var(--type-display-tracking); }
+.cd-figure { font: var(--type-figure); letter-spacing: var(--type-figure-tracking); font-variant-numeric: tabular-nums; }
 .cd-num { font-variant-numeric: tabular-nums; }
-.cd-small { font-size: 13px; line-height: 1.35; color: var(--ink-2); }
+.cd-small { font-size: var(--type-small-size); line-height: var(--type-small-line); color: var(--ink-2); }
 .cd-soft { color: var(--ink-2); } .cd-faint { color: var(--ink-3); }
 .cd-good { color: var(--pine); } .cd-bad { color: var(--rust); } .cd-now { color: var(--ochre); } .cd-info { color: var(--tide); }
 

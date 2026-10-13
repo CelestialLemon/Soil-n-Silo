@@ -132,12 +132,12 @@ body { margin: 0; }
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px 0 12px; border-top: 1px solid var(--chalk-3);">
         <div><div class="cd-label">Loop time</div><div style="margin-top: 8px;"><span style="font: 300 28px/1 var(--font-ui);">3:40</span> <span class="cd-small">a round</span></div></div>
-        <div><div class="cd-label">At each stop</div><div style="margin-top: 8px;"><span style="font: 300 28px/1 var(--font-ui);">1:50</span> <span class="cd-small">a truck every</span></div></div>
+        <div><div class="cd-label">Between trucks</div><div style="margin-top: 8px;"><span style="font: 300 28px/1 var(--font-ui);">1:50</span> <span class="cd-small">at the slowest stop</span></div></div>
       </div>
       <div style="display: grid; gap: 8px; padding-bottom: 12px;">
         <div class="truck"><span class="cd-i cd-i--truck" style="--s: 28px;"></span><b style="font-size: 13px;">Truck 1</b><div class="cd-bar" style="--v: 0.22; --col: var(--ink-3);"><i></i></div><span class="cd-small" style="text-align: right;"><b style="color: var(--ink);">22%</b> idle</span></div>
         <div class="truck"><span class="cd-i cd-i--truck" style="--s: 28px;"></span><b style="font-size: 13px;">Truck 2</b><div class="cd-bar" style="--v: 0.14; --col: var(--ink-3);"><i></i></div><span class="cd-small" style="text-align: right;"><b style="color: var(--ink);">14%</b> idle</span></div>
-        <div class="cd-small" style="color: var(--ink-3);">Idle: time spent waiting at stops, last 10 minutes.</div>
+        <div class="cd-small" style="color: var(--ink-3);">Measured over the last 10 minutes. Between trucks: the average gap between arrivals at the stop that waits longest. Idle: time spent waiting at stops.</div>
       </div>
     </div>
 
@@ -158,7 +158,7 @@ body { margin: 0; }
       </div>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px;">
         <div><div class="cd-label">Loop time</div><div style="margin-top: 6px;"><span style="font: 300 24px/1 var(--font-ui);">4:10</span> <span class="cd-small">a round</span></div></div>
-        <div><div class="cd-label">At each stop</div><div style="margin-top: 6px;"><span style="font: 300 24px/1 var(--font-ui);">4:10</span> <span class="cd-small">a truck every</span></div></div>
+        <div><div class="cd-label">Between trucks</div><div style="margin-top: 6px;"><span style="font: 300 24px/1 var(--font-ui);">4:10</span> <span class="cd-small">at the slowest stop</span></div></div>
       </div>
       <div class="truck" style="margin-top: 12px;"><span class="cd-i cd-i--truck" style="--s: 28px;"></span><b style="font-size: 13px;">Truck 3</b><div class="cd-bar" style="--v: 0.31; --col: var(--ink-3);"><i></i></div><span class="cd-small" style="text-align: right;"><b style="color: var(--ink);">31%</b> idle</span>
 </div>

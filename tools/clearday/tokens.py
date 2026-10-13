@@ -1,4 +1,4 @@
-# Compiles the design tokens (src/ui/clearday/tokens.json) into CSS custom properties and type classes:
+# Compiles the design tokens (src/ui/clearday/tokens.json) into CSS custom properties (colours, shadows, sizes, type):
 #
 #   python3 tools/clearday/tokens.py src/ui/clearday/tokens.json Clearday src/ui/clearday/tokens.css
 import json, re, sys
@@ -26,12 +26,15 @@ for fam, body in d.items():
 for k, s in d['type']['families'].items(): rest.append(f'  --font-{k}: {s};')
 out.append(':root {\n' + '\n'.join(rest) + '\n}')
 def px(x): return f'{x}px' if isinstance(x, (int, float)) and not isinstance(x, bool) else x
+# Type styles become variables, not classes, so the cd- classes in clearday.css read them and nothing generic leaks out:
+# --type-<name> is the font shorthand, and -size, -line, -weight and -tracking are its parts.
+type_vars = []
 for g in d['type']['groups']:
     for s in g['styles']:
-        fam = s.get('family', g['family'])
-        p = [f'font-family: var(--font-{fam})', f'font-size: {px(s["fontSize"])}']
-        if 'lineHeight' in s: p.append(f'line-height: {s["lineHeight"]}')
-        if 'fontWeight' in s: p.append(f'font-weight: {s["fontWeight"]}')
-        if 'letterSpacing' in s: p.append(f'letter-spacing: {s["letterSpacing"]}')
-        out.append(f'.{s["name"]} {{ ' + '; '.join(p) + '; }')
+        n, fam = s['name'], s.get('family', g['family'])
+        size, line, weight = px(s['fontSize']), s.get('lineHeight', 'normal'), s.get('fontWeight', 400)
+        type_vars += [f'  --type-{n}: {weight} {size}/{line} var(--font-{fam});', f'  --type-{n}-size: {size};',
+                      f'  --type-{n}-line: {line};', f'  --type-{n}-weight: {weight};',
+                      f'  --type-{n}-tracking: {s.get("letterSpacing", "normal")};']
+out.append(':root {\n' + '\n'.join(type_vars) + '\n}')
 open(sys.argv[3], 'w').write('\n'.join(out) + '\n')

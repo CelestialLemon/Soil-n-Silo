@@ -40,9 +40,35 @@
   --card: 320ms;
   --font-ui: Manrope, "Segoe UI", sans-serif;
 }
-.display { font-family: var(--font-ui); font-size: 64px; line-height: 1; font-weight: 300; letter-spacing: -0.02em; }
-.title { font-family: var(--font-ui); font-size: 26px; line-height: 1.15; font-weight: 700; letter-spacing: -0.01em; }
-.figure { font-family: var(--font-ui); font-size: 34px; line-height: 1; font-weight: 300; letter-spacing: -0.02em; }
-.body { font-family: var(--font-ui); font-size: 16px; line-height: 1.45; font-weight: 500; }
-.small { font-family: var(--font-ui); font-size: 13px; line-height: 1.35; font-weight: 500; }
-.label { font-family: var(--font-ui); font-size: 11px; line-height: 1; font-weight: 800; letter-spacing: 0.14em; }
+:root {
+  --type-display: 300 64px/1 var(--font-ui);
+  --type-display-size: 64px;
+  --type-display-line: 1;
+  --type-display-weight: 300;
+  --type-display-tracking: -0.02em;
+  --type-title: 700 26px/1.15 var(--font-ui);
+  --type-title-size: 26px;
+  --type-title-line: 1.15;
+  --type-title-weight: 700;
+  --type-title-tracking: -0.01em;
+  --type-figure: 300 34px/1 var(--font-ui);
+  --type-figure-size: 34px;
+  --type-figure-line: 1;
+  --type-figure-weight: 300;
+  --type-figure-tracking: -0.02em;
+  --type-body: 500 16px/1.45 var(--font-ui);
+  --type-body-size: 16px;
+  --type-body-line: 1.45;
+  --type-body-weight: 500;
+  --type-body-tracking: normal;
+  --type-small: 500 13px/1.35 var(--font-ui);
+  --type-small-size: 13px;
+  --type-small-line: 1.35;
+  --type-small-weight: 500;
+  --type-small-tracking: normal;
+  --type-label: 800 11px/1 var(--font-ui);
+  --type-label-size: 11px;
+  --type-label-line: 1;
+  --type-label-weight: 800;
+  --type-label-tracking: 0.14em;
+}

@@ -50,7 +50,7 @@ itself lives where the code will use it, in [`src/ui/clearday/`](../../src/ui/cl
 | Play, problems strip | [play-problems](mockups/play-problems.html) · [png](screens/play-problems.webp) | — | Play plus the experimental strip: a count and one row per problem on the right edge, each opening a popover (status, building, cause, for how long, click to go there). Only with the setting on. |
 | Inspector | [inspect](mockups/inspect.html) · [png](screens/inspect.webp) | inspector in `hud.ts`, `historyView.ts` | A 480 px side card. Header: name, category, size, watts. The recipe as a line of stores (`flour 3/3 + egg 0/3 → bread 2/3`) with the batch timer; status with since when; output a minute. Tabs: **Workings · History · Next door**. History: status ribbon over the last 5 minutes, share of time as a ring, output against full speed, made / delivered / in store, and *What it waits for* ranked as facts. Move, recipe choice, Remove with refund. |
 | Routes | [routes](mockups/routes.html) · [png](screens/routes.webp) | routes panel and route editor | Routes drawn on the land in their colours with numbered stops; a side card listing routes; the open route's stops with drop and pick-up as icon toggles per good and a wait slider; loop time, how often a truck reaches each stop, idle share per truck. Truck tags on the map. |
-| Power panel | [power](mockups/power.html) · [png](screens/power.webp) | — (new) | A sheet: made, used, stored. Power by source over the last 24 hours as a radial chart (an hour a slice, night shaded, short hours marked). Networks table (made, used, stored, short). Tonight: the charge until sunrise, when it runs dry and how short after. Sources over 24 h. Where the watts go, by building. Battery health: when the batteries ran dry each night. |
+| Power panel | [power](mockups/power.html) · [png](screens/power.webp) | — (new) | A sheet: made, used, stored. Power by source over the last 24 hours as a radial chart (an hour a slice, night shaded, short hours marked). Networks table (made, used, stored, short). Tonight: the charge until sunrise, when it runs dry and how short after. Sources over 24 h, digester included. Where the watts go, by building. Battery health: when the batteries ran dry each night. |
 | Ledger | [ledger](mockups/ledger.html) · [png](screens/ledger.webp) | Stats (Tab) | Valley health (soil with trend, trees, pollination cover) and a calm goods table: made, used by your buildings, to the depot, a minute and in all, in stores; credits earned, spent and now. A Power › button opens the Power panel. |
 | Guide | [guide](mockups/guide.html) · [png](screens/guide.webp) | `guide.ts` | Search; topics; an index of buildings (outlined: you have one here). A building page: what it does, recipes, cost, power, size, stores; **Where a loaf comes from**: the chain with the time each link takes; **In your valley now**: every building of this type with its status and rate, *Show ›* to go to it; works with; good to know. |
 | Pause and settings | [pause](mockups/pause.html) · [png](screens/pause.webp) | pause screen in `hud.ts` | Resume; the commission's state; level select and restart (with what restarting loses). Settings: interface size, pixel size, sound, reduce motion, **Show pace** (off), **Problems strip · experimental** (off). The markers legend (shape and word). The keys, as rows: the one place keys are printed. |
@@ -76,15 +76,21 @@ play time and its axes say "5 min ago … now" or `8:00` of play, never a time o
 - **Inspector · History.** Already in `history.ts` (status strip, shares, output against full speed). New: since when the
   current status has held (`egg store empty for 0:14`), made, delivered and in store totals, and *What it waits for*: the
   share of the last 5 minutes spent waiting for each input or short of power, ranked, with a one-line fact for each.
-- **Routes.** Loop time of a route, how often a truck reaches each stop (loop time over trucks), idle share per truck over
+- **Routes.** Loop time of a route; per stop, the observed gap between truck arrivals over the last 10 minutes (not loop
+  time over trucks: trucks skip unreachable stops, go home to charge, queue and crawl), with "no truck in 10 min" for a stop
+  none reached and nothing for a route without trucks; the route card shows its slowest stop's gap. Idle share per truck over
   the last 10 minutes.
-- **Power panel.** Per network: made, used, stored, short. Power by source an hour over the last 24 hours (solar, wind, from
-  batteries, short), and the average watts made and used over it. Use by building, averaged over 24 h and now. Each night's lowest charge and when
+- **Power panel.** Per network: made, used, stored, short. Power by source an hour over the last 24 hours (solar, wind,
+  digester, from batteries, short: every generator in `makes()`), and the average watts made and used over it. Use by building, averaged over 24 h and now. Each night's lowest charge and when
   the batteries ran dry. Tonight's charge until sunrise, the time it runs dry and the shortfall in W, from the weather curves
   (the game knows tonight's weather; showing it here is the "now" view, the full forecast is the weather station's).
 - **Ledger.** Per good a minute (5-minute average) and in all: made, used by buildings, delivered, in stores and trucks;
-  average soil of farmed tiles with its trend; trees grown and planted; fields reached by hives.
+  soil health (`soilHealth()`, the number the soil goal checks) with its trend, shown with its two parts: the fields' average
+  fertility and the trees' nudge (±10 at most); trees grown and planted; flowering fields reached by hives (each harvest of a
+  flowering crop on a reached field gives one more good).
 - **Guide.** *Where it comes from*: a product's chain with the time each link takes at full speed (static, from `data.ts`).
+  Each hop between buildings is "next door or truck": buildings sharing an edge trade directly, otherwise a route carries it;
+  the last hop to the depot is always a truck.
   *In your valley now*: each building of that type, its status and rate.
 - **Results.** Milestones recorded during the run (first of each good, first night short, a truck bought, a loop closed, a
   second of a building, the goal reached), the goal good's curve, the depot receipt per good, and *What made the difference*:
