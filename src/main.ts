@@ -56,7 +56,9 @@ const readPixelSize = (v: string | null) => (PIXEL_SIZES as readonly number[]).f
 
 const saved = deserialize(localStorage.getItem(SAVE_KEY));
 const params = new URLSearchParams(location.search);
+/** A commission to start straight away (`?play=<id>`); an unknown id falls through to the menu or the saved game. */
 const startId = params.get('play');
+const startSc = startId ? scenarioById(startId) : null;
 
 /** Starts a new commission: saves it, then reloads into it (each map builds its own static world). */
 /** Set while the page leaves for a new commission, so the game being left doesn't save over the new one. */
@@ -70,7 +72,7 @@ function startNew(id: string) {
   location.href = location.pathname;
 }
 
-if (startId) startNew(startId);
+if (startId && startSc) startNew(startId);
 else if (!saved || params.has('menu')) {
   loading.remove();
   showMenu(document.body, {
