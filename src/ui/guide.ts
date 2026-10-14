@@ -210,7 +210,6 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
   const index = h('div', { class: 'guide-index' });
   const body = h('div', { class: 'guide-page' });
   let page = start, query = '';
-  const same = (a: GuidePage, b: GuidePage) => a.kind === b.kind && ('id' in a ? a.id : '') === ('id' in b ? b.id : '');
   const go = (p: GuidePage) => { page = p; query = ''; search.value = ''; draw(); body.scrollTop = 0; };
   const link = (label: string | Node, p: GuidePage) => h('button', { class: 'link', onclick: () => go(p) }, label);
   const bLink = (id: BuildingId) => link(BUILDINGS[id].name, { kind: 'building', id });

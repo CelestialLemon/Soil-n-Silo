@@ -1,8 +1,7 @@
-import { BUILDINGS, ITEMS, type ItemId } from '../game/data.ts';
 import type { Goal } from '../game/scenarios.ts';
 import { goalDone, ratePerMin, soilHealth, type Medal } from '../game/sim.ts';
 import type { Building, GameState, Status } from '../game/state.ts';
-import { h, icon } from './dom.ts';
+import { h } from './dom.ts';
 import { dec, itemName, pct, playTime } from './format.ts';
 
 // Small pieces of the Clearday system the screens share: gauges and rings, status pills (a shape, a word and a tint, never
@@ -87,9 +86,6 @@ export const MEDAL_NAME: Record<Medal, string> = { gold: 'Gold', silver: 'Silver
 export const medal = (m: Medal | null, d?: number) =>
   h('span', { class: `cd-medal${m === 'silver' ? ' is-silver' : m === 'bronze' ? ' is-bronze' : m === null ? ' is-none' : ''}`, style: d ? `--d: ${d}px; font-size: ${Math.round(d * 0.36)}px` : undefined }, m ? m[0].toUpperCase() : '–');
 
-/** A good as a chip: its icon and some words. */
-export const goodChip = (item: ItemId, text: string = itemName(item), cls = '') => h('span', { class: `cd-chip${cls ? ` ${cls}` : ''}` }, icon(item, 20), text);
-
 /** The icon of what a goal asks for. */
 export const goalIcon = (g: Goal) => (g.kind === 'soil' ? 'soil' : g.item);
 
@@ -123,6 +119,3 @@ export const medalTimes = (par: number) => [
   h('span', null, h('i', { class: 'dot', style: 'background: var(--medal-silver)' }), `silver ${playTime(par * 1.5)}`),
 ];
 
-export const buildingIcon = (b: { type: Building['type'] }, size?: number) => icon(b.type, size);
-export const itemPrice = (i: ItemId) => ITEMS[i].price;
-export const isBuilding = (id: string): id is Building['type'] => id in BUILDINGS;

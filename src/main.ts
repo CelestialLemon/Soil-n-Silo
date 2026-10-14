@@ -3,14 +3,13 @@ import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObjec
 import { addStop, canPlace, place, remove, removeAt } from './game/build.ts';
 import { BUILDINGS, POWER, type BuildingId } from './game/data.ts';
 import { TERRAIN } from './game/map.ts';
-import { networkOf, POWERED, pylonsInLink } from './game/power.ts';
 import { deserialize, readProgress, recordResult, saveKey, serialize } from './game/save.ts';
 import { scenarioById } from './game/scenarios.ts';
 import {
-  advance, cargoText, describeLinks, describeStatus, describeTruck, fieldFertility, hourAt, isStop, linksAt, linksOf, medalFor, routeOf, routesAt,
+  advance, cargoText, describeStatus, describeTruck, fieldFertility, hourAt, isStop, linksAt, linksOf, medalFor, routeOf, routesAt,
 } from './game/sim.ts';
 import {
-  buildingAt, buildingById, inMap, newGame, reachTo, routeById, sizeOf, terrainAt, truckById, type Dir, type GameState, type Route,
+  buildingAt, buildingById, inMap, newGame, routeById, sizeOf, terrainAt, truckById, type Dir, type GameState, type Route,
 } from './game/state.ts';
 import { Hud, type Tool } from './ui/hud.ts';
 import { showMenu } from './ui/menu.ts';
@@ -23,7 +22,6 @@ import { PowerView } from './world/powerView.ts';
 import { RouteView } from './world/routeView.ts';
 import { buildWorld } from './world/terrain.ts';
 import { WorldView, type Overlay } from './world/view.ts';
-import './ui/style.css';
 import './ui/clearday/tokens.css';
 import './ui/clearday/clearday.css';
 import './ui/clearday/icons.css';
@@ -505,7 +503,7 @@ async function play(initial: GameState) {
     if (e.code === 'KeyW') hud.toggleSheet('power');
     if (e.code === 'KeyO') hud.toggleRoutes();
     if (e.code === 'KeyG') { hud.openGuide(); hud.refresh(); return; }
-    if (e.code === 'KeyV') { const order: Overlay[] = ['none', 'fertility', 'power', 'roads', 'water', 'bees']; overlay = order[(order.indexOf(overlay) + 1) % order.length]; }
+    if (e.code === 'KeyV') { const order: Overlay[] = ['none', 'fertility', 'water', 'power', 'roads', 'bees']; overlay = order[(order.indexOf(overlay) + 1) % order.length]; }
     if (e.code === 'KeyX') setTool(tool.kind === 'remove' ? { kind: 'select' } : { kind: 'remove' });
     if (e.code === 'KeyR' && tool.kind === 'build') { tool = { ...tool, rot: ((tool.rot + (e.shiftKey ? 3 : 1)) % 4) as Dir }; repick = 2; }
     const k = e.code.startsWith('Key') ? e.code.slice(3) : '';

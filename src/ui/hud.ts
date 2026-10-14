@@ -1,43 +1,27 @@
-import { hourLabel } from 'pixel3d-renderer';
-import {
-  addStop, buyTruck, copyRoute, deleteRoute, dumpCargo, moveStop, newRoute, priceOf, remove, removeStop, renameRoute, ROUTE_NAME_MAX, sellTruck,
-  setCrop, setRecipe, setStopGood, setStopWait, setTruckRoute, truckPrice, type Result,
-} from '../game/build.ts';
-import {
-  BUILDINGS, CATEGORIES, CROP_IDS, CROPS, FIELD, GROUP_NAMES, GROUPS, HIVE, ITEM_IDS, ITEMS, POWER, recipesFor, SILO, TRUCK,
-  type BuildingId, type Ingredient, type ItemId,
-} from '../game/data.ts';
-import { hasHistory } from '../game/history.ts';
-import { networkOf, networks, type Network } from '../game/power.ts';
-import {
-  cargoText, dayAt, describeLinks, describeStatus, describeTruck, exposureOf, fieldFertility, fieldPace, flowersNear, givesGoods, goalDone, hourAt, isPollinated,
-  isStop, linksOf, makes, medalFor, ratePerMin, recipeOf, routeOf, routeRate, routesAt, shareOf, soilHealth, stopProblems, sunAt, takesGoods,
-  truckProblems, trucksOn, wants, windAt, type Medal,
-} from '../game/sim.ts';
-import { buildingById, routeById, truckById, type Building, type Dir, type GameState, type Route, type Truck } from '../game/state.ts';
-import { netColour } from '../world/powerView.ts';
-import { routeColour } from '../world/routeView.ts';
-import { NET_COLOURS, ROUTE_COLOURS } from '../world/shapes.ts';
+import type { Result } from '../game/build.ts';
+import type { BuildingId } from '../game/data.ts';
+import type { Medal } from '../game/sim.ts';
+import { buildingById, type Dir, type GameState, type Route } from '../game/state.ts';
 import type { Overlay } from '../world/view.ts';
 import { h, icon } from './dom.ts';
 import { Dock, dockTip } from './dock.ts';
+import { briefing } from './briefing.ts';
 import { guidePanel, type GuidePage } from './guide.ts';
 import { Inspector } from './inspector.ts';
-import { briefing } from './briefing.ts';
 import { ledgerSheet } from './ledger.ts';
 import { pauseScreen } from './pause.ts';
-import { powerSheet } from './powerpanel.ts';
-import { resultsScreen } from './results.ts';
-import { ProblemsStrip } from './problems.ts';
-import { RoutesCard } from './routes.ts';
 import { CommissionCard, TopRight, ViewBar, viewControls, type Panel, type PlayHost } from './playhud.ts';
-import { routeCss, routeGoods, routeProblems, stopsText, stopsKey, trucksDoing, truckName, typingIn } from './routing.ts';
+import { powerSheet } from './powerpanel.ts';
+import { ProblemsStrip } from './problems.ts';
+import { resultsScreen } from './results.ts';
+import { RoutesCard } from './routes.ts';
 import { uiScale, type SettingsStore } from './settings.ts';
 import { WorldLayer } from './world.ts';
 
-// The HUD over the canvas: the commission and its clock, power and weather, the goals, the build bar, what's under the
-// pointer, the inspector for the selected building or truck (or the route being edited), messages, and the modal screens
-// (intro, pause, stats, results, guide). The game state belongs to main.ts; the HUD changes it only through the rules in
+// The HUD over the canvas, on the Clearday system (clearday/, game.css): the commission card, the readouts and the dial, the
+// panel buttons, the view bar, the dock and its messages, the labels and markers tied to the world, a side card (the
+// inspector or the routes), and the sheets over the blurred world (briefing, pause, ledger, power, guide, results). It is
+// scaled as a whole by the interface size. The game state belongs to main.ts; the HUD changes it only through the rules in
 // src/game/.
 
 export type Tool =
@@ -73,18 +57,6 @@ export interface HudHost {
   focus(id: number): void;
 }
 
-const fmtTime = (t: number) => { const m = Math.floor(t / 60), s = Math.floor(t % 60); return `${m}:${String(s).padStart(2, '0')}`; };
-const watts = (w: number) => `${w >= 100 ? Math.round(w) : w.toFixed(1).replace(/\.0$/, '')} W`;
-const MEDAL_NAME: Record<Medal, string> = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze' };
-
-/** A good's swatch and name. */
-const good = (id: ItemId, n?: number | string) => h('span', { class: 'good' }, h('i', { style: `background:#${ITEMS[id].colour.toString(16).padStart(6, '0')}` }), n !== undefined ? `${n} ` : '', ITEMS[id].name.toLowerCase());
-const ingredient = (ing: Ingredient) => ('item' in ing ? good(ing.item, ing.n) : h('span', { class: 'good' }, `${ing.n} `, GROUP_NAMES[ing.group].split(' (')[0]));
-const button = (label: string | Node, onclick: () => void, o: { disabled?: boolean; primary?: boolean; title?: string; active?: boolean; cls?: string } = {}) =>
-  h('button', { class: [o.primary ? 'primary' : '', o.active ? 'active' : '', o.cls ?? ''].join(' ').trim(), disabled: !!o.disabled, title: o.title, onclick: (e: Event) => { e.stopPropagation(); onclick(); } }, label);
-function set(el: HTMLElement, text: string) { if (el.textContent !== text) el.textContent = text; }
-const bar = () => { const fill = h('div', { class: 'fill' }); return { el: h('div', { class: 'bar' }, fill), set: (k: number) => { fill.style.width = `${Math.max(0, Math.min(1, k)) * 100}%`; } }; };
-const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 /** A screen or panel over the world: `blocking` ones pause the game; `update` redraws a live one a few times a second. */
 interface Modal { name: string; el: HTMLElement; blocking: boolean; update?: () => void }
 
@@ -106,8 +78,6 @@ export class Hud {
   private zoom = 1;
   /** The side card for the selected building or truck. */
   private readonly side: Inspector;
-  /** Silo and depot stops showing every good rather than the route's, by `route:stop`. */
-  private readonly allGoods = new Set<string>();
   /** The sheets and full-screen panels, over the blurred world. */
   private readonly sheets = h('div', { class: 'ui-sheets' });
   private readonly problems: ProblemsStrip;

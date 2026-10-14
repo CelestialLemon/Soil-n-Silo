@@ -26,7 +26,6 @@ export const watts = (w: number) => `${dec(w)} W`;
 export const pct = (k: number) => `${Math.round(k * 100)}%`;
 
 export const itemName = (i: ItemId) => ITEMS[i].name.toLowerCase();
-export const buildingName = (t: BuildingId) => BUILDINGS[t].name;
 /** A building's name in a sentence, lower case. */
 export const lcBuilding = (t: BuildingId) => BUILDINGS[t].name.toLowerCase();
 

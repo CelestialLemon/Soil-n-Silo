@@ -1,4 +1,4 @@
-import { ITEM_IDS, ITEMS, type ItemId } from './data.ts';
+import { ITEMS, type ItemId } from './data.ts';
 import { STAT_BUCKET, STAT_BUCKETS, type GameState } from './state.ts';
 
 // Goods moving through the valley over the last ten minutes, for the ledger: what was made, what buildings used, and what
@@ -79,16 +79,6 @@ export function flowSeries(s: GameState, kind: FlowKind, item: ItemId, window = 
     for (const k of f.buckets) if (k.from >= a - 1e-6 && k.from < b - 1e-6) n += k[kind][item] ?? 0;
     return n / (b - Math.max(a, f.since)) * 60;
   });
-}
-
-/** The goods any bucket over the last `window` seconds saw made, used or delivered. */
-export function goodsMoving(s: GameState, window = FLOW_SECONDS): ItemId[] {
-  const seen = new Set<ItemId>();
-  for (const k of flows(s).buckets) {
-    if (k.from + FLOW_BUCKET <= s.time - window) continue;
-    for (const c of [k.made, k.used, k.delivered]) for (const i of Object.keys(c) as ItemId[]) seen.add(i);
-  }
-  return ITEM_IDS.filter((i) => seen.has(i));
 }
 
 /** How soil health has moved a minute, over the last `window` seconds (null until two samples that far apart). */

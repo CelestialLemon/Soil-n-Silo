@@ -1,4 +1,4 @@
-import { CROPS, ITEM_IDS, ITEMS, TREE_HEALTH, type ItemId } from '../game/data.ts';
+import { CROPS, ITEM_IDS, ITEMS, TREE_HEALTH } from '../game/data.ts';
 import { flowRate, flowSeries, goodsHeld, soilTrend } from '../game/flows.ts';
 import { networks } from '../game/power.ts';
 import { dayAt, fieldFertility, hourAt, isPollinated, soilHealth } from '../game/sim.ts';

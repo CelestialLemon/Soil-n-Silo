@@ -9,14 +9,14 @@ import { truckTime } from '../game/fleet.ts';
 import { hasHistory, heldSince, historyOf, summarize } from '../game/history.ts';
 import { networkOf, networks } from '../game/power.ts';
 import {
-  cargoText, describeLinks, describeStatus, describeTruck, exposureOf, fieldFertility, fieldPace, flowersNear, givesGoods, isPollinated, isStop, linksOf,
+  describeLinks, describeStatus, describeTruck, exposureOf, fieldFertility, fieldPace, flowersNear, givesGoods, isPollinated, isStop, linksOf,
   makes, recipeOf, routeOf, routesAt, shareOf, sunAt, takesGoods, truckProblems, wants, windAt,
 } from '../game/sim.ts';
 import { buildingById, routeById, truckById, type Building, type GameState, type Route, type Truck } from '../game/state.ts';
 import { netColour } from '../world/powerView.ts';
 import { NET_COLOURS } from '../world/shapes.ts';
-import { fill, h, icon, rebuild, set, setVar } from './dom.ts';
-import { dec, hex, itemName, num, pct, playTime, plural, watts } from './format.ts';
+import { h, icon, rebuild, set, setVar } from './dom.ts';
+import { dec, hex, itemName, num, pct, playTime, watts } from './format.ts';
 import type { GuidePage } from './guide.ts';
 import { historyView, makesOf, type HistoryWindow } from './historyView.ts';
 import type { Tool } from './hud.ts';
@@ -41,8 +41,6 @@ export interface InspectorHost {
   /** Opens a route in the routes card. */
   editRoute(r: Route): void;
 }
-
-const lc = (b: Building) => BUILDINGS[b.type].name.toLowerCase();
 
 /** What a building does with power, in a few words, for its header. */
 export function powerWords(type: Building['type']) {
