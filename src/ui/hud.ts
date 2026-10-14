@@ -1,31 +1,27 @@
-import { hourLabel } from 'pixel3d-renderer';
-import {
-  addStop, buyTruck, copyRoute, deleteRoute, dumpCargo, moveStop, newRoute, priceOf, remove, removeStop, renameRoute, ROUTE_NAME_MAX, sellTruck,
-  setCrop, setRecipe, setStopGood, setStopWait, setTruckRoute, truckPrice, type Result,
-} from '../game/build.ts';
-import {
-  BUILDINGS, CATEGORIES, CROP_IDS, CROPS, FIELD, GROUP_NAMES, GROUPS, HIVE, ITEM_IDS, ITEMS, POWER, recipesFor, SILO, TRUCK,
-  type BuildingId, type Ingredient, type ItemId,
-} from '../game/data.ts';
-import { hasHistory } from '../game/history.ts';
-import { networkOf, networks, type Network } from '../game/power.ts';
-import {
-  cargoText, dayAt, describeLinks, describeStatus, describeTruck, exposureOf, fieldFertility, fieldPace, flowersNear, givesGoods, goalDone, hourAt, isPollinated,
-  isStop, linksOf, makes, medalFor, ratePerMin, recipeOf, routeOf, routeRate, routesAt, shareOf, soilHealth, stopProblems, sunAt, takesGoods,
-  truckProblems, trucksOn, wants, windAt, type Medal,
-} from '../game/sim.ts';
-import { buildingById, routeById, truckById, type Building, type Dir, type GameState, type Route, type Truck } from '../game/state.ts';
-import { netColour } from '../world/powerView.ts';
-import { routeColour } from '../world/routeView.ts';
-import { NET_COLOURS, ROUTE_COLOURS } from '../world/shapes.ts';
+import type { Result } from '../game/build.ts';
+import type { BuildingId } from '../game/data.ts';
+import type { Medal } from '../game/sim.ts';
+import { buildingById, type Dir, type GameState, type Route } from '../game/state.ts';
 import type { Overlay } from '../world/view.ts';
-import { h } from './dom.ts';
-import { buildingCard, guidePanel, type GuidePage } from './guide.ts';
-import { historyView, type HistoryWindow } from './historyView.ts';
+import { h, icon } from './dom.ts';
+import { Dock, dockTip } from './dock.ts';
+import { briefing } from './briefing.ts';
+import { guidePanel, type GuidePage } from './guide.ts';
+import { Inspector } from './inspector.ts';
+import { ledgerSheet } from './ledger.ts';
+import { pauseScreen } from './pause.ts';
+import { CommissionCard, TopRight, ViewBar, viewControls, type Panel, type PlayHost } from './playhud.ts';
+import { powerSheet } from './powerpanel.ts';
+import { ProblemsStrip } from './problems.ts';
+import { resultsScreen } from './results.ts';
+import { RoutesCard } from './routes.ts';
+import { uiScale, type SettingsStore } from './settings.ts';
+import { WorldLayer } from './world.ts';
 
-// The HUD over the canvas: the commission and its clock, power and weather, the goals, the build bar, what's under the
-// pointer, the inspector for the selected building or truck (or the route being edited), messages, and the modal screens
-// (intro, pause, stats, results, guide). The game state belongs to main.ts; the HUD changes it only through the rules in
+// The HUD over the canvas, on the Clearday system (clearday/, game.css): the commission card, the readouts and the dial, the
+// panel buttons, the view bar, the dock and its messages, the labels and markers tied to the world, a side card (the
+// inspector or the routes), and the sheets over the blurred world (briefing, pause, ledger, power, guide, results). It is
+// scaled as a whole by the interface size. The game state belongs to main.ts; the HUD changes it only through the rules in
 // src/game/.
 
 export type Tool =
@@ -34,9 +30,6 @@ export type Tool =
   | { kind: 'remove' }
   /** Editing a route: clicking a building adds it as a stop. */
   | { kind: 'route'; route: number };
-
-/** The pixel size setting's choices: screen pixels per art pixel. */
-export const PIXEL_SIZES = [1, 2, 3, 4] as const;
 
 export interface HudHost {
   state(): GameState;
@@ -53,855 +46,240 @@ export interface HudHost {
   turn(d: 1 | -1): void;
   /** +1 zooms in, -1 out. */
   zoom(d: 1 | -1): void;
-  /** Screen pixels per art pixel (a setting). */
-  pixelSize(): number;
-  setPixelSize(n: number): void;
+  settings: SettingsStore;
   menu(): void;
   restart(): void;
+  /** Unpauses the game. */
+  resume(): void;
+  /** Starts another commission. */
+  start(id: string): void;
   /** Draws a route on the map while the pointer is over it in the routes panel (null: none). */
   previewRoute(id: number | null): void;
+  /** Selects a building and moves the camera to it. */
+  focus(id: number): void;
 }
 
-const fmtTime = (t: number) => { const m = Math.floor(t / 60), s = Math.floor(t % 60); return `${m}:${String(s).padStart(2, '0')}`; };
-const watts = (w: number) => `${w >= 100 ? Math.round(w) : w.toFixed(1).replace(/\.0$/, '')} W`;
-const MEDAL_NAME: Record<Medal, string> = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze' };
-
-/** A good's swatch and name. */
-const good = (id: ItemId, n?: number | string) => h('span', { class: 'good' }, h('i', { style: `background:#${ITEMS[id].colour.toString(16).padStart(6, '0')}` }), n !== undefined ? `${n} ` : '', ITEMS[id].name.toLowerCase());
-const ingredient = (ing: Ingredient) => ('item' in ing ? good(ing.item, ing.n) : h('span', { class: 'good' }, `${ing.n} `, GROUP_NAMES[ing.group].split(' (')[0]));
-const button = (label: string | Node, onclick: () => void, o: { disabled?: boolean; primary?: boolean; title?: string; active?: boolean; cls?: string } = {}) =>
-  h('button', { class: [o.primary ? 'primary' : '', o.active ? 'active' : '', o.cls ?? ''].join(' ').trim(), disabled: !!o.disabled, title: o.title, onclick: (e: Event) => { e.stopPropagation(); onclick(); } }, label);
-function set(el: HTMLElement, text: string) { if (el.textContent !== text) el.textContent = text; }
-const bar = () => { const fill = h('div', { class: 'fill' }); return { el: h('div', { class: 'bar' }, fill), set: (k: number) => { fill.style.width = `${Math.max(0, Math.min(1, k)) * 100}%`; } }; };
-const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
-/** A route's colour dot and name. */
-const routeName = (s: GameState, r: Route) => h('span', { class: 'route-name' }, h('i', { class: 'dot', style: `background:${hex(ROUTE_COLOURS[routeColour(s, r)])}` }), r.name);
-const lcName = (b: Building) => BUILDINGS[b.type].name.toLowerCase();
-const goodsList = (items: ItemId[]) => items.map((i) => ITEMS[i].name.toLowerCase()).join(', ');
-
-/** What of a route's stops a panel shows (not the stops' turns, which change all the time). */
-const stopsKey = (r: Route) => r.stops.map((st) => [st.building, st.drop, st.pick, st.wait]);
-/** Whether the caret is in a text box inside `el` (a rebuild would lose it). */
-const typingIn = (el: HTMLElement) => document.activeElement instanceof HTMLInputElement && el.contains(document.activeElement);
-
-/** A route's stops in a few words, runs of one kind together: "Field ×3 → Mill → Freight depot". */
-function stopsText(s: GameState, r: Route): string {
-  const out: { name: string; n: number }[] = [];
-  for (const st of r.stops) {
-    const b = buildingById(s, st.building), name = b ? BUILDINGS[b.type].name : '?', last = out[out.length - 1];
-    if (last?.name === name) last.n++; else out.push({ name, n: 1 });
-  }
-  return out.map((x) => (x.n > 1 ? `${x.name} ×${x.n}` : x.name)).join(' → ');
-}
-
-/** The goods a route picks up anywhere (the goods it moves). */
-function routeGoods(s: GameState, r: Route): ItemId[] {
-  const got = new Set<ItemId>();
-  for (const st of r.stops) {
-    const b = buildingById(s, st.building);
-    if (!b) continue;
-    const gives = b.type === 'silo' ? st.pick : givesGoods(b);
-    for (const i of st.pick) if (gives.includes(i)) got.add(i);
-  }
-  return ITEM_IDS.filter((i) => got.has(i));
-}
-
-/** A truck's name: its number at its garage, and the garage's when there are several. */
-function truckName(s: GameState, t: Truck): string {
-  const n = s.trucks.filter((x) => x.garage === t.garage).indexOf(t) + 1;
-  const garages = s.buildings.filter((b) => b.type === 'garage'), g = garages.findIndex((b) => b.id === t.garage);
-  return garages.length > 1 ? `Truck ${n} of garage ${g + 1}` : `Truck ${n}`;
-}
-
-/** A route's problems, by stop and by truck, in a line each. */
-function routeProblems(s: GameState, r: Route): string[] {
-  const out = stopProblems(s, r).flatMap((p, i) => (p ? [`Stop ${i + 1}: ${p}`] : []));
-  for (const t of trucksOn(s, r)) for (const p of truckProblems(s, t)) out.push(`${truckName(s, t)}: ${p}`);
-  if (r.stops.length && !trucksOn(s, r).length) out.push('No trucks run it.');
-  return out;
-}
-
-/** What a route's trucks are doing, counted: "2 driving · 1 queuing". */
-function trucksDoing(s: GameState, r: Route): string {
-  const n = new Map<string, number>();
-  for (const t of trucksOn(s, r)) {
-    const what = t.phase === 'drive' ? (t.target === t.garage ? 'going to charge' : 'driving') : t.phase === 'dock' ? 'at a stop'
-      : t.phase === 'queue' ? 'queuing' : t.phase === 'stuck' ? 'stuck' : 'charging';
-    n.set(what, (n.get(what) ?? 0) + 1);
-  }
-  return [...n].map(([w, k]) => `${k} ${w}`).join(' · ');
-}
-
-interface Modal { name: string; el: HTMLElement; blocking: boolean }
+/** A screen or panel over the world: `blocking` ones pause the game; `update` redraws a live one a few times a second. */
+interface Modal { name: string; el: HTMLElement; blocking: boolean; update?: () => void }
 
 export class Hud {
   private readonly host: HudHost;
-  private readonly root: HTMLElement;
-  private readonly top = {
-    name: h('b'), clock: h('span'), medal: h('span', { class: 'medal-pace' }), credits: h('b'),
-    day: h('span'), sun: h('span'), wind: h('span'), power: h('span'), battery: bar(),
-  };
-  private readonly speedButtons: HTMLButtonElement[] = [];
-  private readonly overlayButtons = new Map<Overlay, HTMLButtonElement>();
-  private readonly goals = h('div', { class: 'card goals' });
-  private goalRows: { el: HTMLElement; text: HTMLElement; bar: ReturnType<typeof bar> }[] = [];
-  private readonly buildbar = h('div', { class: 'buildbar card' });
-  private category = CATEGORIES[0].id;
-  private buildKey = '';
-  private readonly buildButtons = new Map<BuildingId, HTMLButtonElement>();
-  private readonly info = h('div', { class: 'info' });
-  /** The card about the build button under the pointer, shown in place of `info`. */
-  private readonly tip = h('div', { class: 'card tip' });
-  private tipFor: BuildingId | null = null;
-  private readonly inspector = h('div', { class: 'card inspector' });
-  private inspectKey = '';
-  private inspectUpdate: (() => void) | null = null;
-  /** The inspector history's window, in seconds (kept from building to building). */
-  private historyWindow: HistoryWindow = 300;
+  /** The new interface (Clearday), scaled by the interface size: the world's labels, then the HUD. */
+  private readonly ui = h('div', { class: 'ui cd-root' });
+  readonly world = new WorldLayer();
+  private readonly hud = h('div', { class: 'ui-hud' });
+  private readonly commission: CommissionCard;
+  private readonly top: TopRight;
+  private readonly view: ViewBar;
+  private readonly controls: HTMLElement;
+  private readonly dock: Dock;
   private readonly toasts = h('div', { class: 'toasts' });
-  /** Labels over the power networks shown, one element per network, reused. */
-  private readonly netLabels = h('div', { class: 'net-labels' });
-  /** Stop numbers over the buildings of the route shown, reused. */
-  private readonly stopLabels = h('div', { class: 'net-labels' });
-  /** Silo and depot stops showing every good rather than the route's, by `route:stop`. */
-  private readonly allGoods = new Set<string>();
-  private readonly layer = h('div', { class: 'layer' });
+  /** The card of the building pointed at in the dock, above it. */
+  private readonly tip = h('div');
+  private tipFor: BuildingId | null = null;
+  private zoom = 1;
+  /** The side card for the selected building or truck. */
+  private readonly side: Inspector;
+  /** The sheets and full-screen panels, over the blurred world. */
+  private readonly sheets = h('div', { class: 'ui-sheets' });
+  private readonly problems: ProblemsStrip;
   private modals: Modal[] = [];
-  private statsOpen = false;
-  private readonly statsBody = h('div');
-  private readonly stats = h('div', { class: 'card stats-panel' }, h('div', { class: 'head' }, h('b', null, 'Production (last minute)'), button('✕', () => this.toggleStats(), { cls: 'close' })), this.statsBody);
   private routesOpen = false;
-  private readonly routesHead = h('div', { class: 'head' });
-  private readonly routesFilterEl = h('input', {
-    class: 'route-filter', placeholder: 'Find a route, stop or good…', spellcheck: false,
-    oninput: () => { this.routesFilter = this.routesFilterEl.value; this.routesKey = ''; },
-    onkeydown: (e: KeyboardEvent) => { if (e.key === 'Escape') { this.routesFilterEl.value = ''; this.routesFilter = ''; this.routesKey = ''; this.routesFilterEl.blur(); } },
-  });
-  private readonly routesList = h('div', { class: 'routes-list' });
-  private readonly routesPanel = h('div', { class: 'card routes-panel' }, this.routesHead, this.routesFilterEl, this.routesList);
-  private routesKey = '';
-  private routesUpdate: (() => void) | null = null;
-  /** The routes panel's filter, kept while it is closed. */
-  private routesFilter = '';
+  private readonly routes: RoutesCard;
   private lastSlow = 0;
 
   constructor(root: HTMLElement, host: HudHost) {
     this.host = host;
-    this.root = root;
-    const t = this.top;
-    const left = h('div', { class: 'card commission' },
-      h('div', null, t.name),
-      h('div', { class: 'line' }, '⏱ ', t.clock, ' ', t.medal),
-      h('div', { class: 'line' }, '◈ ', t.credits, ' credits'));
-    const mid = h('div', { class: 'card weather' },
-      h('div', { class: 'line' }, t.day, ' · ☀ ', t.sun, ' · ༄ ', t.wind),
-      h('div', { class: 'line' }, '⚡ ', t.power),
-      h('div', { class: 'line battery', title: 'Stored power across all batteries' }, '▮ ', t.battery.el));
-    const speeds = h('div', { class: 'buttons' }, ...[[0, '⏸', 'Pause (Space)'], [1, '1×', 'Normal speed (1)'], [2, '2×', 'Double speed (2)'], [4, '4×', 'Fast (3)']].map(([n, label, title]) => {
-      const b = button(String(label), () => host.setSpeed(Number(n)), { title: String(title) });
-      this.speedButtons.push(b);
-      return b;
-    }));
-    const overlays = h('div', { class: 'buttons' }, ...([['fertility', 'Soil'], ['power', 'Power'], ['roads', 'Roads'], ['water', 'Water'], ['bees', 'Bees']] as [Overlay, string][]).map(([o, label]) => {
-      const b = button(label, () => host.setOverlay(o), { title: `Show ${label.toLowerCase()} (V cycles)` });
-      this.overlayButtons.set(o, b);
-      return b;
-    }));
-    const right = h('div', { class: 'right-col' }, h('div', { class: 'buttons' },
-      speeds,
-      button('⟲', () => host.turn(-1), { title: 'Turn the view (Q)' }), button('⟳', () => host.turn(1), { title: 'Turn the view (E)' }),
-      button('−', () => host.zoom(-1), { title: 'Zoom out (wheel, − or Shift+Z)' }), button('+', () => host.zoom(1), { title: 'Zoom in (wheel, + or Z)' }), button('☰', () => this.openPause(), { title: 'Menu (Esc)' })),
-      overlays,
-      h('div', { class: 'buttons' }, button('Routes (O)', () => this.toggleRoutes(), { cls: 'small' }), button('Guide (G)', () => this.openGuide(), { cls: 'small' }),
-        button('Stats (Tab)', () => this.toggleStats(), { cls: 'small' })));
-    // Stacked from the bottom up, so the build bar never moves when the line above it changes.
-    const bottom = h('div', { class: 'bottom' }, this.toasts, this.info, this.tip, this.buildbar);
-    root.append(this.netLabels, this.stopLabels, h('div', { class: 'hud' }, h('div', { class: 'top' }, left, mid, right), h('div', { class: 'left-col' }, this.goals, this.routesPanel), this.inspector, this.stats, bottom), this.layer);
-    this.buildGoals();
+    const play: PlayHost = {
+      state: () => host.state(), settings: () => host.settings.get(), speed: () => host.speed(), setSpeed: (n) => host.setSpeed(n),
+      overlay: () => host.overlay(), setOverlay: (o) => host.setOverlay(o), turn: (d) => host.turn(d), zoom: (d) => host.zoom(d),
+      openPause: () => this.openPause(), panelOpen: (p) => this.panelOpen(p), togglePanel: (p) => this.togglePanel(p),
+    };
+    this.commission = new CommissionCard(play);
+    this.top = new TopRight(play);
+    this.view = new ViewBar(play);
+    this.controls = viewControls(play);
+    this.side = new Inspector({
+      state: () => host.state(), tool: () => host.tool(), selected: () => host.selected(), select: (id) => { host.select(id); this.refresh(); },
+      did: (r) => this.did(r), openGuide: (p) => this.openGuide(p), editRoute: (r) => this.edit(r),
+    });
+    this.routes = new RoutesCard({
+      state: () => host.state(), tool: () => host.tool(), setTool: (t) => host.setTool(t), did: (r) => this.did(r), toast: (m, ok) => this.toast(m, ok),
+      openGuide: (p) => this.openGuide(p), previewRoute: (id) => host.previewRoute(id),
+      selectTruck: (id) => { this.routesOpen = false; if (host.tool().kind === 'route') host.setTool({ kind: 'select' }); host.select(id); this.refresh(); },
+      close: () => { this.routesOpen = false; host.previewRoute(null); if (host.tool().kind === 'route') host.setTool({ kind: 'select' }); },
+    });
+    this.problems = new ProblemsStrip((id) => host.focus(id));
+    this.dock = new Dock({ state: () => host.state(), tool: () => host.tool(), setTool: (t) => host.setTool(t), tip: (id) => this.showTip(id) });
+    this.hud.append(this.commission.el, this.commission.pill, this.top.el, this.view.el, this.controls, this.dock.el, this.side.el, this.routes.el, this.problems.el, this.problems.popover,
+      h('div', { class: 'hud-above' }, this.toasts, this.tip));
+    this.ui.append(this.world.el, this.hud, this.sheets);
+    root.append(this.ui);
+    host.settings.listen((st) => { this.ui.classList.toggle('is-calm', st.reduceMotion); this.fit(); this.lastSlow = 0; });
+    addEventListener('resize', () => this.fit());
     this.refresh();
   }
 
   get modal() { return this.modals.some((m) => m.blocking); }
 
+  /** Scales the interface for the window and the interface size setting. */
+  private fit() {
+    this.zoom = uiScale(this.host.settings.get(), innerWidth, innerHeight);
+    this.ui.style.zoom = String(this.zoom);
+    this.ui.style.width = `${innerWidth / this.zoom}px`; this.ui.style.height = `${innerHeight / this.zoom}px`;
+    this.world.setZoom(this.zoom);
+    // The view bar gives up its words when it would meet the dock.
+    this.view.el.classList.remove('is-compact');
+    requestAnimationFrame(() => {
+      const v = this.view.el.getBoundingClientRect(), d = this.dock.el.getBoundingClientRect();
+      this.view.el.classList.toggle('is-compact', v.right + 12 > d.left);
+    });
+  }
+
   // ---- Every frame ----
 
   update() {
-    const s = this.host.state(), now = performance.now();
-    this.speedButtons.forEach((b, i) => b.classList.toggle('active', [0, 1, 2, 4][i] === this.host.speed()));
-    for (const [o, b] of this.overlayButtons) b.classList.toggle('active', this.host.overlay() === o);
-    this.syncBuildbar();
+    const now = performance.now();
+    this.top.updateButtons();
+    this.view.update();
+    const tool = this.host.tool();
+    if (tool.kind === 'build') this.dock.showCategoryOf(tool.type);
+    this.dock.update();
+    const routes = this.routesOpen || tool.kind === 'route';
+    this.routes.update(routes);
+    this.side.update(!routes);
+    const side = this.side.open || routes;
+    this.top.el.hidden = side; this.controls.hidden = side;
+    this.problems.update(this.host.state(), this.host.settings.get().problemsStrip && !side);
     if (now - this.lastSlow < 150) return;
     this.lastSlow = now;
-    const t = this.top, sc = s.scenario;
-    set(t.name, sc.name);
-    const done = s.completedAt;
-    set(t.clock, sc.sandbox ? fmtTime(s.time) : done !== null ? `${fmtTime(done)} · done` : `${fmtTime(s.time)} / ${fmtTime(sc.par)}`);
-    const pace = sc.sandbox ? null : medalFor(sc.par, done ?? s.time);
-    set(t.medal, pace ? (done !== null ? MEDAL_NAME[pace] : `${MEDAL_NAME[pace]} pace`) : '');
-    t.medal.className = `medal-pace ${pace ?? ''}`;
-    set(t.credits, sc.sandbox ? '∞' : Math.floor(s.credits).toLocaleString());
-    set(t.day, `Day ${dayAt(s.time)}, ${hourLabel(hourAt(s.time))}`);
-    set(t.sun, `${Math.round(sunAt(sc, s.time) * 100)}%`);
-    set(t.wind, `${Math.round(windAt(sc, s.time) * 100)}%`);
-    const nets = networks(s).list;
-    const made = nets.reduce((n, x) => n + x.made, 0), wanted = nets.reduce((n, x) => n + x.wanted, 0);
-    const stored = nets.reduce((n, x) => n + x.stored, 0), cap = nets.reduce((n, x) => n + x.capacity, 0);
-    const worst = nets.reduce((m, x) => Math.min(m, x.share), 1);
-    set(t.power, nets.length ? `${watts(made)} made · ${watts(wanted)} used${worst < 1 ? ` · short (${Math.round(worst * 100)}%)` : ''}` : 'No pylons yet');
-    t.power.className = worst < 1 ? 'warn' : '';
-    t.battery.set(cap ? stored / cap : 0);
-    this.updateGoals();
-    this.inspect();
-    if (this.statsOpen) this.renderStats();
-    if (this.routesOpen) this.renderRoutes();
-  }
-
-  /** Labels over the power networks shown (at page points): what each makes and uses, and how full its batteries are. */
-  setNetLabels(list: { sx: number; sy: number; colour: number; net: Network }[]) {
-    const els = this.netLabels.children;
-    while (els.length < list.length) this.netLabels.append(h('div', { class: 'net-label' }, h('i', { class: 'dot' }), h('span')));
-    for (let i = 0; i < els.length; i++) {
-      const el = els[i] as HTMLElement, l = list[i];
-      if (!l) { el.style.display = 'none'; continue; }
-      el.style.display = '';
-      el.style.transform = `translate(${Math.round(l.sx)}px, ${Math.round(l.sy)}px) translate(-50%, -100%)`;
-      (el.firstChild as HTMLElement).style.background = `#${l.colour.toString(16).padStart(6, '0')}`;
-      const n = l.net, short = n.share < 1 && n.wanted > 0;
-      set(el.lastChild as HTMLElement, `${watts(n.made)} made · ${watts(n.wanted)} used${n.capacity ? ` · ▮ ${Math.round(n.stored / n.capacity * 100)}%` : ''}${short ? ` · ${Math.round(n.share * 100)}%` : ''}`);
-      el.classList.toggle('short', short);
-    }
-  }
-
-  /** Stop numbers over the buildings of the route shown (at page points). */
-  setStopLabels(list: { sx: number; sy: number; colour: number; text: string }[]) {
-    const els = this.stopLabels.children;
-    while (els.length < list.length) this.stopLabels.append(h('div', { class: 'net-label stop-label' }));
-    for (let i = 0; i < els.length; i++) {
-      const el = els[i] as HTMLElement, l = list[i];
-      if (!l) { el.style.display = 'none'; continue; }
-      el.style.display = '';
-      el.style.transform = `translate(${Math.round(l.sx)}px, ${Math.round(l.sy)}px) translate(-50%, -100%)`;
-      el.style.borderColor = hex(l.colour);
-      el.style.color = hex(l.colour);
-      set(el, l.text);
-    }
-  }
-
-  setHover(text: string | null) {
-    set(this.info, text ?? '');
-    this.info.style.display = text && this.tipFor === null ? 'block' : 'none';
+    this.commission.update(side);
+    this.top.update();
+    this.modals[this.modals.length - 1]?.update?.();
   }
 
   private showTip(id: BuildingId | null) {
     this.tipFor = id;
-    if (id) this.tip.replaceChildren(buildingCard(id, priceOf(this.host.state(), id)));
-    this.tip.style.display = id ? 'block' : 'none';
+    this.tip.replaceChildren(...(id ? [dockTip(this.host.state(), id)] : []));
   }
 
-  toast(msg: string, ok = true) {
-    const t = h('div', { class: `toast${ok ? '' : ' bad'}` }, msg);
+  /** A message for the result of an action (a building's icon beside it, if given). */
+  toast(msg: string, ok = true, ic?: string) {
+    if (!msg) return;
+    const t = h('span', { class: `cd-toast${ok ? '' : ' is-bad'}` }, ic ? icon(ic) : icon(ok ? 'check' : 'warn'), msg);
     this.toasts.append(t);
     while (this.toasts.children.length > 4) this.toasts.firstChild!.remove();
-    setTimeout(() => t.classList.add('gone'), 2200);
+    setTimeout(() => t.classList.add('is-gone'), 2200);
     setTimeout(() => t.remove(), 2800);
   }
 
   /** Redraw what depends on the tool and selection right away. */
-  refresh() { this.buildKey = ''; this.inspectKey = ''; this.lastSlow = 0; }
+  refresh() { this.lastSlow = 0; this.side.refresh(); this.routes.refresh(); }
 
-  // ---- Goals ----
+  /** A building or truck was clicked in the world: its card takes the routes card's place. */
+  picked(id: number | null) { if (id !== null && this.routesOpen && this.host.tool().kind !== 'route') { this.routesOpen = false; this.host.previewRoute(null); } this.refresh(); }
 
-  private buildGoals() {
-    const s = this.host.state();
-    this.goals.replaceChildren(h('div', { class: 'title' }, s.scenario.sandbox ? 'Sandbox' : 'Commission'));
-    this.goalRows = s.scenario.goals.map(() => {
-      const text = h('div'), b = bar(), el = h('div', { class: 'goal' }, text, b.el);
-      this.goals.append(el);
-      return { el, text, bar: b };
-    });
-    if (!s.scenario.goals.length) this.goals.append(h('div', { class: 'goal' }, 'No goals: build whatever you like.'));
+  /** Whether a panel is open. */
+  panelOpen(p: Panel) {
+    if (p === 'ledger' || p === 'power') return this.modals.some((m) => m.name === p);
+    if (p === 'routes') return this.routesOpen;
+    if (p === 'guide') return this.modals.some((m) => m.name === 'guide');
+    return false;
+  }
+  togglePanel(p: Panel) {
+    if (p === 'ledger' || p === 'power') this.toggleSheet(p);
+    else if (p === 'routes') this.toggleRoutes();
+    else if (p === 'guide') this.openGuide();
   }
 
-  private updateGoals() {
-    const s = this.host.state();
-    s.scenario.goals.forEach((g, i) => {
-      const row = this.goalRows[i];
-      const done = goalDone(s, i);
-      row.el.classList.toggle('done', done);
-      if (g.kind === 'deliver') {
-        const n = Math.min(g.n, s.delivered[g.item] ?? 0);
-        set(row.text, `${done ? '✔' : '○'} Deliver ${ITEMS[g.item].name.toLowerCase()}: ${n} / ${g.n}`);
-        row.bar.set(n / g.n);
-      } else if (g.kind === 'rate') {
-        const r = ratePerMin(s, g.item, 'delivered');
-        set(row.text, `${done ? '✔' : '○'} Deliver ${g.perMin} ${ITEMS[g.item].name.toLowerCase()}/min (now ${r.toFixed(1)})`);
-        row.bar.set(done ? 1 : r / g.perMin);
-      } else {
-        const v = soilHealth(s);
-        set(row.text, `${done ? '✔' : '○'} Soil health ≥ ${g.min} at the end (now ${Math.round(v)})`);
-        row.bar.set(v / g.min);
-      }
-    });
-  }
+  // ---- Side cards ----
 
-  // ---- Build bar ----
-
-  private syncBuildbar() {
-    const s = this.host.state(), tool = this.host.tool();
-    // The buttons are made again only when the category or tool changes (not while credits tick, which would swallow clicks).
-    const key = JSON.stringify([this.category, tool]);
-    if (key === this.buildKey) {
-      for (const [id, b] of this.buildButtons) b.classList.toggle('poor', s.credits < priceOf(s, id));
-      return;
-    }
-    this.buildKey = key;
-    this.buildButtons.clear();
-    this.showTip(null);
-    const tabs = h('div', { class: 'tabs' }, ...CATEGORIES.map((c) => button(c.name, () => { this.category = c.id; this.buildKey = ''; }, { active: c.id === this.category })),
-      button('Remove (X)', () => this.host.setTool(tool.kind === 'remove' ? { kind: 'select' } : { kind: 'remove' }), { active: tool.kind === 'remove', cls: 'danger' }));
-    const ids = (Object.keys(BUILDINGS) as BuildingId[]).filter((id) => BUILDINGS[id].category === this.category);
-    const items = h('div', { class: 'items' }, ...ids.map((id) => {
-      const d = BUILDINGS[id], price = priceOf(s, id), active = tool.kind === 'build' && tool.type === id;
-      const b = button(h('span', null, h('b', null, d.name), h('small', null, `${price ? `${price} ◈` : 'free'}${d.power ? ` · ${d.power} W${id === 'garage' ? '/truck' : ''}` : ''}${d.key ? ` · ${d.key}` : ''}`)),
-        () => this.host.setTool(active ? { kind: 'select' } : { kind: 'build', type: id, rot: tool.kind === 'build' ? tool.rot : 1 }),
-        { active, cls: s.credits < price ? 'poor' : '' });
-      b.addEventListener('pointerenter', () => this.showTip(id));
-      b.addEventListener('pointerleave', () => { if (this.tipFor === id) this.showTip(null); });
-      this.buildButtons.set(id, b);
-      return b;
-    }));
-    this.buildbar.replaceChildren(tabs, items);
-  }
-
-  // ---- Inspector ----
-
-  /** Shows a result as a message (if it has one) and redraws the inspector. */
+  /** Shows a result as a message (if it has one) and redraws the side cards. */
   private did(r: Result) {
     if (r.message) this.toast(r.message, r.ok);
-    this.inspectKey = '';
+    this.refresh();
     this.host.changed();
   }
 
-  /** Opens the route editor (the inspector shows it until you are done). */
+  /** Opens a route in the routes card. */
   private edit(r: Route) { this.host.setTool({ kind: 'route', route: r.id }); this.refresh(); }
 
-  private inspect() {
-    const s = this.host.state(), tool = this.host.tool(), id = this.host.selected();
-    const editing = tool.kind === 'route' ? routeById(s, tool.route) : null;
-    const b = id !== null ? buildingById(s, id) : null, t = id !== null ? truckById(s, id) : null;
-    if (!editing && !b && !t) {
-      if (this.inspector.style.display !== 'none') { this.inspector.style.display = 'none'; this.inspector.replaceChildren(); }
-      this.inspectKey = ''; this.inspectUpdate = null;
-      return;
-    }
-    // Made again when what it shows changes: the building's settings, the trucks and routes it lists, the route's stops.
-    const routes = s.routes.map((r) => [r.id, r.name, r.stops.length]);
-    // The route editor also follows what its warnings and goods choices depend on: the stops' problems, the silos' stock.
-    const key = JSON.stringify(editing ? ['route', editing.id, editing.name, stopsKey(editing), trucksOn(s, editing).map((x) => x.id), [...this.allGoods], stopProblems(s, editing),
-      editing.stops.map((st) => { const b = buildingById(s, st.building); return b?.type === 'silo' ? Object.keys(b.store!) : b?.type === 'field' ? [b.crop, b.harvest] : null; })]
-      : t ? ['truck', t.id, t.route, routes]
-        : [b!.id, b!.type, b!.crop, b!.recipe, tool.kind, routes, s.trucks.filter((x) => x.garage === b!.id).map((x) => [x.id, x.route]),
-          routesAt(s, b!).map((r) => r.stops.filter((st) => st.building === b!.id))]);
-    if (key !== this.inspectKey && !typingIn(this.inspector)) {
-      this.inspectKey = key;
-      this.inspector.style.display = 'block';
-      const { el, update } = editing ? this.renderRoute(s, editing) : t ? this.renderTruck(s, t) : this.renderInspector(s, b!);
-      this.inspector.replaceChildren(el);
-      this.inspectUpdate = update;
-    }
-    this.inspectUpdate?.();
+
+  // ---- The ledger and the power panel ----
+
+  /** Opens the ledger or the power panel (closing the other), or closes it. The game runs on behind them. */
+  toggleSheet(p: 'ledger' | 'power') {
+    if (this.modals.some((m) => m.name === p)) { this.close(p); return; }
+    this.modals = this.modals.filter((m) => m.name !== 'ledger' && m.name !== 'power');
+    const sheet = p === 'ledger'
+      ? ledgerSheet({ state: () => this.host.state(), openPower: () => this.toggleSheet('power'), close: () => this.close('ledger') })
+      : powerSheet({ state: () => this.host.state(), close: () => this.close('power') });
+    this.openModal(p, sheet.el, false, sheet.update);
   }
 
-  /** A choice of route for a truck: none, one of the routes, or a new one (which opens in the editor). */
-  private routeSelect(s: GameState, t: Truck) {
-    const sel = h('select', {
-      onchange: () => {
-        const v = sel.value;
-        if (v === 'new') { const r = newRoute(s); this.did(setTruckRoute(s, t, r)); this.edit(r); return; }
-        this.did(setTruckRoute(s, t, v === '' ? null : routeById(s, Number(v))));
-      },
-    }, h('option', { value: '' }, 'No route (parked)'), ...s.routes.map((r) => h('option', { value: String(r.id), selected: r.id === t.route }, r.name)),
-    h('option', { value: 'new' }, '+ New route…'));
-    return sel;
-  }
+  // ---- The routes card ----
 
-  private renderTruck(s: GameState, t: Truck): { el: HTMLElement; update: () => void } {
-    const status = h('div', { class: 'status ok' }), problems = h('div'), cargo = h('b'), charge = bar(), pct = h('b');
-    const dump = button('Dump cargo', () => this.did(dumpCargo(t)), { title: 'Throw its cargo away (the goods are lost), so it has room again' });
-    const update = () => {
-      dump.disabled = !t.cargo.length;
-      set(status, describeTruck(s, t));
-      const ps = truckProblems(s, t);
-      if (problems.dataset.key !== ps.join('|')) { problems.dataset.key = ps.join('|'); problems.replaceChildren(...ps.map((p) => h('p', { class: 'hint warn-hint' }, p))); }
-      set(cargo, t.cargo.length ? cargoText(t.cargo) : 'empty');
-      charge.set(t.energy / TRUCK.battery);
-      set(pct, `${Math.round(t.energy / TRUCK.battery * 100)}%${t.energy <= 0 ? ' (crawling)' : ''}`);
-    };
-    const g = buildingById(s, t.garage), r = routeOf(s, t);
-    const el = h('div', null,
-      h('div', { class: 'head' }, h('b', null, truckName(s, t)), h('span', { class: 'head-buttons' },
-        button('?', () => this.openGuide({ kind: 'topic', id: 'trucks' }), { cls: 'close', title: 'Trucks and routes in the guide (G)' }),
-        button('✕', () => { this.host.select(null); this.refresh(); }, { cls: 'close', title: 'Close (Esc)' }))),
-      h('p', { class: 'hint' }, `Carries ${TRUCK.cargo} goods at ${TRUCK.speed} tiles a second. Charges at its garage.`),
-      status, problems,
-      h('div', { class: 'kv' }, h('span', null, 'Route'), this.routeSelect(s, t)),
-      h('div', { class: 'kv' }, h('span', null, 'Cargo'), cargo),
-      h('div', { class: 'kv' }, h('span', null, 'Battery'), pct), charge.el,
-      h('div', { class: 'actions' },
-        g ? button('Garage', () => { this.host.select(g.id); this.refresh(); }) : null,
-        r ? button('Edit route', () => this.edit(r), { primary: true }) : null,
-        dump,
-        button(`Sell (+${truckPrice(s)})`, () => { this.did(sellTruck(s, t)); this.host.select(g?.id ?? null); }, { cls: 'danger' })));
-    return { el, update };
-  }
-
-  /** A garage's trucks: what each is doing, its route, and selling it; buying another. */
-  private garageTrucks(s: GameState, g: Building): { el: HTMLElement; update: () => void } {
-    const mine = s.trucks.filter((t) => t.garage === g.id);
-    const lines: (() => void)[] = [];
-    const rows = mine.map((t, i) => {
-      const what = h('div', { class: 'hint' });
-      lines.push(() => set(what, describeTruck(s, t)));
-      return h('div', { class: 'truck-row' },
-        h('div', { class: 'kv' }, h('a', { href: '#', class: 'glink', onclick: (e: Event) => { e.preventDefault(); this.host.select(t.id); this.refresh(); } }, `Truck ${i + 1}`), this.routeSelect(s, t)),
-        what);
-    });
-    const buy = button(`Buy a truck (${truckPrice(s)} ◈)`, () => this.did(buyTruck(s, g)), { primary: true, disabled: mine.length >= TRUCK.perGarage });
-    const el = h('div', null, h('h4', null, `Trucks (${mine.length}/${TRUCK.perGarage})`),
-      ...(rows.length ? rows : [h('p', { class: 'hint' }, 'No trucks yet. Buy one, then give it a route: a loop of stops where it drops and picks up goods.')]),
-      h('div', { class: 'actions' }, buy));
-    return { el, update: () => { for (const l of lines) l(); } };
-  }
-
-  /** What a building trades with the buildings next door (sharing an edge with it), as the crops and recipes change. */
-  private nextDoor(s: GameState, b: Building, lines: (() => void)[]): HTMLElement {
-    const list = h('div');
-    lines.push(() => {
-      const text = describeLinks(linksOf(s, b));
-      const key = text.join('|');
-      if (list.dataset.key === key) return;
-      list.dataset.key = key;
-      list.replaceChildren(...(text.length ? text.map((t) => h('div', { class: 'kv' }, h('span', null, t)))
-        : [h('p', { class: 'hint' }, 'Buildings sharing an edge trade goods without trucks: a field beside a mill gives it wheat, a mill beside a coop its bran.')]));
-    });
-    return h('div', null, h('h4', null, 'Next door'), list);
-  }
-
-  /** The routes stopping at a building, what each does there, and adding it to a route. */
-  private stopsHere(s: GameState, b: Building): HTMLElement {
-    const rows = routesAt(s, b).map((r) => {
-      const sts = r.stops.filter((st) => st.building === b.id);
-      const what = sts.map((st) => {
-        const drop = st.drop.filter((i) => takesGoods(b).includes(i)), pick = st.pick.filter((i) => givesGoods(b).includes(i));
-        const parts = [drop.length >= ITEM_IDS.length - pick.length && drop.length > 6 ? 'drops everything else' : drop.length ? `drops ${goodsList(drop)}` : '', pick.length ? `picks up ${goodsList(pick)}` : ''];
-        return parts.filter(Boolean).join(' · ') || 'nothing to do';
-      });
-      return h('div', { class: 'kv' }, h('span', null, routeName(s, r), h('small', null, ` ${what.join('; ')}`)), button('Edit', () => this.edit(r), { cls: 'small' }));
-    });
-    const add = h('select', {
-      onchange: () => {
-        const r = add.value === 'new' ? newRoute(s) : routeById(s, Number(add.value));
-        if (!r) return;
-        this.did(addStop(s, r, b));
-        this.edit(r);
-      },
-    }, h('option', { value: '' }, 'Add to a route…'), ...s.routes.map((r) => h('option', { value: String(r.id) }, r.name)), h('option', { value: 'new' }, '+ New route'));
-    return h('div', null, h('h4', null, 'Routes'),
-      ...(rows.length ? rows : [h('p', { class: 'hint' }, 'No route stops here: trucks won\'t bring or take its goods.')]),
-      h('div', { class: 'kv' }, h('span'), add));
-  }
-
-  private renderInspector(s: GameState, b: Building): { el: HTMLElement; update: () => void } {
-    const def = BUILDINGS[b.type];
-    const status = h('div', { class: 'status' });
-    const lines: (() => void)[] = [() => { set(status, describeStatus(s, b)); status.className = `status ${b.status}`; }];
-    const body: (Node | null)[] = [];
-    const stat = (label: string, get: () => string) => {
-      const v = h('b'); lines.push(() => set(v, get()));
-      body.push(h('div', { class: 'kv' }, h('span', null, label), v));
-    };
-    const progress = (get: () => number) => { const p = bar(); lines.push(() => p.set(get())); body.push(p.el); };
-
-    switch (b.type) {
-      case 'field': {
-        body.push(h('div', { class: 'choices' }, ...CROP_IDS.map((c) => button(CROPS[c].name, () => this.did(setCrop(s, b, c)), { active: b.crop === c, title: `${CROPS[c].grow} s · ${CROPS[c].yield} per harvest · soil ${CROPS[c].soil > 0 ? '+' : ''}${CROPS[c].soil}` }))));
-        progress(() => b.growth!);
-        stat('Soil fertility', () => `${Math.round(fieldFertility(s, b))}`);
-        stat('Growth pace', () => { const p = fieldPace(s, b); return `${Math.round(p.pace * 100)}% (water ${Math.round(p.water * 100)}%, soil ×${p.soil.toFixed(2)})`; });
-        stat('Harvest', () => `${CROPS[b.crop!].yield}${CROPS[b.crop!].flowers && isPollinated(s, b) ? ' +1 (bees)' : ''} every ~${Math.round(CROPS[b.crop!].grow / Math.max(0.01, fieldPace(s, b).pace))} s`);
-        stat('Waiting to go', () => `${b.stored} / ${FIELD.store}`);
-        stat('Compost', () => `${b.compost} / ${FIELD.compostStore} (used below soil ${FIELD.compostBelow})`);
-        break;
-      }
-      case 'hive':
-        stat('Flowering fields', () => `${flowersNear(s, b)} (up to ${HIVE.maxFlowers})`);
-        progress(() => b.growth!);
-        stat('Honey waiting', () => `${b.stored} / ${HIVE.store}`);
-        break;
-      case 'silo': {
-        const held = h('div', { class: 'delivered' });
-        lines.push(() => {
-          const key = JSON.stringify(b.store);
-          if (held.dataset.key === key) return;
-          held.dataset.key = key;
-          const got = (Object.keys(b.store!) as ItemId[]).filter((i) => b.store![i]);
-          held.replaceChildren(...(got.length ? got.map((i) => h('div', null, good(i, `${b.store![i]}/${SILO.perGood}`))) : [h('p', { class: 'hint' }, 'Empty.')]));
-        });
-        body.push(h('h4', null, 'Holds'), held);
-        break;
-      }
-      case 'garage': {
-        const trucks = this.garageTrucks(s, b);
-        body.push(trucks.el); lines.push(trucks.update);
-        break;
-      }
-      case 'battery': stat('Charge', () => `${Math.round(b.charge!)} / ${POWER.battery.capacity} J`); progress(() => b.charge! / POWER.battery.capacity); break;
-      case 'solar': case 'turbine':
-        stat('Making', () => watts(makes(s, b, sunAt(s.scenario, s.time), windAt(s.scenario, s.time))));
-        if (b.type === 'turbine') stat('Shelter', () => `${Math.round(exposureOf(s, b) * 100)}% of the wind reaches it`);
-        break;
-      case 'depot': {
-        const list = h('div', { class: 'delivered' });
-        lines.push(() => {
-          const key = JSON.stringify(s.delivered);
-          if (list.dataset.key === key) return;
-          list.dataset.key = key;
-          const got = (Object.keys(s.delivered) as ItemId[]).filter((i) => s.delivered[i]);
-          list.replaceChildren(...(got.length ? got.map((i) => h('div', null, good(i, s.delivered[i]))) : [h('p', { class: 'hint' }, 'Nothing delivered yet. Trucks drop goods here on a route that stops here.')]));
-        });
-        stat('Earned', () => `${Math.floor(s.earned).toLocaleString()} credits`);
-        body.push(h('h4', null, 'Delivered'), list);
-        break;
-      }
-    }
-
-    const r = recipeOf(b);
-    if (r) {
-      const rs = recipesFor(b.type);
-      if (rs.length > 1) body.unshift(h('div', { class: 'choices' }, ...rs.map((x) => button(ITEMS[x.outputs[0].item].name, () => this.did(setRecipe(b, x.id)), { active: b.recipe === x.id }))));
-      body.push(h('div', { class: 'recipe' }, ...r.inputs.flatMap((ing, i) => [i ? ' + ' : '', ingredient(ing)]), ' → ',
-        ...(r.outputs.length ? r.outputs.flatMap((o, i) => [i ? ' + ' : '', good(o.item, o.n)]) : [`${POWER.digester} W`]), h('small', null, ` · ${r.time} s`)));
-      progress(() => (b.progress ?? 0) / r.time);
-      const ins = h('div', { class: 'buffers' }), outs = h('div', { class: 'buffers' });
-      lines.push(() => {
-        const inKeys = r.inputs.flatMap((ing) => ('item' in ing ? [ing.item] : [...GROUPS[ing.group]]));
-        const k = JSON.stringify([b.inputs, b.outputs]);
-        if (ins.dataset.key === k) return;
-        ins.dataset.key = k;
-        ins.replaceChildren(h('span', null, 'In: '), ...inKeys.map((i) => good(i, b.inputs![i] ?? 0)));
-        outs.replaceChildren(h('span', null, 'Out: '), ...(r.outputs.length ? r.outputs.map((o) => good(o.item, b.outputs![o.item] ?? 0)) : ['power']));
-      });
-      body.push(ins, outs);
-    }
-    if (def.power) stat('Power', () => { const net = networkOf(s, b), w = wants(s, b); return !net ? 'not connected' : w ? `using ${watts(w)} now · getting ${Math.round(shareOf(s, b) * 100)}%` : 'none right now'; });
-    if (def.power || b.type === 'battery' || b.type === 'solar' || b.type === 'turbine' || b.type === 'digester' || b.type === 'pylon') {
-      // The network's colour, as drawn on the map, and its numbers.
-      const dot = h('i', { class: 'dot' }), v = h('span');
-      lines.push(() => {
-        const net = b.type === 'pylon' ? networks(s).of.get(b.id) ?? null : networkOf(s, b);
-        dot.style.display = net ? '' : 'none';
-        if (net) dot.style.background = hex(NET_COLOURS[netColour(s, net)]);
-        set(v, net ? `${watts(net.made)} made · ${watts(net.wanted)} used · ${Math.round(net.stored)} J stored` : 'none: no pylon in reach');
-      });
-      body.push(h('div', { class: 'kv' }, h('span', null, 'Network'), h('b', null, dot, v)));
-    }
-    if (hasHistory(b)) {
-      const hist = historyView(s, b, () => this.historyWindow, (w) => { this.historyWindow = w; });
-      body.push(hist.el); lines.push(hist.update);
-    }
-    if (isStop(b) && b.type !== 'silo' && b.type !== 'depot') body.push(this.nextDoor(s, b, lines));
-    if (isStop(b)) body.push(this.stopsHere(s, b));
-
-    const actions = h('div', { class: 'actions' },
-      b.type !== 'depot' ? button('Remove', () => { this.did(remove(s, b)); this.host.select(null); }, { cls: 'danger' }) : null);
-    const el = h('div', null,
-      h('div', { class: 'head' }, h('b', null, def.name), h('span', { class: 'head-buttons' },
-        button('?', () => this.openGuide({ kind: 'building', id: b.type }), { cls: 'close', title: 'Open its page in the guide (G)' }),
-        button('✕', () => { this.host.select(null); this.refresh(); }, { cls: 'close', title: 'Close (Esc)' }))),
-      h('p', { class: 'hint' }, def.hint), status, ...body, actions);
-    return { el, update: () => { for (const l of lines) l(); } };
-  }
-
-  // ---- The route editor ----
-
-  /** Puts a truck on a route: one with no route, else a new one from a garage with room. */
-  private addTruck(s: GameState, r: Route): Result {
-    const idle = s.trucks.find((t) => t.route === null);
-    if (idle) return setTruckRoute(s, idle, r);
-    const garages = s.buildings.filter((b) => b.type === 'garage');
-    if (!garages.length) return { ok: false, message: 'Build a garage (T) first: trucks are bought there.' };
-    const g = garages.find((x) => s.trucks.filter((t) => t.garage === x.id).length < TRUCK.perGarage);
-    if (!g) return { ok: false, message: `Every garage holds ${TRUCK.perGarage} trucks. Build another garage for more.` };
-    const bought = buyTruck(s, g);
-    if (!bought.ok) return bought;
-    setTruckRoute(s, bought.truck!, r);
-    return { ok: true, message: `Bought a truck for ${r.name}.` };
-  }
-
-  private renderRoute(s: GameState, r: Route): { el: HTMLElement; update: () => void } {
-    const lines: (() => void)[] = [];
-    const done = () => { this.host.setTool({ kind: 'select' }); this.refresh(); };
-    const trucks = trucksOn(s, r), rate = h('b');
-    lines.push(() => set(rate, `${routeRate(s, r).toFixed(1)} goods a minute`));
-    // Each truck: what it is doing and carrying, and what it can't do (cargo no stop takes, no way home), as it changes.
-    const truckRows = trucks.map((t) => {
-      const what = h('div', { class: 'hint' }), warn = h('div');
-      const dump = button('Dump', () => this.did(dumpCargo(t)), { cls: 'small', title: 'Throw its cargo away (the goods are lost), so it has room again' });
-      lines.push(() => {
-        set(what, `${describeTruck(s, t)}${t.cargo.length && t.phase !== 'drive' ? ` · carries ${cargoText(t.cargo)}` : ''}`);
-        dump.disabled = !t.cargo.length;
-        const ps = truckProblems(s, t);
-        if (warn.dataset.key === ps.join('|')) return;
-        warn.dataset.key = ps.join('|');
-        warn.replaceChildren(...ps.map((p) => h('p', { class: 'hint warn-hint' }, p)));
-      });
-      return h('div', { class: 'truck-row' },
-        h('div', { class: 'kv' }, h('a', { href: '#', class: 'glink', onclick: (e: Event) => { e.preventDefault(); this.host.setTool({ kind: 'select' }); this.host.select(t.id); this.refresh(); } }, truckName(s, t)), dump),
-        what, warn);
-    });
-    const name = h('input', {
-      class: 'route-title', value: r.name, maxLength: ROUTE_NAME_MAX, title: 'Click to rename', spellcheck: false,
-      onchange: () => { const res = renameRoute(r, name.value); if (!res.ok) name.value = r.name; this.did(res); },
-      onkeydown: (e: KeyboardEvent) => { if (e.key === 'Escape') name.value = r.name; if (e.key === 'Enter' || e.key === 'Escape') name.blur(); },
-    });
-    const problems = stopProblems(s, r);
-    // The goods this route moves anywhere but a silo or the depot, which take and give anything: those are the choices
-    // at a silo or the depot (with every good a button away).
-    const moved = new Set<ItemId>();
-    for (const st of r.stops) {
-      const b = buildingById(s, st.building);
-      if (!b || b.type === 'silo' || b.type === 'depot') continue;
-      for (const i of st.pick) if (givesGoods(b).includes(i)) moved.add(i);
-      for (const i of st.drop) if (takesGoods(b).includes(i)) moved.add(i);
-    }
-    const stops = r.stops.map((st, i) => {
-      const b = buildingById(s, st.building);
-      if (!b) return null;
-      const open = this.allGoods.has(`${r.id}:${i}`), anything = b.type === 'silo' || b.type === 'depot';
-      // Always with the goods it is set to, so any of them can be turned off (a field's old crop, say).
-      const choices = (all: ItemId[], how: 'drop' | 'pick') => (anything && !open ? ITEM_IDS.filter((x) => moved.has(x) || st.pick.includes(x) || (b.type === 'silo' && b.store![x]))
-        : ITEM_IDS.filter((x) => all.includes(x) || st[how].includes(x)));
-      const chip = (item: ItemId, how: 'drop' | 'pick') => button(good(item), () => this.did(setStopGood(r, i, item, st[how].includes(item) ? null : how)),
-        { active: st[how].includes(item), title: `${st[how].includes(item) ? 'Click to stop' : 'Click to start'} ${how === 'drop' ? 'dropping' : 'picking up'} ${ITEMS[item].name.toLowerCase()} here` });
-      const row = (label: string, how: 'drop' | 'pick', all: ItemId[]) => {
-        const list = choices(all, how), hidden = anything && !open ? st[how].filter((x) => !list.includes(x)).length : 0;
-        return h('div', { class: 'choices stop-goods' }, h('span', { class: 'lbl' }, label), ...list.map((x) => chip(x, how)),
-          list.length ? null : h('small', { class: 'hint' }, 'none yet'),
-          hidden ? h('small', { class: 'hint' }, `+ ${hidden} more`) : null);
-      };
-      const wait = h('div', { class: 'kv' }, h('span', null, 'Waits for room or goods'), h('span', null,
-        button('−', () => this.did(setStopWait(r, i, st.wait - (st.wait > 10 ? 5 : 1))), { cls: 'small', disabled: st.wait <= 0 }),
-        h('b', null, ` ${st.wait} s `),
-        button('+', () => this.did(setStopWait(r, i, st.wait + (st.wait >= 10 ? 5 : 1))), { cls: 'small', disabled: st.wait >= TRUCK.maxWait })));
-      return h('div', { class: 'stop' },
-        h('div', { class: 'head' }, h('b', null, `${i + 1}. ${BUILDINGS[b.type].name}`), h('span', { class: 'head-buttons' },
-          button('↑', () => this.did(moveStop(s, r, i, -1)), { cls: 'small', disabled: i === 0, title: 'Earlier' }),
-          button('↓', () => this.did(moveStop(s, r, i, 1)), { cls: 'small', disabled: i === r.stops.length - 1, title: 'Later' }),
-          button('✕', () => this.did(removeStop(s, r, i)), { cls: 'small', title: 'Take this stop out' }))),
-        problems[i] ? h('p', { class: 'hint warn-hint' }, problems[i]) : null,
-        row('Drop', 'drop', takesGoods(b)),
-        b.type === 'depot' ? null : row('Pick up', 'pick', givesGoods(b)),
-        anything ? button(open ? 'Fewer goods' : 'Every good', () => { if (open) this.allGoods.delete(`${r.id}:${i}`); else this.allGoods.add(`${r.id}:${i}`); this.inspectKey = ''; }, { cls: 'small' }) : null,
-        wait);
-    });
-    const el = h('div', null,
-      h('div', { class: 'head' }, h('span', { class: 'route-line' }, h('i', { class: 'dot', style: `background:${hex(ROUTE_COLOURS[routeColour(s, r)])}` }), name), h('span', { class: 'head-buttons' },
-        button('?', () => this.openGuide({ kind: 'topic', id: 'trucks' }), { cls: 'close', title: 'Trucks and routes in the guide (G)' }),
-        button('✕', done, { cls: 'close', title: 'Done (Esc)' }))),
-      h('p', { class: 'hint' }, `Click buildings on the map to add stops (up to ${TRUCK.maxStops}). Trucks drive them in order, then start again.`),
-      h('div', { class: 'kv' }, h('span', null, 'Trucks'), h('span', null,
-        button('−', () => this.did(setTruckRoute(s, trucks[trucks.length - 1], null)), { cls: 'small', disabled: !trucks.length, title: 'Send a truck home' }),
-        h('b', null, ` ${trucks.length} `),
-        button('+', () => this.did(this.addTruck(s, r)), { cls: 'small', title: 'Add a truck: one with no route, else a new one' }))),
-      h('div', { class: 'kv' }, h('span', null, 'Moved'), rate),
-      ...truckRows,
-      ...(stops.length ? stops : [h('p', { class: 'hint' }, 'No stops yet.')]),
-      h('div', { class: 'actions' },
-        button('Delete route', () => { this.did(deleteRoute(s, r)); done(); }, { cls: 'danger' }),
-        button('Copy', () => { const c = copyRoute(s, r); this.toast(`Copied ${r.name} as ${c.name}. Give it trucks.`); this.edit(c); }, { title: 'A copy of this route, without its trucks' }),
-        button('Done', done, { primary: true })));
-    return { el, update: () => { for (const l of lines) l(); } };
-  }
-
-  // ---- Stats ----
-
-  toggleStats() { this.statsOpen = !this.statsOpen; this.stats.style.display = this.statsOpen ? 'block' : 'none'; if (this.statsOpen) this.renderStats(); }
-
-  private renderStats() {
-    const s = this.host.state();
-    const rows = ITEM_IDS.filter((i) => s.made[i] || s.delivered[i]).map((i) => h('tr', null,
-      h('td', null, good(i)), h('td', null, ratePerMin(s, i, 'made').toFixed(1)), h('td', null, ratePerMin(s, i, 'delivered').toFixed(1)),
-      h('td', null, String(s.made[i] ?? 0)), h('td', null, String(s.delivered[i] ?? 0))));
-    this.statsBody.replaceChildren(
-      rows.length ? h('table', null, h('tr', null, h('th', null, 'Good'), h('th', null, 'Made/min'), h('th', null, 'Delivered/min'), h('th', null, 'Made'), h('th', null, 'Delivered')), ...rows)
-        : h('p', { class: 'hint' }, 'Nothing made yet.'),
-      h('div', { class: 'kv' }, h('span', null, 'Soil health'), h('b', null, String(Math.round(soilHealth(s))))));
-  }
-
-  // ---- The routes panel ----
-
-  /** Opens or closes the routes panel. */
+  /** Opens or closes the routes card. */
   toggleRoutes() {
     this.routesOpen = !this.routesOpen;
-    this.routesPanel.style.display = this.routesOpen ? 'block' : 'none';
-    this.routesKey = '';
-    if (this.routesOpen) this.renderRoutes(); else this.host.previewRoute(null);
-  }
-
-  /**
-   * Every route at a glance: its name (click it to rename), its stops and the goods it moves, its trucks (add or send home),
-   * goods a minute, what its trucks are doing and its problems. Pointing at a route draws it on the map; clicking opens it
-   * in the editor. Made again only when the routes change, and not while you type in it.
-   */
-  private renderRoutes() {
-    const s = this.host.state(), tool = this.host.tool();
-    const editing = tool.kind === 'route' ? tool.route : null;
-    const key = JSON.stringify([s.routes.map((r) => [r.id, r.name, stopsKey(r), routeGoods(s, r), trucksOn(s, r).length, stopProblems(s, r)]),
-      s.trucks.filter((t) => t.route === null).length, s.buildings.some((b) => b.type === 'garage'), this.routesFilter, editing]);
-    if (key !== this.routesKey && !typingIn(this.routesList)) {
-      this.routesKey = key;
-      // The rows are made again: the one pointed at gets its pointerenter on the next move.
-      this.host.previewRoute(null);
-      const lines: (() => void)[] = [];
-      const f = this.routesFilter.trim().toLowerCase();
-      const shown = s.routes.filter((r) => !f || [r.name, stopsText(s, r), goodsList(routeGoods(s, r))].some((t) => t.toLowerCase().includes(f)));
-      const rows = shown.map((r) => {
-        const trucks = trucksOn(s, r);
-        const name = h('input', {
-          class: 'route-title', value: r.name, maxLength: ROUTE_NAME_MAX, title: 'Click to rename', spellcheck: false,
-          onclick: (e: Event) => e.stopPropagation(),
-          onchange: () => { const res = renameRoute(r, name.value); if (!res.ok) name.value = r.name; this.did(res); },
-          onkeydown: (e: KeyboardEvent) => { if (e.key === 'Escape') name.value = r.name; if (e.key === 'Enter' || e.key === 'Escape') name.blur(); },
-        });
-        const warn = h('span', { class: 'route-warn' }), rate = h('span', { class: 'route-rate' }), doing = h('div', { class: 'hint route-doing' });
-        lines.push(() => {
-          const ps = routeProblems(s, r);
-          warn.style.display = ps.length ? '' : 'none';
-          set(warn, `⚠ ${ps.length}`);
-          if (warn.title !== ps.join('\n')) warn.title = ps.join('\n');
-          set(rate, `${routeRate(s, r).toFixed(1)}/min`);
-          set(doing, trucksDoing(s, r));
-        });
-        const goods = routeGoods(s, r);
-        return h('div', {
-          class: `route-row${r.id === editing ? ' editing' : ''}`, title: 'Click to edit',
-          onpointerenter: () => this.host.previewRoute(r.id), onpointerleave: () => this.host.previewRoute(null),
-          onclick: () => this.edit(r),
-        },
-        h('div', { class: 'route-line' }, h('i', { class: 'dot', style: `background:${hex(ROUTE_COLOURS[routeColour(s, r)])}` }), name, warn,
-          h('span', { class: 'head-buttons' },
-            button('⧉', () => { const c = copyRoute(s, r); this.toast(`Copied ${r.name} as ${c.name}. Give it trucks.`); this.edit(c); }, { cls: 'small', title: 'Copy this route (without its trucks)' }),
-            button('Edit', () => this.edit(r), { cls: 'small' }))),
-        h('div', { class: 'hint route-stops' }, stopsText(s, r) || 'No stops yet'),
-        h('div', { class: 'route-line' },
-          h('span', { class: 'route-goods' }, ...(goods.length ? goods.map((i) => good(i)) : [h('small', { class: 'hint' }, 'moves nothing yet')])),
-          h('span', { class: 'route-trucks', onclick: (e: Event) => e.stopPropagation() },
-            button('−', () => this.did(setTruckRoute(s, trucks[trucks.length - 1], null)), { cls: 'small', disabled: !trucks.length, title: 'Send a truck home' }),
-            h('b', { title: 'Trucks on this route' }, ` ${trucks.length} 🚚 `),
-            button('+', () => this.did(this.addTruck(s, r)), { cls: 'small', title: 'Add a truck: one with no route, else a new one' })),
-          rate),
-        doing);
-      });
-      const idle = s.trucks.filter((t) => t.route === null).length;
-      this.routesFilterEl.style.display = s.routes.length > 4 || f ? '' : 'none';
-      this.routesHead.replaceChildren(h('b', null, `Routes (${s.routes.length})`), h('span', { class: 'head-buttons' },
-        button('+ New route', () => this.edit(newRoute(s)), { cls: 'small', primary: true, title: 'Make a route, then click buildings on the map to add its stops' }),
-        button('?', () => this.openGuide({ kind: 'topic', id: 'trucks' }), { cls: 'close', title: 'Trucks and routes in the guide (G)' }),
-        button('✕', () => this.toggleRoutes(), { cls: 'close', title: 'Close (O or Esc)' })));
-      this.routesList.replaceChildren(
-        ...(idle ? [h('p', { class: 'hint warn-hint' }, `${idle} truck${idle > 1 ? 's have' : ' has'} no route: + on a route puts ${idle > 1 ? 'one' : 'it'} to work.`)] : []),
-        ...(rows.length ? rows : [h('p', { class: 'hint' }, s.routes.length ? 'No route matches.'
-          : s.buildings.some((b) => b.type === 'garage') ? 'No routes yet. Make one, click the buildings it stops at, and give it trucks.'
-            : 'No routes yet. Build a garage (T) for trucks, then make a route. Buildings that share an edge trade goods without trucks.')]));
-      this.routesUpdate = () => { for (const l of lines) l(); };
-    }
-    this.routesUpdate?.();
+    if (!this.routesOpen) { this.host.previewRoute(null); if (this.host.tool().kind === 'route') this.host.setTool({ kind: 'select' }); }
+    this.refresh();
   }
 
   // ---- Modal screens ----
 
-  private openModal(name: string, el: HTMLElement, blocking: boolean) {
+  private openModal(name: string, el: HTMLElement, blocking: boolean, update?: () => void) {
     this.modals = this.modals.filter((m) => m.name !== name);
-    this.modals.push({ name, el, blocking });
+    this.modals.push({ name, el, blocking, update });
     this.drawModals();
   }
   private drawModals() {
     const top = this.modals[this.modals.length - 1];
-    this.layer.replaceChildren(...(top ? [top.el] : []));
-    this.layer.classList.toggle('open', !!top);
+    this.sheets.classList.toggle('is-open', !!top);
+    this.sheets.classList.toggle('is-live', !!top && !top.blocking);
+    this.sheets.replaceChildren(...(top ? [h('div', { class: 'scrim' }), h('div', { class: 'sheet-wrap' }, top.el)] : []));
+  }
+  /** Closes the panel or screen called `name` if it is the one on top; false if it isn't. */
+  closeIf(name: string): boolean {
+    if (this.modals[this.modals.length - 1]?.name !== name) return false;
+    this.close(name);
+    return true;
   }
   /** Closes the topmost modal or panel; false if none was open. */
   closeTop(): boolean {
     if (this.modals.length) { this.modals.pop(); this.drawModals(); return true; }
-    if (this.statsOpen) { this.toggleStats(); return true; }
     if (this.routesOpen) { this.toggleRoutes(); return true; }
     return false;
   }
   private close(name: string) { this.modals = this.modals.filter((m) => m.name !== name); this.drawModals(); }
 
-  /** Opens the guide on `page`; by default on what's in hand, selected or hovered in the build bar. G again closes it. */
+  /** Opens the guide on `page`; by default on what's in hand, selected or pointed at in the dock. G again closes it. */
   openGuide(page?: GuidePage) {
     if (!page && this.modals.some((m) => m.name === 'guide')) { this.close('guide'); return; }
     const tool = this.host.tool(), sel = this.host.selected(), b = sel !== null ? buildingById(this.host.state(), sel) : null;
     const id = this.tipFor ?? (tool.kind === 'build' ? tool.type : b?.type ?? null);
     const start: GuidePage = page ?? (id ? { kind: 'building', id } : { kind: 'topic', id: 'start' });
     this.showTip(null);
-    this.openModal('guide', guidePanel(start, { build: (t) => this.host.setTool({ kind: 'build', type: t, rot: tool.kind === 'build' ? tool.rot : 1 }) }, () => this.close('guide')), true);
+    this.openModal('guide', guidePanel(start, {
+      state: () => this.host.state(), focus: (id) => this.host.focus(id),
+      build: (t) => this.host.setTool({ kind: 'build', type: t, rot: tool.kind === 'build' ? tool.rot : 1 }),
+    }, () => this.close('guide')), true);
   }
 
+  /** The briefing, when a commission starts. */
   showIntro() {
-    const s = this.host.state(), sc = s.scenario;
-    this.openModal('intro', h('div', { class: 'panel' },
-      h('h2', null, sc.name), h('p', null, sc.blurb),
-      sc.goals.length ? h('ul', null, ...sc.goals.map((g) => h('li', null, g.kind === 'deliver' ? `Deliver ${g.n} ${ITEMS[g.item].name.toLowerCase()} to the depot` : g.kind === 'rate' ? `Reach ${g.perMin} ${ITEMS[g.item].name.toLowerCase()} per minute delivered` : `Keep soil health at ${g.min} or more`))) : null,
-      sc.sandbox ? null : h('p', { class: 'sub' }, `Target time ${fmtTime(sc.par)} for gold, ${fmtTime(sc.par * 1.5)} for silver. You can pause (Space) and build while paused.`),
-      sc.tags.length ? h('p', { class: 'tags' }, ...sc.tags.map((t) => h('span', null, t))) : null,
-      sc.tips ? h('div', { class: 'tips' }, h('h3', null, 'First steps'), h('ol', null, ...sc.tips.map((t) => h('li', null, t)))) : null,
-      sc.tips ? null : help(),
-      h('div', { class: 'actions' }, button('Start', () => this.close('intro'), { primary: true }))), true);
+    this.openModal('intro', briefing(this.host.state(), () => this.close('intro'), () => { this.close('intro'); this.openGuide({ kind: 'topic', id: 'start' }); }), true);
   }
 
   openPause() {
-    const s = this.host.state();
-    this.openModal('pause', h('div', { class: 'panel' },
-      h('h2', null, s.scenario.name), help(),
-      h('h3', null, 'Settings'),
-      h('div', { class: 'setting' }, h('span', null, 'Pixel size'),
-        h('span', { class: 'choices' }, ...PIXEL_SIZES.map((n) => button(`${n}×${n}`, () => { this.host.setPixelSize(n); this.openPause(); }, { active: this.host.pixelSize() === n })))),
-      h('p', { class: 'sub hint-line' }, 'Screen pixels for each pixel of the art. Smaller pixels show finer detail and cost more to draw.'),
-      h('div', { class: 'actions' },
-        button('Restart commission', () => this.confirm('Restart this commission?', 'Everything built so far is lost.', () => this.host.restart())),
-        button('Level select', () => this.host.menu()),
-        button('Resume', () => this.close('pause'), { primary: true }))), true);
+    this.openModal('pause', pauseScreen({
+      state: () => this.host.state(), settings: this.host.settings, resume: () => { this.close('pause'); this.host.resume(); }, menu: () => this.host.menu(), restart: () => this.host.restart(),
+    }), true);
   }
 
-  private confirm(title: string, text: string, yes: () => void) {
-    this.openModal('confirm', h('div', { class: 'panel' }, h('h2', null, title), h('p', null, text),
-      h('div', { class: 'actions' }, button('Cancel', () => this.close('confirm')), button('Yes', yes, { primary: true }))), true);
-  }
-
+  /** The results, when the commission is complete. */
   showComplete(medal: Medal) {
-    const s = this.host.state(), sc = s.scenario, t = s.completedAt ?? s.time;
-    this.openModal('done', h('div', { class: 'panel done' },
-      h('h2', null, 'Commission complete!'),
-      h('div', { class: `medal ${medal}` }, MEDAL_NAME[medal]),
-      h('p', null, `${sc.name}, delivered in ${fmtTime(t)} (target ${fmtTime(sc.par)}).`),
-      h('p', { class: 'sub' }, medal === 'gold' ? 'Within the target time.' : medal === 'silver' ? `Gold needs ${fmtTime(sc.par)} or less.` : `Silver needs ${fmtTime(sc.par * 1.5)} or less.`),
-      h('p', null, `Earned ${Math.floor(s.earned).toLocaleString()} credits · soil health ${Math.round(soilHealth(s))}.`),
-      h('div', { class: 'actions' }, button('Keep playing', () => this.close('done')), button('Level select', () => this.host.menu(), { primary: true }))), true);
+    this.openModal('done', resultsScreen(this.host.state(), medal, { keepPlaying: () => this.close('done'), menu: () => this.host.menu(), start: (id) => this.host.start(id) }), true);
   }
 }
 
-function help() {
-  return h('ul', { class: 'help' },
-    h('li', null, 'Pick a building in the bar at the bottom, then ', h('b', null, 'click or drag'), ' to place it (a drag places a row).'),
-    h('li', null, 'Trucks carry goods. Build a garage (T), buy a truck and give it a route: a loop of stops where it drops and picks up goods. Trucks drive on the open ground between buildings, so leave room. Silos (L) store goods; the depot buys whatever trucks drop there. ', h('b', null, 'O'), ' lists every route.'),
-    h('li', null, 'Buildings that share an edge trade without trucks: a mill beside wheat fields takes their wheat, a coop beside the mill its bran.'),
-    h('li', null, 'Machines need power, and trucks charge at their garage: build solar panels, turbines or a digester, and pylons within 3 tiles of everything. Batteries keep the night going.'),
-    h('li', null, 'Fields grow faster with water (sprinklers) and rich soil; harvests drain the soil. Compost, beans and resting fix it.'),
-    h('li', null, 'Markers: ', h('span', { class: 'm red' }, '◆'), ' no power ', h('span', { class: 'm orange' }, '◆'), ' blocked/low power ', h('span', { class: 'm yellow' }, '◆'), ' waiting for input ', h('span', { class: 'm blue' }, '◆'), ' dry ', h('span', { class: 'm purple' }, '◆'), ' trucks can\'t reach it, or no route takes its goods'),
-    h('li', null, h('b', null, 'Click'), ' a building to inspect it · ', h('b', null, 'X'), ' remove (refunds) · ', h('b', null, 'right click / Esc'), ' cancel'),
-    h('li', null, h('b', null, 'Drag'), ' (or right-drag, arrows) to pan · ', h('b', null, 'Q E'), ' turn · ', h('b', null, 'wheel / trackpad pinch / + −'), ' zoom · ', h('b', null, 'Space 1 2 3'), ' pause and speed · ', h('b', null, 'V'), ' overlays · ', h('b', null, 'O'), ' routes · ', h('b', null, 'Tab'), ' stats'),
-    h('li', null, 'Not sure what something does? ', h('b', null, 'G'), ' opens the guide: every building, how to use it and its numbers.'),
-  );
-}

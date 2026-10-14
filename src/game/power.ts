@@ -17,6 +17,9 @@ export interface Network {
   capacity: number;
 }
 
+/** The watts a network's machines got: what they wanted, cut back when it is short. */
+export const usedBy = (net: Network) => net.wanted * net.share;
+
 interface Networks { layout: number; list: Network[]; of: Map<number, Network> }
 const cached = new WeakMap<GameState, Networks>();
 

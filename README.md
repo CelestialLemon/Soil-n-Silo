@@ -9,10 +9,9 @@ byproducts have to go somewhere, and the sun sets every few minutes. A 3D world 
 - Plan: [`docs/ROADMAP.md`](docs/ROADMAP.md), including the renderer gaps
 - How to work here: [`AGENTS.md`](AGENTS.md)
 - Models: [`docs/ASSET_BRIEF.md`](docs/ASSET_BRIEF.md)
-- UI revamp (designed, not built yet): [`docs/ui-revamp/`](docs/ui-revamp/README.md), with the design system in
-  [`src/ui/clearday/`](src/ui/clearday/README.md)
+- The interface's design system: [`src/ui/clearday/`](src/ui/clearday/README.md)
 
-![Morning Bread at noon: wheat and bean fields round two silos, a mill, coop, digester and bakery, solar panels, turbines and batteries](docs/screenshot.png)
+![Morning Bread at 13:00 on day 4: the commission card with its goals as gauges, the readouts and the dial, a field in hand with its placement card, and the dock](docs/screenshot.png)
 
 ```sh
 npm install
@@ -25,11 +24,14 @@ npm run build        # typecheck, then the game into dist/
 
 Needs Node 22.18 or later (the tests run TypeScript directly, and installing the renderer from git builds it).
 
-**Playing.** Pick a commission (or the sandbox) in the level select. Pick a building in the bar at the bottom, then click or
-drag to place a row; click a building to inspect and configure it (crop, recipe, the routes that stop there); select a garage to
-buy trucks and give them routes, and click buildings to add them as stops; X removes (refunds), right click or Esc cancels. Drag (or right-drag, arrows) pans, Q/E turn the camera,
-the wheel, a trackpad pinch, +/− or Z zooms towards the pointer (the pixel size is a setting in the menu), Space pauses, 1/2/3 set the speed, V cycles overlays (soil, power,
-roads, water, bees), O lists every route (rename, add trucks, copy, edit), Tab shows production stats, and G opens the guide (every building: what it does, how to use it, its numbers). The game saves the commission in progress in the browser every 30 s and when the page is hidden; `?menu` opens the level
+**Playing.** Pick a commission (or the sandbox) in the level select; it starts with a letter saying what is wanted. Pick a
+building in the dock at the bottom (its card over the pointer says what it would do there), then click or drag to place a row;
+click a building to open its card (its recipe and stores, status, settings, history, what it trades next door, the routes that
+stop there); select a garage to buy trucks and give them routes, and click buildings to add them as stops; X removes (refunds),
+right click or Esc cancels. Drag (or right-drag, arrows) pans, Q/E turn the camera, the wheel, a trackpad pinch, +/− or Z zooms
+towards the pointer, Space pauses, 1/2/3 set the speed, V cycles the views (soil, water, power, roads, bees), O opens the
+routes, Tab the ledger, W the Power panel and G the guide; Esc with nothing open pauses (settings, what the markers mean, every
+key). The game saves the commission in progress in the browser every 30 s and when the page is hidden; `?menu` opens the level
 select and `?play=<id>` (`c1`…`c8`, `sandbox`, `r<seed>-<1..3>`) starts a commission directly.
 
 **Builds online.** Every push to `main` or `dev` is built and deployed to GitHub Pages (`.github/workflows/deploy.yml`):
@@ -45,12 +47,12 @@ src/
   game/         game rules and state as pure TypeScript (no DOM, no renderer), unit-tested in test/
   world/        what the renderer draws: the static farm, the models, and the view that mirrors the state into objects
   ui/           the HTML HUD and menus over the canvas, and the item icons
-    clearday/   the new design system (tokens, components, icons), not wired in yet (docs/ui-revamp/)
+    clearday/   the design system (tokens, components, icons, the bundled font)
 assets/         Blender build scripts for the models (the source of truth), exported to public/models/
 tools/          the commission bot (npm run sim) and its layouts
   clearday/     generators for the Clearday tokens and icons (Python 3)
 test/           unit tests (Node's test runner)
-docs/           design, roadmap, asset brief, the UI revamp
+docs/           design, roadmap, asset brief
 ```
 
 ## The renderer

@@ -2,7 +2,7 @@ import type { ItemId } from './data.ts';
 import type { Building, GameState, Status } from './state.ts';
 
 // What each building has been doing lately, for the inspector's history: when its status changed (and to what), the goods
-// it made, and a reading sampled each step (a generator's watts, a battery's charge), in buckets of HISTORY_BUCKET seconds.
+// it made and the goods taken from it (by trucks or buildings next door), and a reading sampled each step (a generator's watts, a battery's charge), in buckets of HISTORY_BUCKET seconds.
 // Kept for the last HISTORY_SECONDS of play, in memory only (not saved: it fills again within minutes).
 
 export const HISTORY_BUCKET = 5, HISTORY_SECONDS = 600;
@@ -21,6 +21,8 @@ export interface Run {
 export interface Bucket {
   from: number;
   made: Partial<Record<ItemId, number>>;
+  /** Goods taken from it, by trucks or buildings next door. */
+  taken?: Partial<Record<ItemId, number>>;
   /** The reading summed over `steps` steps (0 steps: nothing read). */
   value: number;
   steps: number;
@@ -60,6 +62,13 @@ function bucketAt(h: History, start: number): Bucket {
   let last = h.buckets[h.buckets.length - 1];
   if (!last || last.from < t - 1e-6) h.buckets.push((last = { from: t, made: {}, value: 0, steps: 0, lowSteps: 0, lowShare: 0 }));
   return last;
+}
+
+/** Notes a good taken from a building (by a truck or a building next door) in the step going on. */
+export function noteTaken(s: GameState, b: Building, item: ItemId) {
+  if (!hasHistory(b)) return;
+  const h = current(s, b, s.time - 1e-6), k = bucketAt(h, s.time - 1e-6);
+  (k.taken ??= {})[item] = (k.taken[item] ?? 0) + 1;
 }
 
 /** Notes goods a building made this step. */
@@ -124,6 +133,9 @@ export interface Summary {
   step: number;
   /** Goods made a minute over the window's buckets. */
   perMin: Partial<Record<ItemId, number>>;
+  /** Goods made, and taken from it, in all over the window's buckets. */
+  made: Partial<Record<ItemId, number>>;
+  taken: Partial<Record<ItemId, number>>;
   /** The reading over the window: its average over every step read, and the lowest and highest bar (null: none read). */
   reading: { avg: number; min: number; max: number } | null;
 }
@@ -154,7 +166,7 @@ export function summarize(h: History, now: number, window: number, bars = 60): S
   const out: Bar[] = [];
   for (let t = first; t < now - 1e-9; t += step) out.push({ from: t, to: t + step, made: {}, value: null });
   const sums = out.map(() => ({ value: 0, steps: 0 }));
-  const perMin: Partial<Record<ItemId, number>> = {};
+  const perMin: Partial<Record<ItemId, number>> = {}, made: Partial<Record<ItemId, number>> = {}, taken: Partial<Record<ItemId, number>> = {};
   let value = 0, steps = 0, lowShare = 0, lowSteps = 0;
   for (const k of h.buckets) {
     const i = Math.floor((k.from - first) / step + 1e-9);
@@ -162,7 +174,9 @@ export function summarize(h: History, now: number, window: number, bars = 60): S
     for (const [item, n] of Object.entries(k.made) as [ItemId, number][]) {
       out[i].made[item] = (out[i].made[item] ?? 0) + n;
       perMin[item] = (perMin[item] ?? 0) + n;
+      made[item] = (made[item] ?? 0) + n;
     }
+    for (const [item, n] of Object.entries(k.taken ?? {}) as [ItemId, number][]) taken[item] = (taken[item] ?? 0) + n;
     sums[i].value += k.value; sums[i].steps += k.steps;
     value += k.value; steps += k.steps; lowShare += k.lowShare; lowSteps += k.lowSteps;
   }
@@ -174,5 +188,39 @@ export function summarize(h: History, now: number, window: number, bars = 60): S
   for (const item of Object.keys(perMin) as ItemId[]) perMin[item] = covered > 0 ? (perMin[item]! / covered) * 60 : 0;
   const read = out.flatMap((x) => (x.value === null ? [] : [x.value]));
   const reading = steps ? { avg: value / steps, min: Math.min(...read), max: Math.max(...read) } : null;
-  return { start, now, since: h.since, spans, shares, bars: out, step, perMin, reading };
+  return { start, now, since: h.since, spans, shares, bars: out, step, perMin, made, taken, reading };
+}
+
+/** The status a building has now and since when it has held it (null: nothing recorded). */
+export function heldSince(h: History): { status: Status; need?: string; from: number } | null {
+  const r = h.runs[h.runs.length - 1];
+  return r ? { status: r.status, need: r.need, from: r.from } : null;
+}
+
+/** What a building waited for: an input, power, room for its output, water, flowers or a road. */
+export type WaitKind = 'input' | 'power' | 'output' | 'water' | 'flowers' | 'road';
+export interface Wait { kind: WaitKind; need?: string; seconds: number; share: number; statuses: Status[] }
+
+const WAIT_OF: Partial<Record<Status, WaitKind>> = {
+  input: 'input', power: 'power', lowpower: 'power', nolink: 'power', blocked: 'output', noroute: 'output', dry: 'water',
+  flowers: 'flowers', noroad: 'road',
+};
+
+/**
+ * What a building spent the window waiting for, ranked by the share of the window: each input it lacked, power, room for its
+ * output (by good), water, flowers or a road. Time working or idle isn't waiting.
+ */
+export function waitsOf(sum: Summary): Wait[] {
+  const total = sum.shares.reduce((n, x) => n + x.seconds, 0), by = new Map<string, Wait>();
+  for (const x of sum.shares) {
+    const kind = WAIT_OF[x.status];
+    if (!kind) continue;
+    const need = kind === 'input' || kind === 'output' ? x.need : undefined, key = `${kind}|${need ?? ''}`;
+    let w = by.get(key);
+    if (!w) by.set(key, (w = { kind, need, seconds: 0, share: 0, statuses: [] }));
+    w.seconds += x.seconds;
+    if (!w.statuses.includes(x.status)) w.statuses.push(x.status);
+  }
+  for (const w of by.values()) w.share = total > 0 ? w.seconds / total : 0;
+  return [...by.values()].sort((a, b) => b.seconds - a.seconds);
 }
