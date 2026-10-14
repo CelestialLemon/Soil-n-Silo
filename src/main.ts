@@ -610,7 +610,8 @@ async function play(initial: GameState) {
     sinceSave += dt;
     if (sinceSave > AUTOSAVE_SECONDS) { sinceSave = 0; save(); }
 
-    // Arrow keys pan.
+    // Arrow keys pan, but not behind a screen that stops the game.
+    if (hud.modal) keys.clear();
     const kx = (keys.has('ArrowRight') ? 1 : 0) - (keys.has('ArrowLeft') ? 1 : 0), ky = (keys.has('ArrowDown') ? 1 : 0) - (keys.has('ArrowUp') ? 1 : 0);
     if (kx || ky) pan(-kx * dt * 600, -ky * dt * 600);
 
