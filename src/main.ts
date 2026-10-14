@@ -7,7 +7,7 @@ import { networkOf, POWERED, pylonsInLink } from './game/power.ts';
 import { deserialize, readProgress, recordResult, saveKey, serialize } from './game/save.ts';
 import { scenarioById } from './game/scenarios.ts';
 import {
-  advance, describeLinks, describeStatus, describeTruck, fieldFertility, hourAt, isStop, linksAt, linksOf, medalFor, routeOf, routesAt,
+  advance, cargoText, describeLinks, describeStatus, describeTruck, fieldFertility, hourAt, isStop, linksAt, linksOf, medalFor, routeOf, routesAt,
 } from './game/sim.ts';
 import {
   buildingAt, buildingById, inMap, newGame, reachTo, routeById, sizeOf, terrainAt, truckById, type Dir, type GameState, type Route,
@@ -15,6 +15,7 @@ import {
 import { Hud, type Tool } from './ui/hud.ts';
 import { showMenu } from './ui/menu.ts';
 import { SettingsStore } from './ui/settings.ts';
+import { truckName } from './ui/routing.ts';
 import { statusLabel } from './ui/widgets.ts';
 import type { Hover, MarkerSpot } from './ui/world.ts';
 import { allGeometries, loadModels } from './world/models.ts';
@@ -363,7 +364,7 @@ async function play(initial: GameState) {
     switch (tool.kind) {
       case 'select': {
         selected = hoverBuilding;
-        hud.refresh();
+        hud.picked(selected);
         return;
       }
       case 'route': {
@@ -607,6 +608,13 @@ async function play(initial: GameState) {
     const shown = shownRoutes(focus, shownOverlay === 'roads');
     view.links(linkedTo(focus));
     routeView.sync(state, shown.routes, shown.numbers);
+    // Tags over the trucks of the one route being edited or pointed at.
+    const tagged = shown.numbers && (tool.kind === 'route' || previewRoute !== null) ? shown.routes[0] : null;
+    hud.world.setTruckTags(tagged ? state.trucks.filter((t) => t.route === tagged.id).map((t) => {
+      const to = t.target !== null ? buildingById(state, t.target) : null;
+      const where = t.phase === 'drive' && to ? `to the ${BUILDINGS[to.type].name.toLowerCase()}` : t.phase === 'dock' || t.phase === 'queue' ? `at the ${to ? BUILDINGS[to.type].name.toLowerCase() : 'stop'}` : t.phase === 'charge' || t.phase === 'parked' ? 'charging' : 'stuck';
+      return { id: t.id, name: truckName(state, t), what: `${where}${t.cargo.length ? ` · ${cargoText(t.cargo)}` : ''}`, ...toScreen(t.x, 0.9, t.y) };
+    }) : []);
     hud.world.setStopLabels(routeView.labels().map((l) => ({ ...l, ...toScreen(l.x, l.y, l.z) })));
     // Power shows only while you work with it: its overlay, placing something that uses power, selecting a building on a
     // network, or pointing at a pylon or something that makes or stores power.

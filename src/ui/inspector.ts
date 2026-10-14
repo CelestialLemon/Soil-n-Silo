@@ -76,9 +76,10 @@ export class Inspector {
   /** Redraws now (the selection or a setting changed). */
   refresh() { this.key = ''; }
 
-  update() {
-    const s = this.host.state(), id = this.host.selected();
-    const b = id !== null && this.host.tool().kind !== 'route' ? buildingById(s, id) : null, t = id !== null && this.host.tool().kind !== 'route' ? truckById(s, id) : null;
+  /** Shows the selected building or truck, unless `allowed` is false (the routes card has the side). */
+  update(allowed = true) {
+    const s = this.host.state(), id = allowed ? this.host.selected() : null;
+    const b = id !== null ? buildingById(s, id) : null, t = id !== null ? truckById(s, id) : null;
     if (!b && !t) {
       if (!this.el.hidden) { this.el.hidden = true; this.el.replaceChildren(); }
       this.key = ''; this.updater = null;

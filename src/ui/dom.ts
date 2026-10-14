@@ -51,9 +51,9 @@ export function setVar(el: HTMLElement, name: string, value: string | number) {
 }
 
 /** Replaces an element's children only when `key` changed since last time (kept on the element). */
-export function rebuild(el: HTMLElement, key: string, make: () => (Node | null)[]) {
+export function rebuild(el: HTMLElement, key: string, make: () => (Child | Child[])[]) {
   if (el.dataset.key === key) return false;
   el.dataset.key = key;
-  el.replaceChildren(...make().filter((x): x is Node => !!x));
+  fill(el, ...make());
   return true;
 }

@@ -24,31 +24,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .bar { height: 7px; background: #0007; border: 1px solid #0009; border-radius: 3px; overflow: hidden; flex: 1; min-width: 60px; }
 .bar .fill { height: 100%; width: 0; background: linear-gradient(#c8f080, #6aa840); }
 
-/* The left column: the routes panel (O), under the commission card. */
-.left-col { position: absolute; left: 12px; top: 330px; bottom: 150px; width: 340px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; pointer-events: none; }
 
-.inspector { position: absolute; right: 12px; top: 128px; width: 330px; max-height: calc(100vh - 300px); overflow: auto; display: none; }
-.inspector .head, .stats-panel .head { display: flex; justify-content: space-between; align-items: center; font-size: 15px; color: var(--honey); }
-.inspector .close, .stats-panel .close { padding: 0 6px; }
-.head-buttons { display: flex; gap: 4px; }
-.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin: 0 4px 0 2px; vertical-align: 0; border: 1px solid #0008; }
-.wiring b { font-weight: normal; }
-.warn-hint { color: #ffc080 !important; }
-.inspector .hint, .hint { color: var(--dim); font-size: 12px; margin: 2px 0 6px; }
-.status { padding: 3px 6px; border-radius: 4px; background: #0003; margin: 4px 0; }
-.status.input, .status.flowers { color: #ffe080; } .status.blocked, .status.lowpower { color: #ffb050; } .status.power, .status.nolink { color: #ff7a60; } .status.dry { color: #80c8ff; } .status.ok { color: #c8f0a0; } .status.noroad, .status.noroute { color: #d8a0ff; }
-.kv { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; margin: 3px 0; }
-.kv b { color: var(--text); font-weight: normal; text-align: right; }
-.choices { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
-.choices button { font-size: 12px; padding: 2px 7px; }
-.recipe { margin: 6px 0; font-size: 12px; }
-.buffers { font-size: 12px; margin: 2px 0; display: flex; flex-wrap: wrap; gap: 6px; }
-.good { white-space: nowrap; }
-.good i { display: inline-block; width: 9px; height: 9px; border: 1px solid #0008; margin-right: 3px; vertical-align: -1px; }
-.actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 10px; flex-wrap: wrap; }
-.inspector select, .random select, .random input { font: inherit; background: var(--paper); border: 2px solid #12241f; border-radius: 4px; }
-.inspector h4 { margin: 8px 0 2px; color: var(--honey); }
-.delivered { font-size: 12px; columns: 2; }
 
 .stats-panel { position: absolute; left: 50%; top: 100px; transform: translateX(-50%); min-width: 460px; display: none; }
 .stats-panel table { border-collapse: collapse; width: 100%; font-size: 12px; margin: 6px 0; }
@@ -142,45 +118,16 @@ button:disabled { opacity: 0.45; cursor: default; }
 .diagram-wrap { background: #1d3a36; border-radius: 6px; padding: 10px; margin: 8px 0; }
 .diagram { width: 100%; max-width: 420px; display: block; margin: 0 auto; }
 .diagram-wrap .hint { color: var(--dim) !important; text-align: center; }
-.goods-table td:first-child { width: 34%; }
-/* Trucks and routes in the inspector, and routes in the stats. */
-.route-name { white-space: nowrap; }
-.truck-row { margin: 4px 0; padding: 2px 0 4px; border-bottom: 1px solid #ffffff14; }
-.truck-row .hint { margin: 0; }
-.inspector .kv select { max-width: 60%; }
-.stop { margin: 8px 0; padding: 4px 6px 6px; border: 1px solid #ffffff1c; border-radius: 6px; background: #0002; }
-.stop .head { font-size: 13px; color: var(--text); }
-.stop .head button { padding: 0 6px; }
-.stop-goods { margin: 4px 0; align-items: center; }
-.stop-goods .lbl { font-size: 11px; color: var(--dim); width: 48px; }
-.stop-goods button:not(.active) { opacity: 0.6; }
-.stop-goods small.hint { margin: 0; }
-.stats-panel h4 { margin: 10px 0 2px; color: var(--honey); }
-.stats-panel td.stops { text-align: left; color: var(--dim); max-width: 220px; }
 
-.inspector .glink { color: var(--honey); }
 
-/* The routes panel: every route at a glance. */
-.routes-panel { display: none; width: 100%; box-sizing: border-box; min-height: 0; flex: 0 1 auto; overflow: auto; }
-.routes-panel .head { display: flex; justify-content: space-between; align-items: center; font-size: 15px; color: var(--honey); margin-bottom: 4px; }
-.routes-panel .close { padding: 0 6px; }
-.route-filter { width: 100%; box-sizing: border-box; font: inherit; font-size: 12px; margin: 2px 0 6px; padding: 3px 6px; background: var(--paper); color: var(--ink); border: 2px solid #12241f; border-radius: 4px; }
-.route-row { margin: 6px 0; padding: 4px 6px 5px; border: 1px solid #ffffff1c; border-radius: 6px; background: #0002; cursor: pointer; }
-.route-row:hover { border-color: #ffffff50; background: #ffffff0c; }
-.route-row.editing { border-color: var(--honey); }
-.route-line { display: flex; align-items: center; gap: 6px; font-size: 12px; }
-.route-line .head-buttons { margin-left: auto; }
-.route-title { font: inherit; font-size: 13px; font-weight: bold; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 4px;
   padding: 1px 3px; min-width: 0; flex: 1; cursor: text; }
-.route-title:hover { border-color: #ffffff40; }
-.route-title:focus { background: var(--paper); color: var(--ink); border-color: #12241f; outline: none; }
-.inspector .head .route-line { flex: 1; min-width: 0; }
-.inspector .head .route-title { color: var(--honey); font-size: 15px; }
-.route-warn { color: #ffc080; font-size: 12px; cursor: help; }
-.route-stops { margin: 2px 0 !important; }
-.route-goods { display: flex; flex-wrap: wrap; gap: 2px 8px; flex: 1; min-width: 0; }
-.route-trucks { white-space: nowrap; }
-.route-trucks b { font-weight: normal; }
-.route-trucks button { padding: 0 6px; }
-.route-rate { color: var(--dim); white-space: nowrap; min-width: 56px; text-align: right; }
-.route-doing { margin: 2px 0 0 !important; }
+/* Still used by the stats panel, guide and modal screens. */
+.hint { color: var(--dim); font-size: 12px; margin: 2px 0 6px; }
+.good { white-space: nowrap; }
+.good i { display: inline-block; width: 9px; height: 9px; border: 1px solid #0008; margin-right: 3px; vertical-align: -1px; }
+.actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 10px; flex-wrap: wrap; }
+.kv { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; margin: 3px 0; }
+.kv b { color: var(--text); font-weight: normal; text-align: right; }
+.choices { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.choices button { font-size: 12px; padding: 2px 7px; }
+.stats-panel .head { display: flex; justify-content: space-between; align-items: center; font-size: 15px; color: var(--honey); }
