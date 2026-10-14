@@ -11,7 +11,7 @@ byproducts have to go somewhere, and the sun sets every few minutes. A 3D world 
 - Models: [`docs/ASSET_BRIEF.md`](docs/ASSET_BRIEF.md)
 - The interface's design system: [`src/ui/clearday/`](src/ui/clearday/README.md)
 
-![Morning Bread at noon: wheat and bean fields round two silos, a mill, coop, digester and bakery, solar panels, turbines and batteries](docs/screenshot.png)
+![Morning Bread at 13:00 on day 4: the commission card with its goals as gauges, the readouts and the dial, a field in hand with its placement card, and the dock](docs/screenshot.png)
 
 ```sh
 npm install
