@@ -58,10 +58,17 @@ export function startedRunLog(s: GameState): RunLog {
   return run;
 }
 
+/**
+ * Whether the run is still being recorded: until the step that completes the commission (the results cover the run, and a
+ * game kept playing after it doesn't grow its save), and never in the sandbox, which has no results.
+ */
+const recording = (s: GameState) => !s.scenario.sandbox && (s.completedAt === null || s.completedAt >= s.time - 1e-9);
+
 const marked = (run: RunLog, kind: MarkKind, test: (m: Mark) => boolean) => run.marks.some((m) => m.kind === kind && test(m));
 
 /** Notes a good used by a building: the first byproduct put to use closes a loop. */
 export function noteRunUse(s: GameState, item: ItemId) {
+  if (!recording(s)) return;
   if (BYPRODUCTS.includes(item) && !marked(s.run, 'loop', (m) => m.item === item)) s.run.marks.push({ t: s.time, kind: 'loop', item });
 }
 
@@ -70,6 +77,7 @@ export function noteRunUse(s: GameState, item: ItemId) {
  * second the milestones. `night`: no sun; `short`: some network was short; `done`: each goal met now.
  */
 export function noteRun(s: GameState, dt: number, night: boolean, short: boolean, done: () => boolean[]) {
+  if (!recording(s)) return;
   const run = s.run;
   const n = night ? nightEntry(s) : null;
   if (n && short) n.short += dt;
@@ -94,8 +102,8 @@ export function noteRun(s: GameState, dt: number, night: boolean, short: boolean
   if (item && s.completedAt === null && run.curve.length < RUN_MAX_SAMPLES && s.time >= run.curveFrom + run.curve.length * RUN_SAMPLE - 1e-6) {
     run.curve.push(s.delivered[item] ?? 0);
   }
-  if (Math.floor(s.time + 1e-6) === Math.floor(s.time - dt + 1e-6)) return;
-  // Once a second: the milestones.
+  // Once a second, and on the step that completes the commission: the milestones.
+  if (Math.floor(s.time + 1e-6) === Math.floor(s.time - dt + 1e-6) && s.completedAt === null) return;
   for (const i of Object.keys(s.made) as ItemId[]) if (s.made[i] && !marked(run, 'first', (m) => m.item === i)) run.marks.push({ t: s.time, kind: 'first', item: i });
   for (let k = 1; k <= Math.min(2, s.trucks.length); k++) if (!marked(run, 'truck', (m) => (m.n ?? 1) >= k)) run.marks.push({ t: s.time, kind: 'truck', n: k });
   const count = new Map<BuildingId, number>();

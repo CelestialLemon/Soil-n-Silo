@@ -49,6 +49,8 @@ export interface HudHost {
   settings: SettingsStore;
   menu(): void;
   restart(): void;
+  /** Unpauses the game. */
+  resume(): void;
   /** Starts another commission. */
   start(id: string): void;
   /** Draws a route on the map while the pointer is over it in the routes panel (null: none). */
@@ -271,7 +273,7 @@ export class Hud {
 
   openPause() {
     this.openModal('pause', pauseScreen({
-      state: () => this.host.state(), settings: this.host.settings, resume: () => this.close('pause'), menu: () => this.host.menu(), restart: () => this.host.restart(),
+      state: () => this.host.state(), settings: this.host.settings, resume: () => { this.close('pause'); this.host.resume(); }, menu: () => this.host.menu(), restart: () => this.host.restart(),
     }), true);
   }
 

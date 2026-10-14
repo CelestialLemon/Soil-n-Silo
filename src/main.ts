@@ -121,6 +121,7 @@ async function play(initial: GameState) {
     setTool: (t) => setTool(t),
     speed: () => (paused ? 0 : speed),
     setSpeed: (n) => { if (n === 0) paused = !paused; else { speed = n; paused = false; } },
+    resume: () => { paused = false; },
     overlay: () => overlay,
     setOverlay: (o) => { overlay = overlay === o ? 'none' : o; },
     selected: () => selected,
@@ -490,7 +491,7 @@ async function play(initial: GameState) {
       return;
     }
     if (e.repeat) return;
-    if (e.code === 'Space') { e.preventDefault(); if (!hud.closeIf('pause')) paused = !paused; return; }
+    if (e.code === 'Space') { e.preventDefault(); if (hud.closeIf('pause')) paused = false; else paused = !paused; return; }
     if (e.code === 'Digit1') { speed = 1; paused = false; }
     if (e.code === 'Digit2') { speed = 2; paused = false; }
     if (e.code === 'Digit3') { speed = 4; paused = false; }

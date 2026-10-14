@@ -213,6 +213,10 @@ test('the run log: milestones, the goal good\'s curve, waits; it saves, and an o
   assert.equal(s.run.curve[0], 0);
   const waits = runWaits(s.run);
   assert.ok(waits.some((w) => w.type === 'mill' && w.status === 'input'), 'the second mill waited for wheat');
+  // Kept playing, the run log no longer grows.
+  const saved = JSON.stringify(s.run);
+  advance(s, DAY_SECONDS * 2);
+  assert.equal(JSON.stringify(s.run), saved);
   const back = deserialize(serialize(s))!;
   assert.deepEqual(back.run, s.run);
   const old = JSON.parse(serialize(s));
