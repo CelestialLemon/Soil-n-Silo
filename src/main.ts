@@ -500,6 +500,8 @@ async function play(initial: GameState) {
       if (hud.closeIf('pause')) paused = false; else if (!hud.modal) paused = !paused;
       return;
     }
+    // A screen that stops the game (pause, briefing, guide, results) takes no game keys; they would act unseen behind it.
+    if (hud.modal) return;
     if (e.code === 'Digit1') { speed = 1; paused = false; }
     if (e.code === 'Digit2') { speed = 2; paused = false; }
     if (e.code === 'Digit3') { speed = 4; paused = false; }
