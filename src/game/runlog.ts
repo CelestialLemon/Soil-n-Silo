@@ -8,7 +8,10 @@ import type { GameState } from './state.ts';
 // what held the valley back (the time each kind of building spent in each problem, nights short of power, trucks waiting at
 // stops). Unlike the other logs it is saved with the game: the results come at the end of a run that may span many sessions.
 
-/** Seconds of play between samples of the goal good's curve, and the most samples kept. */
+/**
+ * Seconds of play between samples of the goal good's curve at first, and the most samples kept: a run that fills them keeps
+ * every other one and samples half as often, so the curve always spans the whole run.
+ */
 export const RUN_SAMPLE = 10, RUN_MAX_SAMPLES = 2000;
 /** The most nights kept (over 33 hours of play): a run that long stops adding them, so its save stays bounded. */
 export const RUN_MAX_NIGHTS = 500;
@@ -19,8 +22,9 @@ export interface Mark { t: number; kind: MarkKind; item?: ItemId; type?: Buildin
 
 export interface RunLog {
   marks: Mark[];
-  /** The goal good delivered, sampled every RUN_SAMPLE seconds from `curveFrom`. */
+  /** The goal good delivered, sampled every `curveStep` seconds from `curveFrom`. */
   curveFrom: number;
+  curveStep: number;
   curve: number[];
   /** Seconds each kind of building stood, and seconds spent in each problem, keyed `type|status|need`. */
   time: Partial<Record<BuildingId, number>>;
@@ -31,7 +35,7 @@ export interface RunLog {
   trucks: { total: number; wait: number; at: Partial<Record<BuildingId, number>> };
 }
 
-export const newRunLog = (): RunLog => ({ marks: [], curveFrom: 0, curve: [0], time: {}, problems: {}, nights: [], trucks: { total: 0, wait: 0, at: {} } });
+export const newRunLog = (): RunLog => ({ marks: [], curveFrom: 0, curveStep: RUN_SAMPLE, curve: [0], time: {}, problems: {}, nights: [], trucks: { total: 0, wait: 0, at: {} } });
 
 /** Byproducts: put to use, they close a loop. */
 const BYPRODUCTS: ItemId[] = ['bran', 'seedcake', 'manure'];
@@ -99,10 +103,14 @@ export function noteRun(s: GameState, dt: number, night: boolean, short: boolean
     const at = t.target !== null ? s.buildings.find((b) => b.id === t.target) : null;
     if (at) run.trucks.at[at.type] = (run.trucks.at[at.type] ?? 0) + dt;
   }
-  // The curve, every RUN_SAMPLE seconds until the commission is complete, and a last sample on the step that completes it
+  // The curve, every `curveStep` seconds until the commission is complete, and a last sample on the step that completes it
   // (the results draw it at the completion time).
   const item = goalGood(s.scenario);
-  if (item && run.curve.length < RUN_MAX_SAMPLES && (s.completedAt !== null || s.time >= run.curveFrom + run.curve.length * RUN_SAMPLE - 1e-6)) {
+  if (item && (s.completedAt !== null || s.time >= run.curveFrom + run.curve.length * run.curveStep - 1e-6)) {
+    if (run.curve.length >= RUN_MAX_SAMPLES) {
+      run.curve = run.curve.filter((_, i) => i % 2 === 0);
+      run.curveStep *= 2;
+    }
     run.curve.push(s.delivered[item] ?? 0);
   }
   // Once a second, and on the step that completes the commission: the milestones.

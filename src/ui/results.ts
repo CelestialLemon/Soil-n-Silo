@@ -1,7 +1,7 @@
 import { chainOf, type Step } from '../game/chain.ts';
 import { BUILDINGS, ITEMS, START_HOUR, type ItemId } from '../game/data.ts';
 import { HOUR_SECONDS } from '../game/powerlog.ts';
-import { goalGood, RUN_SAMPLE, runWaits, type Mark } from '../game/runlog.ts';
+import { goalGood, runWaits, type Mark } from '../game/runlog.ts';
 import { CAMPAIGN } from '../game/scenarios.ts';
 import { soilHealth, type Medal } from '../game/sim.ts';
 import { countTrees, type GameState } from '../game/state.ts';
@@ -69,7 +69,7 @@ function runChart(s: GameState, end: number) {
     if (b > a) parts.push(svg('rect', { x: x(a), y: top + H + 6, width: Math.max(4, x(b) - x(a)), height: 6, rx: 3, class: 'short' }));
   }
   // The curve.
-  const pts = run.curve.map((v, i) => [x(Math.min(end, run.curveFrom + i * RUN_SAMPLE)), y(v)] as const);
+  const pts = run.curve.map((v, i) => [x(Math.min(end, run.curveFrom + i * run.curveStep)), y(v)] as const);
   if (pts.length) {
     const line = pts.map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(' ');
     parts.push(svg('polygon', { points: `${pts[0][0]},${top + H} ${line} ${pts[pts.length - 1][0]},${top + H}`, class: 'area' }));
@@ -95,7 +95,7 @@ function runChart(s: GameState, end: number) {
     if (kept.length < 8 && kept.every((k) => Math.abs(x(k.t) - x(m.t)) >= 70)) kept.push(m);
   }
   const marks = kept.sort((a, b) => a.t - b.t);
-  const valueAt = (t: number) => run.curve[Math.max(0, Math.min(run.curve.length - 1, Math.round((t - run.curveFrom) / RUN_SAMPLE)))] ?? 0;
+  const valueAt = (t: number) => run.curve[Math.max(0, Math.min(run.curve.length - 1, Math.round((t - run.curveFrom) / run.curveStep)))] ?? 0;
   const discs = marks.map((m, i) => {
     const l = markLabel(s, m), px = x(m.t), py = y(valueAt(m.t)), up = i % 2 === 0 ? -1 : 1;
     const ly = Math.max(14, Math.min(top + H + 30, py + up * 46));

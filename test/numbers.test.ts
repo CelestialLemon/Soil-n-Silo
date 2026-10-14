@@ -8,7 +8,7 @@ import { creditsPerMin, flowRate, flowSeries, goodsHeld, soilTrend } from '../sr
 import { nextHour, placement, tonight } from '../src/game/forecast.ts';
 import { heldSince, historyOf, summarize, waitsOf } from '../src/game/history.ts';
 import { HOUR_SECONDS, nightsOf, powerDay } from '../src/game/powerlog.ts';
-import { RUN_MAX_NIGHTS, RUN_SAMPLE, runWaits } from '../src/game/runlog.ts';
+import { RUN_MAX_NIGHTS, RUN_MAX_SAMPLES, RUN_SAMPLE, runWaits } from '../src/game/runlog.ts';
 import { deserialize, serialize } from '../src/game/save.ts';
 import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
 import { advance, deliver, hourAt } from '../src/game/sim.ts';
@@ -227,6 +227,19 @@ test('the run log: milestones, the goal good\'s curve, waits; it saves, and an o
   assert.ok(migrated.run.marks.every((m) => m.t === -1));
   assert.equal(migrated.run.curve.length, 1);
   assert.equal(deserialize(JSON.stringify({ ...old, run: { ...s.run, curve: ['x'] } })), null);
+});
+
+test('a long run\'s curve keeps every other sample once full, so it still spans the run', () => {
+  const s = flat({ goals: [{ kind: 'deliver', item: 'flour', n: 1000 }] });
+  s.reached = [false];
+  s.run.curve = Array.from({ length: RUN_MAX_SAMPLES }, (_, i) => i);
+  s.time = RUN_MAX_SAMPLES * RUN_SAMPLE;
+  advance(s, 0.5);
+  assert.equal(s.run.curveStep, RUN_SAMPLE * 2);
+  assert.equal(s.run.curve.length, RUN_MAX_SAMPLES / 2 + 1);
+  assert.equal(s.run.curve[1], 2, 'the kept samples are every other one');
+  advance(s, RUN_SAMPLE * 2);
+  assert.equal(s.run.curve.length, RUN_MAX_SAMPLES / 2 + 2, 'then a sample every curveStep seconds');
 });
 
 test('an unfinished run keeps at most RUN_MAX_NIGHTS nights', () => {

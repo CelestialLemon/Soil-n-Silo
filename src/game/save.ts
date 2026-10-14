@@ -81,7 +81,7 @@ function validRun(r: RunLog): boolean {
   const kinds = (o: unknown) => nums(o) && Object.keys(o as object).every((k) => k in BUILDINGS);
   return !!r && arr(r.marks) && r.marks.every((m) => !!m && num(m.t) && MARKS.includes(m.kind) && (m.item === undefined || item(m.item))
       && (m.type === undefined || m.type in BUILDINGS) && (m.goal === undefined || int(m.goal)) && (m.n === undefined || num(m.n)))
-    && num(r.curveFrom) && arr(r.curve) && r.curve.every(num) && kinds(r.time) && nums(r.problems)
+    && num(r.curveFrom) && num(r.curveStep) && r.curveStep > 0 && arr(r.curve) && r.curve.every(num) && kinds(r.time) && nums(r.problems)
     && arr(r.nights) && r.nights.every((n) => !!n && num(n.day) && num(n.short) && arr(n.types) && n.types.every((t) => t in BUILDINGS))
     && !!r.trucks && num(r.trucks.total) && num(r.trucks.wait) && kinds(r.trucks.at);
 }
