@@ -484,6 +484,8 @@ async function play(initial: GameState) {
     keys.add(e.code);
     if (e.code === 'Escape') {
       if (press?.mode === 'paint') { press.mode = 'void'; return; }
+      // Closing the pause screen resumes, as its Esc hint says.
+      if (hud.closeIf('pause')) { paused = false; return; }
       if (hud.closeTop()) return;
       if (tool.kind !== 'select') { setTool({ kind: 'select' }); hud.refresh(); return; }
       if (selected !== null) { selected = null; hud.refresh(); return; }
