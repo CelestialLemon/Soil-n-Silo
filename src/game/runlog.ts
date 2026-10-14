@@ -99,9 +99,10 @@ export function noteRun(s: GameState, dt: number, night: boolean, short: boolean
     const at = t.target !== null ? s.buildings.find((b) => b.id === t.target) : null;
     if (at) run.trucks.at[at.type] = (run.trucks.at[at.type] ?? 0) + dt;
   }
-  // The curve, until the commission is complete.
+  // The curve, every RUN_SAMPLE seconds until the commission is complete, and a last sample on the step that completes it
+  // (the results draw it at the completion time).
   const item = goalGood(s.scenario);
-  if (item && s.completedAt === null && run.curve.length < RUN_MAX_SAMPLES && s.time >= run.curveFrom + run.curve.length * RUN_SAMPLE - 1e-6) {
+  if (item && run.curve.length < RUN_MAX_SAMPLES && (s.completedAt !== null || s.time >= run.curveFrom + run.curve.length * RUN_SAMPLE - 1e-6)) {
     run.curve.push(s.delivered[item] ?? 0);
   }
   // Once a second, and on the step that completes the commission: the milestones.

@@ -210,7 +210,8 @@ test('the run log: milestones, the goal good\'s curve, waits; it saves, and an o
   advance(s, 1.5);
   assert.ok(s.run.marks.some((m) => m.kind === 'goal' && m.goal === 0));
   assert.ok(s.completedAt !== null);
-  assert.equal(s.run.curve.length, Math.floor(s.completedAt! / RUN_SAMPLE) + 1);
+  assert.equal(s.run.curve.length, Math.floor(s.completedAt! / RUN_SAMPLE) + 2, 'a sample every RUN_SAMPLE seconds, and one at completion');
+  assert.equal(s.run.curve[s.run.curve.length - 1], 3, 'the last sample has every delivery');
   assert.equal(s.run.curve[0], 0);
   const waits = runWaits(s.run);
   assert.ok(waits.some((w) => w.type === 'mill' && w.status === 'input'), 'the second mill waited for wheat');
