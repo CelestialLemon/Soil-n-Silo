@@ -105,7 +105,8 @@ export class CommissionCard {
       setVar(p.g, '--v', Math.max(0, Math.min(1, now.v)));
       p.g.classList.toggle('is-done', now.done);
       set(p.fig, now.figure); set(p.of, now.done && g.kind !== 'soil' ? 'done' : now.of);
-      if (st.showPace && g.kind !== 'soil' && s.completedAt === null) {
+      // A rate goal is judged on the rate now, not on a total, so it has no pace to keep.
+      if (st.showPace && g.kind === 'deliver' && s.completedAt === null) {
         // Gold pace: the share of the goal that, delivered at a steady rate, finishes on time; silver the same for 1.5×.
         let ticks = p.g.querySelectorAll<HTMLElement>('.cd-gauge__tick');
         if (!ticks.length) { p.g.prepend(h('span', { class: 'cd-gauge__tick' }), h('span', { class: 'cd-gauge__tick is-silver' })); ticks = p.g.querySelectorAll('.cd-gauge__tick'); }
