@@ -640,6 +640,8 @@ async function play(initial: GameState) {
   Object.assign(window, { game: {
     get state() { return state; }, set state(s: GameState) { state = s; }, renderer, view, hud, sizeOf,
     /** Points the camera at a ground point, optionally at a zoom (screen pixels per metre). */
+    /** Runs the simulation on by `seconds` of play at once. */
+    advance: (seconds: number) => advance(state, seconds),
     look: (x: number, z: number, z0?: number) => { target.set(x, 0, z); clampTarget(); if (z0) { setZoom(z0); zoom = zoomGoal; } repick = 2; },
   } });
 }

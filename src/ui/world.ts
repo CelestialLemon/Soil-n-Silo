@@ -113,7 +113,10 @@ export class WorldLayer {
   setHover(hover: Hover | null, at: { x: number; y: number } | null) {
     this.hover.hidden = !hover || !at;
     if (!hover || !at) return;
-    this.hover.style.left = `${Math.round(at.x / this.z)}px`; this.hover.style.top = `${Math.round(at.y / this.z)}px`;
+    const x = at.x / this.z;
+    this.hover.style.left = `${Math.round(x)}px`; this.hover.style.top = `${Math.round(at.y / this.z)}px`;
+    // Near the right edge it opens to the left of the pointer.
+    this.hover.classList.toggle('is-left', x + 420 > this.el.clientWidth);
     const key = JSON.stringify(hover);
     if (key === this.hoverKey) return;
     this.hoverKey = key;

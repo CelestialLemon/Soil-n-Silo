@@ -112,8 +112,82 @@ button { font: inherit; }
 .forecast .next { margin-top: 12px; display: grid; gap: 2px; }
 .forecast .why { margin-top: 12px; color: #f1b9a9; font-weight: 700; }
 .forecast .keys { margin-top: 10px; }
-.hover { max-width: 380px; transform: translate(18px, 18px); padding: 10px 14px; border-radius: 16px; }
+.hover { max-width: 380px; transform: translate(18px, 18px); white-space: normal; padding: 10px 14px; border-radius: 16px; }
 .hover .head { display: flex; align-items: center; gap: 8px; font-weight: 700; }
 .hover .head .cd-i { --s: 24px; }
 .hover .cd-status { margin-top: 8px; }
 .hover p { margin: 6px 0 0; }
+
+/* ---- The side card, right: the inspector and the routes ---- */
+.side-card { position: absolute; right: 28px; top: 28px; bottom: 28px; width: 480px; padding: 24px 24px 20px; display: flex; flex-direction: column; gap: 14px; }
+.side-card .side-body { flex: 1; min-height: 0; overflow: auto; margin: 0 -10px; padding: 0 10px; }
+.side-head { display: flex; align-items: center; gap: 12px; }
+.side-head .disc { display: grid; place-items: center; width: 60px; height: 60px; border-radius: 18px; background: var(--chalk-2); flex: none; }
+.side-head .grow { flex: 1; min-width: 0; }
+.side-head .cd-small { margin-top: 3px; }
+.side-head .cd-btn.is-sm { width: 36px; height: 36px; }
+.side-status { display: flex; align-items: center; gap: 10px; }
+.side-status .rate { white-space: nowrap; }
+.side-line { margin: -6px 0 0; color: var(--ink-2); font-size: 14px; }
+.ui .fill { flex: 1; }
+.ui .big { font: 300 26px/1 var(--font-ui); letter-spacing: -0.01em; }
+.side-tabs, .cd-seg.wide { display: flex; width: 100%; }
+.side-tabs button, .cd-seg.wide button { flex: 1; padding: 0 8px; }
+.cd-seg.wide { margin: 4px 0 6px; }
+.side-foot { display: flex; gap: 8px; flex-wrap: wrap; }
+.side-foot .cd-btn { flex: 1; white-space: nowrap; }
+.side-add { display: flex; justify-content: flex-end; margin-top: 10px; }
+.ui .cd-label.sub { margin: 18px 0 8px; }
+.ui .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cd-row .route-name { color: var(--ink-2); min-width: 0; }
+.side-card .cd-row { align-items: center; }
+.cd-row .route-name b { color: var(--ink); margin-right: 4px; }
+.cd-row > b { text-align: right; }
+.cd-row .cd-select { max-width: 60%; }
+.cd-select { appearance: none; border: 0; height: 34px; padding: 0 30px 0 14px; border-radius: 99px; font: 700 13px/1 var(--font-ui); color: var(--ink); cursor: pointer;
+  background: var(--chalk-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%234c5850' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat right 12px center; }
+.cd-select:focus-visible, .cd-input:focus-visible { outline: 3px solid var(--ochre); outline-offset: 2px; }
+.side-truck { padding: 8px 0; border-bottom: 1px solid var(--chalk-3); }
+.side-truck .line { display: flex; align-items: center; gap: 10px; }
+.ui button.link { appearance: none; border: 0; background: none; padding: 0; font: 700 14px/1 var(--font-ui); color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--chalk-3); text-underline-offset: 3px; }
+.ui button.link:hover { text-decoration-color: var(--ink); }
+
+/* A machine's recipe: stores in, the batch, stores out. */
+.recipe-line { display: flex; align-items: flex-start; justify-content: space-between; gap: 4px; padding: 16px 14px 14px; }
+.recipe-line .store { display: flex; flex-direction: column; align-items: center; gap: 7px; min-width: 64px; }
+.recipe-line .store-disc { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 99px; background: var(--chalk); box-shadow: inset 0 0 0 2px var(--chalk-3); }
+.recipe-line .store.is-empty .store-disc { box-shadow: inset 0 0 0 2px var(--rust); }
+.recipe-line .store.is-empty .n { color: var(--rust); }
+.recipe-line .pips { display: flex; gap: 3px; }
+.recipe-line .pips i { display: block; width: 14px; height: 5px; border-radius: 3px; background: var(--chalk-3); }
+.recipe-line .pips i.on { background: var(--pine); }
+.recipe-line .n { font: 700 12px/1.2 var(--font-ui); text-align: center; font-variant-numeric: tabular-nums; }
+.recipe-line .op { margin-top: 20px; font: 700 16px/1 var(--font-ui); color: var(--ink-3); }
+.recipe-line .timer { margin-top: -10px; }
+.recipe-line .timer .big { font-size: 24px; }
+
+/* The history tab. */
+.history .hist-windows { margin-bottom: 12px; }
+.ui .row-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.hist-plot { position: relative; margin-top: 12px; cursor: crosshair; }
+.ribbon { position: relative; height: 18px; }
+.ribbon i { position: absolute; top: 0; bottom: 0; border-radius: 99px; background: var(--c); box-shadow: inset 0 0 0 1px var(--chalk); }
+.ribbon i.is-problem { background: repeating-linear-gradient(135deg, var(--c) 0 4px, color-mix(in srgb, var(--c) 45%, var(--chalk)) 4px 7px); }
+.hist-bars { position: relative; height: 56px; border-radius: 10px; background: var(--chalk-2); overflow: hidden; }
+.hist-bars i { position: absolute; bottom: 0; background: var(--ochre); border-radius: 3px 3px 0 0; box-shadow: inset -1px 0 var(--chalk-2); }
+.hist-cursor { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 2px solid var(--ink); pointer-events: none; }
+.hist-axis { display: flex; justify-content: space-between; margin-top: 6px; font: 600 11px/1 var(--font-ui); color: var(--ink-3); }
+.hist-readout { min-height: 18px; margin-top: 6px; }
+.hist-shares { display: flex; gap: 20px; align-items: center; margin-top: 12px; }
+.hist-shares svg .ring-figure { font: 300 26px var(--font-ui); fill: var(--ink); }
+.hist-shares svg .ring-word { font: 600 11px var(--font-ui); fill: var(--ink-3); }
+.share-rows { flex: 1; display: grid; gap: 8px; }
+.share-rows > div { display: flex; align-items: center; }
+.hist-output { margin-top: 16px; }
+.wait { display: grid; grid-template-columns: 30px 1fr auto; gap: 4px 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--chalk-3); }
+.wait:last-child { border-bottom: 0; }
+.wait .rank { font: 300 26px/1 var(--font-ui); color: var(--ink-3); }
+.wait b { display: flex; align-items: center; gap: 8px; font: 700 15px/1.2 var(--font-ui); margin-bottom: 4px; }
+.wait .disc { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 99px; background: var(--chalk-2); }
+.wait .pc { font: 300 28px/1 var(--font-ui); letter-spacing: -0.02em; text-align: right; }
+.hover.is-left { transform: translate(calc(-100% - 18px), 18px); }

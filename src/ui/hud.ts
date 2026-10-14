@@ -22,8 +22,9 @@ import type { Overlay } from '../world/view.ts';
 import { h, icon } from './dom.ts';
 import { Dock, dockTip } from './dock.ts';
 import { guidePanel, type GuidePage } from './guide.ts';
-import { historyView, type HistoryWindow } from './historyView.ts';
+import { Inspector } from './inspector.ts';
 import { CommissionCard, TopRight, ViewBar, viewControls, type Panel, type PlayHost } from './playhud.ts';
+import { routeCss, routeGoods, routeProblems, stopsText, stopsKey, trucksDoing, truckName, typingIn } from './routing.ts';
 import { PIXEL_SIZES, uiScale, type SettingsStore } from './settings.ts';
 import { WorldLayer } from './world.ts';
 
@@ -73,64 +74,6 @@ const button = (label: string | Node, onclick: () => void, o: { disabled?: boole
 function set(el: HTMLElement, text: string) { if (el.textContent !== text) el.textContent = text; }
 const bar = () => { const fill = h('div', { class: 'fill' }); return { el: h('div', { class: 'bar' }, fill), set: (k: number) => { fill.style.width = `${Math.max(0, Math.min(1, k)) * 100}%`; } }; };
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
-/** A route's colour dot and name. */
-const routeName = (s: GameState, r: Route) => h('span', { class: 'route-name' }, h('i', { class: 'dot', style: `background:${hex(ROUTE_COLOURS[routeColour(s, r)])}` }), r.name);
-const lcName = (b: Building) => BUILDINGS[b.type].name.toLowerCase();
-const goodsList = (items: ItemId[]) => items.map((i) => ITEMS[i].name.toLowerCase()).join(', ');
-
-/** What of a route's stops a panel shows (not the stops' turns, which change all the time). */
-const stopsKey = (r: Route) => r.stops.map((st) => [st.building, st.drop, st.pick, st.wait]);
-/** Whether the caret is in a text box inside `el` (a rebuild would lose it). */
-const typingIn = (el: HTMLElement) => document.activeElement instanceof HTMLInputElement && el.contains(document.activeElement);
-
-/** A route's stops in a few words, runs of one kind together: "Field ×3 → Mill → Freight depot". */
-function stopsText(s: GameState, r: Route): string {
-  const out: { name: string; n: number }[] = [];
-  for (const st of r.stops) {
-    const b = buildingById(s, st.building), name = b ? BUILDINGS[b.type].name : '?', last = out[out.length - 1];
-    if (last?.name === name) last.n++; else out.push({ name, n: 1 });
-  }
-  return out.map((x) => (x.n > 1 ? `${x.name} ×${x.n}` : x.name)).join(' → ');
-}
-
-/** The goods a route picks up anywhere (the goods it moves). */
-function routeGoods(s: GameState, r: Route): ItemId[] {
-  const got = new Set<ItemId>();
-  for (const st of r.stops) {
-    const b = buildingById(s, st.building);
-    if (!b) continue;
-    const gives = b.type === 'silo' ? st.pick : givesGoods(b);
-    for (const i of st.pick) if (gives.includes(i)) got.add(i);
-  }
-  return ITEM_IDS.filter((i) => got.has(i));
-}
-
-/** A truck's name: its number at its garage, and the garage's when there are several. */
-function truckName(s: GameState, t: Truck): string {
-  const n = s.trucks.filter((x) => x.garage === t.garage).indexOf(t) + 1;
-  const garages = s.buildings.filter((b) => b.type === 'garage'), g = garages.findIndex((b) => b.id === t.garage);
-  return garages.length > 1 ? `Truck ${n} of garage ${g + 1}` : `Truck ${n}`;
-}
-
-/** A route's problems, by stop and by truck, in a line each. */
-function routeProblems(s: GameState, r: Route): string[] {
-  const out = stopProblems(s, r).flatMap((p, i) => (p ? [`Stop ${i + 1}: ${p}`] : []));
-  for (const t of trucksOn(s, r)) for (const p of truckProblems(s, t)) out.push(`${truckName(s, t)}: ${p}`);
-  if (r.stops.length && !trucksOn(s, r).length) out.push('No trucks run it.');
-  return out;
-}
-
-/** What a route's trucks are doing, counted: "2 driving · 1 queuing". */
-function trucksDoing(s: GameState, r: Route): string {
-  const n = new Map<string, number>();
-  for (const t of trucksOn(s, r)) {
-    const what = t.phase === 'drive' ? (t.target === t.garage ? 'going to charge' : 'driving') : t.phase === 'dock' ? 'at a stop'
-      : t.phase === 'queue' ? 'queuing' : t.phase === 'stuck' ? 'stuck' : 'charging';
-    n.set(what, (n.get(what) ?? 0) + 1);
-  }
-  return [...n].map(([w, k]) => `${k} ${w}`).join(' · ');
-}
-
 interface Modal { name: string; el: HTMLElement; blocking: boolean }
 
 export class Hud {
@@ -152,8 +95,8 @@ export class Hud {
   private readonly inspector = h('div', { class: 'card inspector' });
   private inspectKey = '';
   private inspectUpdate: (() => void) | null = null;
-  /** The inspector history's window, in seconds (kept from building to building). */
-  private historyWindow: HistoryWindow = 300;
+  /** The side card for the selected building or truck. */
+  private readonly side: Inspector;
   /** Silo and depot stops showing every good rather than the route's, by `route:stop`. */
   private readonly allGoods = new Set<string>();
   private readonly layer = h('div', { class: 'layer' });
@@ -187,8 +130,12 @@ export class Hud {
     this.top = new TopRight(play);
     this.view = new ViewBar(play);
     this.controls = viewControls(play);
+    this.side = new Inspector({
+      state: () => host.state(), tool: () => host.tool(), selected: () => host.selected(), select: (id) => { host.select(id); this.refresh(); },
+      did: (r) => this.did(r), openGuide: (p) => this.openGuide(p), editRoute: (r) => this.edit(r),
+    });
     this.dock = new Dock({ state: () => host.state(), tool: () => host.tool(), setTool: (t) => host.setTool(t), tip: (id) => this.showTip(id) });
-    this.hud.append(this.commission.el, this.commission.pill, this.top.el, this.view.el, this.controls, this.dock.el,
+    this.hud.append(this.commission.el, this.commission.pill, this.top.el, this.view.el, this.controls, this.dock.el, this.side.el,
       h('div', { class: 'hud-above' }, this.toasts, this.tip));
     this.ui.append(this.world.el, this.hud);
     root.append(h('div', { class: 'hud' }, h('div', { class: 'left-col' }, this.routesPanel), this.inspector, this.stats), this.layer, this.ui);
@@ -222,7 +169,8 @@ export class Hud {
     const tool = this.host.tool();
     if (tool.kind === 'build') this.dock.showCategoryOf(tool.type);
     this.dock.update();
-    const side = this.inspector.style.display === 'block';
+    this.side.update();
+    const side = this.side.open || this.inspector.style.display === 'block';
     this.top.el.hidden = side; this.controls.hidden = side;
     if (now - this.lastSlow < 150) return;
     this.lastSlow = now;
@@ -249,7 +197,7 @@ export class Hud {
   }
 
   /** Redraw what depends on the tool and selection right away. */
-  refresh() { this.inspectKey = ''; this.lastSlow = 0; }
+  refresh() { this.inspectKey = ''; this.lastSlow = 0; this.side.refresh(); }
 
   /** Whether a panel is open. */
   panelOpen(p: Panel) {
@@ -276,241 +224,26 @@ export class Hud {
   /** Opens the route editor (the inspector shows it until you are done). */
   private edit(r: Route) { this.host.setTool({ kind: 'route', route: r.id }); this.refresh(); }
 
+  /** The route being edited, in the old card (until the routes card replaces it). */
   private inspect() {
-    const s = this.host.state(), tool = this.host.tool(), id = this.host.selected();
+    const s = this.host.state(), tool = this.host.tool();
     const editing = tool.kind === 'route' ? routeById(s, tool.route) : null;
-    const b = id !== null ? buildingById(s, id) : null, t = id !== null ? truckById(s, id) : null;
-    if (!editing && !b && !t) {
+    if (!editing) {
       if (this.inspector.style.display !== 'none') { this.inspector.style.display = 'none'; this.inspector.replaceChildren(); }
       this.inspectKey = ''; this.inspectUpdate = null;
       return;
     }
-    // Made again when what it shows changes: the building's settings, the trucks and routes it lists, the route's stops.
-    const routes = s.routes.map((r) => [r.id, r.name, r.stops.length]);
     // The route editor also follows what its warnings and goods choices depend on: the stops' problems, the silos' stock.
-    const key = JSON.stringify(editing ? ['route', editing.id, editing.name, stopsKey(editing), trucksOn(s, editing).map((x) => x.id), [...this.allGoods], stopProblems(s, editing),
-      editing.stops.map((st) => { const b = buildingById(s, st.building); return b?.type === 'silo' ? Object.keys(b.store!) : b?.type === 'field' ? [b.crop, b.harvest] : null; })]
-      : t ? ['truck', t.id, t.route, routes]
-        : [b!.id, b!.type, b!.crop, b!.recipe, tool.kind, routes, s.trucks.filter((x) => x.garage === b!.id).map((x) => [x.id, x.route]),
-          routesAt(s, b!).map((r) => r.stops.filter((st) => st.building === b!.id))]);
+    const key = JSON.stringify(['route', editing.id, editing.name, stopsKey(editing), trucksOn(s, editing).map((x) => x.id), [...this.allGoods], stopProblems(s, editing),
+      editing.stops.map((st) => { const b = buildingById(s, st.building); return b?.type === 'silo' ? Object.keys(b.store!) : b?.type === 'field' ? [b.crop, b.harvest] : null; })]);
     if (key !== this.inspectKey && !typingIn(this.inspector)) {
       this.inspectKey = key;
       this.inspector.style.display = 'block';
-      const { el, update } = editing ? this.renderRoute(s, editing) : t ? this.renderTruck(s, t) : this.renderInspector(s, b!);
+      const { el, update } = this.renderRoute(s, editing);
       this.inspector.replaceChildren(el);
       this.inspectUpdate = update;
     }
     this.inspectUpdate?.();
-  }
-
-  /** A choice of route for a truck: none, one of the routes, or a new one (which opens in the editor). */
-  private routeSelect(s: GameState, t: Truck) {
-    const sel = h('select', {
-      onchange: () => {
-        const v = sel.value;
-        if (v === 'new') { const r = newRoute(s); this.did(setTruckRoute(s, t, r)); this.edit(r); return; }
-        this.did(setTruckRoute(s, t, v === '' ? null : routeById(s, Number(v))));
-      },
-    }, h('option', { value: '' }, 'No route (parked)'), ...s.routes.map((r) => h('option', { value: String(r.id), selected: r.id === t.route }, r.name)),
-    h('option', { value: 'new' }, '+ New route…'));
-    return sel;
-  }
-
-  private renderTruck(s: GameState, t: Truck): { el: HTMLElement; update: () => void } {
-    const status = h('div', { class: 'status ok' }), problems = h('div'), cargo = h('b'), charge = bar(), pct = h('b');
-    const dump = button('Dump cargo', () => this.did(dumpCargo(t)), { title: 'Throw its cargo away (the goods are lost), so it has room again' });
-    const update = () => {
-      dump.disabled = !t.cargo.length;
-      set(status, describeTruck(s, t));
-      const ps = truckProblems(s, t);
-      if (problems.dataset.key !== ps.join('|')) { problems.dataset.key = ps.join('|'); problems.replaceChildren(...ps.map((p) => h('p', { class: 'hint warn-hint' }, p))); }
-      set(cargo, t.cargo.length ? cargoText(t.cargo) : 'empty');
-      charge.set(t.energy / TRUCK.battery);
-      set(pct, `${Math.round(t.energy / TRUCK.battery * 100)}%${t.energy <= 0 ? ' (crawling)' : ''}`);
-    };
-    const g = buildingById(s, t.garage), r = routeOf(s, t);
-    const el = h('div', null,
-      h('div', { class: 'head' }, h('b', null, truckName(s, t)), h('span', { class: 'head-buttons' },
-        button('?', () => this.openGuide({ kind: 'topic', id: 'trucks' }), { cls: 'close', title: 'Trucks and routes in the guide (G)' }),
-        button('✕', () => { this.host.select(null); this.refresh(); }, { cls: 'close', title: 'Close (Esc)' }))),
-      h('p', { class: 'hint' }, `Carries ${TRUCK.cargo} goods at ${TRUCK.speed} tiles a second. Charges at its garage.`),
-      status, problems,
-      h('div', { class: 'kv' }, h('span', null, 'Route'), this.routeSelect(s, t)),
-      h('div', { class: 'kv' }, h('span', null, 'Cargo'), cargo),
-      h('div', { class: 'kv' }, h('span', null, 'Battery'), pct), charge.el,
-      h('div', { class: 'actions' },
-        g ? button('Garage', () => { this.host.select(g.id); this.refresh(); }) : null,
-        r ? button('Edit route', () => this.edit(r), { primary: true }) : null,
-        dump,
-        button(`Sell (+${truckPrice(s)})`, () => { this.did(sellTruck(s, t)); this.host.select(g?.id ?? null); }, { cls: 'danger' })));
-    return { el, update };
-  }
-
-  /** A garage's trucks: what each is doing, its route, and selling it; buying another. */
-  private garageTrucks(s: GameState, g: Building): { el: HTMLElement; update: () => void } {
-    const mine = s.trucks.filter((t) => t.garage === g.id);
-    const lines: (() => void)[] = [];
-    const rows = mine.map((t, i) => {
-      const what = h('div', { class: 'hint' });
-      lines.push(() => set(what, describeTruck(s, t)));
-      return h('div', { class: 'truck-row' },
-        h('div', { class: 'kv' }, h('a', { href: '#', class: 'glink', onclick: (e: Event) => { e.preventDefault(); this.host.select(t.id); this.refresh(); } }, `Truck ${i + 1}`), this.routeSelect(s, t)),
-        what);
-    });
-    const buy = button(`Buy a truck (${truckPrice(s)} ◈)`, () => this.did(buyTruck(s, g)), { primary: true, disabled: mine.length >= TRUCK.perGarage });
-    const el = h('div', null, h('h4', null, `Trucks (${mine.length}/${TRUCK.perGarage})`),
-      ...(rows.length ? rows : [h('p', { class: 'hint' }, 'No trucks yet. Buy one, then give it a route: a loop of stops where it drops and picks up goods.')]),
-      h('div', { class: 'actions' }, buy));
-    return { el, update: () => { for (const l of lines) l(); } };
-  }
-
-  /** What a building trades with the buildings next door (sharing an edge with it), as the crops and recipes change. */
-  private nextDoor(s: GameState, b: Building, lines: (() => void)[]): HTMLElement {
-    const list = h('div');
-    lines.push(() => {
-      const text = describeLinks(linksOf(s, b));
-      const key = text.join('|');
-      if (list.dataset.key === key) return;
-      list.dataset.key = key;
-      list.replaceChildren(...(text.length ? text.map((t) => h('div', { class: 'kv' }, h('span', null, t)))
-        : [h('p', { class: 'hint' }, 'Buildings sharing an edge trade goods without trucks: a field beside a mill gives it wheat, a mill beside a coop its bran.')]));
-    });
-    return h('div', null, h('h4', null, 'Next door'), list);
-  }
-
-  /** The routes stopping at a building, what each does there, and adding it to a route. */
-  private stopsHere(s: GameState, b: Building): HTMLElement {
-    const rows = routesAt(s, b).map((r) => {
-      const sts = r.stops.filter((st) => st.building === b.id);
-      const what = sts.map((st) => {
-        const drop = st.drop.filter((i) => takesGoods(b).includes(i)), pick = st.pick.filter((i) => givesGoods(b).includes(i));
-        const parts = [drop.length >= ITEM_IDS.length - pick.length && drop.length > 6 ? 'drops everything else' : drop.length ? `drops ${goodsList(drop)}` : '', pick.length ? `picks up ${goodsList(pick)}` : ''];
-        return parts.filter(Boolean).join(' · ') || 'nothing to do';
-      });
-      return h('div', { class: 'kv' }, h('span', null, routeName(s, r), h('small', null, ` ${what.join('; ')}`)), button('Edit', () => this.edit(r), { cls: 'small' }));
-    });
-    const add = h('select', {
-      onchange: () => {
-        const r = add.value === 'new' ? newRoute(s) : routeById(s, Number(add.value));
-        if (!r) return;
-        this.did(addStop(s, r, b));
-        this.edit(r);
-      },
-    }, h('option', { value: '' }, 'Add to a route…'), ...s.routes.map((r) => h('option', { value: String(r.id) }, r.name)), h('option', { value: 'new' }, '+ New route'));
-    return h('div', null, h('h4', null, 'Routes'),
-      ...(rows.length ? rows : [h('p', { class: 'hint' }, 'No route stops here: trucks won\'t bring or take its goods.')]),
-      h('div', { class: 'kv' }, h('span'), add));
-  }
-
-  private renderInspector(s: GameState, b: Building): { el: HTMLElement; update: () => void } {
-    const def = BUILDINGS[b.type];
-    const status = h('div', { class: 'status' });
-    const lines: (() => void)[] = [() => { set(status, describeStatus(s, b)); status.className = `status ${b.status}`; }];
-    const body: (Node | null)[] = [];
-    const stat = (label: string, get: () => string) => {
-      const v = h('b'); lines.push(() => set(v, get()));
-      body.push(h('div', { class: 'kv' }, h('span', null, label), v));
-    };
-    const progress = (get: () => number) => { const p = bar(); lines.push(() => p.set(get())); body.push(p.el); };
-
-    switch (b.type) {
-      case 'field': {
-        body.push(h('div', { class: 'choices' }, ...CROP_IDS.map((c) => button(CROPS[c].name, () => this.did(setCrop(s, b, c)), { active: b.crop === c, title: `${CROPS[c].grow} s · ${CROPS[c].yield} per harvest · soil ${CROPS[c].soil > 0 ? '+' : ''}${CROPS[c].soil}` }))));
-        progress(() => b.growth!);
-        stat('Soil fertility', () => `${Math.round(fieldFertility(s, b))}`);
-        stat('Growth pace', () => { const p = fieldPace(s, b); return `${Math.round(p.pace * 100)}% (water ${Math.round(p.water * 100)}%, soil ×${p.soil.toFixed(2)})`; });
-        stat('Harvest', () => `${CROPS[b.crop!].yield}${CROPS[b.crop!].flowers && isPollinated(s, b) ? ' +1 (bees)' : ''} every ~${Math.round(CROPS[b.crop!].grow / Math.max(0.01, fieldPace(s, b).pace))} s`);
-        stat('Waiting to go', () => `${b.stored} / ${FIELD.store}`);
-        stat('Compost', () => `${b.compost} / ${FIELD.compostStore} (used below soil ${FIELD.compostBelow})`);
-        break;
-      }
-      case 'hive':
-        stat('Flowering fields', () => `${flowersNear(s, b)} (up to ${HIVE.maxFlowers})`);
-        progress(() => b.growth!);
-        stat('Honey waiting', () => `${b.stored} / ${HIVE.store}`);
-        break;
-      case 'silo': {
-        const held = h('div', { class: 'delivered' });
-        lines.push(() => {
-          const key = JSON.stringify(b.store);
-          if (held.dataset.key === key) return;
-          held.dataset.key = key;
-          const got = (Object.keys(b.store!) as ItemId[]).filter((i) => b.store![i]);
-          held.replaceChildren(...(got.length ? got.map((i) => h('div', null, good(i, `${b.store![i]}/${SILO.perGood}`))) : [h('p', { class: 'hint' }, 'Empty.')]));
-        });
-        body.push(h('h4', null, 'Holds'), held);
-        break;
-      }
-      case 'garage': {
-        const trucks = this.garageTrucks(s, b);
-        body.push(trucks.el); lines.push(trucks.update);
-        break;
-      }
-      case 'battery': stat('Charge', () => `${Math.round(b.charge!)} / ${POWER.battery.capacity} J`); progress(() => b.charge! / POWER.battery.capacity); break;
-      case 'solar': case 'turbine':
-        stat('Making', () => watts(makes(s, b, sunAt(s.scenario, s.time), windAt(s.scenario, s.time))));
-        if (b.type === 'turbine') stat('Shelter', () => `${Math.round(exposureOf(s, b) * 100)}% of the wind reaches it`);
-        break;
-      case 'depot': {
-        const list = h('div', { class: 'delivered' });
-        lines.push(() => {
-          const key = JSON.stringify(s.delivered);
-          if (list.dataset.key === key) return;
-          list.dataset.key = key;
-          const got = (Object.keys(s.delivered) as ItemId[]).filter((i) => s.delivered[i]);
-          list.replaceChildren(...(got.length ? got.map((i) => h('div', null, good(i, s.delivered[i]))) : [h('p', { class: 'hint' }, 'Nothing delivered yet. Trucks drop goods here on a route that stops here.')]));
-        });
-        stat('Earned', () => `${Math.floor(s.earned).toLocaleString()} credits`);
-        body.push(h('h4', null, 'Delivered'), list);
-        break;
-      }
-    }
-
-    const r = recipeOf(b);
-    if (r) {
-      const rs = recipesFor(b.type);
-      if (rs.length > 1) body.unshift(h('div', { class: 'choices' }, ...rs.map((x) => button(ITEMS[x.outputs[0].item].name, () => this.did(setRecipe(b, x.id)), { active: b.recipe === x.id }))));
-      body.push(h('div', { class: 'recipe' }, ...r.inputs.flatMap((ing, i) => [i ? ' + ' : '', ingredient(ing)]), ' → ',
-        ...(r.outputs.length ? r.outputs.flatMap((o, i) => [i ? ' + ' : '', good(o.item, o.n)]) : [`${POWER.digester} W`]), h('small', null, ` · ${r.time} s`)));
-      progress(() => (b.progress ?? 0) / r.time);
-      const ins = h('div', { class: 'buffers' }), outs = h('div', { class: 'buffers' });
-      lines.push(() => {
-        const inKeys = r.inputs.flatMap((ing) => ('item' in ing ? [ing.item] : [...GROUPS[ing.group]]));
-        const k = JSON.stringify([b.inputs, b.outputs]);
-        if (ins.dataset.key === k) return;
-        ins.dataset.key = k;
-        ins.replaceChildren(h('span', null, 'In: '), ...inKeys.map((i) => good(i, b.inputs![i] ?? 0)));
-        outs.replaceChildren(h('span', null, 'Out: '), ...(r.outputs.length ? r.outputs.map((o) => good(o.item, b.outputs![o.item] ?? 0)) : ['power']));
-      });
-      body.push(ins, outs);
-    }
-    if (def.power) stat('Power', () => { const net = networkOf(s, b), w = wants(s, b); return !net ? 'not connected' : w ? `using ${watts(w)} now · getting ${Math.round(shareOf(s, b) * 100)}%` : 'none right now'; });
-    if (def.power || b.type === 'battery' || b.type === 'solar' || b.type === 'turbine' || b.type === 'digester' || b.type === 'pylon') {
-      // The network's colour, as drawn on the map, and its numbers.
-      const dot = h('i', { class: 'dot' }), v = h('span');
-      lines.push(() => {
-        const net = b.type === 'pylon' ? networks(s).of.get(b.id) ?? null : networkOf(s, b);
-        dot.style.display = net ? '' : 'none';
-        if (net) dot.style.background = hex(NET_COLOURS[netColour(s, net)]);
-        set(v, net ? `${watts(net.made)} made · ${watts(net.wanted)} used · ${Math.round(net.stored)} J stored` : 'none: no pylon in reach');
-      });
-      body.push(h('div', { class: 'kv' }, h('span', null, 'Network'), h('b', null, dot, v)));
-    }
-    if (hasHistory(b)) {
-      const hist = historyView(s, b, () => this.historyWindow, (w) => { this.historyWindow = w; });
-      body.push(hist.el); lines.push(hist.update);
-    }
-    if (isStop(b) && b.type !== 'silo' && b.type !== 'depot') body.push(this.nextDoor(s, b, lines));
-    if (isStop(b)) body.push(this.stopsHere(s, b));
-
-    const actions = h('div', { class: 'actions' },
-      b.type !== 'depot' ? button('Remove', () => { this.did(remove(s, b)); this.host.select(null); }, { cls: 'danger' }) : null);
-    const el = h('div', null,
-      h('div', { class: 'head' }, h('b', null, def.name), h('span', { class: 'head-buttons' },
-        button('?', () => this.openGuide({ kind: 'building', id: b.type }), { cls: 'close', title: 'Open its page in the guide (G)' }),
-        button('✕', () => { this.host.select(null); this.refresh(); }, { cls: 'close', title: 'Close (Esc)' }))),
-      h('p', { class: 'hint' }, def.hint), status, ...body, actions);
-    return { el, update: () => { for (const l of lines) l(); } };
   }
 
   // ---- The route editor ----
@@ -655,7 +388,7 @@ export class Hud {
       this.host.previewRoute(null);
       const lines: (() => void)[] = [];
       const f = this.routesFilter.trim().toLowerCase();
-      const shown = s.routes.filter((r) => !f || [r.name, stopsText(s, r), goodsList(routeGoods(s, r))].some((t) => t.toLowerCase().includes(f)));
+      const shown = s.routes.filter((r) => !f || [r.name, stopsText(s, r), routeGoods(s, r).map((i) => ITEMS[i].name.toLowerCase()).join(', ')].some((t) => t.toLowerCase().includes(f)));
       const rows = shown.map((r) => {
         const trucks = trucksOn(s, r);
         const name = h('input', {

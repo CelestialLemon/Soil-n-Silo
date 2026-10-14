@@ -54,6 +54,8 @@ export const isProblem = (status: Status) => status !== 'ok' && status !== 'idle
 
 /** What a building was doing, in a few words. */
 export function statusLabel(b: { type: Building['type'] }, status: Status, need?: string, share?: number): string {
+  // A group's need is "feed (beans, bran or seed cake)": the pill says "feed".
+  need = need?.split(' (')[0];
   switch (status) {
     case 'ok':
       return b.type === 'field' ? 'Growing' : b.type === 'hive' ? 'Making honey' : b.type === 'garage' ? 'Charging trucks' : b.type === 'sprinkler' ? 'Watering'
