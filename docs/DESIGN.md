@@ -36,13 +36,14 @@ blueprints and copy-paste, sound, multiple saves per level.
 ## Camera, presentation and controls
 
 The camera stays as it was: orthographic, a 3/4 view at about 30° pitch, 4 views 90° apart (Q/E), zoom (the wheel, a trackpad pinch,
-+/− or Z) and panning (drag, right-drag or the arrow keys). Zoom eases smoothly towards the pointer. Low-poly, flat-colour models drawn as
-pixel art by `pixel3d-renderer`. Everything is seen from 4 sides.
+/− or Z) and panning (drag, right-drag or the arrow keys). Zoom eases smoothly towards the pointer. The previous low-poly,
+flat-colour models were drawn as pixel art. Everything is seen from 4 sides.
 
-Each art pixel is always drawn as a square of the same size on screen (2×2 screen pixels by default; the pixel size is a
-setting in the menu, 1×1 to 4×4). Zooming changes how much ground fits on the screen, so models are drawn with more art
-pixels close up and fewer far out. Chosen on 2026-10-10 over two other ways, tried side by side in play: magnifying a fixed
-picture (art pixels growing from 1×1 to 6×6) and stepping through six fixed detail levels; the free zoom looked and felt best.
+The earlier renderer quantized the scene into screen-space art pixels. That approach has now been replaced by a full-resolution
+Three.js experiment with vertex-coloured terrain, soft atmospheric depth, moving water and denser vegetation. The camera and
+four 90° views remain unchanged so the rendering direction can be judged against the same game layout and controls. See
+[`docs/research/terra-nil-visual-study/`](research/terra-nil-visual-study/) for reference evidence and
+[`docs/ROADMAP.md`](ROADMAP.md) for the experimental renderer's known limits.
 
 ![The same mill zoomed in, the three ways tried: magnify, detail steps, free (chosen)](images/zoom-modes.png)
 

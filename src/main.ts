@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObject } from 'pixel3d-renderer';
+import { MAX_HIGHLIGHTS } from './world/geometry.ts';
+import { VerdantRenderer, type RenderObject } from './renderer/verdantRenderer.ts';
 import { addStop, canPlace, place, remove, removeAt } from './game/build.ts';
 import { BUILDINGS, POWER, type BuildingId } from './game/data.ts';
 import { TERRAIN } from './game/map.ts';
@@ -12,9 +13,9 @@ import {
 import {
   buildingAt, buildingById, inMap, newGame, reachTo, routeById, sizeOf, terrainAt, truckById, type Dir, type GameState, type Route,
 } from './game/state.ts';
-import { Hud, PIXEL_SIZES, type Tool } from './ui/hud.ts';
+import { Hud, type Tool } from './ui/hud.ts';
 import { showMenu } from './ui/menu.ts';
-import { allGeometries, loadModels } from './world/models.ts';
+import { loadModels } from './world/models.ts';
 import { PowerView } from './world/powerView.ts';
 import { RouteView } from './world/routeView.ts';
 import { buildWorld } from './world/terrain.ts';
@@ -25,14 +26,10 @@ import './ui/style.css';
 // build-only: the player places, configures and removes buildings and the simulation runs on its own. The camera
 // is orthographic at a 30° pitch, turns between four views 90° apart, zooms towards the pointer and pans with the mouse.
 //
-// Each art pixel is drawn as a square of `pixelSize` screen pixels (a setting, 2 by default), whatever the zoom; zooming
-// changes how many metres of ground fit on the screen, so models are drawn with more art pixels close up and fewer far out.
-
 /** The zoom range, as screen pixels per metre of ground, and where a commission starts. */
 const MIN_ZOOM = 16, MAX_ZOOM = 96, START_ZOOM = 32;
 /** How much one wheel notch or key press zooms. */
 const ZOOM_STEP = 1.25;
-const DEFAULT_PIXEL_SIZE = 2;
 const ELEVATION = THREE.MathUtils.degToRad(30);
 const HOME_YAW = THREE.MathUtils.degToRad(45);
 const DRAG_THRESHOLD = 4;
@@ -50,9 +47,7 @@ const usesPower = (t: BuildingId) => POWER_BUILDINGS.has(t) || !!BUILDINGS[t].po
 
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
 const loading = document.querySelector<HTMLElement>('#loading')!;
-const SAVE_KEY = saveKey(location.pathname), PROGRESS_KEY = `${SAVE_KEY}:progress`, PIXEL_KEY = `${SAVE_KEY}:pixel`;
-/** A saved pixel size, if it is one of the choices; else the default. */
-const readPixelSize = (v: string | null) => (PIXEL_SIZES as readonly number[]).find((n) => String(n) === v) ?? DEFAULT_PIXEL_SIZE;
+const SAVE_KEY = saveKey(location.pathname), PROGRESS_KEY = `${SAVE_KEY}:progress`;
 
 const saved = deserialize(localStorage.getItem(SAVE_KEY));
 const params = new URLSearchParams(location.search);
@@ -90,8 +85,7 @@ async function play(initial: GameState) {
   const map = state.map;
   const models = await loadModels();
   const world = buildWorld(map, models.trees);
-  quantizePalette([...world.geometries, ...allGeometries(models)], 96);
-  const renderer = new PixelRenderer(canvas, world.scene, { shadowMapSize: 2048, warmHighlight: true });
+  const renderer = new VerdantRenderer(canvas, world.scene);
   const view = new WorldView(renderer, models);
   const power = new PowerView(renderer, models);
   const routeView = new RouteView(renderer, models);
@@ -121,8 +115,6 @@ async function play(initial: GameState) {
     changed: () => { repick = 2; },
     turn: (d) => turn(d),
     zoom: (d) => zoomStep(d),
-    pixelSize: () => pixelSize,
-    setPixelSize: (n) => setPixelSize(n),
     menu: () => { save(); location.href = `${location.pathname}?menu`; },
     restart: () => startNew(state.scenario.id),
     previewRoute: (id) => { previewRoute = id; },
@@ -140,8 +132,6 @@ async function play(initial: GameState) {
   // ---- Camera ----
   const target = new THREE.Vector3(map.depot.x + 1.5, 0, map.depot.y - 4);
   let view4 = 0;
-  /** Screen pixels per art pixel: the pixel size setting. */
-  let pixelSize = readPixelSize(localStorage.getItem(PIXEL_KEY));
   /** The zoom, as screen pixels per metre of ground: `zoom` eases towards `zoomGoal`. */
   let zoom = START_ZOOM, zoomGoal = START_ZOOM;
   /** While zooming towards the pointer: the ground point that stays under it, and where the pointer is from the centre. */
@@ -187,11 +177,6 @@ async function play(initial: GameState) {
       zoomAnchor = { ground, dx, dy };
     } else zoomAnchor = null;
   }
-  function setPixelSize(n: number) {
-    pixelSize = readPixelSize(String(n));
-    localStorage.setItem(PIXEL_KEY, String(pixelSize));
-    fit();
-  }
   addEventListener('resize', () => fit());
   /** One frame of the zoom easing towards its goal. */
   function zooming(dt: number) {
@@ -208,13 +193,13 @@ async function play(initial: GameState) {
     if (zoom === zoomGoal) zoomAnchor = null;
     repick = 2;
   }
-  /** Sizes the art (render target) for the window at the pixel size, and lays the canvas out centred on the window. */
+  /** Size the full-resolution canvas to the window. */
   function fit() {
-    const w = Math.max(1, Math.ceil(innerWidth / pixelSize)), h = Math.max(1, Math.ceil(innerHeight / pixelSize));
+    const dpr = Math.min(2, Math.max(1, devicePixelRatio || 1));
+    const w = Math.max(1, Math.ceil(innerWidth * dpr)), h = Math.max(1, Math.ceil(innerHeight * dpr));
     if (renderer.width !== w || renderer.height !== h) renderer.resize(w, h);
-    const cw = w * pixelSize, ch = h * pixelSize;
-    canvas.style.width = `${cw}px`; canvas.style.height = `${ch}px`;
-    canvas.style.left = `${Math.floor((innerWidth - cw) / 2)}px`; canvas.style.top = `${Math.floor((innerHeight - ch) / 2)}px`;
+    canvas.style.width = `${innerWidth}px`; canvas.style.height = `${innerHeight}px`;
+    canvas.style.left = '0'; canvas.style.top = '0';
     repick = 2;
   }
   fit();
@@ -249,7 +234,7 @@ async function play(initial: GameState) {
   let hoverTile: { x: number; y: number } | null = null;
   /** The building or truck under the pointer (their ids are one count). */
   let hoverBuilding: number | null = null;
-  let highlighted: PixelObject[] = [];
+  let highlighted: RenderObject[] = [];
 
   function pickHover() {
     if (!pointer) { hoverTile = null; hoverBuilding = null; return; }
@@ -268,7 +253,7 @@ async function play(initial: GameState) {
   }
 
   // ---- Ghosts: what would be built ----
-  const ghostPool = new Map<string, PixelObject[]>();
+  const ghostPool = new Map<string, RenderObject[]>();
   let ghostUsed = new Map<string, number>();
   const GOOD = new THREE.Color(0x90ff90), BAD = new THREE.Color(0xff5040);
   /** Shows a preview object; `fits` draws it see-through and tinted green (fits) or red (doesn't). */
@@ -592,7 +577,7 @@ async function play(initial: GameState) {
     if (kx || ky) pan(-kx * dt * 600, -ky * dt * 600);
 
     const hour = hourAt(state.time);
-    if (!(Math.abs(hour - lookHour) <= 0.02)) { renderer.setLook(lookAt(hour)); lookHour = hour; }
+    if (!(Math.abs(hour - lookHour) <= 0.02)) { renderer.setTimeOfDay(hour); lookHour = hour; }
 
     view.sync(state);
     toolOverlay = 'none';
@@ -625,10 +610,9 @@ async function play(initial: GameState) {
 
     turning();
     zooming(dt);
-    // The view is as tall as the art at the zoom's screen pixels per metre.
-    renderer.placeCamera(target, yaw, ELEVATION, renderer.height * pixelSize / zoom);
-    renderer.renderGeometry(time);
-    renderer.renderStyle(time);
+    // Zoom is measured in CSS pixels per metre; the renderer itself works at device-pixel resolution.
+    renderer.placeCamera(target, yaw, ELEVATION, innerHeight / zoom);
+    renderer.render(time);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

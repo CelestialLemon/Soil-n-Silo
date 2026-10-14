@@ -1,9 +1,8 @@
 # Working in this repo
 
 - The design is `docs/DESIGN.md`; the plan is `docs/ROADMAP.md`; the models are specified in `docs/ASSET_BRIEF.md`.
-- The renderer is `pixel3d-renderer`, a separate repo (local checkout at `../pixel3d-renderer`), pinned to a release tag. Don't
-  patch it from here (not in `node_modules`, not by copying code). A renderer gap or bug becomes an issue there; see
-  **Renderer issues** below.
+- The renderer is maintained in this repository under `src/renderer/` and uses Three.js. Keep rendering, game rules and UI
+  responsibilities separate: the game owns state, input and timing; the renderer owns drawing and world-object picking.
 - Game rules live in `src/game/` as pure TypeScript (no DOM, no three.js, no renderer), so `npm test` runs them in Node. Drawing
   and input live outside it.
 
@@ -47,15 +46,8 @@
    (`gh api repos/CelestialLemon/Soil-n-Silo/pulls/<N>/comments` and `.../reviews`). Judge each one the same way as in step 5,
    and push fixes to the same PR. A thumbs-up reaction on the PR instead of a review means it found nothing.
 
-## Renderer issues
+## Renderer changes
 
-When the game needs something the renderer doesn't do, or hits a renderer bug:
-
-1. Check the renderer's open issues and `docs/ROADMAP.md` there first; it may already be known or planned.
-2. Make sure it is really the renderer's job (the renderer draws; the game owns state, input, UI and timing, see the renderer's
-   roadmap, "Who owns what"). Prefer a game-side workaround when one is cheap and honest.
-3. Open the issue in `CelestialLemon/pixel3d-renderer` with the `soil-n-silo` label and the `bug` or `enhancement` label: what the
-   game needs, a minimal repro or screenshot, the renderer version the game pins, and what the game does meanwhile. If game work
-   is blocked on it, link it from a game issue labelled `renderer`.
-4. The fix ships in a new renderer release tag. Bumping the game's pin is its own small change here (re-approve the install script,
-   see `README.md`).
+The renderer is a local experimental subsystem. Keep its public API small and game-neutral; don't move simulation rules into
+`src/renderer/`. Renderer changes can be iterated with the game in the same branch. Add reusable model geometry under
+`src/world/` or authored assets under `assets/`, not embedded copies of third-party renderer code.

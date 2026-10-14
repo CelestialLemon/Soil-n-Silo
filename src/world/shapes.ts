@@ -1,4 +1,4 @@
-import { FLAG, motion } from 'pixel3d-renderer';
+import { FLAG, motion } from './geometry.ts';
 import type { BuildingId, CropId, ItemId } from '../game/data.ts';
 import { ITEMS } from '../game/data.ts';
 import { Kit } from './kit.ts';

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { PixelObject, PixelRenderer } from 'pixel3d-renderer';
+import type { RenderObject, VerdantRenderer } from '../renderer/verdantRenderer.ts';
 import { legPath } from '../game/roads.ts';
 import { buildingById, layoutOf, sizeOf, type GameState, type Route } from '../game/state.ts';
 import type { Models } from './models.ts';
@@ -18,13 +18,13 @@ const X = new THREE.Vector3(1, 0, 0), dir = new THREE.Vector3(), q = new THREE.Q
 export const routeColour = (s: GameState, r: Route) => Math.max(0, s.routes.indexOf(r)) % ROUTE_COLOURS.length;
 
 export class RouteView {
-  private objs: PixelObject[] = [];
+  private objs: RenderObject[] = [];
   private key = '';
   private shownLabels: StopLabel[] = [];
-  private readonly r: PixelRenderer;
+  private readonly r: VerdantRenderer;
   private readonly m: Models;
 
-  constructor(r: PixelRenderer, m: Models) { this.r = r; this.m = m; }
+  constructor(r: VerdantRenderer, m: Models) { this.r = r; this.m = m; }
 
   /** The labels over the stops of the routes drawn, in world space. */
   labels(): StopLabel[] { return this.shownLabels; }
@@ -74,7 +74,6 @@ export class RouteView {
     // A little past each end, so the corners meet.
     const o = this.r.addObject(this.m.routes[c]);
     o.castShadow = false;
-    o.snap = false;
     o.setTransform(a.clone().addScaledVector(dir, -WIDTH / 2), q, scale.set(len + WIDTH, 0.02, WIDTH));
     this.objs.push(o);
   }

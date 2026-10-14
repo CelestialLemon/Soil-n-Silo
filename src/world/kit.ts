@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FLAG, GeometryCollector, linearColor as lin, motion, place, type Motion } from 'pixel3d-renderer';
+import { FLAG, GeometryCollector, linearColor as lin, motion, place, type Motion } from './geometry.ts';
 
 // Small helpers for building geometry in code.
 
@@ -25,7 +25,17 @@ export class Kit {
   constructor(animated = false) { this.animated = animated; this.c = new GeometryCollector(animated); }
 
   private add(g: THREE.BufferGeometry, m: THREE.Matrix4, hex: number, flag: number, mo?: Motion, flat = true) {
-    this.c.add(g, m, lin(hex), flag, flat, this.animated ? mo : undefined);
+    if (!this.animated || !mo) {
+      this.c.add(g, m, lin(hex), flag, flat);
+      return;
+    }
+    // Stand-in motions are authored in model space; GeometryCollector expects motion data in the primitive's local
+    // space because it applies `m` to both the vertices and their pivot/axis.
+    const inverse = m.clone().invert();
+    const local: Motion = { ...mo };
+    if (mo.at) local.at = new THREE.Vector3(...mo.at).applyMatrix4(inverse).toArray();
+    if (mo.axis) local.axis = new THREE.Vector3(...mo.axis).transformDirection(inverse).toArray();
+    this.c.add(g, m, lin(hex), flag, flat, local);
   }
 
   /** Box with its base centred at (x, y, z), turned `ry` about y. */
@@ -70,7 +80,11 @@ export class Kit {
   smoke(x: number, y: number, z: number, seed: number, n = 4, hex = 0xece8f0) {
     if (!this.animated) return this;
     const puff = new THREE.IcosahedronGeometry(0.16, 1);
-    for (let i = 0; i < n; i++) this.c.add(puff, null, lin(hex), FLAG.STEAM, false, motion.smoke([x, y, z], i / n, seed + i * 0.17));
+    for (let i = 0; i < n; i++) {
+      const scale = 0.6 + i * 0.08;
+      this.c.add(puff, place(x, y + i * 0.12, z, 0, 0, 0, scale, scale, scale), lin(hex), FLAG.STEAM, false,
+        motion.smoke([0, 0, 0], i / n, seed + i * 0.17));
+    }
     return this;
   }
 

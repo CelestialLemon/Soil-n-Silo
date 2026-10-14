@@ -54,7 +54,7 @@ itself lives where the code will use it, in [`src/ui/clearday/`](../../src/ui/cl
 | Power panel | [power](mockups/power.html) · [png](screens/power.webp) | — (new) | A sheet: made, used, stored. Power by source over the last 24 hours as a radial chart (an hour a slice, night shaded, short hours marked). Networks table (made, used, stored, short). Tonight: the charge until sunrise, when it runs dry and how short after. Sources over 24 h, digester included. Where the watts go, by building. Battery health: when the batteries ran dry each night. |
 | Ledger | [ledger](mockups/ledger.html) · [png](screens/ledger.webp) | Stats (Tab) | Valley health (soil with trend, trees, pollination cover) and a calm goods table: made, used by your buildings, to the depot, a minute and in all, in stores; credits earned, spent and now. A Power › button opens the Power panel. |
 | Guide | [guide](mockups/guide.html) · [png](screens/guide.webp) | `guide.ts` | Search; topics; an index of buildings (outlined: you have one here). A building page: what it does, recipes, cost, power, size, stores; **Where a loaf comes from**: the chain with the time each link takes; **In your valley now**: every building of this type with its status and rate, *Show ›* to go to it; works with; good to know. |
-| Pause and settings | [pause](mockups/pause.html) · [png](screens/pause.webp) | pause screen in `hud.ts` | Resume; the commission's state; level select and restart (with what restarting loses). Settings: interface size, pixel size, sound, reduce motion, **Show pace** (off), **Problems strip · experimental** (off). The markers legend (shape and word). The keys, as rows: the one place keys are printed. |
+| Pause and settings | [pause](mockups/pause.html) · [png](screens/pause.webp) | pause screen in `hud.ts` | Resume; the commission's state; level select and restart (with what restarting loses). Settings: interface size, sound, reduce motion, **Show pace** (off), **Problems strip · experimental** (off). The markers legend (shape and word). The keys, as rows: the one place keys are printed. |
 | Results | [results](mockups/results.html) · [png](screens/results.webp) | results screen in `hud.ts` | Medal and time against the medal lines; the depot receipt; the run as a curve of the goal good with milestones on it and short nights shaded; *What made the difference* (the analysis that play leaves out); the valley left behind; keep playing, next commission, level select. |
 | Roadmap: weather station | [roadmap-weather](mockups/roadmap-weather.html) · [png](screens/roadmap-weather.webp) | — | Not part of the revamp; see the roadmap. Shows where the weather station's forecast would live. |
 
@@ -159,7 +159,7 @@ Gathered from the current UI (`src/ui/*.ts`, `src/main.ts`, `DESIGN.md`) before 
 10. **Ledger** (was Stats): per good made and delivered a minute and in total; soil health.
 11. **Guide** (G): the topics (how to play, trucks and routes, power, soil and water, markers), the goods page, and a page per
     building (what it does, how to use it, tips, takes and gives, recipe table, numbers, Build).
-12. **Pause**: the keys, pixel size (1×1–4×4) with its explanation, restart (with a confirmation), level select, resume.
+12. **Pause**: the keys, restart (with a confirmation), level select, resume.
 13. **Results**: medal, time against target, what the next medal needs, credits earned, soil health; keep playing or go to
     the level select.
 14. **Labels in the world**: one per power network while working with power (made, used, battery %, short %), and stop

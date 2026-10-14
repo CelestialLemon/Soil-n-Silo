@@ -1,4 +1,3 @@
-import { hourLabel } from 'pixel3d-renderer';
 import {
   addStop, buyTruck, copyRoute, deleteRoute, dumpCargo, moveStop, newRoute, priceOf, remove, removeStop, renameRoute, ROUTE_NAME_MAX, sellTruck,
   setCrop, setRecipe, setStopGood, setStopWait, setTruckRoute, truckPrice, type Result,
@@ -22,6 +21,7 @@ import type { Overlay } from '../world/view.ts';
 import { h } from './dom.ts';
 import { buildingCard, guidePanel, type GuidePage } from './guide.ts';
 import { historyView, type HistoryWindow } from './historyView.ts';
+import { hourLabel } from '../world/geometry.ts';
 
 // The HUD over the canvas: the commission and its clock, power and weather, the goals, the build bar, what's under the
 // pointer, the inspector for the selected building or truck (or the route being edited), messages, and the modal screens
@@ -35,8 +35,6 @@ export type Tool =
   /** Editing a route: clicking a building adds it as a stop. */
   | { kind: 'route'; route: number };
 
-/** The pixel size setting's choices: screen pixels per art pixel. */
-export const PIXEL_SIZES = [1, 2, 3, 4] as const;
 
 export interface HudHost {
   state(): GameState;
@@ -53,9 +51,6 @@ export interface HudHost {
   turn(d: 1 | -1): void;
   /** +1 zooms in, -1 out. */
   zoom(d: 1 | -1): void;
-  /** Screen pixels per art pixel (a setting). */
-  pixelSize(): number;
-  setPixelSize(n: number): void;
   menu(): void;
   restart(): void;
   /** Draws a route on the map while the pointer is over it in the routes panel (null: none). */
@@ -866,9 +861,6 @@ export class Hud {
     this.openModal('pause', h('div', { class: 'panel' },
       h('h2', null, s.scenario.name), help(),
       h('h3', null, 'Settings'),
-      h('div', { class: 'setting' }, h('span', null, 'Pixel size'),
-        h('span', { class: 'choices' }, ...PIXEL_SIZES.map((n) => button(`${n}×${n}`, () => { this.host.setPixelSize(n); this.openPause(); }, { active: this.host.pixelSize() === n })))),
-      h('p', { class: 'sub hint-line' }, 'Screen pixels for each pixel of the art. Smaller pixels show finer detail and cost more to draw.'),
       h('div', { class: 'actions' },
         button('Restart commission', () => this.confirm('Restart this commission?', 'Everything built so far is lost.', () => this.host.restart())),
         button('Level select', () => this.host.menu()),

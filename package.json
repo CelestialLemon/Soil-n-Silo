@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "A cozy farming and production game: soil, chickens and processing chains, drawn as pixel art.",
+  "description": "A cozy solarpunk automation game, rendered as a lush, painterly 3D valley.",
   "engines": {
     "node": ">=22.18"
   },
@@ -16,7 +16,6 @@
     "sim": "node tools/sim.ts"
   },
   "dependencies": {
-    "pixel3d-renderer": "github:CelestialLemon/pixel3d-renderer#v0.3.0",
     "three": "^0.180.0"
   },
   "devDependencies": {
@@ -24,8 +23,5 @@
     "@types/three": "^0.180.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.3"
-  },
-  "allowScripts": {
-    "github:CelestialLemon/pixel3d-renderer#9a14f83bd6613548aff1442f1c9de2c39f8ef1e0": true
   }
 }

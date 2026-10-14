@@ -1,11 +1,11 @@
-/* The HUD and menus: solarpunk cream, sage and copper over the pixel-art valley. */
+/* The current proof-of-concept HUD and menus: solarpunk cream, sage and copper over the valley. */
 :root {
   --ink: #1f2e2a; --paper: #f4efe0; --paper2: #e4dcc4; --sage: #8fb08a; --leaf: #5a8a4a; --teal: #1d3a36; --copper: #c87a4a;
   --honey: #f0c060; --red: #d0503a; --text: #eef0e4; --dim: #b8c4b0;
   font: 14px/1.4 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #1b2a26; }
-#view { position: fixed; display: block; image-rendering: pixelated; touch-action: none; }
+#view { position: fixed; display: block; touch-action: none; }
 button { font: inherit; cursor: pointer; }
 .loading { position: fixed; inset: 0; display: grid; place-items: center; color: var(--text); font-size: 18px; }
 

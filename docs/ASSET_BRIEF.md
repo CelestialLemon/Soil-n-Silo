@@ -10,17 +10,16 @@ planters, grass tufts). Shapes are rounded and friendly rather than industrial; 
 look crafted or grown, not stamped out. A building's job should be readable from its silhouette (a turbine's rotor, a mill's
 hopper, a loom's frame, a bakery's chimney).
 
-From the camera (`DESIGN.md`, "Camera"): low-poly, flat-colour models, seen from 4 sides (the camera turns in 90° steps), so every
-model must read well all the way round. The orthographic camera looks down at 30°, and the renderer turns the scene into pixel art
-at about 16 art pixels per metre of view height, so small details under ~0.06 m disappear or flicker. Prefer bold shapes and a few
-deliberate colours over fine detail. Models are seen packed close together on a grid, so keep each inside its footprint. One exception: a wind turbine's rotor
+From the camera (`DESIGN.md`, "Camera"): landscape-first 3D models, seen from 4 sides (the camera turns in 90° steps), so every
+model must read well all the way round. The orthographic camera looks down at 30°. The experimental renderer uses full-resolution
+shading, vertex colours, broad lighting and atmospheric depth, so models need clear silhouettes, deliberate material blocks and
+enough shape variation to hold up at close zoom. Models are seen packed close together on a grid, so keep each inside its footprint. One exception: a wind turbine's rotor
 sweeps past its tile, high enough (above 2.3 m) to clear the buildings beside it.
 
 ## Pipeline
 
-The renderer's loader and its rules are in the renderer repo: `docs/ASSET_BRIEF.md` there, "The pipeline contract". In short:
-a deterministic Blender Python build script per model (the source of truth), a GLB export with one flat Principled base colour
-per material (no textures, UVs or vertex colours), and a preview PNG. Here they live in `assets/<name>/build.py`, exported to
+The local loader is `src/world/models.ts`, using Three.js `GLTFLoader`. Each model has a deterministic Blender Python build
+script as its source of truth, a GLB export and a preview PNG. They live in `assets/<name>/build.py`, exported to
 `public/models/<name>.glb`; `assets/README.md` has the conventions and `assets/common.py` the shared palette and helpers.
 
 Scale: 1 Blender unit = 1 m = one tile. Origin on the ground at the model's footprint centre, front facing +Z (glTF), which is −Y in
@@ -28,7 +27,7 @@ Blender.
 
 ## Names the game reads
 
-Besides the renderer's prefixes (`decor_`, `thin_`, `move_spin_` ...), the game splits models by these node names
+The loader reads motion prefixes (`decor_`, `move_spin_`, `move_sway_`, etc.) and the game splits models by these node names
 (`src/world/models.ts`):
 
 - `stage_<n>`: a crop's growth stages, each a root at the origin. Every part sways in the wind about the plant's foot. A crop

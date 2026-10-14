@@ -1,8 +1,8 @@
 # Roadmap
 
 Goal: the game in [`DESIGN.md`](DESIGN.md), a build-only solarpunk automation game played in seeded commissions of 30–60 minutes.
-The game is drawn with [`pixel3d-renderer`](https://github.com/CelestialLemon/pixel3d-renderer), and is the first real game on it:
-renderer gaps found here go back to that repo as issues (`AGENTS.md`, "Renderer issues").
+The game currently uses an in-repo Three.js renderer experiment inspired by the landscape presentation of Terra Nil. The
+reference material and source notes are in [`research/terra-nil-visual-study/`](research/terra-nil-visual-study/).
 
 Items are roughly in priority order within each section.
 
@@ -14,19 +14,16 @@ Items are roughly in priority order within each section.
   loop (build, find the bottleneck, fix it) is. Short seeded levels are also quicker to test. Solarpunk setting chosen over
   low-magic medieval because power (sun, wind, storage) and closed loops are mechanics, not just looks.
 
-## Renderer
+## Experimental renderer (2026-10-14)
 
-Pinned: **v0.3.0** (`package.json`). The game owns the loop, state, input, UI, audio and save; the renderer draws, and answers
-"what is under the pointer" (`pick`).
+The former pixel-art renderer dependency was replaced with `src/renderer/verdantRenderer.ts`, a local full-resolution Three.js
+renderer. It keeps the orthographic camera and game-side object API, with vertex-coloured terrain, fog, directional shadows,
+procedural water shimmer and shader motion. Tree and bush models were also rebuilt as denser, layered silhouettes.
 
-| Need | Status | Notes |
-| --- | --- | --- |
-| Build preview ("ghost") drawn see-through and tinted green/red | Yes ([#30](https://github.com/CelestialLemon/pixel3d-renderer/issues/30), v0.3.0) | `opacity` and `tint`; `pick` sees through it. |
-| Overlays (fertility, power reach, water, bees) without a geometry per colour | Yes (#30) | One tile geometry, tinted per tile. |
-| Many goods moving (once on belts, now under drones) without redrawing the object shadow map | Yes ([#31](https://github.com/CelestialLemon/pixel3d-renderer/issues/31)) | Goods, markers, ghosts and overlays have `castShadow = false`. |
-| Turbine rotors turning with the wind | Worked around | Three rotor speeds, swapped by wind strength (spin speed is baked into the geometry). |
-| Lamps on placed objects (pylon lanterns at night) | No | Lamps are scene data; emissive parts glow after dusk instead. |
-| Buildings fading when they hide the tile under the pointer | Not needed yet | Picking a tile uses the ground plane, so tall buildings don't block placement. |
+This is a first playable renderer pass rather than a style-complete port. Current limitations to evaluate: vegetation still uses
+simple facet geometry; structures mostly retain the existing model set; terrain remains a flat gameplay grid; water and lighting
+are stylized approximations; and performance needs checking on larger maps and lower-end hardware. Compare the live scene against
+the gathered references before making deeper art or architectural choices.
 
 ## v0.1: the pivot (2026-10-09)
 
