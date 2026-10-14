@@ -1,7 +1,7 @@
 import { canPlace, priceOf } from '../game/build.ts';
 import { BUILDINGS, type BuildingId } from '../game/data.ts';
 import { placement } from '../game/forecast.ts';
-import type { Network } from '../game/power.ts';
+import { usedBy, type Network } from '../game/power.ts';
 import type { GameState, Status } from '../game/state.ts';
 import { fill, h, icon, set } from './dom.ts';
 import { hex, num, pct, watts } from './format.ts';
@@ -71,7 +71,7 @@ export class WorldLayer {
       const [sw, b, small] = el.children as unknown as HTMLElement[], n = l.net, short = n.share < 1 && n.wanted > 0;
       sw.style.background = hex(l.colour);
       set(b, watts(n.made));
-      set(small, `${watts(n.wanted)} used${n.capacity ? ` · ${pct(n.stored / n.capacity)} stored` : ''}${short ? ` · short, ${pct(n.share)}` : ''}`);
+      set(small, `${watts(usedBy(n))} used${n.capacity ? ` · ${pct(n.stored / n.capacity)} stored` : ''}${short ? ` · short, ${pct(n.share)}` : ''}`);
       el.classList.toggle('is-short', short);
     });
   }

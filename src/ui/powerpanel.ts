@@ -1,6 +1,6 @@
 import { BUILDINGS, POWER, TRUCK, type BuildingId } from '../game/data.ts';
 import { gameSpan, tonight } from '../game/forecast.ts';
-import { networks } from '../game/power.ts';
+import { networks, usedBy } from '../game/power.ts';
 import { HOUR_SECONDS, nightsOf, powerDay } from '../game/powerlog.ts';
 import { dayAt, exposureOf, hourAt, nearWater, shareOf, sunAt, wants } from '../game/sim.ts';
 import type { GameState } from '../game/state.ts';
@@ -105,7 +105,7 @@ export function powerSheet(host: PowerHost) {
   const update = () => {
     if (performance.now() - last < 1000) return;
     last = performance.now();
-    const nets = networks(s).list, made = nets.reduce((n, x) => n + x.made, 0), used = nets.reduce((n, x) => n + x.wanted, 0);
+    const nets = networks(s).list, made = nets.reduce((n, x) => n + x.made, 0), used = nets.reduce((n, x) => n + usedBy(x), 0);
     const bats = s.buildings.filter((b) => b.type === 'battery' && networks(s).of.has(b.id)), cap = bats.length * POWER.battery.capacity, stored = bats.reduce((n, b) => n + b.charge!, 0);
     const day = powerDay(s), nights = nightsOf(s);
     // Where the watts go: each kind of building that draws power, over the day and now.
@@ -146,7 +146,7 @@ export function powerSheet(host: PowerHost) {
             ...(nets.length ? nets.map((n, i) => h('div', { class: 'net is-row' },
               h('div', { class: 'nm' }, h('i', { class: 'sw', style: `background: ${hex(NET_COLOURS[netColour(s, n)])}` }),
                 h('div', null, h('b', null, `Network ${i + 1}`), h('div', { class: 'cd-small' }, `${plural(n.pylons.length, 'pylon')} · ${plural(n.members.filter((b) => BUILDINGS[b.type].power).length, 'building')} draw${n.members.filter((b) => BUILDINGS[b.type].power).length === 1 ? 's' : ''}`))),
-              h('span', { class: 'v' }, watts(n.made)), h('span', { class: 'v' }, watts(n.wanted)), h('span', { class: 'v' }, n.capacity ? pct(n.stored / n.capacity) : '–'),
+              h('span', { class: 'v' }, watts(n.made)), h('span', { class: 'v' }, watts(usedBy(n))), h('span', { class: 'v' }, n.capacity ? pct(n.stored / n.capacity) : '–'),
               h('span', { class: `v${n.share < 1 && n.wanted > 0 ? ' cd-bad' : ''}` }, watts(n.wanted * (1 - n.share))))) : [h('p', { class: 'cd-small' }, 'No pylons yet: a network is a set of linked pylons.')]),
             nets.length === 1 ? h('div', { class: 'cd-small note' }, 'The only network: every powered building that reaches a pylon is on it.') : null),
           tonightCard(s),

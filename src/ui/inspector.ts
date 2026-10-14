@@ -7,7 +7,7 @@ import {
 } from '../game/data.ts';
 import { truckTime } from '../game/fleet.ts';
 import { hasHistory, heldSince, historyOf, summarize } from '../game/history.ts';
-import { networkOf, networks } from '../game/power.ts';
+import { networkOf, networks, usedBy } from '../game/power.ts';
 import {
   describeLinks, describeStatus, describeTruck, exposureOf, fieldFertility, fieldPace, flowersNear, givesGoods, isPollinated, isStop, linksOf,
   makes, recipeOf, routeOf, routesAt, shareOf, sunAt, takesGoods, truckProblems, wants, windAt,
@@ -219,7 +219,7 @@ export class Inspector {
         const net = b.type === 'pylon' ? networks(s).of.get(b.id) ?? null : networkOf(s, b);
         dot.hidden = !net;
         if (net) dot.style.background = hex(NET_COLOURS[netColour(s, net)]);
-        set(v, net ? `${watts(net.made)} made · ${watts(net.wanted)} used · ${net.capacity ? pct(net.stored / net.capacity) : 'no batteries'}` : 'none: no pylon in reach');
+        set(v, net ? `${watts(net.made)} made · ${watts(usedBy(net))} used · ${net.capacity ? pct(net.stored / net.capacity) : 'no batteries'}` : 'none: no pylon in reach');
       });
       out.push(row('Network', h('b', null, dot, v)));
     }

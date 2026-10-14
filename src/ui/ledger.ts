@@ -1,6 +1,6 @@
 import { CROPS, ITEM_IDS, ITEMS, TREE_HEALTH } from '../game/data.ts';
 import { flowRate, flowSeries, goodsHeld, soilTrend } from '../game/flows.ts';
-import { networks } from '../game/power.ts';
+import { networks, usedBy } from '../game/power.ts';
 import { dayAt, fieldFertility, hourAt, isPollinated, soilHealth } from '../game/sim.ts';
 import { countTrees, type GameState } from '../game/state.ts';
 import { fill, h, icon, svg } from './dom.ts';
@@ -56,7 +56,7 @@ export function ledgerSheet(host: LedgerHost) {
   const update = () => {
     if (performance.now() - last < 1000) return;
     last = performance.now();
-    const nets = networks(s).list, made = nets.reduce((n, x) => n + x.made, 0), used = nets.reduce((n, x) => n + x.wanted, 0);
+    const nets = networks(s).list, made = nets.reduce((n, x) => n + x.made, 0), used = nets.reduce((n, x) => n + usedBy(x), 0);
     const cap = nets.reduce((n, x) => n + x.capacity, 0), stored = nets.reduce((n, x) => n + x.stored, 0);
     fill(head,
       h('div', null, h('div', { class: 'cd-label' }, `${s.scenario.name} · day ${dayAt(s.time)}, ${clock(hourAt(s.time))}`), h('h1', { class: 'cd-display' }, 'Ledger')),

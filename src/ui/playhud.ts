@@ -1,5 +1,5 @@
 import { flowRate, creditsPerMin } from '../game/flows.ts';
-import { networks } from '../game/power.ts';
+import { networks, usedBy } from '../game/power.ts';
 import { CAMPAIGN } from '../game/scenarios.ts';
 import { dayAt, hourAt, sunAt, windAt } from '../game/sim.ts';
 import type { GameState } from '../game/state.ts';
@@ -189,11 +189,11 @@ export class TopRight {
     const cpm = creditsPerMin(s);
     set(this.credits.sub, sc.sandbox ? 'credits' : cpm > 0 ? `+${num(cpm)} / min` : 'credits');
     const nets = networks(s).list;
-    const made = nets.reduce((n, x) => n + x.made, 0), wanted = nets.reduce((n, x) => n + x.wanted, 0);
+    const made = nets.reduce((n, x) => n + x.made, 0), used = nets.reduce((n, x) => n + usedBy(x), 0);
     const stored = nets.reduce((n, x) => n + x.stored, 0), cap = nets.reduce((n, x) => n + x.capacity, 0);
     const worst = nets.reduce((m, x) => (x.wanted > 0 ? Math.min(m, x.share) : m), 1);
     set(this.power.v, nets.length ? watts(made) : 'No pylons');
-    set(this.power.sub, !nets.length ? '' : worst < 1 ? `short · ${pct(worst)}` : `${watts(wanted).replace(' W', '')} used`);
+    set(this.power.sub, !nets.length ? '' : worst < 1 ? `short · ${pct(worst)}` : `${watts(used).replace(' W', '')} used`);
     this.power.sub.classList.toggle('is-bad', worst < 1);
     set(this.stored.v, cap ? pct(stored / cap) : '–');
     set(this.stored.sub, cap ? 'stored' : 'no batteries');

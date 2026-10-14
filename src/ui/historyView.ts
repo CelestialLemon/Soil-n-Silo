@@ -2,7 +2,7 @@ import { GROUP_NAMES, GROUPS, ITEMS, POWER, type GroupId, type ItemId } from '..
 import { flowRate } from '../game/flows.ts';
 import { tonight } from '../game/forecast.ts';
 import { historyOf, summarize, waitsOf, type Summary, type Wait } from '../game/history.ts';
-import { networkOf } from '../game/power.ts';
+import { networkOf, usedBy } from '../game/power.ts';
 import { recipeOf, routesAt, sprinklersOf, trucksOn } from '../game/sim.ts';
 import type { Building, GameState, Status } from '../game/state.ts';
 import { fill, h, icon, set, svg } from './dom.ts';
@@ -73,7 +73,7 @@ export function waitFact(s: GameState, b: Building, w: Wait): string {
       const net = networkOf(s, b);
       if (!net) return 'No pylon reaches it.';
       const t = tonight(s);
-      return `Its network: ${watts(net.made)} made, ${watts(net.wanted)} used now.${t?.dryAt ? ` Batteries run dry at ${clockAt(t.dryAt)} tonight.` : ''}`;
+      return `Its network: ${watts(net.made)} made, ${watts(usedBy(net))} used now.${t?.dryAt ? ` Batteries run dry at ${clockAt(t.dryAt)} tonight.` : ''}`;
     }
     case 'output': {
       const item = itemByName(w.need);

@@ -1,5 +1,5 @@
 import { POWER } from '../game/data.ts';
-import { networks } from '../game/power.ts';
+import { networks, usedBy } from '../game/power.ts';
 import { dayAt, hourAt } from '../game/sim.ts';
 import type { GameState, Status } from '../game/state.ts';
 import { h, icon } from './dom.ts';
@@ -91,7 +91,7 @@ export function keysCard() {
 /** Where the commission stands, for the pause screen: its goals as gauges, credits and power. */
 function standing(s: GameState) {
   const sc = s.scenario, nets = networks(s).list;
-  const made = nets.reduce((n, x) => n + x.made, 0), used = nets.reduce((n, x) => n + x.wanted, 0);
+  const made = nets.reduce((n, x) => n + x.made, 0), used = nets.reduce((n, x) => n + usedBy(x), 0);
   const bats = s.buildings.filter((b) => b.type === 'battery' && networks(s).of.has(b.id));
   const stored = bats.reduce((n, b) => n + b.charge!, 0), cap = bats.length * POWER.battery.capacity;
   return h('div', { class: 'cd-card standing' },
