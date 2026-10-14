@@ -1,13 +1,12 @@
 # The illustrated icon set (goods, buildings, controls), drawn once as SVG shapes and rendered into a sprite sheet plus the
-# CSS classes that pick one icon out of it. Clearday uses the `flat` style:
+# CSS classes that pick one icon out of it, in Clearday's flat style (muted fills, a soft edge, no outline):
 #
-#   python3 tools/clearday/icons.py flat cd src/ui/clearday "#2a3530"
+#   python3 tools/clearday/icons.py cd src/ui/clearday "#2a3530"
 #
 # writes src/ui/clearday/icons.svg and icons.css (classes `cd-i cd-i--<name>`, sized by `--s`). The last argument is the
-# colour of the control glyphs (pause, play, close…). The other styles (workshop, meadow, lantern) are from the design
-# exploration and can go once nothing needs them. To add an icon, add an icon(...) line below and rerun.
+# colour of the control glyphs (pause, play, close…). To add an icon, add an icon(...) line below and rerun.
 # Shapes use @a (base), @b (shade), @c (light) colour slots; class "ln" marks stroke-only lines.
-import sys, json
+import re, sys
 
 P = {  # palettes per icon: base, shade, light
     'gold': ('#e8c35a', '#c49330', '#f6e3a0'), 'green': ('#78a94a', '#4f7d2e', '#b6d98a'), 'red': ('#e0563c', '#a8352a', '#f39a7f'),
@@ -19,7 +18,6 @@ P = {  # palettes per icon: base, shade, light
     'clay': ('#c9673f', '#9a4428', '#ec9a76'), 'night': ('#5d6fae', '#3d4d86', '#a9b6e6'),
 }
 
-def el(s): return s
 I = {}
 def icon(name, pal, *els): I[name] = (pal, els)
 
@@ -134,9 +132,7 @@ icon('bee', 'honey', '<ellipse cx="32" cy="36" rx="16" ry="12" fill="@a"/>', '<p
 icon('road', 'brown', '<path d="M20 60 L28 4 H36 L44 60 Z" fill="@c"/>', '<path class="ln" d="M32 10 V18 M32 26 V36 M32 44 V56" stroke="#f6efdf" stroke-width="3"/>')
 icon('pause', 'ui', '<rect x="16" y="12" width="11" height="40" rx="3" fill="@a"/>', '<rect x="37" y="12" width="11" height="40" rx="3" fill="@a"/>')
 icon('play', 'ui', '<path d="M18 10 L52 32 L18 54 Z" fill="@a"/>')
-icon('fast', 'ui', '<path d="M6 12 L32 32 L6 52 Z" fill="@a"/>', '<path d="M30 12 L56 32 L30 52 Z" fill="@a"/>')
 icon('rotate', 'ui', '<path class="ln" d="M50 30 C 50 18, 42 10, 32 10 C 20 10, 12 20, 12 32 C 12 44, 22 54, 32 54 C 40 54, 46 50, 50 42" stroke="@a" stroke-width="5"/>', '<path d="M42 30 H58 L50 18 Z" fill="@a"/>')
-icon('zoom', 'ui', '<circle cx="26" cy="26" r="16" class="ln" stroke="@a" stroke-width="5"/>', '<path class="ln" d="M38 38 L56 56 M26 18 V34 M18 26 H34" stroke="@a" stroke-width="5"/>')
 icon('close', 'ui', '<path class="ln" d="M16 16 L48 48 M48 16 L16 48" stroke="@a" stroke-width="7"/>')
 icon('route', 'clay', '<path class="ln" d="M14 50 C 14 36, 50 40, 50 24" stroke="#6f8590" stroke-width="4" stroke-dasharray="5 5"/>', '<circle cx="14" cy="52" r="7" fill="@b"/>',
   '<path d="M50 4 C 42 4, 38 10, 38 16 C 38 24, 50 34, 50 34 C 50 34, 62 24, 62 16 C 62 10, 58 4, 50 4 Z" fill="@a"/>', '<circle cx="50" cy="16" r="4" fill="@c"/>')
@@ -146,19 +142,10 @@ icon('chart', 'teal', '<rect x="8" y="34" width="10" height="22" rx="2" fill="@b
 icon('warn', 'honey', '<path d="M32 6 L60 56 H4 Z" fill="@a"/>', '<rect x="29" y="22" width="6" height="18" rx="3" fill="#3c2b20"/>', '<circle cx="32" cy="47" r="3.5" fill="#3c2b20"/>')
 icon('check', 'green', '<circle cx="32" cy="32" r="26" fill="@a"/>', '<path class="ln" d="M18 32 L28 42 L46 22" stroke="#ffffff" stroke-width="6"/>')
 icon('medal', 'gold', '<path d="M20 4 H30 L36 22 H26 Z M44 4 H34 L28 22 H38 Z" fill="#c9673f"/>', '<circle cx="32" cy="40" r="18" fill="@a"/>', '<circle cx="32" cy="40" r="11" fill="@c"/>')
-icon('seed', 'brown', '<path d="M32 6 C 46 18, 48 40, 32 58 C 16 40, 18 18, 32 6 Z" fill="@a"/>', '<path class="ln" d="M32 14 C 26 26, 26 40, 32 52" stroke="@c" stroke-width="2.5"/>')
-icon('heart', 'clay', '<path d="M32 56 C 6 38, 4 22, 14 14 C 22 8, 30 12, 32 20 C 34 12, 42 8, 50 14 C 60 22, 58 38, 32 56 Z" fill="@a"/>', '<ellipse cx="20" cy="22" rx="4" ry="6" fill="@c"/>')
-icon('loop', 'green', '<path class="ln" d="M44 14 A 20 20 0 1 0 52 36" stroke="@a" stroke-width="6"/>', '<path d="M40 4 L56 14 L40 22 Z" fill="@a"/>', '<path d="M32 40 C 26 40, 24 34, 26 30 C 30 30, 32 34, 32 40 Z" fill="@c"/>')
 icon('trash', 'clay', '<rect x="14" y="18" width="36" height="40" rx="4" fill="@a"/>', '<rect x="10" y="10" width="44" height="8" rx="3" fill="@b"/>', '<rect x="26" y="4" width="12" height="6" rx="2" fill="@b"/>',
   '<path class="ln" d="M24 26 V50 M32 26 V50 M40 26 V50" stroke="@c" stroke-width="3"/>')
 icon('menu', 'ui', '<rect x="10" y="14" width="44" height="7" rx="3.5" fill="@a"/>', '<rect x="10" y="29" width="44" height="7" rx="3.5" fill="@a"/>', '<rect x="10" y="44" width="44" height="7" rx="3.5" fill="@a"/>')
 
-# ---- Round 3 additions
-icon('station', 'white', '<path d="M30 60 L31 22 H33 L34 60 Z" fill="@b"/>',
-     '<path class="ln" d="M20 14 H44 M32 14 V22" stroke="@b" stroke-width="3"/>',
-     '<circle cx="18" cy="14" r="5" fill="@a"/>', '<circle cx="46" cy="14" r="5" fill="@a"/>', '<circle cx="32" cy="7" r="4" fill="@a"/>',
-     '<rect x="14" y="34" width="16" height="16" rx="2" fill="@a"/>', '<path class="ln" d="M17 39 H27 M17 44 H27" stroke="@b" stroke-width="2"/>',
-     '<path d="M36 40 L52 34 L52 38 L40 42 Z" fill="#e0563c"/>')
 
 ORDER = list(I.keys())
 COLS = 10
@@ -174,58 +161,29 @@ def mute(hx, k=0.22):
     H, L, S = colorsys.rgb_to_hls(r, g, b); S *= (1 - k); L = L * 0.95
     r, g, b = colorsys.hls_to_rgb(H, L, S)
     return '#%02x%02x%02x' % (int(r * 255), int(g * 255), int(b * 255))
-def render(style):
+def render():
     out = []
     rows = (len(ORDER) + COLS - 1) // COLS
-    defs = ''
-    if style == 'meadow':
-        defs = ('<filter id="wob" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="2" seed="7"/>'
-                '<feDisplacementMap in="SourceGraphic" scale="2.2"/></filter>')
-    if style == 'lantern':
-        defs = ('<filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="1.6" result="b"/>'
-                '<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>')
+    ui = (UIFILL, UIFILL, UIFILL) if UIFILL else ('#46524c', '#2f3b35', '#7d8a83')
     for i, name in enumerate(ORDER):
         pal, els = I[name]
-        UI = {'workshop': ('#4a3424', '#2e2016', '#7a5a40'), 'meadow': ('#46524c', '#2f3b35', '#7d8a83'), 'lantern': ('#ffd27a', '#c99a3b', '#fff0c4')}
-        UI['flat'] = UI['meadow']
-        if UIFILL: UI[style] = (UIFILL, UIFILL, UIFILL)
-        a, b, c = UI[style] if pal == 'ui' else P[pal]
-        if style == 'flat' and pal != 'ui': a, b, c = (mute(x) for x in (a, b, c))
+        a, b, c = ui if pal == 'ui' else (mute(x) for x in P[pal])
         x, y = (i % COLS) * 64, (i // COLS) * 64
         parts = []
         for e in els:
             e = e.replace('@a', a).replace('@b', b).replace('@c', c)
-            is_ln = 'class="ln"' in e
-            if style == 'workshop':
-                ink = '#3b2a1e'
-                if is_ln:
-                    if 'stroke="' not in e: e = e.replace('class="ln"', f'class="ln" stroke="{ink}"')
-                    e = e.replace('class="ln"', 'fill="none" stroke-linecap="round" stroke-linejoin="round"')
-                else:
-                    e = e.replace('/>', f' stroke="{ink}" stroke-width="2.4" stroke-linejoin="round"/>', 1)
-            elif style in ('meadow', 'flat'):
-                if is_ln:
-                    if 'stroke="' not in e: e = e.replace('class="ln"', f'class="ln" stroke="{darker(b, 0.85)}"')
-                    e = e.replace('class="ln"', 'fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"')
-                else:
-                    import re
-                    m = re.search(r'fill="(#[0-9a-fA-F]{6})"', e)
-                    edge = darker(m.group(1), 0.82) if m else b
-                    e = e.replace('/>', f' stroke="{edge}" stroke-width="1.6" stroke-opacity="0.55" fill-opacity="0.93"/>', 1)
-            else:  # lantern: deep fills with glowing gold edges
-                gold = '#ffd27a'
-                if is_ln:
-                    e = e.replace('stroke="', 'data-s="') if 'stroke="' in e else e
-                    e = e.replace('class="ln"', f'fill="none" stroke="{gold}" stroke-linecap="round" stroke-linejoin="round"')
-                else:
-                    e = e.replace('/>', f' stroke="{gold}" stroke-width="1.8" stroke-linejoin="round" fill-opacity="0.9"/>', 1)
+            if 'class="ln"' in e:
+                # A line: stroked only, a little darker than the shade.
+                if 'stroke="' not in e: e = e.replace('class="ln"', f'class="ln" stroke="{darker(b, 0.85)}"')
+                e = e.replace('class="ln"', 'fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"')
+            else:
+                # A shape: its fill, with a soft edge a shade darker.
+                m = re.search(r'fill="(#[0-9a-fA-F]{6})"', e)
+                edge = darker(m.group(1), 0.82) if m else b
+                e = e.replace('/>', f' stroke="{edge}" stroke-width="1.6" stroke-opacity="0.7"/>', 1)
             parts.append(e)
-        g = ''.join(parts)
-        if style == 'meadow': g = f'<g filter="url(#wob)">{g}</g>'
-        if style == 'flat': g = g.replace('stroke-opacity="0.55" fill-opacity="0.93"', 'stroke-opacity="0.7"')
-        if style == 'lantern': g = f'<g filter="url(#glow)">{g}</g>'
-        out.append(f'<g transform="translate({x} {y})"><g transform="translate(4 4) scale(0.875)">{g}</g></g>')
-    return f'<svg xmlns="http://www.w3.org/2000/svg" width="{COLS * 64}" height="{rows * 64}" viewBox="0 0 {COLS * 64} {rows * 64}"><defs>{defs}</defs>{"".join(out)}</svg>'
+        out.append(f'<g transform="translate({x} {y})"><g transform="translate(4 4) scale(0.875)">{"".join(parts)}</g></g>')
+    return f'<svg xmlns="http://www.w3.org/2000/svg" width="{COLS * 64}" height="{rows * 64}" viewBox="0 0 {COLS * 64} {rows * 64}"><defs></defs>{"".join(out)}</svg>'
 
 def css(prefix):
     lines = [f'.{prefix}-i {{ display: inline-block; flex: none; width: var(--s, 32px); height: var(--s, 32px); background: url("icons.svg") no-repeat; background-size: calc(var(--s, 32px) * {COLS}) auto; vertical-align: middle; }}']
@@ -234,8 +192,8 @@ def css(prefix):
     return '\n'.join(lines)
 
 if __name__ == '__main__':
-    style, prefix, outdir = sys.argv[1:4]
-    UIFILL = sys.argv[4] if len(sys.argv) > 4 else None
-    open(f'{outdir}/icons.svg', 'w').write(render(style))
+    prefix, outdir = sys.argv[1:3]
+    UIFILL = sys.argv[3] if len(sys.argv) > 3 else None
+    open(f'{outdir}/icons.svg', 'w').write(render())
     open(f'{outdir}/icons.css', 'w').write(css(prefix))
     print(len(ORDER), 'icons')
