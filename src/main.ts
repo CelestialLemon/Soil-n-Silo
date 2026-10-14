@@ -494,6 +494,8 @@ async function play(initial: GameState) {
     }
     if (e.repeat) return;
     if (e.code === 'Space') {
+      // A control reached with the keyboard takes Space as a press; after a click, Space still pauses.
+      if (e.target instanceof HTMLElement && e.target !== document.body && e.target.matches(':focus-visible')) return;
       e.preventDefault();
       // On the pause screen Space resumes; another screen that stops the game (the briefing, the guide) ignores it, so closing
       // it can't leave the game paused unseen.
