@@ -491,7 +491,13 @@ async function play(initial: GameState) {
       return;
     }
     if (e.repeat) return;
-    if (e.code === 'Space') { e.preventDefault(); if (hud.closeIf('pause')) paused = false; else paused = !paused; return; }
+    if (e.code === 'Space') {
+      e.preventDefault();
+      // On the pause screen Space resumes; another screen that stops the game (the briefing, the guide) ignores it, so closing
+      // it can't leave the game paused unseen.
+      if (hud.closeIf('pause')) paused = false; else if (!hud.modal) paused = !paused;
+      return;
+    }
     if (e.code === 'Digit1') { speed = 1; paused = false; }
     if (e.code === 'Digit2') { speed = 2; paused = false; }
     if (e.code === 'Digit3') { speed = 4; paused = false; }
