@@ -24,7 +24,9 @@ import { Dock, dockTip } from './dock.ts';
 import { guidePanel, type GuidePage } from './guide.ts';
 import { Inspector } from './inspector.ts';
 import { briefing } from './briefing.ts';
+import { ledgerSheet } from './ledger.ts';
 import { pauseScreen } from './pause.ts';
+import { powerSheet } from './powerpanel.ts';
 import { resultsScreen } from './results.ts';
 import { ProblemsStrip } from './problems.ts';
 import { RoutesCard } from './routes.ts';
@@ -83,7 +85,8 @@ const button = (label: string | Node, onclick: () => void, o: { disabled?: boole
 function set(el: HTMLElement, text: string) { if (el.textContent !== text) el.textContent = text; }
 const bar = () => { const fill = h('div', { class: 'fill' }); return { el: h('div', { class: 'bar' }, fill), set: (k: number) => { fill.style.width = `${Math.max(0, Math.min(1, k)) * 100}%`; } }; };
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
-interface Modal { name: string; el: HTMLElement; blocking: boolean }
+/** A screen or panel over the world: `blocking` ones pause the game; `update` redraws a live one a few times a second. */
+interface Modal { name: string; el: HTMLElement; blocking: boolean; update?: () => void }
 
 export class Hud {
   private readonly host: HudHost;
@@ -109,9 +112,6 @@ export class Hud {
   private readonly sheets = h('div', { class: 'ui-sheets' });
   private readonly problems: ProblemsStrip;
   private modals: Modal[] = [];
-  private statsOpen = false;
-  private readonly statsBody = h('div');
-  private readonly stats = h('div', { class: 'card stats-panel' }, h('div', { class: 'head' }, h('b', null, 'Production (last minute)'), button('✕', () => this.toggleStats(), { cls: 'close' })), this.statsBody);
   private routesOpen = false;
   private readonly routes: RoutesCard;
   private lastSlow = 0;
@@ -142,7 +142,7 @@ export class Hud {
     this.hud.append(this.commission.el, this.commission.pill, this.top.el, this.view.el, this.controls, this.dock.el, this.side.el, this.routes.el, this.problems.el, this.problems.popover,
       h('div', { class: 'hud-above' }, this.toasts, this.tip));
     this.ui.append(this.world.el, this.hud, this.sheets);
-    root.append(h('div', { class: 'hud' }, this.stats), this.ui);
+    root.append(this.ui);
     host.settings.listen((st) => { this.ui.classList.toggle('is-calm', st.reduceMotion); this.fit(); this.lastSlow = 0; });
     addEventListener('resize', () => this.fit());
     this.refresh();
@@ -183,7 +183,7 @@ export class Hud {
     this.lastSlow = now;
     this.commission.update(side);
     this.top.update();
-    if (this.statsOpen) this.renderStats();
+    this.modals[this.modals.length - 1]?.update?.();
   }
 
   private showTip(id: BuildingId | null) {
@@ -209,13 +209,13 @@ export class Hud {
 
   /** Whether a panel is open. */
   panelOpen(p: Panel) {
-    if (p === 'ledger') return this.statsOpen;
+    if (p === 'ledger' || p === 'power') return this.modals.some((m) => m.name === p);
     if (p === 'routes') return this.routesOpen;
     if (p === 'guide') return this.modals.some((m) => m.name === 'guide');
     return false;
   }
   togglePanel(p: Panel) {
-    if (p === 'ledger') this.toggleStats();
+    if (p === 'ledger' || p === 'power') this.toggleSheet(p);
     else if (p === 'routes') this.toggleRoutes();
     else if (p === 'guide') this.openGuide();
   }
@@ -233,19 +233,16 @@ export class Hud {
   private edit(r: Route) { this.host.setTool({ kind: 'route', route: r.id }); this.refresh(); }
 
 
-  // ---- Stats ----
+  // ---- The ledger and the power panel ----
 
-  toggleStats() { this.statsOpen = !this.statsOpen; this.stats.style.display = this.statsOpen ? 'block' : 'none'; if (this.statsOpen) this.renderStats(); }
-
-  private renderStats() {
-    const s = this.host.state();
-    const rows = ITEM_IDS.filter((i) => s.made[i] || s.delivered[i]).map((i) => h('tr', null,
-      h('td', null, good(i)), h('td', null, ratePerMin(s, i, 'made').toFixed(1)), h('td', null, ratePerMin(s, i, 'delivered').toFixed(1)),
-      h('td', null, String(s.made[i] ?? 0)), h('td', null, String(s.delivered[i] ?? 0))));
-    this.statsBody.replaceChildren(
-      rows.length ? h('table', null, h('tr', null, h('th', null, 'Good'), h('th', null, 'Made/min'), h('th', null, 'Delivered/min'), h('th', null, 'Made'), h('th', null, 'Delivered')), ...rows)
-        : h('p', { class: 'hint' }, 'Nothing made yet.'),
-      h('div', { class: 'kv' }, h('span', null, 'Soil health'), h('b', null, String(Math.round(soilHealth(s))))));
+  /** Opens the ledger or the power panel (closing the other), or closes it. The game runs on behind them. */
+  toggleSheet(p: 'ledger' | 'power') {
+    if (this.modals.some((m) => m.name === p)) { this.close(p); return; }
+    this.modals = this.modals.filter((m) => m.name !== 'ledger' && m.name !== 'power');
+    const sheet = p === 'ledger'
+      ? ledgerSheet({ state: () => this.host.state(), openPower: () => this.toggleSheet('power'), close: () => this.close('ledger') })
+      : powerSheet({ state: () => this.host.state(), close: () => this.close('power') });
+    this.openModal(p, sheet.el, false, sheet.update);
   }
 
   // ---- The routes card ----
@@ -259,9 +256,9 @@ export class Hud {
 
   // ---- Modal screens ----
 
-  private openModal(name: string, el: HTMLElement, blocking: boolean) {
+  private openModal(name: string, el: HTMLElement, blocking: boolean, update?: () => void) {
     this.modals = this.modals.filter((m) => m.name !== name);
-    this.modals.push({ name, el, blocking });
+    this.modals.push({ name, el, blocking, update });
     this.drawModals();
   }
   private drawModals() {
@@ -279,7 +276,6 @@ export class Hud {
   /** Closes the topmost modal or panel; false if none was open. */
   closeTop(): boolean {
     if (this.modals.length) { this.modals.pop(); this.drawModals(); return true; }
-    if (this.statsOpen) { this.toggleStats(); return true; }
     if (this.routesOpen) { this.toggleRoutes(); return true; }
     return false;
   }

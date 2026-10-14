@@ -221,7 +221,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
   function drawIndex() {
     const topics = h('div', { class: 'topics' }, ...TOPICS.map((t) => h('button', { class: `topic${page.kind === 'topic' && page.id === t.id ? ' is-on' : ''}`, onclick: () => go({ kind: 'topic', id: t.id }) }, t.chip)),
       h('button', { class: `topic${page.kind === 'goods' ? ' is-on' : ''}`, onclick: () => go({ kind: 'goods' }) }, 'Goods'));
-    const tile = (id: BuildingId) => h('button', { class: `gt${page.kind === 'building' && page.id === id ? ' is-on' : ''}${have.has(id) ? ' is-here' : ''}`, onclick: () => go({ kind: 'building', id }) },
+    const tile = (id: BuildingId) => h('button', { class: `gtile${page.kind === 'building' && page.id === id ? ' is-on' : ''}${have.has(id) ? ' is-here' : ''}`, onclick: () => go({ kind: 'building', id }) },
       icon(id, 40), TILE_NAMES[id] ?? BUILDINGS[id].name);
     let list: (Node | null)[];
     if (query) {

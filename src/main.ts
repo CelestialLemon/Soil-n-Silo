@@ -501,7 +501,8 @@ async function play(initial: GameState) {
     if (e.code === 'KeyZ') zoomStep(e.shiftKey ? -1 : 1, pointer ?? undefined);
     if (e.code === 'Equal' || e.code === 'NumpadAdd') zoomStep(1, pointer ?? undefined);
     if (e.code === 'Minus' || e.code === 'NumpadSubtract') zoomStep(-1, pointer ?? undefined);
-    if (e.code === 'Tab') { e.preventDefault(); hud.toggleStats(); }
+    if (e.code === 'Tab') { e.preventDefault(); hud.toggleSheet('ledger'); }
+    if (e.code === 'KeyW') hud.toggleSheet('power');
     if (e.code === 'KeyO') hud.toggleRoutes();
     if (e.code === 'KeyG') { hud.openGuide(); hud.refresh(); return; }
     if (e.code === 'KeyV') { const order: Overlay[] = ['none', 'fertility', 'power', 'roads', 'water', 'bees']; overlay = order[(order.indexOf(overlay) + 1) % order.length]; }

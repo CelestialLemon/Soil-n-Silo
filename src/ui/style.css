@@ -26,11 +26,6 @@ button:disabled { opacity: 0.45; cursor: default; }
 
 
 
-.stats-panel { position: absolute; left: 50%; top: 100px; transform: translateX(-50%); min-width: 460px; display: none; }
-.stats-panel table { border-collapse: collapse; width: 100%; font-size: 12px; margin: 6px 0; }
-.stats-panel th { text-align: right; color: var(--dim); font-weight: normal; padding: 2px 6px; }
-.stats-panel th:first-child, .stats-panel td:first-child { text-align: left; }
-.stats-panel td { text-align: right; padding: 2px 6px; border-top: 1px solid #ffffff14; }
 
 .layer { position: fixed; inset: 0; display: none; place-items: center; background: rgb(8 16 14 / 0.5); }
 .layer.open { display: grid; }
@@ -55,4 +50,3 @@ button:disabled { opacity: 0.45; cursor: default; }
 .kv b { color: var(--text); font-weight: normal; text-align: right; }
 .choices { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
 .choices button { font-size: 12px; padding: 2px 7px; }
-.stats-panel .head { display: flex; justify-content: space-between; align-items: center; font-size: 15px; color: var(--honey); }
