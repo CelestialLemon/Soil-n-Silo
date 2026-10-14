@@ -85,7 +85,7 @@ if (startId && startSc) startNew(startId);
 else if (!saved || params.has('menu')) {
   loading.remove();
   showMenu(document.body, {
-    saved: saved ? { name: saved.scenario.name, time: saved.time, done: saved.completedAt !== null } : null,
+    saved, settings,
     progress: readProgress(localStorage.getItem(PROGRESS_KEY)),
     resume: () => { location.href = location.pathname; },
     start: startNew,
@@ -133,6 +133,7 @@ async function play(initial: GameState) {
     settings,
     menu: () => { save(); location.href = `${location.pathname}?menu`; },
     restart: () => startNew(state.scenario.id),
+    start: (id) => { save(); startNew(id); },
     previewRoute: (id) => { previewRoute = id; },
     focus: (id) => {
       const b = buildingById(state, id);

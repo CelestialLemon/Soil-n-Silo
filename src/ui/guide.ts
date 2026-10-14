@@ -173,7 +173,7 @@ const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 const swatch = (id: ItemId) => h('i', { style: `background:#${ITEMS[id].colour.toString(16).padStart(6, '0')}` });
 
 /** The guide's panel: a list of pages on the left and the open page on the right. */
-export function guidePanel(start: GuidePage, host: GuideHost, close: () => void): HTMLElement {
+export function guidePanel(start: GuidePage, host: GuideHost | null, close: () => void): HTMLElement {
   const nav = h('nav', { class: 'guide-nav' });
   const body = h('article', { class: 'guide-body' });
   let page = start;
@@ -200,7 +200,7 @@ export function guidePanel(start: GuidePage, host: GuideHost, close: () => void)
     const takes = takesOf(id), gives = givesOf(id);
     return [
       h('div', { class: 'gtitle' }, h('h2', null, d.name), h('span', { class: 'chip' }, cat),
-        d.category ? h('button', { class: 'primary', onclick: () => { host.build(id); close(); } }, `Build${d.key ? ` (${d.key})` : ''}`) : null),
+        d.category && host ? h('button', { class: 'primary', onclick: () => { host.build(id); close(); } }, `Build${d.key ? ` (${d.key})` : ''}`) : null),
       h('div', { class: 'gfacts' },
         fact('Cost', d.category ? `${d.cost} credits` : '—'), fact('Size', `${d.size} × ${d.size}`),
         fact('Power', powerLine(id))),

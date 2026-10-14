@@ -23,7 +23,9 @@ import { h, icon } from './dom.ts';
 import { Dock, dockTip } from './dock.ts';
 import { guidePanel, type GuidePage } from './guide.ts';
 import { Inspector } from './inspector.ts';
+import { briefing } from './briefing.ts';
 import { pauseScreen } from './pause.ts';
+import { resultsScreen } from './results.ts';
 import { ProblemsStrip } from './problems.ts';
 import { RoutesCard } from './routes.ts';
 import { CommissionCard, TopRight, ViewBar, viewControls, type Panel, type PlayHost } from './playhud.ts';
@@ -61,6 +63,8 @@ export interface HudHost {
   settings: SettingsStore;
   menu(): void;
   restart(): void;
+  /** Starts another commission. */
+  start(id: string): void;
   /** Draws a route on the map while the pointer is over it in the routes panel (null: none). */
   previewRoute(id: number | null): void;
   /** Selects a building and moves the camera to it. */
@@ -291,16 +295,9 @@ export class Hud {
     this.openModal('guide', guidePanel(start, { build: (t) => this.host.setTool({ kind: 'build', type: t, rot: tool.kind === 'build' ? tool.rot : 1 }) }, () => this.close('guide')), true);
   }
 
+  /** The briefing, when a commission starts. */
   showIntro() {
-    const s = this.host.state(), sc = s.scenario;
-    this.openModal('intro', h('div', { class: 'panel' },
-      h('h2', null, sc.name), h('p', null, sc.blurb),
-      sc.goals.length ? h('ul', null, ...sc.goals.map((g) => h('li', null, g.kind === 'deliver' ? `Deliver ${g.n} ${ITEMS[g.item].name.toLowerCase()} to the depot` : g.kind === 'rate' ? `Reach ${g.perMin} ${ITEMS[g.item].name.toLowerCase()} per minute delivered` : `Keep soil health at ${g.min} or more`))) : null,
-      sc.sandbox ? null : h('p', { class: 'sub' }, `Target time ${fmtTime(sc.par)} for gold, ${fmtTime(sc.par * 1.5)} for silver. You can pause (Space) and build while paused.`),
-      sc.tags.length ? h('p', { class: 'tags' }, ...sc.tags.map((t) => h('span', null, t))) : null,
-      sc.tips ? h('div', { class: 'tips' }, h('h3', null, 'First steps'), h('ol', null, ...sc.tips.map((t) => h('li', null, t)))) : null,
-      sc.tips ? null : help(),
-      h('div', { class: 'actions' }, button('Start', () => this.close('intro'), { primary: true }))), true);
+    this.openModal('intro', briefing(this.host.state(), () => this.close('intro'), () => { this.close('intro'); this.openGuide({ kind: 'topic', id: 'start' }); }), true);
   }
 
   openPause() {
@@ -309,28 +306,9 @@ export class Hud {
     }), true);
   }
 
+  /** The results, when the commission is complete. */
   showComplete(medal: Medal) {
-    const s = this.host.state(), sc = s.scenario, t = s.completedAt ?? s.time;
-    this.openModal('done', h('div', { class: 'panel done' },
-      h('h2', null, 'Commission complete!'),
-      h('div', { class: `medal ${medal}` }, MEDAL_NAME[medal]),
-      h('p', null, `${sc.name}, delivered in ${fmtTime(t)} (target ${fmtTime(sc.par)}).`),
-      h('p', { class: 'sub' }, medal === 'gold' ? 'Within the target time.' : medal === 'silver' ? `Gold needs ${fmtTime(sc.par)} or less.` : `Silver needs ${fmtTime(sc.par * 1.5)} or less.`),
-      h('p', null, `Earned ${Math.floor(s.earned).toLocaleString()} credits · soil health ${Math.round(soilHealth(s))}.`),
-      h('div', { class: 'actions' }, button('Keep playing', () => this.close('done')), button('Level select', () => this.host.menu(), { primary: true }))), true);
+    this.openModal('done', resultsScreen(this.host.state(), medal, { keepPlaying: () => this.close('done'), menu: () => this.host.menu(), start: (id) => this.host.start(id) }), true);
   }
 }
 
-function help() {
-  return h('ul', { class: 'help' },
-    h('li', null, 'Pick a building in the bar at the bottom, then ', h('b', null, 'click or drag'), ' to place it (a drag places a row).'),
-    h('li', null, 'Trucks carry goods. Build a garage (T), buy a truck and give it a route: a loop of stops where it drops and picks up goods. Trucks drive on the open ground between buildings, so leave room. Silos (L) store goods; the depot buys whatever trucks drop there. ', h('b', null, 'O'), ' lists every route.'),
-    h('li', null, 'Buildings that share an edge trade without trucks: a mill beside wheat fields takes their wheat, a coop beside the mill its bran.'),
-    h('li', null, 'Machines need power, and trucks charge at their garage: build solar panels, turbines or a digester, and pylons within 3 tiles of everything. Batteries keep the night going.'),
-    h('li', null, 'Fields grow faster with water (sprinklers) and rich soil; harvests drain the soil. Compost, beans and resting fix it.'),
-    h('li', null, 'Markers: ', h('span', { class: 'm red' }, '◆'), ' no power ', h('span', { class: 'm orange' }, '◆'), ' blocked/low power ', h('span', { class: 'm yellow' }, '◆'), ' waiting for input ', h('span', { class: 'm blue' }, '◆'), ' dry ', h('span', { class: 'm purple' }, '◆'), ' trucks can\'t reach it, or no route takes its goods'),
-    h('li', null, h('b', null, 'Click'), ' a building to inspect it · ', h('b', null, 'X'), ' remove (refunds) · ', h('b', null, 'right click / Esc'), ' cancel'),
-    h('li', null, h('b', null, 'Drag'), ' (or right-drag, arrows) to pan · ', h('b', null, 'Q E'), ' turn · ', h('b', null, 'wheel / trackpad pinch / + −'), ' zoom · ', h('b', null, 'Space 1 2 3'), ' pause and speed · ', h('b', null, 'V'), ' overlays · ', h('b', null, 'O'), ' routes · ', h('b', null, 'Tab'), ' stats'),
-    h('li', null, 'Not sure what something does? ', h('b', null, 'G'), ' opens the guide: every building, how to use it and its numbers.'),
-  );
-}
