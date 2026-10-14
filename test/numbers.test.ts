@@ -8,7 +8,7 @@ import { creditsPerMin, flowRate, flowSeries, goodsHeld, soilTrend } from '../sr
 import { nextHour, placement, tonight } from '../src/game/forecast.ts';
 import { heldSince, historyOf, summarize, waitsOf } from '../src/game/history.ts';
 import { HOUR_SECONDS, nightsOf, powerDay } from '../src/game/powerlog.ts';
-import { RUN_SAMPLE, runWaits } from '../src/game/runlog.ts';
+import { RUN_MAX_NIGHTS, RUN_SAMPLE, runWaits } from '../src/game/runlog.ts';
 import { deserialize, serialize } from '../src/game/save.ts';
 import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
 import { advance, deliver, hourAt } from '../src/game/sim.ts';
@@ -225,6 +225,14 @@ test('the run log: milestones, the goal good\'s curve, waits; it saves, and an o
   assert.ok(migrated.run.marks.every((m) => m.t === -1));
   assert.equal(migrated.run.curve.length, 1);
   assert.equal(deserialize(JSON.stringify({ ...old, run: { ...s.run, curve: ['x'] } })), null);
+});
+
+test('an unfinished run keeps at most RUN_MAX_NIGHTS nights', () => {
+  const s = flat({ goals: [{ kind: 'deliver', item: 'linen', n: 1000 }] });
+  s.reached = [false];
+  // 23:00 on each of more days than are kept.
+  for (let i = 0; i < RUN_MAX_NIGHTS + 3; i++) { s.time = i * DAY_SECONDS + DAY_SECONDS * 16 / 24; advance(s, 0.1); }
+  assert.equal(s.run.nights.length, RUN_MAX_NIGHTS);
 });
 
 test('a building\'s history says how long its status has held, what it waited for, and what was taken', () => {

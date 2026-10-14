@@ -10,6 +10,8 @@ import type { GameState } from './state.ts';
 
 /** Seconds of play between samples of the goal good's curve, and the most samples kept. */
 export const RUN_SAMPLE = 10, RUN_MAX_SAMPLES = 2000;
+/** The most nights kept (over 33 hours of play): a run that long stops adding them, so its save stays bounded. */
+export const RUN_MAX_NIGHTS = 500;
 
 export type MarkKind = 'first' | 'night' | 'truck' | 'second' | 'loop' | 'goal';
 /** A milestone. `t` is when it happened; -1 if before the run was recorded (a save from before the log). */
@@ -116,10 +118,14 @@ export function noteRun(s: GameState, dt: number, night: boolean, short: boolean
   }
 }
 
+/** The entry for the night going on now; null once RUN_MAX_NIGHTS are kept and this is a new one. */
 function nightEntry(s: GameState) {
   const day = nightOf(s.time, s.scenario.weather.sunset);
   let n = s.run.nights[s.run.nights.length - 1];
-  if (!n || n.day !== day) s.run.nights.push((n = { day, short: 0, types: [] }));
+  if (!n || n.day !== day) {
+    if (s.run.nights.length >= RUN_MAX_NIGHTS) return null;
+    s.run.nights.push((n = { day, short: 0, types: [] }));
+  }
   return n;
 }
 
