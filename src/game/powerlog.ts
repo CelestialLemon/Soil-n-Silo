@@ -77,7 +77,8 @@ export function notePower(s: GameState, p: PowerStep, use: Partial<Record<Buildi
   for (const k of SUM_KEYS) h[k] += p[k] * dt;
   for (const [type, w] of Object.entries(use) as [BuildingId, number][]) h.use[type] = (h.use[type] ?? 0) + w * dt;
   if (!p.night) return;
-  const day = nightOf(start, s.scenario.weather.sunset);
+  // `night` is the step's end (the sun is read at the end of a step): so is the night it belongs to.
+  const day = nightOf(s.time, s.scenario.weather.sunset);
   let n = l.nights[l.nights.length - 1];
   if (!n || n.day !== day) {
     l.nights.push((n = { day, from: start, seconds: 0, short: 0, lowest: null, lowestAt: start, dryAt: null }));

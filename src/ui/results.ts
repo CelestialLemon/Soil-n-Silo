@@ -150,7 +150,10 @@ export function resultsScreen(s: GameState, medalWon: Medal, host: ResultsHost) 
   const delivered = (Object.keys(s.delivered) as ItemId[]).filter((k) => s.delivered[k]).sort((a, b) => s.delivered[b]! * ITEMS[b].price - s.delivered[a]! * ITEMS[a].price);
   const item = goalGood(sc), goal = sc.goals.find((g) => g.kind === 'deliver');
   const trees = countTrees(s) - s.initialTrees, saplings = s.buildings.filter((b) => b.type === 'sapling').length, soil = soilHealth(s), soilGoal = sc.goals.find((g) => g.kind === 'soil');
-  const better = trees >= 0 && (!soilGoal || soilGoal.kind !== 'soil' || soil >= soilGoal.min);
+  // Left better: no fewer trees, the fields' soil at least what those tiles started at, and the soil goal (if any) met.
+  const fieldTiles = s.buildings.filter((b) => b.type === 'field').flatMap((f) => [0, 1, 2].flatMap((dy) => [0, 1, 2].map((dx) => (f.y + dy) * s.map.width + f.x + dx)));
+  const soilKept = fieldTiles.reduce((n, i) => n + s.map.fertility[i] - s.soilBase[i], 0) >= 0;
+  const better = trees >= 0 && soilKept && (!soilGoal || soilGoal.kind !== 'soil' || soil >= soilGoal.min);
   return h('div', { class: 'results' },
     h('div', { class: 'glow' }),
     h('div', { class: 'hero' },

@@ -148,6 +148,7 @@ test('power over a day: sources by hour, the digester among them, use by buildin
   const nights = nightsOf(s);
   assert.ok(nights.length >= 1);
   assert.ok(nights[0].lowest !== null);
+  assert.equal(nights[0].day, 1, 'the first night is the evening of day 1, from its first step at sunset');
 });
 
 test('tonight: a battery feeding a steady load runs dry when its charge is spent', () => {
