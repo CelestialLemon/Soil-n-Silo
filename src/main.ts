@@ -12,14 +12,21 @@ import {
 import {
   buildingAt, buildingById, inMap, newGame, reachTo, routeById, sizeOf, terrainAt, truckById, type Dir, type GameState, type Route,
 } from './game/state.ts';
-import { Hud, PIXEL_SIZES, type Tool } from './ui/hud.ts';
+import { Hud, type Tool } from './ui/hud.ts';
 import { showMenu } from './ui/menu.ts';
+import { SettingsStore } from './ui/settings.ts';
+import { statusLabel } from './ui/widgets.ts';
+import type { Hover, MarkerSpot } from './ui/world.ts';
 import { allGeometries, loadModels } from './world/models.ts';
 import { PowerView } from './world/powerView.ts';
 import { RouteView } from './world/routeView.ts';
 import { buildWorld } from './world/terrain.ts';
 import { WorldView, type Overlay } from './world/view.ts';
 import './ui/style.css';
+import './ui/clearday/tokens.css';
+import './ui/clearday/clearday.css';
+import './ui/clearday/icons.css';
+import './ui/game.css';
 
 // The game: owns the loop, the state, input and the camera, and each frame tells the renderer where everything is. It is
 // build-only: the player places, configures and removes buildings and the simulation runs on its own. The camera
@@ -32,7 +39,6 @@ import './ui/style.css';
 const MIN_ZOOM = 16, MAX_ZOOM = 96, START_ZOOM = 32;
 /** How much one wheel notch or key press zooms. */
 const ZOOM_STEP = 1.25;
-const DEFAULT_PIXEL_SIZE = 2;
 const ELEVATION = THREE.MathUtils.degToRad(30);
 const HOME_YAW = THREE.MathUtils.degToRad(45);
 const DRAG_THRESHOLD = 4;
@@ -42,6 +48,8 @@ const TURN_SECONDS = 0.3;
 const REPICK_FRAMES = 6;
 const AUTOSAVE_SECONDS = 30;
 const MAX_STEPS_PER_FRAME = 80;
+/** How long the pointer rests before the card about what is under it shows (ms). */
+const HOVER_REST = 350;
 /** How far apart a drag places pylons: their reaches meet edge to edge, and each links to the next. */
 const PYLON_STEP = 2 * POWER.pylon.reach + 1;
 /** Whether placing a building should show the power networks: it makes, stores, carries or uses power. */
@@ -50,9 +58,9 @@ const usesPower = (t: BuildingId) => POWER_BUILDINGS.has(t) || !!BUILDINGS[t].po
 
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
 const loading = document.querySelector<HTMLElement>('#loading')!;
-const SAVE_KEY = saveKey(location.pathname), PROGRESS_KEY = `${SAVE_KEY}:progress`, PIXEL_KEY = `${SAVE_KEY}:pixel`;
-/** A saved pixel size, if it is one of the choices; else the default. */
-const readPixelSize = (v: string | null) => (PIXEL_SIZES as readonly number[]).find((n) => String(n) === v) ?? DEFAULT_PIXEL_SIZE;
+const SAVE_KEY = saveKey(location.pathname), PROGRESS_KEY = `${SAVE_KEY}:progress`;
+/** The settings, and the pixel size where it was kept before them. */
+const settings = new SettingsStore(`${SAVE_KEY}:settings`, `${SAVE_KEY}:pixel`);
 
 const saved = deserialize(localStorage.getItem(SAVE_KEY));
 const params = new URLSearchParams(location.search);
@@ -121,8 +129,7 @@ async function play(initial: GameState) {
     changed: () => { repick = 2; },
     turn: (d) => turn(d),
     zoom: (d) => zoomStep(d),
-    pixelSize: () => pixelSize,
-    setPixelSize: (n) => setPixelSize(n),
+    settings,
     menu: () => { save(); location.href = `${location.pathname}?menu`; },
     restart: () => startNew(state.scenario.id),
     previewRoute: (id) => { previewRoute = id; },
@@ -141,7 +148,7 @@ async function play(initial: GameState) {
   const target = new THREE.Vector3(map.depot.x + 1.5, 0, map.depot.y - 4);
   let view4 = 0;
   /** Screen pixels per art pixel: the pixel size setting. */
-  let pixelSize = readPixelSize(localStorage.getItem(PIXEL_KEY));
+  let pixelSize = settings.get().pixelSize;
   /** The zoom, as screen pixels per metre of ground: `zoom` eases towards `zoomGoal`. */
   let zoom = START_ZOOM, zoomGoal = START_ZOOM;
   /** While zooming towards the pointer: the ground point that stays under it, and where the pointer is from the centre. */
@@ -187,11 +194,7 @@ async function play(initial: GameState) {
       zoomAnchor = { ground, dx, dy };
     } else zoomAnchor = null;
   }
-  function setPixelSize(n: number) {
-    pixelSize = readPixelSize(String(n));
-    localStorage.setItem(PIXEL_KEY, String(pixelSize));
-    fit();
-  }
+  settings.listen((st) => { if (st.pixelSize !== pixelSize) { pixelSize = st.pixelSize; fit(); } });
   addEventListener('resize', () => fit());
   /** One frame of the zoom easing towards its goal. */
   function zooming(dt: number) {
@@ -246,6 +249,8 @@ async function play(initial: GameState) {
   }
 
   let pointer: { x: number; y: number } | null = null;
+  /** When the pointer last moved (ms), for the hover card. */
+  let movedAt = 0;
   let hoverTile: { x: number; y: number } | null = null;
   /** The building or truck under the pointer (their ids are one count). */
   let hoverBuilding: number | null = null;
@@ -375,7 +380,7 @@ async function play(initial: GameState) {
         if (!t) return;
         const n = BUILDINGS[tool.type].size, a = anchor(t, n);
         const r = place(state, tool.type, a.x, a.y, tool.rot);
-        if (r.message) hud.toast(r.message, r.ok);
+        if (r.message) hud.toast(r.ok && BUILDINGS[tool.type].cost && !state.scenario.sandbox ? `${r.message.replace(/\.$/, '')} · −${BUILDINGS[tool.type].cost} credits` : r.message, r.ok, r.ok ? tool.type : undefined);
         return;
       }
       case 'remove': {
@@ -398,7 +403,7 @@ async function play(initial: GameState) {
         const r = place(state, tool.type, sp.x, sp.y, sp.rot);
         if (r.ok) built++; else if (r.message) last = r.message;
       }
-      if (built) hud.toast(`Built ${built} × ${BUILDINGS[tool.type].name.toLowerCase()}.`, true);
+      if (built) hud.toast(`Built ${built} × ${BUILDINGS[tool.type].name.toLowerCase()}`, true, tool.type);
       else if (last) hud.toast(last, false);
     } else if (tool.kind === 'remove') {
       const x0 = Math.min(press.from.x, press.to.x), x1 = Math.max(press.from.x, press.to.x), y0 = Math.min(press.from.y, press.to.y), y1 = Math.max(press.from.y, press.to.y);
@@ -409,7 +414,7 @@ async function play(initial: GameState) {
         if (b) { if (seen.has(b.id) || b.type === 'depot') continue; seen.add(b.id); }
         if (removeAt(state, x, y).ok) n++;
       }
-      if (n) hud.toast(`Removed ${n} thing${n > 1 ? 's' : ''}.`, true);
+      if (n) hud.toast(`Removed ${n} thing${n > 1 ? 's' : ''}`, true, 'trash');
       if (selected !== null && !buildingById(state, selected) && !truckById(state, selected)) selected = null;
     }
   }
@@ -434,7 +439,7 @@ async function play(initial: GameState) {
       } else if (press.mode === 'pan') pan(e.clientX - pointer!.x, e.clientY - pointer!.y);
       if (press.mode === 'paint') press.to = tileAt(e.clientX, e.clientY) ?? press.to;
     }
-    if (e.isPrimary) { pointer = { x: e.clientX, y: e.clientY }; repick = 2; }
+    if (e.isPrimary) { pointer = { x: e.clientX, y: e.clientY }; repick = 2; movedAt = performance.now(); }
   });
   function release(e: PointerEvent) {
     if (!press || e.pointerId !== press.id) return;
@@ -499,30 +504,31 @@ async function play(initial: GameState) {
   addEventListener('keyup', (e) => keys.delete(e.code));
   addEventListener('blur', () => keys.clear());
 
-  /** One line about what's under the pointer. */
-  function describeHover(): string | null {
+  /** What is under the pointer, for the hover card (the building in hand has its placement card instead). */
+  function describeHover(): Hover | null {
     const b = hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;
     const truck = hoverBuilding !== null ? truckById(state, hoverBuilding) : null;
-    if (truck) return `Truck${routeOf(state, truck) ? ` on ${routeOf(state, truck)!.name}` : ''}: ${describeTruck(state, truck)}`;
+    if (tool.kind === 'build') return null;
+    if (truck) { const r = routeOf(state, truck); return { title: r ? `Truck on ${r.name}` : 'Truck', icon: 'truck', text: describeTruck(state, truck) }; }
     if (tool.kind === 'route') {
       const r = routeById(state, tool.route);
-      if (b && r) return isStop(b) ? `${BUILDINGS[b.type].name}: click to add it as stop ${r.stops.length + 1} of ${r.name}` : `Trucks don't stop at the ${BUILDINGS[b.type].name.toLowerCase()}`;
-      return r ? `Editing ${r.name}: click buildings to add stops · Esc when done` : null;
+      if (b && r) return { title: BUILDINGS[b.type].name, icon: b.type, text: isStop(b) ? `Click to add it as stop ${r.stops.length + 1} of ${r.name}.` : 'Trucks don\'t stop here.' };
+      return r ? { title: `Editing ${r.name}`, icon: 'route', text: 'Click buildings to add stops. Esc when done.' } : null;
     }
-    if (tool.kind === 'build' && hoverTile) {
-      const n = BUILDINGS[tool.type].size, a = anchor(hoverTile, n), c = canPlace(state, tool.type, a.x, a.y);
-      const head = `${BUILDINGS[tool.type].name} · ${state.scenario.sandbox ? 'free' : `${BUILDINGS[tool.type].cost} credits`}`;
-      const soil = tool.type === 'field' ? ` · soil ${Math.round(avgSoil(a.x, a.y))}` : '';
-      const next = c.ok ? describeLinks(linksAt(state, tool.type, a.x, a.y)) : [];
-      return `${head}${soil}${tool.type === 'pylon' && c.ok ? pylonNote(a.x, a.y) : ''}${next.length ? `\nNext door: ${next.join(' · ').toLowerCase()}` : ''}\n${c.ok ? `Click or drag to build${tool.type === 'pylon' ? ' (a drag lays a line)' : ''} · R turns` : c.message}`;
+    if (b) {
+      const removing = tool.kind === 'remove', label = statusLabel(b, b.status, b.need), line = describeStatus(state, b);
+      return {
+        title: BUILDINGS[b.type].name, icon: b.type, status: { status: b.status, label },
+        text: removing ? (b.type === 'depot' ? 'The depot stays.' : `Click to remove it (refund ${state.scenario.sandbox ? 0 : BUILDINGS[b.type].cost}).`)
+          : [line === label ? '' : line, b.type === 'field' ? `soil ${Math.round(fieldFertility(state, b))}` : ''].filter(Boolean).join(' · ') || undefined,
+      };
     }
-    if (b) return `${BUILDINGS[b.type].name}: ${describeStatus(state, b)}${b.type === 'field' ? ` · soil ${Math.round(fieldFertility(state, b))}` : ''}`;
     if (!hoverTile) return null;
-    const t = terrainAt(state, hoverTile.x, hoverTile.y);
-    if (t === TERRAIN.water) return 'Water. Pylons can stand in it; trucks drive round it.';
-    if (t === TERRAIN.tree) return 'A tree: shelters wind turbines nearby. Remove (X) for 5 credits.';
-    if (t === TERRAIN.rock) return 'Rock. Remove (X) for 15 credits.';
-    return `Grass · soil fertility ${state.map.fertility[hoverTile.y * map.width + hoverTile.x]}`;
+    const t = terrainAt(state, hoverTile.x, hoverTile.y), clear = (k: 'tree' | 'rock') => `${state.scenario.sandbox ? 0 : k === 'tree' ? 5 : 15} credits to clear (X).`;
+    if (t === TERRAIN.water) return { title: 'Water', icon: 'water', text: 'Pylons can stand in it; trucks drive round it.' };
+    if (t === TERRAIN.tree) return { title: 'A tree', icon: 'sapling', text: `Shelters wind turbines nearby; counts towards soil health. ${clear('tree')}` };
+    if (t === TERRAIN.rock) return { title: 'Rock', text: clear('rock') };
+    return tool.kind === 'remove' ? null : { title: 'Grass', icon: 'soil', text: `Soil fertility ${state.map.fertility[hoverTile.y * map.width + hoverTile.x]}.` };
   }
   /**
    * The routes to draw: the one being edited, a focused truck's, those of a focused garage's trucks or stopping at a focused
@@ -554,18 +560,12 @@ async function play(initial: GameState) {
     return [];
   }
 
-  /** What a pylon placed at (x, y) would do: link to pylons, start a network, power buildings. */
-  function pylonNote(x: number, y: number) {
-    const links = pylonsInLink(state, x, y).length;
-    const reached = state.buildings.filter((b) => POWERED(b) && reachTo(b, x, y) <= POWER.pylon.reach);
-    const reaches = reached.length, fresh = reached.filter((b) => !networkOf(state, b)).length;
-    const link = links ? ` · links to ${links} pylon${links > 1 ? 's' : ''}` : state.buildings.some((b) => b.type === 'pylon') ? ` · no pylon within ${POWER.pylon.link}: a new network` : '';
-    return `${link} · reaches ${reaches} building${reaches === 1 ? '' : 's'}${fresh ? `, powers ${fresh} new` : ''}`;
-  }
-  function avgSoil(x: number, y: number) {
-    let sum = 0, n = 0;
-    for (let ty = y; ty < y + 3; ty++) for (let tx = x; tx < x + 3; tx++) if (inMap(state, tx, ty)) { sum += state.map.fertility[ty * map.width + tx]; n++; }
-    return n ? sum / n : 0;
+  /** The building in hand at the pointer, for its placement card: one building, or the row a drag would place. */
+  function placeSpot() {
+    if (tool.kind !== 'build' || !hoverTile || hud.modal) return null;
+    const type = tool.type, n = BUILDINGS[type].size, a = anchor(hoverTile, n);
+    const count = press?.mode === 'paint' && press.from && press.to ? plan(type, press.from, press.to, tool.rot).length : 1;
+    return { type, x: a.x, y: a.y, count, ...toScreen(a.x + n / 2, models.buildings[type].height + 0.3, a.y + n / 2) };
   }
 
   // ---- Loop ----
@@ -607,7 +607,7 @@ async function play(initial: GameState) {
     const shown = shownRoutes(focus, shownOverlay === 'roads');
     view.links(linkedTo(focus));
     routeView.sync(state, shown.routes, shown.numbers);
-    hud.setStopLabels(routeView.labels().map((l) => ({ ...l, ...toScreen(l.x, l.y, l.z) })));
+    hud.world.setStopLabels(routeView.labels().map((l) => ({ ...l, ...toScreen(l.x, l.y, l.z) })));
     // Power shows only while you work with it: its overlay, placing something that uses power, selecting a building on a
     // network, or pointing at a pylon or something that makes or stores power.
     const hovered = tool.kind === 'select' && hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;
@@ -615,12 +615,15 @@ async function play(initial: GameState) {
       all: shownOverlay === 'power' || (tool.kind === 'build' && usesPower(tool.type)), tiles: shownOverlay === 'power',
       focus: selected ?? (hovered && POWER_BUILDINGS.has(hovered.type) ? hovered.id : null), ghosts: pylonGhosts,
     });
-    hud.setNetLabels(power.labels().map((l) => ({ ...l, ...toScreen(l.x, l.y, l.z) })));
+    hud.world.setNetLabels(power.labels().map((l) => ({ ...l, ...toScreen(l.x, l.y, l.z) })));
+    hud.world.setMarkers(view.markerSpots(state).map((m): MarkerSpot => ({ id: m.id, status: m.status, ...toScreen(m.x, m.y, m.z) })));
     const hi: number[] = [];
     if (selected !== null) hi.push(selected);
     if (hoverBuilding !== null && hoverBuilding !== selected && (tool.kind === 'select' || tool.kind === 'remove')) hi.push(hoverBuilding);
     highlight(hi);
-    hud.setHover(describeHover());
+    const resting = !!pointer && !press && (performance.now() - movedAt > HOVER_REST || tool.kind === 'route');
+    hud.world.setHover(resting ? describeHover() : null, pointer);
+    hud.world.setPlacement(state, placeSpot());
     hud.update();
 
     turning();

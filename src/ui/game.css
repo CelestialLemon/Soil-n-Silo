@@ -1,0 +1,119 @@
+/* The game's layout on the Clearday system (clearday/): where each piece of the HUD sits, and the few pieces the system
+   leaves to the game (markers, world labels, the placement card). Everything is under .ui, a .cd-root scaled by the
+   interface size (CSS zoom), so lengths here are at 1920 × 1080. */
+
+html, body { margin: 0; height: 100%; overflow: hidden; background: #2b3a33; }
+#view { position: fixed; display: block; image-rendering: pixelated; touch-action: none; }
+button { font: inherit; }
+.loading { position: fixed; inset: 0; display: grid; place-items: center; color: var(--chalk); font: 600 18px/1 var(--font-ui); }
+
+/* Its width and height are set with the zoom (the window's size over the zoom), so it covers the window. */
+.ui { position: fixed; left: 0; top: 0; pointer-events: none; user-select: none; }
+.ui > * { position: absolute; inset: 0; pointer-events: none; }
+.ui-hud > * { pointer-events: auto; }
+.ui.is-calm *, .ui.is-calm *::before, .ui.is-calm *::after { transition: none !important; animation: none !important; }
+.ui input, .ui textarea { user-select: text; }
+.ui i.dot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 99px; vertical-align: 1px; }
+.cd-status.is-outline { background: transparent; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--col) 50%, var(--chalk)); }
+.cd-gauge.is-done { --col: var(--pine); }
+[hidden] { display: none !important; }
+
+/* ---- The commission, top left ---- */
+.hud-commission { position: absolute; left: 28px; top: 28px; width: 330px; }
+.hud-commission.is-wide { width: auto; min-width: 330px; }
+.hud-commission .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.hud-commission .goals { display: flex; gap: 22px; margin-top: 16px; align-items: center; }
+.hud-commission .times { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.hud-commission .pace { margin-top: 6px; color: var(--ink-2); }
+.hud-commission .cd-gauge .cd-i { --s: 22px; }
+.hud-compact { position: absolute; left: 28px; top: 28px; height: 48px; padding: 0 20px 0 8px; gap: 12px; }
+.hud-compact .cd-gauge { --d: 34px; --w: 4px; }
+
+/* ---- Readouts, time and panels, top right ---- */
+.hud-top { position: absolute; right: 28px; top: 28px; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+.hud-top .row { display: flex; gap: 10px; align-items: center; }
+.hud-top .cd-pill { cursor: default; }
+.hud-top .cd-pill.is-link { cursor: pointer; }
+.hud-top .cd-pill .cd-i { --s: 28px; }
+.hud-top .cd-pill small.is-bad { color: var(--rust); }
+.hud-top .clock { display: flex; gap: 14px; align-items: center; }
+.hud-top .clock > div:first-child { display: grid; gap: 10px; justify-items: end; }
+.hud-top .chips { display: flex; gap: 8px; }
+.hud-top .chips .cd-chip { background: var(--chalk); box-shadow: var(--float); }
+.hud-top .chips .cd-chip .cd-i { --s: 20px; }
+.hud-top .cd-seg { box-shadow: var(--float); }
+.hud-top .cd-seg .cd-i { --s: 16px; }
+.hud-top .cd-dial { --d: 132px; }
+.hud-top .cd-dial .cd-figure { font-size: 26px; }
+.hud-top .cd-dial .cd-label { margin-top: 5px; }
+.hud-top .panels { display: flex; gap: 8px; }
+.cd-panelbtn:focus-visible, .cd-viewbar button:focus-visible, .cd-gtoggle:focus-visible { outline: 3px solid var(--ochre); outline-offset: 3px; }
+
+/* ---- View bar, bottom left; view controls, bottom right ---- */
+.hud-view { position: absolute; left: 28px; bottom: 28px; }
+.hud-view.is-compact button { padding: 0 8px; }
+.hud-view.is-compact button span:not(.cd-i) { display: none; }
+.hud-controls { position: absolute; right: 28px; bottom: 28px; }
+.hud-controls button { min-width: 36px; justify-content: center; padding: 0 10px; font-size: 15px; }
+.hud-controls .cd-i { --s: 20px; }
+.hud-controls .flip { transform: scaleX(-1); }
+
+/* ---- The dock, bottom centre ---- */
+.hud-dock { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 14px 16px 16px; border-radius: 28px; }
+.hud-dock .tabs { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.hud-dock .tiles { display: flex; gap: 10px; }
+.hud-dock .sep { width: 1px; background: var(--chalk-3); margin: 8px 4px; }
+.hud-dock .cd-tile.is-remove { background: transparent; box-shadow: inset 0 0 0 1.5px var(--chalk-3); }
+.hud-dock .cd-tile.is-remove.is-on { background: var(--rust); color: var(--chalk); box-shadow: none; }
+.hud-dock .cd-tile.is-remove.is-on .cd-tile__cost { color: #f1d3ca; }
+.hud-dock .cd-tile .label { white-space: nowrap; }
+
+/* Above the dock: messages, and the card of the building pointed at in the dock. */
+.hud-above { position: absolute; left: 50%; bottom: 236px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 10px; pointer-events: none !important; }
+.hud-above > * { pointer-events: none; }
+.cd-toast { transition: opacity 0.5s; }
+.cd-toast.is-gone { opacity: 0; }
+.hud-tip { width: 460px; }
+.hud-tip .head { display: flex; align-items: center; gap: 12px; }
+.hud-tip .head .cd-i { --s: 40px; }
+.hud-tip p { margin: 10px 0 0; }
+.hud-tip .recipe { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+
+/* ---- In the world: markers, labels, the placement card, the hover line ---- */
+.ui-world { overflow: hidden; }
+.ui-world > * { position: absolute; left: 0; top: 0; }
+.mk { --col: var(--status-ok); width: 26px; height: 26px; margin: -26px 0 0 -13px; border-radius: 99px; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--col) 18%, var(--chalk)); box-shadow: 0 0 0 2.5px var(--chalk), 0 4px 10px rgba(0, 0, 0, 0.35); }
+.mk i { display: block; width: 12px; height: 12px; border-radius: 99px; background: var(--col); }
+.mk.is-wait { --col: var(--status-wait); } .mk.is-wait i { height: 6px; margin-top: 6px; border-radius: 12px 12px 0 0; }
+.mk.is-blocked { --col: var(--status-blocked); } .mk.is-blocked i { border-radius: 2px; }
+.mk.is-nopower { --col: var(--status-nopower); } .mk.is-nopower i { border-radius: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.mk.is-dry { --col: var(--status-dry); } .mk.is-dry i { border-radius: 50% 0 50% 50%; transform: rotate(-45deg); }
+.mk.is-unreachable { --col: var(--status-unreachable); } .mk.is-unreachable i { background: transparent; box-shadow: inset 0 0 0 2.5px var(--col); }
+.mk.is-outline { background: var(--chalk); }
+.stop-disc { min-width: 28px; height: 28px; margin: -28px 0 0 -14px; padding: 0 8px; border-radius: 99px; display: grid; place-items: center; font: 800 13px/1 var(--font-ui); color: var(--ink);
+  box-shadow: 0 0 0 3px var(--chalk), 0 4px 10px rgba(20, 30, 25, 0.35); white-space: nowrap; }
+.net-tag { --lead: 18px; transform: translate(-50%, calc(-100% - var(--lead))); }
+.net-tag.cd-callout { position: absolute; }
+.net-tag .sw { width: 12px; height: 12px; border-radius: 99px; margin-left: 4px; }
+.net-tag.is-short small { color: var(--rust); }
+.truck-tag { transform: translate(-50%, calc(-100% - 10px)); --lead: 0px; }
+.truck-tag.cd-callout { position: absolute; }
+.truck-tag small { color: #b9c2bb; }
+.forecast { width: 360px; padding: 18px 20px; transform: translate(-50%, calc(-100% - 40px)); }
+.forecast::after { content: ""; position: absolute; left: 50%; top: 100%; width: 2px; height: 40px; margin-left: -1px; background: var(--ink); }
+.forecast .head { display: flex; align-items: center; gap: 10px; }
+.forecast .head b { font-size: 18px; }
+.forecast .head .cd-i { --s: 34px; }
+.forecast .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+.forecast .facts .v { font: 300 26px/1 var(--font-ui); margin-top: 6px; letter-spacing: -0.01em; white-space: nowrap; }
+.forecast .facts .v small { font-size: 16px; color: #b9c2bb; }
+.forecast .facts .v.is-bad { color: #e6c98f; }
+.forecast .next { margin-top: 12px; display: grid; gap: 2px; }
+.forecast .why { margin-top: 12px; color: #f1b9a9; font-weight: 700; }
+.forecast .keys { margin-top: 10px; }
+.hover { max-width: 380px; transform: translate(18px, 18px); padding: 10px 14px; border-radius: 16px; }
+.hover .head { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.hover .head .cd-i { --s: 24px; }
+.hover .cd-status { margin-top: 8px; }
+.hover p { margin: 6px 0 0; }

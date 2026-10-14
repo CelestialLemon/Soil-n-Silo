@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { collectGltf, GeometryCollector, loadGltf, motion, movingPartMotion, namedMeshRule, type Motion } from 'pixel3d-renderer';
 import { BUILDING_IDS, CROP_IDS, CROPS, ITEM_IDS, type BuildingId, type CropId, type ItemId } from '../game/data.ts';
-import { bar, C, cropStandIn, frame, GHOST_WIRE, itemShape, marker, NET_COLOURS, rock, ROUTE_COLOURS, SOIL_BANDS, soilTile, standIn, tileFill, truck } from './shapes.ts';
+import { bar, C, cropStandIn, frame, GHOST_WIRE, itemShape, NET_COLOURS, rock, ROUTE_COLOURS, SOIL_BANDS, soilTile, standIn, tileFill, truck } from './shapes.ts';
 
 // The game's object geometries, in local space (origin on the ground at the footprint centre, front facing +z). They come
 // from the Blender models in public/models/ (assets/<name>/build.py) where those exist, split by the node names the asset
@@ -28,7 +28,6 @@ export interface Models {
   trees: Geo[];
   rocks: Geo[];
   truck: Geo;
-  markers: Record<'red' | 'orange' | 'yellow' | 'blue' | 'purple', Geo>;
   cursor: Geo;
   frames: { ok: Geo[]; bad: Geo[] };
   /** A flat square filling a tile, tinted per overlay. */
@@ -168,7 +167,6 @@ export async function loadModels(): Promise<Models> {
     wires: [...NET_COLOURS, GHOST_WIRE].map(bar), routes: ROUTE_COLOURS.map(bar),
     soil: Array.from({ length: SOIL_BANDS }, (_, b) => soilTile(b)),
     truck: truckRoot ? collect(truckRoot).build() : truck(),
-    markers: { red: marker(0xff4a3a), orange: marker(0xffa030), yellow: marker(0xffe060), blue: marker(0x60b8ff), purple: marker(0xc070ff) },
     cursor: frame(1, 0xfff0c0),
     frames: { ok: [1, 2, 3].map((n) => frame(n, 0xd8ffb0)), bad: [1, 2, 3].map((n) => frame(n, 0xff5040)) },
     fill: tileFill(0xf4f0e0),
@@ -179,7 +177,7 @@ export async function loadModels(): Promise<Models> {
 export function allGeometries(m: Models): Geo[] {
   return [
     ...Object.values(m.buildings).flatMap((l) => [l.idle, l.running]), ...m.turbine, ...m.battery, ...m.wires, ...m.routes, ...Object.values(m.crops).flat(), ...Object.values(m.items),
-    ...m.soil, ...m.trees, ...m.rocks, m.truck, ...Object.values(m.markers), m.cursor, ...m.frames.ok, ...m.frames.bad,
+    ...m.soil, ...m.trees, ...m.rocks, m.truck, m.cursor, ...m.frames.ok, ...m.frames.bad,
     m.fill,
   ];
 }

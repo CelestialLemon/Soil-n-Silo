@@ -19,9 +19,13 @@ import { netColour } from '../world/powerView.ts';
 import { routeColour } from '../world/routeView.ts';
 import { NET_COLOURS, ROUTE_COLOURS } from '../world/shapes.ts';
 import type { Overlay } from '../world/view.ts';
-import { h } from './dom.ts';
-import { buildingCard, guidePanel, type GuidePage } from './guide.ts';
+import { h, icon } from './dom.ts';
+import { Dock, dockTip } from './dock.ts';
+import { guidePanel, type GuidePage } from './guide.ts';
 import { historyView, type HistoryWindow } from './historyView.ts';
+import { CommissionCard, TopRight, ViewBar, viewControls, type Panel, type PlayHost } from './playhud.ts';
+import { PIXEL_SIZES, uiScale, type SettingsStore } from './settings.ts';
+import { WorldLayer } from './world.ts';
 
 // The HUD over the canvas: the commission and its clock, power and weather, the goals, the build bar, what's under the
 // pointer, the inspector for the selected building or truck (or the route being edited), messages, and the modal screens
@@ -34,9 +38,6 @@ export type Tool =
   | { kind: 'remove' }
   /** Editing a route: clicking a building adds it as a stop. */
   | { kind: 'route'; route: number };
-
-/** The pixel size setting's choices: screen pixels per art pixel. */
-export const PIXEL_SIZES = [1, 2, 3, 4] as const;
 
 export interface HudHost {
   state(): GameState;
@@ -53,9 +54,7 @@ export interface HudHost {
   turn(d: 1 | -1): void;
   /** +1 zooms in, -1 out. */
   zoom(d: 1 | -1): void;
-  /** Screen pixels per art pixel (a setting). */
-  pixelSize(): number;
-  setPixelSize(n: number): void;
+  settings: SettingsStore;
   menu(): void;
   restart(): void;
   /** Draws a route on the map while the pointer is over it in the routes panel (null: none). */
@@ -136,33 +135,25 @@ interface Modal { name: string; el: HTMLElement; blocking: boolean }
 
 export class Hud {
   private readonly host: HudHost;
-  private readonly root: HTMLElement;
-  private readonly top = {
-    name: h('b'), clock: h('span'), medal: h('span', { class: 'medal-pace' }), credits: h('b'),
-    day: h('span'), sun: h('span'), wind: h('span'), power: h('span'), battery: bar(),
-  };
-  private readonly speedButtons: HTMLButtonElement[] = [];
-  private readonly overlayButtons = new Map<Overlay, HTMLButtonElement>();
-  private readonly goals = h('div', { class: 'card goals' });
-  private goalRows: { el: HTMLElement; text: HTMLElement; bar: ReturnType<typeof bar> }[] = [];
-  private readonly buildbar = h('div', { class: 'buildbar card' });
-  private category = CATEGORIES[0].id;
-  private buildKey = '';
-  private readonly buildButtons = new Map<BuildingId, HTMLButtonElement>();
-  private readonly info = h('div', { class: 'info' });
-  /** The card about the build button under the pointer, shown in place of `info`. */
-  private readonly tip = h('div', { class: 'card tip' });
+  /** The new interface (Clearday), scaled by the interface size: the world's labels, then the HUD. */
+  private readonly ui = h('div', { class: 'ui cd-root' });
+  readonly world = new WorldLayer();
+  private readonly hud = h('div', { class: 'ui-hud' });
+  private readonly commission: CommissionCard;
+  private readonly top: TopRight;
+  private readonly view: ViewBar;
+  private readonly controls: HTMLElement;
+  private readonly dock: Dock;
+  private readonly toasts = h('div', { class: 'toasts' });
+  /** The card of the building pointed at in the dock, above it. */
+  private readonly tip = h('div');
   private tipFor: BuildingId | null = null;
+  private zoom = 1;
   private readonly inspector = h('div', { class: 'card inspector' });
   private inspectKey = '';
   private inspectUpdate: (() => void) | null = null;
   /** The inspector history's window, in seconds (kept from building to building). */
   private historyWindow: HistoryWindow = 300;
-  private readonly toasts = h('div', { class: 'toasts' });
-  /** Labels over the power networks shown, one element per network, reused. */
-  private readonly netLabels = h('div', { class: 'net-labels' });
-  /** Stop numbers over the buildings of the route shown, reused. */
-  private readonly stopLabels = h('div', { class: 'net-labels' });
   /** Silo and depot stops showing every good rather than the route's, by `route:stop`. */
   private readonly allGoods = new Set<string>();
   private readonly layer = h('div', { class: 'layer' });
@@ -187,190 +178,90 @@ export class Hud {
 
   constructor(root: HTMLElement, host: HudHost) {
     this.host = host;
-    this.root = root;
-    const t = this.top;
-    const left = h('div', { class: 'card commission' },
-      h('div', null, t.name),
-      h('div', { class: 'line' }, '⏱ ', t.clock, ' ', t.medal),
-      h('div', { class: 'line' }, '◈ ', t.credits, ' credits'));
-    const mid = h('div', { class: 'card weather' },
-      h('div', { class: 'line' }, t.day, ' · ☀ ', t.sun, ' · ༄ ', t.wind),
-      h('div', { class: 'line' }, '⚡ ', t.power),
-      h('div', { class: 'line battery', title: 'Stored power across all batteries' }, '▮ ', t.battery.el));
-    const speeds = h('div', { class: 'buttons' }, ...[[0, '⏸', 'Pause (Space)'], [1, '1×', 'Normal speed (1)'], [2, '2×', 'Double speed (2)'], [4, '4×', 'Fast (3)']].map(([n, label, title]) => {
-      const b = button(String(label), () => host.setSpeed(Number(n)), { title: String(title) });
-      this.speedButtons.push(b);
-      return b;
-    }));
-    const overlays = h('div', { class: 'buttons' }, ...([['fertility', 'Soil'], ['power', 'Power'], ['roads', 'Roads'], ['water', 'Water'], ['bees', 'Bees']] as [Overlay, string][]).map(([o, label]) => {
-      const b = button(label, () => host.setOverlay(o), { title: `Show ${label.toLowerCase()} (V cycles)` });
-      this.overlayButtons.set(o, b);
-      return b;
-    }));
-    const right = h('div', { class: 'right-col' }, h('div', { class: 'buttons' },
-      speeds,
-      button('⟲', () => host.turn(-1), { title: 'Turn the view (Q)' }), button('⟳', () => host.turn(1), { title: 'Turn the view (E)' }),
-      button('−', () => host.zoom(-1), { title: 'Zoom out (wheel, − or Shift+Z)' }), button('+', () => host.zoom(1), { title: 'Zoom in (wheel, + or Z)' }), button('☰', () => this.openPause(), { title: 'Menu (Esc)' })),
-      overlays,
-      h('div', { class: 'buttons' }, button('Routes (O)', () => this.toggleRoutes(), { cls: 'small' }), button('Guide (G)', () => this.openGuide(), { cls: 'small' }),
-        button('Stats (Tab)', () => this.toggleStats(), { cls: 'small' })));
-    // Stacked from the bottom up, so the build bar never moves when the line above it changes.
-    const bottom = h('div', { class: 'bottom' }, this.toasts, this.info, this.tip, this.buildbar);
-    root.append(this.netLabels, this.stopLabels, h('div', { class: 'hud' }, h('div', { class: 'top' }, left, mid, right), h('div', { class: 'left-col' }, this.goals, this.routesPanel), this.inspector, this.stats, bottom), this.layer);
-    this.buildGoals();
+    const play: PlayHost = {
+      state: () => host.state(), settings: () => host.settings.get(), speed: () => host.speed(), setSpeed: (n) => host.setSpeed(n),
+      overlay: () => host.overlay(), setOverlay: (o) => host.setOverlay(o), turn: (d) => host.turn(d), zoom: (d) => host.zoom(d),
+      openPause: () => this.openPause(), panelOpen: (p) => this.panelOpen(p), togglePanel: (p) => this.togglePanel(p),
+    };
+    this.commission = new CommissionCard(play);
+    this.top = new TopRight(play);
+    this.view = new ViewBar(play);
+    this.controls = viewControls(play);
+    this.dock = new Dock({ state: () => host.state(), tool: () => host.tool(), setTool: (t) => host.setTool(t), tip: (id) => this.showTip(id) });
+    this.hud.append(this.commission.el, this.commission.pill, this.top.el, this.view.el, this.controls, this.dock.el,
+      h('div', { class: 'hud-above' }, this.toasts, this.tip));
+    this.ui.append(this.world.el, this.hud);
+    root.append(h('div', { class: 'hud' }, h('div', { class: 'left-col' }, this.routesPanel), this.inspector, this.stats), this.layer, this.ui);
+    host.settings.listen((st) => { this.ui.classList.toggle('is-calm', st.reduceMotion); this.fit(); this.lastSlow = 0; });
+    addEventListener('resize', () => this.fit());
     this.refresh();
   }
 
   get modal() { return this.modals.some((m) => m.blocking); }
 
+  /** Scales the interface for the window and the interface size setting. */
+  private fit() {
+    this.zoom = uiScale(this.host.settings.get(), innerWidth, innerHeight);
+    this.ui.style.zoom = String(this.zoom);
+    this.ui.style.width = `${innerWidth / this.zoom}px`; this.ui.style.height = `${innerHeight / this.zoom}px`;
+    this.world.setZoom(this.zoom);
+    // The view bar gives up its words when it would meet the dock.
+    this.view.el.classList.remove('is-compact');
+    requestAnimationFrame(() => {
+      const v = this.view.el.getBoundingClientRect(), d = this.dock.el.getBoundingClientRect();
+      this.view.el.classList.toggle('is-compact', v.right + 12 > d.left);
+    });
+  }
+
   // ---- Every frame ----
 
   update() {
-    const s = this.host.state(), now = performance.now();
-    this.speedButtons.forEach((b, i) => b.classList.toggle('active', [0, 1, 2, 4][i] === this.host.speed()));
-    for (const [o, b] of this.overlayButtons) b.classList.toggle('active', this.host.overlay() === o);
-    this.syncBuildbar();
+    const now = performance.now();
+    this.top.updateButtons();
+    this.view.update();
+    const tool = this.host.tool();
+    if (tool.kind === 'build') this.dock.showCategoryOf(tool.type);
+    this.dock.update();
+    const side = this.inspector.style.display === 'block';
+    this.top.el.hidden = side; this.controls.hidden = side;
     if (now - this.lastSlow < 150) return;
     this.lastSlow = now;
-    const t = this.top, sc = s.scenario;
-    set(t.name, sc.name);
-    const done = s.completedAt;
-    set(t.clock, sc.sandbox ? fmtTime(s.time) : done !== null ? `${fmtTime(done)} · done` : `${fmtTime(s.time)} / ${fmtTime(sc.par)}`);
-    const pace = sc.sandbox ? null : medalFor(sc.par, done ?? s.time);
-    set(t.medal, pace ? (done !== null ? MEDAL_NAME[pace] : `${MEDAL_NAME[pace]} pace`) : '');
-    t.medal.className = `medal-pace ${pace ?? ''}`;
-    set(t.credits, sc.sandbox ? '∞' : Math.floor(s.credits).toLocaleString());
-    set(t.day, `Day ${dayAt(s.time)}, ${hourLabel(hourAt(s.time))}`);
-    set(t.sun, `${Math.round(sunAt(sc, s.time) * 100)}%`);
-    set(t.wind, `${Math.round(windAt(sc, s.time) * 100)}%`);
-    const nets = networks(s).list;
-    const made = nets.reduce((n, x) => n + x.made, 0), wanted = nets.reduce((n, x) => n + x.wanted, 0);
-    const stored = nets.reduce((n, x) => n + x.stored, 0), cap = nets.reduce((n, x) => n + x.capacity, 0);
-    const worst = nets.reduce((m, x) => Math.min(m, x.share), 1);
-    set(t.power, nets.length ? `${watts(made)} made · ${watts(wanted)} used${worst < 1 ? ` · short (${Math.round(worst * 100)}%)` : ''}` : 'No pylons yet');
-    t.power.className = worst < 1 ? 'warn' : '';
-    t.battery.set(cap ? stored / cap : 0);
-    this.updateGoals();
+    this.commission.update(side);
+    this.top.update();
     this.inspect();
     if (this.statsOpen) this.renderStats();
     if (this.routesOpen) this.renderRoutes();
   }
 
-  /** Labels over the power networks shown (at page points): what each makes and uses, and how full its batteries are. */
-  setNetLabels(list: { sx: number; sy: number; colour: number; net: Network }[]) {
-    const els = this.netLabels.children;
-    while (els.length < list.length) this.netLabels.append(h('div', { class: 'net-label' }, h('i', { class: 'dot' }), h('span')));
-    for (let i = 0; i < els.length; i++) {
-      const el = els[i] as HTMLElement, l = list[i];
-      if (!l) { el.style.display = 'none'; continue; }
-      el.style.display = '';
-      el.style.transform = `translate(${Math.round(l.sx)}px, ${Math.round(l.sy)}px) translate(-50%, -100%)`;
-      (el.firstChild as HTMLElement).style.background = `#${l.colour.toString(16).padStart(6, '0')}`;
-      const n = l.net, short = n.share < 1 && n.wanted > 0;
-      set(el.lastChild as HTMLElement, `${watts(n.made)} made · ${watts(n.wanted)} used${n.capacity ? ` · ▮ ${Math.round(n.stored / n.capacity * 100)}%` : ''}${short ? ` · ${Math.round(n.share * 100)}%` : ''}`);
-      el.classList.toggle('short', short);
-    }
-  }
-
-  /** Stop numbers over the buildings of the route shown (at page points). */
-  setStopLabels(list: { sx: number; sy: number; colour: number; text: string }[]) {
-    const els = this.stopLabels.children;
-    while (els.length < list.length) this.stopLabels.append(h('div', { class: 'net-label stop-label' }));
-    for (let i = 0; i < els.length; i++) {
-      const el = els[i] as HTMLElement, l = list[i];
-      if (!l) { el.style.display = 'none'; continue; }
-      el.style.display = '';
-      el.style.transform = `translate(${Math.round(l.sx)}px, ${Math.round(l.sy)}px) translate(-50%, -100%)`;
-      el.style.borderColor = hex(l.colour);
-      el.style.color = hex(l.colour);
-      set(el, l.text);
-    }
-  }
-
-  setHover(text: string | null) {
-    set(this.info, text ?? '');
-    this.info.style.display = text && this.tipFor === null ? 'block' : 'none';
-  }
-
   private showTip(id: BuildingId | null) {
     this.tipFor = id;
-    if (id) this.tip.replaceChildren(buildingCard(id, priceOf(this.host.state(), id)));
-    this.tip.style.display = id ? 'block' : 'none';
+    this.tip.replaceChildren(...(id ? [dockTip(this.host.state(), id)] : []));
   }
 
-  toast(msg: string, ok = true) {
-    const t = h('div', { class: `toast${ok ? '' : ' bad'}` }, msg);
+  /** A message for the result of an action (a building's icon beside it, if given). */
+  toast(msg: string, ok = true, ic?: string) {
+    if (!msg) return;
+    const t = h('span', { class: `cd-toast${ok ? '' : ' is-bad'}` }, ic ? icon(ic) : icon(ok ? 'check' : 'warn'), msg);
     this.toasts.append(t);
     while (this.toasts.children.length > 4) this.toasts.firstChild!.remove();
-    setTimeout(() => t.classList.add('gone'), 2200);
+    setTimeout(() => t.classList.add('is-gone'), 2200);
     setTimeout(() => t.remove(), 2800);
   }
 
   /** Redraw what depends on the tool and selection right away. */
-  refresh() { this.buildKey = ''; this.inspectKey = ''; this.lastSlow = 0; }
+  refresh() { this.inspectKey = ''; this.lastSlow = 0; }
 
-  // ---- Goals ----
-
-  private buildGoals() {
-    const s = this.host.state();
-    this.goals.replaceChildren(h('div', { class: 'title' }, s.scenario.sandbox ? 'Sandbox' : 'Commission'));
-    this.goalRows = s.scenario.goals.map(() => {
-      const text = h('div'), b = bar(), el = h('div', { class: 'goal' }, text, b.el);
-      this.goals.append(el);
-      return { el, text, bar: b };
-    });
-    if (!s.scenario.goals.length) this.goals.append(h('div', { class: 'goal' }, 'No goals: build whatever you like.'));
+  /** Whether a panel is open. */
+  panelOpen(p: Panel) {
+    if (p === 'ledger') return this.statsOpen;
+    if (p === 'routes') return this.routesOpen;
+    if (p === 'guide') return this.modals.some((m) => m.name === 'guide');
+    return false;
   }
-
-  private updateGoals() {
-    const s = this.host.state();
-    s.scenario.goals.forEach((g, i) => {
-      const row = this.goalRows[i];
-      const done = goalDone(s, i);
-      row.el.classList.toggle('done', done);
-      if (g.kind === 'deliver') {
-        const n = Math.min(g.n, s.delivered[g.item] ?? 0);
-        set(row.text, `${done ? '✔' : '○'} Deliver ${ITEMS[g.item].name.toLowerCase()}: ${n} / ${g.n}`);
-        row.bar.set(n / g.n);
-      } else if (g.kind === 'rate') {
-        const r = ratePerMin(s, g.item, 'delivered');
-        set(row.text, `${done ? '✔' : '○'} Deliver ${g.perMin} ${ITEMS[g.item].name.toLowerCase()}/min (now ${r.toFixed(1)})`);
-        row.bar.set(done ? 1 : r / g.perMin);
-      } else {
-        const v = soilHealth(s);
-        set(row.text, `${done ? '✔' : '○'} Soil health ≥ ${g.min} at the end (now ${Math.round(v)})`);
-        row.bar.set(v / g.min);
-      }
-    });
-  }
-
-  // ---- Build bar ----
-
-  private syncBuildbar() {
-    const s = this.host.state(), tool = this.host.tool();
-    // The buttons are made again only when the category or tool changes (not while credits tick, which would swallow clicks).
-    const key = JSON.stringify([this.category, tool]);
-    if (key === this.buildKey) {
-      for (const [id, b] of this.buildButtons) b.classList.toggle('poor', s.credits < priceOf(s, id));
-      return;
-    }
-    this.buildKey = key;
-    this.buildButtons.clear();
-    this.showTip(null);
-    const tabs = h('div', { class: 'tabs' }, ...CATEGORIES.map((c) => button(c.name, () => { this.category = c.id; this.buildKey = ''; }, { active: c.id === this.category })),
-      button('Remove (X)', () => this.host.setTool(tool.kind === 'remove' ? { kind: 'select' } : { kind: 'remove' }), { active: tool.kind === 'remove', cls: 'danger' }));
-    const ids = (Object.keys(BUILDINGS) as BuildingId[]).filter((id) => BUILDINGS[id].category === this.category);
-    const items = h('div', { class: 'items' }, ...ids.map((id) => {
-      const d = BUILDINGS[id], price = priceOf(s, id), active = tool.kind === 'build' && tool.type === id;
-      const b = button(h('span', null, h('b', null, d.name), h('small', null, `${price ? `${price} ◈` : 'free'}${d.power ? ` · ${d.power} W${id === 'garage' ? '/truck' : ''}` : ''}${d.key ? ` · ${d.key}` : ''}`)),
-        () => this.host.setTool(active ? { kind: 'select' } : { kind: 'build', type: id, rot: tool.kind === 'build' ? tool.rot : 1 }),
-        { active, cls: s.credits < price ? 'poor' : '' });
-      b.addEventListener('pointerenter', () => this.showTip(id));
-      b.addEventListener('pointerleave', () => { if (this.tipFor === id) this.showTip(null); });
-      this.buildButtons.set(id, b);
-      return b;
-    }));
-    this.buildbar.replaceChildren(tabs, items);
+  togglePanel(p: Panel) {
+    if (p === 'ledger') this.toggleStats();
+    else if (p === 'routes') this.toggleRoutes();
+    else if (p === 'guide') this.openGuide();
   }
 
   // ---- Inspector ----
@@ -867,7 +758,7 @@ export class Hud {
       h('h2', null, s.scenario.name), help(),
       h('h3', null, 'Settings'),
       h('div', { class: 'setting' }, h('span', null, 'Pixel size'),
-        h('span', { class: 'choices' }, ...PIXEL_SIZES.map((n) => button(`${n}×${n}`, () => { this.host.setPixelSize(n); this.openPause(); }, { active: this.host.pixelSize() === n })))),
+        h('span', { class: 'choices' }, ...PIXEL_SIZES.map((n) => button(`${n}×${n}`, () => { this.host.settings.set({ pixelSize: n }); this.openPause(); }, { active: this.host.settings.get().pixelSize === n })))),
       h('p', { class: 'sub hint-line' }, 'Screen pixels for each pixel of the art. Smaller pixels show finer detail and cost more to draw.'),
       h('div', { class: 'actions' },
         button('Restart commission', () => this.confirm('Restart this commission?', 'Everything built so far is lost.', () => this.host.restart())),

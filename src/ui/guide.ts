@@ -2,7 +2,7 @@ import {
   BUILDINGS, CATEGORIES, CLEAR_COST, CROP_IDS, CROPS, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, ITEMS, OUTPUT_BATCHES,
   POWER, RECIPES, recipesFor, SAPLING_SECONDS, SILO, TRUCK, type BuildingId, type Ingredient, type ItemId, type Recipe,
 } from '../game/data.ts';
-import { h } from './dom.ts';
+import { h, icon } from './dom.ts';
 
 // The guide: a page for every building (what it does, how to use it, its numbers, what it takes and makes), a page of
 // goods, and a few pages on the basics (trucks and routes, power, soil, the markers). The words are written here; every number comes
@@ -420,17 +420,17 @@ function powerLine(id: BuildingId): string {
   return 'none';
 }
 
-/** A short card about a building, for hovering its button in the build bar. */
+/** A short card about a building, for pointing at its tile in the dock. */
 export function buildingCard(id: BuildingId, price: number): HTMLElement {
   const d = BUILDINGS[id], e = ENTRIES[id], rs = recipesFor(id);
+  const chip = (i: ItemId, n: number) => h('span', { class: 'cd-chip' }, icon(i, 20), `${n} ${lc(i)}`);
   return h('div', null,
-    h('div', { class: 'head' }, h('b', null, d.name), h('span', null, `${price ? `${price} credits` : 'free'} · ${d.size}×${d.size}`)),
-    h('p', { class: 'hint' }, `Power: ${powerLine(id)}`),
+    h('div', { class: 'head' }, icon(id), h('div', null, h('b', { style: 'font-size: 17px' }, d.name),
+      h('div', { class: 'cd-small' }, `${price ? `${price} credits` : 'free'} · ${d.size} × ${d.size} · power: ${powerLine(id)}`))),
     h('p', null, e.what),
-    ...rs.map((r) => h('div', { class: 'recipe' },
-      ...r.inputs.flatMap((i, k) => [k ? ' + ' : '', 'item' in i ? h('span', { class: 'good' }, swatch(i.item), `${i.n} ${lc(i.item)}`) : `${i.n} ${GROUP_NAMES[i.group].split(' (')[0]}`]),
-      ' → ', ...(r.outputs.length ? r.outputs.flatMap((o, k) => [k ? ' + ' : '', h('span', { class: 'good' }, swatch(o.item), `${o.n} ${lc(o.item)}`)]) : [`${POWER.digester} W`]),
-      h('small', null, ` · ${r.time} s`))),
-    h('p', { class: 'hint' }, e.how[0]),
-    h('p', { class: 'hint more' }, 'G: full page in the guide'));
+    ...rs.map((r) => h('div', { class: 'recipe cd-small' },
+      ...r.inputs.flatMap((i, k) => [k ? '+' : '', 'item' in i ? chip(i.item, i.n) : h('span', { class: 'cd-chip' }, `${i.n} ${GROUP_NAMES[i.group].split(' (')[0]}`)]),
+      '→', ...(r.outputs.length ? r.outputs.flatMap((o, k) => [k ? '+' : '', chip(o.item, o.n)]) : [`${POWER.digester} W`]),
+      ` ${r.time} s`)),
+    h('p', { class: 'cd-small' }, e.how[0]));
 }

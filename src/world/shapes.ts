@@ -3,7 +3,7 @@ import type { BuildingId, CropId, ItemId } from '../game/data.ts';
 import { ITEMS } from '../game/data.ts';
 import { Kit } from './kit.ts';
 
-// Stand-in models built in code: every building, crop, good and marker the game shows, in local space (origin on the
+// Stand-in models built in code: every building, crop and good the game shows, in local space (origin on the
 // ground at the footprint centre, front facing +z). Blender models in public/models/
 // replace these as they land (models.ts); these keep the game playable without them. Solarpunk palette: timber, white
 // ceramic, copper, solar blue, terracotta and living green.
@@ -232,14 +232,7 @@ export function itemShape(id: ItemId) {
   return k.build();
 }
 
-// ---- Markers and frames ----
-
-/** A diamond floating over a building that isn't working, in the colour of what's wrong. */
-export function marker(hex: number) {
-  const k = new Kit(false);
-  k.boxAt(0, 0, 0, 0.22, 0.22, 0.22, hex, { flag: FLAG.EMISSIVE, rx: Math.PI / 4, rz: Math.PI / 4 });
-  return k.build();
-}
+// ---- Frames ----
 
 /** A flat frame round an n × n square, for the hovered tile and placement. */
 export function frame(n: number, hex: number, t = 0.06) {

@@ -5,14 +5,15 @@ import { TERRAIN } from '../game/map.ts';
 import { networks } from '../game/power.ts';
 import { isOpen } from '../game/roads.ts';
 import { cutOff, HANDOFF_SECONDS, recentHandoffs, windAt } from '../game/sim.ts';
-import { buildingById, layoutOf, sizeOf, type Building, type Dir, type GameState, type Truck } from '../game/state.ts';
+import { buildingById, layoutOf, sizeOf, type Building, type Dir, type GameState, type Status, type Truck } from '../game/state.ts';
 import { hash } from './kit.ts';
 import type { Models } from './models.ts';
 import { soilBand, TRUCK_BED } from './shapes.ts';
 
 // Shows the game state with renderer objects. Every frame it adds, swaps and removes objects so the world matches the state:
 // buildings (idle or running), fields' soil and crops, trucks (with their cargo in the bed, queuing in line behind the one
-// loading), status markers, trees and rocks. It remembers which building or truck each object belongs to, for picking and
+// loading), trees and rocks. Status markers are the HUD's (a shape and a tint over each building with a problem): this says
+// where they go. It remembers which building or truck each object belongs to, for picking and
 // highlights.
 
 const YAW: Record<Dir, number> = { 0: Math.PI, 1: Math.PI / 2, 2: 0, 3: -Math.PI / 2 };
@@ -36,7 +37,6 @@ export class WorldView {
   private readonly targets = new Map<PixelObject, number>();
   private readonly shown = new Map<number, Shown>();
   private readonly parts = new Map<number, Shown[]>();
-  private readonly markers = new Map<number, Shown>();
   private linksKey = '';
   private readonly linked = new Set<number>();
   private tinted: PixelObject[] = [];
@@ -115,7 +115,6 @@ export class WorldView {
     }
     for (const [id, sh] of this.shown) if (!alive.has(id)) { this.drop(sh.obj); this.shown.delete(id); }
     for (const [id, ps] of this.parts) if (!alive.has(id)) { for (const p of ps) this.drop(p.obj); this.parts.delete(id); }
-    this.syncMarkers(s, alive);
     this.syncTrucks(s);
   }
 
@@ -137,15 +136,15 @@ export class WorldView {
     this.parts.set(f.id, list);
   }
 
-  private syncMarkers(s: GameState, alive: Set<number>) {
+  /** Where each building with a problem shows its marker: a point over it, in world space. */
+  markerSpots(s: GameState): { id: number; status: Status; x: number; y: number; z: number }[] {
+    const out: { id: number; status: Status; x: number; y: number; z: number }[] = [];
     for (const b of s.buildings) {
-      const colour = markerColour(b);
-      const cur = this.markers.get(b.id);
-      if (!colour) { if (cur) { this.drop(cur.obj); this.markers.delete(b.id); } continue; }
+      if (!hasMarker(b)) continue;
       const n = sizeOf(b), h = this.m.buildings[b.type].height;
-      this.markers.set(b.id, this.show(cur, colour, () => this.m.markers[colour], b.id, (o) => (o.castShadow = false, o).setTransform(v.set(b.x + n / 2, (b.type === 'field' ? 0.9 : h) + 0.45, b.y + n / 2))));
+      out.push({ id: b.id, status: b.status, x: b.x + n / 2, y: (b.type === 'field' ? 0.9 : h) + 0.35, z: b.y + n / 2 });
     }
-    for (const [id, sh] of this.markers) if (!alive.has(id)) { this.drop(sh.obj); this.markers.delete(id); }
+    return out;
   }
 
   /** Every truck, facing the way it drives, with its cargo in its bed; trucks queuing stand in line behind the one loading. */
@@ -319,18 +318,7 @@ function isRunning(b: Building) {
 
 const QUIET = new Set<BuildingId>(['depot', 'sapling']);
 
-function markerColour(b: Building): 'red' | 'orange' | 'yellow' | 'blue' | 'purple' | null {
-  if (QUIET.has(b.type)) return null;
-  switch (b.status) {
-    case 'power': case 'nolink': return 'red';
-    case 'noroad': case 'noroute': return 'purple';
-    case 'lowpower': return 'orange';
-    case 'blocked': return 'orange';
-    case 'input': return 'yellow';
-    case 'flowers': return 'yellow';
-    case 'dry': return 'blue';
-    default: return null;
-  }
-}
+/** Whether a building shows a marker: it has a problem (not working, not just idle). */
+const hasMarker = (b: Building) => !QUIET.has(b.type) && b.status !== 'ok' && b.status !== 'idle';
 
 export { BUILDINGS };
