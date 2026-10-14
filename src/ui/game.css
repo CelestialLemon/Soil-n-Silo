@@ -79,7 +79,7 @@ button { font: inherit; }
 .hud-tip p { margin: 10px 0 0; }
 .hud-tip .recipe { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
 
-/* ---- In the world: markers, labels, the placement card, the hover line ---- */
+/* ---- In the world: markers, labels, the placement card, the hover card ---- */
 .ui-world { overflow: hidden; }
 .ui-world > * { position: absolute; left: 0; top: 0; }
 .mk { --col: var(--status-ok); width: 26px; height: 26px; margin: -26px 0 0 -13px; border-radius: 99px; display: grid; place-items: center;

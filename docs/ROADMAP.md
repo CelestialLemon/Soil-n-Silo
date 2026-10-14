@@ -87,18 +87,23 @@ what was wrong at that moment. Each building now keeps its last ten minutes (`sr
 its inspector shows them over 1, 5 or 10 minutes: a strip of its statuses, the share of time in each, the goods it made a
 minute against full speed; generators and batteries chart their watts or charge. Rules in `DESIGN.md`, "Readability rules".
 
+## The UI revamp: Clearday (2026-10-14)
+
+The proof-of-concept HUD and menus are replaced by the Clearday design (`src/ui/clearday/`, principles in `DESIGN.md`, "The
+interface"): a commission card with goals as gauges, readouts and a dial, a dock, a view bar, markers with shapes, a placement
+card with facts about the tile; the inspector and the routes as side cards (the routes with observed loop times and gaps
+between trucks); a ledger, a new Power panel, a guide with production chains, a level select with each commission's
+conditions, a briefing letter per commission, and results with the run's milestones and what made the difference. The
+numbers behind them are pure modules in `src/game/` (`flows.ts`, `fleet.ts`, `powerlog.ts`, `runlog.ts`, `forecast.ts`,
+`chain.ts`); the run log is saved with the game.
+
 ## Next
 
-- **The UI revamp (Clearday).** Replace the proof-of-concept HUD and menus with the agreed design: the system is in
-  `src/ui/clearday/`, the screens, mockups, decisions and the new numbers the game must compute in
-  [`ui-revamp/`](ui-revamp/README.md). Adds a Power panel, a routes side card with timing, a guide page per building with its
-  chain, a ledger with valley health, and results with the run's milestones.
-- The **problems strip** (experimental, off by default; a setting in the revamp's pause screen, mockup
-  [`ui-revamp/mockups/play-problems.html`](ui-revamp/mockups/play-problems.html)). Problems are found on the map by default;
-  with the setting on, a strip on the right edge lists them, built on the building history: buildings that spent much of the
-  last few minutes not working (say below 70%), worst first, each with its main cause and for how long ("Mill · 45% · waiting
-  for wheat"); clicking one selects it and moves the camera to it. Perhaps grouped by cause ("3 buildings waiting for wheat").
-  Facts only, no suggested fix. Built with the UI revamp; play it to decide whether it stays.
+- Play the **problems strip** (experimental, off by default, a setting on the pause screen) and decide whether it stays.
+  It lists the buildings with a problem now, longest first; the plan was to build it on the history instead (buildings below
+  about 70% working over the last few minutes, worst first) and perhaps group it by cause.
+- From the UI revamp, not built yet: **rebinding keys** (the pause screen lists them), a **sound** volume (with sound), and
+  **moving** a building from its inspector (there is no rule for it yet).
 
 - Play every campaign commission and tune: target times, prices, crop and machine times, power numbers. Bot layouts for the
   other five commissions in `tools/layouts.ts`, so `npm run sim` checks them all.
@@ -115,7 +120,7 @@ minute against full speed; generators and batteries chart their watts or charge.
 
 - A **weather station** building (proposed 1×1, 80 credits, 2 W): owning one unlocks the forecast, sun and wind by hour from
   the seeded weather curves, in its inspector and in a Weather panel opened from the sun and wind chips by the dial. Without one
-  you see only the weather now. Mockup: [`ui-revamp/mockups/roadmap-weather.html`](ui-revamp/mockups/roadmap-weather.html).
+  you see only the weather now. Clearday has a `cd-forecast` component for it (sun and wind bars by hour).
 - From the UI revamp, set aside: a **difficulty fingerprint** for each commission (an advanced option in the level select);
   a **soil map and soil forecast** in the ledger; a **route loop diagram** with each stop's share of the loop.
 - Weather events (rain waters fields, storms stop turbines), seasons as commission modifiers.

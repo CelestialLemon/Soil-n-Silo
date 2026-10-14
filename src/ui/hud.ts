@@ -251,7 +251,7 @@ export class Hud {
   }
   private close(name: string) { this.modals = this.modals.filter((m) => m.name !== name); this.drawModals(); }
 
-  /** Opens the guide on `page`; by default on what's in hand, selected or hovered in the build bar. G again closes it. */
+  /** Opens the guide on `page`; by default on what's in hand, selected or pointed at in the dock. G again closes it. */
   openGuide(page?: GuidePage) {
     if (!page && this.modals.some((m) => m.name === 'guide')) { this.close('guide'); return; }
     const tool = this.host.tool(), sel = this.host.selected(), b = sel !== null ? buildingById(this.host.state(), sel) : null;

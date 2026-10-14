@@ -50,28 +50,31 @@ It is build-only and point-and-click. There is no character and no manual farmin
 
 | Input | Does |
 | --- | --- |
-| Build bar (bottom) or hotkeys (F field, L silo, T garage, P pylon, S solar) | Pick a building to place |
+| The dock (bottom) or hotkeys (F field, L silo, T garage, P pylon, S solar) | Pick a building to place; its placement card says what it would do on the tile under the pointer |
 | Click / drag | Place it; a drag places a row (pylons: a power line, spaced so their reaches meet) |
 | R | Turn what you're placing (for looks) |
 | Click a building with nothing in hand | Select it: the inspector shows its status, buffers, settings and history |
 | A garage's inspector | Buy a truck; give each of its trucks a route, or none |
-| O, or the Routes button | The routes panel: every route with its stops, goods, trucks, goods a minute and problems. Click a name to rename it; + and − add or send home trucks; ⧉ copies a route; point at one to draw it on the map; click it to edit |
-| A route's editor (from a truck, a building, or the routes panel) | Rename it; add a stop by clicking a building; set what it drops and picks up and its wait; reorder or remove stops; add or take away trucks; see what each truck is doing, and dump its cargo; copy or delete the route |
+| O, or the Routes button | The routes card: every route with its stops, goods, goods a minute, loop time, the gap between trucks at its slowest stop, and problems; point at one to draw it on the map; click it to open it |
+| An open route (from a truck, a building, or the routes card) | Rename it; add a stop by clicking a building; set what it drops and picks up and its wait; reorder or remove stops; add or take away trucks; see what each truck is doing and how much it waited, and dump its cargo; copy or delete the route |
 | A truck's inspector | Its route, cargo and battery; dump its cargo (the goods are lost); sell it |
 | X, then click or drag | Remove (full refund) |
 | Esc / right click | Drop what's in hand, close the inspector |
 | Space, 1, 2, 3 | Pause, 1×, 2×, 4× speed. You can build while paused |
-| Tab | Production stats |
+| Tab | The ledger: the valley's health, and each good made, used and delivered |
+| W | The Power panel: the last day by source, each network, tonight's charge, where the watts go |
 | G | The guide: a page for every building (what it does, how to use it, what it takes and gives, its numbers), the goods, and the basics |
-| V (or the buttons) | Overlays: soil fertility, power reach, roads, sprinkler water, bee range |
+| V (or the view bar) | Views: soil fertility, sprinkler water, power reach, roads, bee range |
+| Esc | Close what is open; with nothing open, the pause screen (settings, what the markers mean, every key) |
 
 The build preview is see-through, green where it fits and red where it doesn't.
 
 **Readability rules**
 
-- Every building shows its state on a small marker above it: working, waiting for input, output blocked, no power, low power.
-- Hover any building for a one-line status ("Mill: waiting for wheat"). Hover a button in the build bar for a card about that
-  building.
+- A building with a problem shows a marker above it, each kind with its own shape as well as its colour: half circle waiting
+  (for input, or flowers), square blocked, triangle no or low power, drop dry, ring unreachable or no route takes its goods.
+- Rest the pointer on a building for a card with its status ("Mill: waiting for wheat"). Point at a tile in the dock for a card
+  about that building.
 - Trucks carry their cargo in an open bed, so the flow of goods is always visible, and trucks queuing at a building show
   where it is stuck.
 - Selecting a truck or a route draws the route's way on the ground, its numbered stops and its trucks. Selecting a building
@@ -80,15 +83,16 @@ The build preview is see-through, green where it fits and red where it doesn't.
 - A building trucks can't reach, or whose outputs are full with no route or building next door taking them, shows a purple marker.
 - Goods handed to a building next door hop over the edge the two share. Selecting or pointing at a building tints the
   neighbours it trades with, and its inspector lists them ("Takes wheat from 2 fields", "Gives bran to the coop"); a
-  building in hand tints the ones it would trade with, and the hover line says so.
+  building in hand tints the ones it would trade with, and its placement card says so.
 - The roads overlay shows the open ground trucks can drive on, and the buildings they can't reach.
 - The inspector keeps each building's history over the last 1, 5 or 10 minutes of play (5 by default, the choice kept from
-  building to building), so a problem noticed late can be traced: a strip of its statuses in time (problems hatched, so they
+  building to building), so a problem noticed late can be traced: a ribbon of its statuses in time (problems hatched, so they
   don't rely on colour), pointing at it says what happened then and for how long, and below it the share of the time in each
-  status ("Waiting for wheat 27%", "Low power (got 60%)") and the goods it made a minute, against full speed for machines.
+  status as a ring, the goods it made a minute against full speed, and what it waited for, ranked, with a fact for each.
   Solar panels and turbines chart the watts they made and batteries their charge instead. Pylons, silos, the depot and
   saplings have none. The history lives in memory, not in the save: after a reload it fills again.
-- The guide (G) has a page for every building; hovering a build button, or "?" in the inspector, leads to it.
+- The guide (G) has a page for every building, with where its good comes from and, during a commission, every building of
+  its kind in the valley now; G with a building in hand or selected, or the book in the inspector, leads to it.
 - Soil colour shows fertility under fields. Overlays show fertility everywhere, power coverage and roads.
 - Power stays in the background until you work with it: pylons are short, quiet posts and nothing else is drawn. The power
   overlay, placing anything that makes, stores or uses power, selecting a building on a network, or pointing at a power
@@ -104,6 +108,30 @@ The build preview is see-through, green where it fits and red where it doesn't.
 ![The guide's page for the mill](images/guide.png)
 
 ![A bakery's history over 5 minutes, pointing at the strip; a wind turbine's watts](images/history-bakery.png) ![](images/history-turbine.png)
+
+## The interface
+
+The HUD and menus use the Clearday design system (`src/ui/clearday/`, chosen in October 2026 over five other directions):
+frosted chalk cards with big soft corners over the world, gauges that fill as goals approach, muted mineral colours, and a
+screen kept nearly empty so the valley is what you look at. Its principles:
+
+- **Don't play the game for the player.** No plans, bills of materials, "first hour" steps, bottleneck answers or "one more X
+  would…" suggestions before or during play. Screens state facts; the player works out what to do. Analysis belongs after the
+  game, on the results screen, the one place a "next time" line is allowed.
+- **Find problems in the world.** Problems show as markers over buildings. A problems strip on the right edge is an
+  experimental setting, off by default.
+- **Projections are optional.** "Done by" and the gold and silver pace ticks appear only with the *Show pace* setting.
+- **Keep the HUD quiet; heavy data gets its own place.** Power has its own panel; production chains and lead times live in the
+  guide; building rates live in the inspector, never as labels over the map.
+- **No hotkeys printed in the HUD.** Every key still works; keys are listed on the pause screen and appear in tooltips.
+- **Status never by colour alone.** Each status pairs its tint with a shape and a word.
+- **Two clocks, and watts not energy.** A game day lasts four minutes of play. Anything measured over minutes of play (history,
+  rates a minute, idle shares, the commission clock, the results' milestones) is in play time ("5 min ago", `13:00` of play);
+  times of day (`dusk 20:00`, `dry at 02:40`, the Power panel's day) are in-game hours. Screens show average watts and battery
+  percentages, never watt-hours.
+
+Settings, kept in the browser: interface size (90–130%; the interface also scales with the window, designed at 1920 × 1080 and
+held down to about 1366 × 768), pixel size, reduce motion, show pace, and the problems strip.
 
 ## Time
 
