@@ -23,10 +23,12 @@ import { h, icon } from './dom.ts';
 import { Dock, dockTip } from './dock.ts';
 import { guidePanel, type GuidePage } from './guide.ts';
 import { Inspector } from './inspector.ts';
+import { pauseScreen } from './pause.ts';
+import { ProblemsStrip } from './problems.ts';
 import { RoutesCard } from './routes.ts';
 import { CommissionCard, TopRight, ViewBar, viewControls, type Panel, type PlayHost } from './playhud.ts';
 import { routeCss, routeGoods, routeProblems, stopsText, stopsKey, trucksDoing, truckName, typingIn } from './routing.ts';
-import { PIXEL_SIZES, uiScale, type SettingsStore } from './settings.ts';
+import { uiScale, type SettingsStore } from './settings.ts';
 import { WorldLayer } from './world.ts';
 
 // The HUD over the canvas: the commission and its clock, power and weather, the goals, the build bar, what's under the
@@ -61,6 +63,8 @@ export interface HudHost {
   restart(): void;
   /** Draws a route on the map while the pointer is over it in the routes panel (null: none). */
   previewRoute(id: number | null): void;
+  /** Selects a building and moves the camera to it. */
+  focus(id: number): void;
 }
 
 const fmtTime = (t: number) => { const m = Math.floor(t / 60), s = Math.floor(t % 60); return `${m}:${String(s).padStart(2, '0')}`; };
@@ -97,7 +101,9 @@ export class Hud {
   private readonly side: Inspector;
   /** Silo and depot stops showing every good rather than the route's, by `route:stop`. */
   private readonly allGoods = new Set<string>();
-  private readonly layer = h('div', { class: 'layer' });
+  /** The sheets and full-screen panels, over the blurred world. */
+  private readonly sheets = h('div', { class: 'ui-sheets' });
+  private readonly problems: ProblemsStrip;
   private modals: Modal[] = [];
   private statsOpen = false;
   private readonly statsBody = h('div');
@@ -127,11 +133,12 @@ export class Hud {
       selectTruck: (id) => { this.routesOpen = false; if (host.tool().kind === 'route') host.setTool({ kind: 'select' }); host.select(id); this.refresh(); },
       close: () => { this.routesOpen = false; host.previewRoute(null); if (host.tool().kind === 'route') host.setTool({ kind: 'select' }); },
     });
+    this.problems = new ProblemsStrip((id) => host.focus(id));
     this.dock = new Dock({ state: () => host.state(), tool: () => host.tool(), setTool: (t) => host.setTool(t), tip: (id) => this.showTip(id) });
-    this.hud.append(this.commission.el, this.commission.pill, this.top.el, this.view.el, this.controls, this.dock.el, this.side.el, this.routes.el,
+    this.hud.append(this.commission.el, this.commission.pill, this.top.el, this.view.el, this.controls, this.dock.el, this.side.el, this.routes.el, this.problems.el, this.problems.popover,
       h('div', { class: 'hud-above' }, this.toasts, this.tip));
-    this.ui.append(this.world.el, this.hud);
-    root.append(h('div', { class: 'hud' }, this.stats), this.layer, this.ui);
+    this.ui.append(this.world.el, this.hud, this.sheets);
+    root.append(h('div', { class: 'hud' }, this.stats), this.ui);
     host.settings.listen((st) => { this.ui.classList.toggle('is-calm', st.reduceMotion); this.fit(); this.lastSlow = 0; });
     addEventListener('resize', () => this.fit());
     this.refresh();
@@ -167,6 +174,7 @@ export class Hud {
     this.side.update(!routes);
     const side = this.side.open || routes;
     this.top.el.hidden = side; this.controls.hidden = side;
+    this.problems.update(this.host.state(), this.host.settings.get().problemsStrip && !side);
     if (now - this.lastSlow < 150) return;
     this.lastSlow = now;
     this.commission.update(side);
@@ -254,8 +262,15 @@ export class Hud {
   }
   private drawModals() {
     const top = this.modals[this.modals.length - 1];
-    this.layer.replaceChildren(...(top ? [top.el] : []));
-    this.layer.classList.toggle('open', !!top);
+    this.sheets.classList.toggle('is-open', !!top);
+    this.sheets.classList.toggle('is-live', !!top && !top.blocking);
+    this.sheets.replaceChildren(...(top ? [h('div', { class: 'scrim' }), h('div', { class: 'sheet-wrap' }, top.el)] : []));
+  }
+  /** Closes the panel or screen called `name` if it is the one on top; false if it isn't. */
+  closeIf(name: string): boolean {
+    if (this.modals[this.modals.length - 1]?.name !== name) return false;
+    this.close(name);
+    return true;
   }
   /** Closes the topmost modal or panel; false if none was open. */
   closeTop(): boolean {
@@ -289,22 +304,9 @@ export class Hud {
   }
 
   openPause() {
-    const s = this.host.state();
-    this.openModal('pause', h('div', { class: 'panel' },
-      h('h2', null, s.scenario.name), help(),
-      h('h3', null, 'Settings'),
-      h('div', { class: 'setting' }, h('span', null, 'Pixel size'),
-        h('span', { class: 'choices' }, ...PIXEL_SIZES.map((n) => button(`${n}×${n}`, () => { this.host.settings.set({ pixelSize: n }); this.openPause(); }, { active: this.host.settings.get().pixelSize === n })))),
-      h('p', { class: 'sub hint-line' }, 'Screen pixels for each pixel of the art. Smaller pixels show finer detail and cost more to draw.'),
-      h('div', { class: 'actions' },
-        button('Restart commission', () => this.confirm('Restart this commission?', 'Everything built so far is lost.', () => this.host.restart())),
-        button('Level select', () => this.host.menu()),
-        button('Resume', () => this.close('pause'), { primary: true }))), true);
-  }
-
-  private confirm(title: string, text: string, yes: () => void) {
-    this.openModal('confirm', h('div', { class: 'panel' }, h('h2', null, title), h('p', null, text),
-      h('div', { class: 'actions' }, button('Cancel', () => this.close('confirm')), button('Yes', yes, { primary: true }))), true);
+    this.openModal('pause', pauseScreen({
+      state: () => this.host.state(), settings: this.host.settings, resume: () => this.close('pause'), menu: () => this.host.menu(), restart: () => this.host.restart(),
+    }), true);
   }
 
   showComplete(medal: Medal) {

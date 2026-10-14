@@ -134,6 +134,15 @@ async function play(initial: GameState) {
     menu: () => { save(); location.href = `${location.pathname}?menu`; },
     restart: () => startNew(state.scenario.id),
     previewRoute: (id) => { previewRoute = id; },
+    focus: (id) => {
+      const b = buildingById(state, id);
+      if (!b) return;
+      if (tool.kind !== 'select') setTool({ kind: 'select' });
+      selected = id;
+      const n = sizeOf(b);
+      target.set(b.x + n / 2, 0, b.y + n / 2); clampTarget(); repick = 2;
+      hud.picked(id);
+    },
   });
   if (state.time === 0) hud.showIntro();
 
@@ -482,7 +491,7 @@ async function play(initial: GameState) {
       return;
     }
     if (e.repeat) return;
-    if (e.code === 'Space') { e.preventDefault(); paused = !paused; return; }
+    if (e.code === 'Space') { e.preventDefault(); if (!hud.closeIf('pause')) paused = !paused; return; }
     if (e.code === 'Digit1') { speed = 1; paused = false; }
     if (e.code === 'Digit2') { speed = 2; paused = false; }
     if (e.code === 'Digit3') { speed = 4; paused = false; }
