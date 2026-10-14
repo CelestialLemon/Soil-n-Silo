@@ -397,7 +397,8 @@ button { font: inherit; }
 .menu .sandbox .rname { display: block; margin-top: 14px; }
 .menu .sandbox .cd-small { margin-top: 8px; max-width: 420px; }
 .menu .preview .chips, .menu .sandbox .chips { margin-top: 14px; }
-.menu .tag { padding: 4px 10px; border-radius: 99px; box-shadow: inset 0 0 0 1.5px var(--chalk-3); }
+.briefing .tags { margin-top: 14px; }
+.menu .tag, .briefing .tag { padding: 4px 10px; border-radius: 99px; box-shadow: inset 0 0 0 1.5px var(--chalk-3); }
 .menu .random .act, .menu .sandbox .act { justify-content: flex-end; }
 .menu .random .act .cd-btn, .menu .sandbox .act .cd-btn { width: 100%; }
 .menu-settings { width: 600px; display: grid; gap: 14px; justify-items: end; }
