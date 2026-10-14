@@ -239,7 +239,15 @@ test('the run log: milestones, the goal good\'s curve, waits; it saves, and an o
   const migrated = deserialize(JSON.stringify(old))!;
   assert.ok(migrated.run.marks.every((m) => m.t === -1));
   assert.equal(migrated.run.curve.length, 1);
+  assert.ok(migrated.run.marks.some((m) => m.kind === 'goal' && m.goal === 0), 'a goal already met is marked');
+  assert.ok(migrated.run.marks.some((m) => m.kind === 'second' && m.type === 'mill'), 'so is a second mill');
   assert.equal(deserialize(JSON.stringify({ ...old, run: { ...s.run, curve: ['x'] } })), null);
+  const bad = (mark: object) => deserialize(JSON.stringify({ ...old, run: { ...s.run, marks: [mark] } }));
+  assert.equal(bad({ t: 0, kind: 'goal', goal: 999 }), null, 'a goal that isn\'t the commission\'s');
+  assert.equal(bad({ t: 0, kind: 'goal' }), null);
+  assert.equal(bad({ t: 0, kind: 'first' }), null, 'a first with no good');
+  assert.equal(bad({ t: 0, kind: 'second' }), null);
+  assert.ok(bad({ t: 0, kind: 'goal', goal: 0 }));
 });
 
 test('a long run\'s curve keeps every other sample once full, so it still spans the run', () => {

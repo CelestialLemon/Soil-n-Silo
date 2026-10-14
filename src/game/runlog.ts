@@ -51,13 +51,17 @@ export function goalGood(sc: Scenario): ItemId | null {
 }
 
 /**
- * A log for a game saved before runs were logged: what has already happened is marked as before the record (t −1), and
- * the curve starts now.
+ * A log for a game saved before runs were logged: what has already happened (goods made, trucks, second buildings, delivery
+ * goals met and rate goals reached) is marked as before the record (t −1), and the curve starts now.
  */
 export function startedRunLog(s: GameState): RunLog {
   const run = newRunLog();
   for (const i of Object.keys(s.made) as ItemId[]) if (s.made[i]) run.marks.push({ t: -1, kind: 'first', item: i });
-  if (s.trucks.length) run.marks.push({ t: -1, kind: 'truck', n: Math.min(2, s.trucks.length) });
+  for (let k = 1; k <= Math.min(2, s.trucks.length); k++) run.marks.push({ t: -1, kind: 'truck', n: k });
+  for (const type of SECONDS) if (s.buildings.filter((b) => b.type === type).length >= 2) run.marks.push({ t: -1, kind: 'second', type });
+  s.scenario.goals.forEach((g, i) => {
+    if (g.kind === 'deliver' ? (s.delivered[g.item] ?? 0) >= g.n : g.kind === 'rate' && s.reached[i]) run.marks.push({ t: -1, kind: 'goal', goal: i });
+  });
   run.curveFrom = Math.floor(s.time / RUN_SAMPLE) * RUN_SAMPLE;
   const item = goalGood(s.scenario);
   run.curve = [item ? s.delivered[item] ?? 0 : 0];
