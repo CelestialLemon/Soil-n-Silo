@@ -80,7 +80,7 @@ export class CommissionCard {
   readonly el = h('div', { class: 'cd-card hud-commission' });
   readonly pill = h('div', { class: 'cd-pill hud-compact', hidden: true });
   private key = '';
-  private parts: { el: HTMLElement; g: HTMLElement; fig: HTMLElement }[] = [];
+  private parts: { el: HTMLElement; g: HTMLElement; ic: HTMLElement; fig: HTMLElement; of: HTMLElement }[] = [];
   private readonly clock = h('span', { class: 'clock' });
   private readonly pace = h('span', { class: 'pace' });
   private readonly pillGauge = gauge({ v: 0, inner: [] });
@@ -101,8 +101,9 @@ export class CommissionCard {
     if (key !== this.key) {
       this.key = key;
       this.parts = sc.goals.map((g) => {
-        const fig = h('b', { class: 'cd-num' }), gg = gauge({ v: 0, col: g.kind === 'soil' ? 'var(--tide)' : undefined, inner: [icon(goalIcon(g), 20)] });
-        return { el: h('div', { class: 'goal', title: goalOrder(g) }, gg, h('span', { class: 'fig' }, fig, h('small', null, goalOf(g)))), g: gg, fig };
+        const fig = h('b', { class: 'cd-num' }), of = h('small'), ic = h('span');
+        const gg = gauge({ v: 0, col: g.kind === 'soil' ? 'var(--tide)' : undefined, inner: [ic] });
+        return { el: h('div', { class: 'goal', title: goalOrder(g) }, gg, h('span', { class: 'fig' }, fig, of)), g: gg, ic, fig, of };
       });
       fill(this.el,
         h('div', { class: 'who', title: commissionLabel(s) }, h('b', { class: 'name' }, sc.name), this.clock, st.showPace && !sc.sandbox ? this.pace : null),
@@ -116,7 +117,12 @@ export class CommissionCard {
       setVar(p.g, '--v', Math.max(0, Math.min(1, now.v)));
       p.el.classList.toggle('is-done', now.done);
       p.g.classList.toggle('is-done', now.done);
-      set(p.fig, now.figure);
+      // A met goal says so in shape and word as well as colour: a tick, and "done" for a rate goal, whose rate now may have
+      // dropped since it was reached. Soil is judged at the end, so it keeps its figure.
+      const met = now.done && g.kind !== 'soil', ic = met ? 'check' : goalIcon(g);
+      if (p.ic.dataset.icon !== ic) { p.ic.dataset.icon = ic; p.ic.replaceChildren(icon(ic, 20)); }
+      set(p.fig, met && g.kind === 'rate' ? 'done' : now.figure);
+      set(p.of, met && g.kind === 'rate' ? ` · ${g.perMin} a min` : goalOf(g));
       // A rate goal is judged on the rate now, not on a total, so it has no pace to keep.
       if (st.showPace && g.kind === 'deliver' && !now.done && s.completedAt === null) {
         // Gold pace: the share of the goal that, delivered at a steady rate, finishes on time; silver the same for 1.5×.
