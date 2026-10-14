@@ -174,6 +174,19 @@ test('tonight: a battery feeding a steady load runs dry when its charge is spent
   assert.equal(tonight(none), null, 'no batteries, no forecast');
 });
 
+test('tonight: the batteries run dry only once every network\'s are spent', () => {
+  const s = flat({ weather: { sunrise: 6, sunset: 20, sun: 1, wind: 0.05, gust: 0 } });
+  put(s, 'pylon', 5, 5);
+  put(s, 'battery', 6, 5).charge = 0;
+  put(s, 'loom', 5, 7).inputs = { yarn: 30 };
+  put(s, 'pylon', 25, 25);
+  put(s, 'battery', 26, 25).charge = POWER.battery.capacity;
+  advance(s, 1);
+  s.time = nextHour(s.time, 20) + 1;
+  const t = tonight(s)!;
+  assert.equal(t.dryAt, null, 'the second network\'s battery still holds');
+});
+
 test('placing: a field forecasts its harvest, its soil in ten minutes and its water', () => {
   const s = flat();
   const p = placement(s, 'field', 4, 4);

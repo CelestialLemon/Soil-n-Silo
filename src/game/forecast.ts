@@ -142,7 +142,7 @@ export interface Tonight {
   /** When the coming night starts (null: it is night now) and ends. */
   sunset: number | null;
   sunrise: number;
-  /** When the batteries run dry (null: they last the night), and from then until sunrise: the average shortfall and the
+  /** When all the batteries run dry (null: they last the night), and from then until sunrise: the average shortfall and the
    * time short. */
   dryAt: number | null;
   shortAfter: number;
@@ -183,9 +183,10 @@ export function tonight(s: GameState): Tonight | null {
         x.bats[i] += move; spare -= move;
       }
       if (spare < -1e-6) short += -spare / step;
-      if (spare < -1e-6 && x.bats.length && dryAt === null && x.bats.every((b) => b < 1e-6)) dryAt = t + step;
     }
+    // Dry once every battery is spent (one network's going first still leaves the rest holding) and something goes short.
     const k = stored() / capacity;
+    if (dryAt === null && k < 1e-6 && short > 1e-6) dryAt = t + step;
     points.push({ t: t + step, k });
     if ((sunset === null || t + step <= sunset) && k > peak.k) peak = { t: t + step, k };
     if (dryAt !== null && t + step <= sunrise && short > 1e-6) { shortSum += short * step; shortFor += step; }
