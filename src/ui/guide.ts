@@ -214,7 +214,9 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
   const link = (label: string | Node, p: GuidePage) => h('button', { class: 'link', onclick: () => go(p) }, label);
   const bLink = (id: BuildingId) => link(BUILDINGS[id].name, { kind: 'building', id });
   const search = h('input', { class: 'cd-input', placeholder: 'Search buildings, goods, keys…', spellcheck: false, 'aria-label': 'Search the guide',
-    oninput: () => { query = search.value.trim().toLowerCase(); drawIndex(); } }) as HTMLInputElement;
+    oninput: () => { query = search.value.trim().toLowerCase(); drawIndex(); },
+    // Esc closes the guide from the search field too (the game's keys skip text fields; G types a G here).
+    onkeydown: (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } } }) as HTMLInputElement;
   const have = new Set(s ? s.buildings.map((b) => b.type) : []);
 
   function drawIndex() {
