@@ -54,7 +54,7 @@ export function settingsCard(store: SettingsStore) {
 const MARKERS: [Status, string, string][] = [
   ['ok', 'Working', 'making goods'], ['idle', 'Idle', 'nothing to do'], ['input', 'Waiting for input', 'a good is short'],
   ['flowers', 'No flowers near', 'hive, no flowering field in reach'], ['blocked', 'Blocked', 'output store full'],
-  ['lowpower', 'Low power · 60%', 'gets a share of what it needs'], ['power', 'No power', 'its network has none'],
+  ['lowpower', 'Low power', 'gets a share of what it needs'], ['power', 'No power', 'its network has none'],
   ['nolink', 'Not connected', 'no pylon reaches it'], ['noroute', 'No route takes its goods', 'full, and no truck picks it up'],
   ['noroad', 'No road', 'trucks can\'t reach it'], ['dry', 'Dry', 'a field no sprinkler waters'],
 ];
