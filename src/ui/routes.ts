@@ -151,8 +151,13 @@ export class RoutesCard {
   private closedRoute(s: GameState, r: Route, lines: (() => void)[]): HTMLElement {
     const goods = routeGoods(s, r);
     return h('div', {
-      class: 'route-card', title: 'Click to open',
+      class: 'route-card', title: 'Click to open', role: 'button', tabindex: 0, 'aria-label': `Open ${r.name}`,
       onpointerenter: () => this.host.previewRoute(r.id), onpointerleave: () => this.host.previewRoute(null), onclick: () => this.edit(r),
+      // Enter or Space opens it from the keyboard (and Space doesn't reach the game as pause).
+      onkeydown: (e: KeyboardEvent) => {
+        if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+        e.preventDefault(); e.stopPropagation(); this.edit(r);
+      },
     },
     this.headLine(s, r, lines, h('b', { class: 'name' }, r.name)),
     h('div', { class: 'cd-small stops' }, stopsText(s, r) || 'No stops yet'),

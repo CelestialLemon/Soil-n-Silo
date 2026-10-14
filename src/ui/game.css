@@ -197,6 +197,7 @@ button { font: inherit; }
 .routes-card .side-body { display: grid; gap: 12px; align-content: start; }
 .route-card { padding: 14px 16px; border-radius: 18px; background: var(--chalk-2); cursor: pointer; }
 .route-card:hover { box-shadow: inset 0 0 0 1.5px var(--chalk-3); }
+.route-card:focus-visible { outline: 2px solid var(--route); outline-offset: 2px; }
 .route-card.is-open { cursor: default; padding: 16px 16px 12px; background: var(--chalk); box-shadow: inset 0 0 0 2px var(--route); }
 .route-card .chips { margin-top: 10px; align-items: center; }
 .route-card .chips .cd-chip { background: var(--chalk); height: 26px; font-size: 12px; }
