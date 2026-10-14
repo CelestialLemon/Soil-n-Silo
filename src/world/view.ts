@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { PixelObject, PixelRenderer } from 'pixel3d-renderer';
+import type { WorldObject, WorldRenderer } from './renderer.ts';
 import { BUILDINGS, CROPS, HIVE, POWER, type BuildingId, type ItemId } from '../game/data.ts';
 import { TERRAIN } from '../game/map.ts';
 import { networks } from '../game/power.ts';
@@ -18,7 +18,7 @@ import { soilBand, TRUCK_BED } from './shapes.ts';
 
 const YAW: Record<Dir, number> = { 0: Math.PI, 1: Math.PI / 2, 2: 0, 3: -Math.PI / 2 };
 
-interface Shown { obj: PixelObject; key: string }
+interface Shown { obj: WorldObject; key: string }
 
 const v = new THREE.Vector3(), e = new THREE.Euler();
 
@@ -34,39 +34,39 @@ const QUEUE_GAP = 0.8;
 export type Overlay = 'none' | 'fertility' | 'power' | 'roads' | 'water' | 'bees';
 
 export class WorldView {
-  private readonly targets = new Map<PixelObject, number>();
+  private readonly targets = new Map<WorldObject, number>();
   private readonly shown = new Map<number, Shown>();
   private readonly parts = new Map<number, Shown[]>();
   private linksKey = '';
   private readonly linked = new Set<number>();
-  private tinted: PixelObject[] = [];
+  private tinted: WorldObject[] = [];
   /** Truck objects by truck id. */
-  private readonly trucks = new Map<number, PixelObject>();
-  private readonly pools = new Map<ItemId, { objs: PixelObject[]; used: number }>();
+  private readonly trucks = new Map<number, WorldObject>();
+  private readonly pools = new Map<ItemId, { objs: WorldObject[]; used: number }>();
   private readonly terrain: (Shown | null)[] = [];
   /** The map tile of each tree and rock object. */
-  private readonly terrainTiles = new Map<PixelObject, { x: number; y: number }>();
+  private readonly terrainTiles = new Map<WorldObject, { x: number; y: number }>();
   private terrainKey = '';
-  private overlayObjs: PixelObject[] = [];
+  private overlayObjs: WorldObject[] = [];
   private overlayKey = '';
-  private readonly r: PixelRenderer;
+  private readonly r: WorldRenderer;
   private readonly m: Models;
 
-  constructor(r: PixelRenderer, m: Models) { this.r = r; this.m = m; }
+  constructor(r: WorldRenderer, m: Models) { this.r = r; this.m = m; }
 
   /** The building or truck an object belongs to (id), or null. */
-  buildingOf(o: PixelObject | null): number | null {
+  buildingOf(o: WorldObject | null): number | null {
     return o ? this.targets.get(o) ?? null : null;
   }
 
   /** The tile of a tree or rock object, or null. */
-  terrainOf(o: PixelObject | null): { x: number; y: number } | null {
+  terrainOf(o: WorldObject | null): { x: number; y: number } | null {
     return o ? this.terrainTiles.get(o) ?? null : null;
   }
 
   /** Every visible object of a building or truck, to highlight together. */
-  objectsOf(id: number): PixelObject[] {
-    const out: PixelObject[] = [];
+  objectsOf(id: number): WorldObject[] {
+    const out: WorldObject[] = [];
     const main = this.shown.get(id) ?? (this.trucks.has(id) ? { obj: this.trucks.get(id)! } : undefined);
     if (main) out.push(main.obj);
     for (const p of this.parts.get(id) ?? []) out.push(p.obj);
@@ -79,9 +79,9 @@ export class WorldView {
     return o;
   }
 
-  private drop(o: PixelObject) { this.targets.delete(o); o.remove(); }
+  private drop(o: WorldObject) { this.targets.delete(o); o.remove(); }
 
-  private show(slot: Shown | undefined, key: string, g: () => THREE.BufferGeometry, id: number | null, place: (o: PixelObject) => void): Shown {
+  private show(slot: Shown | undefined, key: string, g: () => THREE.BufferGeometry, id: number | null, place: (o: WorldObject) => void): Shown {
     if (slot && slot.key === key) return slot;
     if (slot) this.drop(slot.obj);
     const obj = this.add(g(), id);
@@ -126,7 +126,7 @@ export class WorldView {
     let i = 0;
     for (let y = f.y; y < f.y + 3; y++) for (let x = f.x; x < f.x + 3; x++) {
       const band = soilBand(s.map.fertility[y * s.map.width + x]);
-      list[i] = this.show(list[i], `soil ${x} ${y} ${band}`, () => this.m.soil[band], f.id, (o) => o.setTransform(v.set(x + 0.5, 0, y + 0.5)));
+      list[i] = this.show(list[i], `soil ${x} ${y} ${band}`, () => this.m.fieldSoil?.[band][(y - f.y) * 3 + x - f.x] ?? this.m.soil[band], f.id, (o) => o.setTransform(v.set(x + 0.5, 0, y + 0.5)));
       i++;
       const turn = Math.floor(hash(x, y) * 4) * Math.PI / 2;
       list[i] = this.show(list[i], `crop ${x} ${y} ${f.crop} ${stage}`, () => this.m.crops[f.crop!][stage], f.id,
@@ -208,7 +208,7 @@ export class WorldView {
       this.linked.clear();
       for (const id of ids) this.linked.add(id);
     }
-    const want: PixelObject[] = [];
+    const want: WorldObject[] = [];
     for (const id of this.linked) want.push(...this.objectsOf(id));
     for (const o of this.tinted) if (!want.includes(o)) o.tint = null;
     for (const o of want) if (o.tint !== LINKED) { o.tint = LINKED; o.tintStrength = LINK_STRENGTH; }

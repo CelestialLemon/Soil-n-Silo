@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { PixelObject, PixelRenderer } from 'pixel3d-renderer';
+import type { WorldObject, WorldRenderer } from './renderer.ts';
 import { legPath } from '../game/roads.ts';
 import { buildingById, layoutOf, sizeOf, type GameState, type Route } from '../game/state.ts';
 import type { Models } from './models.ts';
@@ -18,13 +18,13 @@ const X = new THREE.Vector3(1, 0, 0), dir = new THREE.Vector3(), q = new THREE.Q
 export const routeColour = (s: GameState, r: Route) => Math.max(0, s.routes.indexOf(r)) % ROUTE_COLOURS.length;
 
 export class RouteView {
-  private objs: PixelObject[] = [];
+  private objs: WorldObject[] = [];
   private key = '';
   private shownLabels: StopLabel[] = [];
-  private readonly r: PixelRenderer;
+  private readonly r: WorldRenderer;
   private readonly m: Models;
 
-  constructor(r: PixelRenderer, m: Models) { this.r = r; this.m = m; }
+  constructor(r: WorldRenderer, m: Models) { this.r = r; this.m = m; }
 
   /** The labels over the stops of the routes drawn, in world space. */
   labels(): StopLabel[] { return this.shownLabels; }
