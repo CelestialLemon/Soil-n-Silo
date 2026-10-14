@@ -13,7 +13,7 @@ export interface World {
 }
 
 /** Grass by fertility band: dry and yellow-green on poor soil, deep green on rich. */
-const GRASS = [[0xa8a860, 0xb0ae66], [0x92a456, 0x98aa5a], [0x7c9e4c, 0x82a450], [0x6c9846, 0x72a04a], [0x5e9042, 0x649646]];
+export const GRASS = [[0xa8a860, 0xb0ae66], [0x92a456, 0x98aa5a], [0x7c9e4c, 0x82a450], [0x6c9846, 0x72a04a], [0x5e9042, 0x649646]];
 
 export function buildWorld(map: MapData, trees: THREE.BufferGeometry[]): World {
   const s = new GeometryCollector(), d = new GeometryCollector(true), fluids = new FluidCollector();

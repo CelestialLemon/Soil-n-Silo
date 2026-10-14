@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObject } from 'pixel3d-renderer';
+import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette } from 'pixel3d-renderer';
+import { TerraRenderer } from './render/terra/TerraRenderer.ts';
 import { addStop, canPlace, place, remove, removeAt } from './game/build.ts';
 import { BUILDINGS, POWER, type BuildingId } from './game/data.ts';
 import { TERRAIN } from './game/map.ts';
@@ -19,6 +20,7 @@ import { statusLabel } from './ui/widgets.ts';
 import type { Hover, MarkerSpot } from './ui/world.ts';
 import { allGeometries, loadModels } from './world/models.ts';
 import { PowerView } from './world/powerView.ts';
+import type { WorldObject, WorldRenderer } from './world/renderer.ts';
 import { RouteView } from './world/routeView.ts';
 import { buildWorld } from './world/terrain.ts';
 import { WorldView, type Overlay } from './world/view.ts';
@@ -66,6 +68,10 @@ const params = new URLSearchParams(location.search);
 /** A commission to start straight away (`?play=<id>`); an unknown id falls through to the menu or the saved game. */
 const startId = params.get('play');
 const startSc = startId ? scenarioById(startId) : null;
+/** The experimental full-resolution look (`?look=terra`, src/render/terra/) instead of the pixel renderer. */
+const terra = params.get('look') === 'terra';
+/** The page to go to, keeping the chosen look across reloads. */
+const page = (query = '') => `${location.pathname}?${[query, terra ? 'look=terra' : ''].filter(Boolean).join('&')}`.replace(/\?$/, '');
 
 /** Starts a new commission: saves it, then reloads into it (each map builds its own static world). */
 /** Set while the page leaves for a new commission, so the game being left doesn't save over the new one. */
@@ -76,7 +82,7 @@ function startNew(id: string) {
   if (!sc) return;
   leaving = true;
   localStorage.setItem(SAVE_KEY, serialize(newGame(sc)));
-  location.href = location.pathname;
+  location.href = page();
 }
 
 if (startId && startSc) startNew(startId);
@@ -85,7 +91,7 @@ else if (!saved || params.has('menu')) {
   showMenu(document.body, {
     saved, settings,
     progress: readProgress(localStorage.getItem(PROGRESS_KEY)),
-    resume: () => { location.href = location.pathname; },
+    resume: () => { location.href = page(); },
     start: startNew,
   });
 } else {
@@ -95,10 +101,14 @@ else if (!saved || params.has('menu')) {
 async function play(initial: GameState) {
   let state = initial;
   const map = state.map;
-  const models = await loadModels();
+  const models = await loadModels({ terra });
   const world = buildWorld(map, models.trees);
-  quantizePalette([...world.geometries, ...allGeometries(models)], 96);
-  const renderer = new PixelRenderer(canvas, world.scene, { shadowMapSize: 2048, warmHighlight: true });
+  let renderer: WorldRenderer;
+  if (terra) renderer = new TerraRenderer(canvas, world.scene, { sway: models.trees, glaze: [models.fill], thin: models.wires });
+  else {
+    quantizePalette([...world.geometries, ...allGeometries(models)], 96);
+    renderer = new PixelRenderer(canvas, world.scene, { shadowMapSize: 2048, warmHighlight: true });
+  }
   const view = new WorldView(renderer, models);
   const power = new PowerView(renderer, models);
   const routeView = new RouteView(renderer, models);
@@ -130,7 +140,7 @@ async function play(initial: GameState) {
     turn: (d) => turn(d),
     zoom: (d) => zoomStep(d),
     settings,
-    menu: () => { save(); location.href = `${location.pathname}?menu`; },
+    menu: () => { save(); location.href = page('menu'); },
     restart: () => startNew(state.scenario.id),
     start: (id) => { save(); startNew(id); },
     previewRoute: (id) => { previewRoute = id; },
@@ -157,8 +167,9 @@ async function play(initial: GameState) {
   // ---- Camera ----
   const target = new THREE.Vector3(map.depot.x + 1.5, 0, map.depot.y - 4);
   let view4 = 0;
-  /** Screen pixels per art pixel: the pixel size setting. */
-  let pixelSize = settings.get().pixelSize;
+  /** Screen pixels per art pixel: the pixel size setting (1 in the terra look, which draws at full resolution). */
+  const pixelSizeOf = (n: number) => (terra ? 1 : n);
+  let pixelSize = pixelSizeOf(settings.get().pixelSize);
   /** The zoom, as screen pixels per metre of ground: `zoom` eases towards `zoomGoal`. */
   let zoom = START_ZOOM, zoomGoal = START_ZOOM;
   /** While zooming towards the pointer: the ground point that stays under it, and where the pointer is from the centre. */
@@ -204,7 +215,7 @@ async function play(initial: GameState) {
       zoomAnchor = { ground, dx, dy };
     } else zoomAnchor = null;
   }
-  settings.listen((st) => { if (st.pixelSize !== pixelSize) { pixelSize = st.pixelSize; fit(); } });
+  settings.listen((st) => { if (pixelSizeOf(st.pixelSize) !== pixelSize) { pixelSize = pixelSizeOf(st.pixelSize); fit(); } });
   addEventListener('resize', () => fit());
   /** One frame of the zoom easing towards its goal. */
   function zooming(dt: number) {
@@ -264,7 +275,7 @@ async function play(initial: GameState) {
   let hoverTile: { x: number; y: number } | null = null;
   /** The building or truck under the pointer (their ids are one count). */
   let hoverBuilding: number | null = null;
-  let highlighted: PixelObject[] = [];
+  let highlighted: WorldObject[] = [];
 
   function pickHover() {
     if (!pointer) { hoverTile = null; hoverBuilding = null; return; }
@@ -283,7 +294,7 @@ async function play(initial: GameState) {
   }
 
   // ---- Ghosts: what would be built ----
-  const ghostPool = new Map<string, PixelObject[]>();
+  const ghostPool = new Map<string, WorldObject[]>();
   let ghostUsed = new Map<string, number>();
   const GOOD = new THREE.Color(0x90ff90), BAD = new THREE.Color(0xff5040);
   /** Shows a preview object; `fits` draws it see-through and tinted green (fits) or red (doesn't). */
@@ -627,6 +638,7 @@ async function play(initial: GameState) {
     if (toolOverlay === 'none' && tool.kind === 'route') toolOverlay = 'roads';
     const shownOverlay = overlay !== 'none' ? overlay : toolOverlay;
     view.overlay(state, shownOverlay);
+    if (renderer instanceof TerraRenderer) renderer.syncGame(state, shownOverlay !== 'none', dt);
     const focus = selected ?? (tool.kind === 'select' ? hoverBuilding : null);
     const shown = shownRoutes(focus, shownOverlay === 'roads');
     view.links(linkedTo(focus));

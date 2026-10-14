@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { PixelObject, PixelRenderer } from 'pixel3d-renderer';
+import type { WorldObject, WorldRenderer } from './renderer.ts';
 import { POWER } from '../game/data.ts';
 import { feederOf, networkOf, networks, POWERED, pylonsInLink, wiresOf, type Network } from '../game/power.ts';
 import { buildingById, layoutOf, reachTo, sizeOf, type Building, type GameState } from '../game/state.ts';
@@ -44,13 +44,13 @@ export const netColour = (s: GameState, net: Network) => networks(s).list.indexO
 export const inPower = (b: Building) => b.type === 'pylon' || POWERED(b);
 
 export class PowerView {
-  private objs: PixelObject[] = [];
+  private objs: WorldObject[] = [];
   private key = '';
   private shownLabels: NetLabel[] = [];
-  private readonly r: PixelRenderer;
+  private readonly r: WorldRenderer;
   private readonly m: Models;
 
-  constructor(r: PixelRenderer, m: Models) { this.r = r; this.m = m; }
+  constructor(r: WorldRenderer, m: Models) { this.r = r; this.m = m; }
 
   /** The labels to show over the networks drawn, in world space. */
   labels(): NetLabel[] { return this.shownLabels; }

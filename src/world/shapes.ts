@@ -296,3 +296,18 @@ export function soilTile(band: number) {
   for (const z of [-0.3, 0, 0.3]) k.box(0, 0.03, z, 0.9, 0.015, 0.08, SOIL[Math.max(0, band - 1)]);
   return k.build();
 }
+
+/** The terra look's field soil flag: its shader draws the furrows and clods (src/render/terra/ground.ts). */
+export const TERRA_SOIL_FLAG = 7;
+/** How far the terra look's field soil stops short of a field's outer edge (metres), so a strip of grass parts neighbouring fields. */
+const TERRA_FIELD_INSET = 0.05;
+/**
+ * The terra look's soil tile: one plain slab with the same top as `soilTile`; the shader tills it. `col` and `row` (0 to 2)
+ * place it in its 3x3 field: on the field's outer sides it stops a little short, so each field reads as its own bed.
+ */
+export function terraSoilTile(band: number, col = 1, row = 1) {
+  const i = TERRA_FIELD_INSET;
+  const x0 = col === 0 ? -0.5 + i : -0.5, x1 = col === 2 ? 0.5 - i : 0.5;
+  const z0 = row === 0 ? -0.5 + i : -0.5, z1 = row === 2 ? 0.5 - i : 0.5;
+  return new Kit(false).box((x0 + x1) / 2, -0.05, (z0 + z1) / 2, x1 - x0, 0.08, z1 - z0, SOIL[band], { flag: TERRA_SOIL_FLAG }).build();
+}
