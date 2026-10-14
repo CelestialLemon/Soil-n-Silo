@@ -292,7 +292,10 @@ export class Hud {
     const id = this.tipFor ?? (tool.kind === 'build' ? tool.type : b?.type ?? null);
     const start: GuidePage = page ?? (id ? { kind: 'building', id } : { kind: 'topic', id: 'start' });
     this.showTip(null);
-    this.openModal('guide', guidePanel(start, { build: (t) => this.host.setTool({ kind: 'build', type: t, rot: tool.kind === 'build' ? tool.rot : 1 }) }, () => this.close('guide')), true);
+    this.openModal('guide', guidePanel(start, {
+      state: () => this.host.state(), focus: (id) => this.host.focus(id),
+      build: (t) => this.host.setTool({ kind: 'build', type: t, rot: tool.kind === 'build' ? tool.rot : 1 }),
+    }, () => this.close('guide')), true);
   }
 
   /** The briefing, when a commission starts. */
