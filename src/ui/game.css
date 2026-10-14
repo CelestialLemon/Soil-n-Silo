@@ -19,13 +19,20 @@ button { font: inherit; }
 [hidden] { display: none !important; }
 
 /* ---- The commission, top left ---- */
-.hud-commission { position: absolute; left: 28px; top: 28px; width: 330px; }
-.hud-commission.is-wide { width: auto; min-width: 330px; }
-.hud-commission .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.hud-commission .goals { display: flex; gap: 22px; margin-top: 16px; align-items: center; }
-.hud-commission .times { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px 14px; }
-.hud-commission .pace { margin-top: 6px; color: var(--ink-2); }
-.hud-commission .cd-gauge .cd-i { --s: 22px; }
+.hud-commission { position: absolute; left: 28px; top: 28px; display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-radius: 20px; white-space: nowrap; }
+.hud-commission .who { display: grid; gap: 3px; }
+.hud-commission .name { font: 700 18px/1.15 var(--font-ui); }
+.hud-commission .clock, .hud-commission .pace { font: 600 13px/1.2 var(--font-ui); color: var(--ink-3); }
+.hud-commission .clock b { color: var(--ink); }
+.hud-commission .sep { align-self: stretch; width: 1px; background: var(--chalk-3); }
+.hud-commission .goals { display: flex; gap: 16px; }
+.hud-commission .goal { display: flex; align-items: center; gap: 8px; }
+.hud-commission .cd-gauge { --d: 46px; --w: 5px; }
+.hud-commission .cd-gauge__in { margin-top: 2px; }
+.hud-commission .cd-gauge__tick::before { left: -1px; top: -2px; width: 4px; height: 9px; border-radius: 2px; box-shadow: 0 0 0 1.5px var(--chalk); }
+.hud-commission .fig { font: 700 18px/1 var(--font-ui); }
+.hud-commission .fig small { font-weight: 600; font-size: 13px; color: var(--ink-3); }
+.hud-commission .goal.is-done .fig, .hud-commission .goal.is-done .fig small { color: var(--pine); }
 .hud-compact { position: absolute; left: 28px; top: 28px; height: 48px; padding: 0 20px 0 8px; gap: 12px; }
 .hud-compact .cd-gauge { --d: 34px; --w: 4px; }
 

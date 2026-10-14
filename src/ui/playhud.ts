@@ -1,15 +1,15 @@
 import { flowRate, creditsPerMin } from '../game/flows.ts';
 import { networks, usedBy } from '../game/power.ts';
-import { CAMPAIGN } from '../game/scenarios.ts';
-import { dayAt, hourAt, sunAt, windAt } from '../game/sim.ts';
+import { CAMPAIGN, type Goal } from '../game/scenarios.ts';
+import { dayAt, hourAt, medalFor, sunAt, windAt } from '../game/sim.ts';
 import type { GameState } from '../game/state.ts';
 import type { Overlay } from '../world/view.ts';
 import { fill, h, icon, set, setVar } from './dom.ts';
 import { clock, num, pct, playTime, watts } from './format.ts';
 import type { Settings } from './settings.ts';
-import { gauge, goalIcon, goalNow, medalTimes } from './widgets.ts';
+import { gauge, goalIcon, goalNow, goalOrder } from './widgets.ts';
 
-// The play HUD's fixed pieces: the commission card (top left; a pill while a side card is open), the readouts, the dial and
+// The play HUD's fixed pieces: the commission strip (top left; a pill while a side card is open), the readouts, the dial and
 // the panel buttons (top right), the view bar (bottom left) and the view controls (bottom right). Keys are in tooltips only.
 
 export type Panel = 'ledger' | 'routes' | 'power' | 'guide';
@@ -35,12 +35,27 @@ export function commissionLabel(s: GameState) {
   return sc.sandbox ? 'Sandbox' : i >= 0 ? `Commission ${i + 1}` : 'Random commission';
 }
 
-/** Where the commission's clock stands: "13:00 of 35:00", "done in 31:48", or the time played in the sandbox. */
+/** The medal a run ends with at time t, as a dot and a word: "● gold". */
+function medalDot(par: number, t: number) {
+  const m = medalFor(par, t);
+  return [h('i', { class: 'dot', style: `background: var(--medal-${m})` }), m];
+}
+
+/**
+ * Where the commission's clock stands, with the best medal still to be had: "13:00 · ● gold by 35:00", "done in 31:48 · ● gold",
+ * or the time played in the sandbox.
+ */
 export function clockLine(s: GameState) {
-  const sc = s.scenario;
-  if (sc.sandbox) return [h('b', { class: 'cd-num', style: 'color: var(--ink)' }, playTime(s.time)), ' played'];
-  if (s.completedAt !== null) return ['done in ', h('b', { class: 'cd-num', style: 'color: var(--ink)' }, playTime(s.completedAt))];
-  return [h('b', { class: 'cd-num', style: 'color: var(--ink)' }, playTime(s.time)), ` of ${playTime(sc.par)}`];
+  const sc = s.scenario, b = (t: number) => h('b', { class: 'cd-num' }, playTime(t));
+  if (sc.sandbox) return [b(s.time), ' played'];
+  if (s.completedAt !== null) return ['done in ', b(s.completedAt), ' · ', ...medalDot(sc.par, s.completedAt)];
+  const m = medalFor(sc.par, s.time);
+  return [b(s.time), ' · ', ...medalDot(sc.par, s.time), m === 'gold' ? ` by ${playTime(sc.par)}` : m === 'silver' ? ` by ${playTime(sc.par * 1.5)}` : ''];
+}
+
+/** What a goal asks, after its count: "/150", "/5 a min", "/40+". */
+function goalOf(g: Goal) {
+  return g.kind === 'deliver' ? `/${g.n}` : g.kind === 'rate' ? `/${g.perMin} a min` : `/${g.min}+`;
 }
 
 /**
@@ -65,9 +80,9 @@ export class CommissionCard {
   readonly el = h('div', { class: 'cd-card hud-commission' });
   readonly pill = h('div', { class: 'cd-pill hud-compact', hidden: true });
   private key = '';
-  private parts: { g: HTMLElement; fig: HTMLElement; of: HTMLElement }[] = [];
-  private readonly clock = h('span', { class: 'cd-small' });
-  private readonly pace = h('div', { class: 'cd-small pace' });
+  private parts: { el: HTMLElement; g: HTMLElement; ic: HTMLElement; fig: HTMLElement; of: HTMLElement }[] = [];
+  private readonly clock = h('span', { class: 'clock' });
+  private readonly pace = h('span', { class: 'pace' });
   private readonly pillGauge = gauge({ v: 0, inner: [] });
   private readonly pillText = h('small');
   private readonly host: PlayHost;
@@ -80,43 +95,48 @@ export class CommissionCard {
   update(compact: boolean) {
     const s = this.host.state(), sc = s.scenario, st = this.host.settings();
     this.el.hidden = compact; this.pill.hidden = !compact;
-    // The goals' gauges are made again when the commission or the pace setting changes.
+    // A strip: the name and the clock, then a small gauge and the count for each goal. The goals are made again when the
+    // commission or the pace setting changes.
     const key = `${sc.id} ${st.showPace}`;
     if (key !== this.key) {
       this.key = key;
-      const n = sc.goals.length, d = n <= 2 ? 116 : n === 3 ? 92 : 76;
       this.parts = sc.goals.map((g) => {
-        const fig = h('div', { class: 'cd-figure' }), of = h('div', { class: 'cd-small' });
-        return { g: gauge({ v: 0, d, col: g.kind === 'soil' ? 'var(--tide)' : undefined, inner: [fig, of], foot: '' }), fig, of };
+        const fig = h('b', { class: 'cd-num' }), of = h('small'), ic = h('span');
+        const gg = gauge({ v: 0, col: g.kind === 'soil' ? 'var(--tide)' : undefined, inner: [ic] });
+        return { el: h('div', { class: 'goal', title: goalOrder(g) }, gg, h('span', { class: 'fig' }, fig, of)), g: gg, ic, fig, of };
       });
-      this.parts.forEach((p, i) => { p.g.querySelector('.cd-gauge__foot')!.replaceChildren(icon(goalIcon(sc.goals[i]), 16), ` ${goalNow(s, i).word}`); });
-      this.el.classList.toggle('is-wide', n > 2);
       fill(this.el,
-        h('div', { class: 'head' }, h('span', { class: 'cd-label' }, commissionLabel(s)), this.clock),
-        h('h2', { class: 'cd-title', style: 'margin-top: 6px' }, sc.name),
-        n ? h('div', { class: 'goals' }, ...this.parts.map((p) => p.g)) : h('p', { class: 'cd-small' }, 'No goals: build whatever you like.'),
-        sc.sandbox ? null : h('div', { class: 'cd-small times' }, ...medalTimes(sc.par)),
-        st.showPace && !sc.sandbox ? this.pace : null);
+        h('div', { class: 'who', title: commissionLabel(s) }, h('b', { class: 'name' }, sc.name), this.clock, st.showPace && !sc.sandbox ? this.pace : null),
+        h('span', { class: 'sep' }),
+        sc.goals.length ? h('div', { class: 'goals' }, ...this.parts.map((p) => p.el)) : h('span', { class: 'cd-small' }, 'No goals: build whatever you like.'));
       this.pill.querySelector('.name')!.textContent = sc.name;
     }
     this.clock.replaceChildren(...clockLine(s));
     this.parts.forEach((p, i) => {
       const now = goalNow(s, i), g = sc.goals[i];
       setVar(p.g, '--v', Math.max(0, Math.min(1, now.v)));
+      p.el.classList.toggle('is-done', now.done);
       p.g.classList.toggle('is-done', now.done);
-      set(p.fig, now.figure); set(p.of, now.done && g.kind !== 'soil' ? 'done' : now.of);
+      // A met goal says so in shape and word as well as colour: a tick, and "done" for a rate goal, whose rate now may have
+      // dropped since it was reached. Soil is judged at the end, so it keeps its figure.
+      const met = now.done && g.kind !== 'soil', ic = met ? 'check' : goalIcon(g);
+      if (p.ic.dataset.icon !== ic) { p.ic.dataset.icon = ic; p.ic.replaceChildren(icon(ic, 20)); }
+      set(p.fig, met && g.kind === 'rate' ? 'done' : now.figure);
+      set(p.of, met && g.kind === 'rate' ? ` · ${g.perMin} a min` : goalOf(g));
       // A rate goal is judged on the rate now, not on a total, so it has no pace to keep.
-      if (st.showPace && g.kind === 'deliver' && s.completedAt === null) {
+      if (st.showPace && g.kind === 'deliver' && !now.done && s.completedAt === null) {
         // Gold pace: the share of the goal that, delivered at a steady rate, finishes on time; silver the same for 1.5×.
         let ticks = p.g.querySelectorAll<HTMLElement>('.cd-gauge__tick');
         if (!ticks.length) { p.g.prepend(h('span', { class: 'cd-gauge__tick' }), h('span', { class: 'cd-gauge__tick is-silver' })); ticks = p.g.querySelectorAll('.cd-gauge__tick'); }
         setVar(ticks[0], '--at', Math.min(1, s.time / sc.par));
         setVar(ticks[1], '--at', Math.min(1, s.time / (sc.par * 1.5)));
-      }
+      } else p.g.querySelectorAll('.cd-gauge__tick').forEach((t) => t.remove());
     });
     if (st.showPace && !sc.sandbox) {
       const by = doneBy(s);
-      set(this.pace, s.completedAt !== null ? '' : by === null ? 'Done by: not at this pace yet' : `Done by ${playTime(by)} at the pace of the last 5 min`);
+      this.pace.hidden = s.completedAt !== null;
+      set(this.pace, by === null ? 'not done at this pace yet' : `done by ${playTime(by)} at this pace`);
+      this.pace.title = 'At the pace of the last 5 minutes';
     }
     // The pill: the first goal, the name, where it stands.
     const first = sc.goals.length ? goalNow(s, 0) : null;
