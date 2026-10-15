@@ -8,6 +8,7 @@ import {
 import { BUILDINGS, DAY_SECONDS, ITEMS, POWER, SILO, START_HOUR, TRUCK, type BuildingId, type ItemId } from '../src/game/data.ts';
 import { generateMap, TERRAIN } from '../src/game/map.ts';
 import { feederOf, networkOf, networks, pylonsInLink, wiresOf } from '../src/game/power.ts';
+import { runtimeOf } from '../src/game/runtime.ts';
 import { deserialize, readProgress, recordResult, serialize } from '../src/game/save.ts';
 import { CAMPAIGN, randomScenario, SANDBOX, scenarioById, type Scenario } from '../src/game/scenarios.ts';
 import { accessTiles, distanceTo, isOpen, pathTo } from '../src/game/roads.ts';
@@ -235,7 +236,7 @@ test('a truck waits at a stop up to its wait for goods; with a wait of 0 it goes
     return until(s, () => t.target !== f.id);
   };
   assert.ok(Math.abs(visit() - 10) < 0.3, 'waited for wheat');
-  assert.ok(setStopWait(r, 0, 0).ok);
+  assert.ok(setStopWait(s, r, 0, 0).ok);
   assert.ok(visit() < 0.5, 'went on at once');
 });
 
@@ -388,10 +389,10 @@ test('a building whose outputs are full with no route picking them up says so; s
   advance(s, 0.2);
   assert.equal(mill.status, 'noroute');
   assert.match(describeStatus(s, mill), /Full of bran: no route/);
-  assert.ok(setStopGood(r, 0, 'bran', 'pick').ok);
+  assert.ok(setStopGood(s, r, 0, 'bran', 'pick').ok);
   until(s, () => mill.status === 'input', 60);
   assert.match(describeStatus(s, mill), /Waiting for wheat: no route or building next door brings it/);
-  assert.ok(setStopGood(r, 0, 'wheat', 'drop').ok);
+  assert.ok(setStopGood(s, r, 0, 'wheat', 'drop').ok);
   assert.doesNotMatch(describeStatus(s, mill), /no route/);
 });
 
@@ -413,10 +414,10 @@ test('a good is dropped or picked up at a stop, never both', () => {
   const r = newRoute(s);
   addStop(s, r, silo);
   assert.ok(r.stops[0].drop.includes('wheat'));
-  assert.ok(setStopGood(r, 0, 'wheat', 'pick').ok);
+  assert.ok(setStopGood(s, r, 0, 'wheat', 'pick').ok);
   assert.ok(!r.stops[0].drop.includes('wheat') && r.stops[0].pick.includes('wheat'));
-  assert.equal(setStopGood(r, 0, 'wheat', 'pick').ok, false, 'already so');
-  assert.ok(setStopGood(r, 0, 'wheat', null).ok);
+  assert.equal(setStopGood(s, r, 0, 'wheat', 'pick').ok, false, 'already so');
+  assert.ok(setStopGood(s, r, 0, 'wheat', null).ok);
   assert.ok(!r.stops[0].drop.includes('wheat') && !r.stops[0].pick.includes('wheat'));
   assert.equal(addStop(s, r, put(s, 'pylon', 1, 1)).ok, false, 'no goods at a pylon');
   for (let i = 1; i < TRUCK.maxStops; i++) assert.ok(addStop(s, r, silo).ok);
@@ -952,12 +953,12 @@ test('routes can be renamed and copied; a truck can dump its cargo', () => {
   const { trucks: [t] } = garageAt(s, 2, 24);
   const f = put(s, 'field', 8, 18);
   const r = route(s, [t], f, depotOf(s));
-  assert.ok(renameRoute(r, '  Wheat   to market ').ok);
+  assert.ok(renameRoute(s, r, '  Wheat   to market ').ok);
   assert.equal(r.name, 'Wheat to market');
-  assert.equal(renameRoute(r, '   ').ok, false);
-  assert.equal(renameRoute(r, 'x'.repeat(40)).ok, true);
+  assert.equal(renameRoute(s, r, '   ').ok, false);
+  assert.equal(renameRoute(s, r, 'x'.repeat(40)).ok, true);
   assert.equal(r.name.length, ROUTE_NAME_MAX);
-  renameRoute(r, 'Wheat');
+  renameRoute(s, r, 'Wheat');
   const c = copyRoute(s, r);
   assert.equal(c.name, 'Wheat (copy)');
   assert.equal(copyRoute(s, r).name, 'Wheat (copy 2)');
@@ -997,4 +998,19 @@ test('a composter full of compost that no field wants says why', () => {
   assert.match(describeStatus(s, comp), /no field needs any/);
   s.map.fertility.fill(70);
   assert.match(describeStatus(s, comp), /^Output blocked/);
+});
+
+test('a loaded game starts with a fresh runtime, and routesVersion changes when a stop is added', () => {
+  const s = flat();
+  const silo = put(s, 'silo', 8, 18);
+  const r = newRoute(s);
+  assert.equal(networks(s), networks(s), 'the same game keeps its runtime');
+  assert.ok(runtimeOf(s).networks);
+  const before = runtimeOf(s).routesVersion;
+  assert.ok(addStop(s, r, silo).ok);
+  assert.notEqual(runtimeOf(s).routesVersion, before);
+  const copy = load(serialize(s))!;
+  assert.notEqual(runtimeOf(copy), runtimeOf(s));
+  assert.equal(runtimeOf(copy).networks, undefined, 'nothing derived is carried over');
+  assert.notEqual(runtimeOf(copy).routesVersion, runtimeOf(s).routesVersion, 'a version is never reused by another game');
 });

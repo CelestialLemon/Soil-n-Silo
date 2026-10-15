@@ -8,6 +8,7 @@ import {
 import { handlesGoods } from './layout.ts';
 import { wantsCompost, compostWanted, accept, waiting, take, takesGoods, tradesNextDoor } from './goods.ts';
 import { shareOf } from './energy.ts';
+import { runtimeOf } from '../runtime.ts';
 
 // Trucks: routes, stops, driving, loading and charging.
 
@@ -184,16 +185,13 @@ function charge(s: GameState, t: Truck, dt: number) {
   return give > 1e-9;
 }
 
-/** The layout each game's trucks last found their ways on. */
-const truckLayout = new WeakMap<GameState, number>();
-
 /** Drives, docks and charges every truck, then lets queued trucks dock where a building has room. */
 export function runTrucks(s: GameState, dt: number) {
   // The layout changed: a truck on a tile that was built on moves to the nearest open one, and driving trucks find their
   // way again (a building may stand across it, or a new way be shorter).
   const layout = layoutOf(s);
-  if (truckLayout.get(s) !== layout) {
-    truckLayout.set(s, layout);
+  if (runtimeOf(s).truckLayout !== layout) {
+    runtimeOf(s).truckLayout = layout;
     for (const t of s.trucks) {
       if (!isOpen(s, Math.floor(t.x), Math.floor(t.y))) {
         const i = nearestOpen(s, Math.floor(t.x), Math.floor(t.y));

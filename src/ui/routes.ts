@@ -6,6 +6,7 @@ import { err, ok } from '../game/result.ts';
 import { BUILDINGS, ITEM_IDS, ITEMS, TRUCK, type ItemId } from '../game/data.ts';
 import { routeTiming, truckTime, type StopTiming } from '../game/fleet.ts';
 import { givesGoods, takesGoods } from '../game/sim/goods.ts';
+import { runtimeOf } from '../game/runtime.ts';
 import { trucksOn } from '../game/sim/trucks.ts';
 import { routeRate } from '../game/sim/stats.ts';
 import { cargoText, describeTruck, stopProblems, truckProblems } from '../game/sim/describe.ts';
@@ -14,7 +15,7 @@ import { fill, h, icon, rebuild, set, setVar } from './dom.ts';
 import { dec, itemName, pct, playTime, plural } from './format.ts';
 import type { GuidePage } from './guide.ts';
 import type { Tool } from './hud.ts';
-import { routeCss, routeGoods, routeProblems, stopsKey, stopsText, trucksDoing, truckName, typingIn } from './routing.ts';
+import { routeCss, routeGoods, routeProblems, stopsText, trucksDoing, truckName, typingIn } from './routing.ts';
 
 // The routes card: every route on one side card, the open one expanded. A route shows its stops in a few words, the goods it
 // moves, goods a minute, its loop time and how often a truck reaches its slowest stop. Open, each stop has its drop and
@@ -82,7 +83,7 @@ export class RoutesCard {
     this.el.hidden = !show;
     if (!show) { this.key = ''; this.updater = null; return; }
     const s = this.host.state(), tool = this.host.tool(), editing = tool.kind === 'route' ? tool.route : null;
-    const key = JSON.stringify([s.routes.map((r) => [r.id, r.name, stopsKey(r), routeGoods(s, r), trucksOn(s, r).map((t) => t.id), stopProblems(s, r),
+    const key = JSON.stringify([runtimeOf(s).routesVersion, s.routes.map((r) => [r.id, routeGoods(s, r), stopProblems(s, r),
       r.id === editing ? r.stops.map((st) => { const b = buildingById(s, st.building); return b?.type === 'silo' ? Object.keys(b.store) : b?.type === 'field' ? [b.crop, b.harvest] : null; }) : 0]),
     s.trucks.filter((t) => t.route === null).length, s.buildings.filter((b) => b.type === 'garage').length, this.filter, editing, [...this.allGoods]]);
     if (key !== this.key && !typingIn(this.el)) {
@@ -173,7 +174,7 @@ export class RoutesCard {
     const trucks = trucksOn(s, r);
     const name = h('input', {
       class: 'route-name-input', value: r.name, maxLength: ROUTE_NAME_MAX, title: 'Click to rename', spellcheck: false, 'aria-label': 'Route name',
-      onchange: () => { const res = renameRoute(r, name.value); if (!res.ok) name.value = r.name; this.host.did(res); },
+      onchange: () => { const res = renameRoute(s, r, name.value); if (!res.ok) name.value = r.name; this.host.did(res); },
       onkeydown: (e: KeyboardEvent) => { if (e.key === 'Escape') { name.value = r.name; e.stopPropagation(); } if (e.key === 'Enter' || e.key === 'Escape') name.blur(); },
     });
     const problems = stopProblems(s, r);
@@ -196,7 +197,7 @@ export class RoutesCard {
       const toggle = (item: ItemId, how: 'drop' | 'pick') => h('button', {
         class: 'cd-gtoggle is-sm', 'aria-pressed': String(st[how].includes(item)), 'aria-label': `${how === 'drop' ? 'Drop' : 'Pick up'} ${itemName(item)}`,
         title: `${ITEMS[item].name}: ${st[how].includes(item) ? 'click to stop' : 'click to start'} ${how === 'drop' ? 'dropping it' : 'picking it up'} here`,
-        onclick: () => this.host.did(setStopGood(r, i, item, st[how].includes(item) ? null : how)),
+        onclick: () => this.host.did(setStopGood(s, r, i, item, st[how].includes(item) ? null : how)),
       }, icon(item, 20));
       const group = (label: string, how: 'drop' | 'pick', all: ItemId[]) => {
         const list = choices(all, how), hidden = anything && !open ? st[how].filter((x) => !list.includes(x)).length : 0;
@@ -208,7 +209,7 @@ export class RoutesCard {
         h('span', { class: 'num', style: `background: ${routeCss(s, r)}` }, String(i + 1)),
         h('div', { class: 'top' }, h('b', null, BUILDINGS[b.type].name), h('span', { class: 'fill' }),
           h('span', { class: 'tseg', title: 'How long a truck waits here for room or goods' }, ...waits.map((w) => h('button', {
-            class: w === st.wait ? 'is-on' : '', onclick: () => this.host.did(setStopWait(r, i, w)),
+            class: w === st.wait ? 'is-on' : '', onclick: () => this.host.did(setStopWait(s, r, i, w)),
           }, w === st.wait ? `${w} s` : String(w)))),
           h('span', { class: 'moves' },
             h('button', { title: 'Earlier', 'aria-label': 'Move earlier', disabled: i === 0, onclick: () => this.host.did(moveStop(s, r, i, -1)) }, '↑'),

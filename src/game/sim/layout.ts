@@ -1,10 +1,11 @@
 import { BUILDINGS, type BuildingId } from '../data.ts';
 import { exposureAt, hiveReaches, nearWaterAt, sprinklerWaters } from '../rules.ts';
 import { buildingAt, isMachine, layoutOf, tileIndex, type Building, type FieldBuilding, type GameState } from '../state.ts';
+import { runtimeOf } from '../runtime.ts';
 
 // Derived lookups, rebuilt when the layout changes: what stands beside, waters or shades each building.
 
-interface Derived {
+export interface Derived {
   layout: number;
   /** Sprinklers watering each field. */
   sprinklers: Map<number, Building[]>;
@@ -21,11 +22,11 @@ interface Derived {
   /** The buildings sharing an edge with each building. */
   neighbours: Map<number, Building[]>;
 }
-const derivedCache = new WeakMap<GameState, Derived>();
 
 export function derived(s: GameState): Derived {
   const layout = layoutOf(s);
-  let d = derivedCache.get(s);
+  const rt = runtimeOf(s);
+  let d = rt.derived;
   if (d && d.layout === layout) return d;
   d = { layout, sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), nearWater: new Set(), fielded: new Set(), neighbours: new Map() };
   const fields = s.buildings.filter((b): b is FieldBuilding => b.type === 'field');
@@ -40,7 +41,7 @@ export function derived(s: GameState): Derived {
   for (const t of s.buildings) if (t.type === 'turbine') d.exposure.set(t.id, exposureAt(s, t.x, t.y));
   for (const sp of sprinklers) if (nearWaterAt(s, sp.x, sp.y)) d.nearWater.add(sp.id);
   for (const b of s.buildings) d.neighbours.set(b.id, besides(s, b));
-  derivedCache.set(s, d);
+  rt.derived = d;
   return d;
 }
 

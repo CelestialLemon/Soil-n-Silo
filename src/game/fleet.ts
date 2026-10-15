@@ -1,6 +1,7 @@
 import { TRUCK } from './data.ts';
 import { legLength } from './roads.ts';
 import { buildingById, type GameState, type Route, type Truck } from './state.ts';
+import { runtimeOf } from './runtime.ts';
 
 // What the trucks have been doing lately, for the routes card: when a truck reached each stop of its route, and how each
 // truck spent its time (driving, moving goods, waiting at a stop, charging). Measured over the last FLEET_SECONDS of play,
@@ -17,7 +18,7 @@ export type Activity = 'drive' | 'work' | 'wait' | 'charge' | 'parked' | 'stuck'
 interface Arrival { truck: number; stop: number; building: number; time: number }
 interface TruckBucket { from: number; route: number | null; seconds: Partial<Record<Activity, number>> }
 
-interface Fleet {
+export interface Fleet {
   since: number;
   /** Arrivals by route id, oldest first. */
   arrivals: Map<number, Arrival[]>;
@@ -26,11 +27,10 @@ interface Fleet {
   lastPrune: number;
 }
 
-const all = new WeakMap<GameState, Fleet>();
-
 function fleet(s: GameState): Fleet {
-  let f = all.get(s);
-  if (!f) all.set(s, (f = { since: s.time, arrivals: new Map(), trucks: new Map(), lastPrune: -Infinity }));
+  const r = runtimeOf(s);
+  let f = r.fleet;
+  if (!f) r.fleet = (f = { since: s.time, arrivals: new Map(), trucks: new Map(), lastPrune: -Infinity });
   return f;
 }
 

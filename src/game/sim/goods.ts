@@ -8,6 +8,7 @@ import { noteRunUse } from '../runlog.ts';
 import { blankBuilding, isMachine, type Building, type GameState, type MachineBuilding } from '../state.ts';
 import { derived, besides, handlesGoods } from './layout.ts';
 import { fieldFertility, changeSoil } from './soil.ts';
+import { runtimeOf } from '../runtime.ts';
 
 // Goods: recipes, what buildings take and hold, and the buildings next door trading goods without a truck.
 
@@ -158,13 +159,9 @@ export const tradesNextDoor = (s: GameState, b: Building) => neighboursOf(s, b).
 
 /** A good handed next door, for the view to show it crossing over. Kept for a moment, not saved. */
 export interface Handoff { from: number; to: number; item: ItemId; time: number }
-const handoffs = new WeakMap<GameState, Handoff[]>();
 /** How long a handoff stays in the list (seconds of play). */
 export const HANDOFF_SECONDS = 0.8;
-export const recentHandoffs = (s: GameState): readonly Handoff[] => handoffs.get(s) ?? [];
-
-/** When each building last took a good from next door, so neighbours sharing a giver take turns. Not saved. */
-const lastFed = new WeakMap<GameState, Map<number, number>>();
+export const recentHandoffs = (s: GameState): readonly Handoff[] => runtimeOf(s).handoffs ?? [];
 
 /**
  * Each building that takes goods takes, each step, up to one of each good it takes from the buildings next door that have
@@ -172,10 +169,8 @@ const lastFed = new WeakMap<GameState, Map<number, number>>();
  * take turns. This runs before trucks load, so a neighbour comes first.
  */
 export function feedNeighbours(s: GameState) {
-  let fed = lastFed.get(s);
-  if (!fed) { fed = new Map(); lastFed.set(s, fed); }
-  let list = handoffs.get(s);
-  if (!list) { list = []; handoffs.set(s, list); }
+  const rt = runtimeOf(s);
+  const fed = rt.lastFed ??= new Map(), list = rt.handoffs ??= [];
   let old = 0;
   while (old < list.length && (list[old].time < s.time - HANDOFF_SECONDS || list[old].time > s.time)) old++;
   if (old) list.splice(0, old);
