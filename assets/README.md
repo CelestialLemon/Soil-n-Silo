@@ -1,5 +1,9 @@
 # Soil n Silo models
 
+Three unselected wind turbine alternatives, with editable Blender files and
+multi-angle renders, are in [wind_turbine_options/](wind_turbine_options/README.md).
+Their builds are separate from the selected game models below.
+
 From the repository root, rebuild every GLB and contact sheet with Blender 5.2:
 
 ```sh
