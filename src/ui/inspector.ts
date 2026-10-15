@@ -141,7 +141,7 @@ export class Inspector {
     if (!tabs.some(([k]) => k === this.tab)) this.tab = 'workings';
     const seg = tabs.length > 1 ? h('div', { class: 'cd-seg side-tabs' }, ...tabs.map(([k, name]) => h('button', { class: k === this.tab ? 'is-on' : '', onclick: () => { this.tab = k; this.refresh(); } }, name))) : null;
 
-    let body: Node[] = [];
+    let body: Node[];
     if (this.tab === 'history') {
       const hist = historyView(s, b, () => this.historyWindow, (w) => { this.historyWindow = w; });
       body = [hist.el]; lines.push(hist.update);
