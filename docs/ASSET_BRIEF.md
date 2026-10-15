@@ -79,11 +79,11 @@ Goods are small tokens (~0.25 m) built in code, one shape and colour per good, c
 | --- | --- | --- | --- |
 | `silo` | 2 × 2 | ~2.4 | A ceramic grain silo with copper hoops and a green or moss roof, on a stone apron. Tall: it shelters turbines |
 
-## Needed for the trucks (2026-10-12, stand-ins in code until built)
+## Needed for the trucks (2026-10-12, built 2026-10-16)
 
 Trucks on routes carry the goods, and the silo only stores them.
 
 | Model | Footprint | Height | Notes |
 | --- | --- | --- | --- |
-| `truck` | ~0.8 × 0.5 | ~0.45 | A small electric farm truck: a rounded cab, an open timber bed (the game puts up to 6 goods tokens on its floor at 0.27 m, `TRUCK_BED` in `src/world/shapes.ts`, so keep the floor flat there), solar glass on the cab roof. Front facing +Z. Seen moving in 8 directions |
-| `garage` | 2 × 2 | ~1.6 | A timber shed with a moss or solar roof, open at the front, room under it for parked trucks, a copper charging post |
+| `truck` | ~0.86 long × 0.51 wide | ~0.47 | A small electric farm truck: a rounded ceramic cab, emissive sea-glass windows, solar glass on the cab roof, and an open timber bed. Its flat floor is at 0.27 m (`TRUCK_BED` in `src/world/shapes.ts`), with all 6 goods slots clear above it; the builder checks their clearance. Front facing +Z. Seen moving in 8 directions |
+| `garage` | 2 × 2 | ~1.66 | An open-front timber shelter on individual stone shoes, slatted side/back walls, a pitched moss and solar-glass roof, planting and a copper charging post. Trucks park on the ground under the canopy |
