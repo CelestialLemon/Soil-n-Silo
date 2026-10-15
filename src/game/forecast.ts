@@ -140,7 +140,7 @@ export interface Tonight {
  */
 export function tonight(s: GameState): Tonight | null {
   const sc = s.scenario, w = sc.weather, now = s.time, h = hourAt(now);
-  const night = h <= w.sunrise || h >= w.sunset;
+  const night = h < w.sunrise || h >= w.sunset;
   const sunset = night ? null : nextHour(now, w.sunset);
   const sunrise = nextHour(sunset ?? now, w.sunrise), end = sunrise + HOUR_SECONDS;
   const nets = networks(s).list.map((net) => {
@@ -151,28 +151,32 @@ export function tonight(s: GameState): Tonight | null {
   const capacity = nets.reduce((n, x) => n + x.bats.length, 0) * POWER.battery.capacity;
   if (!capacity) return null;
   const step = HOUR_SECONDS / 6, points: { t: number; k: number }[] = [];
+  const nightFrom = sunset ?? now; // only the coming night counts as a failure; before it the batteries just fill or drain
   let dryAt: number | null = null, shortSum = 0, shortFor = 0;
   const stored = () => nets.reduce((n, x) => n + x.bats.reduce((a, b) => a + b, 0), 0);
   let peak = { t: now, k: stored() / capacity };
   points.push({ t: now, k: peak.k });
-  for (let t = now; t < end - 1e-6; t += step) {
-    const sun = sunAt(sc, t + step / 2), wind = windAt(sc, t + step / 2);
+  for (let t = now, dt: number; t < end - 1e-6; t += dt) {
+    // Cut a step short where it would cross sunset or sunrise, so each one is wholly in the night or wholly out.
+    dt = Math.min(step, end - t, ...[nightFrom, sunrise].filter((b) => b > t + 1e-6).map((b) => b - t));
+    const sun = sunAt(sc, t + dt / 2), wind = windAt(sc, t + dt / 2);
     let short = 0;
     for (const x of nets) {
       const made = POWER.solar * sun * x.solar + x.turbines.reduce((n, b) => n + makes(s, b, 0, wind), 0) + x.digesters;
-      let spare = (made - x.net.wanted) * step;
+      let spare = (made - x.net.wanted) * dt;
       for (let i = 0; i < x.bats.length; i++) {
-        const move = spare > 0 ? Math.min(spare, POWER.battery.rate * step, POWER.battery.capacity - x.bats[i]) : Math.max(spare, -POWER.battery.rate * step, -x.bats[i]);
+        const move = spare > 0 ? Math.min(spare, POWER.battery.rate * dt, POWER.battery.capacity - x.bats[i]) : Math.max(spare, -POWER.battery.rate * dt, -x.bats[i]);
         x.bats[i] += move; spare -= move;
       }
-      if (spare < -1e-6) short += -spare / step;
+      if (spare < -1e-6) short += -spare / dt;
     }
     // Dry once every battery is spent (one network's going first still leaves the rest holding) and something goes short.
     const k = stored() / capacity;
-    if (dryAt === null && k < 1e-6 && short > 1e-6) dryAt = t + step;
-    points.push({ t: t + step, k });
-    if ((sunset === null || t + step <= sunset) && k > peak.k) peak = { t: t + step, k };
-    if (dryAt !== null && t + step <= sunrise && short > 1e-6) { shortSum += short * step; shortFor += step; }
+    const inNight = t >= nightFrom - 1e-6 && t + dt <= sunrise + 1e-6;
+    if (inNight && dryAt === null && k < 1e-6 && short > 1e-6) dryAt = t + dt;
+    points.push({ t: t + dt, k });
+    if ((sunset === null || t + dt <= sunset) && k > peak.k) peak = { t: t + dt, k };
+    if (inNight && dryAt !== null && short > 1e-6) { shortSum += short * dt; shortFor += dt; }
   }
   return { points, sunset, sunrise, dryAt, shortAfter: shortFor ? shortSum / shortFor : 0, shortFor, peak };
 }
