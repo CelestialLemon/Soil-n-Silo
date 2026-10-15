@@ -228,6 +228,12 @@ test('tonight: running dry in a step that ends at sunrise still counts', () => {
   assert.ok(t.shortFor > 0);
 });
 
+test('tonight: at exactly sunrise it is day, and the night is tonight\'s', () => {
+  const t = forecastAt(6, 0, 1, 'sprinkler');
+  assert.ok(t.sunset !== null && Math.abs(hourAt(t.sunset) - 20) < 1e-6 && t.sunrise - t.sunset > 9 * HOUR_SECONDS);
+  assert.equal(t.dryAt, null);
+});
+
 test('placing: a field forecasts its harvest, its soil in ten minutes and its water', () => {
   const s = flat();
   const p = placement(s, 'field', 4, 4);

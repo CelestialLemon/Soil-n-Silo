@@ -140,7 +140,7 @@ export interface Tonight {
  */
 export function tonight(s: GameState): Tonight | null {
   const sc = s.scenario, w = sc.weather, now = s.time, h = hourAt(now);
-  const night = h <= w.sunrise || h >= w.sunset;
+  const night = h < w.sunrise || h >= w.sunset;
   const sunset = night ? null : nextHour(now, w.sunset);
   const sunrise = nextHour(sunset ?? now, w.sunrise), end = sunrise + HOUR_SECONDS;
   const nets = networks(s).list.map((net) => {
