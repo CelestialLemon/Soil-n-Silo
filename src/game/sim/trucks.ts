@@ -1,4 +1,4 @@
-import { bays, TRUCK, type ItemId } from '../data.ts';
+import { bays, BUILDINGS, TRUCK, type ItemId } from '../data.ts';
 import { noteArrival } from '../fleet.ts';
 import { networkOf } from '../power.ts';
 import { accessTiles, distanceTo, isOpen, legLength, nearestOpen, pathTo } from '../roads.ts';
@@ -12,7 +12,7 @@ import { shareOf } from './energy.ts';
 // Trucks: routes, stops, driving, loading and charging.
 
 /** Whether trucks can stop at a building: it grows, makes, uses or stores goods, or is the depot. */
-export const isStop = (b: Building) => b.type === 'silo' || b.type === 'depot' || handlesGoods(b);
+export const isStop = (b: Building) => !!BUILDINGS[b.type].stores || handlesGoods(b);
 
 export const tileOf = (s: GameState, t: Truck) => tileIndex(s, Math.floor(t.x), Math.floor(t.y));
 export const garageOf = (s: GameState, t: Truck) => buildingById(s, t.garage);

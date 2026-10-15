@@ -40,7 +40,7 @@ function waterAt(s: GameState, x: number, y: number) {
 }
 
 /** Whether a pylon would reach a footprint at (x, y). */
-const powered = (s: GameState, type: BuildingId, x: number, y: number) => s.buildings.some((p) => p.type === 'pylon' && pylonReaches({ type, x, y }, p.x, p.y));
+const powered = (s: GameState, type: BuildingId, x: number, y: number) => s.buildings.some((p) => BUILDINGS[p.type].grid === 'link' && pylonReaches({ type, x, y }, p.x, p.y));
 
 /** What a building of `type` placed with its north-west tile at (x, y) would do there. */
 export function placement(s: GameState, type: BuildingId, x: number, y: number): Placement {

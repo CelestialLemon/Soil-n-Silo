@@ -57,7 +57,7 @@ export function besides(s: GameState, b: { type: BuildingId; x: number; y: numbe
 }
 
 /** Whether a building trades goods with trucks: it grows, makes or uses goods. */
-export const handlesGoods = (b: Building) => b.type === 'field' || b.type === 'hive' || isMachine(b);
+export const handlesGoods = (b: Building) => !!BUILDINGS[b.type].harvests || isMachine(b);
 
 export const sprinklersOf = (s: GameState, b: Building) => derived(s).sprinklers.get(b.id) ?? [];
 export const isPollinated = (s: GameState, b: Building) => derived(s).pollinated.has(b.id);

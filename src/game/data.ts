@@ -119,6 +119,12 @@ export interface BuildingDef {
   power?: number;
   /** Tall: shelters a wind turbine next to it. */
   tall?: boolean;
+  /** Holds any goods for trucks (a silo, the depot). */
+  stores?: true;
+  /** Grows or makes goods on its own, kept on site for trucks (a field, a hive; machines are the `RECIPES` buildings). */
+  harvests?: true;
+  /** Its part in the power grid: makes power, stores it, or links buildings to the network (those that only draw power set `power`). */
+  grid?: 'source' | 'storage' | 'link';
   /** Can stand on water (a little bridge). */
   onWater?: boolean;
   /** A line on what it does (the ones that quote numbers are getters, built from the tables below). */
@@ -127,12 +133,12 @@ export interface BuildingDef {
 }
 
 export const BUILDINGS: Record<BuildingId, BuildingDef> = {
-  silo: { name: 'Silo', size: 2, cost: 80, category: 'logistics', tall: true, key: 'L', hint: 'Stores goods: trucks drop them here and pick them up again.' },
+  silo: { name: 'Silo', size: 2, cost: 80, category: 'logistics', stores: true, tall: true, key: 'L', hint: 'Stores goods: trucks drop them here and pick them up again.' },
   garage: { name: 'Garage', size: 2, cost: 100, category: 'logistics', power: 20, key: 'T', get hint() { return `Home of up to ${TRUCK.perGarage} trucks: buy them here, give them routes. Charges them.`; } },
-  field: { name: 'Field', size: 3, cost: 30, category: 'farming', key: 'F', hint: 'Grows a crop on rich soil. Water it with sprinklers; feed it compost.' },
+  field: { name: 'Field', size: 3, cost: 30, category: 'farming', harvests: true, key: 'F', hint: 'Grows a crop on rich soil. Water it with sprinklers; feed it compost.' },
   sprinkler: { name: 'Sprinkler', size: 1, cost: 25, category: 'farming', power: 3, get hint() { return `Waters fields within ${POWER.sprinklerReach} tiles. Cheaper to run near water.`; } },
   coop: { name: 'Coop', size: 3, cost: 150, category: 'farming', get hint() { return `Chickens: ${recipeWords('eggs')}.`; } },
-  hive: { name: 'Beehive', size: 1, cost: 60, category: 'farming', hint: 'Honey from flowering fields nearby; pollinates them for a bigger harvest.' },
+  hive: { name: 'Beehive', size: 1, cost: 60, category: 'farming', harvests: true, hint: 'Honey from flowering fields nearby; pollinates them for a bigger harvest.' },
   composter: { name: 'Composter', size: 2, cost: 60, category: 'farming', get hint() { return `Turns ${anyOf('organic')} into compost.`; } },
   mill: { name: 'Mill', size: 2, cost: 200, category: 'processing', power: 12, tall: true, get hint() { return `${recipeWords('flour')}.`; } },
   press: { name: 'Oil press', size: 2, cost: 220, category: 'processing', power: 15, get hint() { return `${recipeWords('oil')}.`; } },
@@ -140,13 +146,13 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   loom: { name: 'Loom', size: 2, cost: 300, category: 'processing', power: 20, get hint() { return `${recipeWords('linen')}.`; } },
   bakery: { name: 'Bakery', size: 2, cost: 350, category: 'processing', power: 25, tall: true, get hint() { return `${sentence(recipeWords('bread'))}, or ${recipeWords('honeycake')}.`; } },
   cannery: { name: 'Cannery', size: 2, cost: 300, category: 'processing', power: 18, get hint() { return `${sentence(recipeWords('sauce'))}.`; } },
-  solar: { name: 'Solar panel', size: 2, cost: 70, category: 'power', key: 'S', get hint() { return `${POWER.solar} W at noon; nothing at night.`; } },
-  turbine: { name: 'Wind turbine', size: 1, cost: 120, category: 'power', tall: true, get hint() { return `${POWER.turbine} W in full wind. Trees and tall buildings close by shelter it.`; } },
-  battery: { name: 'Battery', size: 2, cost: 150, category: 'power', hint: 'Stores power for the night.' },
-  digester: { name: 'Digester', size: 2, cost: 180, category: 'power', get hint() { return `Burns ${anyOf('organic')} for a steady ${POWER.digester} W.`; } },
-  pylon: { name: 'Pylon', size: 1, cost: 10, category: 'power', onWater: true, key: 'P', get hint() { return `Powers buildings within ${POWER.pylon.reach} tiles; links to pylons within ${POWER.pylon.link}.`; } },
+  solar: { name: 'Solar panel', size: 2, cost: 70, category: 'power', grid: 'source', key: 'S', get hint() { return `${POWER.solar} W at noon; nothing at night.`; } },
+  turbine: { name: 'Wind turbine', size: 1, cost: 120, category: 'power', grid: 'source', tall: true, get hint() { return `${POWER.turbine} W in full wind. Trees and tall buildings close by shelter it.`; } },
+  battery: { name: 'Battery', size: 2, cost: 150, category: 'power', grid: 'storage', hint: 'Stores power for the night.' },
+  digester: { name: 'Digester', size: 2, cost: 180, category: 'power', grid: 'source', get hint() { return `Burns ${anyOf('organic')} for a steady ${POWER.digester} W.`; } },
+  pylon: { name: 'Pylon', size: 1, cost: 10, category: 'power', grid: 'link', onWater: true, key: 'P', get hint() { return `Powers buildings within ${POWER.pylon.reach} tiles; links to pylons within ${POWER.pylon.link}.`; } },
   sapling: { name: 'Sapling', size: 1, cost: 5, category: 'ecology', hint: 'Grows into a tree.' },
-  depot: { name: 'Freight depot', size: 3, cost: 0, category: null, hint: 'Deliver goods here.' },
+  depot: { name: 'Freight depot', size: 3, cost: 0, category: null, stores: true, hint: 'Deliver goods here.' },
 };
 
 // ---- Recipes ----

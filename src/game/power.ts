@@ -24,15 +24,15 @@ export const usedBy = (net: Network) => net.wanted * net.share;
 interface Networks { layout: number; list: Network[]; of: Map<number, Network> }
 const cached = new WeakMap<GameState, Networks>();
 
-export const POWERED = (b: Building) => b.type !== 'pylon' && (isGenerator(b) || isConsumer(b) || b.type === 'battery');
-export const isGenerator = (b: Building) => b.type === 'solar' || b.type === 'turbine' || b.type === 'digester';
+export const POWERED = (b: Building) => BUILDINGS[b.type].grid !== 'link' && (isGenerator(b) || isConsumer(b) || BUILDINGS[b.type].grid === 'storage');
+export const isGenerator = (b: Building) => BUILDINGS[b.type].grid === 'source';
 export const isConsumer = (b: Building) => !!BUILDINGS[b.type].power;
 
 export function networks(s: GameState): Networks {
   const layout = layoutOf(s);
   let n = cached.get(s);
   if (n && n.layout === layout) return n;
-  const pylons = s.buildings.filter((b) => b.type === 'pylon');
+  const pylons = s.buildings.filter((b) => BUILDINGS[b.type].grid === 'link');
   const parent = pylons.map((_, i) => i);
   const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
   for (let i = 0; i < pylons.length; i++) for (let j = i + 1; j < pylons.length; j++) {
