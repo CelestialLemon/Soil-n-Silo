@@ -222,6 +222,12 @@ test('tonight: running dry mid-night is reported between sunset and sunrise', ()
   assert.ok(t.shortFor > 0);
 });
 
+test('tonight: running dry in a step that ends at sunrise still counts', () => {
+  const t = forecastAt(5 + 55 / 60, 10); // 10 J at 20 W: out 0.5 s in, five minutes before sunrise
+  assert.ok(t.dryAt !== null && t.dryAt <= t.sunrise, `dry at ${t.dryAt}`);
+  assert.ok(t.shortFor > 0);
+});
+
 test('placing: a field forecasts its harvest, its soil in ten minutes and its water', () => {
   const s = flat();
   const p = placement(s, 'field', 4, 4);
