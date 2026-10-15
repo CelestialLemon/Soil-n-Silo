@@ -85,6 +85,8 @@ export class Hud {
   private readonly problems: ProblemsStrip;
   private modals: Modal[] = [];
   private routesOpen = false;
+  /** The routes card shows when opened with O or while a route is being edited (from an inspector). */
+  private get routesShown() { return this.routesOpen || this.host.tool().kind === 'route'; }
   private readonly routes: RoutesCard;
   private lastSlow = 0;
 
@@ -145,7 +147,7 @@ export class Hud {
     const tool = this.host.tool();
     this.dock.showCategoryOf(tool.kind === 'build' ? tool.type : null);
     this.dock.update();
-    const routes = this.routesOpen || tool.kind === 'route';
+    const routes = this.routesShown;
     this.routes.update(routes);
     this.side.update(!routes);
     const side = this.side.open || routes;
@@ -182,7 +184,7 @@ export class Hud {
   /** Whether a panel is open. */
   panelOpen(p: Panel) {
     if (p === 'ledger' || p === 'power') return this.modals.some((m) => m.name === p);
-    if (p === 'routes') return this.routesOpen;
+    if (p === 'routes') return this.routesShown;
     if (p === 'guide') return this.modals.some((m) => m.name === 'guide');
     return false;
   }
@@ -222,7 +224,7 @@ export class Hud {
 
   /** Opens or closes the routes card. */
   toggleRoutes() {
-    this.routesOpen = !this.routesOpen;
+    this.routesOpen = !this.routesShown;
     if (!this.routesOpen) { this.host.previewRoute(null); if (this.host.tool().kind === 'route') this.host.setTool({ kind: 'select' }); }
     this.refresh();
   }
@@ -249,7 +251,7 @@ export class Hud {
   /** Closes the topmost modal or panel; false if none was open. */
   closeTop(): boolean {
     if (this.modals.length) { this.modals.pop(); this.drawModals(); return true; }
-    if (this.routesOpen) { this.toggleRoutes(); return true; }
+    if (this.routesShown) { this.toggleRoutes(); return true; }
     return false;
   }
   private close(name: string) { this.modals = this.modals.filter((m) => m.name !== name); this.drawModals(); }

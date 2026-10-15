@@ -358,6 +358,8 @@ async function play(initial: GameState) {
       if (hud.closeIf('pause')) paused = false; else if (!hud.modal) paused = !paused;
       return;
     }
+    // G closes the guide it opened (the other keys stay blocked); typing in its search box never reaches here (input.ts).
+    if (e.code === 'KeyG' && hud.closeIf('guide')) { hud.refresh(); return; }
     // A screen that stops the game (pause, briefing, guide, results) takes no game keys; they would act unseen behind it.
     if (hud.modal) return;
     if (e.code === 'Digit1') { speed = 1; paused = false; }
