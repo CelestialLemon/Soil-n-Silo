@@ -2,7 +2,7 @@ import { BUILDINGS, CROPS, HIVE, ITEMS, TRUCK, type ItemId } from '../data.ts';
 import { networkOf, networks } from '../power.ts';
 import { accessTiles, distanceTo, legLength } from '../roads.ts';
 import { buildingById, type Building, type GameState, type Route, type Truck } from '../state.ts';
-import { members, recipeOf, missing, outputsFit, wantsCompost, takesNow, givesNow, passes, neighboursOf, type Link } from './goods.ts';
+import { members, recipeOf, missing, outputsFit, wantsCompost, takesGoods, takesNow, givesNow, passes, neighboursOf, type Link } from './goods.ts';
 import { shareOf } from './energy.ts';
 import { tileOf, garageOf, routeOf, trucksOn } from './trucks.ts';
 
@@ -33,6 +33,16 @@ export function blockedGood(b: Building): ItemId | null {
 export function served(s: GameState, b: Building, item: ItemId, how: 'pick' | 'drop') {
   if (neighboursOf(s, b).some((n) => (how === 'pick' ? passes(b, n) : passes(n, b)).includes(item))) return true;
   return s.routes.some((r) => r.stops.some((st) => st.building === b.id && st[how].includes(item)) && s.trucks.some((t) => t.route === r.id));
+}
+
+/** Whether anything would take a composter's compost now: a field wanting it (next door, or at a stop of a route that picks it up there), or a depot or silo drop. */
+function compostWelcome(s: GameState, b: Building): boolean {
+  if (neighboursOf(s, b).some((n) => n.type === 'field' && wantsCompost(s, n))) return true;
+  return s.routes.some((r) => r.stops.some((st) => st.building === b.id && st.pick.includes('compost') && s.trucks.some((t) => t.route === r.id))
+    && r.stops.some((st) => {
+      const d = buildingById(s, st.building);
+      return !!d && st.drop.includes('compost') && (d.type === 'field' ? wantsCompost(s, d) : takesGoods(d).includes('compost'));
+    }));
 }
 
 /** Goods a truck carries that none of its route's stops takes, and what it can't do, in a few words (for the inspector). */
@@ -113,7 +123,9 @@ export function describeStatus(s: GameState, b: Building): string {
       const brought = !lack || members(lack).some((i) => served(s, b, i, 'drop'));
       return `Waiting for ${b.need ?? 'goods'}${brought ? '' : ': no route or building next door brings it'}`;
     }
-    case 'blocked': return `Output blocked: nowhere for ${b.need ?? 'its goods'} to go`;
+    case 'blocked':
+      if (b.need === 'compost' && b.type === 'composter' && !compostWelcome(s, b)) return 'Full of compost: no field needs any. Sell it at the depot or let fields draw it down';
+      return `Output blocked: nowhere for ${b.need ?? 'its goods'} to go`;
     case 'power': return networkOf(s, b) ? `No power: the network is out of power${b.type === 'garage' ? ', so its trucks can\'t charge' : ''}` : 'No power: not in reach of a pylon';
     case 'lowpower': return `Low power: ${b.type === 'garage' ? 'trucks charging' : 'running'} at ${Math.round(shareOf(s, b) * 100)}%`;
     case 'nolink': return 'Not connected: no pylon in reach';

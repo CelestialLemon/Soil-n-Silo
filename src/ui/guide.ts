@@ -1,10 +1,11 @@
 import { chainOf, type Step } from '../game/chain.ts';
 import {
   bays, BUILDINGS, CATEGORIES, CLEAR_COST, CROP_IDS, CROPS, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, ITEMS, OUTPUT_BATCHES,
-  POWER, RECIPES, recipesFor, SAPLING_SECONDS, SILO, TREE_HEALTH, TRUCK, type BuildingId, type Ingredient, type ItemId, type Recipe,
+  POLLINATION_BONUS, POWER, RECIPES, recipesFor, SAPLING_SECONDS, SILO, TREE_HEALTH, TRUCK, type BuildingId, type Ingredient, type ItemId, type Recipe,
 } from '../game/data.ts';
 import { FLEET_SECONDS } from '../game/fleet.ts';
 import { SOIL_AHEAD } from '../game/forecast.ts';
+import { RECENT_WINDOW } from '../game/flows.ts';
 import { historyOf, summarize } from '../game/history.ts';
 import { dayAt } from '../game/sim/clock.ts';
 import type { GameState } from '../game/state.ts';
@@ -312,7 +313,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
   /** Every building of this kind in the valley now, with its status and rate, and a way to go to it. */
   function valleyNow(id: BuildingId) {
     const mine = s!.buildings.filter((b) => b.type === id), item = chainItemOf(id);
-    const rates = mine.map((b) => { const hist = historyOf(s!, b); return hist && item ? summarize(hist, s!.time, 300).perMin[item] ?? 0 : 0; });
+    const rates = mine.map((b) => { const hist = historyOf(s!, b); return hist && item ? summarize(hist, s!.time, RECENT_WINDOW).perMin[item] ?? 0 : 0; });
     const r = recipesFor(id)[0], full = r && item ? mine.length * r.outputs[0].n * 60 / r.time : 0, total = rates.reduce((n, x) => n + x, 0);
     const name = (n: number) => (n === 1 ? BUILDINGS[id].name.toLowerCase() : `${BUILDINGS[id].name.toLowerCase()}${BUILDINGS[id].name.endsWith('s') ? 'es' : 's'}`);
     return h('div', { class: 'cd-card is-ink valley-now' },
@@ -408,7 +409,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
       case 'sprinkler': rows.push(['Reach', `fields whose centre is within ${POWER.sprinklerReach} tiles`], ['Near water', `within ${POWER.waterNear} tiles`]); break;
       case 'hive':
         rows.push(['Reach', `${HIVE.reach} tiles`], ['Honey', `one every ${HIVE.honeySeconds} s with 1 flowering field, ${HIVE.honeySeconds / HIVE.maxFlowers} s with ${HIVE.maxFlowers}`],
-          ['Holds', `${HIVE.store} honey`], ['Pollinated fields', 'one more good every harvest of a flowering crop']);
+          ['Holds', `${HIVE.store} honey`], ['Pollinated fields', `+${POLLINATION_BONUS} good every harvest of a flowering crop`]);
         break;
       case 'solar': rows.push(['At midday, full sun', `${POWER.solar} W (times the sun's strength)`], ['At night', '0 W']); break;
       case 'turbine': rows.push(['In full wind', `${POWER.turbine} W`], ['Shelter', `−${POWER.shelter * 100}% for each tree or tall building within ${POWER.shelterReach} tiles, down to ${POWER.shelterFloor * 100}%`]); break;

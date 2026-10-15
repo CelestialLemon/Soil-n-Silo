@@ -1,4 +1,4 @@
-import { flowRate, creditsPerMin } from '../game/flows.ts';
+import { flowRate, creditsPerMin, RECENT_WINDOW } from '../game/flows.ts';
 import { networks, usedBy } from '../game/power.ts';
 import { CAMPAIGN, SILVER_PAR, type Goal } from '../game/scenarios.ts';
 import { dayAt, hourAt, sunAt, windAt } from '../game/sim/clock.ts';
@@ -70,7 +70,7 @@ export function doneBy(s: GameState): number | null {
     const now = goalNow(s, i);
     if (now.done || g.kind === 'soil') continue;
     if (g.kind === 'rate') return null;
-    const rate = flowRate(s, 'delivered', g.item, 300);
+    const rate = flowRate(s, 'delivered', g.item, RECENT_WINDOW);
     if (rate <= 0) return null;
     last = Math.max(last, s.time + (g.n - (s.delivered[g.item] ?? 0)) / rate * 60);
   }
@@ -137,7 +137,7 @@ export class CommissionCard {
       const by = doneBy(s);
       this.pace.hidden = s.completedAt !== null;
       set(this.pace, by === null ? 'not done at this pace yet' : `done by ${playTime(by)} at this pace`);
-      this.pace.title = 'At the pace of the last 5 minutes';
+      this.pace.title = `At the pace of the last ${RECENT_WINDOW / 60} minutes`;
     }
     // The pill: the first goal, the name, where it stands.
     const first = sc.goals.length ? goalNow(s, 0) : null;

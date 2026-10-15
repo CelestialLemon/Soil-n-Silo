@@ -980,3 +980,15 @@ test('two buildings sharing a slow giver next door take turns', () => {
   const took = (c: Building) => (c.inputs!.bran ?? 0) + (c.outputs!.egg ?? 0) + (c.progress !== null ? 2 : 0);
   assert.ok(took(a) > 0 && took(b) > 0, 'both coops got bran');
 });
+
+test('a composter full of compost that no field wants says why', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const comp = put(s, 'composter', 8, 12), a = put(s, 'field', 8, 18);
+  s.map.fertility.fill(90);
+  route(s, [t], [comp, { pick: ['compost'], drop: [] }], [a, { pick: [], drop: ['compost'] }]);
+  comp.status = 'blocked'; comp.need = 'compost';
+  assert.match(describeStatus(s, comp), /no field needs any/);
+  s.map.fertility.fill(70);
+  assert.match(describeStatus(s, comp), /^Output blocked/);
+});

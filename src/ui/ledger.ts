@@ -1,5 +1,5 @@
 import { CROPS, ITEM_IDS, ITEMS, TREE_HEALTH } from '../game/data.ts';
-import { flowRate, flowSeries, goodsHeld, soilTrend } from '../game/flows.ts';
+import { RECENT_WINDOW, flowRate, flowSeries, goodsHeld, soilTrend } from '../game/flows.ts';
 import { networks, usedBy } from '../game/power.ts';
 import { dayAt, hourAt } from '../game/sim/clock.ts';
 import { isPollinated } from '../game/sim/layout.ts';
@@ -73,7 +73,7 @@ export function ledgerSheet(host: LedgerHost) {
     const spent = s.scenario.credits + s.earned - s.credits;
     fill(body,
       health(s),
-      h('div', { class: 'row-head goods-head' }, h('span', { class: 'cd-label' }, 'Goods · made and delivered'), h('span', { class: 'cd-small cd-faint' }, 'a minute: average of the last 5 minutes · lines: the last 10 minutes')),
+      h('div', { class: 'row-head goods-head' }, h('span', { class: 'cd-label' }, 'Goods · made and delivered'), h('span', { class: 'cd-small cd-faint' }, `a minute: average of the last ${RECENT_WINDOW / 60} minutes · lines: the last 10 minutes`)),
       goods.length ? h('table', { class: 'gt' },
         h('thead', null, h('tr', null, h('th', null, 'Good'), h('th', null, 'Made', h('br'), 'a minute'), h('th', { class: 'l' }), h('th', null, 'Used by your', h('br'), 'buildings a minute'),
           h('th', null, 'To the depot', h('br'), 'a minute'), h('th', { class: 'sepl' }, 'Made', h('br'), 'in all'), h('th', null, 'To the depot', h('br'), 'in all'), h('th', null, 'In stores', h('br'), 'and trucks now'))),
