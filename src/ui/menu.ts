@@ -1,7 +1,7 @@
 import { generateMap, TERRAIN } from '../game/map.ts';
 import { seedOf } from '../game/rng.ts';
 import type { Progress } from '../game/save.ts';
-import { CAMPAIGN, randomScenario, SANDBOX, type Scenario } from '../game/scenarios.ts';
+import { CAMPAIGN, randomScenario, SANDBOX, SILVER_PAR, type Scenario } from '../game/scenarios.ts';
 import type { GameState } from '../game/state.ts';
 import { fill, h, icon, svg } from './dom.ts';
 import { itemName, num, pct, playTime } from './format.ts';
@@ -123,7 +123,7 @@ export function showMenu(root: HTMLElement, host: MenuHost) {
         h('div', { class: 'cd-label', style: 'margin-bottom: 12px' }, 'Medal times'),
         h('div', { class: 'row' },
           h('span', { class: 'mchip' }, medal('gold', 30), h('b', null, playTime(sc.par)), h('small', null, 'gold')),
-          h('span', { class: 'mchip' }, medal('silver', 30), h('b', null, playTime(sc.par * 1.5)), h('small', null, 'silver')),
+          h('span', { class: 'mchip' }, medal('silver', 30), h('b', null, playTime(sc.par * SILVER_PAR)), h('small', null, 'silver')),
           h('span', { class: 'mchip' }, medal('bronze', 30), h('small', null, 'after')))),
       h('div', { class: 'vsep' }),
       h('div', { class: 'col' },

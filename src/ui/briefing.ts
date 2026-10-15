@@ -1,4 +1,4 @@
-import { CAMPAIGN } from '../game/scenarios.ts';
+import { CAMPAIGN, SILVER_PAR } from '../game/scenarios.ts';
 import type { GameState } from '../game/state.ts';
 import { h, icon } from './dom.ts';
 import { num, playTime } from './format.ts';
@@ -28,7 +28,7 @@ export function briefing(s: GameState, begin: () => void, guide: () => void) {
       sc.sandbox ? null : h('div', { class: 'cd-label', style: 'margin-top: 36px' }, 'Medal times'),
       sc.sandbox ? null : h('div', null,
         h('div', { class: 'mrow' }, medal('gold', 34), h('span', null, 'Gold'), h('b', null, `within ${playTime(sc.par)}`)),
-        h('div', { class: 'mrow' }, medal('silver', 34), h('span', null, 'Silver'), h('b', null, `within ${playTime(sc.par * 1.5)}`)),
+        h('div', { class: 'mrow' }, medal('silver', 34), h('span', null, 'Silver'), h('b', null, `within ${playTime(sc.par * SILVER_PAR)}`)),
         h('div', { class: 'mrow' }, medal('bronze', 34), h('span', null, 'Bronze'), h('b', { class: 'cd-soft' }, 'after'))),
       sc.sandbox ? null : h('div', { class: 'cd-label', style: 'margin-top: 26px' }, 'To start'),
       sc.sandbox ? null : h('div', { class: 'mrow' }, icon('coin', 34), h('span', null, 'Credits'), h('b', null, num(sc.credits))),

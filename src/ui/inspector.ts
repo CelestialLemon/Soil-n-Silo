@@ -5,7 +5,7 @@ import {
   BUILDINGS, CATEGORIES, CROP_IDS, CROPS, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, OUTPUT_BATCHES, POWER, recipesFor, SILO, TRUCK,
   type Ingredient, type ItemId,
 } from '../game/data.ts';
-import { truckTime } from '../game/fleet.ts';
+import { FLEET_SECONDS, truckTime } from '../game/fleet.ts';
 import { hasHistory, heldSince, historyOf, summarize } from '../game/history.ts';
 import { networkOf, networks, usedBy } from '../game/power.ts';
 import {
@@ -322,7 +322,7 @@ export class Inspector {
         row('Route', this.routeSelect(s, t)),
         h('div', { class: 'cd-label sub' }, 'Cargo'), cargo,
         row('Battery', pctEl), charge,
-        row('Last 10 min', idle)),
+        row(`Last ${FLEET_SECONDS / 60} min`, idle)),
       h('div', { class: 'side-foot' },
         g ? h('button', { class: 'cd-btn is-ghost is-sm', onclick: () => { this.host.select(g.id); this.refresh(); } }, icon('garage', 18), 'Garage') : null,
         r ? h('button', { class: 'cd-btn is-primary is-sm', onclick: () => this.host.editRoute(r) }, 'Edit route') : null,

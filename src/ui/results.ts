@@ -2,7 +2,7 @@ import { chainOf, type Step } from '../game/chain.ts';
 import { BUILDINGS, ITEMS, START_HOUR, type ItemId } from '../game/data.ts';
 import { HOUR_SECONDS } from '../game/powerlog.ts';
 import { goalGood, runWaits, type Mark } from '../game/runlog.ts';
-import { CAMPAIGN } from '../game/scenarios.ts';
+import { CAMPAIGN, SILVER_PAR } from '../game/scenarios.ts';
 import { soilHealth, type Medal } from '../game/sim.ts';
 import { countTrees, type GameState } from '../game/state.ts';
 import { h, icon, svg } from './dom.ts';
@@ -146,7 +146,7 @@ function differences(s: GameState, end: number) {
 export function resultsScreen(s: GameState, medalWon: Medal, host: ResultsHost) {
   const sc = s.scenario, end = s.completedAt ?? s.time, par = sc.par, i = CAMPAIGN.findIndex((c) => c.id === sc.id);
   const next = i >= 0 ? CAMPAIGN[i + 1] ?? null : null;
-  const lead = medalWon === 'gold' ? `${playTime(par - end)} inside gold` : medalWon === 'silver' ? `gold needs ${playTime(par)}: ${playTime(end - par)} faster` : `silver needs ${playTime(par * 1.5)}: ${playTime(end - par * 1.5)} faster`;
+  const lead = medalWon === 'gold' ? `${playTime(par - end)} inside gold` : medalWon === 'silver' ? `gold needs ${playTime(par)}: ${playTime(end - par)} faster` : `silver needs ${playTime(par * SILVER_PAR)}: ${playTime(end - par * SILVER_PAR)} faster`;
   const delivered = (Object.keys(s.delivered) as ItemId[]).filter((k) => s.delivered[k]).sort((a, b) => s.delivered[b]! * ITEMS[b].price - s.delivered[a]! * ITEMS[a].price);
   const item = goalGood(sc), goal = sc.goals.find((g) => g.kind === 'deliver');
   const trees = countTrees(s) - s.initialTrees, saplings = s.buildings.filter((b) => b.type === 'sapling').length, soil = soilHealth(s), soilGoal = sc.goals.find((g) => g.kind === 'soil');
@@ -163,9 +163,9 @@ export function resultsScreen(s: GameState, medalWon: Medal, host: ResultsHost) 
       h('div', { class: 'time' },
         h('div', { class: 'num' }, h('div', { class: 'v' }, playTime(end)), h('div', { class: 'sub' }, lead)),
         h('div', { class: 'line' },
-          h('div', { class: 'cd-bar', style: `--v: ${Math.min(1, end / (par * 1.5))}; --col: var(--medal-${medalWon === 'gold' ? 'gold' : medalWon === 'silver' ? 'silver' : 'bronze'})` }, h('i'),
-            h('span', { class: 'cd-bar__mark', style: 'left: 66.67%' }), h('span', { class: 'cd-bar__mark is-silver', style: 'left: calc(100% - 3px)' })),
-          h('div', { class: 'ticks' }, h('span', null, '0:00'), h('span', { class: 'gold' }, `gold ${playTime(par)}`), h('span', null, `silver ${playTime(par * 1.5)}`))))),
+          h('div', { class: 'cd-bar', style: `--v: ${Math.min(1, end / (par * SILVER_PAR))}; --col: var(--medal-${medalWon === 'gold' ? 'gold' : medalWon === 'silver' ? 'silver' : 'bronze'})` }, h('i'),
+            h('span', { class: 'cd-bar__mark', style: `left: ${(100 / SILVER_PAR).toFixed(2)}%` }), h('span', { class: 'cd-bar__mark is-silver', style: 'left: calc(100% - 3px)' })),
+          h('div', { class: 'ticks' }, h('span', null, '0:00'), h('span', { class: 'gold' }, `gold ${playTime(par)}`), h('span', null, `silver ${playTime(par * SILVER_PAR)}`))))),
     h('div', { class: 'cd-receipt' },
       h('div', { class: 'row-head' }, h('span', { class: 'cd-label' }, 'Freight depot · receipt'), icon('depot', 30)),
       h('div', { class: 'cd-small' }, `${sc.name} · 0:00 to ${playTime(end)}`),

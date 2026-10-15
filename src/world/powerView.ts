@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import type { PixelObject, PixelRenderer } from 'pixel3d-renderer';
 import { POWER } from '../game/data.ts';
 import { feederOf, networkOf, networks, POWERED, pylonsInLink, wiresOf, type Network } from '../game/power.ts';
-import { buildingById, layoutOf, reachTo, sizeOf, type Building, type GameState } from '../game/state.ts';
+import { pylonReaches, pylonsLink } from '../game/rules.ts';
+import { buildingById, layoutOf, sizeOf, type Building, type GameState } from '../game/state.ts';
 import type { Models } from './models.ts';
 import { NET_COLOURS } from './shapes.ts';
 
@@ -162,9 +163,9 @@ export class PowerView {
     ok.forEach((g, i) => {
       for (const p of pylonsInLink(s, g.x, g.y)) this.wire(GHOST, g.x + 0.5, g.y + 0.5, p.x + 0.5, p.y + 0.5, top);
       const prev = ok[i - 1];
-      if (prev && Math.hypot(prev.x - g.x, prev.y - g.y) <= POWER.pylon.link) this.wire(GHOST, prev.x + 0.5, prev.y + 0.5, g.x + 0.5, g.y + 0.5, top);
+      if (prev && pylonsLink(prev.x, prev.y, g.x, g.y)) this.wire(GHOST, prev.x + 0.5, prev.y + 0.5, g.x + 0.5, g.y + 0.5, top);
       for (const b of s.buildings) {
-        if (!POWERED(b) || fed.has(b.id) || networkOf(s, b) || reachTo(b, g.x, g.y) > POWER.pylon.reach) continue;
+        if (!POWERED(b) || fed.has(b.id) || networkOf(s, b) || !pylonReaches(b, g.x, g.y)) continue;
         fed.add(b.id);
         this.feed(GHOST, g.x + 0.5, g.y + 0.5, top, b);
       }

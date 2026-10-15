@@ -15,6 +15,8 @@ const ok = (message: string): Result => ({ ok: true, message });
 const no = (message: string): Result => ({ ok: false, message });
 
 export const priceOf = (s: GameState, type: BuildingId) => (s.scenario.sandbox ? 0 : BUILDINGS[type].cost);
+/** What clearing a tree or rock costs (nothing in the sandbox). */
+export const clearPrice = (s: GameState, kind: keyof typeof CLEAR_COST) => (s.scenario.sandbox ? 0 : CLEAR_COST[kind]);
 
 /** Whether `type` fits with its north-west tile at (x, y). */
 export function canPlace(s: GameState, type: BuildingId, x: number, y: number): Result {
@@ -69,7 +71,7 @@ export function removeAt(s: GameState, x: number, y: number): Result {
   const t = terrainAt(s, x, y);
   if (t !== TERRAIN.tree && t !== TERRAIN.rock) return no('');
   const kind = t === TERRAIN.tree ? 'tree' : 'rock';
-  const cost = s.scenario.sandbox ? 0 : CLEAR_COST[kind];
+  const cost = clearPrice(s, kind);
   if (s.credits < cost) return no(`Clearing a ${kind} costs ${cost} credits.`);
   s.credits -= cost;
   s.map.terrain[tileIndex(s, x, y)] = TERRAIN.grass;
