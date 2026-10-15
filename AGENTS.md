@@ -62,7 +62,8 @@ mobile app they fail with "No preview automation host is available… a headless
 2. If the tools can't be loaded or called, or `preview_open` fails with that error, don't retry. Use headless Chromium on the
    server: Playwright's copy is cached in `~/.cache/ms-playwright`, so don't download another into `/tmp`. It isn't on `PATH` and
    the revision number changes, so find it:
-   `find ~/.cache/ms-playwright -name chrome-headless-shell -type f`. Start the dev server first (`npm run dev`, which needs
+   `find ~/.cache/ms-playwright -name chrome-headless-shell -type f`. If the cache is missing (a different host), install it
+   once into that default location with `npx playwright install chromium-headless-shell` and tell the user. Start the dev server first (`npm run dev`, which needs
    `npm install` in a fresh worktree) because nothing else serves port 5190 there, then screenshot or script it from the shell,
    e.g. `<that path> --no-sandbox --screenshot=/tmp/shot.png --window-size=1280,800 http://127.0.0.1:5190/`.
 3. Tell the user which route you used, and keep the screenshots and scripts out of the repo (see Workflow, step 3).
