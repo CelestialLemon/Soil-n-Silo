@@ -49,8 +49,7 @@ const HOVER_REST = 350;
 /** How far apart a drag places pylons: their reaches meet edge to edge, and each links to the next. */
 const PYLON_STEP = 2 * POWER.pylon.reach + 1;
 /** Whether placing a building should show the power networks: it makes, stores, carries or uses power. */
-const POWER_BUILDINGS = new Set<BuildingId>(['pylon', 'solar', 'turbine', 'battery', 'digester']);
-const usesPower = (t: BuildingId) => POWER_BUILDINGS.has(t) || !!BUILDINGS[t].power;
+const usesPower = (t: BuildingId) => !!BUILDINGS[t].grid || !!BUILDINGS[t].power;
 
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
 const loading = document.querySelector<HTMLElement>('#loading')!;
@@ -497,7 +496,7 @@ async function play(initial: GameState) {
     const hovered = tool.kind === 'select' && hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;
     power.sync(state, {
       all: shownOverlay === 'power' || (tool.kind === 'build' && usesPower(tool.type)), tiles: shownOverlay === 'power',
-      focus: selected ?? (hovered && POWER_BUILDINGS.has(hovered.type) ? hovered.id : null), ghosts: pylonGhosts,
+      focus: selected ?? (hovered && BUILDINGS[hovered.type].grid ? hovered.id : null), ghosts: pylonGhosts,
     });
     hud.world.setNetLabels(power.labels().map((l) => ({ ...l, ...camera.toScreen(l.x, l.y, l.z) })));
     hud.world.setMarkers(view.markerSpots(state).map((m): MarkerSpot => ({ id: m.id, status: m.status, ...camera.toScreen(m.x, m.y, m.z) })));

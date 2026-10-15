@@ -200,7 +200,7 @@ export function deleteRoute(s: GameState, r: Route): Action {
 
 /** What a new stop does: picks up everything the building makes and drops everything it takes; a silo only drops. */
 function defaultStop(b: Building): Stop {
-  if (b.type === 'silo' || b.type === 'depot') return { building: b.id, drop: [...ITEM_IDS], pick: [], wait: TRUCK.wait, turn: 0 };
+  if (BUILDINGS[b.type].stores) return { building: b.id, drop: [...ITEM_IDS], pick: [], wait: TRUCK.wait, turn: 0 };
   const pick = givesGoods(b);
   return { building: b.id, drop: takesGoods(b).filter((i) => !pick.includes(i)), pick, wait: TRUCK.wait, turn: 0 };
 }

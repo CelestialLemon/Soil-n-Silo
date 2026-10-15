@@ -1,12 +1,12 @@
 import {
-  FIELD, GROUP_NAMES, GROUPS, INPUT_BATCHES, ITEM_IDS, ITEMS, OUTPUT_BATCHES, recipeById, recipesFor, SILO, TICK, type BuildingId,
+  BUILDINGS, FIELD, GROUP_NAMES, GROUPS, INPUT_BATCHES, ITEM_IDS, ITEMS, OUTPUT_BATCHES, recipeById, recipesFor, SILO, TICK, type BuildingId,
   type Ingredient, type ItemId, type Recipe,
 } from '../data.ts';
 import { noteFlow } from '../flows.ts';
 import { noteMade, noteTaken } from '../history.ts';
 import { noteRunUse } from '../runlog.ts';
 import { blankBuilding, isMachine, type Building, type GameState, type MachineBuilding } from '../state.ts';
-import { derived, besides } from './layout.ts';
+import { derived, besides, handlesGoods } from './layout.ts';
 import { fieldFertility, changeSoil } from './soil.ts';
 
 // Goods: recipes, what buildings take and hold, and the buildings next door trading goods without a truck.
@@ -120,7 +120,7 @@ export function inputGoods(b: Building): ItemId[] {
 // ---- Next door: buildings sharing an edge trade goods without a truck ----
 
 /** Whether a building hands its goods straight to buildings next door: it grows or makes them. */
-const producer = (b: Building) => b.type === 'field' || b.type === 'hive' || isMachine(b);
+const producer = handlesGoods;
 /** Whether it takes goods straight from buildings next door: a machine its inputs, a field compost. */
 const consumer = (b: Building) => b.type === 'field' || isMachine(b);
 
@@ -194,7 +194,7 @@ export function feedNeighbours(s: GameState) {
 
 /** Every good a building could ever take from a truck (for a stop's defaults and choices). */
 export function takesGoods(b: Building): ItemId[] {
-  if (b.type === 'silo' || b.type === 'depot') return [...ITEM_IDS];
+  if (BUILDINGS[b.type].stores) return [...ITEM_IDS];
   if (b.type === 'field') return ['compost'];
   return [...new Set(recipesFor(b.type).flatMap((r) => r.inputs.flatMap((i) => [...members(i)])))];
 }

@@ -62,6 +62,17 @@ test/           unit tests (Node's test runner)
 docs/           design, roadmap, asset brief
 ```
 
+### Adding a building
+
+Behaviour shared by a kind of building is declared as data, not written as `type === '...'` checks.
+
+1. **Data entry.** Add the id to `BuildingId` and an entry to `BUILDINGS` in `src/game/data.ts`, with the role flags that apply:
+   `power` (watts it draws), `stores` (holds any goods; trucks stop there), `harvests` (grows goods and keeps them on site),
+   `grid` (`'source'`, `'storage'` or `'link'` in the power network), `tall`, `onWater`. A machine also needs a recipe in `RECIPES`.
+2. **Model.** Add the model to `assets/` and `public/models/`, wire it in `src/world/`, and give it an icon and guide page in `src/ui/`.
+3. **Unique behaviour.** Only what no flag covers: a state shape in `src/game/state.ts` (the `Building` union and `blankBuilding`),
+   its per-step logic in `src/game/sim/`, its entry in `forecast.ts`, and a test.
+
 ## The renderer
 
 The game installs the renderer from git, pinned to a release tag, `v0.3.0` (see its `CHANGELOG.md` before moving to a newer
