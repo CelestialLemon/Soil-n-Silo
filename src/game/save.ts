@@ -133,6 +133,8 @@ function uniqueIds(s: GameState): boolean {
 /** A building has what its type's rules read. */
 function validBuilding(b: Building, w: number, h: number): boolean {
   if (!b || !num(b.id) || !num(b.x) || !num(b.y) || !type(b.type) || !dir(b.rot)) return false;
+  // A recipe only where the building makes it (the rules look recipes up by id).
+  if (b.recipe && !recipesFor(b.type).some((r) => r.id === b.recipe)) return false;
   const n = BUILDINGS[b.type].size;
   if (b.x < 0 || b.y < 0 || b.x + n > w || b.y + n > h) return false;
   switch (b.type) {
