@@ -183,14 +183,14 @@ export class RoutesCard {
     const moved = new Set<ItemId>();
     for (const st of r.stops) {
       const b = buildingById(s, st.building);
-      if (!b || b.type === 'silo' || b.type === 'depot') continue;
+      if (!b || BUILDINGS[b.type].stores) continue;
       for (const i of st.pick) if (givesGoods(b).includes(i)) moved.add(i);
       for (const i of st.drop) if (takesGoods(b).includes(i)) moved.add(i);
     }
     const stops = r.stops.map((st, i) => {
       const b = buildingById(s, st.building);
       if (!b) return null;
-      const open = this.allGoods.has(`${r.id}:${i}`), anything = b.type === 'silo' || b.type === 'depot';
+      const open = this.allGoods.has(`${r.id}:${i}`), anything = !!BUILDINGS[b.type].stores;
       // Always with the goods it is set to, so any of them can be turned off (a field's old crop, say).
       const choices = (all: ItemId[], how: 'drop' | 'pick') => (anything && !open ? ITEM_IDS.filter((x) => moved.has(x) || st.pick.includes(x) || (b.type === 'silo' && b.store[x]))
         : ITEM_IDS.filter((x) => all.includes(x) || st[how].includes(x)));

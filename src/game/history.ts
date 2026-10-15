@@ -1,4 +1,4 @@
-import type { ItemId } from './data.ts';
+import { BUILDINGS, type ItemId } from './data.ts';
 import type { Building, GameState, Status } from './state.ts';
 import { runtimeOf } from './runtime.ts';
 
@@ -43,8 +43,8 @@ export interface History {
 
 export const historyOf = (s: GameState, b: Building): History | null => runtimeOf(s).histories?.get(b.id) ?? null;
 
-/** Pylons, silos, the depot and saplings have nothing to look back on: always the same, or shown elsewhere. */
-export const hasHistory = (b: Building) => b.type !== 'pylon' && b.type !== 'silo' && b.type !== 'depot' && b.type !== 'sapling';
+/** Inert buildings and stores (pylons, saplings, silos, the depot) have nothing to look back on: always the same, or shown elsewhere. */
+export const hasHistory = (b: Building) => !BUILDINGS[b.type].inert && !BUILDINGS[b.type].stores;
 
 const bucketStart = (t: number) => Math.floor(t / HISTORY_BUCKET + 1e-9) * HISTORY_BUCKET;
 

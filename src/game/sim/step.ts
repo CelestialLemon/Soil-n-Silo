@@ -1,4 +1,4 @@
-import { ITEMS, SAPLING_SECONDS, TICK } from '../data.ts';
+import { BUILDINGS, ITEMS, SAPLING_SECONDS, TICK } from '../data.ts';
 import { noteTrucks } from '../fleet.ts';
 import { tickFlows } from '../flows.ts';
 import { TERRAIN } from '../map.ts';
@@ -41,8 +41,8 @@ export function tick(s: GameState) {
       case 'field': runField(s, b, dt); break;
       case 'hive': runHive(s, b, dt); break;
       case 'sprinkler': case 'battery': case 'pylon': case 'solar': case 'turbine': {
-        const net = b.type === 'pylon' ? null : networkOf(s, b);
-        if (b.type !== 'pylon' && !net) { b.status = 'nolink'; break; }
+        const net = BUILDINGS[b.type].grid === 'link' ? null : networkOf(s, b);
+        if (BUILDINGS[b.type].grid !== 'link' && !net) { b.status = 'nolink'; break; }
         if (b.type === 'sprinkler') { const sh = shareOf(s, b); b.status = sh <= 0 ? 'power' : sh < 1 ? 'lowpower' : 'ok'; }
         else if (b.type === 'solar') b.status = sun > 0 ? 'ok' : 'idle';
         else b.status = 'ok';
@@ -56,7 +56,7 @@ export function tick(s: GameState) {
       default:
         if (isMachine(b)) {
           runMachine(s, b, dt);
-          if (b.type === 'digester' && !networkOf(s, b) && b.status === 'ok') b.status = 'nolink';
+          if (BUILDINGS[b.type].grid && !networkOf(s, b) && b.status === 'ok') b.status = 'nolink';
         }
     }
   }

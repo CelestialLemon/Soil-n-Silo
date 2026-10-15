@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { PixelObject, PixelRenderer } from 'pixel3d-renderer';
-import { POWER } from '../game/data.ts';
+import { BUILDINGS, POWER } from '../game/data.ts';
 import { feederOf, networkOf, networks, POWERED, pylonsInLink, wiresOf, type Network } from '../game/power.ts';
 import { pylonReaches, pylonsLink } from '../game/rules.ts';
 import { buildingById, layoutOf, sizeOf, type Building, type GameState } from '../game/state.ts';
@@ -42,7 +42,7 @@ const X = new THREE.Vector3(1, 0, 0), dir = new THREE.Vector3(), q = new THREE.Q
 export const netColour = (s: GameState, net: Network) => networks(s).list.indexOf(net) % NET_COLOURS.length;
 
 /** Whether a building takes part in power: a pylon, or something that makes, stores or uses it. */
-export const inPower = (b: Building) => b.type === 'pylon' || POWERED(b);
+export const inPower = (b: Building) => BUILDINGS[b.type].grid === 'link' || POWERED(b);
 
 export class PowerView {
   private objs: PixelObject[] = [];
@@ -58,7 +58,7 @@ export class PowerView {
 
   sync(s: GameState, f: PowerFocus) {
     const focus = f.focus !== null ? buildingById(s, f.focus) : null;
-    const focusNet = focus && inPower(focus) ? (focus.type === 'pylon' ? networks(s).of.get(focus.id) ?? null : networkOf(s, focus)) : null;
+    const focusNet = focus && inPower(focus) ? (BUILDINGS[focus.type].grid === 'link' ? networks(s).of.get(focus.id) ?? null : networkOf(s, focus)) : null;
     const key = `${layoutOf(s)} ${f.all} ${f.tiles} ${focus && inPower(focus) ? focus.id : ''} ${f.ghosts.map((g) => `${g.x},${g.y},${g.ok}`).join(';')}`;
     if (key === this.key) return;
     this.key = key;
@@ -79,7 +79,7 @@ export class PowerView {
       const at = net.pylons.reduce((a, p) => ({ x: a.x + p.x + 0.5, z: a.z + p.y + 0.5 }), { x: 0, z: 0 });
       this.shownLabels.push({ x: at.x / net.pylons.length, y: top + 0.9, z: at.z / net.pylons.length, colour: NET_COLOURS[c], net });
     }
-    if (focus?.type === 'pylon' && focusNet) this.ranges(netColour(s, focusNet), focus.x, focus.y);
+    if (focus && BUILDINGS[focus.type].grid === 'link' && focusNet) this.ranges(netColour(s, focusNet), focus.x, focus.y);
     this.ghostLinks(s, f.ghosts, top);
   }
 
@@ -90,7 +90,7 @@ export class PowerView {
     // Pylons in the order the rules look at them (power.ts), so the first to reach a tile colours it.
     const of = networks(s).of;
     for (const p of s.buildings) {
-      if (p.type !== 'pylon') continue;
+      if (BUILDINGS[p.type].grid !== 'link') continue;
       const tint = TILE_TINTS[netColour(s, of.get(p.id)!)];
       for (let y = p.y - r; y <= p.y + r; y++) for (let x = p.x - r; x <= p.x + r; x++) {
         if (x >= 0 && y >= 0 && x < w && y < h && !owner.has(y * w + x)) owner.set(y * w + x, tint);

@@ -125,6 +125,8 @@ export interface BuildingDef {
   harvests?: true;
   /** Its part in the power grid: makes power, stores it, or links buildings to the network (those that only draw power set `power`). */
   grid?: 'source' | 'storage' | 'link';
+  /** Does no work to report on: left out of the run log and of building histories. */
+  inert?: true;
   /** Can stand on water (a little bridge). */
   onWater?: boolean;
   /** A line on what it does (the ones that quote numbers are getters, built from the tables below). */
@@ -150,9 +152,9 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   turbine: { name: 'Wind turbine', size: 1, cost: 120, category: 'power', grid: 'source', tall: true, get hint() { return `${POWER.turbine} W in full wind. Trees and tall buildings close by shelter it.`; } },
   battery: { name: 'Battery', size: 2, cost: 150, category: 'power', grid: 'storage', hint: 'Stores power for the night.' },
   digester: { name: 'Digester', size: 2, cost: 180, category: 'power', grid: 'source', get hint() { return `Burns ${anyOf('organic')} for a steady ${POWER.digester} W.`; } },
-  pylon: { name: 'Pylon', size: 1, cost: 10, category: 'power', grid: 'link', onWater: true, key: 'P', get hint() { return `Powers buildings within ${POWER.pylon.reach} tiles; links to pylons within ${POWER.pylon.link}.`; } },
-  sapling: { name: 'Sapling', size: 1, cost: 5, category: 'ecology', hint: 'Grows into a tree.' },
-  depot: { name: 'Freight depot', size: 3, cost: 0, category: null, stores: true, hint: 'Deliver goods here.' },
+  pylon: { name: 'Pylon', size: 1, cost: 10, category: 'power', inert: true, grid: 'link', onWater: true, key: 'P', get hint() { return `Powers buildings within ${POWER.pylon.reach} tiles; links to pylons within ${POWER.pylon.link}.`; } },
+  sapling: { name: 'Sapling', size: 1, cost: 5, category: 'ecology', inert: true, hint: 'Grows into a tree.' },
+  depot: { name: 'Freight depot', size: 3, cost: 0, category: null, inert: true, stores: true, hint: 'Deliver goods here.' },
 };
 
 // ---- Recipes ----
