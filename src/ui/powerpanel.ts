@@ -5,7 +5,7 @@ import { HOUR_SECONDS, nightsOf, powerDay } from '../game/powerlog.ts';
 import { dayAt, hourAt, sunAt } from '../game/sim/clock.ts';
 import { exposureOf, nearWater } from '../game/sim/layout.ts';
 import { shareOf, wants } from '../game/sim/energy.ts';
-import type { GameState } from '../game/state.ts';
+import type { BatteryBuilding, GameState, MachineBuilding } from '../game/state.ts';
 import { netColour } from '../world/powerView.ts';
 import { NET_COLOURS } from '../world/shapes.ts';
 import { fill, h, icon, svg } from './dom.ts';
@@ -108,7 +108,7 @@ export function powerSheet(host: PowerHost) {
     if (performance.now() - last < 1000) return;
     last = performance.now();
     const nets = networks(s).list, made = nets.reduce((n, x) => n + x.made, 0), used = nets.reduce((n, x) => n + usedBy(x), 0);
-    const bats = s.buildings.filter((b) => b.type === 'battery' && networks(s).of.has(b.id)), cap = bats.length * POWER.battery.capacity, stored = bats.reduce((n, b) => n + b.charge!, 0);
+    const bats = s.buildings.filter((b): b is BatteryBuilding => b.type === 'battery' && networks(s).of.has(b.id)), cap = bats.length * POWER.battery.capacity, stored = bats.reduce((n, b) => n + b.charge, 0);
     const day = powerDay(s), nights = nightsOf(s);
     // Where the watts go: each kind of building that draws power, over the day and now.
     const types = (Object.keys(BUILDINGS) as BuildingId[]).filter((t) => BUILDINGS[t].power && s.buildings.some((b) => b.type === t));
@@ -121,7 +121,7 @@ export function powerSheet(host: PowerHost) {
       return `${BUILDINGS[t].power} W while working`;
     };
     const lastNight = nights.length ? nights[nights.length - 1] : null;
-    const solar = s.buildings.filter((b) => b.type === 'solar').length, turbines = s.buildings.filter((b) => b.type === 'turbine'), digesters = s.buildings.filter((b) => b.type === 'digester');
+    const solar = s.buildings.filter((b) => b.type === 'solar').length, turbines = s.buildings.filter((b) => b.type === 'turbine'), digesters = s.buildings.filter((b): b is MachineBuilding => b.type === 'digester');
     const sheltered = turbines.filter((b) => exposureOf(s, b) < 1).length;
     const peak = day.hours.reduce<{ v: number; t: number } | null>((m, x) => (x && (!m || x.solar > m.v) ? { v: x.solar, t: x.from } : m), null);
     fill(el,

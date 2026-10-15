@@ -1,7 +1,7 @@
 import { POWER } from '../game/data.ts';
 import { networks, usedBy } from '../game/power.ts';
 import { dayAt, hourAt } from '../game/sim/clock.ts';
-import type { GameState, Status } from '../game/state.ts';
+import type { BatteryBuilding, GameState, Status } from '../game/state.ts';
 import { h, icon } from './dom.ts';
 import { clock, itemName, num, pct, playTime, watts } from './format.ts';
 import { commissionLabel } from './playhud.ts';
@@ -92,8 +92,8 @@ export function keysCard() {
 function standing(s: GameState) {
   const sc = s.scenario, nets = networks(s).list;
   const made = nets.reduce((n, x) => n + x.made, 0), used = nets.reduce((n, x) => n + usedBy(x), 0);
-  const bats = s.buildings.filter((b) => b.type === 'battery' && networks(s).of.has(b.id));
-  const stored = bats.reduce((n, b) => n + b.charge!, 0), cap = bats.length * POWER.battery.capacity;
+  const bats = s.buildings.filter((b): b is BatteryBuilding => b.type === 'battery' && networks(s).of.has(b.id));
+  const stored = bats.reduce((n, b) => n + b.charge, 0), cap = bats.length * POWER.battery.capacity;
   return h('div', { class: 'cd-card standing' },
     h('div', { class: 'row-head' }, h('span', { class: 'cd-label' }, commissionLabel(s)),
       h('span', { class: 'cd-small' }, sc.sandbox ? `${playTime(s.time)} played` : s.completedAt !== null ? `done in ${playTime(s.completedAt)}` : [h('b', { class: 'cd-num' }, playTime(s.time)), ` of ${playTime(sc.par)}`])),

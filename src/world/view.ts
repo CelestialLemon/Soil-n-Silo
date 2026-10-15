@@ -7,7 +7,7 @@ import { isOpen } from '../game/roads.ts';
 import { windAt } from '../game/sim/clock.ts';
 import { HANDOFF_SECONDS, recentHandoffs } from '../game/sim/goods.ts';
 import { cutOff } from '../game/sim/trucks.ts';
-import { buildingById, layoutOf, sizeOf, type Building, type Dir, type GameState, type Status, type Truck } from '../game/state.ts';
+import { buildingById, isMachine, layoutOf, sizeOf, type Building, type Dir, type FieldBuilding, type GameState, type Status, type Truck } from '../game/state.ts';
 import { hash } from './kit.ts';
 import type { Models } from './models.ts';
 import { soilBand, TRUCK_BED } from './shapes.ts';
@@ -109,7 +109,7 @@ export class WorldView {
       }
       if (b.type === 'battery') {
         // Its charge rings light from the bottom up, one per quarter (any charge at all lights the first).
-        const k = b.charge! / POWER.battery.capacity, level = k < 0.02 ? 0 : Math.min(4, Math.ceil(k * 4 - 0.02));
+        const k = b.charge / POWER.battery.capacity, level = k < 0.02 ? 0 : Math.min(4, Math.ceil(k * 4 - 0.02));
         key += ` ${level}`;
         geo = () => this.m.battery[level];
       }
@@ -120,18 +120,18 @@ export class WorldView {
     this.syncTrucks(s);
   }
 
-  private syncField(s: GameState, f: Building) {
+  private syncField(s: GameState, f: FieldBuilding) {
     const list = this.parts.get(f.id) ?? [];
-    const crop = CROPS[f.crop!];
+    const crop = CROPS[f.crop];
     // Every tile shows the field's stage; a harvest waiting shows ripe until a truck picks it up.
-    const stage = f.stored! >= crop.yield ? crop.stages - 1 : Math.min(crop.stages - 1, Math.floor(f.growth! * crop.stages));
+    const stage = f.stored >= crop.yield ? crop.stages - 1 : Math.min(crop.stages - 1, Math.floor(f.growth * crop.stages));
     let i = 0;
     for (let y = f.y; y < f.y + 3; y++) for (let x = f.x; x < f.x + 3; x++) {
       const band = soilBand(s.map.fertility[y * s.map.width + x]);
       list[i] = this.show(list[i], `soil ${x} ${y} ${band}`, () => this.m.soil[band], f.id, (o) => o.setTransform(v.set(x + 0.5, 0, y + 0.5)));
       i++;
       const turn = Math.floor(hash(x, y) * 4) * Math.PI / 2;
-      list[i] = this.show(list[i], `crop ${x} ${y} ${f.crop} ${stage}`, () => this.m.crops[f.crop!][stage], f.id,
+      list[i] = this.show(list[i], `crop ${x} ${y} ${f.crop} ${stage}`, () => this.m.crops[f.crop][stage], f.id,
         (o) => o.setTransform(v.set(x + 0.5, 0.03, y + 0.5), e.set(0, turn, 0)));
       i++;
     }
@@ -314,7 +314,7 @@ function edge(a0: number, na: number, b0: number, nb: number): { at: number; dir
 
 /** Is it doing its thing (to show its running look)? */
 function isRunning(b: Building) {
-  if (b.recipe) return b.progress !== null && b.progress !== undefined;
+  if (isMachine(b)) return b.progress !== null;
   return b.status === 'ok';
 }
 

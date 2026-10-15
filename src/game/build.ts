@@ -5,7 +5,7 @@ import { accessTiles, nearestOpen } from './roads.ts';
 import { givesGoods, takesGoods } from './sim/goods.ts';
 import { isStop, redirect, routeChanged } from './sim/trucks.ts';
 import {
-  addBuilding, buildingAt, inMap, makeBuilding, removeBuilding, terrainAt, tileIndex, touchLayout, type Building, type Dir, type GameState,
+  addBuilding, buildingAt, inMap, makeBuilding, removeBuilding, terrainAt, tileIndex, touchLayout, type Building, type BuildingOf, type Dir, type GameState, type MachineBuilding,
   type Route, type Stop, type Truck,
 } from './state.ts';
 
@@ -41,10 +41,10 @@ export function canPlace(s: GameState, type: BuildingId, x: number, y: number): 
   return ok(null);
 }
 
-export function place(s: GameState, type: BuildingId, x: number, y: number, rot: Dir): Action<{ building: Building }> {
+export function place<K extends BuildingId>(s: GameState, type: K, x: number, y: number, rot: Dir): Action<{ building: BuildingOf<K> }> {
   const check = canPlace(s, type, x, y);
   if (!check.ok) return check;
-  const b = makeBuilding(s, type, x, y, rot);
+  const b = makeBuilding(s, type, x, y, rot) as BuildingOf<K>;
   s.credits -= priceOf(s, type);
   addBuilding(s, b);
   return ok({ message: `Built a ${BUILDINGS[type].name.toLowerCase()}.`, building: b });
@@ -90,17 +90,17 @@ export function setCrop(s: GameState, b: Building, crop: CropId): Action {
   if (b.type !== 'field' || b.crop === crop) return no('');
   // Stops that pick up the old crop here pick up the new one too (the old harvest still waiting has to go).
   for (const r of s.routes) for (const st of r.stops) {
-    if (st.building === b.id && st.pick.includes(b.crop!) && !st.pick.includes(crop)) { st.pick.push(crop); st.drop = st.drop.filter((i) => i !== crop); }
+    if (st.building === b.id && st.pick.includes(b.crop) && !st.pick.includes(crop)) { st.pick.push(crop); st.drop = st.drop.filter((i) => i !== crop); }
   }
   b.crop = crop; b.growth = 0;
   return done(`The field now grows ${CROPS[crop].name.toLowerCase()}${b.stored ? ` (once its ${CROPS[b.harvest ?? crop].name.toLowerCase()} harvest has gone)` : ''}.`);
 }
 
-export function setRecipe(b: Building, id: string): Action {
+export function setRecipe(b: MachineBuilding, id: string): Action {
   if (b.recipe === id) return no('');
   const r = recipesFor(b.type).find((x) => x.id === id);
   if (!r) return no('');
-  if (b.progress !== null && b.progress !== undefined) return no('Wait for the batch in progress to finish.');
+  if (b.progress !== null) return no('Wait for the batch in progress to finish.');
   b.recipe = id;
   b.progress = null;
   return done(`Now making ${ITEMS[r.outputs[0].item].name.toLowerCase()}.`);

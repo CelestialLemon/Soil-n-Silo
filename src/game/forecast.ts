@@ -6,7 +6,7 @@ import { hourAt, sunAt, windAt } from './sim/clock.ts';
 import { linksAt } from './sim/goods.ts';
 import { makes, shareOf } from './sim/energy.ts';
 import { describeLinks } from './sim/describe.ts';
-import { inMap, type Building, type GameState } from './state.ts';
+import { inMap, type Building, type FieldBuilding, type GameState } from './state.ts';
 
 // Forecasts from what the game already knows: what a building in hand would do on a tile (facts about the tile, no advice),
 // and how tonight's battery charge will go if power is used as it is now (the weather is seeded, so the game knows it).
@@ -67,11 +67,11 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number):
       break;
     }
     case 'hive': {
-      const near = s.buildings.filter((b) => b.type === 'field' && hiveReaches(b, x, y));
-      const flowers = Math.min(HIVE.maxFlowers, near.filter((f) => CROPS[f.crop!].flowers).length);
+      const near = s.buildings.filter((b): b is FieldBuilding => b.type === 'field' && hiveReaches(b, x, y));
+      const flowers = Math.min(HIVE.maxFlowers, near.filter((f) => CROPS[f.crop].flowers).length);
       facts.push({ label: 'Honey', value: `+${fmt1(flowers * 60 / HIVE.honeySeconds)}`, sub: 'a minute', tone: flowers ? undefined : 'bad' });
       facts.push({ label: 'Flowers', value: `${flowers} field${flowers === 1 ? '' : 's'}`, sub: `flowering within ${HIVE.reach} tiles` });
-      facts.push({ label: 'Pollinates', value: `${near.filter((f) => CROPS[f.crop!].flowers).length}`, sub: 'flowering fields' });
+      facts.push({ label: 'Pollinates', value: `${near.filter((f) => CROPS[f.crop].flowers).length}`, sub: 'flowering fields' });
       break;
     }
     case 'solar': {
@@ -144,7 +144,7 @@ export function tonight(s: GameState): Tonight | null {
   const sunset = night ? null : nextHour(now, w.sunset);
   const sunrise = nextHour(sunset ?? now, w.sunrise), end = sunrise + HOUR_SECONDS;
   const nets = networks(s).list.map((net) => {
-    const bats = net.members.filter((b) => b.type === 'battery').map((b) => b.charge!);
+    const bats = net.members.filter((b) => b.type === 'battery').map((b) => b.charge);
     return { net, bats, solar: net.members.filter((b) => b.type === 'solar').length, turbines: net.members.filter((b) => b.type === 'turbine'),
       digesters: net.members.filter((b) => b.type === 'digester').reduce((n, b) => n + makes(s, b, 0, 0), 0) };
   });

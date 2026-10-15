@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { addStop, buyTruck, newRoute, place, setTruckRoute } from '../src/game/build.ts';
 import { chainBuildings, chainOf } from '../src/game/chain.ts';
-import { DAY_SECONDS, FIELD, ITEMS, POWER, type ItemId } from '../src/game/data.ts';
+import { DAY_SECONDS, FIELD, ITEMS, POWER, type BuildingId, type ItemId } from '../src/game/data.ts';
 import { FLEET_SECONDS, routeTiming, truckTime } from '../src/game/fleet.ts';
 import { creditsPerMin, flowRate, flowSeries, goodsHeld, soilTrend } from '../src/game/flows.ts';
 import { nextHour, placement, tonight } from '../src/game/forecast.ts';
@@ -14,7 +14,7 @@ import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
 import { hourAt } from '../src/game/sim/clock.ts';
 import { deliver } from '../src/game/sim/goods.ts';
 import { advance } from '../src/game/sim/step.ts';
-import { newGame, type Building, type GameState, type Route, type Truck } from '../src/game/state.ts';
+import { newGame, type Building, type BuildingOf, type GameState, type Route, type Truck } from '../src/game/state.ts';
 
 // The numbers the HUD shows beyond the rules themselves: goods flows, route timing, power over a day, the run log, the
 // placement and tonight forecasts, what a building waits for, and the guide's chains.
@@ -33,7 +33,7 @@ function flat(extra: Partial<Scenario> = {}): GameState {
 /** A save read back, or null if it's refused. */
 const load = (json: string) => { const r = deserialize(json); return r.ok ? r.value : null; };
 
-function put(s: GameState, type: Parameters<typeof place>[1], x: number, y: number): Building {
+function put<K extends BuildingId>(s: GameState, type: K, x: number, y: number): BuildingOf<K> {
   const r = place(s, type, x, y, 0);
   if (!r.ok) assert.fail(`${type} at ${x},${y}: ${r.error}`);
   return r.value.building;
@@ -84,7 +84,7 @@ test('goods flows: made, used and delivered a minute, over the window recorded',
 test('goods held count every store and truck; soil trend follows soil health', () => {
   const s = flat();
   const silo = put(s, 'silo', 4, 4);
-  silo.store!.wheat = 7;
+  silo.store.wheat = 7;
   const [t] = trucksAt(s, 10, 10);
   t.cargo = ['wheat', 'egg'];
   const f = put(s, 'field', 20, 4);
@@ -104,7 +104,7 @@ test('route timing: arrivals per stop, the loop, gaps between trucks, idle share
   const s = flat();
   const trucks = trucksAt(s, 2, 24, 2);
   const silo = put(s, 'silo', 8, 18);
-  silo.store!.wheat = 30;
+  silo.store.wheat = 30;
   const far = put(s, 'silo', 20, 6);
   const r = route(s, trucks, silo, far);
   r.stops[0].drop = []; r.stops[0].pick = ['wheat'];

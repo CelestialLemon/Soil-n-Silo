@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { place } from '../src/game/build.ts';
-import { BUILDINGS, CROPS, HIVE, POWER, recipeWords, TRUCK } from '../src/game/data.ts';
+import { BUILDINGS, CROPS, HIVE, POWER, recipeWords, TRUCK, type BuildingId } from '../src/game/data.ts';
 import { placement } from '../src/game/forecast.ts';
 import { TERRAIN, type TerrainKind } from '../src/game/map.ts';
 import { networkOf } from '../src/game/power.ts';
@@ -10,7 +10,7 @@ import { exposureOf, nearWater } from '../src/game/sim/layout.ts';
 import { fieldPace } from '../src/game/sim/buildings.ts';
 import { describeStatus } from '../src/game/sim/describe.ts';
 import { advance } from '../src/game/sim/step.ts';
-import { newGame, touchLayout, type Building, type GameState } from '../src/game/state.ts';
+import { newGame, touchLayout, type BuildingOf, type GameState } from '../src/game/state.ts';
 
 // The placement card and the simulation share their rules (rules.ts): what a building in hand is said to do is what it does
 // once placed. And the words that quote a number take it from data.ts.
@@ -26,7 +26,7 @@ function flat(): GameState {
   return s;
 }
 
-function put(s: GameState, type: Parameters<typeof place>[1], x: number, y: number): Building {
+function put<K extends BuildingId>(s: GameState, type: K, x: number, y: number): BuildingOf<K> {
   const r = place(s, type, x, y, 0);
   if (!r.ok) assert.fail(`${type} at ${x},${y}: ${r.error}`);
   return r.value.building;

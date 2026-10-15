@@ -1,7 +1,7 @@
 import { BUILDINGS, CROPS, HIVE, ITEMS, TRUCK, type ItemId } from '../data.ts';
 import { networkOf, networks } from '../power.ts';
 import { accessTiles, distanceTo, legLength } from '../roads.ts';
-import { buildingById, type Building, type GameState, type Route, type Truck } from '../state.ts';
+import { buildingById, isMachine, type Building, type GameState, type Route, type Truck } from '../state.ts';
 import { members, recipeOf, missing, outputsFit, wantsCompost, takesGoods, takesNow, givesNow, passes, neighboursOf, type Link } from './goods.ts';
 import { shareOf } from './energy.ts';
 import { tileOf, garageOf, routeOf, trucksOn } from './trucks.ts';
@@ -23,10 +23,9 @@ export function describeLinks(links: { from: Link[]; to: Link[] }): string[] {
 
 /** The good a building can't get rid of, if its outputs are full. */
 export function blockedGood(b: Building): ItemId | null {
-  if (b.type === 'field') return b.stored ? b.harvest ?? b.crop! : null;
+  if (b.type === 'field') return b.stored ? b.harvest ?? b.crop : null;
   if (b.type === 'hive') return 'honey';
-  const r = recipeOf(b);
-  return r ? outputsFit(b, r)?.item ?? null : null;
+  return isMachine(b) ? outputsFit(b, recipeOf(b))?.item ?? null : null;
 }
 
 /** Whether a building next door takes `item` from it (or gives it), or some route with trucks picks it up there (or drops it). */
@@ -119,7 +118,7 @@ export function describeStatus(s: GameState, b: Building): string {
   const def = BUILDINGS[b.type];
   switch (b.status) {
     case 'input': {
-      const r = recipeOf(b), lack = r ? missing(b, r) : null;
+      const lack = isMachine(b) ? missing(b, recipeOf(b)) : null;
       const brought = !lack || members(lack).some((i) => served(s, b, i, 'drop'));
       return `Waiting for ${b.need ?? 'goods'}${brought ? '' : ': no route or building next door brings it'}`;
     }
@@ -135,14 +134,14 @@ export function describeStatus(s: GameState, b: Building): string {
     case 'idle':
       if (b.type === 'solar') return 'Night: no sun';
       if (b.type === 'silo') {
-        const n = Object.values(b.store!).reduce((a, k) => a + k!, 0);
+        const n = Object.values(b.store).reduce((a, k) => a + k!, 0);
         return n ? `Holds ${n} goods` : 'Empty';
       }
       if (b.type === 'garage') { const n = s.trucks.filter((t) => t.garage === b.id).length; return n ? `${n} truck${n > 1 ? 's' : ''}, none charging` : 'No trucks yet: buy one'; }
       return 'Idle';
-    case 'dry': return `Growing ${CROPS[b.crop!].name.toLowerCase()} slowly: no water`;
+    case 'dry': return b.type === 'field' ? `Growing ${CROPS[b.crop].name.toLowerCase()} slowly: no water` : def.name;
     case 'ok':
-      if (b.type === 'field') return `Growing ${CROPS[b.crop!].name.toLowerCase()}`;
+      if (b.type === 'field') return `Growing ${CROPS[b.crop].name.toLowerCase()}`;
       if (b.type === 'garage') {
         const mine = s.trucks.filter((t) => t.garage === b.id), k = mine.filter((t) => t.phase === 'parked' || t.phase === 'charge').length;
         return `Charging ${k} of ${mine.length} truck${mine.length > 1 ? 's' : ''}`;
@@ -151,6 +150,6 @@ export function describeStatus(s: GameState, b: Building): string {
         const net = networks(s).of.get(b.id)!, k = net.pylons.length - 1, n = net.members.length;
         return `${k ? `Linked to ${k} other pylon${k > 1 ? 's' : ''}` : 'Linked to no other pylon'} · its network powers ${n} building${n === 1 ? '' : 's'}`;
       }
-      return b.recipe ? 'Working' : def.name;
+      return isMachine(b) ? 'Working' : def.name;
   }
 }

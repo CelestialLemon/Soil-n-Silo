@@ -17,7 +17,7 @@ import { makes, shareOf, wants } from '../game/sim/energy.ts';
 import { fieldPace, flowersNear } from '../game/sim/buildings.ts';
 import { isStop, routeOf, routesAt } from '../game/sim/trucks.ts';
 import { describeLinks, describeStatus, describeTruck, truckProblems } from '../game/sim/describe.ts';
-import { buildingById, routeById, truckById, type Building, type GameState, type Route, type Truck } from '../game/state.ts';
+import { buildingById, isMachine, routeById, truckById, type Building, type GameState, type Route, type Truck } from '../game/state.ts';
 import { netColour } from '../world/powerView.ts';
 import { NET_COLOURS } from '../world/shapes.ts';
 import { h, icon, rebuild, set, setVar } from './dom.ts';
@@ -90,8 +90,9 @@ export class Inspector {
     }
     // Made again when what it shows changes: the building's settings, the trucks and routes it lists.
     const routes = s.routes.map((r) => [r.id, r.name, r.stops.length]);
+    const setting = b?.type === 'field' ? b.crop : b && isMachine(b) ? b.recipe : null;
     const key = JSON.stringify(t ? ['truck', t.id, t.route, routes, this.tab]
-      : [b!.id, b!.type, b!.crop, b!.recipe, routes, this.tab, s.trucks.filter((x) => x.garage === b!.id).map((x) => [x.id, x.route]),
+      : [b!.id, b!.type, setting, routes, this.tab, s.trucks.filter((x) => x.garage === b!.id).map((x) => [x.id, x.route]),
         routesAt(s, b!).map((r) => r.stops.filter((st) => st.building === b!.id))]);
     if (key !== this.key) {
       this.key = key;
@@ -172,30 +173,30 @@ export class Inspector {
           class: b.crop === c ? 'is-on' : '', title: `${CROPS[c].grow} s · ${CROPS[c].yield} a harvest · soil ${CROPS[c].soil > 0 ? '+' : ''}${CROPS[c].soil}${CROPS[c].flowers ? ' · flowers' : ''}`,
           onclick: () => this.host.did(setCrop(s, b, c)),
         }, icon(c, 18), CROPS[c].name))));
-        stat('Growth', () => pct(b.growth!)); bar(() => b.growth!);
+        stat('Growth', () => pct(b.growth)); bar(() => b.growth);
         stat('Soil fertility', () => `${Math.round(fieldFertility(s, b))}`);
         stat('Growth pace', () => { const p = fieldPace(s, b); return `${pct(p.pace)} · water ${pct(p.water)}, soil ×${p.soil.toFixed(2)}`; });
-        stat('Harvest', () => `${CROPS[b.crop!].yield}${CROPS[b.crop!].flowers && isPollinated(s, b) ? ` + ${POLLINATION_BONUS} (bees)` : ''} every ${Math.round(CROPS[b.crop!].grow / Math.max(0.01, fieldPace(s, b).pace))} s`);
+        stat('Harvest', () => `${CROPS[b.crop].yield}${CROPS[b.crop].flowers && isPollinated(s, b) ? ` + ${POLLINATION_BONUS} (bees)` : ''} every ${Math.round(CROPS[b.crop].grow / Math.max(0.01, fieldPace(s, b).pace))} s`);
         stat('Waiting to go', () => `${b.stored} of ${FIELD.store}`);
         stat('Compost', () => `${wantsCompost(s, b) ? 'takes it now' : 'none needed'} · below soil ${FIELD.compostBelow}`);
         break;
       }
       case 'hive':
         stat('Flowering fields', () => `${flowersNear(s, b)} (up to ${HIVE.maxFlowers})`);
-        stat('Next honey', () => pct(b.growth!)); bar(() => b.growth!);
+        stat('Next honey', () => pct(b.growth)); bar(() => b.growth);
         stat('Honey waiting', () => `${b.stored} of ${HIVE.store}`);
         break;
       case 'silo': {
         const held = h('div', { class: 'chips' });
         lines.push(() => rebuild(held, JSON.stringify(b.store), () => {
-          const got = (Object.keys(b.store!) as ItemId[]).filter((i) => b.store![i]);
-          return got.length ? got.map((i) => h('span', { class: 'cd-chip' }, icon(i, 20), `${b.store![i]} / ${SILO.perGood} ${itemName(i)}`)) : [h('span', { class: 'cd-small' }, 'Empty.')];
+          const got = (Object.keys(b.store) as ItemId[]).filter((i) => b.store[i]);
+          return got.length ? got.map((i) => h('span', { class: 'cd-chip' }, icon(i, 20), `${b.store[i]} / ${SILO.perGood} ${itemName(i)}`)) : [h('span', { class: 'cd-small' }, 'Empty.')];
         }));
         out.push(h('div', { class: 'cd-label sub' }, 'Holds'), held);
         break;
       }
       case 'garage': out.push(...this.garageTrucks(s, b, lines)); break;
-      case 'battery': stat('Charge', () => `${pct(b.charge! / POWER.battery.capacity)} · ${Math.round(b.charge!)} of ${POWER.battery.capacity} J`); bar(() => b.charge! / POWER.battery.capacity); break;
+      case 'battery': stat('Charge', () => `${pct(b.charge / POWER.battery.capacity)} · ${Math.round(b.charge)} of ${POWER.battery.capacity} J`); bar(() => b.charge / POWER.battery.capacity); break;
       case 'solar': case 'turbine':
         stat('Making', () => watts(networkOf(s, b) ? makes(s, b, sunAt(s.scenario, s.time), windAt(s.scenario, s.time)) : 0));
         if (b.type === 'turbine') stat('Shelter', () => `${pct(exposureOf(s, b))} of the wind reaches it`);
@@ -211,8 +212,8 @@ export class Inspector {
         break;
       }
     }
-    const r = recipeOf(b);
-    if (r) {
+    if (isMachine(b)) {
+      const r = recipeOf(b);
       const rs = recipesFor(b.type);
       if (rs.length > 1) out.push(h('div', { class: 'cd-seg wide' }, ...rs.map((x) => h('button', { class: b.recipe === x.id ? 'is-on' : '', onclick: () => this.host.did(setRecipe(b, x.id)) }, icon(x.outputs[0].item, 18), itemNameCap(x.outputs[0].item)))));
       out.push(row('Recipe', `${r.inputs.map(ingWords).join(' + ')} → ${r.outputs.length ? r.outputs.map((o) => `${o.n} ${itemName(o.item)}`).join(' + ') : `${POWER.digester} W`} · ${r.time} s`));
@@ -343,8 +344,8 @@ const ingWords = (ing: Ingredient) => ('item' in ing ? `${ing.n} ${itemName(ing.
 
 /** A machine's recipe as a line of stores (pips for each batch), with the batch timer between; a field's crop and growth. */
 function recipeStores(b: Building, lines: (() => void)[]): HTMLElement | null {
+  if (!isMachine(b)) return null;
   const r = recipeOf(b);
-  if (!r) return null;
   const store = (ic: string, label: string, held: () => number, n: number, batches: number, input: boolean) => {
     const pips = h('span', { class: 'pips' }, ...Array.from({ length: batches }, () => h('i'))), num_ = h('span', { class: 'n' }), el = h('div', { class: 'store' }, h('span', { class: 'store-disc' }, icon(ic, 36)), pips, num_);
     lines.push(() => {
@@ -355,17 +356,17 @@ function recipeStores(b: Building, lines: (() => void)[]): HTMLElement | null {
     });
     return el;
   };
-  const held = (ing: Ingredient) => () => ('item' in ing ? b.inputs![ing.item] ?? 0 : GROUPS[ing.group].reduce((n, i) => n + (b.inputs![i] ?? 0), 0));
+  const held = (ing: Ingredient) => () => ('item' in ing ? b.inputs[ing.item] ?? 0 : GROUPS[ing.group].reduce((n, i) => n + (b.inputs[i] ?? 0), 0));
   const timer = h('span', { class: 'timer' }), left = h('div', { class: 'big cd-num' }), word = h('div', { class: 'cd-small' });
   timer.append(ring({ v: 0, d: 84, w: 7, col: 'var(--ochre)' }, h('div', null, left, word)));
   lines.push(() => {
     const p = b.progress;
-    setVar(timer.querySelector('.cd-ring') as HTMLElement, '--v', p === null || p === undefined ? '0' : (p / r.time).toFixed(3));
-    set(left, p === null || p === undefined ? '–' : `${dec(Math.max(0, r.time - p))} s`);
-    set(word, p === null || p === undefined ? 'idle' : 'left');
+    setVar(timer.querySelector('.cd-ring') as HTMLElement, '--v', p === null ? '0' : (p / r.time).toFixed(3));
+    set(left, p === null ? '–' : `${dec(Math.max(0, r.time - p))} s`);
+    set(word, p === null ? 'idle' : 'left');
   });
   const ins = r.inputs.map((ing) => store('item' in ing ? ing.item : GROUPS[ing.group][0], 'item' in ing ? itemName(ing.item) : ing.group, held(ing), ing.n, INPUT_BATCHES, true));
-  const outs = r.outputs.length ? r.outputs.map((o) => store(o.item, itemName(o.item), () => b.outputs![o.item] ?? 0, o.n, OUTPUT_BATCHES, false))
+  const outs = r.outputs.length ? r.outputs.map((o) => store(o.item, itemName(o.item), () => b.outputs[o.item] ?? 0, o.n, OUTPUT_BATCHES, false))
     : [h('div', { class: 'store' }, h('span', { class: 'store-disc' }, icon('bolt', 36)), h('span', { class: 'n' }, `${POWER.digester} W`))];
   const between = (op: string) => h('span', { class: 'op' }, op);
   return h('div', { class: 'cd-inset recipe-line' },

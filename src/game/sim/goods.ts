@@ -5,7 +5,7 @@ import {
 import { noteFlow } from '../flows.ts';
 import { noteMade, noteTaken } from '../history.ts';
 import { noteRunUse } from '../runlog.ts';
-import { type Building, type GameState } from '../state.ts';
+import { blankBuilding, isMachine, type Building, type GameState, type MachineBuilding } from '../state.ts';
 import { derived, besides } from './layout.ts';
 import { fieldFertility, changeSoil } from './soil.ts';
 
@@ -14,27 +14,30 @@ import { fieldFertility, changeSoil } from './soil.ts';
 // ---- Machines ----
 
 export const members = (ing: Ingredient): readonly ItemId[] => ('item' in ing ? [ing.item] : GROUPS[ing.group]);
-const held = (b: Building, ing: Ingredient) => members(ing).reduce((n, it) => n + (b.inputs![it] ?? 0), 0);
+const held = (b: MachineBuilding, ing: Ingredient) => members(ing).reduce((n, it) => n + (b.inputs[it] ?? 0), 0);
 export const ingName = (ing: Ingredient) => ('item' in ing ? ITEMS[ing.item].name.toLowerCase() : GROUP_NAMES[ing.group]);
 
-export const recipeOf = (b: Building): Recipe | null => (b.recipe ? recipeById(b.recipe) : null);
+/** The recipe a machine is set to (none for a building that isn't a machine). */
+export function recipeOf(b: MachineBuilding): Recipe;
+export function recipeOf(b: Building): Recipe | null;
+export function recipeOf(b: Building) { return isMachine(b) ? recipeById(b.recipe) : null; }
 
-export function missing(b: Building, r: Recipe) {
+export function missing(b: MachineBuilding, r: Recipe) {
   return r.inputs.find((ing) => held(b, ing) < ing.n) ?? null;
 }
 
-export function outputsFit(b: Building, r: Recipe) {
-  return r.outputs.find((o) => (b.outputs![o.item] ?? 0) + o.n > o.n * OUTPUT_BATCHES) ?? null;
+export function outputsFit(b: MachineBuilding, r: Recipe) {
+  return r.outputs.find((o) => (b.outputs[o.item] ?? 0) + o.n > o.n * OUTPUT_BATCHES) ?? null;
 }
 
-export function consume(s: GameState, b: Building, r: Recipe) {
+export function consume(s: GameState, b: MachineBuilding, r: Recipe) {
   for (const ing of r.inputs) {
     let need = ing.n;
     // Take from whichever member there's most of.
     while (need > 0) {
-      const it = [...members(ing)].sort((a, c) => (b.inputs![c] ?? 0) - (b.inputs![a] ?? 0))[0];
-      b.inputs![it] = (b.inputs![it] ?? 0) - 1;
-      if (!b.inputs![it]) delete b.inputs![it];
+      const it = [...members(ing)].sort((a, c) => (b.inputs[c] ?? 0) - (b.inputs[a] ?? 0))[0];
+      b.inputs[it] = (b.inputs[it] ?? 0) - 1;
+      if (!b.inputs[it]) delete b.inputs[it];
       used(s, it);
       need--;
     }
@@ -56,19 +59,19 @@ export const compostWanted = (s: GameState, f: Building) => Math.max(0, Math.cei
 export function accept(s: GameState, b: Building, item: ItemId): boolean {
   if (b.type === 'depot') { deliver(s, item); return true; }
   if (b.type === 'silo') {
-    if ((b.store![item] ?? 0) >= SILO.perGood) return false;
-    b.store![item] = (b.store![item] ?? 0) + 1; return true;
+    if ((b.store[item] ?? 0) >= SILO.perGood) return false;
+    b.store[item] = (b.store[item] ?? 0) + 1; return true;
   }
   if (b.type === 'field') {
     // A field holds no compost: it takes one only while its soil is poor, and spreads it at once.
     if (item !== 'compost' || !wantsCompost(s, b)) return false;
     changeSoil(s, b, FIELD.compostGain); used(s, 'compost'); return true;
   }
+  if (!isMachine(b)) return false;
   const r = recipeOf(b);
-  if (!r) return false;
   const ing = r.inputs.find((i) => members(i).includes(item));
   if (!ing || held(b, ing) >= ing.n * INPUT_BATCHES) return false;
-  b.inputs![item] = (b.inputs![item] ?? 0) + 1;
+  b.inputs[item] = (b.inputs[item] ?? 0) + 1;
   return true;
 }
 
@@ -93,15 +96,17 @@ export function made(s: GameState, b: Building, item: ItemId, n: number) {
 
 /** How many of `item` a building has waiting for a truck: a harvest, products, or a silo's stock. */
 export function waiting(b: Building, item: ItemId) {
-  if (b.type === 'field') return (b.harvest ?? b.crop) === item ? b.stored! : 0;
-  if (b.type === 'hive') return item === 'honey' ? b.stored! : 0;
-  if (b.type === 'silo') return b.store![item] ?? 0;
-  return b.outputs?.[item] ?? 0;
+  if (b.type === 'field') return (b.harvest ?? b.crop) === item ? b.stored : 0;
+  if (b.type === 'hive') return item === 'honey' ? b.stored : 0;
+  if (b.type === 'silo') return b.store[item] ?? 0;
+  return isMachine(b) ? b.outputs[item] ?? 0 : 0;
 }
 export function take(s: GameState, b: Building, item: ItemId) {
   noteTaken(s, b, item);
-  if (b.type === 'field' || b.type === 'hive') { b.stored!--; if (!b.stored) b.harvest = b.crop; return; }
-  const from = b.type === 'silo' ? b.store! : b.outputs!;
+  if (b.type === 'field') { b.stored--; if (!b.stored) b.harvest = b.crop; return; }
+  if (b.type === 'hive') { b.stored--; return; }
+  const from = b.type === 'silo' ? b.store : isMachine(b) ? b.outputs : null;
+  if (!from) return;
   from[item]! -= 1;
   if (!from[item]) delete from[item];
 }
@@ -109,16 +114,15 @@ export function take(s: GameState, b: Building, item: ItemId) {
 /** The goods a building can take now: its recipe's inputs (any member of a group), or compost for a field. */
 export function inputGoods(b: Building): ItemId[] {
   if (b.type === 'field') return ['compost'];
-  const r = recipeOf(b);
-  return r ? r.inputs.flatMap((i) => [...members(i)]) : [];
+  return isMachine(b) ? recipeOf(b).inputs.flatMap((i) => [...members(i)]) : [];
 }
 
 // ---- Next door: buildings sharing an edge trade goods without a truck ----
 
 /** Whether a building hands its goods straight to buildings next door: it grows or makes them. */
-const producer = (b: Building) => b.type === 'field' || b.type === 'hive' || !!b.recipe;
+const producer = (b: Building) => b.type === 'field' || b.type === 'hive' || isMachine(b);
 /** Whether it takes goods straight from buildings next door: a machine its inputs, a field compost. */
-const consumer = (b: Building) => b.type === 'field' || !!b.recipe;
+const consumer = (b: Building) => b.type === 'field' || isMachine(b);
 
 /** The goods `from` hands straight to `to`, a building next door, with the crop and recipe each has now. */
 export function passes(from: Building, to: Building): ItemId[] {
@@ -144,10 +148,7 @@ export function linksOf(s: GameState, b: Building, near: Building[] = neighbours
 
 /** What a building about to be placed at (x, y) would trade with the buildings next door (with its first recipe, a field wheat). */
 export function linksAt(s: GameState, type: BuildingId, x: number, y: number): { from: Link[]; to: Link[] } {
-  const r = recipesFor(type)[0];
-  const b: Building = { id: 0, type, x, y, rot: 0, status: 'idle' };
-  if (type === 'field') { b.crop = 'wheat'; b.stored = 0; }
-  if (r) { b.recipe = r.id; b.inputs = {}; b.outputs = {}; b.progress = null; }
+  const b = blankBuilding(0, type, x, y, 0);
   return linksOf(s, b, besides(s, b));
 }
 
@@ -199,13 +200,13 @@ export function takesGoods(b: Building): ItemId[] {
 }
 
 /** The goods a building takes or gives with the recipe it has now (any recipe's, for one without). */
-export const takesNow = (b: Building) => (b.recipe ? inputGoods(b) : takesGoods(b));
-export const givesNow = (b: Building) => (b.recipe ? [...new Set([...recipeOf(b)!.outputs.map((o) => o.item), ...(Object.keys(b.outputs!) as ItemId[])])] : givesGoods(b));
+export const takesNow = (b: Building) => (isMachine(b) ? inputGoods(b) : takesGoods(b));
+export const givesNow = (b: Building) => (isMachine(b) ? [...new Set([...recipeOf(b).outputs.map((o) => o.item), ...(Object.keys(b.outputs) as ItemId[])])] : givesGoods(b));
 
 /** Every good a building could ever give a truck: a field's crop (and a waiting harvest of another), products, stock. */
 export function givesGoods(b: Building): ItemId[] {
   if (b.type === 'silo') return [...ITEM_IDS];
-  if (b.type === 'field') return [...new Set([b.crop!, b.harvest ?? b.crop!])];
+  if (b.type === 'field') return [...new Set([b.crop, b.harvest ?? b.crop])];
   if (b.type === 'hive') return ['honey'];
   return [...new Set(recipesFor(b.type).flatMap((r) => r.outputs.map((o) => o.item)))];
 }
