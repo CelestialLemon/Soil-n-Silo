@@ -143,7 +143,7 @@ export class Inspector {
 
     const tabs: [InspectTab, string][] = [['workings', 'Workings']];
     if (hasHistory(b)) tabs.push(['history', 'History']);
-    if (isStop(b) && b.type !== 'silo' && b.type !== 'depot') tabs.push(['next', 'Next door']);
+    if (isStop(b) && !BUILDINGS[b.type].stores) tabs.push(['next', 'Next door']);
     if (!tabs.some(([k]) => k === this.tab)) this.tab = 'workings';
     const seg = tabs.length > 1 ? h('div', { class: 'cd-seg side-tabs' }, ...tabs.map(([k, name]) => h('button', { class: k === this.tab ? 'is-on' : '', onclick: () => { this.tab = k; this.refresh(); } }, name))) : null;
 
@@ -219,10 +219,10 @@ export class Inspector {
       out.push(row('Recipe', `${r.inputs.map(ingWords).join(' + ')} → ${r.outputs.length ? r.outputs.map((o) => `${o.n} ${itemName(o.item)}`).join(' + ') : `${POWER.digester} W`} · ${r.time} s`));
     }
     if (BUILDINGS[b.type].power) stat('Power', () => { const net = networkOf(s, b), w = wants(s, b); return !net ? 'not connected' : w ? `using ${watts(w)} · getting ${pct(shareOf(s, b))}` : 'none right now'; });
-    if (BUILDINGS[b.type].power || ['battery', 'solar', 'turbine', 'digester', 'pylon'].includes(b.type)) {
+    if (BUILDINGS[b.type].power || BUILDINGS[b.type].grid) {
       const dot = h('i', { class: 'dot' }), v = h('span');
       lines.push(() => {
-        const net = b.type === 'pylon' ? networks(s).of.get(b.id) ?? null : networkOf(s, b);
+        const net = BUILDINGS[b.type].grid === 'link' ? networks(s).of.get(b.id) ?? null : networkOf(s, b);
         dot.hidden = !net;
         if (net) dot.style.background = hex(NET_COLOURS[netColour(s, net)]);
         set(v, net ? `${watts(net.made)} made · ${watts(usedBy(net))} used · ${net.capacity ? pct(net.stored / net.capacity) : 'no batteries'}` : 'none: no pylon in reach');

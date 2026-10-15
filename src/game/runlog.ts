@@ -1,4 +1,4 @@
-import type { BuildingId, ItemId } from './data.ts';
+import { BUILDINGS, type BuildingId, type ItemId } from './data.ts';
 import { nightOf } from './powerlog.ts';
 import type { Scenario } from './scenarios.ts';
 import type { GameState } from './state.ts';
@@ -73,7 +73,7 @@ export function noteRun(s: GameState, dt: number, night: boolean, short: boolean
   const n = night ? nightEntry(s) : null;
   if (n && short) n.short += dt;
   for (const b of s.buildings) {
-    if (b.type === 'depot' || b.type === 'pylon' || b.type === 'sapling') continue;
+    if (BUILDINGS[b.type].inert) continue;
     run.time[b.type] = (run.time[b.type] ?? 0) + dt;
     if (FINE.has(b.status)) continue;
     const key = `${b.type}|${b.status}|${b.need ?? ''}`;
