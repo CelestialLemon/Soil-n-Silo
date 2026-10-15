@@ -6,6 +6,10 @@ import {
 import { FLEET_SECONDS } from '../game/fleet.ts';
 import { SOIL_AHEAD } from '../game/forecast.ts';
 import { RECENT_WINDOW } from '../game/flows.ts';
+import { paceOf } from '../game/rules.ts';
+import { isPollinated } from '../game/sim/layout.ts';
+import { fieldFertility } from '../game/sim/soil.ts';
+import { recipeOf } from '../game/sim/goods.ts';
 import { historyOf, summarize } from '../game/history.ts';
 import { dayAt } from '../game/sim/clock.ts';
 import type { GameState } from '../game/state.ts';
@@ -222,6 +226,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
     oninput: () => { query = search.value.trim().toLowerCase(); drawIndex(); },
     // Esc closes the guide from the search field too (the game's keys skip text fields; G types a G here).
     onkeydown: (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } } });
+  const results = h('div', { class: 'guide-results' });
   const have = new Set(s ? s.buildings.map((b) => b.type) : []);
 
   function drawIndex() {
@@ -247,8 +252,10 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
           h('div', { class: 'chips' }, ...worthReading(s).map((t) => h('button', { class: 'cd-chip', onclick: () => go({ kind: 'topic', id: t }) }, must(TOPICS.find((x) => x.id === t), 'topic').name)))) : null,
       ];
     }
-    fill(index, h('div', { class: 'cd-label' }, 'The guide'), search, topics, ...list);
+    fill(results, topics, ...list);
   }
+
+  fill(index, h('div', { class: 'cd-label' }, 'The guide'), search, results);
 
   function draw() {
     drawIndex();
@@ -313,19 +320,28 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
 
   /** Every building of this kind in the valley now, with its status and rate, and a way to go to it. */
   function valleyNow(id: BuildingId, s: GameState) {
-    const mine = s.buildings.filter((b) => b.type === id), item = chainItemOf(id);
-    const rates = mine.map((b) => { const hist = historyOf(s, b); return hist && item ? summarize(hist, s.time, RECENT_WINDOW).perMin[item] ?? 0 : 0; });
-    const r = recipesFor(id)[0], full = r && item ? mine.length * r.outputs[0].n * 60 / r.time : 0, total = rates.reduce((n, x) => n + x, 0);
+    const mine = s.buildings.filter((b) => b.type === id);
+    // Each building's own good and full-speed rate: a field's current crop, a machine's current recipe.
+    const goods = mine.map((b): { item: ItemId; full: number } | null => {
+      if (b.type === 'field') { const c = CROPS[b.crop]; return { item: b.crop, full: (c.yield + (c.flowers && isPollinated(s, b) ? POLLINATION_BONUS : 0)) * paceOf(1, fieldFertility(s, b)).pace * 60 / c.grow }; } // best case now: watered, pollinated if it is
+      const r = recipeOf(b), o = r?.outputs[0];
+      return r && o ? { item: o.item, full: o.n * 60 / r.time } : id === 'hive' ? { item: 'honey', full: 0 } : null;
+    });
+    const rates = mine.map((b, i) => { const hist = historyOf(s, b), g = goods[i]; return hist && g ? summarize(hist, s.time, RECENT_WINDOW).perMin[g.item] ?? 0 : 0; });
+    const item = goods.some((g) => g), full = goods.reduce((n, g) => n + (g?.full ?? 0), 0), total = rates.reduce((n, x) => n + x, 0);
+    const by = new Map<ItemId, number>();
+    goods.forEach((g, i) => { if (g) by.set(g.item, (by.get(g.item) ?? 0) + rates[i]); });
+    const together = [...by].map(([i, n]) => `${fmt(Math.round(n * 10) / 10)} ${lc(i)}`).join(', ');
     const name = (n: number) => (n === 1 ? BUILDINGS[id].name.toLowerCase() : `${BUILDINGS[id].name.toLowerCase()}${BUILDINGS[id].name.endsWith('s') ? 'es' : 's'}`);
     return h('div', { class: 'cd-card is-ink valley-now' },
       h('div', { class: 'row-head' }, h('span', { class: 'cd-label' }, 'In your valley now'), h('span', { class: 'cd-small' }, `${clockAt(s.time)} · day ${dayAt(s.time)}`)),
       mine.length ? h('div', { class: 'sum' },
         item ? ring({ v: full ? total / full : 0, d: 96, w: 8, col: 'var(--ochre)' }, h('div', null, h('div', { class: 'big' }, fmt(Math.round(total * 10) / 10)), full ? h('div', { class: 'cd-small' }, `of ${fmt(full)}`) : null)) : null,
-        h('div', null, h('div', { class: 'what' }, `${mine.length} ${name(mine.length)}${item ? ` · ${fmt(Math.round(total * 10) / 10)} ${lc(item)} a minute together` : ''}`),
+        h('div', null, h('div', { class: 'what' }, `${mine.length} ${name(mine.length)}${item ? ` · ${together} a minute together` : ''}`),
           full ? h('div', { class: 'cd-small' }, `at full speed they would make ${fmt(full)}`) : null)) : h('p', { class: 'cd-small' }, `No ${name(2)} yet.`),
       ...mine.slice(0, 6).map((b, i) => h('div', { class: 'vrow' },
         h('div', null, h('div', { class: 'vname' }, `${BUILDINGS[id].name} ${i + 1}`), statusPill(b.status, statusLabel(b, b.status, b.need))),
-        item ? h('span', null, h('span', { class: 'big' }, fmt(Math.round(rates[i] * 10) / 10)), h('span', { class: 'cd-small' }, ' / min')) : h('span'),
+        goods[i] ? h('span', null, h('span', { class: 'big' }, fmt(Math.round(rates[i] * 10) / 10)), h('span', { class: 'cd-small' }, ' / min')) : h('span'),
         host ? h('button', { class: 'cd-btn is-sm', onclick: () => { host.focus(b.id); close(); } }, 'Show ›') : null)),
       mine.length > 6 ? h('div', { class: 'cd-small' }, `and ${mine.length - 6} more`) : null);
   }
