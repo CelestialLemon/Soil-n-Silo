@@ -33,8 +33,15 @@ export class Dock {
 
   constructor(host: DockHost) { this.host = host; }
 
-  /** Shows the category of the building in hand. */
-  showCategoryOf(id: BuildingId) { const c = BUILDINGS[id].category; if (c && c !== this.category) { this.category = c; this.key = ''; } }
+  private synced: BuildingId | null = null;
+
+  /** Shows the category of the building in hand, once per pick (null: none in hand), so a tab click sticks until another is picked. */
+  showCategoryOf(id: BuildingId | null) {
+    if (id === this.synced) return;
+    this.synced = id;
+    const c = id && BUILDINGS[id].category;
+    if (c && c !== this.category) { this.category = c; this.key = ''; }
+  }
 
   /** Redraws when the category or tool changed; otherwise only which tiles you can afford. */
   update() {
@@ -50,13 +57,12 @@ export class Dock {
     const tabs = h('div', { class: 'cd-seg' }, ...CATEGORIES.map((c) => h('button', {
       class: c.id === this.category ? 'is-on' : '', onclick: () => { this.category = c.id; this.key = ''; },
     }, c.name)));
-    const rot = tool.kind === 'build' ? tool.rot : 1;
     const ids = (Object.keys(BUILDINGS) as BuildingId[]).filter((id) => BUILDINGS[id].category === this.category);
     const tiles = ids.map((id) => {
       const d = BUILDINGS[id], on = tool.kind === 'build' && tool.type === id;
       const b = h('button', {
         class: `cd-tile${on ? ' is-on' : ''}${s.credits < priceOf(s, id) ? ' is-poor' : ''}`, title: `${d.name}${d.key ? ` (${d.key})` : ''}`,
-        onclick: () => this.host.setTool(on ? { kind: 'select' } : { kind: 'build', type: id, rot }),
+        onclick: () => { const t = this.host.tool(); this.host.setTool(on ? { kind: 'select' } : { kind: 'build', type: id, rot: t.kind === 'build' ? t.rot : 1 }); },
         onpointerenter: () => this.host.tip(id), onpointerleave: () => this.host.tip(null),
       }, icon(id), h('span', { class: 'label' }, d.name), h('span', { class: 'cd-tile__cost' }, costLine(s, id)));
       this.tiles.set(id, b);

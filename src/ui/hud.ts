@@ -143,7 +143,7 @@ export class Hud {
     this.top.updateButtons();
     this.view.update();
     const tool = this.host.tool();
-    if (tool.kind === 'build') this.dock.showCategoryOf(tool.type);
+    this.dock.showCategoryOf(tool.kind === 'build' ? tool.type : null);
     this.dock.update();
     const routes = this.routesOpen || tool.kind === 'route';
     this.routes.update(routes);
