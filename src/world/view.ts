@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { PixelObject, PixelRenderer } from 'pixel3d-renderer';
-import { BUILDINGS, CROPS, HIVE, POWER, type BuildingId, type ItemId } from '../game/data.ts';
+import { CROPS, HIVE, POWER, type BuildingId, type ItemId } from '../game/data.ts';
 import { TERRAIN } from '../game/map.ts';
 import { networks } from '../game/power.ts';
 import { isOpen } from '../game/roads.ts';
@@ -321,4 +321,3 @@ const QUIET = new Set<BuildingId>(['depot', 'sapling']);
 /** Whether a building shows a marker: it has a problem (not working, not just idle). */
 const hasMarker = (b: Building) => !QUIET.has(b.type) && b.status !== 'ok' && b.status !== 'idle';
 
-export { BUILDINGS };

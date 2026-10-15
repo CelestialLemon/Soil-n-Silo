@@ -151,7 +151,7 @@ export class Inspector {
     const foot = b.type === 'depot' ? null : h('div', { class: 'side-foot' },
       h('button', { class: 'cd-btn is-danger is-sm', onclick: () => { this.host.did(remove(s, b)); this.host.select(null); } }, icon('trash', 16), `Remove${priceOf(s, b.type) ? ` · refund ${num(priceOf(s, b.type))}` : ''}`));
     return {
-      el: [head, recipeStores(s, b, lines), statusRow, status2, seg, h('div', { class: 'side-body' }, ...body), foot].filter((x): x is HTMLElement => !!x),
+      el: [head, recipeStores(b, lines), statusRow, status2, seg, h('div', { class: 'side-body' }, ...body), foot].filter((x): x is HTMLElement => !!x),
       update: () => { for (const l of lines) l(); },
     };
   }
@@ -337,7 +337,7 @@ const itemNameCap = (i: ItemId) => itemName(i).replace(/^./, (c) => c.toUpperCas
 const ingWords = (ing: Ingredient) => ('item' in ing ? `${ing.n} ${itemName(ing.item)}` : `${ing.n} ${GROUP_NAMES[ing.group].split(' (')[0]}`);
 
 /** A machine's recipe as a line of stores (pips for each batch), with the batch timer between; a field's crop and growth. */
-function recipeStores(s: GameState, b: Building, lines: (() => void)[]): HTMLElement | null {
+function recipeStores(b: Building, lines: (() => void)[]): HTMLElement | null {
   const r = recipeOf(b);
   if (!r) return null;
   const store = (ic: string, label: string, held: () => number, n: number, batches: number, input: boolean) => {

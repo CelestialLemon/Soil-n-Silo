@@ -68,7 +68,7 @@ def solar_tile(name, location, size, tilt=0):
     box(name+'_cell_separator',point(0,0,.11),(w-.13,.065,.025),'solar_light',rot=(tilt,0,0))
 
 
-def build_complete(name, footprint, states=False, budget=3000, airborne=False, overhang_above=None):
+def build_complete(name, footprint, states=False, budget=3000, overhang_above=None):
     """Check static and swept bounds, then use the existing export pipeline.
 
     overhang_above lets a move_spin_ part (a turbine's rotor) sweep past the footprint, as long as its whole swept disc
@@ -97,6 +97,5 @@ def build_complete(name, footprint, states=False, budget=3000, airborne=False, o
                 for i in [0,1]:
                     reach = abs(axial[i])+radial*math.sqrt(max(0,1-axis[i]**2))
                     assert reach <= footprint/2+1e-5, f'{obj.name} rotation outside footprint'
-                if not airborne:
-                    assert axial.z-radial*math.sqrt(max(0,1-axis.z**2)) >= -.001, 'Rotation below ground'
-    export_and_preview(name,budget,states=states,airborne=airborne)
+                assert axial.z-radial*math.sqrt(max(0,1-axis.z**2)) >= -.001, 'Rotation below ground'
+    export_and_preview(name,budget,states=states)

@@ -21,13 +21,12 @@ export const UI_SIZES = { min: 0.9, max: 1.3, step: 0.05 };
 const DEFAULTS: Settings = { uiSize: 1, pixelSize: 2, reduceMotion: false, showPace: false, problemsStrip: false };
 
 /** Settings from their saved JSON, each falling back to its default when missing or out of range. */
-export function readSettings(json: string | null, legacyPixel: string | null = null): Settings {
+export function readSettings(json: string | null): Settings {
   let o: Partial<Settings>;
   try { o = JSON.parse(json ?? '{}') ?? {}; } catch { o = {}; }
-  const pixel = o.pixelSize ?? (legacyPixel === null ? undefined : Number(legacyPixel));
   return {
     uiSize: typeof o.uiSize === 'number' && o.uiSize >= UI_SIZES.min - 1e-9 && o.uiSize <= UI_SIZES.max + 1e-9 ? o.uiSize : DEFAULTS.uiSize,
-    pixelSize: (PIXEL_SIZES as readonly number[]).includes(pixel as number) ? pixel as number : DEFAULTS.pixelSize,
+    pixelSize: (PIXEL_SIZES as readonly number[]).includes(o.pixelSize as number) ? o.pixelSize as number : DEFAULTS.pixelSize,
     reduceMotion: typeof o.reduceMotion === 'boolean' ? o.reduceMotion : DEFAULTS.reduceMotion,
     showPace: typeof o.showPace === 'boolean' ? o.showPace : DEFAULTS.showPace,
     problemsStrip: typeof o.problemsStrip === 'boolean' ? o.problemsStrip : DEFAULTS.problemsStrip,
@@ -40,9 +39,9 @@ export class SettingsStore {
   private readonly listeners: ((s: Settings) => void)[] = [];
   private readonly key: string;
 
-  constructor(key: string, legacyPixelKey?: string) {
+  constructor(key: string) {
     this.key = key;
-    this.value = readSettings(localStorage.getItem(key), legacyPixelKey ? localStorage.getItem(legacyPixelKey) : null);
+    this.value = readSettings(localStorage.getItem(key));
   }
 
   get(): Settings { return this.value; }

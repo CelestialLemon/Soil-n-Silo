@@ -14,20 +14,17 @@
 .cd-num { font-variant-numeric: tabular-nums; }
 .cd-small { font: var(--type-small); letter-spacing: var(--type-small-tracking); color: var(--ink-2); }
 .cd-soft { color: var(--ink-2); } .cd-faint { color: var(--ink-3); }
-.cd-good { color: var(--pine); } .cd-bad { color: var(--rust); } .cd-now { color: var(--ochre); } .cd-info { color: var(--tide); }
+.cd-good { color: var(--pine); } .cd-bad { color: var(--rust); }
 
 /* ---- Card: frosted chalk, big soft corners ---- */
 .cd-card { position: relative; padding: var(--s4); border-radius: var(--r-card); background: color-mix(in srgb, var(--chalk) 94%, transparent); backdrop-filter: blur(14px) saturate(1.1); box-shadow: var(--float); }
 .cd-card.is-ink { background: var(--ink); color: var(--chalk); }
 .cd-card.is-ink .cd-label { color: #9aa59d; } .cd-card.is-ink .cd-small { color: #b9c2bb; }
-.cd-card.is-tight { padding: 14px 16px; }
 .cd-inset { padding: var(--s3); border-radius: var(--r-tile); background: var(--chalk-2); }
-.cd-divider { height: 1px; margin: var(--s3) 0; border: 0; background: var(--chalk-3); }
 
 /* ---- Pill: small rounded readouts and chips ---- */
 .cd-pill { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px 0 8px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--chalk) 94%, transparent); backdrop-filter: blur(14px); box-shadow: var(--float); font-weight: 700; font-variant-numeric: tabular-nums; }
 .cd-pill small { font-weight: 600; font-size: 12px; color: var(--ink-3); }
-.cd-pill.is-flat { box-shadow: none; background: var(--chalk-2); backdrop-filter: none; }
 .cd-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px 0 6px; border-radius: var(--r-pill); background: var(--chalk-2); font: 700 13px/1 var(--font-ui); }
 
 /* ---- Ring: a goal or a share as a circle that fills ---- */
@@ -37,9 +34,6 @@
 .cd-ringbox { position: relative; display: inline-grid; place-items: center; }
 .cd-ringbox > .cd-ring { grid-area: 1 / 1; }
 .cd-ringbox > .cd-ring__in { grid-area: 1 / 1; display: grid; place-items: center; text-align: center; }
-.cd-ring__tick { position: absolute; left: 50%; top: 0; width: 2px; height: 50%; margin-left: -1px; transform-origin: 50% 100%; transform: rotate(calc(var(--at) * 1turn)); }
-.cd-ring__tick::before { content: ""; position: absolute; left: -2px; top: -3px; width: 6px; height: 14px; border-radius: 3px; background: var(--medal-gold); box-shadow: 0 0 0 2px var(--chalk); }
-.cd-ring__tick.is-silver::before { background: var(--medal-silver); }
 .cd-ring.is-done { --col: var(--pine); }
 
 /* ---- Buttons ---- */
@@ -68,9 +62,6 @@
 .cd-tile.is-on .cd-tile__cost { color: #b9c2bb; }
 .cd-tile.is-poor { color: var(--ink-3); } .cd-tile.is-poor .cd-i { opacity: 0.4; filter: grayscale(1); } .cd-tile.is-poor .cd-tile__cost { color: var(--rust); }
 .cd-tile__cost { font: 600 12px/1 var(--font-ui); color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.cd-tile__key { position: absolute; top: 6px; left: 6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 6px; display: grid; place-items: center; font: 800 11px/1 var(--font-ui); color: var(--ink-2); background: var(--chalk-2); }
-.cd-tile.is-on .cd-tile__key { background: #36423b; color: var(--chalk); }
-.cd-tile__dot { position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; border-radius: 99px; background: var(--ochre); }
 
 /* ---- Rows ---- */
 .cd-row { display: flex; align-items: baseline; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--chalk-3); }
@@ -97,8 +88,6 @@
 .cd-callout small { font: 600 12px/1 var(--font-ui); color: var(--ink-3); }
 .cd-callout::after { content: ""; position: absolute; left: var(--tail, 50%); top: 100%; width: 2px; height: var(--lead, 26px); margin-left: -1px; background: var(--chalk); box-shadow: 0 2px 4px rgba(20, 30, 25, 0.25); }
 .cd-callout::before { content: ""; position: absolute; left: var(--tail, 50%); top: calc(100% + var(--lead, 26px) - 4px); width: 8px; height: 8px; margin-left: -4px; border-radius: 99px; background: var(--chalk); box-shadow: 0 0 0 2px var(--col); }
-.cd-callout.is-alert { --col: var(--rust); color: var(--chalk); background: var(--rust); } .cd-callout.is-alert small { color: #f1d3ca; }
-.cd-callout.is-alert::after { background: var(--rust); } .cd-callout.is-alert::before { background: var(--rust); box-shadow: 0 0 0 2px var(--chalk); }
 .cd-callout.is-ink { color: var(--chalk); background: var(--ink); } .cd-callout.is-ink::after { background: var(--ink); } .cd-callout.is-ink::before { background: var(--ink); box-shadow: 0 0 0 2px var(--chalk); }
 
 /* ---- Bar: a soft progress bar ---- */
@@ -159,15 +148,6 @@
 .cd-receipt__row b { font-weight: 700; text-align: right; min-width: 64px; }
 .cd-receipt__total { display: flex; justify-content: space-between; padding-top: 10px; font: 700 16px/1 var(--font-ui); }
 
-/* ---- Forecast: sun and wind as simple bars by hour ---- */
-.cd-forecast { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; align-items: end; }
-.cd-forecast__h { display: grid; gap: 4px; justify-items: center; font: 600 11px/1 var(--font-ui); color: var(--ink-3); }
-.cd-forecast__bars { display: flex; gap: 3px; align-items: flex-end; height: 56px; }
-.cd-forecast__bars i { display: block; width: 9px; border-radius: 3px 3px 1px 1px; }
-.cd-forecast__bars .sun { background: var(--ochre); } .cd-forecast__bars .wind { background: var(--tide); }
-.cd-forecast__h.is-night .cd-forecast__bars { background: linear-gradient(transparent, color-mix(in srgb, #2e3d52 18%, transparent)); border-radius: 4px; }
-.cd-forecast__h.is-now { color: var(--ink); }
-
 /* ---- Toast: a short message at the bottom of the screen ---- */
 .cd-toast { --col: var(--ink); display: inline-flex; align-items: center; gap: 10px; height: 44px; padding: 0 18px 0 8px; border-radius: 99px; background: var(--ink); color: var(--chalk); box-shadow: var(--float); font: 600 14px/1 var(--font-ui); }
 .cd-toast .cd-i { --s: 28px; }
@@ -203,5 +183,5 @@
 .cd-pstrip__it.is-nopower { --col: var(--status-nopower); } .cd-pstrip__it.is-nopower i { border-radius: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
 .cd-pstrip__it.is-dry { --col: var(--status-dry); } .cd-pstrip__it.is-dry i { border-radius: 50% 0 50% 50%; transform: rotate(-45deg); }
 .cd-pstrip__it.is-unreachable { --col: var(--status-unreachable); } .cd-pstrip__it.is-unreachable i { background: transparent; box-shadow: inset 0 0 0 2.5px var(--col); }
-.cd-pstrip__it:hover, .cd-pstrip__it.is-hover { box-shadow: 0 0 0 2px var(--ink); }
+.cd-pstrip__it:hover { box-shadow: 0 0 0 2px var(--ink); }
 .cd-pstrip__pop { position: absolute; right: 52px; width: 300px; padding: 12px 14px; border-radius: 16px; background: var(--chalk); box-shadow: var(--float); font-size: 14px; }
