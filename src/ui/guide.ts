@@ -378,10 +378,11 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
       l.time ? h('b', null, l.time) : null, l.label ?? ''));
     return h('div', null,
       h('div', { class: 'row-head sec' }, h('span', { class: 'cd-label' }, `Where ${lc(item)} comes from`), h('span', { class: 'cd-small cd-faint' }, 'times in general, at full speed')),
-      h('div', { class: 'chain', style: `width: ${W}px; height: ${H + 20}px` },
+      // A long chain on a narrow page scrolls sideways rather than spilling over the side column.
+      h('div', { class: 'chain-scroll' }, h('div', { class: 'chain', style: `width: ${W}px; height: ${H + 20}px` },
         svg('svg', { width: W, height: H + 20, viewBox: `0 0 ${W} ${H + 20}` }, ...lines), ...labels,
         ...nodes.map((n) => h('button', { class: `node is-${n.kind}${n.key ? ' is-key' : ''}`, style: `left: ${px(n)}px; top: ${py(n) - 26}px`, onclick: () => n.go && go(n.go) },
-          h('span', { class: 'disc' }, icon(n.icon, n.key ? 46 : 36)), n.label))),
+          h('span', { class: 'disc' }, icon(n.icon, n.key ? 46 : 36)), n.label)))),
       h('div', { class: 'cd-small chain-key' }, h('span', null, h('i', { class: 'solid' }), 'inside a building'),
         h('span', null, h('i', { class: 'dashed' }), 'next door: straight across a shared edge · or by truck: depends on your routes'), h('span', null, 'Then by truck to the depot.')));
   }
