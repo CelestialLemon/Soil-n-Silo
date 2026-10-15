@@ -471,15 +471,16 @@ button { font: inherit; }
 .results .buttons .cd-btn.is-primary { background: var(--ink); color: var(--chalk); box-shadow: var(--float), 0 0 0 2px rgba(243, 241, 234, 0.65); }
 
 /* ---- The guide ---- */
-.guide { position: absolute; inset: 56px 80px; padding: 0 !important; border-radius: 30px; display: grid; grid-template-columns: 600px 1fr; overflow: hidden; }
-.guide-index { padding: 44px 40px; background: color-mix(in srgb, var(--chalk-2) 55%, var(--chalk)); overflow: auto; }
+/* The index and the side column take a share of the width, capped, so the page between them keeps room on smaller screens. */
+.guide { position: absolute; inset: 56px 80px; padding: 0 !important; border-radius: 30px; display: grid; grid-template-columns: clamp(340px, 27%, 480px) minmax(0, 1fr); overflow: hidden; }
+.guide-index { padding: 44px 36px; background: color-mix(in srgb, var(--chalk-2) 55%, var(--chalk)); overflow: auto; }
 .guide-index .cd-input { margin-top: 18px; height: 46px; padding: 0 18px; }
 .guide-index .topics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
 .guide-index .topic { appearance: none; border: 0; display: inline-flex; align-items: center; height: 34px; padding: 0 14px; border-radius: 99px; font: 700 13px/1 var(--font-ui); color: var(--ink-2); background: transparent; box-shadow: inset 0 0 0 1.5px var(--chalk-3); cursor: pointer; }
 .guide-index .topic.is-on { background: var(--ink); color: var(--chalk); box-shadow: none; }
 .guide-index .cat { margin-top: 18px; }
 .guide-index .cat .cd-label { margin-bottom: 10px; }
-.gtiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.gtiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; }
 .gtile { appearance: none; border: 0; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 8px 4px 9px; border-radius: 14px; background: var(--chalk-2); font: 700 11px/1.1 var(--font-ui); text-align: center; color: var(--ink); cursor: pointer; }
 .gtile.is-here { box-shadow: inset 0 0 0 1.5px var(--pine); }
 .gtile.is-on { background: var(--ink); color: var(--chalk); }
@@ -491,9 +492,11 @@ button { font: inherit; }
 .guide-index .hits { display: grid; gap: 4px; margin-top: 18px; }
 .guide-index .hit { appearance: none; border: 0; display: grid; grid-template-columns: 34px 120px 1fr; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 14px; background: transparent; text-align: left; cursor: pointer; font: 500 14px/1.3 var(--font-ui); color: var(--ink); }
 .guide-index .hit:hover { background: var(--chalk); }
-.guide-page { position: relative; padding: 44px 56px 40px 60px; overflow: auto; }
+.guide-page { position: relative; padding: 44px 48px 40px; overflow: auto; container-type: inline-size; }
 .guide-page > .close { position: absolute; right: 36px; top: 36px; }
-.guide-page .spread { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 40px; margin-top: 18px; }
+.guide-page .spread { display: grid; grid-template-columns: minmax(0, 1fr) clamp(300px, 28%, 360px); gap: 36px; margin-top: 18px; }
+/* Too narrow for two columns (the page would drop under ~600px and its five figures would collide): the side goes under it. */
+@container (max-width: 940px) { .guide-page .spread { grid-template-columns: minmax(0, 1fr); } }
 .guide-page .title-row { display: flex; align-items: center; gap: 30px; }
 .guide-page .big-icon { display: grid; place-items: center; width: 150px; height: 150px; border-radius: 36px; background: var(--chalk-2); flex: none; }
 .guide-page .cd-display { font-size: 66px; letter-spacing: -0.035em; }
@@ -512,10 +515,11 @@ button { font: inherit; }
 .rec-time { display: flex; align-items: center; gap: 8px; color: var(--ink-3); font: 700 12px/1 var(--font-ui); }
 .rec-time::before, .rec-time::after { content: ""; width: 26px; height: 2px; border-radius: 2px; background: var(--chalk-3); }
 .guide-page .nums { display: grid; grid-template-columns: repeat(5, 1fr); margin-top: 28px; border-top: 1px solid var(--chalk-3); border-bottom: 1px solid var(--chalk-3); }
-.guide-page .nums > div { padding: 16px 18px; border-left: 1px solid var(--chalk-3); }
+.guide-page .nums > div { min-width: 0; padding: 16px 14px; border-left: 1px solid var(--chalk-3); }
 .guide-page .nums > div:first-child { border-left: 0; padding-left: 0; }
-.guide-page .nums .cd-figure { font-size: 30px; margin-top: 8px; }
-.chain { position: relative; margin-top: 14px; max-width: 100%; }
+.guide-page .nums .cd-figure { font-size: 30px; margin-top: 8px; white-space: nowrap; }
+.chain-scroll { overflow-x: auto; }
+.chain { position: relative; margin-top: 14px; }
 .chain svg { position: absolute; inset: 0; }
 .chain path { fill: none; stroke-width: 2.5; stroke-linecap: round; }
 .chain path.inside { stroke: var(--ink-3); }
