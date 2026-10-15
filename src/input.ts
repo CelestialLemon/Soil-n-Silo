@@ -61,7 +61,7 @@ export class Input {
           const paints = press.button === 0 && !e.shiftKey && host.paints() && press.from;
           press.mode = paints ? 'paint' : 'pan';
           if (press.mode === 'pan') { canvas.style.cursor = 'grabbing'; host.pan(e.clientX - press.x, e.clientY - press.y); }
-        } else if (press.mode === 'pan') host.pan(e.clientX - this.pointer!.x, e.clientY - this.pointer!.y);
+        } else if (press.mode === 'pan' && this.pointer) host.pan(e.clientX - this.pointer.x, e.clientY - this.pointer.y);
         if (press.mode === 'paint') press.to = host.tileAt(e.clientX, e.clientY) ?? press.to;
       }
       if (e.isPrimary) { this.pointer = { x: e.clientX, y: e.clientY }; host.repick(); this.movedAt = performance.now(); }

@@ -4,6 +4,7 @@ import { BUILDINGS, POWER } from '../game/data.ts';
 import { feederOf, networkOf, networks, POWERED, pylonsInLink, wiresOf, type Network } from '../game/power.ts';
 import { pylonReaches, pylonsLink } from '../game/rules.ts';
 import { buildingById, layoutOf, sizeOf, type Building, type GameState } from '../game/state.ts';
+import { must } from '../game/result.ts';
 import type { Models } from './models.ts';
 import { NET_COLOURS } from './shapes.ts';
 
@@ -91,7 +92,7 @@ export class PowerView {
     const of = networks(s).of;
     for (const p of s.buildings) {
       if (BUILDINGS[p.type].grid !== 'link') continue;
-      const tint = TILE_TINTS[netColour(s, of.get(p.id)!)];
+      const tint = TILE_TINTS[netColour(s, must(of.get(p.id), 'network'))];
       for (let y = p.y - r; y <= p.y + r; y++) for (let x = p.x - r; x <= p.x + r; x++) {
         if (x >= 0 && y >= 0 && x < w && y < h && !owner.has(y * w + x)) owner.set(y * w + x, tint);
       }

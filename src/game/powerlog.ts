@@ -129,7 +129,7 @@ export function powerDay(s: GameState): PowerDay {
   const avg = { ...total, made: 0 };
   if (seconds > 0) {
     for (const k of SUM_KEYS) avg[k] = total[k] / seconds;
-    for (const k of Object.keys(use) as BuildingId[]) use[k] = use[k]! / seconds;
+    for (const k of Object.keys(use) as BuildingId[]) use[k] = (use[k] ?? 0) / seconds;
   }
   avg.made = avg.solar + avg.wind + avg.digester;
   return { hours, seconds, avg, use };

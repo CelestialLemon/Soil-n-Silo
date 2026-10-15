@@ -1,5 +1,6 @@
 import { chainOf, type Step } from '../game/chain.ts';
 import { BUILDINGS, ITEMS, START_HOUR, type ItemId } from '../game/data.ts';
+import { must } from '../game/result.ts';
 import { HOUR_SECONDS } from '../game/powerlog.ts';
 import { goalGood, runWaits, type Mark } from '../game/runlog.ts';
 import { CAMPAIGN, SILVER_PAR } from '../game/scenarios.ts';
@@ -16,8 +17,8 @@ import { gauge, MEDAL_NAME } from './widgets.ts';
 // the level select.
 
 export interface ResultsHost {
-  keepPlaying(): void;
-  menu(): void;
+  keepPlaying: () => void;
+  menu: () => void;
   start(id: string): void;
 }
 
@@ -34,13 +35,13 @@ function chainItems(item: ItemId): Set<ItemId> {
 /** A milestone's words and icon. */
 function markLabel(s: GameState, m: Mark): { text: string; icon: string; bad?: boolean; gold?: boolean } {
   switch (m.kind) {
-    case 'first': return { text: `First ${itemName(m.item!)}`, icon: m.item! };
+    case 'first': { const item = must(m.item, 'mark item'); return { text: `First ${itemName(item)}`, icon: item }; };
     case 'night': return { text: 'First night short', icon: 'moon', bad: true };
     case 'truck': return { text: m.n === 2 ? 'Second truck' : 'First truck', icon: 'truck' };
-    case 'second': return { text: `Second ${lcBuilding(m.type!)}`, icon: m.type! };
-    case 'loop': return { text: `${cap(itemName(m.item!))} loop closed`, icon: m.item! };
+    case 'second': { const type = must(m.type, 'mark building'); return { text: `Second ${lcBuilding(type)}`, icon: type }; };
+    case 'loop': { const item = must(m.item, 'mark item'); return { text: `${cap(itemName(item))} loop closed`, icon: item }; };
     case 'goal': {
-      const g = s.scenario.goals[m.goal!];
+      const g = s.scenario.goals[must(m.goal, 'mark goal')];
       return g.kind === 'deliver' ? { text: `${g.n} ${itemName(g.item)}`, icon: g.item, gold: true }
         : g.kind === 'rate' ? { text: `${g.perMin} ${itemName(g.item)} a minute`, icon: g.item, gold: true } : { text: `Soil ${g.min}+`, icon: 'soil', gold: true };
     }
@@ -89,9 +90,9 @@ function runChart(s: GameState, end: number) {
   const rank = (m: Mark) => ({ goal: 0, night: 1, loop: 2, second: 3, truck: 4, first: 5 })[m.kind];
   // Taken in order of how telling they are, each kept only where it has room beside those kept already.
   const kept: Mark[] = [];
-  for (const m of run.marks.filter((m) => m.t <= end + 1 && (m.kind !== 'first' || chain.has(m.item!)) && (m.kind !== 'truck' || m.n === 2)
+  for (const m of run.marks.filter((m) => m.t <= end + 1 && (m.kind !== 'first' || (m.item !== undefined && chain.has(m.item))) && (m.kind !== 'truck' || m.n === 2)
     // A soil goal is judged at the end: being met early is no milestone.
-    && (m.kind !== 'goal' || s.scenario.goals[m.goal!]?.kind !== 'soil'))
+    && (m.kind !== 'goal' || m.goal === undefined || s.scenario.goals[m.goal]?.kind !== 'soil'))
     .sort((a, b) => rank(a) - rank(b) || a.t - b.t)) {
     if (kept.length < 8 && kept.every((k) => Math.abs(x(k.t) - x(m.t)) >= 70)) kept.push(m);
   }
@@ -148,7 +149,7 @@ export function resultsScreen(s: GameState, medalWon: Medal, host: ResultsHost) 
   const sc = s.scenario, end = s.completedAt ?? s.time, par = sc.par, i = CAMPAIGN.findIndex((c) => c.id === sc.id);
   const next = i >= 0 ? CAMPAIGN[i + 1] ?? null : null;
   const lead = medalWon === 'gold' ? `${playTime(par - end)} inside gold` : medalWon === 'silver' ? `gold needs ${playTime(par)}: ${playTime(end - par)} faster` : `silver needs ${playTime(par * SILVER_PAR)}: ${playTime(end - par * SILVER_PAR)} faster`;
-  const delivered = (Object.keys(s.delivered) as ItemId[]).filter((k) => s.delivered[k]).sort((a, b) => s.delivered[b]! * ITEMS[b].price - s.delivered[a]! * ITEMS[a].price);
+  const delivered = (Object.keys(s.delivered) as ItemId[]).filter((k) => s.delivered[k]).sort((a, b) => (s.delivered[b] ?? 0) * ITEMS[b].price - (s.delivered[a] ?? 0) * ITEMS[a].price);
   const item = goalGood(sc), goal = sc.goals.find((g) => g.kind === 'deliver');
   const trees = countTrees(s) - s.initialTrees, saplings = s.buildings.filter((b) => b.type === 'sapling').length, soil = soilHealth(s), soilGoal = sc.goals.find((g) => g.kind === 'soil');
   // Left better: no fewer trees, the valley's soil in all at least what it started at (wherever fields stood, now or before),
@@ -171,7 +172,7 @@ export function resultsScreen(s: GameState, medalWon: Medal, host: ResultsHost) 
       h('div', { class: 'row-head' }, h('span', { class: 'cd-label' }, 'Freight depot · receipt'), icon('depot', 30)),
       h('div', { class: 'cd-small' }, `${sc.name} · 0:00 to ${playTime(end)}`),
       h('div', { class: 'rows' }, ...delivered.slice(0, 8).map((k) => h('div', { class: 'cd-receipt__row' }, icon(k), h('span', null, ITEMS[k].name),
-        h('span', { class: 'cd-small' }, `${num(s.delivered[k]!)} × ${ITEMS[k].price}`), h('b', null, num(s.delivered[k]! * ITEMS[k].price))))),
+        h('span', { class: 'cd-small' }, `${num(s.delivered[k] ?? 0)} × ${ITEMS[k].price}`), h('b', null, num((s.delivered[k] ?? 0) * ITEMS[k].price))))),
       delivered.length > 8 ? h('div', { class: 'cd-small' }, `and ${delivered.length - 8} more goods`) : null,
       h('div', { class: 'cd-receipt__total' }, h('span', null, 'Earned'), h('span', null, `${num(s.earned)} credits`))),
     h('div', { class: 'cd-card run' },

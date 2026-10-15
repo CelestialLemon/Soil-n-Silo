@@ -116,8 +116,8 @@ test('route timing: arrivals per stop, the loop, gaps between trucks, idle share
   assert.ok(tm.window > 190 && tm.window <= FLEET_SECONDS);
   assert.ok(tm.stops[0].arrivals >= 3 && tm.stops[1].arrivals >= 3, JSON.stringify(tm.stops));
   assert.ok(tm.loop !== null && tm.loop > 0);
-  assert.ok(tm.driving !== null && tm.driving < tm.loop!, 'a round takes longer than the driving alone');
-  assert.ok(tm.stops[0].gap !== null && tm.stops[0].gap < tm.loop!, 'two trucks: the gap is shorter than a round');
+  assert.ok(tm.driving !== null && tm.driving < tm.loop, 'a round takes longer than the driving alone');
+  assert.ok(tm.stops[0].gap !== null && tm.stops[0].gap < tm.loop, 'two trucks: the gap is shorter than a round');
   assert.ok(tm.slowest);
   const time = truckTime(s, trucks[0], r.id);
   assert.ok(time.total > 100 && time.idle !== null && time.idle >= 0 && time.idle < 1);
@@ -148,7 +148,7 @@ test('power over a day: sources by hour, the digester among them, use by buildin
   assert.ok(day.avg.solar > 0 && day.avg.digester > 0, JSON.stringify(day.avg));
   assert.ok(Math.abs(day.avg.made - (day.avg.solar + day.avg.wind + day.avg.digester)) < 1e-9);
   assert.ok((day.use.mill ?? 0) > 0);
-  assert.ok(day.hours.some((h) => h!.night) && day.hours.some((h) => !h!.night));
+  assert.ok(day.hours.some((h) => h.night) && day.hours.some((h) => !h.night));
   const nights = nightsOf(s);
   assert.ok(nights.length >= 1);
   assert.ok(nights[0].lowest !== null);
@@ -171,7 +171,7 @@ test('tonight: a battery feeding a steady load runs dry when its charge is spent
   assert.equal(t.sunset, null, 'it is night');
   assert.ok(t.dryAt !== null);
   const expect = s.time + POWER.battery.capacity / 2 / 20;
-  assert.ok(Math.abs(t.dryAt! - expect) <= HOUR_SECONDS / 6 + 1e-6, `dry at ${t.dryAt}, expected ${expect}`);
+  assert.ok(Math.abs(t.dryAt - expect) <= HOUR_SECONDS / 6 + 1e-6, `dry at ${t.dryAt}, expected ${expect}`);
   assert.ok(Math.abs(t.shortAfter - 20) < 1e-6, `short ${t.shortAfter}`);
   assert.ok(Math.abs(hourAt(t.sunrise) - 6) < 1e-6);
   const none = flat();
@@ -227,7 +227,7 @@ test('the run log: milestones, the goal good\'s curve, waits; it saves', () => {
   advance(s, 1.5);
   assert.ok(s.run.marks.some((m) => m.kind === 'goal' && m.goal === 0));
   assert.ok(s.completedAt !== null);
-  assert.equal(s.run.curve.length, Math.floor(s.completedAt! / RUN_SAMPLE) + 2, 'a sample every RUN_SAMPLE seconds, and one at completion');
+  assert.equal(s.run.curve.length, Math.floor(s.completedAt / RUN_SAMPLE) + 2, 'a sample every RUN_SAMPLE seconds, and one at completion');
   assert.equal(s.run.curve[s.run.curve.length - 1], 3, 'the last sample has every delivery');
   assert.equal(s.run.curve[0], 0);
   const waits = runWaits(s.run);
@@ -293,7 +293,7 @@ test('chains: bread comes from a bakery fed by a mill and a coop, back to the fi
   const c = chainOf('bread');
   assert.equal(c.from?.building, 'bakery');
   assert.deepEqual(chainBuildings(c), ['bakery', 'mill', 'field', 'coop']);
-  const egg = c.from!.inputs.find((i) => 'item' in i && i.item === 'egg')!;
+  const egg = c.from.inputs.find((i) => 'item' in i && i.item === 'egg')!;
   assert.ok('item' in egg && egg.from?.building === 'coop' && egg.from.inputs.some((i) => 'group' in i && i.group === 'feed'));
   assert.equal(chainOf('wheat').from?.verb, 'grow');
   assert.equal(chainOf('bran').from?.building, 'mill', 'a byproduct comes from its maker');

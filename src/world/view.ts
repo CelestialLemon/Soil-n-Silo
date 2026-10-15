@@ -69,7 +69,7 @@ export class WorldView {
   /** Every visible object of a building or truck, to highlight together. */
   objectsOf(id: number): PixelObject[] {
     const out: PixelObject[] = [];
-    const main = this.shown.get(id) ?? (this.trucks.has(id) ? { obj: this.trucks.get(id)! } : undefined);
+    const truck = this.trucks.get(id), main = this.shown.get(id) ?? (truck ? { obj: truck } : undefined);
     if (main) out.push(main.obj);
     for (const p of this.parts.get(id) ?? []) out.push(p.obj);
     return out;

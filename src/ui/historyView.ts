@@ -7,6 +7,7 @@ import { sprinklersOf } from '../game/sim/layout.ts';
 import { recipeOf } from '../game/sim/goods.ts';
 import { routesAt, trucksOn } from '../game/sim/trucks.ts';
 import { isMachine, type Building, type GameState, type Status } from '../game/state.ts';
+import { must } from '../game/result.ts';
 import { fill, h, icon, set, svg } from './dom.ts';
 import { clockAt, dec, itemByName, itemName, lcBuilding, num, pct, playTime, plural, watts } from './format.ts';
 import { statusLabel, statusPill } from './widgets.ts';
@@ -68,7 +69,7 @@ export function waitFact(s: GameState, b: Building, w: Wait): string {
       const made = goods.reduce((n, i) => n + flowRate(s, 'made', i), 0);
       const r = recipeOf(b), ing = r?.inputs.find((x) => ('item' in x ? goods.includes(x.item) : x.group === group));
       const use = r && ing ? ing.n * 60 / r.time : null;
-      const what = item ? itemName(item) : w.need!.split(' (')[0];
+      const what = item ? itemName(item) : (w.need ?? '').split(' (')[0];
       return `The valley made ${dec(made)} ${what} a minute over the last ${RECENT_WINDOW / 60} min${use ? `; this ${lcBuilding(b.type)} uses up to ${dec(use)} at full speed` : ''}.`;
     }
     case 'power': {
@@ -111,7 +112,7 @@ export function historyView(s: GameState, b: Building, win: () => HistoryWindow,
     h('div', { class: 'cd-seg hist-windows' }, ...buttons),
     h('div', { class: 'row-head' }, h('span', { class: 'cd-label' }), head),
     area, axis, readout, shares, output, waits);
-  const label = el.querySelector('.row-head .cd-label')!;
+  const label = must(el.querySelector('.row-head .cd-label'), '.cd-label');
 
   let key = '';
   const update = () => {
@@ -183,11 +184,11 @@ export function historyView(s: GameState, b: Building, win: () => HistoryWindow,
     fill(waits, list.length ? [
       h('div', { class: 'row-head', style: 'margin-top: 22px' }, h('span', { class: 'cd-label', style: 'color: var(--ochre)' }, 'What it waits for'), h('span', { class: 'cd-small cd-faint' }, `share of the last ${win() / 60} min`)),
       ...list.slice(0, 4).map((x, i) => {
-        const item = x.kind === 'input' || x.kind === 'output' ? itemByName(x.need) : null;
+        const item = x.kind === 'input' || x.kind === 'output' ? itemByName(x.need) : null, itemGroup = groupByName(x.need);
         const name = x.kind === 'input' ? (item ? ITEMS[item].name : (x.need ?? 'Goods').split(' (')[0].replace(/^./, (c) => c.toUpperCase()))
           : x.kind === 'output' ? `Room for ${x.need ?? 'its goods'}` : x.kind === 'power' ? 'Power' : x.kind === 'water' ? 'Water' : x.kind === 'flowers' ? 'Flowers' : 'A road';
         return h('div', { class: 'wait' }, h('span', { class: 'rank' }, String(i + 1)),
-          h('div', null, h('b', null, h('span', { class: 'disc' }, icon(item ?? (x.kind === 'input' && groupByName(x.need) ? GROUPS[groupByName(x.need)!][0] : WAIT_ICON[x.kind]), 22)), name), h('div', { class: 'cd-small' }, waitFact(s, b, x))),
+          h('div', null, h('b', null, h('span', { class: 'disc' }, icon(item ?? (x.kind === 'input' && itemGroup ? GROUPS[itemGroup][0] : WAIT_ICON[x.kind]), 22)), name), h('div', { class: 'cd-small' }, waitFact(s, b, x))),
           h('span', { class: `pc${i === 0 && x.share >= 0.2 ? ' cd-bad' : ''}` }, pct(x.share)));
       })] : []);
   }

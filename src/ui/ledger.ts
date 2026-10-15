@@ -15,8 +15,8 @@ import { ring } from './widgets.ts';
 
 export interface LedgerHost {
   state(): GameState;
-  openPower(): void;
-  close(): void;
+  openPower: () => void;
+  close: () => void;
 }
 
 /** A small line of the last ten minutes, a minute at a time. */
@@ -81,7 +81,7 @@ export function ledgerSheet(host: LedgerHost) {
           h('td', null, h('span', { class: 'gname' }, icon(i, 30), ITEMS[i].name, goals.has(i) ? h('span', { class: 'cd-chip goal-tag' }, 'goal') : null)),
           h('td', { class: 'n' }, h('b', null, cell(flowRate(s, 'made', i)))), h('td', { class: 'l' }, spark(flowSeries(s, 'made', i), goals.has(i))),
           h('td', { class: 'n' }, cell(flowRate(s, 'used', i))), h('td', { class: 'n' }, cell(flowRate(s, 'delivered', i))),
-          h('td', { class: 'n sepl' }, s.made[i] ? num(s.made[i]!) : '–'), h('td', { class: 'n' }, s.delivered[i] ? num(s.delivered[i]!) : '–'), h('td', { class: 'n' }, String(heldNow[i] ?? 0)))))) :
+          h('td', { class: 'n sepl' }, s.made[i] ? num(s.made[i]) : '–'), h('td', { class: 'n' }, s.delivered[i] ? num(s.delivered[i]) : '–'), h('td', { class: 'n' }, String(heldNow[i] ?? 0)))))) :
         h('p', { class: 'cd-small' }, 'Nothing made yet.'),
       h('div', { class: 'money cd-small' }, icon('depot', 26), h('span', null, 'Earned at the depot ', h('b', null, num(s.earned)), ' credits'), h('span', { class: 'fill' }),
         s.scenario.sandbox ? null : h('span', null, 'Spent on buildings and trucks ', h('b', null, num(Math.max(0, spent)))),

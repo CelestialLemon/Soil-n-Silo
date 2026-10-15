@@ -109,7 +109,7 @@ const heightOf = (g: Geo) => { g.computeBoundingBox(); return g.boundingBox ? g.
 
 export async function loadModels(): Promise<Models> {
   const names = new Set<string>(['wheat', 'tomato', 'beans', 'sunflower', 'flax', 'rock', 'truck', 'tree_oak', 'tree_pine', 'bush']);
-  for (const n of Object.values(FILES)) names.add(n!);
+  for (const n of Object.values(FILES)) names.add(n);
   const roots = new Map<string, THREE.Group | null>(await Promise.all([...names].map(async (n) => [n, await load(n)] as const)));
   const missing = [...roots].filter(([, r]) => !r).map(([n]) => n);
   if (missing.length) console.info(`models drawn from stand-ins: ${missing.join(', ')}`);

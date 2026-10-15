@@ -18,7 +18,7 @@ import { clock, clockAt, dec, hex, pct, plural, watts } from './format.ts';
 
 export interface PowerHost {
   state(): GameState;
-  close(): void;
+  close: () => void;
 }
 
 const SRC: { key: 'solar' | 'wind' | 'digester' | 'given' | 'short'; col: string; name: string }[] = [
@@ -178,7 +178,7 @@ export function powerSheet(host: PowerHost) {
                 h('span', { class: 'tr' }, h('i', { style: `width: ${k * 100}%` }), h('u', { style: `left: ${k * 100}%; width: ${after * 100}%` })),
                 h('span', { class: `end${n.dryAt ? ' cd-bad' : ' cd-good'}` }, n.dryAt ? `dry ${clockAt(n.dryAt)}` : n.lowest !== null ? `held · ${pct(n.lowest)} left` : 'held'));
             }) : [h('p', { class: 'cd-small' }, cap ? 'No night recorded yet.' : 'No batteries.')]),
-            nights.some((n) => n.dryAt) ? h('div', { class: 'cd-small note' }, `Ran dry: ${nights.filter((n) => n.dryAt).map((n) => clockAt(n.dryAt!)).join(', ')}.`) : null))));
+            nights.some((n) => n.dryAt) ? h('div', { class: 'cd-small note' }, `Ran dry: ${nights.flatMap((n) => (n.dryAt ? [clockAt(n.dryAt)] : [])).join(', ')}.`) : null))));
   };
   update();
   return { el, update };

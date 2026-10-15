@@ -2,6 +2,7 @@ import { BUILDINGS } from './data.ts';
 import { pylonReaches, pylonsLink } from './rules.ts';
 import { layoutOf, sizeOf, type Building, type GameState } from './state.ts';
 import { runtimeOf } from './runtime.ts';
+import { must } from './result.ts';
 
 // Power networks: pylons within reach of each other link into a network, and every building that makes, stores or uses
 // power joins the network of the first pylon that reaches one of its tiles. Each network balances on its own (sim/energy.ts).
@@ -48,12 +49,12 @@ export function networks(s: GameState): Networks {
     net.pylons.push(p);
   });
   const of = new Map<number, Network>();
-  for (const p of pylons) of.set(p.id, byRoot.get(find(pylons.indexOf(p)))!);
+  for (const p of pylons) of.set(p.id, must(byRoot.get(find(pylons.indexOf(p))), 'network'));
   for (const b of s.buildings) {
     if (!POWERED(b)) continue;
     const i = pylons.findIndex((p) => pylonReaches(b, p.x, p.y));
     if (i < 0) continue;
-    const net = byRoot.get(find(i))!;
+    const net = must(byRoot.get(find(i)), 'network');
     net.members.push(b);
     of.set(b.id, net);
   }

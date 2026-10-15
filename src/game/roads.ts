@@ -1,6 +1,7 @@
 import { TERRAIN } from './map.ts';
 import { buildingAt, inMap, layoutOf, sizeOf, terrainAt, type Building, type GameState } from './state.ts';
 import { runtimeOf } from './runtime.ts';
+import { must } from './result.ts';
 
 // The roads: trucks drive on any open tile (grass with nothing built on it), from tile centre to tile centre in 8
 // directions, a diagonal only when both tiles beside it are open. A truck loads at an open tile next to a building (sharing
@@ -70,7 +71,7 @@ export function distanceField(s: GameState, b: Building): Float64Array {
     }
   };
   const pop = () => {
-    const top = heap[0], last = heap.pop()!;
+    const top = heap[0], last = must(heap.pop(), 'heap entry');
     if (heap.length) {
       heap[0] = last;
       for (let k = 0; ;) {

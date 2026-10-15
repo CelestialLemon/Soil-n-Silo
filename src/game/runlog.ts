@@ -2,6 +2,7 @@ import { BUILDINGS, type BuildingId, type ItemId } from './data.ts';
 import { nightOf } from './powerlog.ts';
 import type { Scenario } from './scenarios.ts';
 import type { GameState } from './state.ts';
+import { must } from './result.ts';
 
 // The run, for the results screen: milestones as they happen (the first of each good, the first night short of power, the
 // first trucks, a second of a building, a byproduct put to use, each goal reached), the goal good delivered over time, and
@@ -107,7 +108,7 @@ export function noteRun(s: GameState, dt: number, night: boolean, short: boolean
   for (const [type, k] of count) if (k >= 2 && !marked(run, 'second', (m) => m.type === type)) run.marks.push({ t: s.time, kind: 'second', type });
   done().forEach((d, i) => { if (d && !marked(run, 'goal', (m) => m.goal === i)) run.marks.push({ t: s.time, kind: 'goal', goal: i }); });
   if (run.nights.some((x) => x.short > 0) && !marked(run, 'night', () => true)) {
-    const first = run.nights.find((x) => x.short > 0)!;
+    const first = must(run.nights.find((x) => x.short > 0), 'short night');
     run.marks.push({ t: s.time, kind: 'night', n: first.day });
   }
 }

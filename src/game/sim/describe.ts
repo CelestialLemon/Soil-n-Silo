@@ -5,6 +5,7 @@ import { buildingById, isMachine, type Building, type GameState, type Route, typ
 import { members, recipeOf, missing, outputsFit, wantsCompost, takesGoods, takesNow, givesNow, passes, neighboursOf, type Link } from './goods.ts';
 import { shareOf } from './energy.ts';
 import { tileOf, garageOf, routeOf, trucksOn } from './trucks.ts';
+import { must } from '../result.ts';
 
 // Player-facing text: what a building or truck is doing, and what is wrong with it.
 
@@ -134,7 +135,7 @@ export function describeStatus(s: GameState, b: Building): string {
     case 'idle':
       if (b.type === 'solar') return 'Night: no sun';
       if (b.type === 'silo') {
-        const n = Object.values(b.store).reduce((a, k) => a + k!, 0);
+        const n = Object.values(b.store).reduce((a, k) => a + k, 0);
         return n ? `Holds ${n} goods` : 'Empty';
       }
       if (b.type === 'garage') { const n = s.trucks.filter((t) => t.garage === b.id).length; return n ? `${n} truck${n > 1 ? 's' : ''}, none charging` : 'No trucks yet: buy one'; }
@@ -147,7 +148,7 @@ export function describeStatus(s: GameState, b: Building): string {
         return `Charging ${k} of ${mine.length} truck${mine.length > 1 ? 's' : ''}`;
       }
       if (b.type === 'pylon') {
-        const net = networks(s).of.get(b.id)!, k = net.pylons.length - 1, n = net.members.length;
+        const net = must(networks(s).of.get(b.id), 'network'), k = net.pylons.length - 1, n = net.members.length;
         return `${k ? `Linked to ${k} other pylon${k > 1 ? 's' : ''}` : 'Linked to no other pylon'} · its network powers ${n} building${n === 1 ? '' : 's'}`;
       }
       return isMachine(b) ? 'Working' : def.name;

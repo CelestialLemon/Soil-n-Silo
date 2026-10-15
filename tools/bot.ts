@@ -7,6 +7,7 @@
 import { addStop, buyTruck, newRoute, place, setCrop, setTruckRoute, truckPrice } from '../src/game/build.ts';
 import { LAYOUTS, type Step } from './layouts.ts';
 import { BUILDINGS, ITEMS } from '../src/game/data.ts';
+import { must } from '../src/game/result.ts';
 import { TERRAIN } from '../src/game/map.ts';
 import { networks } from '../src/game/power.ts';
 import { scenarioById } from '../src/game/scenarios.ts';
@@ -51,7 +52,8 @@ export function playLayout(id: string, minutes = 60, log: (line: string) => void
   /** Takes a step: places a building, makes a route and buys its trucks, or adds a truck to a route. */
   function take(st: Step) {
     if ('move' in st) {
-      for (const tr of s.trucks) if (tr.route === routes.get(st.move)!.id) setTruckRoute(s, tr, routes.get(st.to)!);
+      const from = must(routes.get(st.move), `route ${st.move}`), to = must(routes.get(st.to), `route ${st.to}`);
+      for (const tr of s.trucks) if (tr.route === from.id) setTruckRoute(s, tr, to);
       log(`${fmt(s.time)}  ${st.move}'s trucks move to ${st.to}`);
       return;
     }
@@ -62,8 +64,8 @@ export function playLayout(id: string, minutes = 60, log: (line: string) => void
       if (st.as) named.set(st.as, r.value.building);
       return;
     }
-    const garage = named.get(st.garage)!;
-    const route = 'route' in st ? newRoute(s) : routes.get(st.truck)!;
+    const garage = must(named.get(st.garage), `building ${st.garage}`);
+    const route = 'route' in st ? newRoute(s) : must(routes.get(st.truck), `route ${st.truck}`);
     if ('route' in st) {
       routes.set(st.route, route);
       route.name = st.route;
@@ -73,8 +75,9 @@ export function playLayout(id: string, minutes = 60, log: (line: string) => void
         const res = addStop(s, route, b);
         if (!res.ok) throw new Error(`route ${st.route}: ${res.error}`);
         const stop = route.stops[route.stops.length - 1];
-        if (sp.pick) { stop.pick = sp.pick; stop.drop = stop.drop.filter((i) => !sp.pick!.includes(i)); }
-        if (sp.drop) { stop.drop = sp.drop; stop.pick = stop.pick.filter((i) => !sp.drop!.includes(i)); }
+        const { pick, drop } = sp;
+        if (pick) { stop.pick = pick; stop.drop = stop.drop.filter((i) => !pick.includes(i)); }
+        if (drop) { stop.drop = drop; stop.pick = stop.pick.filter((i) => !drop.includes(i)); }
         if (sp.wait !== undefined) stop.wait = sp.wait;
       }
     }

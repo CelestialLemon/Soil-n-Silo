@@ -61,8 +61,8 @@ function pruneDeliveries(s: GameState) {
   const from = s.time - STAT_BUCKET * (STAT_BUCKETS - 1);
   for (const times of [...Object.values(s.stats.delivered), ...s.routes.map((r) => r.moved)]) {
     let k = 0;
-    while (k < times!.length && times![k] <= from) k++;
-    if (k) times!.splice(0, k);
+    while (k < times.length && times[k] <= from) k++;
+    if (k) times.splice(0, k);
   }
 }
 

@@ -4,6 +4,7 @@ import { CAMPAIGN, SILVER_PAR, type Goal } from '../game/scenarios.ts';
 import { dayAt, hourAt, sunAt, windAt } from '../game/sim/clock.ts';
 import { medalFor } from '../game/sim/stats.ts';
 import type { GameState } from '../game/state.ts';
+import { must } from '../game/result.ts';
 import type { Overlay } from '../world/view.ts';
 import { fill, h, icon, set, setVar } from './dom.ts';
 import { clock, num, pct, playTime, watts } from './format.ts';
@@ -110,7 +111,7 @@ export class CommissionCard {
         h('div', { class: 'who', title: commissionLabel(s) }, h('b', { class: 'name' }, sc.name), this.clock, st.showPace && !sc.sandbox ? this.pace : null),
         h('span', { class: 'sep' }),
         sc.goals.length ? h('div', { class: 'goals' }, ...this.parts.map((p) => p.el)) : h('span', { class: 'cd-small' }, 'No goals: build whatever you like.'));
-      this.pill.querySelector('.name')!.textContent = sc.name;
+      must(this.pill.querySelector('.name'), '.name').textContent = sc.name;
     }
     this.clock.replaceChildren(...clockLine(s));
     this.parts.forEach((p, i) => {

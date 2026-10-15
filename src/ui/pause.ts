@@ -2,6 +2,7 @@ import { POWER } from '../game/data.ts';
 import { networks, usedBy } from '../game/power.ts';
 import { dayAt, hourAt } from '../game/sim/clock.ts';
 import type { BatteryBuilding, GameState, Status } from '../game/state.ts';
+import { must } from '../game/result.ts';
 import { h, icon } from './dom.ts';
 import { clock, itemName, num, pct, playTime, watts } from './format.ts';
 import { commissionLabel } from './playhud.ts';
@@ -34,7 +35,7 @@ export function settingsCard(store: SettingsStore) {
     type: 'range', class: 'cd-range', min: UI_SIZES.min, max: UI_SIZES.max, step: UI_SIZES.step, value: st.uiSize, 'aria-label': 'Interface size',
     oninput: () => { size.textContent = pct(Number(slider.value)); },
     onchange: () => store.set({ uiSize: Number(slider.value) }),
-  }) as HTMLInputElement;
+  });
   const pixels = h('div', { class: 'cd-seg wide' }, ...PIXEL_SIZES.map((n) => {
     const b = h('button', { class: st.pixelSize === n ? 'is-on' : '', onclick: () => { store.set({ pixelSize: n }); for (const x of pixels.children) x.classList.toggle('is-on', x === b); } }, `${n} × ${n}`);
     return b;
@@ -102,7 +103,7 @@ function standing(s: GameState) {
         const now = goalNow(s, i);
         return gauge({ v: now.v, d: sc.goals.length > 2 ? 84 : 108, col: g.kind === 'soil' ? 'var(--tide)' : undefined, cls: now.done && g.kind !== 'soil' ? 'is-done' : '',
           inner: [h('div', { class: 'cd-figure' }, now.figure), h('div', { class: 'cd-small' }, now.done && g.kind !== 'soil' ? 'done' : now.of)], foot: '' });
-      }).map((el, i) => { el.querySelector('.cd-gauge__foot')!.append(icon(goalIcon(sc.goals[i]), 14), ` ${goalNow(s, i).word}`); return el; }),
+      }).map((el, i) => { must(el.querySelector('.cd-gauge__foot'), '.cd-gauge__foot').append(icon(goalIcon(sc.goals[i]), 14), ` ${goalNow(s, i).word}`); return el; }),
       h('div', { class: 'facts' },
         h('div', null, h('span', null, 'Credits'), h('b', { class: 'cd-num' }, sc.sandbox ? '∞' : num(Math.floor(s.credits)))),
         h('div', null, h('span', null, 'Power'), h('b', { class: 'cd-num' }, nets.length ? `${watts(made)} / ${watts(used)}` : 'none')),
@@ -114,11 +115,11 @@ function standing(s: GameState) {
 export function pauseScreen(host: PauseHost) {
   const s = host.state(), sc = s.scenario;
   const lost = sc.goals.find((g) => g.kind === 'deliver');
-  const loses = `Restart loses ${playTime(s.time)} of play${lost && lost.kind === 'deliver' && s.delivered[lost.item] ? ` and ${num(s.delivered[lost.item]!)} ${itemName(lost.item)}` : ''}. Press again to confirm.`;
+  const loses = `Restart loses ${playTime(s.time)} of play${lost && lost.kind === 'deliver' && s.delivered[lost.item] ? ` and ${num(s.delivered[lost.item] ?? 0)} ${itemName(lost.item)}` : ''}. Press again to confirm.`;
   const note = h('div', { class: 'restart-note', hidden: true }, loses);
   let armed = false;
   const restart = h('button', {
-    class: 'cd-btn is-danger is-lg', onclick: () => { if (armed) { host.restart(); return; } armed = true; note.hidden = false; restart.lastChild!.textContent = 'Restart: sure?'; },
+    class: 'cd-btn is-danger is-lg', onclick: () => { if (armed) { host.restart(); return; } armed = true; note.hidden = false; must(restart.lastChild, 'button label').textContent = 'Restart: sure?'; },
   }, icon('rotate', 18), 'Restart');
   return h('div', { class: 'pause' },
     h('div', { class: 'title' }, h('div', { class: 'big-title' }, 'Paused'),
