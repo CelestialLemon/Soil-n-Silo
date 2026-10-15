@@ -83,7 +83,7 @@ export class RoutesCard {
     if (!show) { this.key = ''; this.updater = null; return; }
     const s = this.host.state(), tool = this.host.tool(), editing = tool.kind === 'route' ? tool.route : null;
     const key = JSON.stringify([s.routes.map((r) => [r.id, r.name, stopsKey(r), routeGoods(s, r), trucksOn(s, r).map((t) => t.id), stopProblems(s, r),
-      r.id === editing ? r.stops.map((st) => { const b = buildingById(s, st.building); return b?.type === 'silo' ? Object.keys(b.store!) : b?.type === 'field' ? [b.crop, b.harvest] : null; }) : 0]),
+      r.id === editing ? r.stops.map((st) => { const b = buildingById(s, st.building); return b?.type === 'silo' ? Object.keys(b.store) : b?.type === 'field' ? [b.crop, b.harvest] : null; }) : 0]),
     s.trucks.filter((t) => t.route === null).length, s.buildings.filter((b) => b.type === 'garage').length, this.filter, editing, [...this.allGoods]]);
     if (key !== this.key && !typingIn(this.el)) {
       this.key = key;
@@ -191,7 +191,7 @@ export class RoutesCard {
       if (!b) return null;
       const open = this.allGoods.has(`${r.id}:${i}`), anything = b.type === 'silo' || b.type === 'depot';
       // Always with the goods it is set to, so any of them can be turned off (a field's old crop, say).
-      const choices = (all: ItemId[], how: 'drop' | 'pick') => (anything && !open ? ITEM_IDS.filter((x) => moved.has(x) || st.pick.includes(x) || (b.type === 'silo' && b.store![x]))
+      const choices = (all: ItemId[], how: 'drop' | 'pick') => (anything && !open ? ITEM_IDS.filter((x) => moved.has(x) || st.pick.includes(x) || (b.type === 'silo' && b.store[x]))
         : ITEM_IDS.filter((x) => all.includes(x) || st[how].includes(x)));
       const toggle = (item: ItemId, how: 'drop' | 'pick') => h('button', {
         class: 'cd-gtoggle is-sm', 'aria-pressed': String(st[how].includes(item)), 'aria-label': `${how === 'drop' ? 'Drop' : 'Pick up'} ${itemName(item)}`,

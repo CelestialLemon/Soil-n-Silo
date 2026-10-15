@@ -101,6 +101,8 @@ export const BUILDING_IDS = [
   'sapling', 'depot',
 ] as const;
 export type BuildingId = typeof BUILDING_IDS[number];
+/** The ids that make something from a recipe (the ones `RECIPES` is for; `isMachine` checks the data). */
+export type MachineId = 'coop' | 'composter' | 'mill' | 'press' | 'spinner' | 'loom' | 'bakery' | 'cannery' | 'digester';
 
 export type Category = 'logistics' | 'farming' | 'processing' | 'power' | 'ecology';
 export const CATEGORIES: { id: Category; name: string }[] = [
@@ -153,7 +155,7 @@ export type Ingredient = { item: ItemId; n: number } | { group: GroupId; n: numb
 
 export interface Recipe {
   id: string;
-  building: BuildingId;
+  building: MachineId;
   inputs: Ingredient[];
   outputs: { item: ItemId; n: number }[];
   /** Seconds at full power. */
@@ -173,6 +175,9 @@ export const RECIPES: Recipe[] = [
   { id: 'burn', building: 'digester', inputs: [{ group: 'organic', n: 1 }], outputs: [], time: 10 },
 ];
 
+const MACHINE_IDS = new Set<BuildingId>(RECIPES.map((r) => r.building));
+/** Whether buildings of this type work a recipe: the ones `RECIPES` has recipes for. */
+export const isMachineId = (t: BuildingId): t is MachineId => MACHINE_IDS.has(t);
 export const recipesFor = (b: BuildingId) => RECIPES.filter((r) => r.building === b);
 /** The recipe with an id. Ids come from this file or from a validated save, so an unknown one is a bug and throws. */
 export function recipeById(id: string): Recipe {

@@ -1,6 +1,6 @@
 import { BUILDINGS, type BuildingId } from '../data.ts';
 import { exposureAt, hiveReaches, nearWaterAt, sprinklerWaters } from '../rules.ts';
-import { buildingAt, layoutOf, tileIndex, type Building, type GameState } from '../state.ts';
+import { buildingAt, isMachine, layoutOf, tileIndex, type Building, type FieldBuilding, type GameState } from '../state.ts';
 
 // Derived lookups, rebuilt when the layout changes: what stands beside, waters or shades each building.
 
@@ -11,7 +11,7 @@ interface Derived {
   /** Fields with a hive near enough to pollinate them. */
   pollinated: Set<number>;
   /** Fields near each hive. */
-  flowers: Map<number, Building[]>;
+  flowers: Map<number, FieldBuilding[]>;
   /** Wind turbines' shelter factor. */
   exposure: Map<number, number>;
   /** Sprinklers near water. */
@@ -28,7 +28,7 @@ export function derived(s: GameState): Derived {
   let d = derivedCache.get(s);
   if (d && d.layout === layout) return d;
   d = { layout, sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), nearWater: new Set(), fielded: new Set(), neighbours: new Map() };
-  const fields = s.buildings.filter((b) => b.type === 'field');
+  const fields = s.buildings.filter((b): b is FieldBuilding => b.type === 'field');
   const hives = s.buildings.filter((b) => b.type === 'hive');
   const sprinklers = s.buildings.filter((b) => b.type === 'sprinkler');
   for (const f of fields) {
@@ -57,7 +57,7 @@ export function besides(s: GameState, b: { type: BuildingId; x: number; y: numbe
 }
 
 /** Whether a building trades goods with trucks: it grows, makes or uses goods. */
-export const handlesGoods = (b: Building) => b.type === 'field' || b.type === 'hive' || !!b.recipe;
+export const handlesGoods = (b: Building) => b.type === 'field' || b.type === 'hive' || isMachine(b);
 
 export const sprinklersOf = (s: GameState, b: Building) => derived(s).sprinklers.get(b.id) ?? [];
 export const isPollinated = (s: GameState, b: Building) => derived(s).pollinated.has(b.id);

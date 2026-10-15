@@ -4,7 +4,7 @@ import { tickFlows } from '../flows.ts';
 import { TERRAIN } from '../map.ts';
 import { networkOf, networks } from '../power.ts';
 import { noteRun } from '../runlog.ts';
-import { removeBuilding, tileIndex, touchLayout, type Building, type GameState } from '../state.ts';
+import { isMachine, removeBuilding, tileIndex, touchLayout, type Building, type GameState } from '../state.ts';
 import { sunAt, windAt } from './clock.ts';
 import { soilHealth } from './soil.ts';
 import { feedNeighbours } from './goods.ts';
@@ -49,12 +49,12 @@ export function tick(s: GameState) {
         break;
       }
       case 'sapling':
-        b.age! += dt;
+        b.age += dt;
         b.status = 'ok';
-        if (b.age! >= SAPLING_SECONDS) grown.push(b);
+        if (b.age >= SAPLING_SECONDS) grown.push(b);
         break;
       default:
-        if (b.recipe) {
+        if (isMachine(b)) {
           runMachine(s, b, dt);
           if (b.type === 'digester' && !networkOf(s, b) && b.status === 'ok') b.status = 'nolink';
         }

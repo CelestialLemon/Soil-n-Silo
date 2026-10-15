@@ -1,4 +1,4 @@
-import { BUILDINGS, recipesFor, type BuildingId, type CropId, type ItemId } from './data.ts';
+import { BUILDINGS, isMachineId, recipesFor, type BuildingId, type CropId, type MachineId, type ItemId } from './data.ts';
 import { generateMap, TERRAIN, type MapData } from './map.ts';
 import { newRunLog, type RunLog } from './runlog.ts';
 import type { Scenario } from './scenarios.ts';
@@ -60,9 +60,8 @@ export interface Truck {
 
 export type Status = 'ok' | 'idle' | 'input' | 'blocked' | 'power' | 'lowpower' | 'nolink' | 'noroad' | 'noroute' | 'flowers' | 'dry';
 
-export interface Building {
+interface BuildingBase {
   id: number;
-  type: BuildingId;
   /** North-west tile. */
   x: number; y: number;
   rot: Dir;
@@ -70,25 +69,62 @@ export interface Building {
   status: Status;
   /** What it's waiting for or blocked by, for the status line. */
   need?: string;
-  // Machines (and the coop, composter and digester).
-  recipe?: string;
-  inputs?: Partial<Record<ItemId, number>>;
-  outputs?: Partial<Record<ItemId, number>>;
-  /** Seconds into the batch it's working on; null when it isn't. */
-  progress?: number | null;
-  // Fields and hives.
-  crop?: CropId;
+}
+
+export interface FieldBuilding extends BuildingBase {
+  type: 'field';
+  crop: CropId;
   /** The crop the stored harvest is (it may differ from `crop` just after the crop was changed). */
   harvest?: CropId;
-  growth?: number;
-  stored?: number;
-  // Batteries.
-  charge?: number;
-  // Silos: goods held.
-  store?: Partial<Record<ItemId, number>>;
-  // Saplings.
-  age?: number;
+  growth: number;
+  stored: number;
 }
+
+export interface HiveBuilding extends BuildingBase {
+  type: 'hive';
+  growth: number;
+  stored: number;
+}
+
+/** A building that works a recipe: the machines, and the coop, composter and digester. */
+export interface MachineBuilding extends BuildingBase {
+  type: MachineId;
+  recipe: string;
+  inputs: Partial<Record<ItemId, number>>;
+  outputs: Partial<Record<ItemId, number>>;
+  /** Seconds into the batch it's working on; null when it isn't. */
+  progress: number | null;
+}
+
+export interface BatteryBuilding extends BuildingBase {
+  type: 'battery';
+  charge: number;
+}
+
+/** Holds goods. */
+export interface SiloBuilding extends BuildingBase {
+  type: 'silo';
+  store: Partial<Record<ItemId, number>>;
+}
+
+export interface SaplingBuilding extends BuildingBase {
+  type: 'sapling';
+  age: number;
+}
+
+/** A building with no state of its own. */
+export interface PlainBuilding extends BuildingBase {
+  type: Exclude<BuildingId, MachineId | 'field' | 'hive' | 'battery' | 'silo' | 'sapling'>;
+}
+
+export type Building = FieldBuilding | HiveBuilding | MachineBuilding | BatteryBuilding | SiloBuilding | SaplingBuilding | PlainBuilding;
+
+/** The shape of the building of a type (or of a union of types). */
+export type BuildingOf<K extends BuildingId> =
+  K extends MachineId ? MachineBuilding : K extends PlainBuilding['type'] ? PlainBuilding : Extract<Building, { type: K }>;
+
+/** Whether a building works a recipe (the data says which types do). */
+export const isMachine = (b: Building): b is MachineBuilding => isMachineId(b.type);
 
 /** Where a building stands, or would: its type (for its size) and north-west tile. */
 export type Footprint = Pick<Building, 'type' | 'x' | 'y'>;
@@ -146,20 +182,20 @@ export function newGame(sc: Scenario): GameState {
 }
 
 /** A new building with the state its type needs (not yet in the game). */
-export function makeBuilding(s: GameState, type: BuildingId, x: number, y: number, rot: Dir): Building {
-  const b: Building = { id: s.nextId++, type, x, y, rot, status: 'idle' };
+export const makeBuilding = (s: GameState, type: BuildingId, x: number, y: number, rot: Dir): Building => blankBuilding(s.nextId++, type, x, y, rot);
+
+/** A building with an id of the caller's choosing and the state its type needs. */
+export function blankBuilding(id: number, type: BuildingId, x: number, y: number, rot: Dir): Building {
+  const base = { id, x, y, rot, status: 'idle' as Status };
   switch (type) {
-    case 'field': b.crop = 'wheat'; b.growth = 0; b.stored = 0; break;
-    case 'hive': b.growth = 0; b.stored = 0; break;
-    case 'battery': b.charge = 0; break;
-    case 'silo': b.store = {}; break;
-    case 'sapling': b.age = 0; break;
-    default: {
-      const rs = recipesFor(type);
-      if (rs.length) { b.recipe = rs[0].id; b.inputs = {}; b.outputs = {}; b.progress = null; }
-    }
+    case 'field': return { ...base, type, crop: 'wheat', growth: 0, stored: 0 };
+    case 'hive': return { ...base, type, growth: 0, stored: 0 };
+    case 'battery': return { ...base, type, charge: 0 };
+    case 'silo': return { ...base, type, store: {} };
+    case 'sapling': return { ...base, type, age: 0 };
   }
-  return b;
+  if (isMachineId(type)) return { ...base, type, recipe: recipesFor(type)[0].id, inputs: {}, outputs: {}, progress: null };
+  return { ...base, type };
 }
 
 export const sizeOf = (b: { type: BuildingId }) => BUILDINGS[b.type].size;

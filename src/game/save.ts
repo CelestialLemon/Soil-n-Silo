@@ -4,7 +4,7 @@ import { bays, BUILDINGS, CROPS, ITEMS, recipesFor, TRUCK } from './data.ts';
 import { err, ok, tryParseJson, type Result } from './result.ts';
 import type { Mark, RunLog } from './runlog.ts';
 import type { Scenario } from './scenarios.ts';
-import type { Building, GameState, Route, Truck } from './state.ts';
+import { isMachine, type Building, type GameState, type Route, type Truck } from './state.ts';
 
 // Saving: the commission in progress (one at a time) and each commission's best result. The game state is plain data, so a
 // save is its JSON.
@@ -134,8 +134,6 @@ function uniqueIds(s: GameState): boolean {
 /** A building has what its type's rules read. */
 function validBuilding(b: Building, w: number, h: number): boolean {
   if (!b || !num(b.id) || !num(b.x) || !num(b.y) || !type(b.type) || !dir(b.rot)) return false;
-  // A recipe only where the building makes it (the rules look recipes up by id).
-  if (b.recipe && !recipesFor(b.type).some((r) => r.id === b.recipe)) return false;
   const n = BUILDINGS[b.type].size;
   if (b.x < 0 || b.y < 0 || b.x + n > w || b.y + n > h) return false;
   switch (b.type) {
@@ -145,7 +143,8 @@ function validBuilding(b: Building, w: number, h: number): boolean {
     case 'battery': return num(b.charge);
     case 'sapling': return num(b.age);
   }
-  if (recipesFor(b.type).length) {
+  // A machine's recipe is one it makes (the rules look recipes up by id).
+  if (isMachine(b)) {
     return recipesFor(b.type).some((r) => r.id === b.recipe) && stock(b.inputs) && stock(b.outputs) && (b.progress === null || num(b.progress));
   }
   return true;

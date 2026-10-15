@@ -6,7 +6,7 @@ import { networkOf, usedBy } from '../game/power.ts';
 import { sprinklersOf } from '../game/sim/layout.ts';
 import { recipeOf } from '../game/sim/goods.ts';
 import { routesAt, trucksOn } from '../game/sim/trucks.ts';
-import type { Building, GameState, Status } from '../game/state.ts';
+import { isMachine, type Building, type GameState, type Status } from '../game/state.ts';
 import { fill, h, icon, set, svg } from './dom.ts';
 import { clockAt, dec, itemByName, itemName, lcBuilding, num, pct, playTime, plural, watts } from './format.ts';
 import { statusLabel, statusPill } from './widgets.ts';
@@ -44,7 +44,7 @@ function readingOf(b: Building): Reading | null {
 export function makesOf(b: Building): { items: ItemId[]; full: Partial<Record<ItemId, number>> | null } {
   const r = recipeOf(b);
   if (r) return { items: r.outputs.map((o) => o.item), full: Object.fromEntries(r.outputs.map((o) => [o.item, (o.n / r.time) * 60])) };
-  if (b.type === 'field') return { items: [b.crop!], full: null };
+  if (b.type === 'field') return { items: [b.crop], full: null };
   if (b.type === 'hive') return { items: ['honey'], full: null };
   return { items: [], full: null };
 }
@@ -53,7 +53,7 @@ export function makesOf(b: Building): { items: ItemId[]; full: Partial<Record<It
 function inStore(b: Building, item: ItemId) {
   if (b.type === 'field') return (b.harvest ?? b.crop) === item ? b.stored ?? 0 : 0;
   if (b.type === 'hive') return item === 'honey' ? b.stored ?? 0 : 0;
-  return b.outputs?.[item] ?? 0;
+  return isMachine(b) ? b.outputs[item] ?? 0 : 0;
 }
 
 /** A group named by a status's need ("feed (beans, bran or seed cake)"), if it is one. */

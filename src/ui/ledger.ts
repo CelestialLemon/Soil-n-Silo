@@ -34,7 +34,7 @@ function health(s: GameState) {
   const trees = countTrees(s), change = trees - s.initialTrees, nudge = Math.max(-TREE_HEALTH.cap, Math.min(TREE_HEALTH.cap, change * TREE_HEALTH.perTree));
   const goal = s.scenario.goals.find((g) => g.kind === 'soil');
   const saplings = s.buildings.filter((b) => b.type === 'sapling').length;
-  const flowering = fields.filter((f) => CROPS[f.crop!].flowers), reached = flowering.filter((f) => isPollinated(s, f)).length, hives = s.buildings.filter((b) => b.type === 'hive').length;
+  const flowering = fields.filter((f) => CROPS[f.crop].flowers), reached = flowering.filter((f) => isPollinated(s, f)).length, hives = s.buildings.filter((b) => b.type === 'hive').length;
   const block = (r: Node, label: string, big: (Node | string)[], lines: (Node | string)[], foot: Node | null) => h('div', { class: 'vr' }, r,
     h('div', { class: 'vr-txt' }, h('div', { class: 'cd-label' }, label), h('div', { class: 'vr-big' }, ...big), h('div', { class: 'cd-small' }, ...lines), foot));
   return h('div', { class: 'health' },
