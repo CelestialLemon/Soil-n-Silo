@@ -637,6 +637,10 @@ test('a refused save says why', () => {
   assert.match(why(JSON.stringify({ ...json, buildings: json.buildings.map((b: Building) => (b.type === 'mill' ? { ...b, recipe: 'nope' } : b)) })), /its state/);
   assert.match(why(JSON.stringify({ ...json, buildings: json.buildings.map((b: Building) => (b.type === 'mill' ? { ...b, inputs: undefined } : b)) })), /its state/);
   assert.match(why(JSON.stringify({ ...json, run: { ...json.run, nights: [{ day: 0, short: 0, types: [odd] }] } })), /its run log/);
+  // A stray recipe on a building that makes nothing is ignored: it loads, and steps without a lookup.
+  const stray = deserialize(JSON.stringify({ ...json, buildings: json.buildings.map((b: Building) => (b.type === 'depot' ? { ...b, recipe: 'nope' } : b)) }));
+  assert.ok(stray.ok);
+  if (stray.ok) for (let i = 0; i < 50; i++) advance(stray.value, 0.1);
   const back = deserialize(serialize(s));
   assert.ok(back.ok && back.value.buildings.length === s.buildings.length);
   assert.deepEqual(readProgress('not json'), {}, 'broken progress starts afresh');
