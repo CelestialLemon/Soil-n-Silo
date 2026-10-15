@@ -61,7 +61,7 @@ function goalOf(g: Goal) {
 }
 
 /**
- * When the commission would be done at the pace of the last five minutes (null: some goal isn't moving, or can't be told):
+ * When the commission would be done at the pace of the last five minutes (null: some goal isn't moving, is a rate or an unmet soil goal, or can't be told):
  * for "Show pace" only.
  */
 export function doneBy(s: GameState): number | null {
@@ -69,8 +69,8 @@ export function doneBy(s: GameState): number | null {
   let last = s.time;
   for (const [i, g] of s.scenario.goals.entries()) {
     const now = goalNow(s, i);
-    if (now.done || g.kind === 'soil') continue;
-    if (g.kind === 'rate') return null;
+    if (now.done) continue;
+    if (g.kind === 'rate' || g.kind === 'soil') return null;
     const rate = flowRate(s, 'delivered', g.item, RECENT_WINDOW);
     if (rate <= 0) return null;
     last = Math.max(last, s.time + (g.n - (s.delivered[g.item] ?? 0)) / rate * 60);
