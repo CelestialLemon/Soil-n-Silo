@@ -9,6 +9,7 @@ import { handlesGoods } from './layout.ts';
 import { wantsCompost, compostWanted, accept, waiting, take, takesGoods, tradesNextDoor } from './goods.ts';
 import { shareOf } from './energy.ts';
 import { runtimeOf } from '../runtime.ts';
+import { must } from '../result.ts';
 
 // Trucks: routes, stops, driving, loading and charging.
 
@@ -33,7 +34,7 @@ function driveTo(s: GameState, t: Truck, b: Building): boolean {
 
 /** Sends a truck home to its garage (to park, or to charge); if it can't get there it waits where it is. */
 function goHome(s: GameState, t: Truck) {
-  const g = garageOf(s, t)!;
+  const g = must(garageOf(s, t), 'garage');
   t.path = [];
   if (distanceTo(s, g, tileOf(s, t)) === 0) { t.phase = routeOf(s, t)?.stops.length ? 'charge' : 'parked'; t.target = g.id; t.idle = 0; return; }
   if (!driveTo(s, t, g)) { t.phase = 'stuck'; t.target = null; }
@@ -44,7 +45,7 @@ function goHome(s: GameState, t: Truck) {
  * there and then home, it goes home to charge first (unless it has just charged, or can't get home).
  */
 function setOff(s: GameState, t: Truck, from: number) {
-  const r = routeOf(s, t), g = garageOf(s, t)!;
+  const r = routeOf(s, t), g = must(garageOf(s, t), 'garage');
   if (!r || !r.stops.length) { goHome(s, t); return; }
   const here = tileOf(s, t), n = r.stops.length;
   let i = -1;
@@ -55,9 +56,9 @@ function setOff(s: GameState, t: Truck, from: number) {
   t.stop = ((from % n) + n) % n;
   if (i < 0) { t.phase = 'stuck'; t.path = []; t.target = null; return; }
   t.stop = i;
-  const b = buildingById(s, r.stops[i].building)!;
+  const b = must(buildingById(s, r.stops[i].building), 'stop building');
   // The way there, and home from the tile it will stop at.
-  const path = pathTo(s, b, here)!, leg = distanceTo(s, b, here), back = distanceTo(s, g, path.length ? path[path.length - 1] : here);
+  const path = must(pathTo(s, b, here), 'path'), leg = distanceTo(s, b, here), back = distanceTo(s, g, path.length ? path[path.length - 1] : here);
   if (!t.charged && back < Infinity && distanceTo(s, g, here) < Infinity
     && t.energy < (leg + back) * TRUCK.joulesPerTile) { goHome(s, t); return; }
   t.charged = false;
@@ -179,7 +180,7 @@ export function routeChanged(s: GameState, r: Route, kept: (number | null)[]) {
 
 /** Charges a truck at its garage from the garage's network; true if it got any charge this step. */
 function charge(s: GameState, t: Truck, dt: number) {
-  const g = garageOf(s, t)!;
+  const g = must(garageOf(s, t), 'garage');
   const give = Math.min(TRUCK.chargeRate * dt, TRUCK.battery - t.energy) * (networkOf(s, g) ? shareOf(s, g) : 0);
   t.energy = Math.min(TRUCK.battery, t.energy + give);
   return give > 1e-9;
@@ -201,7 +202,7 @@ export function runTrucks(s: GameState, dt: number) {
       // At a building or its garage, but no longer beside it (moved off a tile built on, or walled off): it drives back,
       // or on to its next stop if it can't.
       if (t.phase === 'queue' || t.phase === 'dock') { if (!b || distanceTo(s, b, here) !== 0) { t.phase = 'stuck'; redirect(s, t); } continue; }
-      if (t.phase === 'parked' || t.phase === 'charge') { if (distanceTo(s, garageOf(s, t)!, here) !== 0) goHome(s, t); continue; }
+      if (t.phase === 'parked' || t.phase === 'charge') { if (distanceTo(s, must(garageOf(s, t), 'garage'), here) !== 0) goHome(s, t); continue; }
       if (t.phase !== 'drive') continue;
       if (b && driveTo(s, t, b)) continue;
       if (b?.id === t.garage) { t.phase = 'stuck'; t.path = []; t.target = null; } else redirect(s, t);
@@ -224,7 +225,7 @@ export function runTrucks(s: GameState, dt: number) {
         break;
       }
       case 'drive': drive(s, t, dt); break;
-      case 'dock': atStop(s, t, dt, queued.has(t.target!)); break;
+      case 'dock': atStop(s, t, dt, t.target !== null && queued.has(t.target)); break;
       case 'stuck': redirect(s, t); break;
       case 'queue': break;
     }

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { must } from '../game/result.ts';
 
 /**
  * The frame round the tile under the pointer. It is interface, not part of the world, so it is drawn on its own canvas over
@@ -25,7 +26,7 @@ export class TileCursor {
     this.rgb = [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255];
     this.el.className = 'tile-cursor';
     view.after(this.el);
-    this.ctx = this.el.getContext('2d')!;
+    this.ctx = must(this.el.getContext('2d'), '2d canvas context');
   }
 
   /** Draws the frame round `tile` (or none) as `camera` sees it, on art `w` × `h` pixels laid out like the view. */

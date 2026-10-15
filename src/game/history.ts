@@ -140,7 +140,7 @@ export interface Summary {
   reading: { avg: number; min: number; max: number } | null;
 }
 
-const runShare = (r: { share?: number; steps?: number }) => (r.steps ? r.share! / r.steps : undefined);
+const runShare = (r: { share?: number; steps?: number }) => (r.steps && r.share !== undefined ? r.share / r.steps : undefined);
 
 /** A building's history over the last `window` seconds, in about `bars` bars (each a whole number of buckets). */
 export function summarize(h: History, now: number, window: number, bars = 60): Summary {
@@ -185,7 +185,7 @@ export function summarize(h: History, now: number, window: number, bars = 60): S
   out.forEach((b, i) => { if (sums[i].steps) b.value = sums[i].value / sums[i].steps; });
   // A rate over the time the bars cover, since the building was recorded.
   const covered = now - Math.max(first, h.since);
-  for (const item of Object.keys(perMin) as ItemId[]) perMin[item] = covered > 0 ? (perMin[item]! / covered) * 60 : 0;
+  for (const item of Object.keys(perMin) as ItemId[]) perMin[item] = covered > 0 ? ((perMin[item] ?? 0) / covered) * 60 : 0;
   const read = out.flatMap((x) => (x.value === null ? [] : [x.value]));
   const reading = steps ? { avg: value / steps, min: Math.min(...read), max: Math.max(...read) } : null;
   return { start, now, since: h.since, spans, shares, bars: out, step, perMin, made, taken, reading };

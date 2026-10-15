@@ -168,7 +168,7 @@ export class Hud {
     if (!msg) return;
     const t = h('span', { class: `cd-toast${ok ? '' : ' is-bad'}` }, ic ? icon(ic) : icon(ok ? 'check' : 'warn'), msg);
     this.toasts.append(t);
-    while (this.toasts.children.length > 4) this.toasts.firstChild!.remove();
+    while (this.toasts.children.length > 4) this.toasts.firstElementChild?.remove();
     setTimeout(() => t.classList.add('is-gone'), 2200);
     setTimeout(() => t.remove(), 2800);
   }

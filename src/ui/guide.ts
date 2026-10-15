@@ -14,6 +14,7 @@ import { clockAt, plural } from './format.ts';
 import { HISTORY_WINDOWS } from './historyView.ts';
 import { keysCard, markersCard } from './pause.ts';
 import { ring, statusLabel, statusPill } from './widgets.ts';
+import { must } from '../game/result.ts';
 
 // The guide: a page for every building (what it does, how to use it, its numbers, what it takes and makes), a page of
 // goods, and a few pages on the basics (trucks and routes, power, soil, the markers). The words are written here; every number comes
@@ -220,7 +221,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
   const search = h('input', { class: 'cd-input', placeholder: 'Search buildings, goods, keys…', spellcheck: false, 'aria-label': 'Search the guide',
     oninput: () => { query = search.value.trim().toLowerCase(); drawIndex(); },
     // Esc closes the guide from the search field too (the game's keys skip text fields; G types a G here).
-    onkeydown: (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } } }) as HTMLInputElement;
+    onkeydown: (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } } });
   const have = new Set(s ? s.buildings.map((b) => b.type) : []);
 
   function drawIndex() {
@@ -243,7 +244,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
           h('div', { class: 'gtiles' }, ...(Object.keys(BUILDINGS) as BuildingId[]).filter((id) => BUILDINGS[id].category === c.id || (c.id === 'logistics' && id === 'depot')).map(tile)))),
         s ? h('div', { class: 'cd-small legend' }, h('i'), 'Outlined: you have one in this valley') : null,
         s ? h('div', { class: 'cd-inset worth' }, h('div', { class: 'cd-label' }, `Worth reading for ${s.scenario.name}`),
-          h('div', { class: 'chips' }, ...worthReading(s).map((t) => h('button', { class: 'cd-chip', onclick: () => go({ kind: 'topic', id: t }) }, TOPICS.find((x) => x.id === t)!.name)))) : null,
+          h('div', { class: 'chips' }, ...worthReading(s).map((t) => h('button', { class: 'cd-chip', onclick: () => go({ kind: 'topic', id: t }) }, must(TOPICS.find((x) => x.id === t), 'topic').name)))) : null,
       ];
     }
     fill(index, h('div', { class: 'cd-label' }, 'The guide'), search, topics, ...list);
@@ -278,7 +279,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
           nums.length ? h('div', { class: 'num-rows' }, ...nums) : null,
           ...extraTables(id)),
         h('div', { class: 'side' },
-          s && d.category ? valleyNow(id) : null,
+          s && d.category ? valleyNow(id, s) : null,
           worksWith(id),
           e.tips ? h('div', null, h('div', { class: 'cd-label' }, 'Good to know'), h('div', { class: 'tips' }, ...e.tips.map((t) => h('div', { class: 'tip' }, icon('check', 20), h('span', null, t))))) : null)),
     ];
@@ -311,13 +312,13 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
   }
 
   /** Every building of this kind in the valley now, with its status and rate, and a way to go to it. */
-  function valleyNow(id: BuildingId) {
-    const mine = s!.buildings.filter((b) => b.type === id), item = chainItemOf(id);
-    const rates = mine.map((b) => { const hist = historyOf(s!, b); return hist && item ? summarize(hist, s!.time, RECENT_WINDOW).perMin[item] ?? 0 : 0; });
+  function valleyNow(id: BuildingId, s: GameState) {
+    const mine = s.buildings.filter((b) => b.type === id), item = chainItemOf(id);
+    const rates = mine.map((b) => { const hist = historyOf(s, b); return hist && item ? summarize(hist, s.time, RECENT_WINDOW).perMin[item] ?? 0 : 0; });
     const r = recipesFor(id)[0], full = r && item ? mine.length * r.outputs[0].n * 60 / r.time : 0, total = rates.reduce((n, x) => n + x, 0);
     const name = (n: number) => (n === 1 ? BUILDINGS[id].name.toLowerCase() : `${BUILDINGS[id].name.toLowerCase()}${BUILDINGS[id].name.endsWith('s') ? 'es' : 's'}`);
     return h('div', { class: 'cd-card is-ink valley-now' },
-      h('div', { class: 'row-head' }, h('span', { class: 'cd-label' }, 'In your valley now'), h('span', { class: 'cd-small' }, `${clockAt(s!.time)} · day ${dayAt(s!.time)}`)),
+      h('div', { class: 'row-head' }, h('span', { class: 'cd-label' }, 'In your valley now'), h('span', { class: 'cd-small' }, `${clockAt(s.time)} · day ${dayAt(s.time)}`)),
       mine.length ? h('div', { class: 'sum' },
         item ? ring({ v: full ? total / full : 0, d: 96, w: 8, col: 'var(--ochre)' }, h('div', null, h('div', { class: 'big' }, fmt(Math.round(total * 10) / 10)), full ? h('div', { class: 'cd-small' }, `of ${fmt(full)}`) : null)) : null,
         h('div', null, h('div', { class: 'what' }, `${mine.length} ${name(mine.length)}${item ? ` · ${fmt(Math.round(total * 10) / 10)} ${lc(item)} a minute together` : ''}`),
@@ -332,14 +333,15 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
   /** The buildings it trades goods with: what it takes from, and gives to. */
   function worksWith(id: BuildingId) {
     const takes = new Set(takesOf(id)), gives = new Set(givesOf(id)), out = new Map<BuildingId, string[]>();
+    const into = (k: BuildingId) => { let a = out.get(k); if (!a) out.set(k, a = []); return a; };
     for (const r of RECIPES) {
       if (r.building === id) continue;
-      for (const o of r.outputs) if (takes.has(o.item)) (out.get(r.building) ?? out.set(r.building, []).get(r.building)!).push(lc(o.item));
-      for (const ing of r.inputs) for (const i of 'item' in ing ? [ing.item] : GROUPS[ing.group]) if (gives.has(i)) (out.get(r.building) ?? out.set(r.building, []).get(r.building)!).push(lc(i));
+      for (const o of r.outputs) if (takes.has(o.item)) into(r.building).push(lc(o.item));
+      for (const ing of r.inputs) for (const i of 'item' in ing ? [ing.item] : GROUPS[ing.group]) if (gives.has(i)) into(r.building).push(lc(i));
     }
-    for (const c of CROP_IDS) if (takes.has(c) && id !== 'field') (out.get('field') ?? out.set('field', []).get('field')!).push(lc(c));
+    for (const c of CROP_IDS) if (takes.has(c) && id !== 'field') into('field').push(lc(c));
     if (takes.has('honey') && id !== 'hive') out.set('hive', ['honey']);
-    if (gives.has('compost')) (out.get('field') ?? out.set('field', []).get('field')!).push('compost');
+    if (gives.has('compost')) into('field').push('compost');
     if (!out.size) return null;
     return h('div', null, h('div', { class: 'cd-label' }, 'Works with'),
       h('div', { class: 'chips' }, ...[...out].map(([b, goods]) => h('button', { class: 'cd-chip', onclick: () => go({ kind: 'building', id: b }) }, icon(b, 24), `${BUILDINGS[b].name} · ${[...new Set(goods)].join(', ')}`))));

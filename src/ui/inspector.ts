@@ -28,6 +28,7 @@ import { historyView, makesOf, type HistoryWindow } from './historyView.ts';
 import type { Tool } from './hud.ts';
 import { routeCss, truckName } from './routing.ts';
 import { ring, statusLabel, statusPill } from './widgets.ts';
+import { must } from '../game/result.ts';
 
 // The inspector: a side card on the right for the selected building or truck. A building's header (name, kind, size, power),
 // its recipe as a line of stores with the batch timer, its status with since when, and what it makes a minute; then three
@@ -93,11 +94,11 @@ export class Inspector {
     const routes = runtimeOf(s).routesVersion;
     const setting = b?.type === 'field' ? b.crop : b && isMachine(b) ? b.recipe : null;
     const key = JSON.stringify(t ? ['truck', t.id, t.route, routes, this.tab]
-      : [b!.id, b!.type, setting, routes, this.tab]);
+      : [b?.id, b?.type, setting, routes, this.tab]);
     if (key !== this.key) {
       this.key = key;
       this.el.hidden = false;
-      const { el, update } = t ? this.truckCard(s, t) : this.buildingCard(s, b!);
+      const { el, update } = t ? this.truckCard(s, t) : this.buildingCard(s, must(b, 'building'));
       this.el.replaceChildren(...el);
       this.updater = update;
     }
@@ -205,7 +206,7 @@ export class Inspector {
         const list = h('div', { class: 'chips' });
         lines.push(() => rebuild(list, JSON.stringify(s.delivered), () => {
           const got = (Object.keys(s.delivered) as ItemId[]).filter((i) => s.delivered[i]);
-          return got.length ? got.map((i) => h('span', { class: 'cd-chip' }, icon(i, 20), `${num(s.delivered[i]!)} ${itemName(i)}`)) : [h('span', { class: 'cd-small' }, 'Nothing delivered yet. Trucks drop goods here on a route that stops here.')];
+          return got.length ? got.map((i) => h('span', { class: 'cd-chip' }, icon(i, 20), `${num(s.delivered[i] ?? 0)} ${itemName(i)}`)) : [h('span', { class: 'cd-small' }, 'Nothing delivered yet. Trucks drop goods here on a route that stops here.')];
         }));
         stat('Earned', () => `${num(s.earned)} credits`);
         out.push(h('div', { class: 'cd-label sub' }, 'Delivered'), list);

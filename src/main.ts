@@ -33,6 +33,7 @@ import './ui/clearday/tokens.css';
 import './ui/clearday/clearday.css';
 import './ui/clearday/icons.css';
 import './ui/game.css';
+import { must } from './game/result.ts';
 
 // The game: owns the loop, the state, input and the camera, and each frame tells the renderer where everything is. It is
 // build-only: the player places, configures and removes buildings and the simulation runs on its own. The camera
@@ -51,8 +52,8 @@ const PYLON_STEP = 2 * POWER.pylon.reach + 1;
 /** Whether placing a building should show the power networks: it makes, stores, carries or uses power. */
 const usesPower = (t: BuildingId) => !!BUILDINGS[t].grid || !!BUILDINGS[t].power;
 
-const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
-const loading = document.querySelector<HTMLElement>('#loading')!;
+const canvas = must(document.querySelector<HTMLCanvasElement>('#view'), '#view canvas');
+const loading = must(document.querySelector<HTMLElement>('#loading'), '#loading');
 const SAVE_KEY = saveKey(location.pathname), PROGRESS_KEY = `${SAVE_KEY}:progress`;
 /** The settings. */
 const settings = new SettingsStore(`${SAVE_KEY}:settings`);
@@ -289,8 +290,9 @@ async function play(initial: GameState) {
       case 'remove': {
         // The building under the pointer (it may stand in front of another's ground tile), else the tile's tree or rock.
         const hb = hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;
-        if (!hb && !t) return;
-        const r = hb ? remove(state, hb) : removeAt(state, t!.x, t!.y), message = messageOf(r);
+        const r = hb ? remove(state, hb) : t ? removeAt(state, t.x, t.y) : null;
+        if (!r) return;
+        const message = messageOf(r);
         if (message) hud.toast(message, r.ok);
         if (selected !== null && !buildingById(state, selected) && !truckById(state, selected)) selected = null;
         return;

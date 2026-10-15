@@ -9,6 +9,7 @@ import { blankBuilding, isMachine, type Building, type GameState, type MachineBu
 import { derived, besides, handlesGoods } from './layout.ts';
 import { fieldFertility, changeSoil } from './soil.ts';
 import { runtimeOf } from '../runtime.ts';
+import { must } from '../result.ts';
 
 // Goods: recipes, what buildings take and hold, and the buildings next door trading goods without a truck.
 
@@ -108,8 +109,8 @@ export function take(s: GameState, b: Building, item: ItemId) {
   if (b.type === 'hive') { b.stored--; return; }
   const from = b.type === 'silo' ? b.store : isMachine(b) ? b.outputs : null;
   if (!from) return;
-  from[item]! -= 1;
-  if (!from[item]) delete from[item];
+  const left = must(from[item], 'stock') - 1;
+  if (left) from[item] = left; else delete from[item];
 }
 
 /** The goods a building can take now: its recipe's inputs (any member of a group), or compost for a field. */

@@ -1,4 +1,5 @@
 import { CROP_IDS, CROPS, HIVE, RECIPES, type BuildingId, type GroupId, type ItemId, type Recipe } from './data.ts';
+import { must } from './result.ts';
 
 // Where a good comes from, for the guide: the building that makes it, how long that takes at full speed, and where each of
 // its inputs comes from in turn, back to the fields and hives. Static, from data.ts. Between buildings a good goes next door
@@ -46,7 +47,7 @@ function stepFor(item: ItemId, seen: Set<BuildingId>): Step | null {
   if (!r || seen.has(r.building)) return null;
   const next = new Set(seen).add(r.building);
   return {
-    building: r.building, time: r.time, verb: VERBS[r.building] ?? 'make', n: r.outputs.find((o) => o.item === item)!.n, recipe: r,
+    building: r.building, time: r.time, verb: VERBS[r.building] ?? 'make', n: must(r.outputs.find((o) => o.item === item), 'recipe output').n, recipe: r,
     inputs: r.inputs.map((ing) => ('item' in ing ? { item: ing.item, n: ing.n, from: stepFor(ing.item, next) } : { group: ing.group, n: ing.n })),
   };
 }

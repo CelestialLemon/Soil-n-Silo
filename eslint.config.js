@@ -1,6 +1,5 @@
 // ESLint for the game, its tests and tools: the recommended sets plus a few type-aware rules that catch real bugs here.
-// No formatting or line-length rules: the code's dense layout is deliberate. Rules at 'warn' still have hits in today's code
-// and are meant to become errors once those are cleared.
+// No formatting or line-length rules: the code's dense layout is deliberate. Every rule is an error: a hit gets fixed.
 //
 // typescript-eslint drives the TypeScript compiler through its JavaScript API, which TypeScript 7 (the compiler the build
 // uses) no longer has. So, while ESLint runs, the linter's own `typescript` imports are pointed at TypeScript 6's API
@@ -31,18 +30,19 @@ export default tseslint.config(
       eqeqeq: ['error', 'always', { null: 'ignore' }],
       // node:test's test() returns a promise the runner already awaits.
       '@typescript-eslint/no-floating-promises': ['error', { allowForKnownSafeCalls: [{ from: 'package', package: 'node:test', name: ['test', 'it', 'describe', 'suite'] }] }],
-      '@typescript-eslint/no-non-null-assertion': 'warn',
-      '@typescript-eslint/no-unnecessary-type-assertion': 'warn',
-      '@typescript-eslint/unbound-method': 'warn',
-      '@typescript-eslint/no-base-to-string': 'warn',
-      '@typescript-eslint/no-unsafe-assignment': 'warn',
-      '@typescript-eslint/no-unsafe-argument': 'warn',
+      '@typescript-eslint/no-non-null-assertion': 'error',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'error',
+      '@typescript-eslint/unbound-method': 'error',
+      '@typescript-eslint/no-base-to-string': 'error',
+      '@typescript-eslint/no-unsafe-assignment': 'error',
+      '@typescript-eslint/no-unsafe-argument': 'error',
     },
   },
   {
-    // The tests tamper with saves through `any` on purpose.
+    // The tests tamper with saves through `any` on purpose, and assert state with `!`.
     files: ['test/**/*.ts'],
     rules: {
+      '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',

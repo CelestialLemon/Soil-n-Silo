@@ -25,8 +25,8 @@ const CLEARING = 8;
 export function generateMap(sc: Scenario): MapData {
   const { width: w, height: h, seed, terrain: t } = sc;
   const r = mulberry32(seed);
-  const terrain: TerrainKind[] = new Array(w * h).fill(TERRAIN.grass);
-  const fertility: number[] = new Array(w * h).fill(0);
+  const terrain: TerrainKind[] = new Array<TerrainKind>(w * h).fill(TERRAIN.grass);
+  const fertility: number[] = new Array<number>(w * h).fill(0);
   const idx = (x: number, y: number) => y * w + x;
   const inside = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h;
 

@@ -16,3 +16,9 @@ export function tryParseJson(text: string): Result<unknown> {
     return err(e instanceof Error ? e.message : String(e));
   }
 }
+
+/** The value, which an invariant says is there: a missing one is a programmer's bug, so it throws. */
+export function must<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) throw new Error(`Missing ${what}`);
+  return value;
+}
