@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObject } from 'pixel3d-renderer';
-import { addStop, canPlace, clearPrice, place, priceOf, remove, removeAt } from './game/build.ts';
+import { addStop, canPlace, clearPrice, messageOf, place, priceOf, remove, removeAt } from './game/build.ts';
 import { BUILDINGS, POWER, type BuildingId } from './game/data.ts';
 import { TERRAIN } from './game/map.ts';
 import { deserialize, readProgress, recordResult, saveKey, serialize } from './game/save.ts';
@@ -62,7 +62,8 @@ const SAVE_KEY = saveKey(location.pathname), PROGRESS_KEY = `${SAVE_KEY}:progres
 /** The settings. */
 const settings = new SettingsStore(`${SAVE_KEY}:settings`);
 
-const saved = deserialize(localStorage.getItem(SAVE_KEY));
+const loaded = deserialize(localStorage.getItem(SAVE_KEY));
+const saved = loaded.ok ? loaded.value : null;
 const params = new URLSearchParams(location.search);
 /** A commission to start straight away (`?play=<id>`); an unknown id falls through to the menu or the saved game. */
 const startId = params.get('play');
@@ -382,24 +383,24 @@ async function play(initial: GameState) {
         const r = routeById(state, tool.route), b = hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;
         if (!r) { setTool({ kind: 'select' }); return; }
         if (!b) return;
-        const res = addStop(state, r, b);
-        if (res.message) hud.toast(res.message, res.ok);
+        const res = addStop(state, r, b), message = messageOf(res);
+        if (message) hud.toast(message, res.ok);
         hud.refresh();
         return;
       }
       case 'build': {
         if (!t) return;
         const n = BUILDINGS[tool.type].size, a = anchor(t, n);
-        const r = place(state, tool.type, a.x, a.y, tool.rot);
-        if (r.message) hud.toast(r.ok && priceOf(state, tool.type) ? `${r.message.replace(/\.$/, '')} · −${priceOf(state, tool.type)} credits` : r.message, r.ok, r.ok ? tool.type : undefined);
+        const r = place(state, tool.type, a.x, a.y, tool.rot), message = messageOf(r);
+        if (message) hud.toast(r.ok && priceOf(state, tool.type) ? `${message.replace(/\.$/, '')} · −${priceOf(state, tool.type)} credits` : message, r.ok, r.ok ? tool.type : undefined);
         return;
       }
       case 'remove': {
         // The building under the pointer (it may stand in front of another's ground tile), else the tile's tree or rock.
         const hb = hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;
         if (!hb && !t) return;
-        const r = hb ? remove(state, hb) : removeAt(state, t!.x, t!.y);
-        if (r.message) hud.toast(r.message, r.ok);
+        const r = hb ? remove(state, hb) : removeAt(state, t!.x, t!.y), message = messageOf(r);
+        if (message) hud.toast(message, r.ok);
         if (selected !== null && !buildingById(state, selected) && !truckById(state, selected)) selected = null;
         return;
       }
@@ -412,7 +413,7 @@ async function play(initial: GameState) {
       let built = 0, last = '';
       for (const sp of plan(tool.type, press.from, press.to, tool.rot)) {
         const r = place(state, tool.type, sp.x, sp.y, sp.rot);
-        if (r.ok) built++; else if (r.message) last = r.message;
+        if (r.ok) built++; else if (r.error) last = r.error;
       }
       if (built) hud.toast(`Built ${built} × ${BUILDINGS[tool.type].name.toLowerCase()}`, true, tool.type);
       else if (last) hud.toast(last, false);

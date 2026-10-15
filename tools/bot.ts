@@ -55,9 +55,9 @@ export function playLayout(id: string, minutes = 60, log: (line: string) => void
     }
     if ('type' in st) {
       const r = place(s, st.type, st.x, st.y, st.rot ?? 1);
-      if (!r.ok) { log(`  step ${next} ${st.type} at ${st.x},${st.y}: ${r.message}`); return; }
-      if (st.crop) setCrop(s, r.building!, st.crop);
-      if (st.as) named.set(st.as, r.building!);
+      if (!r.ok) { log(`  step ${next} ${st.type} at ${st.x},${st.y}: ${r.error}`); return; }
+      if (st.crop) setCrop(s, r.value.building, st.crop);
+      if (st.as) named.set(st.as, r.value.building);
       return;
     }
     const garage = named.get(st.garage)!;
@@ -69,7 +69,7 @@ export function playLayout(id: string, minutes = 60, log: (line: string) => void
         const b = named.get(sp.at);
         if (!b) throw new Error(`route ${st.route}: no building named ${sp.at}`);
         const res = addStop(s, route, b);
-        if (!res.ok) throw new Error(`route ${st.route}: ${res.message}`);
+        if (!res.ok) throw new Error(`route ${st.route}: ${res.error}`);
         const stop = route.stops[route.stops.length - 1];
         if (sp.pick) { stop.pick = sp.pick; stop.drop = stop.drop.filter((i) => !sp.pick!.includes(i)); }
         if (sp.drop) { stop.drop = sp.drop; stop.pick = stop.pick.filter((i) => !sp.drop!.includes(i)); }
@@ -78,8 +78,8 @@ export function playLayout(id: string, minutes = 60, log: (line: string) => void
     }
     for (let k = 0; k < ('route' in st ? st.trucks : 1); k++) {
       const r = buyTruck(s, garage);
-      if (!r.ok) { log(`  step ${next}: ${r.message}`); return; }
-      setTruckRoute(s, r.truck!, route);
+      if (!r.ok) { log(`  step ${next}: ${r.error}`); return; }
+      setTruckRoute(s, r.value.truck, route);
     }
   }
 

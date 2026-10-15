@@ -30,10 +30,13 @@ function flat(extra: Partial<Scenario> = {}): GameState {
   return s;
 }
 
+/** A save read back, or null if it's refused. */
+const load = (json: string) => { const r = deserialize(json); return r.ok ? r.value : null; };
+
 function put(s: GameState, type: Parameters<typeof place>[1], x: number, y: number, rot: Dir = 0): Building {
   const r = place(s, type, x, y, rot);
-  assert.ok(r.ok, `${type} at ${x},${y}: ${r.message}`);
-  return r.building!;
+  if (!r.ok) assert.fail(`${type} at ${x},${y}: ${r.error}`);
+  return r.value.building;
 }
 
 const depotOf = (s: GameState) => s.buildings.find((b) => b.type === 'depot')!;
@@ -102,7 +105,7 @@ test('placing checks terrain, room and credits, and removing refunds', () => {
 function garageAt(s: GameState, x: number, y: number, n = 1, powered = true) {
   const g = put(s, 'garage', x, y);
   if (powered) powerAt(s, x + 2, y);
-  const trucks = Array.from({ length: n }, () => { const r = buyTruck(s, g); assert.ok(r.ok, r.message); return r.truck!; });
+  const trucks = Array.from({ length: n }, () => { const r = buyTruck(s, g); if (!r.ok) assert.fail(r.error); return r.value.truck; });
   return { g, trucks };
 }
 
@@ -358,7 +361,7 @@ test('when a route changes, a truck keeps going where it was going if that is st
   assert.ok(deleteRoute(s, r).ok);
   until(s, () => t.phase === 'parked');
   assert.equal(t.route, null);
-  assert.ok(deserialize(serialize(s)), 'still saves');
+  assert.ok(load(serialize(s)), 'still saves');
 });
 
 test('a silo holds up to its limit of each good; a full one still takes the others', () => {
@@ -599,18 +602,40 @@ test('saves round-trip, and progress keeps the best result', () => {
   const s = flat();
   put(s, 'mill', 4, 4);
   advance(s, 3);
-  const back = deserialize(serialize(s))!;
+  const back = load(serialize(s))!;
   assert.ok(back);
   assert.equal(back.buildings.length, s.buildings.length);
   assert.equal(buildingAt(back, 5, 5)?.type, 'mill');
-  assert.equal(deserialize('{"version":1}'), null);
-  assert.equal(deserialize('nonsense'), null);
+  assert.equal(load('{"version":1}'), null);
+  assert.equal(load('nonsense'), null);
   let p = readProgress(null);
   p = recordResult(p, 'c1', 'silver', 900);
   p = recordResult(p, 'c1', 'bronze', 500);
   assert.equal(p.c1.medal, 'silver');
   p = recordResult(p, 'c1', 'silver', 800);
   assert.equal(p.c1.time, 800);
+});
+
+test('a refused save says why', () => {
+  const s = flat();
+  const json = JSON.parse(serialize(s));
+  const why = (text: string | null) => { const r = deserialize(text); if (r.ok) assert.fail('refused'); return r.error; };
+  assert.match(why(null), /no saved game/);
+  assert.match(why('nonsense'), /isn't JSON/);
+  assert.match(why('null'), /another version/);
+  assert.match(why(JSON.stringify({ ...json, version: 3 })), /another version/);
+  assert.match(why(JSON.stringify({ ...json, trucks: undefined })), /its state/);
+  assert.match(why(JSON.stringify({ ...json, run: undefined })), /its run log/);
+  // Malformed data is refused, never thrown on.
+  const odd = { toString: null };
+  assert.match(why(JSON.stringify({ ...json, version: odd })), /another version/);
+  assert.match(why(JSON.stringify({ ...json, trucks: [null] })), /its state/);
+  assert.match(why(JSON.stringify({ ...json, buildings: [{ ...json.buildings[0], type: odd }] })), /its state/);
+  assert.match(why(JSON.stringify({ ...json, buildings: [{ ...json.buildings[0], recipe: 'nope' }] })), /its state/);
+  assert.match(why(JSON.stringify({ ...json, run: { ...json.run, nights: [{ day: 0, short: 0, types: [odd] }] } })), /its run log/);
+  const back = deserialize(serialize(s));
+  assert.ok(back.ok && back.value.buildings.length === s.buildings.length);
+  assert.deepEqual(readProgress('not json'), {}, 'broken progress starts afresh');
 });
 
 test('saves with missing or broken state are refused', () => {
@@ -621,7 +646,7 @@ test('saves with missing or broken state are refused', () => {
   advance(s, 3);
   t.cargo = ['wheat'];
   const json = JSON.parse(serialize(s));
-  const without = (fn: (o: any) => void) => { const o = structuredClone(json); fn(o); return deserialize(JSON.stringify(o)); };
+  const without = (fn: (o: any) => void) => { const o = structuredClone(json); fn(o); return load(JSON.stringify(o)); };
   const back = without(() => {})!;
   assert.ok(back);
   assert.deepEqual(back.trucks, s.trucks);
@@ -651,12 +676,12 @@ test('saves with missing or broken state are refused', () => {
   const m = flat();
   put(m, 'mill', 10, 10);
   const mj = JSON.parse(serialize(m));
-  assert.equal(deserialize(JSON.stringify({ ...mj, buildings: mj.buildings.map((b: any) => (b.type === 'mill' ? { ...b, recipe: 'bread' } : b)) })), null);
+  assert.equal(load(JSON.stringify({ ...mj, buildings: mj.buildings.map((b: any) => (b.type === 'mill' ? { ...b, recipe: 'bread' } : b)) })), null);
   const k = flat();
   const silo = put(k, 'silo', 6, 6);
   const kj = JSON.parse(serialize(k));
-  assert.ok(deserialize(JSON.stringify(kj)));
-  assert.equal(deserialize(JSON.stringify({ ...kj, buildings: kj.buildings.map((b: any) => (b.id === silo.id ? { ...b, store: { wheat: 0.5 } } : b)) })), null);
+  assert.ok(load(JSON.stringify(kj)));
+  assert.equal(load(JSON.stringify({ ...kj, buildings: kj.buildings.map((b: any) => (b.id === silo.id ? { ...b, store: { wheat: 0.5 } } : b)) })), null);
 });
 
 test('removing a building twice refunds it once', () => {
@@ -796,7 +821,7 @@ test('a save with a queuing truck that is going nowhere is refused', () => {
   route(s, [t], put(s, 'silo', 8, 18));
   const json = JSON.parse(serialize(s));
   json.trucks[0].phase = 'queue'; json.trucks[0].target = null;
-  assert.equal(deserialize(JSON.stringify(json)), null);
+  assert.equal(load(JSON.stringify(json)), null);
 });
 
 test('route edits keep each truck\'s own stop: a repeated building, or a stop it is charging before', () => {
@@ -835,7 +860,7 @@ test('a stop the trucks\' garage can\'t reach is flagged, and a save with a stop
   assert.match(stopProblems(s, r)[0]!, /from their garage/);
   const json = JSON.parse(serialize(s));
   json.routes[0].stops[0].building = g.id;
-  assert.equal(deserialize(JSON.stringify(json)), null);
+  assert.equal(load(JSON.stringify(json)), null);
 });
 
 test('a stop its trucks\' garage can\'t reach says so, though it has open tiles beside it', () => {
@@ -936,7 +961,7 @@ test('routes can be renamed and copied; a truck can dump its cargo', () => {
   assert.ok(dumpCargo(t).ok);
   assert.deepEqual(t.cargo, []);
   assert.equal(dumpCargo(t).ok, false);
-  assert.ok(deserialize(serialize(s)), 'still saves');
+  assert.ok(load(serialize(s)), 'still saves');
 });
 
 test('two buildings sharing a slow giver next door take turns', () => {
