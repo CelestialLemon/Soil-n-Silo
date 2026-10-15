@@ -45,13 +45,14 @@ PR from `dev`. Every PR to either, and every push to them, runs the tests and th
 
 ```
 src/
-  main.ts       the game: loop, input, camera, picking and clicking
+  main.ts       the game: loop, state, hover and placement previews, and what clicks and keys do
+  input.ts      pointer, wheel and key events turned into intents the game answers (the press/drag state machine)
   game/         game rules and state as pure TypeScript (no DOM, no renderer), unit-tested in test/
     sim/        the fixed-step simulation, one concern per module, each importing only the ones above it in this list:
                 clock (time, sun, wind), layout (derived lookups), soil, goods (recipes, next-door trades), energy (power
                 networks, garage charging), buildings (machines, fields, hives), trucks, stats (history, rates, goals),
                 describe (player-facing text), step (advance and tick)
-  world/        what the renderer draws: the static farm, the models, and the view that mirrors the state into objects
+  world/        what the renderer draws: the static farm, the models, the camera, and the view that mirrors the state into objects
   ui/           the HTML HUD and menus over the canvas, and the item icons
     clearday/   the design system (tokens, components, icons, the bundled font)
 assets/         Blender build scripts for the models (the source of truth), exported to public/models/
