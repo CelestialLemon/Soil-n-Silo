@@ -1,5 +1,6 @@
 import { TERRAIN } from './map.ts';
 import { buildingAt, inMap, layoutOf, sizeOf, terrainAt, type Building, type GameState } from './state.ts';
+import { runtimeOf } from './runtime.ts';
 
 // The roads: trucks drive on any open tile (grass with nothing built on it), from tile centre to tile centre in 8
 // directions, a diagonal only when both tiles beside it are open. A truck loads at an open tile next to a building (sharing
@@ -7,8 +8,7 @@ import { buildingAt, inMap, layoutOf, sizeOf, terrainAt, type Building, type Gam
 // tile next to it, by the shortest way. A truck follows the field downhill, so it always takes a shortest way. Fields are
 // worked out when first asked for and dropped when the layout changes.
 
-interface Roads { layout: number; open: Uint8Array; fields: Map<number, Float64Array> }
-const cached = new WeakMap<GameState, Roads>();
+export interface Roads { layout: number; open: Uint8Array; fields: Map<number, Float64Array> }
 
 const SQRT2 = Math.SQRT2;
 /** The 8 neighbours: dx, dy, cost. */
@@ -16,13 +16,14 @@ const STEPS: [number, number, number][] = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0,
 
 function roads(s: GameState): Roads {
   const layout = layoutOf(s);
-  let r = cached.get(s);
+  const rt = runtimeOf(s);
+  let r = rt.roads;
   if (r && r.layout === layout) return r;
   const { width: w, height: h } = s.map;
   const open = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) open[y * w + x] = terrainAt(s, x, y) === TERRAIN.grass && !buildingAt(s, x, y) ? 1 : 0;
   r = { layout, open, fields: new Map() };
-  cached.set(s, r);
+  rt.roads = r;
   return r;
 }
 

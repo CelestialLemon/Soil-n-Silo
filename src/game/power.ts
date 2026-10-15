@@ -1,6 +1,7 @@
 import { BUILDINGS } from './data.ts';
 import { pylonReaches, pylonsLink } from './rules.ts';
 import { layoutOf, sizeOf, type Building, type GameState } from './state.ts';
+import { runtimeOf } from './runtime.ts';
 
 // Power networks: pylons within reach of each other link into a network, and every building that makes, stores or uses
 // power joins the network of the first pylon that reaches one of its tiles. Each network balances on its own (sim/energy.ts).
@@ -21,8 +22,7 @@ export interface Network {
 /** The watts a network's machines got: what they wanted, cut back when it is short. */
 export const usedBy = (net: Network) => net.wanted * net.share;
 
-interface Networks { layout: number; list: Network[]; of: Map<number, Network> }
-const cached = new WeakMap<GameState, Networks>();
+export interface Networks { layout: number; list: Network[]; of: Map<number, Network> }
 
 export const POWERED = (b: Building) => BUILDINGS[b.type].grid !== 'link' && (isGenerator(b) || isConsumer(b) || BUILDINGS[b.type].grid === 'storage');
 export const isGenerator = (b: Building) => BUILDINGS[b.type].grid === 'source';
@@ -30,7 +30,8 @@ export const isConsumer = (b: Building) => !!BUILDINGS[b.type].power;
 
 export function networks(s: GameState): Networks {
   const layout = layoutOf(s);
-  let n = cached.get(s);
+  const rt = runtimeOf(s);
+  let n = rt.networks;
   if (n && n.layout === layout) return n;
   const pylons = s.buildings.filter((b) => BUILDINGS[b.type].grid === 'link');
   const parent = pylons.map((_, i) => i);
@@ -62,7 +63,7 @@ export function networks(s: GameState): Networks {
     if (old) { net.made = old.made; net.wanted = old.wanted; net.share = old.share; }
   }
   n = { layout, list, of };
-  cached.set(s, n);
+  rt.networks = n;
   return n;
 }
 

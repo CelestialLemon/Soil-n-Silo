@@ -4,14 +4,14 @@ import { notePower, type PowerStep } from '../powerlog.ts';
 import { isMachine, type BatteryBuilding, type Building, type GameState } from '../state.ts';
 import { exposureOf, nearWater } from './layout.ts';
 import { recipeOf, missing, outputsFit } from './goods.ts';
+import { runtimeOf } from '../runtime.ts';
 
 // Power: what each building wants and makes, how each network balances, and the watts garages want for charging.
 
-const shares = new WeakMap<GameState, Map<number, number>>();
 /** The share of the power it wanted that a building got last step (1 for buildings that need none). */
 export function shareOf(s: GameState, b: Building) {
   if (!BUILDINGS[b.type].power) return 1;
-  return shares.get(s)?.get(b.id) ?? 0;
+  return runtimeOf(s).shares?.get(b.id) ?? 0;
 }
 
 /** Watts a building wants this step. */
@@ -19,7 +19,7 @@ export function wants(s: GameState, b: Building): number {
   const def = BUILDINGS[b.type];
   if (!def.power) return 0;
   if (b.type === 'sprinkler') return nearWater(s, b) ? POWER.sprinklerNearWater : POWER.sprinklerFar;
-  if (b.type === 'garage') return charging.get(s)?.get(b.id) ?? 0;
+  if (b.type === 'garage') return runtimeOf(s).charging?.get(b.id) ?? 0;
   if (!isMachine(b)) return 0;
   const r = recipeOf(b);
   if (b.progress !== null) return def.power;
@@ -75,7 +75,7 @@ export function balancePower(s: GameState, sun: number, wind: number, dt: number
     for (const b of net.members) map.set(b.id, share);
     for (const [b, u] of want) use[b.type] = (use[b.type] ?? 0) + u * share;
   }
-  shares.set(s, map);
+  runtimeOf(s).shares = map;
   notePower(s, step, use, dt);
 }
 
@@ -83,7 +83,6 @@ export function balancePower(s: GameState, sun: number, wind: number, dt: number
  * Watts each garage wants for the trucks charging there, worked out before power is balanced: each truck at most the charge
  * rate, and no more than it needs to fill up this step.
  */
-const charging = new WeakMap<GameState, Map<number, number>>();
 export function countCharging(s: GameState) {
   const m = new Map<number, number>();
   for (const t of s.trucks) {
@@ -91,12 +90,12 @@ export function countCharging(s: GameState) {
     const w = Math.min(TRUCK.chargeRate, Math.max(0, TRUCK.battery - t.energy) / TICK);
     if (w > 0) m.set(t.garage, (m.get(t.garage) ?? 0) + w);
   }
-  charging.set(s, m);
+  runtimeOf(s).charging = m;
 }
 
 /** A garage's status: charging its trucks, short of power for them, or idle. */
 export function runGarages(s: GameState) {
-  const want = charging.get(s);
+  const want = runtimeOf(s).charging;
   for (const g of s.buildings) {
     if (g.type !== 'garage') continue;
     const w = want?.get(g.id) ?? 0, share = shareOf(s, g);

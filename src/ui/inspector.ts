@@ -15,6 +15,7 @@ import { fieldFertility } from '../game/sim/soil.ts';
 import { givesGoods, linksOf, recipeOf, takesGoods, wantsCompost } from '../game/sim/goods.ts';
 import { makes, shareOf, wants } from '../game/sim/energy.ts';
 import { fieldPace, flowersNear } from '../game/sim/buildings.ts';
+import { runtimeOf } from '../game/runtime.ts';
 import { isStop, routeOf, routesAt } from '../game/sim/trucks.ts';
 import { describeLinks, describeStatus, describeTruck, truckProblems } from '../game/sim/describe.ts';
 import { buildingById, isMachine, routeById, truckById, type Building, type GameState, type Route, type Truck } from '../game/state.ts';
@@ -89,11 +90,10 @@ export class Inspector {
       return;
     }
     // Made again when what it shows changes: the building's settings, the trucks and routes it lists.
-    const routes = s.routes.map((r) => [r.id, r.name, r.stops.length]);
+    const routes = runtimeOf(s).routesVersion;
     const setting = b?.type === 'field' ? b.crop : b && isMachine(b) ? b.recipe : null;
     const key = JSON.stringify(t ? ['truck', t.id, t.route, routes, this.tab]
-      : [b!.id, b!.type, setting, routes, this.tab, s.trucks.filter((x) => x.garage === b!.id).map((x) => [x.id, x.route]),
-        routesAt(s, b!).map((r) => r.stops.filter((st) => st.building === b!.id))]);
+      : [b!.id, b!.type, setting, routes, this.tab]);
     if (key !== this.key) {
       this.key = key;
       this.el.hidden = false;

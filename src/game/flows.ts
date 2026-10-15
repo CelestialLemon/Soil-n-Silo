@@ -1,5 +1,6 @@
 import { ITEMS, type ItemId } from './data.ts';
 import { isMachine, STAT_BUCKET, STAT_BUCKETS, type GameState } from './state.ts';
+import { runtimeOf } from './runtime.ts';
 
 // Goods moving through the valley over the last ten minutes, for the ledger: what was made, what buildings used, and what
 // reached the depot, in buckets of FLOW_BUCKET seconds; and soil health sampled as it goes, for its trend. Kept in memory
@@ -12,7 +13,7 @@ type Counts = Partial<Record<ItemId, number>>;
 
 interface FlowBucket { from: number; made: Counts; used: Counts; delivered: Counts }
 
-interface Flows {
+export interface Flows {
   /** When recording began. */
   since: number;
   /** Oldest first. */
@@ -21,11 +22,10 @@ interface Flows {
   soil: { t: number; v: number }[];
 }
 
-const all = new WeakMap<GameState, Flows>();
-
 function flows(s: GameState): Flows {
-  let f = all.get(s);
-  if (!f) all.set(s, (f = { since: s.time, buckets: [], soil: [] }));
+  const r = runtimeOf(s);
+  let f = r.flows;
+  if (!f) r.flows = (f = { since: s.time, buckets: [], soil: [] });
   return f;
 }
 

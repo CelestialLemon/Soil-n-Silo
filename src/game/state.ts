@@ -2,6 +2,7 @@ import { BUILDINGS, isMachineId, recipesFor, type BuildingId, type CropId, type 
 import { generateMap, TERRAIN, type MapData } from './map.ts';
 import { newRunLog, type RunLog } from './runlog.ts';
 import type { Scenario } from './scenarios.ts';
+import { nextVersion, runtimeOf } from './runtime.ts';
 
 // The state of a commission in progress: plain data, so it saves as JSON. Lookups that only speed things up (which building
 // is on a tile, the power networks) live in a cache beside it and are rebuilt when the layout changes.
@@ -202,17 +203,16 @@ export const sizeOf = (b: { type: BuildingId }) => BUILDINGS[b.type].size;
 
 // ---- The cache: who stands where, by id ----
 
-interface Cache { grid: Int32Array; byId: Map<number, Building>; layout: number }
-const caches = new WeakMap<GameState, Cache>();
-/** Bumped whenever buildings are added or removed, so derived caches (power networks, the view) know to rebuild. */
-let layoutVersion = 1;
+export interface Cache { grid: Int32Array; byId: Map<number, Building>; layout: number }
+/** The cache's layout number changes whenever buildings are added or removed, so derived caches (power networks, the view) know to rebuild. */
 
 function cache(s: GameState): Cache {
-  let c = caches.get(s);
+  const rt = runtimeOf(s);
+  let c = rt.tiles;
   if (!c) {
-    c = { grid: new Int32Array(s.map.width * s.map.height), byId: new Map(), layout: layoutVersion++ };
+    c = { grid: new Int32Array(s.map.width * s.map.height), byId: new Map(), layout: nextVersion() };
     for (const b of s.buildings) occupy(s, c, b, b.id);
-    caches.set(s, c);
+    rt.tiles = c;
   }
   return c;
 }
@@ -230,12 +230,12 @@ export function addBuilding(s: GameState, b: Building) {
   const c = cache(s);
   s.buildings.push(b);
   occupy(s, c, b, b.id);
-  c.layout = layoutVersion++;
+  c.layout = nextVersion();
 }
 
 /** Marks the layout changed without adding or removing anything (a tree cleared, a sapling grown). */
 export function touchLayout(s: GameState) {
-  cache(s).layout = layoutVersion++;
+  cache(s).layout = nextVersion();
 }
 
 export function removeBuilding(s: GameState, b: Building) {
@@ -243,7 +243,7 @@ export function removeBuilding(s: GameState, b: Building) {
   const i = s.buildings.indexOf(b);
   if (i >= 0) s.buildings.splice(i, 1);
   occupy(s, c, b, 0);
-  c.layout = layoutVersion++;
+  c.layout = nextVersion();
 }
 
 export const inMap = (s: GameState, x: number, y: number) => x >= 0 && y >= 0 && x < s.map.width && y < s.map.height;

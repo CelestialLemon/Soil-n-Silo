@@ -3,6 +3,7 @@ import { TERRAIN } from './map.ts';
 import { err, ok, type Result } from './result.ts';
 import { accessTiles, nearestOpen } from './roads.ts';
 import { givesGoods, takesGoods } from './sim/goods.ts';
+import { touchRoutes } from './runtime.ts';
 import { isStop, redirect, routeChanged } from './sim/trucks.ts';
 import {
   addBuilding, buildingAt, inMap, makeBuilding, removeBuilding, terrainAt, tileIndex, touchLayout, type Building, type BuildingOf, type Dir, type GameState, type MachineBuilding,
@@ -64,6 +65,7 @@ export function remove(s: GameState, b: Building): Action {
     let k = 0;
     const kept = r.stops.map((st) => (st.building === b.id ? null : k++));
     r.stops = r.stops.filter((st) => st.building !== b.id);
+    touchRoutes(s);
     routeChanged(s, r, kept);
   }
   return done(`Removed the ${BUILDINGS[b.type].name.toLowerCase()}${trucks.length ? ` and its ${trucks.length} truck${trucks.length > 1 ? 's' : ''}` : ''} (refunded).`);
@@ -124,6 +126,7 @@ export function buyTruck(s: GameState, g: Building): Action<{ truck: Truck }> {
     path: [], target: g.id, energy: TRUCK.battery, cargo: [], idle: 0, budget: 0, arrived: 0, charged: false,
   };
   s.trucks.push(t);
+  touchRoutes(s);
   const message = accessTiles(s, g).length ? 'Bought a truck. Give it a route.' : 'Bought a truck, but trucks can\'t reach the garage: leave an open tile beside it.';
   return ok({ message, truck: t });
 }
@@ -133,6 +136,7 @@ export function sellTruck(s: GameState, t: Truck): Action {
   const i = s.trucks.indexOf(t);
   if (i < 0) return no('');
   s.trucks.splice(i, 1);
+  touchRoutes(s);
   s.credits += truckPrice(s);
   return done(`Sold the truck (refunded)${t.cargo.length ? `; its ${t.cargo.length} goods are lost` : ''}.`);
 }
@@ -142,6 +146,7 @@ export function setTruckRoute(s: GameState, t: Truck, route: Route | null): Acti
   if ((route?.id ?? null) === t.route) return no('');
   t.route = route?.id ?? null;
   t.stop = 0;
+  touchRoutes(s);
   // It leaves any building or queue at once.
   if (t.phase === 'queue' || t.phase === 'dock') t.phase = 'stuck';
   // Charging at home, it sets off at once (and charges on only if its battery is short for the new route).
@@ -162,11 +167,12 @@ export function dumpCargo(t: Truck): Action {
 export const ROUTE_NAME_MAX = 24;
 
 /** Renames a route (trimmed, at most ROUTE_NAME_MAX characters, not empty). */
-export function renameRoute(r: Route, name: string): Action {
+export function renameRoute(s: GameState, r: Route, name: string): Action {
   const n = name.replace(/\s+/g, ' ').trim().slice(0, ROUTE_NAME_MAX);
   if (!n) return no('A route needs a name.');
   if (n === r.name) return no('');
   r.name = n;
+  touchRoutes(s);
   return done(`Renamed the route to ${n}.`);
 }
 
@@ -177,6 +183,7 @@ export function copyRoute(s: GameState, r: Route): Route {
   for (let k = 2; s.routes.some((x) => x.name === name); k++) name = `${r.name.slice(0, ROUTE_NAME_MAX - 9)} (copy ${k})`;
   const c: Route = { id: s.nextId++, name: name.slice(0, ROUTE_NAME_MAX), stops: r.stops.map((st) => ({ ...st, drop: [...st.drop], pick: [...st.pick], turn: 0 })), moved: [] };
   s.routes.push(c);
+  touchRoutes(s);
   return c;
 }
 
@@ -186,6 +193,7 @@ export function newRoute(s: GameState): Route {
   while (s.routes.some((r) => r.name === `Route ${k}`)) k++;
   const r: Route = { id: s.nextId++, name: `Route ${k}`, stops: [], moved: [] };
   s.routes.push(r);
+  touchRoutes(s);
   return r;
 }
 
@@ -194,6 +202,7 @@ export function deleteRoute(s: GameState, r: Route): Action {
   const i = s.routes.indexOf(r);
   if (i < 0) return no('');
   s.routes.splice(i, 1);
+  touchRoutes(s);
   for (const t of s.trucks) if (t.route === r.id) { t.route = null; t.stop = 0; if (t.phase === 'queue' || t.phase === 'dock') t.phase = 'stuck'; redirect(s, t); }
   return done(`Deleted ${r.name}.`);
 }
@@ -211,6 +220,7 @@ export function addStop(s: GameState, r: Route, b: Building): Action {
   if (r.stops.length >= TRUCK.maxStops) return no(`A route has at most ${TRUCK.maxStops} stops.`);
   const kept = r.stops.map((_, i) => i);
   r.stops.push(defaultStop(b));
+  touchRoutes(s);
   routeChanged(s, r, kept);
   return done(`Added the ${lc(b)} as stop ${r.stops.length} of ${r.name}.${accessTiles(s, b).length ? '' : ' Trucks can\'t reach it yet: leave an open tile beside it.'}`);
 }
@@ -219,6 +229,7 @@ export function removeStop(s: GameState, r: Route, i: number): Action {
   if (!r.stops[i]) return no('');
   const kept = r.stops.map((_, k) => (k === i ? null : k < i ? k : k - 1));
   r.stops.splice(i, 1);
+  touchRoutes(s);
   routeChanged(s, r, kept);
   return done(`Took stop ${i + 1} out of ${r.name}.`);
 }
@@ -228,12 +239,13 @@ export function moveStop(s: GameState, r: Route, i: number, by: -1 | 1): Action 
   const j = i + by;
   if (!r.stops[i] || !r.stops[j]) return no('');
   [r.stops[i], r.stops[j]] = [r.stops[j], r.stops[i]];
+  touchRoutes(s);
   routeChanged(s, r, r.stops.map((_, k) => (k === i ? j : k === j ? i : k)));
   return done('');
 }
 
 /** Whether a stop drops a good, picks it up, or neither (a good is never both). */
-export function setStopGood(r: Route, i: number, item: ItemId, how: 'drop' | 'pick' | null): Action {
+export function setStopGood(s: GameState, r: Route, i: number, item: ItemId, how: 'drop' | 'pick' | null): Action {
   const st = r.stops[i];
   if (!st) return no('');
   const now = st.drop.includes(item) ? 'drop' : st.pick.includes(item) ? 'pick' : null;
@@ -241,15 +253,17 @@ export function setStopGood(r: Route, i: number, item: ItemId, how: 'drop' | 'pi
   st.drop = st.drop.filter((x) => x !== item);
   st.pick = st.pick.filter((x) => x !== item);
   if (how) st[how].push(item);
+  touchRoutes(s);
   const name = ITEMS[item].name.toLowerCase();
   return done(how === 'drop' ? `Drops ${name} there.` : how === 'pick' ? `Picks up ${name} there.` : `Leaves ${name} alone there.`);
 }
 
 /** How long trucks wait at a stop for room or goods, 0 to TRUCK.maxWait seconds. */
-export function setStopWait(r: Route, i: number, seconds: number): Action {
+export function setStopWait(s: GameState, r: Route, i: number, seconds: number): Action {
   const st = r.stops[i];
   const w = Math.max(0, Math.min(TRUCK.maxWait, Math.round(seconds)));
   if (!st || st.wait === w) return no('');
   st.wait = w;
+  touchRoutes(s);
   return done('');
 }

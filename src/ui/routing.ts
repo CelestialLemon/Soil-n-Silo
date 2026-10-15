@@ -60,8 +60,5 @@ export function trucksDoing(s: GameState, r: Route): string {
   return [...n].map(([w, k]) => `${k} ${w}`).join(' · ');
 }
 
-/** What of a route's stops a panel shows (not the stops' turns, which change all the time). */
-export const stopsKey = (r: Route) => r.stops.map((st) => [st.building, st.drop, st.pick, st.wait]);
-
 /** Whether the caret is in a text box inside `el` (a rebuild would lose it). */
 export const typingIn = (el: HTMLElement) => document.activeElement instanceof HTMLInputElement && el.contains(document.activeElement);
