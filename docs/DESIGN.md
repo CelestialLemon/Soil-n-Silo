@@ -332,7 +332,11 @@ playing trucks: every level needed many trucks, and routes doing a field-to-mill
   (fertility 100) by the field's average fertility.
 - A pollinated field (a hive within 4 tiles) yields 1 more of a flowering crop.
 - A harvest waits in the field (up to 6) until a truck picks it up. A full field stops growing.
-- A field with compost waiting uses one whenever its average fertility is under 85: +12 on each tile.
+- A field holds no compost. It takes one (from a truck or a composter next door) only while its average fertility is under
+  85, and spreads it at once: +12 on each tile. A truck carries the compost a field won't take on to the next stop, and
+  doesn't wait for a field whose soil is good to take it (it still waits for a harvest the stop picks up). Compost no field
+  needs has to go somewhere (the depot or a silo), or the composter fills and stops. (Chosen on 2026-10-15: fields used to
+  keep up to 4 compost for later, so the first field on a route took every unit and the rest starved.)
 - Ground without a field rests: it regains 0.1 fertility a second (6 a minute), up to what it started at. Moving a field
   lets worn ground recover.
 

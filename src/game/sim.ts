@@ -130,7 +130,7 @@ export function fieldFertility(s: GameState, f: Building) {
   return sum / 9;
 }
 
-function changeSoil(s: GameState, f: Building, by: number) {
+export function changeSoil(s: GameState, f: Building, by: number) {
   for (let y = f.y; y < f.y + 3; y++) for (let x = f.x; x < f.x + 3; x++) {
     const i = tileIndex(s, x, y);
     s.map.fertility[i] = Math.max(0, Math.min(100, s.map.fertility[i] + by));
@@ -189,6 +189,9 @@ function used(s: GameState, item: ItemId) {
   noteRunUse(s, item);
 }
 
+/** Whether a field's soil is poor enough to take compost. */
+export const wantsCompost = (s: GameState, f: Building) => fieldFertility(s, f) < FIELD.compostBelow;
+
 /** Whether a building takes `item` from a truck right now. Takes it if so: the depot buys it, a silo stores it. */
 function accept(s: GameState, b: Building, item: ItemId): boolean {
   if (b.type === 'depot') { deliver(s, item); return true; }
@@ -197,8 +200,9 @@ function accept(s: GameState, b: Building, item: ItemId): boolean {
     b.store![item] = (b.store![item] ?? 0) + 1; return true;
   }
   if (b.type === 'field') {
-    if (item !== 'compost' || b.compost! >= FIELD.compostStore) return false;
-    b.compost!++; return true;
+    // A field holds no compost: it takes one only while its soil is poor, and spreads it at once.
+    if (item !== 'compost' || !wantsCompost(s, b)) return false;
+    changeSoil(s, b, FIELD.compostGain); used(s, 'compost'); return true;
   }
   const r = recipeOf(b);
   if (!r) return false;
@@ -440,7 +444,6 @@ function runMachine(s: GameState, b: Building, dt: number) {
 
 function runField(s: GameState, f: Building, dt: number) {
   const crop = CROPS[f.crop!];
-  if (f.compost! > 0 && fieldFertility(s, f) < FIELD.compostBelow) { f.compost!--; changeSoil(s, f, FIELD.compostGain); used(s, 'compost'); }
   const bonus = crop.flowers && isPollinated(s, f) ? 1 : 0;
   // A harvest of the old crop waits to go before the new one can join it.
   const old = f.stored! > 0 && (f.harvest ?? f.crop) !== f.crop;
@@ -545,8 +548,13 @@ function setOff(s: GameState, t: Truck, from: number) {
   t.path = path; t.target = b.id; t.phase = 'drive'; t.idle = 0;
 }
 
-/** Whether a truck is done at its stop: it carries none of the stop's drop goods, and is full or picks nothing up there. */
-const doneAt = (t: Truck, st: Stop) => !t.cargo.some((i) => st.drop.includes(i)) && (t.cargo.length >= TRUCK.cargo || !st.pick.length);
+/**
+ * Whether a truck is done at its stop: it carries none of the stop's drop goods (compost doesn't count at a field whose soil
+ * is good: waiting won't make it take any), and is full or picks nothing up there.
+ */
+const doneAt = (s: GameState, t: Truck, st: Stop, b: Building) =>
+  !t.cargo.some((i) => st.drop.includes(i) && !(b.type === 'field' && i === 'compost' && !wantsCompost(s, b)))
+  && (t.cargo.length >= TRUCK.cargo || !st.pick.length);
 
 /** Moves one good at a stop: drops one the building takes, else picks up the next of the stop's goods there is. */
 function moveOne(s: GameState, t: Truck, st: Stop, b: Building, r: Route): boolean {
@@ -572,7 +580,7 @@ function atStop(s: GameState, t: Truck, dt: number, queued: boolean) {
   while (t.budget >= 1) {
     if (moveOne(s, t, st, b, r)) { t.budget -= 1; t.idle = 0; } else { stuck = true; t.budget = 1; break; }
   }
-  if (doneAt(t, st)) { setOff(s, t, t.stop + 1); return; }
+  if (doneAt(s, t, st, b)) { setOff(s, t, t.stop + 1); return; }
   if (stuck) {
     t.idle += dt;
     if (t.idle >= st.wait - 1e-9 || queued) setOff(s, t, t.stop + 1);

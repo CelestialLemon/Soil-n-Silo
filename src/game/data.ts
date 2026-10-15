@@ -69,8 +69,7 @@ export const CROPS: Record<CropId, CropDef> = {
 export const FIELD = {
   /** Harvested goods a field holds before it stops growing. */
   store: 6,
-  compostStore: 4,
-  /** A field uses compost while its average fertility is below this. */
+  /** A field takes compost, and spreads it at once, only while its average fertility is below this. */
   compostBelow: 85,
   compostGain: 12,
   /** Growth multiplier without water. */

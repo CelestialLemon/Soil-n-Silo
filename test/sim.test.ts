@@ -472,11 +472,32 @@ test('fields grow, harvest, drain the soil, and take compost', () => {
   advance(s, 101);
   assert.equal(s.made.wheat, 3);
   assert.ok(fieldFertility(s, f) < fert);
-  // Compost restores.
-  f.compost = 1;
-  advance(s, 0.2);
-  assert.equal(f.compost, 0);
-  assert.ok(fieldFertility(s, f) > fert);
+});
+
+test('a field takes compost only while its soil is poor, and spreads it at once; a truck carries the rest on', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const a = put(s, 'field', 8, 18), b = put(s, 'field', 14, 18), c = put(s, 'field', 20, 18);
+  const soil = (f: Building, v: number) => { for (let y = f.y; y < f.y + 3; y++) for (let x = f.x; x < f.x + 3; x++) s.map.fertility[y * s.map.width + x] = v; };
+  soil(a, 90); soil(b, 75); soil(c, 62);
+  route(s, [t], [a, { drop: ['compost'], pick: [] }], [b, { drop: ['compost'], pick: [] }], [c, { drop: ['compost'], pick: [] }]);
+  t.cargo = ['compost', 'compost', 'compost', 'compost'];
+  until(s, () => fieldFertility(s, c) > 62 && t.target !== c.id, 120);
+  assert.equal(fieldFertility(s, a), 90, 'good soil takes none');
+  assert.equal(fieldFertility(s, b), 87, 'one lifts it over the line');
+  assert.equal(fieldFertility(s, c), 86, 'poor soil takes what it needs');
+  assert.deepEqual(t.cargo, ['compost'], 'and the rest rides on');
+});
+
+test('a truck with compost doesn\'t wait at a field whose soil is good', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const a = put(s, 'field', 8, 18), b = put(s, 'field', 14, 18);
+  s.map.fertility.fill(95);
+  route(s, [t], [a, { drop: ['compost'], pick: [], wait: 60 }], [b, { drop: ['compost'], pick: [], wait: 60 }]);
+  t.cargo = ['compost'];
+  until(s, () => t.target === b.id, 40);
+  assert.deepEqual(t.cargo, ['compost']);
 });
 
 test('sprinklers water fields and speed them up', () => {
@@ -510,6 +531,20 @@ test('hives need flowering fields near them and pollinate them', () => {
   f.crop = 'beans';
   advance(s, 50);
   assert.ok(hive.stored! >= 1);
+});
+
+test('a save from when fields held compost puts it into their soil', () => {
+  const s = flat();
+  const f = put(s, 'field', 4, 4);
+  s.map.fertility.fill(50);
+  const json = JSON.parse(serialize(s));
+  json.buildings.find((b: any) => b.id === f.id).compost = 2;
+  const back = deserialize(JSON.stringify(json))!;
+  const g = back.buildings.find((b) => b.id === f.id)!;
+  assert.equal(fieldFertility(back, g), 74);
+  assert.ok(!('compost' in g));
+  json.buildings.find((b: any) => b.id === f.id).compost = -1;
+  assert.equal(deserialize(JSON.stringify(json)), null);
 });
 
 test('the commission completes when every goal is met, with a medal by time', () => {
@@ -816,7 +851,7 @@ test('byproducts go next door too: a coop beside a mill eats its bran, and a com
   until(s, () => (s.made.egg ?? 0) >= 4, 60);
   assert.equal(mill.outputs!.bran ?? 0, 0, 'the coop took the bran');
   s.map.fertility.fill(40);
-  until(s, () => (s.made.compost ?? 0) >= 1 && f.compost === 0, 120);
+  until(s, () => (s.made.compost ?? 0) >= 1 && !comp.outputs!.compost, 120);
   assert.ok(fieldFertility(s, f) > 40, 'the field used the compost from next door');
   assert.equal(comp.outputs!.compost ?? 0, 0);
 });

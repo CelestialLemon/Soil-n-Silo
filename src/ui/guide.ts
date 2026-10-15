@@ -97,7 +97,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
     what: 'Turns waste (manure, bran, seed cake) into compost, which brings tired soil back.',
     how: [
       'Build it beside a coop or mill, or bring it manure, bran or seed cake on a route.',
-      'A field beside it takes its compost. Take the rest to fields on a route: they keep it and use it when their soil drops.',
+      'A field beside it takes its compost when its soil is poor. Take the rest to fields on a route: each takes only what its soil needs, and the truck carries the rest on. End the route at the depot or a silo for compost no field needs.',
     ],
   },
   mill: {
@@ -398,8 +398,8 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
         break;
       case 'field':
         rows.push(['Grow times are for', 'a watered field at soil 60'], ['Without water', `×${FIELD.dry} speed`],
-          ['Soil 0 → 100', `×${FIELD.poorSoil} → ×${FIELD.richSoil} speed`], ['Holds', `${FIELD.store} harvested goods, ${FIELD.compostStore} compost`],
-          ['Compost', `used below soil ${FIELD.compostBelow}: +${FIELD.compostGain} on every tile`]);
+          ['Soil 0 → 100', `×${FIELD.poorSoil} → ×${FIELD.richSoil} speed`], ['Holds', `${FIELD.store} harvested goods`],
+          ['Compost', `taken only below soil ${FIELD.compostBelow}: +${FIELD.compostGain} on every tile at once`]);
         break;
       case 'sprinkler': rows.push(['Reach', `fields whose centre is within ${POWER.sprinklerReach} tiles`], ['Near water', `within ${POWER.waterNear} tiles`]); break;
       case 'hive':
@@ -506,7 +506,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
           h('li', null, B('Water:'), ` a dry field grows at ×${FIELD.dry} speed. A `, bLink('sprinkler'), ' waters fields whose centre is within ', String(POWER.sprinklerReach), ' tiles.'),
           h('li', null, B('Soil:'), ` growth goes from ×${FIELD.poorSoil} on soil 0 to ×${FIELD.richSoil} on soil 100. The Soil view shows fertility everywhere.`),
           h('li', null, B('Wearing out:'), ' every harvest takes some soil (see the crops on the ', bLink('field'), ' page). Beans give some back.'),
-          h('li', null, B('Compost:'), ` a field with compost uses one whenever its soil is under ${FIELD.compostBelow}, for +${FIELD.compostGain} on every tile. Make it in a `, bLink('composter'), '.'),
+          h('li', null, B('Compost:'), ` a field takes compost only while its soil is under ${FIELD.compostBelow}, and spreads each one at once for +${FIELD.compostGain} on every tile; above that, trucks carry it on to the next field. Make it in a `, bLink('composter'), '.'),
           h('li', null, B('Resting:'), ` ground without a field slowly recovers (${FIELD.rest * 60} a minute), up to what it started at.`),
           h('li', null, B('Soil health'), ' is the fields\' average fertility, nudged up or down (at most 10) by trees planted or cleared. A soil goal checks it at the end.'),
           h('li', null, B('Clearing:'), ` a tree costs ${CLEAR_COST.tree} credits to remove and a rock ${CLEAR_COST.rock}. `, bLink('sapling'), 's plant new trees.')),
