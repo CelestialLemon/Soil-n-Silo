@@ -107,3 +107,11 @@ test('non-JSON and edge inputs are refused with a reason', () => {
   assert.equal(deserialize(null).ok, false);
   assert.equal(deserialize(full).ok, true);
 });
+
+test('regression: a non-numeric carry is refused, not thrown on', () => {
+  const s = JSON.parse(serialize(played())) as Json;
+  s.carry = { toString: null };
+  let r;
+  try { r = deserialize(JSON.stringify(s)); } catch (e) { assert.fail(`deserialize threw: ${String(e)}`); }
+  assert.equal(r.ok, false);
+});

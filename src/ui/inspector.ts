@@ -92,7 +92,7 @@ export class Inspector {
     }
     // Made again when what it shows changes: the building's settings, the trucks and routes it lists.
     const routes = runtimeOf(s).routesVersion;
-    const setting = b?.type === 'field' ? b.crop : b && isMachine(b) ? b.recipe : null;
+    const setting = b?.type === 'field' ? [b.crop, b.harvest ?? null] : b && isMachine(b) ? b.recipe : null;
     const key = JSON.stringify(t ? ['truck', t.id, t.route, routes, this.tab]
       : [b?.id, b?.type, setting, routes, this.tab]);
     if (key !== this.key) {
