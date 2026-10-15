@@ -1,4 +1,4 @@
-import { BUILDINGS, CROPS, FIELD, HIVE, ITEMS } from '../data.ts';
+import { BUILDINGS, CROPS, FIELD, HIVE, ITEMS, POLLINATION_BONUS } from '../data.ts';
 import { paceOf } from '../rules.ts';
 import { type Building, type GameState } from '../state.ts';
 import { derived, isPollinated, sprinklersOf } from './layout.ts';
@@ -40,7 +40,7 @@ export function runMachine(s: GameState, b: Building, dt: number) {
 
 export function runField(s: GameState, f: Building, dt: number) {
   const crop = CROPS[f.crop!];
-  const bonus = crop.flowers && isPollinated(s, f) ? 1 : 0;
+  const bonus = crop.flowers && isPollinated(s, f) ? POLLINATION_BONUS : 0;
   // A harvest of the old crop waits to go before the new one can join it.
   const old = f.stored! > 0 && (f.harvest ?? f.crop) !== f.crop;
   if (old || f.stored! + crop.yield + bonus > FIELD.store) { f.status = 'blocked'; f.need = CROPS[f.harvest ?? f.crop!].name.toLowerCase(); return; }

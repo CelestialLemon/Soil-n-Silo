@@ -1,5 +1,5 @@
 import { GROUP_NAMES, GROUPS, ITEMS, POWER, type GroupId, type ItemId } from '../game/data.ts';
-import { flowRate } from '../game/flows.ts';
+import { flowRate, RECENT_WINDOW } from '../game/flows.ts';
 import { tonight } from '../game/forecast.ts';
 import { historyOf, summarize, waitsOf, type Summary, type Wait } from '../game/history.ts';
 import { networkOf, usedBy } from '../game/power.ts';
@@ -69,7 +69,7 @@ export function waitFact(s: GameState, b: Building, w: Wait): string {
       const r = recipeOf(b), ing = r?.inputs.find((x) => ('item' in x ? goods.includes(x.item) : x.group === group));
       const use = r && ing ? ing.n * 60 / r.time : null;
       const what = item ? itemName(item) : w.need!.split(' (')[0];
-      return `The valley made ${dec(made)} ${what} a minute over the last 5 min${use ? `; this ${lcBuilding(b.type)} uses up to ${dec(use)} at full speed` : ''}.`;
+      return `The valley made ${dec(made)} ${what} a minute over the last ${RECENT_WINDOW / 60} min${use ? `; this ${lcBuilding(b.type)} uses up to ${dec(use)} at full speed` : ''}.`;
     }
     case 'power': {
       const net = networkOf(s, b);

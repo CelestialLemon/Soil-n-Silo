@@ -54,11 +54,14 @@ export function tickFlows(s: GameState, soilHealth: () => number) {
   }
 }
 
+/** Seconds of play that count as "recent" for a rate: the pace shown as a minute's average over the last few minutes. */
+export const RECENT_WINDOW = 300;
+
 /** Seconds of play the flows cover within the last `window` seconds. */
 const covered = (s: GameState, window: number) => Math.max(0, Math.min(window, s.time - flows(s).since));
 
 /** A good made, used or delivered a minute, averaged over the last `window` seconds (or as much of it as was recorded). */
-export function flowRate(s: GameState, kind: FlowKind, item: ItemId, window = 300): number {
+export function flowRate(s: GameState, kind: FlowKind, item: ItemId, window = RECENT_WINDOW): number {
   const span = covered(s, window);
   if (span <= 0) return 0;
   let n = 0;

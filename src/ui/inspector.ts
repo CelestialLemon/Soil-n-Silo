@@ -2,10 +2,11 @@ import {
   addStop, buyTruck, dumpCargo, newRoute, priceOf, remove, sellTruck, setCrop, setRecipe, setTruckRoute, truckPrice, type Action,
 } from '../game/build.ts';
 import {
-  BUILDINGS, CATEGORIES, CROP_IDS, CROPS, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, OUTPUT_BATCHES, POWER, recipesFor, SILO, TRUCK,
+  BUILDINGS, CATEGORIES, CROP_IDS, CROPS, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, OUTPUT_BATCHES, POLLINATION_BONUS, POWER, recipesFor, SILO, TRUCK,
   type Ingredient, type ItemId,
 } from '../game/data.ts';
 import { FLEET_SECONDS, truckTime } from '../game/fleet.ts';
+import { RECENT_WINDOW } from '../game/flows.ts';
 import { hasHistory, heldSince, historyOf, summarize } from '../game/history.ts';
 import { networkOf, networks, usedBy } from '../game/power.ts';
 import { sunAt, windAt } from '../game/sim/clock.ts';
@@ -128,7 +129,7 @@ export class Inspector {
       set(since, held && held.from > (hist?.since ?? 0) + 1e-6 ? `for ${playTime(s.time - held.from)}` : '');
       const main = makesOf(b).items[0];
       if (main && hist) {
-        const sum = summarize(hist, s.time, 300);
+        const sum = summarize(hist, s.time, RECENT_WINDOW);
         rebuild(rate, `${dec(sum.perMin[main] ?? 0)} ${main}`, () => [h('span', { class: 'big cd-num' }, dec(sum.perMin[main] ?? 0)), h('span', { class: 'cd-small' }, ` ${itemName(main)} / min`)]);
       }
     });
@@ -174,7 +175,7 @@ export class Inspector {
         stat('Growth', () => pct(b.growth!)); bar(() => b.growth!);
         stat('Soil fertility', () => `${Math.round(fieldFertility(s, b))}`);
         stat('Growth pace', () => { const p = fieldPace(s, b); return `${pct(p.pace)} · water ${pct(p.water)}, soil ×${p.soil.toFixed(2)}`; });
-        stat('Harvest', () => `${CROPS[b.crop!].yield}${CROPS[b.crop!].flowers && isPollinated(s, b) ? ' + 1 (bees)' : ''} every ${Math.round(CROPS[b.crop!].grow / Math.max(0.01, fieldPace(s, b).pace))} s`);
+        stat('Harvest', () => `${CROPS[b.crop!].yield}${CROPS[b.crop!].flowers && isPollinated(s, b) ? ` + ${POLLINATION_BONUS} (bees)` : ''} every ${Math.round(CROPS[b.crop!].grow / Math.max(0.01, fieldPace(s, b).pace))} s`);
         stat('Waiting to go', () => `${b.stored} of ${FIELD.store}`);
         stat('Compost', () => `${wantsCompost(s, b) ? 'takes it now' : 'none needed'} · below soil ${FIELD.compostBelow}`);
         break;

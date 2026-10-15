@@ -74,6 +74,9 @@ export const CROPS: Record<CropId, CropDef> = {
   flax: { name: 'Flax', grow: 55, yield: 3, soil: -1.5, flowers: true, stages: 4 },
 };
 
+/** Goods a pollinated field of a flowering crop yields on top of its usual yield, every harvest. */
+export const POLLINATION_BONUS = 1;
+
 export const FIELD = {
   /** Harvested goods a field holds before it stops growing. */
   store: 6,
