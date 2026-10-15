@@ -22,7 +22,7 @@ const DEFAULTS: Settings = { uiSize: 1, pixelSize: 2, reduceMotion: false, showP
 
 /** Settings from their saved JSON, each falling back to its default when missing or out of range. */
 export function readSettings(json: string | null, legacyPixel: string | null = null): Settings {
-  let o: Partial<Settings> = {};
+  let o: Partial<Settings>;
   try { o = JSON.parse(json ?? '{}') ?? {}; } catch { o = {}; }
   const pixel = o.pixelSize ?? (legacyPixel === null ? undefined : Number(legacyPixel));
   return {

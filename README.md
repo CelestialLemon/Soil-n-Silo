@@ -19,6 +19,7 @@ npm run dev          # http://127.0.0.1:5190
 npm test             # the game rules (src/game/), and the bot clearing each commission it has a layout for, in Node
 npm run sim -- c2     # a bot plays a commission on the real rules (c1, c2, c2:next, c4), to check it can be cleared and how fast
 npm run typecheck
+npm run lint         # ESLint: errors fail, warnings are known debt to clear (see eslint.config.js)
 npm run build        # typecheck, then the game into dist/
 ```
 

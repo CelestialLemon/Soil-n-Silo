@@ -11,9 +11,10 @@
 
 1. **Branch.** Work on a branch off `dev`. Never commit to `dev` or `main` directly. New work goes into `dev` (deployed to
    `/dev/` for testing) and reaches `main` only through a PR from `dev` to `main`, opened when the user asks for one.
-2. **Implement and verify.** Run `npm test` and `npm run build` (which typechecks first). The dev server is `npm run dev`, on
-   127.0.0.1:5190. If it's already running, use it and don't kill it. Once the game has golden images, update them only on the
-   work's branch, so new baselines reach `dev` only through the PR, where the user reviews them.
+2. **Implement and verify.** Run `npm test`, `npm run lint` (errors fail; don't add warnings) and `npm run build` (which
+   typechecks first). The dev server is `npm run dev`, on 127.0.0.1:5190. If it's already running, use it and don't kill it.
+   Once the game has golden images, update them only on the work's branch, so new baselines reach `dev` only through the PR,
+   where the user reviews them.
 3. **Clean the working tree.** Remove the scratch files, probes and debug renders you created for this work, so the PR holds
    only the changes the work needs. Never delete or revert changes you didn't make (the user may have uncommitted work in the
    tree), and don't run `git checkout`/`reset`/`clean`/`stash` on them.
