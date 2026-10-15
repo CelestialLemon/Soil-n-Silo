@@ -6,6 +6,9 @@ import {
 import { FLEET_SECONDS } from '../game/fleet.ts';
 import { SOIL_AHEAD } from '../game/forecast.ts';
 import { RECENT_WINDOW } from '../game/flows.ts';
+import { paceOf } from '../game/rules.ts';
+import { isPollinated } from '../game/sim/layout.ts';
+import { fieldFertility } from '../game/sim/soil.ts';
 import { recipeOf } from '../game/sim/goods.ts';
 import { historyOf, summarize } from '../game/history.ts';
 import { dayAt } from '../game/sim/clock.ts';
@@ -320,7 +323,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
     const mine = s.buildings.filter((b) => b.type === id);
     // Each building's own good and full-speed rate: a field's current crop, a machine's current recipe.
     const goods = mine.map((b): { item: ItemId; full: number } | null => {
-      if (b.type === 'field') return { item: b.crop, full: CROPS[b.crop].yield * 60 / CROPS[b.crop].grow };
+      if (b.type === 'field') { const c = CROPS[b.crop]; return { item: b.crop, full: (c.yield + (c.flowers && isPollinated(s, b) ? POLLINATION_BONUS : 0)) * paceOf(1, fieldFertility(s, b)).pace * 60 / c.grow }; } // best case now: watered, pollinated if it is
       const r = recipeOf(b), o = r?.outputs[0];
       return r && o ? { item: o.item, full: o.n * 60 / r.time } : id === 'hive' ? { item: 'honey', full: 0 } : null;
     });
