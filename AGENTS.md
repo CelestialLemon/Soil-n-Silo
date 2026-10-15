@@ -50,6 +50,23 @@
    (`gh api repos/CelestialLemon/Soil-n-Silo/pulls/<N>/comments` and `.../reviews`). Judge each one the same way as in step 5,
    and push fixes to the same PR. A thumbs-up reaction on the PR instead of a review means it found nothing.
 
+## Looking at the game in a browser
+
+Agents run on a headless server. The T3 Code preview tools (`mcp__t3-code__preview_*`, deferred: load them with `ToolSearch`
+first) drive a browser inside the T3 Code **desktop** app, so they only work while a desktop client is connected. From the
+mobile app they fail with "No preview automation host is available… a headless server has no browser of its own". That is not
+"no browser available".
+
+1. Try `preview_open` once. If it succeeds, use the preview tools. Their browser runs on the user's machine, so
+   `127.0.0.1:5190` there may not be the dev server in this worktree; check the page is the one you expect.
+2. If the tools can't be loaded or called, or `preview_open` fails with that error, don't retry. Use headless Chromium on the
+   server: Playwright's copy is cached in `~/.cache/ms-playwright`, so don't download another into `/tmp`. It isn't on `PATH` and
+   the revision number changes, so find it:
+   `find ~/.cache/ms-playwright -name chrome-headless-shell -type f`. Start the dev server first (`npm run dev`, which needs
+   `npm install` in a fresh worktree) because nothing else serves port 5190 there, then screenshot or script it from the shell,
+   e.g. `<that path> --no-sandbox --screenshot=/tmp/shot.png --window-size=1280,800 http://127.0.0.1:5190/`.
+3. Tell the user which route you used, and keep the screenshots and scripts out of the repo (see Workflow, step 3).
+
 ## Renderer issues
 
 When the game needs something the renderer doesn't do, or hits a renderer bug:
