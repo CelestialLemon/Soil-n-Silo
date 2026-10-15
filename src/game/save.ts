@@ -1,6 +1,6 @@
 import { isStop } from './sim/trucks.ts';
 import { type Medal } from './sim/stats.ts';
-import { bays, BUILDINGS, CROPS, ITEMS, recipesFor, TRUCK } from './data.ts';
+import { bays, BUILDINGS, CROPS, ITEMS, recipesFor, TICK, TRUCK } from './data.ts';
 import { err, ok, tryParseJson, type Result } from './result.ts';
 import type { Mark, RunLog } from './runlog.ts';
 import type { Scenario } from './scenarios.ts';
@@ -65,7 +65,7 @@ function complete(s: GameState): boolean {
     && !!m && num(m.width) && num(m.height) && arr(m.terrain) && m.terrain.length === m.width * m.height
     && arr(m.fertility) && m.fertility.length === m.width * m.height && m.fertility.every(num)
     && arr(s.soilBase) && s.soilBase.length === m.fertility.length && s.soilBase.every(num) && !!m.depot && num(m.depot.x) && num(m.depot.y)
-    && [s.credits, s.time, s.carry, s.nextId, s.earned, s.initialTrees].every(num)
+    && Math.abs(s.carry) <= TICK && [s.credits, s.time, s.carry, s.nextId, s.earned, s.initialTrees].every(num)
     && (s.completedAt === null || num(s.completedAt))
     && stock(s.delivered) && stock(s.made) && arr(s.reached) && s.reached.length === s.scenario.goals.length
     && !!st && num(st.since) && arr(st.made) && st.made.length > 0 && st.made.every(counts)
