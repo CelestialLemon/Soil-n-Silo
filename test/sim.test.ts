@@ -500,6 +500,52 @@ test('a truck with compost doesn\'t wait at a field whose soil is good', () => {
   assert.deepEqual(t.cargo, ['compost']);
 });
 
+test('a route picks up only the compost its fields take now, so a truck never jams full of it', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const comp = put(s, 'composter', 8, 12);
+  const a = put(s, 'field', 8, 18), b = put(s, 'field', 14, 18), mill = put(s, 'mill', 20, 18);
+  comp.outputs = { compost: 6 };
+  // Good soil, full of wheat: the fields don't grow, so their soil won't wear down to take compost.
+  s.map.fertility.fill(90);
+  for (const f of [a, b]) { f.stored = 6; f.harvest = 'wheat'; }
+  route(s, [t], [comp, { pick: ['compost'], drop: [] }], a, b, [mill, { pick: [] }]);
+  until(s, () => (mill.inputs!.wheat ?? 0) > 0, 60);
+  assert.equal(count(t.cargo, 'compost'), 0, 'none taken: no field needs it');
+  assert.equal(comp.outputs!.compost, 6);
+  // Poor soil on one field: the route takes what it needs (+12 a compost, from 70 to over 85: 2), and no more.
+  for (let y = a.y; y < a.y + 3; y++) for (let x = a.x; x < a.x + 3; x++) s.map.fertility[y * s.map.width + x] = 70;
+  until(s, () => t.target === a.id, 60);
+  assert.equal(count(t.cargo, 'compost'), 2);
+  assert.equal(comp.outputs!.compost, 4);
+  until(s, () => t.target === b.id, 60);
+  assert.equal(count(t.cargo, 'compost'), 0);
+  assert.equal(fieldFertility(s, a), 94);
+});
+
+test('a field a route stops at more than once counts its compost once', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const comp = put(s, 'composter', 8, 12), a = put(s, 'field', 8, 18), mill = put(s, 'mill', 20, 18);
+  comp.outputs = { compost: 6 };
+  s.map.fertility.fill(80);
+  route(s, [t], [comp, { pick: ['compost'], drop: [] }], a, a, a, [mill, { pick: [] }]);
+  until(s, () => t.target === a.id, 60);
+  assert.equal(count(t.cargo, 'compost'), 1);
+});
+
+test('a truck full of compost none of its fields takes now says so', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const a = put(s, 'field', 8, 18), mill = put(s, 'mill', 20, 18);
+  s.map.fertility.fill(90);
+  route(s, [t], a, [mill, { pick: [] }]);
+  t.cargo = Array(TRUCK.cargo).fill('compost');
+  assert.match(truckProblems(s, t)[0], /full of compost/);
+  s.map.fertility.fill(70);
+  assert.deepEqual(truckProblems(s, t), [], 'the field takes it now');
+});
+
 test('sprinklers water fields and speed them up', () => {
   const dry = flat(), wet = flat();
   for (const s of [dry, wet]) put(s, 'field', 4, 4);

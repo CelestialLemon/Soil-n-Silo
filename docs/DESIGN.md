@@ -278,8 +278,8 @@ go, or a route of its own.
 
 **Problems a route shows** (on the route, on its trucks, in the routes panel, and as a marker on the building): a stop that
 can't be reached, a stop with nothing to do (it neither takes nor gives any of its goods), a truck carrying goods none of its
-stops takes, a truck that can't reach its garage, a route with no trucks, and a building whose outputs are full with no
-route or neighbour taking them. A truck stuck with goods no stop takes can **dump** its cargo: the goods are lost.
+stops takes (or full of compost none of its fields takes now), a truck that can't reach its garage, a route with no trucks,
+and a building whose outputs are full with no route or neighbour taking them. A truck stuck with goods no stop takes can **dump** its cargo: the goods are lost.
 
 **Next door.** Buildings that share an edge (touching only at a corner doesn't count) trade without trucks. Each step, every
 machine takes up to one of each good its recipe uses from the buildings next door that have it waiting, from whichever has
@@ -337,6 +337,11 @@ playing trucks: every level needed many trucks, and routes doing a field-to-mill
   doesn't wait for a field whose soil is good to take it (it still waits for a harvest the stop picks up). Compost no field
   needs has to go somewhere (the depot or a silo), or the composter fills and stops. (Chosen on 2026-10-15: fields used to
   keep up to 4 compost for later, so the first field on a route took every unit and the rest starved.)
+- A route whose only compost drops are fields picks up only as much compost as they take now, counting what its trucks
+  already carry; a route that also drops compost at the depot or a silo picks it up freely. So a truck never fills up with
+  compost its fields won't take and jams: with no room for their harvest the fields would stop growing, and their soil would
+  never wear down to take it. A truck that ends up full of it anyway (a composter next door fed the fields first) says so,
+  and can dump it. (Chosen on 2026-10-15, after the Morning Bread bot locked up that way.)
 - Ground without a field rests: it regains 0.1 fertility a second (6 a minute), up to what it started at. Moving a field
   lets worn ground recover.
 
@@ -401,10 +406,10 @@ A commission has goals, a target time and modifiers. It ends when every goal is 
 | 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 55 min | Wet and cramped |
 | 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 60 min | Everything |
 
-The bot (`npm run sim`) clears First Light in about 14 minutes, Morning Bread in about 29 and Linen for the Looms in about 26 with
+The bot (`npm run sim`) clears First Light in about 14 minutes, Morning Bread in about 30 and Linen for the Looms in about 25 with
 trucks (with silos and drones it took about 14, 38 and 45), building as credits allow. Its Morning Bread layout built round
 neighbours (`npm run sim -- c2:next`: a mill between two fields, a bakery beside it, a coop under both, a composter beside the
-coop) clears it in about 25 minutes with 3 trucks on 2 routes, where the all-truck layout uses 4 on 3; a person needs a few minutes more to plan and
+coop) clears it in about 26 minutes with 3 trucks on 2 routes, where the all-truck layout uses 4 on 3; a person needs a few minutes more to plan and
 place. Trucks made the later commissions much quicker, so their target times may be too generous now. The other targets are guesses
 until they have bot layouts too.
 

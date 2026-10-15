@@ -35,7 +35,8 @@ Pinned: **v0.3.0** (`package.json`). The game owns the loop, state, input, UI, a
   fertility, water and pollination, machines with strict byproducts, pylon power networks with batteries, goals and medals;
   building and configuring (`build.ts`); saves (`save.ts`). Unit tests in `test/`.
 - `npm run sim`: a bot builds a fixed layout as credits allow and plays a commission on the real rules (layouts for First
-  Light, Morning Bread and Linen for the Looms so far, `tools/layouts.ts`).
+  Light, Morning Bread and Linen for the Looms so far, `tools/layouts.ts`). `npm test` plays every layout and checks it clears
+  its commission within the target time.
 - The world (`src/world/`): the static terrain per map, every building/crop/good as a Blender model or an in-code stand-in,
   status markers, goods on belts, drones in flight, overlays.
 - The HUD (`src/ui/`): commission clock and medal pace, credits, power and weather, goals, build bar, inspector, stats, intro,
@@ -108,8 +109,8 @@ numbers behind them are pure modules in `src/game/` (`flows.ts`, `fleet.ts`, `po
 - Play every campaign commission and tune: target times, prices, crop and machine times, power numbers. Bot layouts for the
   other five commissions in `tools/layouts.ts`, so `npm run sim` checks them all.
 - Play the trucks and tune them (cargo, speed, battery, waits, one truck at a time per building) and the target times: the
-  bot clears First Light in about 14 minutes, Morning Bread in about 29 (target 35) and Linen for the Looms in about 26
-  (target 50).
+  bot clears First Light in about 14 minutes (target 20), Morning Bread in about 30 (26 built round neighbours; target 35)
+  and Linen for the Looms in about 25 (target 50). `npm test` plays every layout and fails if one misses its target.
 - Models for the `truck` and the `garage`, and the silo without its drone pads (`ASSET_BRIEF.md`).
 - Drones as automatic helpers beside the trucks (`DESIGN.md`, Open questions), once trucks have been played.
 - Copy and paste / blueprints for repeated blocks (a row of fields with sprinklers).
