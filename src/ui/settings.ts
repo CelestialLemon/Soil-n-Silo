@@ -1,3 +1,5 @@
+import { tryParseJson } from '../game/result.ts';
+
 // The player's settings, kept in the browser beside the save: interface size, pixel size, reduce motion, show pace and the
 // experimental problems strip. Each deployment keeps its own (the key follows the save's).
 
@@ -22,8 +24,8 @@ const DEFAULTS: Settings = { uiSize: 1, pixelSize: 2, reduceMotion: false, showP
 
 /** Settings from their saved JSON, each falling back to its default when missing or out of range. */
 export function readSettings(json: string | null): Settings {
-  let o: Partial<Settings>;
-  try { o = JSON.parse(json ?? '{}') ?? {}; } catch { o = {}; }
+  const parsed = tryParseJson(json ?? '{}');
+  const o = (parsed.ok ? parsed.value ?? {} : {}) as Partial<Settings>;
   return {
     uiSize: typeof o.uiSize === 'number' && o.uiSize >= UI_SIZES.min - 1e-9 && o.uiSize <= UI_SIZES.max + 1e-9 ? o.uiSize : DEFAULTS.uiSize,
     pixelSize: (PIXEL_SIZES as readonly number[]).includes(o.pixelSize as number) ? o.pixelSize as number : DEFAULTS.pixelSize,

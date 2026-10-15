@@ -106,7 +106,7 @@ export class WorldLayer {
         h('div', { class: `v${f.tone === 'bad' ? ' is-bad' : ''}` }, f.value, f.then !== undefined ? h('small', null, ` → ${f.then}`) : null),
         h('div', { class: 'cd-small' }, f.sub)))) : null,
       p && p.next.length ? h('div', { class: 'next cd-small' }, ...p.next.map((l) => h('div', null, l))) : null,
-      fit.ok ? null : h('div', { class: 'why cd-small' }, fit.message));
+      fit.ok ? null : h('div', { class: 'why cd-small' }, fit.error));
   }
 
   /** The card under the pointer (at page point `at`), or none. */

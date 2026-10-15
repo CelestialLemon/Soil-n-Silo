@@ -25,8 +25,8 @@ function flat(): GameState {
 
 function put(s: GameState, type: Parameters<typeof place>[1], x: number, y: number): Building {
   const r = place(s, type, x, y, 0);
-  assert.ok(r.ok, `${type} at ${x},${y}: ${r.message}`);
-  return r.building!;
+  if (!r.ok) assert.fail(`${type} at ${x},${y}: ${r.error}`);
+  return r.value.building;
 }
 
 function setTerrain(s: GameState, kind: TerrainKind, tiles: [number, number][]) {

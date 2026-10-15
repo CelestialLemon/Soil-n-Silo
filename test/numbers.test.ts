@@ -28,10 +28,13 @@ function flat(extra: Partial<Scenario> = {}): GameState {
   return s;
 }
 
+/** A save read back, or null if it's refused. */
+const load = (json: string) => { const r = deserialize(json); return r.ok ? r.value : null; };
+
 function put(s: GameState, type: Parameters<typeof place>[1], x: number, y: number): Building {
   const r = place(s, type, x, y, 0);
-  assert.ok(r.ok, `${type} at ${x},${y}: ${r.message}`);
-  return r.building!;
+  if (!r.ok) assert.fail(`${type} at ${x},${y}: ${r.error}`);
+  return r.value.building;
 }
 
 /** A pylon with a full battery beside it. */
@@ -45,7 +48,7 @@ function powerAt(s: GameState, x: number, y: number) {
 function trucksAt(s: GameState, x: number, y: number, n = 1): Truck[] {
   const g = put(s, 'garage', x, y);
   powerAt(s, x + 2, y);
-  return Array.from({ length: n }, () => buyTruck(s, g).truck!);
+  return Array.from({ length: n }, () => { const r = buyTruck(s, g); if (!r.ok) assert.fail(r.error); return r.value.truck; });
 }
 
 function route(s: GameState, trucks: Truck[], ...stops: Building[]): Route {
@@ -231,12 +234,12 @@ test('the run log: milestones, the goal good\'s curve, waits; it saves', () => {
   const saved = JSON.stringify(s.run);
   advance(s, DAY_SECONDS * 2);
   assert.equal(JSON.stringify(s.run), saved);
-  const back = deserialize(serialize(s))!;
+  const back = load(serialize(s))!;
   assert.deepEqual(back.run, s.run);
   const old = JSON.parse(serialize(s));
-  assert.equal(deserialize(JSON.stringify({ ...old, run: undefined })), null, 'a save without a run log is refused');
-  assert.equal(deserialize(JSON.stringify({ ...old, run: { ...s.run, curve: ['x'] } })), null);
-  const bad = (mark: object) => deserialize(JSON.stringify({ ...old, run: { ...s.run, marks: [mark] } }));
+  assert.equal(load(JSON.stringify({ ...old, run: undefined })), null, 'a save without a run log is refused');
+  assert.equal(load(JSON.stringify({ ...old, run: { ...s.run, curve: ['x'] } })), null);
+  const bad = (mark: object) => load(JSON.stringify({ ...old, run: { ...s.run, marks: [mark] } }));
   assert.equal(bad({ t: 0, kind: 'goal', goal: 999 }), null, 'a goal that isn\'t the commission\'s');
   assert.equal(bad({ t: 0, kind: 'goal' }), null);
   assert.equal(bad({ t: 0, kind: 'first' }), null, 'a first with no good');

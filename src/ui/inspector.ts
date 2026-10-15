@@ -1,5 +1,5 @@
 import {
-  addStop, buyTruck, dumpCargo, newRoute, priceOf, remove, sellTruck, setCrop, setRecipe, setTruckRoute, truckPrice, type Result,
+  addStop, buyTruck, dumpCargo, newRoute, priceOf, remove, sellTruck, setCrop, setRecipe, setTruckRoute, truckPrice, type Action,
 } from '../game/build.ts';
 import {
   BUILDINGS, CATEGORIES, CROP_IDS, CROPS, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, OUTPUT_BATCHES, POWER, recipesFor, SILO, TRUCK,
@@ -36,7 +36,7 @@ export interface InspectorHost {
   selected(): number | null;
   select(id: number | null): void;
   /** Shows a result as a message and redraws. */
-  did(r: Result): void;
+  did(r: Action): void;
   openGuide(page: GuidePage): void;
   /** Opens a route in the routes card. */
   editRoute(r: Route): void;

@@ -6,6 +6,8 @@
   **Renderer issues** below.
 - Game rules live in `src/game/` as pure TypeScript (no DOM, no three.js, no renderer), so `npm test` runs them in Node. Drawing
   and input live outside it.
+- Expected failures (an action against the rules, a broken save or settings) return a `Result` (`src/game/result.ts`) rather
+  than throwing; throw only for a programmer's bug or a broken invariant.
 
 ## Workflow
 

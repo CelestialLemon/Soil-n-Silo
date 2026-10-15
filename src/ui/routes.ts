@@ -1,7 +1,8 @@
 import {
   buyTruck, copyRoute, deleteRoute, dumpCargo, moveStop, newRoute, removeStop, renameRoute, ROUTE_NAME_MAX, setStopGood, setStopWait, setTruckRoute,
-  type Result,
+  type Action,
 } from '../game/build.ts';
+import { err, ok } from '../game/result.ts';
 import { BUILDINGS, ITEM_IDS, ITEMS, TRUCK, type ItemId } from '../game/data.ts';
 import { routeTiming, truckTime, type StopTiming } from '../game/fleet.ts';
 import { cargoText, describeTruck, givesGoods, routeRate, stopProblems, takesGoods, truckProblems, trucksOn } from '../game/sim.ts';
@@ -21,7 +22,7 @@ export interface RoutesHost {
   state(): GameState;
   tool(): Tool;
   setTool(t: Tool): void;
-  did(r: Result): void;
+  did(r: Action): void;
   toast(msg: string, ok?: boolean): void;
   openGuide(page: GuidePage): void;
   /** Draws a route on the map while the pointer is over it (null: none). */
@@ -104,17 +105,17 @@ export class RoutesCard {
   }
 
   /** Puts a truck on a route: one with no route, else a new one from a garage with room. */
-  private addTruck(s: GameState, r: Route): Result {
+  private addTruck(s: GameState, r: Route): Action {
     const idle = s.trucks.find((t) => t.route === null);
     if (idle) return setTruckRoute(s, idle, r);
     const garages = s.buildings.filter((b) => b.type === 'garage');
-    if (!garages.length) return { ok: false, message: 'Build a garage (T) first: trucks are bought there.' };
+    if (!garages.length) return err('Build a garage (T) first: trucks are bought there.');
     const g = garages.find((x) => s.trucks.filter((t) => t.garage === x.id).length < TRUCK.perGarage);
-    if (!g) return { ok: false, message: `Every garage holds ${TRUCK.perGarage} trucks. Build another garage for more.` };
+    if (!g) return err(`Every garage holds ${TRUCK.perGarage} trucks. Build another garage for more.`);
     const bought = buyTruck(s, g);
     if (!bought.ok) return bought;
-    setTruckRoute(s, bought.truck!, r);
-    return { ok: true, message: `Bought a truck for ${r.name}.` };
+    setTruckRoute(s, bought.value.truck, r);
+    return ok({ message: `Bought a truck for ${r.name}.` });
   }
 
   /** A route's head line: its colour, name, stops and trucks, and goods a minute. */

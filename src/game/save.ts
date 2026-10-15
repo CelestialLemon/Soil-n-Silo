@@ -1,5 +1,6 @@
 import { isStop, type Medal } from './sim.ts';
 import { bays, BUILDINGS, CROPS, ITEMS, recipesFor, TRUCK } from './data.ts';
+import { err, ok, tryParseJson, type Result } from './result.ts';
 import type { Mark, RunLog } from './runlog.ts';
 import type { Scenario } from './scenarios.ts';
 import type { Building, GameState, Route, Truck } from './state.ts';
@@ -18,15 +19,16 @@ export function saveKey(pathname: string): string {
 
 export const serialize = (s: GameState) => JSON.stringify(s);
 
-/** The saved game, or null if there is none, or it's from another version or broken. */
-export function deserialize(json: string | null): GameState | null {
-  if (!json) return null;
-  try {
-    const s = JSON.parse(json) as GameState;
-    return s?.version === 4 && complete(s) && validRun(s.run, s.scenario.goals.length) ? s : null;
-  } catch {
-    return null;
-  }
+/** The saved game, or why it was refused: there is none, or it's from another version or broken. */
+export function deserialize(json: string | null): Result<GameState> {
+  if (!json) return err('There is no saved game.');
+  const parsed = tryParseJson(json);
+  if (!parsed.ok) return err(`The save isn't JSON: ${parsed.error}`);
+  const s = parsed.value as GameState | null;
+  if (s?.version !== 4) return err(`The save is from another version (${s?.version ?? 'none'}; this game reads version 4).`);
+  if (!complete(s)) return err('The save is broken: its state is incomplete or out of range.');
+  if (!validRun(s.run, s.scenario.goals.length)) return err('The save is broken: its run log is incomplete or out of range.');
+  return ok(s);
 }
 
 const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
@@ -67,7 +69,7 @@ function complete(s: GameState): boolean {
     && !!st && num(st.since) && arr(st.made) && st.made.length > 0 && st.made.every(counts)
     && !!st.delivered && typeof st.delivered === 'object' && Object.entries(st.delivered).every(([k, v]) => item(k) && arr(v) && v.every(num))
     && arr(s.buildings) && s.buildings.every((b) => validBuilding(b, m.width, m.height))
-    && arr(s.routes) && s.routes.every(validRoute) && stopsExist(s) && docksFit(s) && arr(s.trucks) && s.trucks.every((t) => validTruck(s, t)) && uniqueIds(s);
+    && arr(s.routes) && s.routes.every(validRoute) && stopsExist(s) && arr(s.trucks) && docksFit(s) && s.trucks.every((t) => validTruck(s, t)) && uniqueIds(s);
 }
 
 const int = (v: unknown) => Number.isInteger(v);
@@ -149,12 +151,8 @@ export interface Best { medal: Medal; time: number }
 export type Progress = Record<string, Best>;
 
 export function readProgress(json: string | null): Progress {
-  try {
-    const p = JSON.parse(json ?? '{}');
-    return p && typeof p === 'object' ? p as Progress : {};
-  } catch {
-    return {};
-  }
+  const p = tryParseJson(json ?? '{}');
+  return p.ok && p.value && typeof p.value === 'object' ? p.value as Progress : {};
 }
 
 const RANK: Record<Medal, number> = { gold: 3, silver: 2, bronze: 1 };

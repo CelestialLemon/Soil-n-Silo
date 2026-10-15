@@ -171,7 +171,12 @@ export const RECIPES: Recipe[] = [
 ];
 
 export const recipesFor = (b: BuildingId) => RECIPES.filter((r) => r.building === b);
-export const recipeById = (id: string) => RECIPES.find((r) => r.id === id)!;
+/** The recipe with an id. Ids come from this file or from a validated save, so an unknown one is a bug and throws. */
+export function recipeById(id: string): Recipe {
+  const r = RECIPES.find((x) => x.id === id);
+  if (!r) throw new Error(`No recipe with id ${id}`);
+  return r;
+}
 
 const counted = (x: Ingredient) => {
   const one = 'item' in x ? lcItem(x.item) : GROUP_WORDS[x.group], many = 'item' in x ? ITEMS[x.item].many ?? one : one;

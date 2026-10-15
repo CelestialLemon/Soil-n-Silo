@@ -1,4 +1,4 @@
-import type { Result } from '../game/build.ts';
+import { messageOf, type Action } from '../game/build.ts';
 import type { BuildingId } from '../game/data.ts';
 import type { Medal } from '../game/sim.ts';
 import { buildingById, type Dir, type GameState, type Route } from '../game/state.ts';
@@ -195,8 +195,9 @@ export class Hud {
   // ---- Side cards ----
 
   /** Shows a result as a message (if it has one) and redraws the side cards. */
-  private did(r: Result) {
-    if (r.message) this.toast(r.message, r.ok);
+  private did(r: Action) {
+    const message = messageOf(r);
+    if (message) this.toast(message, r.ok);
     this.refresh();
     this.host.changed();
   }
