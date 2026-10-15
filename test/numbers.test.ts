@@ -191,6 +191,37 @@ test('tonight: the batteries run dry only once every network\'s are spent', () =
   assert.equal(t.dryAt, null, 'the second network\'s battery still holds');
 });
 
+/** A load (a 20 W loom, or an 8 W sprinkler) and a battery on one network, `at` the hour with the battery holding `charge` J; `solar` panels. */
+function forecastAt(at: number, charge: number, solar = 0, load: 'loom' | 'sprinkler' = 'loom') {
+  const s = flat({ weather: { sunrise: 6, sunset: 20, sun: 1, wind: 0.05, gust: 0 } });
+  put(s, 'pylon', 5, 5);
+  const bat = put(s, 'battery', 6, 5);
+  if (load === 'loom') put(s, 'loom', 5, 7).inputs = { yarn: 30 }; else put(s, 'sprinkler', 5, 7);
+  for (let i = 0; i < solar; i++) put(s, 'solar', 3 + i * 2, 3);
+  advance(s, 1);
+  s.time = nextHour(s.time, at);
+  bat.charge = charge;
+  return tonight(s)!;
+}
+
+test('tonight: a battery empty in the morning that the sun refills is not a night failure', () => {
+  const t = forecastAt(7, 0, 1, 'sprinkler'); // empty at first, short for an hour, then the sun fills it for the night
+  assert.equal(t.dryAt, null);
+  assert.equal(t.shortFor, 0);
+});
+
+test('tonight: running dry in the hour after sunrise is not a night failure', () => {
+  const t = forecastAt(20, 2100); // 105 s at 20 W: out at 06:30
+  assert.equal(t.dryAt, null);
+  assert.equal(t.shortFor, 0);
+});
+
+test('tonight: running dry mid-night is reported between sunset and sunrise', () => {
+  const t = forecastAt(20, 1200); // 60 s: out around 02:00
+  assert.ok(t.dryAt !== null && t.dryAt > t.sunrise - 10 * HOUR_SECONDS && t.dryAt < t.sunrise, `dry at ${t.dryAt}`);
+  assert.ok(t.shortFor > 0);
+});
+
 test('placing: a field forecasts its harvest, its soil in ten minutes and its water', () => {
   const s = flat();
   const p = placement(s, 'field', 4, 4);

@@ -151,6 +151,7 @@ export function tonight(s: GameState): Tonight | null {
   const capacity = nets.reduce((n, x) => n + x.bats.length, 0) * POWER.battery.capacity;
   if (!capacity) return null;
   const step = HOUR_SECONDS / 6, points: { t: number; k: number }[] = [];
+  const nightFrom = sunset ?? now; // only the coming night counts as a failure; before it the batteries just fill or drain
   let dryAt: number | null = null, shortSum = 0, shortFor = 0;
   const stored = () => nets.reduce((n, x) => n + x.bats.reduce((a, b) => a + b, 0), 0);
   let peak = { t: now, k: stored() / capacity };
@@ -169,10 +170,11 @@ export function tonight(s: GameState): Tonight | null {
     }
     // Dry once every battery is spent (one network's going first still leaves the rest holding) and something goes short.
     const k = stored() / capacity;
-    if (dryAt === null && k < 1e-6 && short > 1e-6) dryAt = t + step;
+    const inNight = t >= nightFrom - 1e-6 && t + step <= sunrise + 1e-6;
+    if (inNight && dryAt === null && k < 1e-6 && short > 1e-6) dryAt = t + step;
     points.push({ t: t + step, k });
     if ((sunset === null || t + step <= sunset) && k > peak.k) peak = { t: t + step, k };
-    if (dryAt !== null && t + step <= sunrise && short > 1e-6) { shortSum += short * step; shortFor += step; }
+    if (inNight && dryAt !== null && short > 1e-6) { shortSum += short * step; shortFor += step; }
   }
   return { points, sunset, sunrise, dryAt, shortAfter: shortFor ? shortSum / shortFor : 0, shortFor, peak };
 }
