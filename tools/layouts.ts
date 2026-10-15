@@ -1,7 +1,7 @@
 import type { BuildingId, CropId, ItemId } from '../src/game/data.ts';
 import type { Dir } from '../src/game/state.ts';
 
-// The bot's layouts for `npm run sim` (tools/sim.ts), one per commission, relative to the depot's north-west tile and in
+// The bot's layouts for `npm run sim` and the bot tests (tools/bot.ts), one per commission, relative to the depot's north-west tile and in
 // build order. Also handy for scripted playtests in the browser (the dev server serves this file).
 
 /** A building to place; `as` names it for the routes. */
@@ -62,7 +62,8 @@ export const LAYOUTS: Record<string, Layout> = {
     { type: 'solar', x: dx + 8, y: dy - 7 }, { type: 'turbine', x: dx + 8, y: dy - 4 },
   ],
   // Bread with the loop closed: six wheat fields feed a mill; its bran feeds the coop, whose eggs and the mill's flour go to
-  // the bakery and its bread to the depot; the coop's manure is composted and the compost goes back to the fields.
+  // the bakery and its bread to the depot; the coop's manure is composted and the compost goes back to the fields (what
+  // they don't need is sold at the depot).
   c2: (dx, dy) => [
     ...fields(dx, dy),
     ...block(dx, dy, 'mill'),
@@ -75,14 +76,18 @@ export const LAYOUTS: Record<string, Layout> = {
         { at: 'mill', drop: [] }, { at: 'coop', pick: ['egg'] }, { at: 'bakery' }, { at: 'depot', drop: ['bread'] },
       ],
     },
-    { route: 'manure', garage: 'garage', trucks: 1, stops: [{ at: 'coop', pick: ['manure'], drop: [] }, { at: 'composter', pick: [] }] },
+    {
+      route: 'manure', garage: 'garage', trucks: 1,
+      stops: [{ at: 'coop', pick: ['manure'], drop: [] }, { at: 'composter' }, { at: 'depot', drop: ['compost'] }],
+    },
     ...morePower(dx, dy).slice(1),
     { truck: 'bread', garage: 'garage' },
     { type: 'solar', x: dx + 13, y: dy - 13 }, { type: 'turbine', x: dx + 16, y: dy - 7 },
   ],
   // Bread with neighbours doing the short hops: a mill between two wheat fields, a bakery beside it (flour), a coop under
   // both (bran in, eggs out), and a composter beside the coop and a field (manure in, compost out). Trucks only bring the
-  // wheat of three more fields (and compost to them) and take the bread to the depot: 3 trucks on 2 routes, where the
+  // wheat of three more fields (and compost to them) and take the bread (and the compost the fields don't need) to the
+  // depot: 3 trucks on 2 routes, where the
   // layout with every hop by truck (c2) needs 4 on 3.
   'c2:next': (dx, dy) => [
     { type: 'field', x: dx - 3, y: dy - 8, as: 'w' }, { type: 'field', x: dx - 2, y: dy - 11, as: 'n' },
@@ -91,8 +96,8 @@ export const LAYOUTS: Record<string, Layout> = {
     { type: 'solar', x: dx + 5, y: dy - 8 }, { type: 'coop', x: dx, y: dy - 6, as: 'coop' },
     { type: 'garage', x: dx + 5, y: dy - 11, as: 'garage' },
     { type: 'bakery', x: dx + 2, y: dy - 8, as: 'bakery' }, { type: 'solar', x: dx + 5, y: dy - 6 },
-    { route: 'bread', garage: 'garage', trucks: 1, stops: [{ at: 'bakery', drop: [], pick: ['bread'] }, { at: 'depot', drop: ['bread'] }] },
     { type: 'composter', x: dx - 2, y: dy - 5, as: 'composter' },
+    { route: 'bread', garage: 'garage', trucks: 1, stops: [{ at: 'bakery', drop: [], pick: ['bread'] }, { at: 'composter', drop: [], pick: ['compost'] }, { at: 'depot', drop: ['bread', 'compost'] }] },
     { type: 'battery', x: dx + 7, y: dy - 8 }, { type: 'pylon', x: dx + 9, y: dy - 9 },
     ...[-4, -1, 2].map((x, i) => ({ type: 'field' as const, x: dx + x, y: dy - 15, as: `f${i + 1}` })),
     { type: 'pylon', x: dx + 4, y: dy - 12 }, { type: 'pylon', x: dx + 4, y: dy - 16 },

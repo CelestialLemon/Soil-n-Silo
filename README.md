@@ -16,7 +16,7 @@ byproducts have to go somewhere, and the sun sets every few minutes. A 3D world 
 ```sh
 npm install
 npm run dev          # http://127.0.0.1:5190
-npm test             # the game rules (src/game/), in Node
+npm test             # the game rules (src/game/), and the bot clearing each commission it has a layout for, in Node
 npm run sim -- c2     # a bot plays a commission on the real rules (c1, c2, c2:next, c4), to check it can be cleared and how fast
 npm run typecheck
 npm run build        # typecheck, then the game into dist/
@@ -37,7 +37,8 @@ select and `?play=<id>` (`c1`…`c8`, `sandbox`, `r<seed>-<1..3>`) starts a comm
 **Builds online.** Every push to `main` or `dev` is built and deployed to GitHub Pages (`.github/workflows/deploy.yml`):
 [`/main/`](https://celestiallemon.github.io/Soil-n-Silo/main/) and [`/dev/`](https://celestiallemon.github.io/Soil-n-Silo/dev/).
 The site's root redirects to `/main/`. Each build keeps its own save. New work is merged into `dev` and moves to `main` in a
-PR from `dev`.
+PR from `dev`. Every PR to either, and every push to them, runs the tests and the build on Node 22.18 and the deploy's Node
+(`.github/workflows/ci.yml`).
 
 ## Layout
 

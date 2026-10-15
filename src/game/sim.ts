@@ -191,6 +191,8 @@ function used(s: GameState, item: ItemId) {
 
 /** Whether a field's soil is poor enough to take compost. */
 export const wantsCompost = (s: GameState, f: Building) => fieldFertility(s, f) < FIELD.compostBelow;
+/** How many compost a field takes now: enough to lift its soil over the line. */
+const compostWanted = (s: GameState, f: Building) => Math.max(0, Math.ceil((FIELD.compostBelow - fieldFertility(s, f)) / FIELD.compostGain));
 
 /** Whether a building takes `item` from a truck right now. Takes it if so: the depot buys it, a silo stores it. */
 function accept(s: GameState, b: Building, item: ItemId): boolean {
@@ -549,12 +551,36 @@ function setOff(s: GameState, t: Truck, from: number) {
 }
 
 /**
- * Whether a truck is done at its stop: it carries none of the stop's drop goods (compost doesn't count at a field whose soil
- * is good: waiting won't make it take any), and is full or picks nothing up there.
+ * How many more compost a route's trucks may pick up, when fields are the only stops it drops compost at: what those fields
+ * take now, less the compost its trucks carry. So a truck never fills up with compost no field takes, and has no room left
+ * for their harvest (the fields then never grow, so their soil never wears down to take it). Unlimited when another of its
+ * stops takes compost (the depot or a silo), or none does (the truck shows that it carries goods no stop takes).
  */
-const doneAt = (s: GameState, t: Truck, st: Stop, b: Building) =>
+function compostRoom(s: GameState, r: Route): number {
+  let room = 0;
+  const fields = new Set<number>();
+  for (const st of r.stops) {
+    const b = buildingById(s, st.building);
+    if (!b || !st.drop.includes('compost')) continue;
+    if (b.type !== 'field') { if (takesGoods(b).includes('compost')) return Infinity; continue; }
+    // A field the route stops at twice still takes its compost once.
+    if (!fields.has(b.id)) room += compostWanted(s, b);
+    fields.add(b.id);
+  }
+  if (!fields.size) return Infinity;
+  for (const t of trucksOn(s, r)) room -= t.cargo.filter((i) => i === 'compost').length;
+  return room;
+}
+/** Whether a truck on route `r` may pick up `item` now (compost only while the route's fields take more). */
+const mayPick = (s: GameState, r: Route, item: ItemId) => item !== 'compost' || compostRoom(s, r) > 0;
+
+/**
+ * Whether a truck is done at its stop: it carries none of the stop's drop goods (compost doesn't count at a field whose soil
+ * is good: waiting won't make it take any), and is full or has nothing it may pick up there.
+ */
+const doneAt = (s: GameState, t: Truck, st: Stop, b: Building, r: Route) =>
   !t.cargo.some((i) => st.drop.includes(i) && !(b.type === 'field' && i === 'compost' && !wantsCompost(s, b)))
-  && (t.cargo.length >= TRUCK.cargo || !st.pick.length);
+  && (t.cargo.length >= TRUCK.cargo || !st.pick.some((i) => mayPick(s, r, i)));
 
 /** Moves one good at a stop: drops one the building takes, else picks up the next of the stop's goods there is. */
 function moveOne(s: GameState, t: Truck, st: Stop, b: Building, r: Route): boolean {
@@ -566,7 +592,7 @@ function moveOne(s: GameState, t: Truck, st: Stop, b: Building, r: Route): boole
   const n = st.pick.length;
   for (let k = 0; k < n; k++) {
     const it = st.pick[(st.turn + k) % n];
-    if (waiting(b, it) > 0) { take(s, b, it); t.cargo.push(it); st.turn = (st.turn + k + 1) % n; return true; }
+    if (waiting(b, it) > 0 && mayPick(s, r, it)) { take(s, b, it); t.cargo.push(it); st.turn = (st.turn + k + 1) % n; return true; }
   }
   return false;
 }
@@ -580,7 +606,7 @@ function atStop(s: GameState, t: Truck, dt: number, queued: boolean) {
   while (t.budget >= 1) {
     if (moveOne(s, t, st, b, r)) { t.budget -= 1; t.idle = 0; } else { stuck = true; t.budget = 1; break; }
   }
-  if (doneAt(s, t, st, b)) { setOff(s, t, t.stop + 1); return; }
+  if (doneAt(s, t, st, b, r)) { setOff(s, t, t.stop + 1); return; }
   if (stuck) {
     t.idle += dt;
     if (t.idle >= st.wait - 1e-9 || queued) setOff(s, t, t.stop + 1);
@@ -771,6 +797,11 @@ export function truckProblems(s: GameState, t: Truck): string[] {
     return b && st.drop.includes(i) && takesNow(b).includes(i);
   }));
   if (dead.length) out.push(`It carries ${dead.map((i) => ITEMS[i].name.toLowerCase()).join(', ')}, which none of its stops takes.`);
+  // Full, with nothing a stop takes now: compost for fields whose soil is good. It can pick nothing up, so it may never empty.
+  else if (r && t.cargo.length >= TRUCK.cargo && !t.cargo.some((i) => r.stops.some((st) => {
+    const b = buildingById(s, st.building);
+    return b && st.drop.includes(i) && takesNow(b).includes(i) && !(b.type === 'field' && !wantsCompost(s, b));
+  }))) out.push('It is full of compost none of its fields takes now (their soil is good), so it can pick nothing up.');
   return out;
 }
 
