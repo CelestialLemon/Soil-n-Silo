@@ -20,6 +20,7 @@ import type { Hover, MarkerSpot } from './ui/world.ts';
 import { allGeometries, loadModels } from './world/models.ts';
 import { PowerView } from './world/powerView.ts';
 import { RouteView } from './world/routeView.ts';
+import { TileCursor } from './world/tileCursor.ts';
 import { buildWorld } from './world/terrain.ts';
 import { WorldView, type Overlay } from './world/view.ts';
 import './ui/clearday/tokens.css';
@@ -102,8 +103,9 @@ async function play(initial: GameState) {
   const view = new WorldView(renderer, models);
   const power = new PowerView(renderer, models);
   const routeView = new RouteView(renderer, models);
-  const cursor = renderer.addObject(models.cursor);
-  cursor.visible = false;
+  const cursor = new TileCursor(canvas, 0xfff0c0);
+  /** The tile the cursor frames, if any. */
+  let cursorTile: { x: number; y: number } | null = null;
   loading.remove();
 
   let speed = 1, paused = false, overlay: Overlay = 'none';
@@ -323,7 +325,7 @@ async function play(initial: GameState) {
 
   function showGhosts() {
     clearGhosts();
-    cursor.visible = false;
+    cursorTile = null;
     ghostLinks = [];
     if (!hoverTile && !press) return;
     if (tool.kind === 'build') {
@@ -354,8 +356,7 @@ async function play(initial: GameState) {
       const x0 = Math.min(press.from.x, press.to.x), x1 = Math.max(press.from.x, press.to.x), y0 = Math.min(press.from.y, press.to.y), y1 = Math.max(press.from.y, press.to.y);
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) ghost('frame false 1', models.frames.bad[0], x + 0.5, 0.03, y + 0.5);
     } else if (hoverTile) {
-      cursor.visible = true;
-      cursor.setTransform(new THREE.Vector3(hoverTile.x + 0.5, 0.03, hoverTile.y + 0.5));
+      cursorTile = hoverTile;
     }
   }
   let toolOverlay: Overlay = 'none';
@@ -663,6 +664,7 @@ async function play(initial: GameState) {
     renderer.placeCamera(target, yaw, ELEVATION, renderer.height * pixelSize / zoom);
     renderer.renderGeometry(time);
     renderer.renderStyle(time);
+    cursor.draw(cursorTile, renderer.camera, renderer.width, renderer.height);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

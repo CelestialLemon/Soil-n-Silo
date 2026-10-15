@@ -28,7 +28,6 @@ export interface Models {
   trees: Geo[];
   rocks: Geo[];
   truck: Geo;
-  cursor: Geo;
   frames: { ok: Geo[]; bad: Geo[] };
   /** A flat square filling a tile, tinted per overlay. */
   fill: Geo;
@@ -167,7 +166,6 @@ export async function loadModels(): Promise<Models> {
     wires: [...NET_COLOURS, GHOST_WIRE].map(bar), routes: ROUTE_COLOURS.map(bar),
     soil: Array.from({ length: SOIL_BANDS }, (_, b) => soilTile(b)),
     truck: truckRoot ? collect(truckRoot).build() : truck(),
-    cursor: frame(1, 0xfff0c0),
     frames: { ok: [1, 2, 3].map((n) => frame(n, 0xd8ffb0)), bad: [1, 2, 3].map((n) => frame(n, 0xff5040)) },
     fill: tileFill(0xf4f0e0),
   };
@@ -177,7 +175,7 @@ export async function loadModels(): Promise<Models> {
 export function allGeometries(m: Models): Geo[] {
   return [
     ...Object.values(m.buildings).flatMap((l) => [l.idle, l.running]), ...m.turbine, ...m.battery, ...m.wires, ...m.routes, ...Object.values(m.crops).flat(), ...Object.values(m.items),
-    ...m.soil, ...m.trees, ...m.rocks, m.truck, m.cursor, ...m.frames.ok, ...m.frames.bad,
+    ...m.soil, ...m.trees, ...m.rocks, m.truck, ...m.frames.ok, ...m.frames.bad,
     m.fill,
   ];
 }

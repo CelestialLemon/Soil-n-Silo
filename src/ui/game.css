@@ -4,6 +4,7 @@
 
 html, body { margin: 0; height: 100%; overflow: hidden; background: #2b3a33; }
 #view { position: fixed; display: block; image-rendering: pixelated; touch-action: none; }
+.tile-cursor { position: fixed; display: block; image-rendering: pixelated; pointer-events: none; }
 button { font: inherit; }
 .loading { position: fixed; inset: 0; display: grid; place-items: center; color: var(--chalk); font: 600 18px/1 var(--font-ui); }
 
