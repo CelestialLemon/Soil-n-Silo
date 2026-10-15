@@ -207,7 +207,7 @@ test('placing: a field forecasts its harvest, its soil in ten minutes and its wa
   assert.ok(placement(s, 'mill', 13, 4).next.some((l) => l.includes('wheat')));
 });
 
-test('the run log: milestones, the goal good\'s curve, waits; it saves, and an older save starts one', () => {
+test('the run log: milestones, the goal good\'s curve, waits; it saves', () => {
   const s = flat({ goals: [{ kind: 'deliver', item: 'flour', n: 3 }] });
   s.reached = [false];
   const mill = put(s, 'mill', 4, 4);
@@ -234,12 +234,7 @@ test('the run log: milestones, the goal good\'s curve, waits; it saves, and an o
   const back = deserialize(serialize(s))!;
   assert.deepEqual(back.run, s.run);
   const old = JSON.parse(serialize(s));
-  delete old.run;
-  const migrated = deserialize(JSON.stringify(old))!;
-  assert.ok(migrated.run.marks.every((m) => m.t === -1));
-  assert.equal(migrated.run.curve.length, 1);
-  assert.ok(migrated.run.marks.some((m) => m.kind === 'goal' && m.goal === 0), 'a goal already met is marked');
-  assert.ok(migrated.run.marks.some((m) => m.kind === 'second' && m.type === 'mill'), 'so is a second mill');
+  assert.equal(deserialize(JSON.stringify({ ...old, run: undefined })), null, 'a save without a run log is refused');
   assert.equal(deserialize(JSON.stringify({ ...old, run: { ...s.run, curve: ['x'] } })), null);
   const bad = (mark: object) => deserialize(JSON.stringify({ ...old, run: { ...s.run, marks: [mark] } }));
   assert.equal(bad({ t: 0, kind: 'goal', goal: 999 }), null, 'a goal that isn\'t the commission\'s');

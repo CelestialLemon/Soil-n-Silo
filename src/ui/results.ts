@@ -69,7 +69,7 @@ function runChart(s: GameState, end: number) {
     if (b > a) parts.push(svg('rect', { x: x(a), y: top + H + 6, width: Math.max(4, x(b) - x(a)), height: 6, rx: 3, class: 'short' }));
   }
   // The curve.
-  const pts = run.curve.map((v, i) => [x(Math.min(end, run.curveFrom + i * run.curveStep)), y(v)] as const);
+  const pts = run.curve.map((v, i) => [x(Math.min(end, i * run.curveStep)), y(v)] as const);
   if (pts.length) {
     const line = pts.map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(' ');
     parts.push(svg('polygon', { points: `${pts[0][0]},${top + H} ${line} ${pts[pts.length - 1][0]},${top + H}`, class: 'area' }));
@@ -88,14 +88,14 @@ function runChart(s: GameState, end: number) {
   const rank = (m: Mark) => ({ goal: 0, night: 1, loop: 2, second: 3, truck: 4, first: 5 })[m.kind];
   // Taken in order of how telling they are, each kept only where it has room beside those kept already.
   const kept: Mark[] = [];
-  for (const m of run.marks.filter((m) => m.t >= 0 && m.t <= end + 1 && (m.kind !== 'first' || chain.has(m.item!)) && (m.kind !== 'truck' || m.n === 2)
+  for (const m of run.marks.filter((m) => m.t <= end + 1 && (m.kind !== 'first' || chain.has(m.item!)) && (m.kind !== 'truck' || m.n === 2)
     // A soil goal is judged at the end: being met early is no milestone.
     && (m.kind !== 'goal' || s.scenario.goals[m.goal!]?.kind !== 'soil'))
     .sort((a, b) => rank(a) - rank(b) || a.t - b.t)) {
     if (kept.length < 8 && kept.every((k) => Math.abs(x(k.t) - x(m.t)) >= 70)) kept.push(m);
   }
   const marks = kept.sort((a, b) => a.t - b.t);
-  const valueAt = (t: number) => run.curve[Math.max(0, Math.min(run.curve.length - 1, Math.round((t - run.curveFrom) / run.curveStep)))] ?? 0;
+  const valueAt = (t: number) => run.curve[Math.max(0, Math.min(run.curve.length - 1, Math.round(t / run.curveStep)))] ?? 0;
   const discs = marks.map((m, i) => {
     const l = markLabel(s, m), px = x(m.t), py = y(valueAt(m.t)), up = i % 2 === 0 ? -1 : 1;
     const ly = Math.max(14, Math.min(top + H + 30, py + up * 46));

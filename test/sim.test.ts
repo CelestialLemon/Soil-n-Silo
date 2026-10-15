@@ -579,20 +579,6 @@ test('hives need flowering fields near them and pollinate them', () => {
   assert.ok(hive.stored! >= 1);
 });
 
-test('a save from when fields held compost puts it into their soil', () => {
-  const s = flat();
-  const f = put(s, 'field', 4, 4);
-  s.map.fertility.fill(50);
-  const json = JSON.parse(serialize(s));
-  json.buildings.find((b: any) => b.id === f.id).compost = 2;
-  const back = deserialize(JSON.stringify(json))!;
-  const g = back.buildings.find((b) => b.id === f.id)!;
-  assert.equal(fieldFertility(back, g), 74);
-  assert.ok(!('compost' in g));
-  json.buildings.find((b: any) => b.id === f.id).compost = -1;
-  assert.equal(deserialize(JSON.stringify(json)), null);
-});
-
 test('the commission completes when every goal is met, with a medal by time', () => {
   const s = flat({ goals: [{ kind: 'deliver', item: 'bread', n: 2 }, { kind: 'soil', min: 40 }], par: 100 });
   s.reached = [false, false];
@@ -658,7 +644,7 @@ test('saves with missing or broken state are refused', () => {
   assert.equal(without((o) => { o.routes[0].id = 0; }), null, 'ids above 0');
   assert.equal(without((o) => { o.buildings[0].type = 'castle'; }), null);
   assert.equal(without((o) => { o.buildings.find((b: any) => b.type === 'field').crop = 'not-a-crop'; }), null);
-  assert.equal(without((o) => { o.version = 2; }), null, 'saves from before trucks are refused');
+  assert.equal(without((o) => { o.version = 3; }), null, 'saves from an older version are refused');
   assert.equal(without((o) => { delete o.soilBase; }), null);
   assert.equal(without((o) => { delete o.scenario.tags; }), null);
   assert.equal(without((o) => { delete o.scenario.weather.wind; }), null);

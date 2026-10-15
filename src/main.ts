@@ -59,8 +59,8 @@ const usesPower = (t: BuildingId) => POWER_BUILDINGS.has(t) || !!BUILDINGS[t].po
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
 const loading = document.querySelector<HTMLElement>('#loading')!;
 const SAVE_KEY = saveKey(location.pathname), PROGRESS_KEY = `${SAVE_KEY}:progress`;
-/** The settings, and the pixel size where it was kept before them. */
-const settings = new SettingsStore(`${SAVE_KEY}:settings`, `${SAVE_KEY}:pixel`);
+/** The settings. */
+const settings = new SettingsStore(`${SAVE_KEY}:settings`);
 
 const saved = deserialize(localStorage.getItem(SAVE_KEY));
 const params = new URLSearchParams(location.search);

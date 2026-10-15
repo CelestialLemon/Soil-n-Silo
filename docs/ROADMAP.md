@@ -23,7 +23,7 @@ Pinned: **v0.3.0** (`package.json`). The game owns the loop, state, input, UI, a
 | --- | --- | --- |
 | Build preview ("ghost") drawn see-through and tinted green/red | Yes ([#30](https://github.com/CelestialLemon/pixel3d-renderer/issues/30), v0.3.0) | `opacity` and `tint`; `pick` sees through it. |
 | Overlays (fertility, power reach, water, bees) without a geometry per colour | Yes (#30) | One tile geometry, tinted per tile. |
-| Many goods moving (once on belts, now under drones) without redrawing the object shadow map | Yes ([#31](https://github.com/CelestialLemon/pixel3d-renderer/issues/31)) | Goods, markers, ghosts and overlays have `castShadow = false`. |
+| Many goods moving (now in trucks) without redrawing the object shadow map | Yes ([#31](https://github.com/CelestialLemon/pixel3d-renderer/issues/31)) | Goods, markers, ghosts and overlays have `castShadow = false`. |
 | Turbine rotors turning with the wind | Worked around | Three rotor speeds, swapped by wind strength (spin speed is baked into the geometry). |
 | Lamps on placed objects (pylon lanterns at night) | No | Lamps are scene data; emissive parts glow after dusk instead. |
 | Buildings fading when they hide the tile under the pointer | Not needed yet | Picking a tile uses the ground plane, so tall buildings don't block placement. |
@@ -121,7 +121,7 @@ numbers behind them are pure modules in `src/game/` (`flows.ts`, `fleet.ts`, `po
 
 - A **weather station** building (proposed 1×1, 80 credits, 2 W): owning one unlocks the forecast, sun and wind by hour from
   the seeded weather curves, in its inspector and in a Weather panel opened from the sun and wind chips by the dial. Without one
-  you see only the weather now. Clearday has a `cd-forecast` component for it (sun and wind bars by hour).
+  you see only the weather now.
 - From the UI revamp, set aside: a **difficulty fingerprint** for each commission (an advanced option in the level select);
   a **soil map and soil forecast** in the ledger; a **route loop diagram** with each stop's share of the loop.
 - Weather events (rain waters fields, storms stop turbines), seasons as commission modifiers.

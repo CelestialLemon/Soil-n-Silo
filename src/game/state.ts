@@ -1,5 +1,5 @@
 import { BUILDINGS, recipesFor, type BuildingId, type CropId, type ItemId } from './data.ts';
-import { DEPOT_SIZE, generateMap, TERRAIN, type MapData } from './map.ts';
+import { generateMap, TERRAIN, type MapData } from './map.ts';
 import { newRunLog, type RunLog } from './runlog.ts';
 import type { Scenario } from './scenarios.ts';
 
@@ -106,7 +106,7 @@ export interface Stats {
 export const STAT_BUCKET = 10, STAT_BUCKETS = 7;
 
 export interface GameState {
-  version: 3;
+  version: 4;
   scenario: Scenario;
   map: MapData;
   /** Each tile's fertility at the start: resting ground recovers up to it. */
@@ -137,7 +137,7 @@ export interface GameState {
 export function newGame(sc: Scenario): GameState {
   const map = generateMap(sc);
   const s: GameState = {
-    version: 3, scenario: sc, map, soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
+    version: 4, scenario: sc, map, soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
     buildings: [], routes: [], trucks: [], nextId: 1, credits: sc.credits, time: 0, carry: 0, delivered: {}, earned: 0,
     stats: { since: 0, made: [{}], delivered: {} }, reached: sc.goals.map(() => false), completedAt: null, made: {}, run: newRunLog(),
   };
@@ -163,7 +163,6 @@ export function makeBuilding(s: GameState, type: BuildingId, x: number, y: numbe
 }
 
 export const sizeOf = (b: { type: BuildingId }) => BUILDINGS[b.type].size;
-export const DEPOT = DEPOT_SIZE;
 
 // ---- The cache: who stands where, by id ----
 
@@ -231,14 +230,6 @@ export const terrainAt = (s: GameState, x: number, y: number) => s.map.terrain[y
 export function centre(b: Footprint) {
   const n = sizeOf(b);
   return { x: b.x + n / 2, y: b.y + n / 2 };
-}
-
-/** The gap in tiles between two buildings' footprints (0 when they touch or overlap), as the larger of the axes. */
-export function gapBetween(a: Building, b: Building) {
-  const na = sizeOf(a), nb = sizeOf(b);
-  const dx = Math.max(0, a.x - (b.x + nb - 1), b.x - (a.x + na - 1));
-  const dy = Math.max(0, a.y - (b.y + nb - 1), b.y - (a.y + na - 1));
-  return Math.max(dx, dy);
 }
 
 /** The distance in tiles from a tile to the nearest tile of a building (0 when on it), as the larger of the axes. */
