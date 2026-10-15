@@ -97,7 +97,6 @@ export function goodsHeld(s: GameState): Counts {
   for (const b of s.buildings) {
     for (const src of [b.inputs, b.outputs, b.store]) if (src) for (const [i, n] of Object.entries(src) as [ItemId, number][]) add(i, n);
     if (b.type === 'field' && b.stored) add(b.harvest ?? b.crop!, b.stored);
-    if (b.type === 'field' && b.compost) add('compost', b.compost);
     if (b.type === 'hive' && b.stored) add('honey', b.stored);
   }
   for (const t of s.trucks) for (const i of t.cargo) add(i, 1);

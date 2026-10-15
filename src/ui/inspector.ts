@@ -10,7 +10,7 @@ import { hasHistory, heldSince, historyOf, summarize } from '../game/history.ts'
 import { networkOf, networks, usedBy } from '../game/power.ts';
 import {
   describeLinks, describeStatus, describeTruck, exposureOf, fieldFertility, fieldPace, flowersNear, givesGoods, isPollinated, isStop, linksOf,
-  makes, recipeOf, routeOf, routesAt, shareOf, sunAt, takesGoods, truckProblems, wants, windAt,
+  makes, recipeOf, routeOf, routesAt, shareOf, sunAt, takesGoods, truckProblems, wants, wantsCompost, windAt,
 } from '../game/sim.ts';
 import { buildingById, routeById, truckById, type Building, type GameState, type Route, type Truck } from '../game/state.ts';
 import { netColour } from '../world/powerView.ts';
@@ -172,7 +172,7 @@ export class Inspector {
         stat('Growth pace', () => { const p = fieldPace(s, b); return `${pct(p.pace)} · water ${pct(p.water)}, soil ×${p.soil.toFixed(2)}`; });
         stat('Harvest', () => `${CROPS[b.crop!].yield}${CROPS[b.crop!].flowers && isPollinated(s, b) ? ' + 1 (bees)' : ''} every ${Math.round(CROPS[b.crop!].grow / Math.max(0.01, fieldPace(s, b).pace))} s`);
         stat('Waiting to go', () => `${b.stored} of ${FIELD.store}`);
-        stat('Compost', () => `${b.compost} of ${FIELD.compostStore} · used below soil ${FIELD.compostBelow}`);
+        stat('Compost', () => `${wantsCompost(s, b) ? 'takes it now' : 'none needed'} · below soil ${FIELD.compostBelow}`);
         break;
       }
       case 'hive':

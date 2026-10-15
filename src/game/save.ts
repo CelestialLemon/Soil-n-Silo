@@ -1,5 +1,5 @@
-import { isStop, type Medal } from './sim.ts';
-import { bays, BUILDINGS, CROPS, ITEMS, recipesFor, TRUCK } from './data.ts';
+import { changeSoil, isStop, type Medal } from './sim.ts';
+import { bays, BUILDINGS, CROPS, FIELD, ITEMS, recipesFor, TRUCK } from './data.ts';
 import { startedRunLog, type Mark, type RunLog } from './runlog.ts';
 import type { Scenario } from './scenarios.ts';
 import type { Building, GameState, Route, Truck } from './state.ts';
@@ -26,6 +26,11 @@ export function deserialize(json: string | null): GameState | null {
     if (s?.version !== 3 || !complete(s)) return null;
     // Saved before the run was logged: it is logged from now on.
     if (s.run === undefined) s.run = startedRunLog(s);
+    // Saved when fields held compost: what a field held goes into its soil.
+    for (const b of s.buildings as OldBuilding[]) {
+      if (b.type === 'field' && b.compost) changeSoil(s, b, FIELD.compostGain * b.compost);
+      delete b.compost;
+    }
     return validRun(s.run, s.scenario.goals.length) ? s : null;
   } catch {
     return null;
@@ -130,14 +135,18 @@ function uniqueIds(s: GameState): boolean {
   return int(s.nextId) && new Set(ids).size === ids.length && ids.every((id) => int(id) && id > 0 && id < s.nextId);
 }
 
+/** A building as saved before fields stopped holding compost. */
+type OldBuilding = Building & { compost?: number };
+
 /** A building has what its type's rules read. */
-function validBuilding(b: Building, w: number, h: number): boolean {
+function validBuilding(b: OldBuilding, w: number, h: number): boolean {
   if (!b || !num(b.id) || !num(b.x) || !num(b.y) || !(b.type in BUILDINGS) || !dir(b.rot)) return false;
   const n = BUILDINGS[b.type].size;
   if (b.x < 0 || b.y < 0 || b.x + n > w || b.y + n > h) return false;
   switch (b.type) {
     case 'silo': return stock(b.store);
-    case 'field': return crop(b.crop) && (b.harvest === undefined || crop(b.harvest)) && num(b.growth) && num(b.stored) && num(b.compost);
+    case 'field': return crop(b.crop) && (b.harvest === undefined || crop(b.harvest)) && num(b.growth) && num(b.stored)
+      && (b.compost === undefined || (int(b.compost) && b.compost >= 0));
     case 'hive': return num(b.growth) && num(b.stored);
     case 'battery': return num(b.charge);
     case 'sapling': return num(b.age);

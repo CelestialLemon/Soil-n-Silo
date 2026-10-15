@@ -82,7 +82,6 @@ export interface Building {
   harvest?: CropId;
   growth?: number;
   stored?: number;
-  compost?: number;
   // Batteries.
   charge?: number;
   // Silos: goods held.
@@ -147,7 +146,7 @@ export function newGame(sc: Scenario): GameState {
 export function makeBuilding(s: GameState, type: BuildingId, x: number, y: number, rot: Dir): Building {
   const b: Building = { id: s.nextId++, type, x, y, rot, status: 'idle' };
   switch (type) {
-    case 'field': b.crop = 'wheat'; b.growth = 0; b.stored = 0; b.compost = 0; break;
+    case 'field': b.crop = 'wheat'; b.growth = 0; b.stored = 0; break;
     case 'hive': b.growth = 0; b.stored = 0; break;
     case 'battery': b.charge = 0; break;
     case 'silo': b.store = {}; break;

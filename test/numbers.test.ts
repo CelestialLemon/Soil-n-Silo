@@ -83,11 +83,10 @@ test('goods held count every store and truck; soil trend follows soil health', (
   const [t] = trucksAt(s, 10, 10);
   t.cargo = ['wheat', 'egg'];
   const f = put(s, 'field', 20, 4);
-  f.stored = 2; f.harvest = 'wheat'; f.compost = 1;
+  f.stored = 2; f.harvest = 'wheat';
   const held = goodsHeld(s);
   assert.equal(held.wheat, 7 + 1 + 2);
   assert.equal(held.egg, 1);
-  assert.equal(held.compost, 1);
   advance(s, 30);
   // The field's soil drops by 30: soil health follows.
   for (let y = 4; y < 7; y++) for (let x = 20; x < 23; x++) s.map.fertility[y * s.map.width + x] = 30;
