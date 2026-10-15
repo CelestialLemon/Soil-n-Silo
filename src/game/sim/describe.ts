@@ -38,7 +38,7 @@ export function served(s: GameState, b: Building, item: ItemId, how: 'pick' | 'd
 /** Whether anything would take a composter's compost now: a field wanting it (next door, or at a stop of a route that picks it up there), or a depot or silo drop. */
 function compostWelcome(s: GameState, b: Building): boolean {
   if (neighboursOf(s, b).some((n) => n.type === 'field' && wantsCompost(s, n))) return true;
-  return s.routes.some((r) => r.stops.some((st) => st.building === b.id && st.pick.includes('compost') && s.trucks.some((t) => t.route === r.id))
+  return s.routes.some((r) => r.stops.some((st) => st.building === b.id && st.pick.includes('compost'))
     && r.stops.some((st) => {
       const d = buildingById(s, st.building);
       return !!d && st.drop.includes('compost') && (d.type === 'field' ? wantsCompost(s, d) : takesGoods(d).includes('compost'));
