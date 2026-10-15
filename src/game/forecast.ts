@@ -54,7 +54,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number):
       let t = 0, later = soil;
       for (;;) { t += crop.grow / paceOf(water, later).pace; if (t > SOIL_AHEAD) break; later = Math.max(0, Math.min(100, later + crop.soil)); }
       facts.push({ label: crop.name, value: `+${fmt1(perMin)}`, sub: 'a minute' });
-      facts.push({ label: 'Soil', value: String(Math.round(soil)), then: String(Math.round(later)), sub: `in ${SOIL_AHEAD / 60} min` });
+      facts.push({ label: 'Soil', value: String(Math.round(soil)), then: String(Math.round(later)), sub: `in ${SOIL_AHEAD / 60} min if harvests are carried off` });
       facts.push(sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round(waterPace(water) * 100)}%` }
         : { label: 'Water', value: 'none', sub: `grows at ${Math.round(waterPace(0) * 100)}%`, tone: 'bad' });
       break;
