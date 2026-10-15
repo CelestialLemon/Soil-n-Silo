@@ -11,11 +11,13 @@ import { feederOf, networkOf, networks, pylonsInLink, wiresOf } from '../src/gam
 import { deserialize, readProgress, recordResult, serialize } from '../src/game/save.ts';
 import { CAMPAIGN, randomScenario, SANDBOX, scenarioById, type Scenario } from '../src/game/scenarios.ts';
 import { accessTiles, distanceTo, isOpen, pathTo } from '../src/game/roads.ts';
-import {
-  advance, deliver, describeLinks, describeStatus, exposureOf, linksAt, fieldFertility, goalDone, hourAt, linksOf, medalFor, passes, ratePerMin, routeRate, soilHealth, stopProblems,
-  tradesNextDoor,
-  sunAt, truckProblems, windAt,
-} from '../src/game/sim.ts';
+import { hourAt, sunAt, windAt } from '../src/game/sim/clock.ts';
+import { exposureOf } from '../src/game/sim/layout.ts';
+import { fieldFertility, soilHealth } from '../src/game/sim/soil.ts';
+import { deliver, linksAt, linksOf, passes, tradesNextDoor } from '../src/game/sim/goods.ts';
+import { goalDone, medalFor, ratePerMin, routeRate } from '../src/game/sim/stats.ts';
+import { describeLinks, describeStatus, stopProblems, truckProblems } from '../src/game/sim/describe.ts';
+import { advance } from '../src/game/sim/step.ts';
 import { buildingAt, newGame, type Building, type Dir, type GameState, type Route, type Truck } from '../src/game/state.ts';
 
 /** A flat, empty test map: no water, rock or trees, even soil. */

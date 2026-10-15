@@ -4,7 +4,7 @@ import { place, remove } from '../src/game/build.ts';
 import { POWER } from '../src/game/data.ts';
 import { HISTORY_SECONDS, historyOf, summarize, type Bucket, type History } from '../src/game/history.ts';
 import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
-import { advance } from '../src/game/sim.ts';
+import { advance } from '../src/game/sim/step.ts';
 import { newGame, type Building, type GameState } from '../src/game/state.ts';
 
 function flat(): GameState {

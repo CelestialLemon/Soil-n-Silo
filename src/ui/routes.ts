@@ -5,7 +5,10 @@ import {
 import { err, ok } from '../game/result.ts';
 import { BUILDINGS, ITEM_IDS, ITEMS, TRUCK, type ItemId } from '../game/data.ts';
 import { routeTiming, truckTime, type StopTiming } from '../game/fleet.ts';
-import { cargoText, describeTruck, givesGoods, routeRate, stopProblems, takesGoods, truckProblems, trucksOn } from '../game/sim.ts';
+import { givesGoods, takesGoods } from '../game/sim/goods.ts';
+import { trucksOn } from '../game/sim/trucks.ts';
+import { routeRate } from '../game/sim/stats.ts';
+import { cargoText, describeTruck, stopProblems, truckProblems } from '../game/sim/describe.ts';
 import { buildingById, type GameState, type Route } from '../game/state.ts';
 import { fill, h, icon, rebuild, set, setVar } from './dom.ts';
 import { dec, itemName, pct, playTime, plural } from './format.ts';

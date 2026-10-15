@@ -6,7 +6,10 @@ import { placement } from '../src/game/forecast.ts';
 import { TERRAIN, type TerrainKind } from '../src/game/map.ts';
 import { networkOf } from '../src/game/power.ts';
 import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
-import { advance, describeStatus, exposureOf, fieldPace, nearWater } from '../src/game/sim.ts';
+import { exposureOf, nearWater } from '../src/game/sim/layout.ts';
+import { fieldPace } from '../src/game/sim/buildings.ts';
+import { describeStatus } from '../src/game/sim/describe.ts';
+import { advance } from '../src/game/sim/step.ts';
 import { newGame, touchLayout, type Building, type GameState } from '../src/game/state.ts';
 
 // The placement card and the simulation share their rules (rules.ts): what a building in hand is said to do is what it does

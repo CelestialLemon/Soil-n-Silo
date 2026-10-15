@@ -1,6 +1,6 @@
 import { messageOf, type Action } from '../game/build.ts';
 import type { BuildingId } from '../game/data.ts';
-import type { Medal } from '../game/sim.ts';
+import type { Medal } from '../game/sim/stats.ts';
 import { buildingById, type Dir, type GameState, type Route } from '../game/state.ts';
 import type { Overlay } from '../world/view.ts';
 import { h, icon } from './dom.ts';

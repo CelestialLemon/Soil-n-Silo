@@ -31,7 +31,7 @@ Pinned: **v0.3.0** (`package.json`). The game owns the loop, state, input, UI, a
 ## v0.1: the pivot (2026-10-09)
 
 - Game rules in `src/game/`: goods, crops, buildings and recipes as data (`data.ts`); seeded maps (`map.ts`); commissions
-  (`scenarios.ts`); the fixed-step simulation (`sim.ts`): belts, splitters, sorters, crossings, drone pads (replaced by silos, below), fields with
+  (`scenarios.ts`); the fixed-step simulation (`src/game/sim/`): belts, splitters, sorters, crossings, drone pads (replaced by silos, below), fields with
   fertility, water and pollination, machines with strict byproducts, pylon power networks with batteries, goals and medals;
   building and configuring (`build.ts`); saves (`save.ts`). Unit tests in `test/`.
 - `npm run sim`: a bot builds a fixed layout as credits allow and plays a commission on the real rules (layouts for First

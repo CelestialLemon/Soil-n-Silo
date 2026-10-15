@@ -10,7 +10,9 @@ import { BUILDINGS, ITEMS } from '../src/game/data.ts';
 import { TERRAIN } from '../src/game/map.ts';
 import { networks } from '../src/game/power.ts';
 import { scenarioById } from '../src/game/scenarios.ts';
-import { advance, goalDone, medalFor, soilHealth } from '../src/game/sim.ts';
+import { soilHealth } from '../src/game/sim/soil.ts';
+import { goalDone, medalFor } from '../src/game/sim/stats.ts';
+import { advance } from '../src/game/sim/step.ts';
 import { newGame, type Building, type GameState, type Route } from '../src/game/state.ts';
 
 /** How a bot run went: when the commission completed (null if it didn't in the time given), and its target time. */

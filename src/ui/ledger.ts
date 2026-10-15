@@ -1,7 +1,9 @@
 import { CROPS, ITEM_IDS, ITEMS, TREE_HEALTH } from '../game/data.ts';
 import { flowRate, flowSeries, goodsHeld, soilTrend } from '../game/flows.ts';
 import { networks, usedBy } from '../game/power.ts';
-import { dayAt, fieldFertility, hourAt, isPollinated, soilHealth } from '../game/sim.ts';
+import { dayAt, hourAt } from '../game/sim/clock.ts';
+import { isPollinated } from '../game/sim/layout.ts';
+import { fieldFertility, soilHealth } from '../game/sim/soil.ts';
 import { countTrees, type GameState } from '../game/state.ts';
 import { fill, h, icon, svg } from './dom.ts';
 import { clock, dec, num, pct, plural, watts } from './format.ts';
