@@ -11,7 +11,9 @@ import { HOUR_SECONDS, nightsOf, powerDay } from '../src/game/powerlog.ts';
 import { RUN_MAX_NIGHTS, RUN_MAX_SAMPLES, RUN_SAMPLE, runWaits } from '../src/game/runlog.ts';
 import { deserialize, serialize } from '../src/game/save.ts';
 import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
-import { advance, deliver, hourAt } from '../src/game/sim.ts';
+import { hourAt } from '../src/game/sim/clock.ts';
+import { deliver } from '../src/game/sim/goods.ts';
+import { advance } from '../src/game/sim/step.ts';
 import { newGame, type Building, type GameState, type Route, type Truck } from '../src/game/state.ts';
 
 // The numbers the HUD shows beyond the rules themselves: goods flows, route timing, power over a day, the run log, the

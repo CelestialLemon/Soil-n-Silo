@@ -1,6 +1,6 @@
 import { BUILDINGS } from '../game/data.ts';
 import { heldSince, historyOf } from '../game/history.ts';
-import { describeStatus } from '../game/sim.ts';
+import { describeStatus } from '../game/sim/describe.ts';
 import type { Building, GameState } from '../game/state.ts';
 import { fill, h, set } from './dom.ts';
 import { playTime } from './format.ts';

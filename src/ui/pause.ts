@@ -1,6 +1,6 @@
 import { POWER } from '../game/data.ts';
 import { networks, usedBy } from '../game/power.ts';
-import { dayAt, hourAt } from '../game/sim.ts';
+import { dayAt, hourAt } from '../game/sim/clock.ts';
 import type { GameState, Status } from '../game/state.ts';
 import { h, icon } from './dom.ts';
 import { clock, itemName, num, pct, playTime, watts } from './format.ts';

@@ -3,7 +3,7 @@ import { pylonReaches, pylonsLink } from './rules.ts';
 import { layoutOf, sizeOf, type Building, type GameState } from './state.ts';
 
 // Power networks: pylons within reach of each other link into a network, and every building that makes, stores or uses
-// power joins the network of the first pylon that reaches one of its tiles. Each network balances on its own (sim.ts).
+// power joins the network of the first pylon that reaches one of its tiles. Each network balances on its own (sim/energy.ts).
 
 export interface Network {
   id: number;

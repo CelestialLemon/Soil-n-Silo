@@ -5,9 +5,13 @@ import { BUILDINGS, POWER, type BuildingId } from './game/data.ts';
 import { TERRAIN } from './game/map.ts';
 import { deserialize, readProgress, recordResult, saveKey, serialize } from './game/save.ts';
 import { scenarioById } from './game/scenarios.ts';
-import {
-  advance, cargoText, describeStatus, describeTruck, fieldFertility, hourAt, isStop, linksAt, linksOf, medalFor, routeOf, routesAt,
-} from './game/sim.ts';
+import { hourAt } from './game/sim/clock.ts';
+import { fieldFertility } from './game/sim/soil.ts';
+import { linksAt, linksOf } from './game/sim/goods.ts';
+import { isStop, routeOf, routesAt } from './game/sim/trucks.ts';
+import { medalFor } from './game/sim/stats.ts';
+import { cargoText, describeStatus, describeTruck } from './game/sim/describe.ts';
+import { advance } from './game/sim/step.ts';
 import {
   buildingAt, buildingById, inMap, newGame, routeById, sizeOf, terrainAt, truckById, type Dir, type GameState, type Route,
 } from './game/state.ts';

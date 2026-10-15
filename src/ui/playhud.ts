@@ -1,7 +1,8 @@
 import { flowRate, creditsPerMin } from '../game/flows.ts';
 import { networks, usedBy } from '../game/power.ts';
 import { CAMPAIGN, SILVER_PAR, type Goal } from '../game/scenarios.ts';
-import { dayAt, hourAt, medalFor, sunAt, windAt } from '../game/sim.ts';
+import { dayAt, hourAt, sunAt, windAt } from '../game/sim/clock.ts';
+import { medalFor } from '../game/sim/stats.ts';
 import type { GameState } from '../game/state.ts';
 import type { Overlay } from '../world/view.ts';
 import { fill, h, icon, set, setVar } from './dom.ts';

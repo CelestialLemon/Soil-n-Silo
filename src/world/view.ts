@@ -4,7 +4,9 @@ import { CROPS, HIVE, POWER, type BuildingId, type ItemId } from '../game/data.t
 import { TERRAIN } from '../game/map.ts';
 import { networks } from '../game/power.ts';
 import { isOpen } from '../game/roads.ts';
-import { cutOff, HANDOFF_SECONDS, recentHandoffs, windAt } from '../game/sim.ts';
+import { windAt } from '../game/sim/clock.ts';
+import { HANDOFF_SECONDS, recentHandoffs } from '../game/sim/goods.ts';
+import { cutOff } from '../game/sim/trucks.ts';
 import { buildingById, layoutOf, sizeOf, type Building, type Dir, type GameState, type Status, type Truck } from '../game/state.ts';
 import { hash } from './kit.ts';
 import type { Models } from './models.ts';

@@ -2,7 +2,8 @@ import { BUILDINGS, CLEAR_COST, CROPS, ITEM_IDS, ITEMS, recipesFor, TRUCK, type 
 import { TERRAIN } from './map.ts';
 import { err, ok, type Result } from './result.ts';
 import { accessTiles, nearestOpen } from './roads.ts';
-import { givesGoods, isStop, redirect, routeChanged, takesGoods } from './sim.ts';
+import { givesGoods, takesGoods } from './sim/goods.ts';
+import { isStop, redirect, routeChanged } from './sim/trucks.ts';
 import {
   addBuilding, buildingAt, inMap, makeBuilding, removeBuilding, terrainAt, tileIndex, touchLayout, type Building, type Dir, type GameState,
   type Route, type Stop, type Truck,

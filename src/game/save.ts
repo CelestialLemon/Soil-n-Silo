@@ -1,4 +1,5 @@
-import { isStop, type Medal } from './sim.ts';
+import { isStop } from './sim/trucks.ts';
+import { type Medal } from './sim/stats.ts';
 import { bays, BUILDINGS, CROPS, ITEMS, recipesFor, TRUCK } from './data.ts';
 import { err, ok, tryParseJson, type Result } from './result.ts';
 import type { Mark, RunLog } from './runlog.ts';

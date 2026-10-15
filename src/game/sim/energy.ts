@@ -1,0 +1,106 @@
+import { BUILDINGS, POWER, TICK, TRUCK, type BuildingId } from '../data.ts';
+import { networkOf, networks } from '../power.ts';
+import { notePower, type PowerStep } from '../powerlog.ts';
+import { type Building, type GameState } from '../state.ts';
+import { exposureOf, nearWater } from './layout.ts';
+import { recipeOf, missing, outputsFit } from './goods.ts';
+
+// Power: what each building wants and makes, how each network balances, and the watts garages want for charging.
+
+const shares = new WeakMap<GameState, Map<number, number>>();
+/** The share of the power it wanted that a building got last step (1 for buildings that need none). */
+export function shareOf(s: GameState, b: Building) {
+  if (!BUILDINGS[b.type].power) return 1;
+  return shares.get(s)?.get(b.id) ?? 0;
+}
+
+/** Watts a building wants this step. */
+export function wants(s: GameState, b: Building): number {
+  const def = BUILDINGS[b.type];
+  if (!def.power) return 0;
+  if (b.type === 'sprinkler') return nearWater(s, b) ? POWER.sprinklerNearWater : POWER.sprinklerFar;
+  if (b.type === 'garage') return charging.get(s)?.get(b.id) ?? 0;
+  const r = recipeOf(b);
+  if (!r) return 0;
+  if (b.progress !== null && b.progress !== undefined) return def.power;
+  return !missing(b, r) && !outputsFit(b, r) ? def.power : 0;
+}
+
+/** Watts a generator makes this step. */
+export function makes(s: GameState, b: Building, sun: number, wind: number): number {
+  switch (b.type) {
+    case 'solar': return POWER.solar * sun;
+    case 'turbine': return POWER.turbine * wind * exposureOf(s, b);
+    case 'digester': return b.progress !== null && b.progress !== undefined ? POWER.digester : 0;
+    default: return 0;
+  }
+}
+
+export function balancePower(s: GameState, sun: number, wind: number, dt: number) {
+  const map = new Map<number, number>();
+  const step: PowerStep = { solar: 0, wind: 0, digester: 0, given: 0, taken: 0, wanted: 0, used: 0, short: 0, stored: 0, capacity: 0, night: sun <= 0 };
+  const use: Partial<Record<BuildingId, number>> = {};
+  for (const net of networks(s).list) {
+    let made = 0, wanted = 0, capacity = 0;
+    const batteries: Building[] = [], want = new Map<Building, number>();
+    for (const b of net.members) {
+      const w = makes(s, b, sun, wind), u = wants(s, b);
+      made += w;
+      if (b.type === 'solar' || b.type === 'turbine' || b.type === 'digester') step[b.type === 'turbine' ? 'wind' : b.type] += w;
+      wanted += u;
+      if (u > 0) want.set(b, u);
+      if (b.type === 'battery') { batteries.push(b); capacity += POWER.battery.capacity; }
+    }
+    let share = 1;
+    if (made >= wanted) {
+      let spare = (made - wanted) * dt;
+      for (const bat of batteries) {
+        const add = Math.min(spare, POWER.battery.rate * dt, POWER.battery.capacity - bat.charge!);
+        bat.charge! += add; spare -= add; step.taken += add / dt;
+      }
+    } else {
+      let short = (wanted - made) * dt, given = 0;
+      for (const bat of batteries) {
+        const take = Math.min(short, POWER.battery.rate * dt, bat.charge!);
+        bat.charge! -= take; short -= take; given += take;
+      }
+      step.given += given / dt;
+      share = wanted > 0 ? Math.min(1, (made + given / dt) / wanted) : 1;
+      if (share > 0.999) share = 1;
+    }
+    net.made = made; net.wanted = wanted; net.share = share;
+    net.stored = batteries.reduce((n, b) => n + b.charge!, 0); net.capacity = capacity;
+    step.wanted += wanted; step.used += wanted * share; step.short += wanted * (1 - share);
+    step.stored += net.stored; step.capacity += capacity;
+    for (const b of net.members) map.set(b.id, share);
+    for (const [b, u] of want) use[b.type] = (use[b.type] ?? 0) + u * share;
+  }
+  shares.set(s, map);
+  notePower(s, step, use, dt);
+}
+
+/**
+ * Watts each garage wants for the trucks charging there, worked out before power is balanced: each truck at most the charge
+ * rate, and no more than it needs to fill up this step.
+ */
+const charging = new WeakMap<GameState, Map<number, number>>();
+export function countCharging(s: GameState) {
+  const m = new Map<number, number>();
+  for (const t of s.trucks) {
+    if (t.phase !== 'parked' && t.phase !== 'charge') continue;
+    const w = Math.min(TRUCK.chargeRate, Math.max(0, TRUCK.battery - t.energy) / TICK);
+    if (w > 0) m.set(t.garage, (m.get(t.garage) ?? 0) + w);
+  }
+  charging.set(s, m);
+}
+
+/** A garage's status: charging its trucks, short of power for them, or idle. */
+export function runGarages(s: GameState) {
+  const want = charging.get(s);
+  for (const g of s.buildings) {
+    if (g.type !== 'garage') continue;
+    const w = want?.get(g.id) ?? 0, share = shareOf(s, g);
+    g.need = undefined;
+    g.status = !networkOf(s, g) ? 'power' : w > 0 && share <= 0 ? 'power' : w > 0 && share < 1 ? 'lowpower' : w > 0 ? 'ok' : 'idle';
+  }
+}

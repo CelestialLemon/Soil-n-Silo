@@ -1,5 +1,6 @@
 import { SILVER_PAR, type Goal } from '../game/scenarios.ts';
-import { goalDone, ratePerMin, soilHealth, type Medal } from '../game/sim.ts';
+import { soilHealth } from '../game/sim/soil.ts';
+import { goalDone, ratePerMin, type Medal } from '../game/sim/stats.ts';
 import type { Building, GameState, Status } from '../game/state.ts';
 import { h } from './dom.ts';
 import { dec, itemName, pct, playTime } from './format.ts';

@@ -1,5 +1,7 @@
 import { BUILDINGS, ITEM_IDS, type ItemId } from '../game/data.ts';
-import { givesGoods, stopProblems, truckProblems, trucksOn } from '../game/sim.ts';
+import { givesGoods } from '../game/sim/goods.ts';
+import { trucksOn } from '../game/sim/trucks.ts';
+import { stopProblems, truckProblems } from '../game/sim/describe.ts';
 import { buildingById, type GameState, type Route, type Truck } from '../game/state.ts';
 import { ROUTE_COLOURS } from '../world/shapes.ts';
 import { routeColour } from '../world/routeView.ts';

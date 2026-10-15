@@ -6,7 +6,7 @@ import {
 import { FLEET_SECONDS } from '../game/fleet.ts';
 import { SOIL_AHEAD } from '../game/forecast.ts';
 import { historyOf, summarize } from '../game/history.ts';
-import { dayAt } from '../game/sim.ts';
+import { dayAt } from '../game/sim/clock.ts';
 import type { GameState } from '../game/state.ts';
 import { fill, h, icon, svg } from './dom.ts';
 import { clockAt, plural } from './format.ts';

@@ -2,7 +2,10 @@ import { BUILDINGS, CROPS, DAY_SECONDS, HIVE, ITEMS, POWER, recipesFor, SAPLING_
 import { networks, POWERED, pylonsInLink } from './power.ts';
 import { HOUR_SECONDS } from './powerlog.ts';
 import { exposureAt, hiveReaches, nearWaterAt, paceOf, pylonReaches, sprinklerWaters, waterPace } from './rules.ts';
-import { describeLinks, hourAt, linksAt, makes, shareOf, sunAt, windAt } from './sim.ts';
+import { hourAt, sunAt, windAt } from './sim/clock.ts';
+import { linksAt } from './sim/goods.ts';
+import { makes, shareOf } from './sim/energy.ts';
+import { describeLinks } from './sim/describe.ts';
 import { inMap, type Building, type GameState } from './state.ts';
 
 // Forecasts from what the game already knows: what a building in hand would do on a tile (facts about the tile, no advice),

@@ -8,10 +8,14 @@ import {
 import { FLEET_SECONDS, truckTime } from '../game/fleet.ts';
 import { hasHistory, heldSince, historyOf, summarize } from '../game/history.ts';
 import { networkOf, networks, usedBy } from '../game/power.ts';
-import {
-  describeLinks, describeStatus, describeTruck, exposureOf, fieldFertility, fieldPace, flowersNear, givesGoods, isPollinated, isStop, linksOf,
-  makes, recipeOf, routeOf, routesAt, shareOf, sunAt, takesGoods, truckProblems, wants, wantsCompost, windAt,
-} from '../game/sim.ts';
+import { sunAt, windAt } from '../game/sim/clock.ts';
+import { exposureOf, isPollinated } from '../game/sim/layout.ts';
+import { fieldFertility } from '../game/sim/soil.ts';
+import { givesGoods, linksOf, recipeOf, takesGoods, wantsCompost } from '../game/sim/goods.ts';
+import { makes, shareOf, wants } from '../game/sim/energy.ts';
+import { fieldPace, flowersNear } from '../game/sim/buildings.ts';
+import { isStop, routeOf, routesAt } from '../game/sim/trucks.ts';
+import { describeLinks, describeStatus, describeTruck, truckProblems } from '../game/sim/describe.ts';
 import { buildingById, routeById, truckById, type Building, type GameState, type Route, type Truck } from '../game/state.ts';
 import { netColour } from '../world/powerView.ts';
 import { NET_COLOURS } from '../world/shapes.ts';
