@@ -9,15 +9,19 @@ export const ITEM_IDS = [
 ] as const;
 export type ItemId = typeof ITEM_IDS[number];
 
-export interface ItemDef { name: string; price: number; colour: number; hint: string }
+export interface ItemDef {
+  name: string; price: number; colour: number; hint: string;
+  /** Its plural, where it isn't the name (for counts in recipes: "2 sunflowers"). */
+  many?: string;
+}
 
 export const ITEMS: Record<ItemId, ItemDef> = {
   wheat: { name: 'Wheat', price: 2, colour: 0xe2c25a, hint: 'Milled into flour.' },
   beans: { name: 'Beans', price: 2, colour: 0x6a9a3a, hint: 'Chicken feed. Bean fields restore the soil.' },
-  tomato: { name: 'Tomato', price: 3, colour: 0xe0503a, hint: 'Cooked into sauce.' },
-  sunflower: { name: 'Sunflower', price: 3, colour: 0xf2c63a, hint: 'Pressed into oil.' },
+  tomato: { name: 'Tomato', many: 'tomatoes', price: 3, colour: 0xe0503a, hint: 'Cooked into sauce.' },
+  sunflower: { name: 'Sunflower', many: 'sunflowers', price: 3, colour: 0xf2c63a, hint: 'Pressed into oil.' },
   flax: { name: 'Flax', price: 3, colour: 0x8aa8d8, hint: 'Spun into yarn.' },
-  egg: { name: 'Egg', price: 6, colour: 0xf6efe0, hint: 'Baked into bread and cake.' },
+  egg: { name: 'Egg', many: 'eggs', price: 6, colour: 0xf6efe0, hint: 'Baked into bread and cake.' },
   manure: { name: 'Manure', price: 1, colour: 0x6a442e, hint: 'Composted, or burnt in the digester.' },
   honey: { name: 'Honey', price: 10, colour: 0xf0a020, hint: 'Baked into honey cake.' },
   flour: { name: 'Flour', price: 7, colour: 0xf4ecd8, hint: 'Baked into bread and cake.' },
@@ -38,7 +42,11 @@ export const GROUPS = {
   organic: ['manure', 'bran', 'seedcake'],
 } as const satisfies Record<string, readonly ItemId[]>;
 export type GroupId = keyof typeof GROUPS;
-export const GROUP_NAMES: Record<GroupId, string> = { feed: 'feed (beans, bran or seed cake)', organic: 'organic matter (manure, bran or seed cake)' };
+const lcItem = (i: ItemId) => ITEMS[i].name.toLowerCase();
+/** A group's members in words: "manure, bran or seed cake". */
+export const anyOf = (g: GroupId) => { const n = GROUPS[g].map(lcItem); return `${n.slice(0, -1).join(', ')} or ${n[n.length - 1]}`; };
+const GROUP_WORDS: Record<GroupId, string> = { feed: 'feed', organic: 'organic matter' };
+export const GROUP_NAMES: Record<GroupId, string> = { feed: `${GROUP_WORDS.feed} (${anyOf('feed')})`, organic: `${GROUP_WORDS.organic} (${anyOf('organic')})` };
 
 // ---- Crops ----
 
@@ -108,29 +116,30 @@ export interface BuildingDef {
   tall?: boolean;
   /** Can stand on water (a little bridge). */
   onWater?: boolean;
+  /** A line on what it does (the ones that quote numbers are getters, built from the tables below). */
   hint: string;
   key?: string;
 }
 
 export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   silo: { name: 'Silo', size: 2, cost: 80, category: 'logistics', tall: true, key: 'L', hint: 'Stores goods: trucks drop them here and pick them up again.' },
-  garage: { name: 'Garage', size: 2, cost: 100, category: 'logistics', power: 20, key: 'T', hint: 'Home of up to 4 trucks: buy them here, give them routes. Charges them.' },
+  garage: { name: 'Garage', size: 2, cost: 100, category: 'logistics', power: 20, key: 'T', get hint() { return `Home of up to ${TRUCK.perGarage} trucks: buy them here, give them routes. Charges them.`; } },
   field: { name: 'Field', size: 3, cost: 30, category: 'farming', key: 'F', hint: 'Grows a crop on rich soil. Water it with sprinklers; feed it compost.' },
-  sprinkler: { name: 'Sprinkler', size: 1, cost: 25, category: 'farming', power: 3, hint: 'Waters fields within 3 tiles. Cheaper to run near water.' },
-  coop: { name: 'Coop', size: 3, cost: 150, category: 'farming', hint: 'Chickens: 2 feed → 2 eggs + manure.' },
+  sprinkler: { name: 'Sprinkler', size: 1, cost: 25, category: 'farming', power: 3, get hint() { return `Waters fields within ${POWER.sprinklerReach} tiles. Cheaper to run near water.`; } },
+  coop: { name: 'Coop', size: 3, cost: 150, category: 'farming', get hint() { return `Chickens: ${recipeWords('eggs')}.`; } },
   hive: { name: 'Beehive', size: 1, cost: 60, category: 'farming', hint: 'Honey from flowering fields nearby; pollinates them for a bigger harvest.' },
-  composter: { name: 'Composter', size: 2, cost: 60, category: 'farming', hint: 'Turns manure, bran or seed cake into compost.' },
-  mill: { name: 'Mill', size: 2, cost: 200, category: 'processing', power: 12, tall: true, hint: '2 wheat → flour + bran.' },
-  press: { name: 'Oil press', size: 2, cost: 220, category: 'processing', power: 15, hint: '2 sunflowers → oil + seed cake.' },
-  spinner: { name: 'Spinner', size: 2, cost: 200, category: 'processing', power: 10, hint: '2 flax → yarn.' },
-  loom: { name: 'Loom', size: 2, cost: 300, category: 'processing', power: 20, hint: '3 yarn → linen.' },
-  bakery: { name: 'Bakery', size: 2, cost: 350, category: 'processing', power: 25, tall: true, hint: 'Flour + egg → bread, or + honey → honey cake.' },
-  cannery: { name: 'Cannery', size: 2, cost: 300, category: 'processing', power: 18, hint: '3 tomatoes + oil → tomato sauce.' },
-  solar: { name: 'Solar panel', size: 2, cost: 70, category: 'power', key: 'S', hint: '30 W at noon; nothing at night.' },
-  turbine: { name: 'Wind turbine', size: 1, cost: 120, category: 'power', tall: true, hint: '40 W in full wind. Trees and tall buildings close by shelter it.' },
+  composter: { name: 'Composter', size: 2, cost: 60, category: 'farming', get hint() { return `Turns ${anyOf('organic')} into compost.`; } },
+  mill: { name: 'Mill', size: 2, cost: 200, category: 'processing', power: 12, tall: true, get hint() { return `${recipeWords('flour')}.`; } },
+  press: { name: 'Oil press', size: 2, cost: 220, category: 'processing', power: 15, get hint() { return `${recipeWords('oil')}.`; } },
+  spinner: { name: 'Spinner', size: 2, cost: 200, category: 'processing', power: 10, get hint() { return `${recipeWords('yarn')}.`; } },
+  loom: { name: 'Loom', size: 2, cost: 300, category: 'processing', power: 20, get hint() { return `${recipeWords('linen')}.`; } },
+  bakery: { name: 'Bakery', size: 2, cost: 350, category: 'processing', power: 25, tall: true, get hint() { return `${sentence(recipeWords('bread'))}, or ${recipeWords('honeycake')}.`; } },
+  cannery: { name: 'Cannery', size: 2, cost: 300, category: 'processing', power: 18, get hint() { return `${sentence(recipeWords('sauce'))}.`; } },
+  solar: { name: 'Solar panel', size: 2, cost: 70, category: 'power', key: 'S', get hint() { return `${POWER.solar} W at noon; nothing at night.`; } },
+  turbine: { name: 'Wind turbine', size: 1, cost: 120, category: 'power', tall: true, get hint() { return `${POWER.turbine} W in full wind. Trees and tall buildings close by shelter it.`; } },
   battery: { name: 'Battery', size: 2, cost: 150, category: 'power', hint: 'Stores power for the night.' },
-  digester: { name: 'Digester', size: 2, cost: 180, category: 'power', hint: 'Burns manure, bran or seed cake for a steady 30 W.' },
-  pylon: { name: 'Pylon', size: 1, cost: 10, category: 'power', onWater: true, key: 'P', hint: 'Powers buildings within 3 tiles; links to pylons within 8.' },
+  digester: { name: 'Digester', size: 2, cost: 180, category: 'power', get hint() { return `Burns ${anyOf('organic')} for a steady ${POWER.digester} W.`; } },
+  pylon: { name: 'Pylon', size: 1, cost: 10, category: 'power', onWater: true, key: 'P', get hint() { return `Powers buildings within ${POWER.pylon.reach} tiles; links to pylons within ${POWER.pylon.link}.`; } },
   sapling: { name: 'Sapling', size: 1, cost: 5, category: 'ecology', hint: 'Grows into a tree.' },
   depot: { name: 'Freight depot', size: 3, cost: 0, category: null, hint: 'Deliver goods here.' },
 };
@@ -164,6 +173,14 @@ export const RECIPES: Recipe[] = [
 export const recipesFor = (b: BuildingId) => RECIPES.filter((r) => r.building === b);
 export const recipeById = (id: string) => RECIPES.find((r) => r.id === id)!;
 
+const counted = (x: Ingredient) => {
+  const one = 'item' in x ? lcItem(x.item) : GROUP_WORDS[x.group], many = 'item' in x ? ITEMS[x.item].many ?? one : one;
+  return x.n > 1 ? `${x.n} ${many}` : one;
+};
+/** A recipe in a few words: "2 wheat → flour + bran". */
+export const recipeWords = (id: string) => { const r = recipeById(id); return `${r.inputs.map(counted).join(' + ')} → ${r.outputs.map(counted).join(' + ')}`; };
+const sentence = (s: string) => s[0].toUpperCase() + s.slice(1);
+
 /** A machine holds this many batches' worth of each input, and of each output. */
 export const INPUT_BATCHES = 3;
 export const OUTPUT_BATCHES = 3;
@@ -173,8 +190,8 @@ export const OUTPUT_BATCHES = 3;
 export const POWER = {
   solar: 30,
   turbine: 40,
-  /** Fraction of a turbine's output lost per tree or tall building within 2 tiles, and the least it keeps. */
-  shelter: 0.1, shelterFloor: 0.4,
+  /** Fraction of a turbine's output lost per tree or tall building within `shelterReach` tiles, and the least it keeps. */
+  shelter: 0.1, shelterFloor: 0.4, shelterReach: 2,
   digester: 30,
   battery: { capacity: 2400, rate: 40 },
   pylon: { reach: 3, link: 8 },

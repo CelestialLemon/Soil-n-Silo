@@ -1,4 +1,4 @@
-import { ITEMS, type ItemId } from './data.ts';
+import { FIELD, ITEMS, POWER, type ItemId } from './data.ts';
 import { mulberry32 } from './rng.ts';
 
 // Commissions: the campaign's fixed ones, random ones from any seed, and the sandbox. A commission is all a level needs to
@@ -8,6 +8,9 @@ export type Goal =
   | { kind: 'deliver'; item: ItemId; n: number }
   | { kind: 'rate'; item: ItemId; perMin: number }
   | { kind: 'soil'; min: number };
+
+/** Silver is for finishing within this many times a commission's target time (gold within it). */
+export const SILVER_PAR = 1.5;
 
 export interface Terrain {
   /** Mean and spread of the soil's fertility. */
@@ -34,7 +37,7 @@ export interface Scenario {
   weather: Weather;
   credits: number;
   goals: Goal[];
-  /** Target time in seconds of play: gold within it, silver within 1.5×. */
+  /** Target time in seconds of play: gold within it, silver within SILVER_PAR times it. */
   par: number;
   sandbox?: boolean;
   /** First steps, shown when the commission starts. */
@@ -57,8 +60,8 @@ export const CAMPAIGN: Scenario[] = [
       'Place a few fields (F) on rich soil (V shows it). Leave open ground between buildings: trucks drive on it.',
       'Build a garage (T) and buy a truck. Give it a new route and click the fields, then the depot: it takes their wheat to the depot.',
       'Build a mill right beside a couple of fields: it takes their wheat without a truck. A second route takes its flour and bran to the depot.',
-      'The mill and the garage (trucks charge there) need power: a solar panel (S) and a pylon (P) within 3 tiles of both. A battery keeps them going at night.',
-      'Sprinklers near the fields more than double their pace. Watch the markers: yellow waits for input, red has no power.',
+      `The mill and the garage (trucks charge there) need power: a solar panel (S) and a pylon (P) within ${POWER.pylon.reach} tiles of both. A battery keeps them going at night.`,
+      `Sprinklers near the fields make them grow ${+(1 / FIELD.dry).toFixed(1)} times as fast. Watch the markers: yellow waits for input, red has no power.`,
     ],
   },
   {

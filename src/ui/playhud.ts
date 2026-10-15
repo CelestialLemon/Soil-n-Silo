@@ -1,6 +1,6 @@
 import { flowRate, creditsPerMin } from '../game/flows.ts';
 import { networks, usedBy } from '../game/power.ts';
-import { CAMPAIGN, type Goal } from '../game/scenarios.ts';
+import { CAMPAIGN, SILVER_PAR, type Goal } from '../game/scenarios.ts';
 import { dayAt, hourAt, medalFor, sunAt, windAt } from '../game/sim.ts';
 import type { GameState } from '../game/state.ts';
 import type { Overlay } from '../world/view.ts';
@@ -50,7 +50,7 @@ export function clockLine(s: GameState) {
   if (sc.sandbox) return [b(s.time), ' played'];
   if (s.completedAt !== null) return ['done in ', b(s.completedAt), ' · ', ...medalDot(sc.par, s.completedAt)];
   const m = medalFor(sc.par, s.time);
-  return [b(s.time), ' · ', ...medalDot(sc.par, s.time), m === 'gold' ? ` by ${playTime(sc.par)}` : m === 'silver' ? ` by ${playTime(sc.par * 1.5)}` : ''];
+  return [b(s.time), ' · ', ...medalDot(sc.par, s.time), m === 'gold' ? ` by ${playTime(sc.par)}` : m === 'silver' ? ` by ${playTime(sc.par * SILVER_PAR)}` : ''];
 }
 
 /** What a goal asks, after its count: "/150", "/5 a min", "/40+". */
@@ -129,7 +129,7 @@ export class CommissionCard {
         let ticks = p.g.querySelectorAll<HTMLElement>('.cd-gauge__tick');
         if (!ticks.length) { p.g.prepend(h('span', { class: 'cd-gauge__tick' }), h('span', { class: 'cd-gauge__tick is-silver' })); ticks = p.g.querySelectorAll('.cd-gauge__tick'); }
         setVar(ticks[0], '--at', Math.min(1, s.time / sc.par));
-        setVar(ticks[1], '--at', Math.min(1, s.time / (sc.par * 1.5)));
+        setVar(ticks[1], '--at', Math.min(1, s.time / (sc.par * SILVER_PAR)));
       } else p.g.querySelectorAll('.cd-gauge__tick').forEach((t) => t.remove());
     });
     if (st.showPace && !sc.sandbox) {

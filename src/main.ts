@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObject } from 'pixel3d-renderer';
-import { addStop, canPlace, place, remove, removeAt } from './game/build.ts';
+import { addStop, canPlace, clearPrice, place, priceOf, remove, removeAt } from './game/build.ts';
 import { BUILDINGS, POWER, type BuildingId } from './game/data.ts';
 import { TERRAIN } from './game/map.ts';
 import { deserialize, readProgress, recordResult, saveKey, serialize } from './game/save.ts';
@@ -68,10 +68,10 @@ const params = new URLSearchParams(location.search);
 const startId = params.get('play');
 const startSc = startId ? scenarioById(startId) : null;
 
-/** Starts a new commission: saves it, then reloads into it (each map builds its own static world). */
 /** Set while the page leaves for a new commission, so the game being left doesn't save over the new one. */
 let leaving = false;
 
+/** Starts a new commission: saves it, then reloads into it (each map builds its own static world). */
 function startNew(id: string) {
   const sc = scenarioById(id);
   if (!sc) return;
@@ -339,8 +339,8 @@ async function play(initial: GameState) {
         ghostLinks = [...new Set([...l.from, ...l.to].map((x) => x.b.id))];
       }
       for (const sp of spots) {
-        const okHere = canPlace(state, type, sp.x, sp.y).ok && credits >= BUILDINGS[type].cost;
-        if (okHere && !state.scenario.sandbox) credits -= BUILDINGS[type].cost;
+        const okHere = canPlace(state, type, sp.x, sp.y).ok && credits >= priceOf(state, type);
+        if (okHere) credits -= priceOf(state, type);
         if (type === 'pylon') pylonGhosts.push({ x: sp.x, y: sp.y, ok: okHere });
         const cx = sp.x + n / 2, cz = sp.y + n / 2;
         ghost(`frame ${okHere} ${n}`, (okHere ? models.frames.ok : models.frames.bad)[n - 1], cx, 0.03, cz);
@@ -391,7 +391,7 @@ async function play(initial: GameState) {
         if (!t) return;
         const n = BUILDINGS[tool.type].size, a = anchor(t, n);
         const r = place(state, tool.type, a.x, a.y, tool.rot);
-        if (r.message) hud.toast(r.ok && BUILDINGS[tool.type].cost && !state.scenario.sandbox ? `${r.message.replace(/\.$/, '')} · −${BUILDINGS[tool.type].cost} credits` : r.message, r.ok, r.ok ? tool.type : undefined);
+        if (r.message) hud.toast(r.ok && priceOf(state, tool.type) ? `${r.message.replace(/\.$/, '')} · −${priceOf(state, tool.type)} credits` : r.message, r.ok, r.ok ? tool.type : undefined);
         return;
       }
       case 'remove': {
@@ -543,12 +543,12 @@ async function play(initial: GameState) {
       const removing = tool.kind === 'remove', label = statusLabel(b, b.status, b.need), line = describeStatus(state, b);
       return {
         title: BUILDINGS[b.type].name, icon: b.type, status: { status: b.status, label },
-        text: removing ? (b.type === 'depot' ? 'The depot stays.' : `Click to remove it (refund ${state.scenario.sandbox ? 0 : BUILDINGS[b.type].cost}).`)
+        text: removing ? (b.type === 'depot' ? 'The depot stays.' : `Click to remove it (refund ${priceOf(state, b.type)}).`)
           : [line === label ? '' : line, b.type === 'field' ? `soil ${Math.round(fieldFertility(state, b))}` : ''].filter(Boolean).join(' · ') || undefined,
       };
     }
     if (!hoverTile) return null;
-    const t = terrainAt(state, hoverTile.x, hoverTile.y), clear = (k: 'tree' | 'rock') => `${state.scenario.sandbox ? 0 : k === 'tree' ? 5 : 15} credits to clear (X).`;
+    const t = terrainAt(state, hoverTile.x, hoverTile.y), clear = (k: 'tree' | 'rock') => `${clearPrice(state, k)} credits to clear (X).`;
     if (t === TERRAIN.water) return { title: 'Water', icon: 'water', text: 'Pylons can stand in it; trucks drive round it.' };
     if (t === TERRAIN.tree) return { title: 'A tree', icon: 'sapling', text: `Shelters wind turbines nearby; counts towards soil health. ${clear('tree')}` };
     if (t === TERRAIN.rock) return { title: 'Rock', text: clear('rock') };
@@ -672,9 +672,9 @@ async function play(initial: GameState) {
   // For checks in the browser console and scripted playtests.
   Object.assign(window, { game: {
     get state() { return state; }, set state(s: GameState) { state = s; }, renderer, view, hud, sizeOf,
-    /** Points the camera at a ground point, optionally at a zoom (screen pixels per metre). */
     /** Runs the simulation on by `seconds` of play at once. */
     advance: (seconds: number) => advance(state, seconds),
+    /** Points the camera at a ground point, optionally at a zoom (screen pixels per metre). */
     look: (x: number, z: number, z0?: number) => { target.set(x, 0, z); clampTarget(); if (z0) { setZoom(z0); zoom = zoomGoal; } repick = 2; },
   } });
 }

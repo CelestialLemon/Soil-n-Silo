@@ -1,5 +1,6 @@
-import { BUILDINGS, POWER } from './data.ts';
-import { layoutOf, reachTo, sizeOf, type Building, type GameState } from './state.ts';
+import { BUILDINGS } from './data.ts';
+import { pylonReaches, pylonsLink } from './rules.ts';
+import { layoutOf, sizeOf, type Building, type GameState } from './state.ts';
 
 // Power networks: pylons within reach of each other link into a network, and every building that makes, stores or uses
 // power joins the network of the first pylon that reaches one of its tiles. Each network balances on its own (sim.ts).
@@ -35,7 +36,7 @@ export function networks(s: GameState): Networks {
   const parent = pylons.map((_, i) => i);
   const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
   for (let i = 0; i < pylons.length; i++) for (let j = i + 1; j < pylons.length; j++) {
-    if (Math.hypot(pylons[i].x - pylons[j].x, pylons[i].y - pylons[j].y) <= POWER.pylon.link) parent[find(i)] = find(j);
+    if (pylonsLink(pylons[i].x, pylons[i].y, pylons[j].x, pylons[j].y)) parent[find(i)] = find(j);
   }
   const byRoot = new Map<number, Network>();
   const list: Network[] = [];
@@ -49,7 +50,7 @@ export function networks(s: GameState): Networks {
   for (const p of pylons) of.set(p.id, byRoot.get(find(pylons.indexOf(p)))!);
   for (const b of s.buildings) {
     if (!POWERED(b)) continue;
-    const i = pylons.findIndex((p) => reachTo(b, p.x, p.y) <= POWER.pylon.reach);
+    const i = pylons.findIndex((p) => pylonReaches(b, p.x, p.y));
     if (i < 0) continue;
     const net = byRoot.get(find(i))!;
     net.members.push(b);
@@ -78,7 +79,7 @@ export function feederOf(s: GameState, b: Building): Building | null {
   if (!net) return null;
   let best: Building | null = null, bestD = Infinity;
   for (const p of net.pylons) {
-    if (reachTo(b, p.x, p.y) > POWER.pylon.reach) continue;
+    if (!pylonReaches(b, p.x, p.y)) continue;
     const c = Math.hypot(p.x + 0.5 - (b.x + sizeOf(b) / 2), p.y + 0.5 - (b.y + sizeOf(b) / 2));
     if (c < bestD) { bestD = c; best = p; }
   }
@@ -102,7 +103,7 @@ export function wiresOf(net: Network): [Building, Building][] {
     if (from[i] >= 0) out.push([ps[from[i]], ps[i]]);
     for (let j = 0; j < n; j++) {
       const d = gap(ps[i], ps[j]);
-      if (!inTree[j] && d <= POWER.pylon.link && d < best[j]) { best[j] = d; from[j] = i; }
+      if (!inTree[j] && pylonsLink(ps[i].x, ps[i].y, ps[j].x, ps[j].y) && d < best[j]) { best[j] = d; from[j] = i; }
     }
   }
   return out;
@@ -110,4 +111,4 @@ export function wiresOf(net: Network): [Building, Building][] {
 
 /** The pylons a pylon at (x, y) would link to. */
 export const pylonsInLink = (s: GameState, x: number, y: number) =>
-  networks(s).list.flatMap((n) => n.pylons).filter((p) => (p.x !== x || p.y !== y) && Math.hypot(p.x - x, p.y - y) <= POWER.pylon.link);
+  networks(s).list.flatMap((n) => n.pylons).filter((p) => (p.x !== x || p.y !== y) && pylonsLink(p.x, p.y, x, y));

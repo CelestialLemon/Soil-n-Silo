@@ -11,10 +11,11 @@ import { notePower, type PowerStep } from './powerlog.ts';
 import { accessTiles, distanceTo, isOpen, legLength, nearestOpen, pathTo } from './roads.ts';
 import { noise1 } from './rng.ts';
 import { noteRun, noteRunUse } from './runlog.ts';
-import type { Scenario } from './scenarios.ts';
+import { exposureAt, hiveReaches, nearWaterAt, paceOf, sprinklerWaters } from './rules.ts';
+import { SILVER_PAR, type Scenario } from './scenarios.ts';
 import {
-  buildingAt, buildingById, centre, countTrees, layoutOf, reachTo, removeBuilding, routeById, STAT_BUCKET, STAT_BUCKETS,
-  terrainAt, tileIndex, touchLayout, type Building, type GameState, type Route, type Stop, type Truck,
+  buildingAt, buildingById, countTrees, layoutOf, removeBuilding, routeById, STAT_BUCKET, STAT_BUCKETS,
+  tileIndex, touchLayout, type Building, type GameState, type Route, type Stop, type Truck,
 } from './state.ts';
 
 // The simulation: one fixed step of TICK seconds at a time. Each step balances power, runs every building, hands goods to
@@ -72,31 +73,12 @@ function derived(s: GameState): Derived {
   const sprinklers = s.buildings.filter((b) => b.type === 'sprinkler');
   for (const f of fields) {
     for (let y = f.y; y < f.y + 3; y++) for (let x = f.x; x < f.x + 3; x++) d.fielded.add(tileIndex(s, x, y));
-    const c = centre(f);
-    d.sprinklers.set(f.id, sprinklers.filter((sp) => Math.max(Math.abs(sp.x + 0.5 - c.x), Math.abs(sp.y + 0.5 - c.y)) <= POWER.sprinklerReach + 0.5));
-    if (hives.some((h) => reachTo(f, h.x, h.y) <= HIVE.reach)) d.pollinated.add(f.id);
+    d.sprinklers.set(f.id, sprinklers.filter((sp) => sprinklerWaters(sp.x, sp.y, f)));
+    if (hives.some((h) => hiveReaches(f, h.x, h.y))) d.pollinated.add(f.id);
   }
-  for (const h of hives) d.flowers.set(h.id, fields.filter((f) => reachTo(f, h.x, h.y) <= HIVE.reach));
-  for (const t of s.buildings) {
-    if (t.type !== 'turbine') continue;
-    let n = 0;
-    const tall = new Set<Building>();
-    for (let y = t.y - 2; y <= t.y + 2; y++) for (let x = t.x - 2; x <= t.x + 2; x++) {
-      if ((x === t.x && y === t.y) || x < 0 || y < 0 || x >= s.map.width || y >= s.map.height) continue;
-      const o = buildingAt(s, x, y);
-      if (terrainAt(s, x, y) === TERRAIN.tree) n++;
-      else if (o && o !== t && BUILDINGS[o.type].tall) tall.add(o);
-    }
-    n += tall.size;
-    d.exposure.set(t.id, Math.max(POWER.shelterFloor, 1 - POWER.shelter * n));
-  }
-  for (const sp of sprinklers) {
-    const r = POWER.waterNear;
-    search: for (let y = sp.y - r; y <= sp.y + r; y++) for (let x = sp.x - r; x <= sp.x + r; x++) {
-      if (x < 0 || y < 0 || x >= s.map.width || y >= s.map.height || Math.hypot(x - sp.x, y - sp.y) > r) continue;
-      if (terrainAt(s, x, y) === TERRAIN.water) { d.nearWater.add(sp.id); break search; }
-    }
-  }
+  for (const h of hives) d.flowers.set(h.id, fields.filter((f) => hiveReaches(f, h.x, h.y)));
+  for (const t of s.buildings) if (t.type === 'turbine') d.exposure.set(t.id, exposureAt(s, t.x, t.y));
+  for (const sp of sprinklers) if (nearWaterAt(s, sp.x, sp.y)) d.nearWater.add(sp.id);
   for (const b of s.buildings) d.neighbours.set(b.id, besides(s, b));
   derivedCache.set(s, d);
   return d;
@@ -148,9 +130,8 @@ export function soilHealth(s: GameState) {
 /** Growth per second of a field as a multiple of its crop's normal pace, and the parts it's made of. */
 export function fieldPace(s: GameState, f: Building) {
   const wet = sprinklersOf(s, f).reduce((m, sp) => Math.max(m, shareOf(s, sp)), 0);
-  const water = FIELD.dry + (1 - FIELD.dry) * wet;
-  const soil = FIELD.poorSoil + (FIELD.richSoil - FIELD.poorSoil) * fieldFertility(s, f) / 100;
-  return { pace: water * soil, water: wet, soil };
+  const p = paceOf(wet, fieldFertility(s, f));
+  return { pace: p.pace, water: wet, soil: p.bySoil };
 }
 
 // ---- Machines ----
@@ -1007,7 +988,7 @@ function updateGoals(s: GameState) {
 
 export type Medal = 'gold' | 'silver' | 'bronze';
 export function medalFor(par: number, time: number): Medal {
-  return time <= par ? 'gold' : time <= par * 1.5 ? 'silver' : 'bronze';
+  return time <= par ? 'gold' : time <= par * SILVER_PAR ? 'silver' : 'bronze';
 }
 
 /** One line on what a building is doing, for the hover and the inspector. */
@@ -1025,7 +1006,7 @@ export function describeStatus(s: GameState, b: Building): string {
     case 'nolink': return 'Not connected: no pylon in reach';
     case 'noroad': return 'No road: trucks can\'t reach it. Leave an open tile beside it, and a way there from the garage';
     case 'noroute': return `Full of ${b.need}: no route with trucks or building next door takes it`;
-    case 'flowers': return 'No flowering fields within 4 tiles';
+    case 'flowers': return `No flowering fields within ${HIVE.reach} tiles`;
     case 'idle':
       if (b.type === 'solar') return 'Night: no sun';
       if (b.type === 'silo') {

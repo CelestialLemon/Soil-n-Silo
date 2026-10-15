@@ -90,6 +90,9 @@ export interface Building {
   age?: number;
 }
 
+/** Where a building stands, or would: its type (for its size) and north-west tile. */
+export type Footprint = Pick<Building, 'type' | 'x' | 'y'>;
+
 export interface Stats {
   /** Start time of the newest bucket. */
   since: number;
@@ -225,7 +228,7 @@ export const truckById = (s: GameState, id: number | null) => (id === null ? nul
 export const terrainAt = (s: GameState, x: number, y: number) => s.map.terrain[y * s.map.width + x];
 
 /** The centre of a building's footprint, in tiles. */
-export function centre(b: Building) {
+export function centre(b: Footprint) {
   const n = sizeOf(b);
   return { x: b.x + n / 2, y: b.y + n / 2 };
 }
@@ -239,7 +242,7 @@ export function gapBetween(a: Building, b: Building) {
 }
 
 /** The distance in tiles from a tile to the nearest tile of a building (0 when on it), as the larger of the axes. */
-export function reachTo(b: Building, x: number, y: number) {
+export function reachTo(b: Footprint, x: number, y: number) {
   const n = sizeOf(b);
   const dx = x < b.x ? b.x - x : x >= b.x + n ? x - (b.x + n - 1) : 0;
   const dy = y < b.y ? b.y - y : y >= b.y + n ? y - (b.y + n - 1) : 0;
