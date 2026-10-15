@@ -25,7 +25,7 @@ export function deserialize(json: string | null): Result<GameState> {
   const parsed = tryParseJson(json);
   if (!parsed.ok) return err(`The save isn't JSON: ${parsed.error}`);
   const s = parsed.value as GameState | null;
-  if (s?.version !== 4) return err(`The save is from another version (${s?.version ?? 'none'}; this game reads version 4).`);
+  if (s?.version !== 4) return err('The save is from another version (this game reads version 4).');
   if (!complete(s)) return err('The save is broken: its state is incomplete or out of range.');
   if (!validRun(s.run, s.scenario.goals.length)) return err('The save is broken: its run log is incomplete or out of range.');
   return ok(s);
@@ -41,6 +41,7 @@ const counts = (o: unknown) => nums(o) && Object.keys(o as object).every(item);
 /** Goods held: counts that are whole and not negative. */
 const stock = (o: unknown) => counts(o) && Object.values(o as object).every((v) => Number.isInteger(v) && v >= 0);
 const crop = (v: unknown) => typeof v === 'string' && v in CROPS;
+const type = (v: unknown) => typeof v === 'string' && v in BUILDINGS;
 const dir = (v: unknown) => v === 0 || v === 1 || v === 2 || v === 3;
 const goal = (g: { kind?: string; item?: unknown; n?: unknown; perMin?: unknown; min?: unknown }) =>
   !!g && ((g.kind === 'deliver' && item(g.item) && num(g.n)) || (g.kind === 'rate' && item(g.item) && num(g.perMin)) || (g.kind === 'soil' && num(g.min)));
@@ -69,7 +70,7 @@ function complete(s: GameState): boolean {
     && !!st && num(st.since) && arr(st.made) && st.made.length > 0 && st.made.every(counts)
     && !!st.delivered && typeof st.delivered === 'object' && Object.entries(st.delivered).every(([k, v]) => item(k) && arr(v) && v.every(num))
     && arr(s.buildings) && s.buildings.every((b) => validBuilding(b, m.width, m.height))
-    && arr(s.routes) && s.routes.every(validRoute) && stopsExist(s) && arr(s.trucks) && docksFit(s) && s.trucks.every((t) => validTruck(s, t)) && uniqueIds(s);
+    && arr(s.routes) && s.routes.every(validRoute) && stopsExist(s) && arr(s.trucks) && s.trucks.every((t) => validTruck(s, t)) && docksFit(s) && uniqueIds(s);
 }
 
 const int = (v: unknown) => Number.isInteger(v);
@@ -81,9 +82,9 @@ function validRun(r: RunLog, goals: number): boolean {
   const needs = (m: Mark) => (m.kind === 'first' || m.kind === 'loop' ? m.item !== undefined : m.kind === 'second' ? m.type !== undefined
     : m.kind === 'goal' ? m.goal !== undefined && m.goal >= 0 && m.goal < goals : true);
   return !!r && arr(r.marks) && r.marks.every((m) => !!m && num(m.t) && MARKS.includes(m.kind) && (m.item === undefined || item(m.item))
-      && (m.type === undefined || m.type in BUILDINGS) && (m.goal === undefined || int(m.goal)) && (m.n === undefined || num(m.n)) && needs(m))
+      && (m.type === undefined || type(m.type)) && (m.goal === undefined || int(m.goal)) && (m.n === undefined || num(m.n)) && needs(m))
     && num(r.curveStep) && r.curveStep > 0 && arr(r.curve) && r.curve.every(num) && kinds(r.time) && nums(r.problems)
-    && arr(r.nights) && r.nights.every((n) => !!n && num(n.day) && num(n.short) && arr(n.types) && n.types.every((t) => t in BUILDINGS))
+    && arr(r.nights) && r.nights.every((n) => !!n && num(n.day) && num(n.short) && arr(n.types) && n.types.every(type))
     && !!r.trucks && num(r.trucks.total) && num(r.trucks.wait) && kinds(r.trucks.at);
 }
 
@@ -131,7 +132,7 @@ function uniqueIds(s: GameState): boolean {
 
 /** A building has what its type's rules read. */
 function validBuilding(b: Building, w: number, h: number): boolean {
-  if (!b || !num(b.id) || !num(b.x) || !num(b.y) || !(b.type in BUILDINGS) || !dir(b.rot)) return false;
+  if (!b || !num(b.id) || !num(b.x) || !num(b.y) || !type(b.type) || !dir(b.rot)) return false;
   const n = BUILDINGS[b.type].size;
   if (b.x < 0 || b.y < 0 || b.x + n > w || b.y + n > h) return false;
   switch (b.type) {

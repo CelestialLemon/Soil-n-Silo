@@ -623,9 +623,15 @@ test('a refused save says why', () => {
   assert.match(why(null), /no saved game/);
   assert.match(why('nonsense'), /isn't JSON/);
   assert.match(why('null'), /another version/);
-  assert.match(why(JSON.stringify({ ...json, version: 3 })), /another version \(3;/);
+  assert.match(why(JSON.stringify({ ...json, version: 3 })), /another version/);
   assert.match(why(JSON.stringify({ ...json, trucks: undefined })), /its state/);
   assert.match(why(JSON.stringify({ ...json, run: undefined })), /its run log/);
+  // Malformed data is refused, never thrown on.
+  const odd = { toString: null };
+  assert.match(why(JSON.stringify({ ...json, version: odd })), /another version/);
+  assert.match(why(JSON.stringify({ ...json, trucks: [null] })), /its state/);
+  assert.match(why(JSON.stringify({ ...json, buildings: [{ ...json.buildings[0], type: odd }] })), /its state/);
+  assert.match(why(JSON.stringify({ ...json, run: { ...json.run, nights: [{ day: 0, short: 0, types: [odd] }] } })), /its run log/);
   const back = deserialize(serialize(s));
   assert.ok(back.ok && back.value.buildings.length === s.buildings.length);
   assert.deepEqual(readProgress('not json'), {}, 'broken progress starts afresh');
