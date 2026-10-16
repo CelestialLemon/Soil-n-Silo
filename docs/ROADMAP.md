@@ -98,6 +98,15 @@ conditions, a briefing letter per commission, and results with the run's milesto
 numbers behind them are pure modules in `src/game/` (`flows.ts`, `fleet.ts`, `powerlog.ts`, `runlog.ts`, `forecast.ts`,
 `chain.ts`); the run log is saved with the game.
 
+## Running water and the country around the map (2026-10-16)
+
+Rivers looked like still ponds, and each map was a square of grass ringed by trees with nothing beyond. The river now has a
+current (along its course, faster where it narrows), drops over two small falls onto rock ledges and breaks round the odd
+boulder; ponds and lakes stay still. The generator carries the map's noise past the edge (`generateLand` in `map.ts`, drawn
+only, never saved, the map itself unchanged): the river runs on out of sight, a track leads off from the depot, the woods
+thicken and the ground rises into wooded hills, with an apron of distant woods beyond them. Everything past the edge is a
+shade duller, so where you can build still reads at a glance. Height on the map itself (slopes as a rule) is the next step.
+
 ## Next
 
 - Play the **problems strip** (experimental, off by default, a setting on the pause screen) and decide whether it stays.
