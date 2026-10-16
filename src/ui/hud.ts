@@ -3,7 +3,7 @@ import type { BuildingId } from '../game/data.ts';
 import type { Medal } from '../game/sim/stats.ts';
 import { buildingById, type Dir, type GameState, type Route } from '../game/state.ts';
 import type { Overlay } from '../world/view.ts';
-import { h, icon } from './dom.ts';
+import { h, icon, setVar } from './dom.ts';
 import { Dock, dockTip } from './dock.ts';
 import { briefing } from './briefing.ts';
 import { guidePanel, type GuidePage } from './guide.ts';
@@ -15,6 +15,7 @@ import { CommissionCard, TopRight, ViewBar, viewControls, type Panel, type PlayH
 import { powerSheet } from './powerpanel.ts';
 import { ProblemsStrip } from './problems.ts';
 import { resultsScreen } from './results.ts';
+import { PerfOverlay } from './perfOverlay.ts';
 import { RoutesCard } from './routes.ts';
 import { uiScale, type SettingsStore } from './settings.ts';
 import { WorldLayer } from './world.ts';
@@ -88,6 +89,8 @@ export class Hud {
   /** The sheets and full-screen panels, over the blurred world. */
   private readonly sheets = h('div', { class: 'ui-sheets' });
   private readonly problems: ProblemsStrip;
+  /** The frame rate readout; the loop tells it of each frame. */
+  readonly perf: PerfOverlay;
   private modals: Modal[] = [];
   private routesOpen = false;
   /** The routes card shows when opened with O or while a route is being edited (from an inspector). */
@@ -118,7 +121,8 @@ export class Hud {
     });
     this.problems = new ProblemsStrip((id) => host.focus(id));
     this.dock = new Dock({ state: () => host.state(), tool: () => host.tool(), setTool: (t) => host.setTool(t), choose: (c) => host.choose(c), tip: (id) => this.showTip(id) });
-    this.hud.append(this.commission.el, this.commission.pill, this.top.el, this.view.el, this.controls, this.dock.el, this.side.el, this.routes.el, this.problems.el, this.problems.popover,
+    this.perf = new PerfOverlay(host.settings);
+    this.hud.append(this.perf.el, this.commission.el, this.commission.pill, this.top.el, this.view.el, this.controls, this.dock.el, this.side.el, this.routes.el, this.problems.el, this.problems.popover,
       this.above);
     this.ui.append(this.world.el, this.hud, this.sheets);
     root.append(this.ui);
@@ -163,6 +167,8 @@ export class Hud {
     if (now - this.lastSlow < 150) return;
     this.lastSlow = now;
     this.commission.update(side);
+    // The frame rate readout sits under the commission card, whichever size it is.
+    if (!this.perf.el.hidden) { const c = side ? this.commission.pill : this.commission.el; setVar(this.perf.el, '--perf-top', `${c.offsetTop + c.offsetHeight + 12}px`); }
     this.top.update();
     this.modals[this.modals.length - 1]?.update?.();
   }

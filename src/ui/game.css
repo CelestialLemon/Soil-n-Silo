@@ -66,6 +66,20 @@ button { font: inherit; }
 .hud-controls .cd-i { --s: 20px; }
 .hud-controls .flip { transform: scaleX(-1); }
 
+/* ---- Frame rate readout, top left under the commission card (hud.ts sets --perf-top) ---- */
+.ui-hud > .hud-perf { position: absolute; left: 28px; top: var(--perf-top, 100px); pointer-events: none; font-variant-numeric: tabular-nums; }
+.hud-perf .rate { display: flex; align-items: baseline; gap: 6px; }
+.hud-perf .rate b { font: 700 16px/1 var(--font-ui); }
+.hud-perf .rate small { font: 600 12px/1 var(--font-ui); color: var(--ink-3); }
+.hud-perf .rate span { margin-left: auto; font: 600 12px/1 var(--font-ui); color: var(--ink-3); }
+.hud-perf .cd-pill { padding: 0 16px; }
+.hud-perf .perf-card { display: grid; gap: 10px; width: 272px; padding: 14px 16px; }
+.hud-perf .graph { display: grid; gap: 4px; }
+.hud-perf canvas { display: block; width: 240px; height: 64px; border-bottom: 1px solid var(--chalk-3); }
+.hud-perf .stats { display: grid; gap: 4px; }
+.hud-perf .stats .row { display: flex; justify-content: space-between; font: 600 13px/1.3 var(--font-ui); color: var(--ink-2); }
+.hud-perf .stats .row b { color: var(--ink); }
+
 /* ---- The dock, bottom centre ---- */
 .hud-dock { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 14px 16px 16px; border-radius: 28px; }
 .hud-dock .tabs { display: flex; justify-content: center; margin-top: 12px; }
