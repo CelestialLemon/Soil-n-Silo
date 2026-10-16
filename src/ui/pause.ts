@@ -9,7 +9,7 @@ import { clock, itemName, num, pct, playTime, watts } from './format.ts';
 import { commissionLabel } from './playhud.ts';
 import { keyNames } from './keyhints.ts';
 import type { SettingsStore } from './settings.ts';
-import { gauge, goalIcon, goalNow, medalTimes, statusPill } from './widgets.ts';
+import { goalIcon, goalNow, goalWords, medalTimes, statusPill } from './widgets.ts';
 
 // The pause screen: resume, where the commission stands, the level select and restart (restart asks twice and says what it
 // loses); the way to the settings; what the markers mean (a shape and a word); and the keys, the one place they are printed.
@@ -61,25 +61,30 @@ export function keysCard() {
         ...FIXED[g.id].map(([what, ...keys]) => h('div', { class: 'cd-keyrow' }, h('span', null, what), ...keys.map((k) => (k === 'or' ? h('small', null, k) : key(k))))))))));
 }
 
-/** Where the commission stands, for the pause screen: its goals as gauges, credits and power. */
+/** Where the commission stands, for the pause screen: one row per goal (so any number of goals fits), then credits and power. */
 function standing(s: GameState) {
   const sc = s.scenario, nets = networks(s).list;
   const made = nets.reduce((n, x) => n + x.made, 0), used = nets.reduce((n, x) => n + usedBy(x), 0);
   const bats = s.buildings.filter((b): b is BatteryBuilding => b.type === 'battery' && networks(s).of.has(b.id));
   const stored = bats.reduce((n, b) => n + b.charge, 0), cap = bats.length * POWER.battery.capacity;
+  const fact = (label: string, value: string) => h('div', null, h('span', { class: 'cd-small' }, label), h('b', { class: 'cd-num' }, value));
   return h('div', { class: 'cd-card standing' },
     h('div', { class: 'row-head' }, h('span', { class: 'cd-label' }, commissionLabel(s)),
       h('span', { class: 'cd-small' }, sc.sandbox ? `${playTime(s.time)} played` : s.completedAt !== null ? `done in ${playTime(s.completedAt)}` : [h('b', { class: 'cd-num' }, playTime(s.time)), ` of ${playTime(sc.par)}`])),
-    h('div', { class: 'body' },
-      ...sc.goals.map((g, i) => {
-        const now = goalNow(s, i);
-        return gauge({ v: now.v, d: sc.goals.length > 2 ? 84 : 108, col: g.kind === 'soil' ? 'var(--tide)' : undefined, cls: now.done && g.kind !== 'soil' ? 'is-done' : '',
-          inner: [h('div', { class: 'cd-figure' }, now.figure), h('div', { class: 'cd-small' }, now.done && g.kind !== 'soil' ? 'done' : now.of)], foot: '' });
-      }).map((el, i) => { must(el.querySelector('.cd-gauge__foot'), '.cd-gauge__foot').append(icon(goalIcon(sc.goals[i]), 14), ` ${goalNow(s, i).word}`); return el; }),
-      h('div', { class: 'facts' },
-        h('div', null, h('span', null, 'Credits'), h('b', { class: 'cd-num' }, sc.sandbox ? '∞' : num(Math.floor(s.credits)))),
-        h('div', null, h('span', null, 'Power'), h('b', { class: 'cd-num' }, nets.length ? `${watts(made)} / ${watts(used)}` : 'none')),
-        h('div', null, h('span', null, 'Stored'), h('b', { class: 'cd-num' }, cap ? pct(stored / cap) : '–')))),
+    sc.goals.length ? h('div', { class: 'goals' }, ...sc.goals.map((g, i) => {
+      const now = goalNow(s, i), done = now.done && g.kind !== 'soil';
+      const bar = h('span', { class: 'cd-bar' }, h('i'));
+      bar.style.setProperty('--v', String(Math.max(0, Math.min(1, now.v))));
+      if (g.kind === 'soil') bar.style.setProperty('--col', 'var(--tide)');
+      return h('div', { class: `goal${done ? ' is-done' : ''}` },
+        icon(goalIcon(g), 28),
+        h('div', { class: 'what' }, h('div', { class: 'name' }, goalWords(g)), bar),
+        h('div', { class: 'now' }, h('b', { class: 'cd-num' }, now.figure), h('span', { class: 'cd-small' }, done ? ' done' : ` ${now.of}`)));
+    })) : null,
+    h('div', { class: 'facts' },
+      fact('Credits', sc.sandbox ? '∞' : num(Math.floor(s.credits))),
+      fact('Power', nets.length ? `${watts(made)} / ${watts(used)}` : 'none'),
+      fact('Stored', cap ? pct(stored / cap) : '–')),
     sc.sandbox ? null : h('div', { class: 'cd-small times' }, ...medalTimes(sc.par)));
 }
 

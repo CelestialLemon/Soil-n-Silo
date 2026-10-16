@@ -280,10 +280,17 @@ button { font: inherit; }
 .pause .restart-note { text-align: right; font: 600 12px/1.35 var(--font-ui); color: #f0cdc3; padding-right: 8px; }
 .pause .keys.cd-card { margin-top: 26px; }
 .standing { padding: 22px 24px; }
-.standing .body { display: flex; align-items: center; gap: 22px; margin-top: 14px; }
-.standing .facts { flex: 1; display: grid; gap: 8px; font-size: 14px; }
-.standing .facts > div { display: flex; justify-content: space-between; }
-.standing .facts span { color: var(--ink-2); }
+.standing .goals { display: grid; gap: 14px; margin-top: 16px; }
+.standing .goal { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 14px; }
+.standing .goal .what { display: grid; gap: 7px; min-width: 0; }
+.standing .goal .name { font: 600 14px/1.2 var(--font-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.standing .goal .now { min-width: 112px; text-align: right; white-space: nowrap; }
+.standing .goal .now b { font-size: 20px; }
+.standing .goal.is-done .cd-bar { --col: var(--pine); }
+.standing .goal.is-done .now b { color: var(--pine); }
+.standing .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--chalk-3); }
+.standing .facts > div { display: grid; gap: 4px; }
+.standing .facts b { font-size: 16px; }
 .standing .times { margin-top: 12px; display: flex; gap: 14px; }
 .settings { padding: 24px 26px 22px; }
 .settings .set { display: grid; grid-template-columns: 1fr auto; gap: 4px 18px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--chalk-3); }
