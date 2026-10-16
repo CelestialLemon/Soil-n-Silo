@@ -482,6 +482,7 @@ async function play(initial: GameState) {
   let wasComplete = state.completedAt !== null;
 
   function frame(now: number) {
+    hud.perf.frame(now);
     const dt = Math.min((now - last) / 1000, 0.1);
     last = now; time += dt; frameNo++;
 

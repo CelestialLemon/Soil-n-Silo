@@ -2,10 +2,10 @@ import { ACTIONS, GROUPS, SLOTS, assign, bindable, canon, overridesOf, resolve, 
 import { fill, h, icon } from './dom.ts';
 import { pct } from './format.ts';
 import { labelOf, nameOf } from './keyhints.ts';
-import { PIXEL_SIZES, UI_SIZES, type Settings, type SettingsStore } from './settings.ts';
+import { FRAME_STATS_MODES, PIXEL_SIZES, UI_SIZES, type Settings, type SettingsStore } from './settings.ts';
 
-// The settings panel, opened from the level select and the pause screen: a Game tab (interface size, pixel size, the switches)
-// and a Keys tab, where each action's keys are changed (click a key, press the new one).
+// The settings panel, opened from the level select and the pause screen: a Game tab (interface size, pixel size, the switches,
+// the frame rate readout) and a Keys tab, where each action's keys are changed (click a key, press the new one).
 
 /** A switch for a yes/no setting. */
 function toggle(on: boolean, label: string, change: (v: boolean) => void) {
@@ -27,6 +27,10 @@ function gameRows(store: SettingsStore) {
     const b = h('button', { class: st.pixelSize === n ? 'is-on' : '', onclick: () => { store.set({ pixelSize: n }); for (const x of pixels.children) x.classList.toggle('is-on', x === b); } }, `${n} × ${n}`);
     return b;
   }));
+  const frames = h('div', { class: 'cd-seg wide' }, ...FRAME_STATS_MODES.map((m) => {
+    const b = h('button', { class: st.frameStats === m ? 'is-on' : '', onclick: () => { store.set({ frameStats: m }); for (const x of frames.children) x.classList.toggle('is-on', x === b); } }, m[0].toUpperCase() + m.slice(1));
+    return b;
+  }));
   const yes = (k: 'reduceMotion' | 'showPace' | 'problemsStrip', label: string, words: string) => h('div', { class: 'set' },
     h('b', null, label), toggle(st[k], label, (v) => store.set({ [k]: v } satisfies Partial<Settings>)), h('span', { class: 'cd-small' }, words));
   return [
@@ -36,6 +40,8 @@ function gameRows(store: SettingsStore) {
     yes('reduceMotion', 'Reduce motion', 'Cards and gauges appear without springing.'),
     yes('showPace', 'Show pace', '“Done by” on the commission card and gold and silver ticks on the goals. Off: you see only where you are.'),
     yes('problemsStrip', 'Problems strip', 'Experimental. A strip on the right edge listing problems. Off: find them on the map.'),
+    h('div', { class: 'set is-seg' }, h('b', null, 'Frame rate'), frames,
+      h('span', { class: 'cd-small' }, 'Top left while you play. Minimal: the frame rate, once a second. Full: a frame time graph, the average and the 1% and 0.1% lows.')),
   ];
 }
 
