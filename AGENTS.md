@@ -74,7 +74,7 @@ When the game needs something the renderer doesn't do, or hits a renderer bug:
 
 1. Check the renderer's open issues and `docs/ROADMAP.md` there first; it may already be known or planned.
 2. Make sure it is really the renderer's job (the renderer draws; the game owns state, input, UI and timing, see the renderer's
-   roadmap, "Who owns what"). Prefer a game-side workaround when one is cheap and honest.
+   roadmap, "Who owns what").
 3. Open the issue in `CelestialLemon/pixel3d-renderer` with the `soil-n-silo` label and the `bug` or `enhancement` label: what the
    game needs, a minimal repro or screenshot, the renderer version the game pins, and what the game does meanwhile. If game work
    is blocked on it, link it from a game issue labelled `renderer`.
