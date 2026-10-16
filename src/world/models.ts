@@ -35,7 +35,7 @@ export interface Models {
 
 /** Which Blender model draws each building. */
 const FILES: Partial<Record<BuildingId, string>> = {
-  silo: 'silo',
+  silo: 'silo', garage: 'garage',
   sprinkler: 'sprinkler', coop: 'coop_solar', hive: 'beehive', composter: 'composter',
   mill: 'mill_electric', press: 'oil_press', spinner: 'spinner', loom: 'loom', bakery: 'bakery', cannery: 'cannery',
   solar: 'solar_panel', turbine: 'wind_turbine', battery: 'battery', digester: 'digester', pylon: 'pylon',

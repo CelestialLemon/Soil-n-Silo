@@ -29,6 +29,8 @@ are orthographic, 30° above the ground. Preview state changes happen after expo
 Solarpunk machines with state-specific parts also use idle/running rows and four
 columns (front/back/left/right). Their shared details live in `solarpunk.py`, which
 checks footprint bounds through a full rotation of every `move_spin_` mesh.
+`build_complete` accepts a square side length or an `(X, Y)` footprint pair for
+rectangular models such as the truck; its cargo floor stays at Blender Z = 0.27 m.
 Solarpunk models use a 3,000-triangle budget per visible stage or variant. `mill_electric` is the
 electric mill and `coop_solar` the coop.
 
