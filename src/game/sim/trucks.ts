@@ -2,7 +2,7 @@ import { bays, BUILDINGS, TRUCK, type ItemId } from '../data.ts';
 import { noteArrival } from '../fleet.ts';
 import { networkOf } from '../power.ts';
 import { accessTiles, distanceTo, isOpen, legLength, nearestOpen, pathTo } from '../roads.ts';
-import { centreLevel, heightAt } from '../relief.ts';
+import { centreLevel } from '../relief.ts';
 import {
   buildingById, layoutOf, routeById, tileIndex, type Building, type GameState, type Route, type Stop, type Truck,
 } from '../state.ts';
@@ -138,8 +138,10 @@ function drive(s: GameState, t: Truck, dt: number) {
     const i = t.path[0], tx = i % w + 0.5, ty = Math.floor(i / w) + 0.5;
     const dx = tx - t.x, dy = ty - t.y, d = Math.hypot(dx, dy);
     if (d > 1e-6) t.heading = Math.atan2(dx, dy);
-    const rise = Math.max(0, centreLevel(s.map, i % w, Math.floor(i / w)) - heightAt(s.map, t.x, t.y));
-    const effort = d + TRUCK.climb * rise, step = Math.min(effort, left), k = effort > 1e-9 ? step / effort : 1;
+    // The step's effort a tile, as the roads count it: from the tile behind the target (it moves a tile at a time) to it.
+    const tx0 = i % w, ty0 = Math.floor(i / w), bx = tx0 - Math.sign(Math.round(dx * 1e6)), by = ty0 - Math.sign(Math.round(dy * 1e6));
+    const len = Math.hypot(tx0 - bx, ty0 - by) || 1, rise = Math.max(0, centreLevel(s.map, tx0, ty0) - centreLevel(s.map, bx, by));
+    const effort = d * (1 + TRUCK.climb * rise / len), step = Math.min(effort, left), k = effort > 1e-9 ? step / effort : 1;
     t.x += dx * k; t.y += dy * k;
     left -= step;
     t.energy = Math.max(0, t.energy - step * TRUCK.joulesPerTile);

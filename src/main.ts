@@ -111,6 +111,8 @@ async function play(initial: GameState) {
   ground.show(renderer);
   /** The ground's height (m) at a point of the map, for picking a tile; nothing on the map stands above TOP. */
   const groundAt = (x: number, z: number) => groundY(state.map, x, z), TOP = (MAX_LEVEL + 1) * LEVEL_HEIGHT;
+  /** The same for picking: no ground off the map, so a line of sight from beyond meets the map's edge, or its cliff. */
+  const pickGround = (x: number, z: number) => (x >= 0 && z >= 0 && x < map.width && z < map.height ? groundAt(x, z) : -Infinity);
   const view = new WorldView(renderer, models);
   const power = new PowerView(renderer, models);
   const routeView = new RouteView(renderer, models);
@@ -190,7 +192,7 @@ async function play(initial: GameState) {
     if (!input.pointer) { hoverTile = null; hoverBuilding = null; return; }
     const p = renderer.pick(input.pointer.x, input.pointer.y);
     // A tree or rock under the input.pointer is its own tile (the ground point behind it is another tile).
-    hoverTile = view.terrainOf(p?.object ?? null) ?? camera.tileAt(input.pointer.x, input.pointer.y, groundAt, TOP);
+    hoverTile = view.terrainOf(p?.object ?? null) ?? camera.tileAt(input.pointer.x, input.pointer.y, pickGround, TOP);
     hoverBuilding = view.buildingOf(p?.object ?? null);
     if (hoverBuilding === null && hoverTile) hoverBuilding = buildingAt(state, hoverTile.x, hoverTile.y)?.id ?? null;
   }
@@ -389,7 +391,7 @@ async function play(initial: GameState) {
 
   // ---- Input ----
   const input = new Input(canvas, {
-    tileAt: (x, y) => camera.tileAt(x, y, groundAt, TOP),
+    tileAt: (x, y) => camera.tileAt(x, y, pickGround, TOP),
     paints: () => tool.kind === 'build' || tool.kind === 'remove' || tool.kind === 'earth',
     pan: (dx, dy) => camera.pan(dx, dy),
     zoom: (steps, at) => camera.zoomStep(steps, at),

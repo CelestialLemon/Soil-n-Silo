@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addStop, buyTruck, canPlace, canReshape, earthPrice, newRoute, place, priceOf, reshape, setTruckRoute } from '../src/game/build.ts';
+import { addStop, buyTruck, canPlace, canReshape, earthPrice, newRoute, place, priceOf, reshape, setCrop, setTruckRoute } from '../src/game/build.ts';
 import { CROPS, EARTH, FIELD, POWER, TRUCK, type BuildingId } from '../src/game/data.ts';
 import { placement } from '../src/game/forecast.ts';
 import { TERRAIN } from '../src/game/map.ts';
-import { centreLevel, corners, FLAT, heightAt, isFlat, isUnbroken, joins } from '../src/game/relief.ts';
-import { legLength } from '../src/game/roads.ts';
+import { centreLevel, corners, FLAT, heightAt, isFlat, isUnbroken, joins, MAX_LEVEL } from '../src/game/relief.ts';
+import { distanceTo, legLength } from '../src/game/roads.ts';
+import { deserialize, serialize } from '../src/game/save.ts';
 import { touchesWater, wheelSite } from '../src/game/rules.ts';
 import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
-import { exposureOf, wattsOf } from '../src/game/sim/layout.ts';
+import { exposureOf, isGuarded, wattsOf } from '../src/game/sim/layout.ts';
 import { advance } from '../src/game/sim/step.ts';
 import { newGame, touchRelief, type BuildingOf, type Dir, type GameState } from '../src/game/state.ts';
 
@@ -202,4 +203,52 @@ test('a water wheel stands on a river bank at the water\'s level, faces it, and 
   // Still water turns nothing.
   for (let y = 0; y < 30; y++) for (const x of [14, 15]) s.map.current[y * 30 + x] = 0;
   assert.equal(wheelSite(s, 12, 4), null);
+});
+
+test('a truck spends on each step exactly what the roads counted for it', () => {
+  const s = flat();
+  ground(s, 0, 0, 29, 14, 1); ground(s, 0, 15, 29, 15, 0, 0);
+  const g = put(s, 'garage', 3, 22), silo = put(s, 'silo', 4, 3);
+  const t = buyTruck(s, g);
+  assert.ok(t.ok);
+  const r = newRoute(s);
+  assert.ok(addStop(s, r, silo).ok);
+  setTruckRoute(s, t.value.truck, r);
+  const tr = t.value.truck, w = s.map.width;
+  // From where it is now to the silo: the battery it uses is the effort the roads counted, to the joule.
+  const effort = distanceTo(s, silo, Math.floor(tr.y) * w + Math.floor(tr.x)), before = tr.energy;
+  assert.ok(tr.x % 1 === 0.5 && tr.y % 1 === 0.5, 'it starts on a tile centre');
+  for (let k = 0; k < 600 && tr.phase !== 'queue' && tr.phase !== 'dock'; k++) advance(s, 0.1);
+  assert.ok(tr.phase === 'queue' || tr.phase === 'dock', tr.phase);
+  assert.ok(Math.abs(before - tr.energy - effort * TRUCK.joulesPerTile) < 1e-6, `used ${before - tr.energy}, the roads say ${effort * TRUCK.joulesPerTile}`);
+});
+
+test('a field next door that starts or stops growing beans guards a field against erosion at once', () => {
+  const s = flat();
+  const f = put(s, 'field', 4, 4), n = put(s, 'field', 7, 4);
+  assert.ok(!isGuarded(s, f));
+  assert.ok(setCrop(s, n, 'beans').ok);
+  assert.ok(isGuarded(s, f));
+  assert.ok(setCrop(s, n, 'wheat').ok);
+  assert.ok(!isGuarded(s, f));
+});
+
+test('the placement card judges water on the ground as it will be once levelled', () => {
+  const s = flat();
+  for (let y = 0; y < 30; y++) s.map.terrain[y * 30 + 3] = TERRAIN.water;
+  ground(s, 0, 0, 29, 29, 1);
+  ground(s, 4, 6, 4, 6, 2);
+  const card = placement(s, 'field', 4, 5);
+  assert.ok(card.facts.some((f) => f.label === 'Earthworks'));
+  assert.equal(card.facts.find((f) => f.label === 'Water')?.value, 'beside water');
+  const f = put(s, 'field', 4, 5);
+  assert.ok(touchesWater(s, f.x, f.y));
+});
+
+test('a save whose ramp rises above the highest level is refused', () => {
+  const s = flat();
+  s.map.level[0] = MAX_LEVEL; s.map.ramp[0] = 0;
+  assert.equal(deserialize(serialize(s)).ok, false);
+  s.map.ramp[0] = FLAT;
+  assert.equal(deserialize(serialize(s)).ok, true);
 });

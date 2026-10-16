@@ -2,7 +2,7 @@ import { BUILDINGS, CROPS, DAY_SECONDS, HIVE, ITEMS, POLLINATION_BONUS, POWER, r
 import { networks, POWERED, pylonsInLink } from './power.ts';
 import { HOUR_SECONDS } from './powerlog.ts';
 import { erosionAt, guardedAt, hiveReaches, paceOf, pylonReaches, sprinklerWaters, sprinklerWatts, touchesWater, waterLevelNear, waterPace, wheelSite, windExposure } from './rules.ts';
-import { earthPrice, groundworkFor } from './build.ts';
+import { earthPrice, groundworkFor, levelledFor } from './build.ts';
 import { hourAt, sunAt, windAt } from './sim/clock.ts';
 import { linksAt } from './sim/goods.ts';
 import { makes, shareOf } from './sim/energy.ts';
@@ -50,89 +50,93 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
   const pylonFact = (): Fact => (powered(s, type, x, y) ? { label: 'Power', value: 'in reach', sub: 'of a pylon' } : { label: 'Power', value: 'none', sub: 'no pylon in reach', tone: 'bad' });
   const gw = groundworkFor(s, type, x, y), here = inMap(s, x, y) ? s.map.level[tileIndex(s, x, y)] : 0;
   if (gw.ok && gw.value.level !== null) facts.push({ label: 'Earthworks', value: String(earthPrice(s, gw.value.steps)), sub: `levels the ground to level ${gw.value.level} (${fmt1(gw.value.steps)} steps)`, tone: 'bad' });
-  switch (type) {
-    case 'field': {
-      const crop = CROPS[set.crop ?? 'wheat'], soil = soilUnder(s, x, y, 3), { sprinklers, shore, water } = waterAt(s, x, y);
-      // A hive within reach of a flowering crop adds a good to every harvest.
-      const pollinated = crop.flowers && s.buildings.some((b) => b.type === 'hive' && hiveReaches({ type: 'field', x, y }, b.x, b.y));
-      const perMin = (crop.yield + (pollinated ? POLLINATION_BONUS : 0)) * 60 * paceOf(water, soil).pace / crop.grow;
-      // Ramp tiles under it wear faster (erosion), unless the ground is levelled for it.
-      const guarded = guardedAt(s, x, y), level = gw.ok && gw.value.level !== null;
-      let slopes = 0, wear = 0;
-      for (let ty = y; ty < y + 3; ty++) for (let tx = x; tx < x + 3; tx++) {
-        const k = !level && inMap(s, tx, ty) ? erosionAt(s, tx, ty, guarded) : 1;
-        wear += k / 9; if (k > 1) slopes++;
+  // What it would do on the ground as it will be: levelled first, if placing it levels it.
+  const there = (): Placement => {
+    switch (type) {
+      case 'field': {
+        const crop = CROPS[set.crop ?? 'wheat'], soil = soilUnder(s, x, y, 3), { sprinklers, shore, water } = waterAt(s, x, y);
+        // A hive within reach of a flowering crop adds a good to every harvest.
+        const pollinated = crop.flowers && s.buildings.some((b) => b.type === 'hive' && hiveReaches({ type: 'field', x, y }, b.x, b.y));
+        const perMin = (crop.yield + (pollinated ? POLLINATION_BONUS : 0)) * 60 * paceOf(water, soil).pace / crop.grow;
+        // Ramp tiles under it wear faster (erosion).
+        const guarded = guardedAt(s, x, y);
+        let slopes = 0, wear = 0;
+        for (let ty = y; ty < y + 3; ty++) for (let tx = x; tx < x + 3; tx++) {
+          const k = inMap(s, tx, ty) ? erosionAt(s, tx, ty, guarded) : 1;
+          wear += k / 9; if (k > 1) slopes++;
+        }
+        // The harvests over the next SOIL_AHEAD seconds, each wearing the soil and slowing the next.
+        let t = 0, later = soil;
+        for (;;) { t += crop.grow / paceOf(water, later).pace; if (t > SOIL_AHEAD) break; later = Math.max(0, Math.min(100, later + crop.soil * (crop.soil < 0 ? wear : 1))); }
+        facts.push({ label: crop.name, value: `+${fmt1(perMin)}`, sub: 'a minute' });
+        facts.push({ label: 'Soil', value: String(Math.round(soil)), then: String(Math.round(later)), sub: `in ${SOIL_AHEAD / 60} min if harvests are carried off` });
+        facts.push(shore ? { label: 'Water', value: 'beside water', sub: 'grows at 100%' } : sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round(waterPace(water) * 100)}%` }
+          : { label: 'Water', value: 'none', sub: `grows at ${Math.round(waterPace(0) * 100)}%`, tone: 'bad' });
+        if (slopes) facts.push({ label: 'Slope', value: `${slopes} of 9 tiles`, sub: guarded ? 'wear faster; trees or beans beside it help' : 'wear twice as fast', tone: guarded ? undefined : 'bad' });
+        break;
       }
-      // The harvests over the next SOIL_AHEAD seconds, each wearing the soil and slowing the next.
-      let t = 0, later = soil;
-      for (;;) { t += crop.grow / paceOf(water, later).pace; if (t > SOIL_AHEAD) break; later = Math.max(0, Math.min(100, later + crop.soil * (crop.soil < 0 ? wear : 1))); }
-      facts.push({ label: crop.name, value: `+${fmt1(perMin)}`, sub: 'a minute' });
-      facts.push({ label: 'Soil', value: String(Math.round(soil)), then: String(Math.round(later)), sub: `in ${SOIL_AHEAD / 60} min if harvests are carried off` });
-      facts.push(shore ? { label: 'Water', value: 'beside water', sub: 'grows at 100%' } : sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round(waterPace(water) * 100)}%` }
-        : { label: 'Water', value: 'none', sub: `grows at ${Math.round(waterPace(0) * 100)}%`, tone: 'bad' });
-      if (slopes) facts.push({ label: 'Slope', value: `${slopes} of 9 tiles`, sub: guarded ? 'wear faster; trees or beans beside it help' : 'wear twice as fast', tone: guarded ? undefined : 'bad' });
-      break;
+      case 'sprinkler': {
+        const fields = s.buildings.filter((b) => b.type === 'field' && sprinklerWaters(x, y, b)), water = inMap(s, x, y) ? waterLevelNear(s, x, y) : null;
+        const lift = water === null ? here : Math.max(0, here - water);
+        facts.push({ label: 'Waters', value: `${fields.length} field${fields.length === 1 ? '' : 's'}`, sub: `centres within ${POWER.sprinklerReach} tiles` });
+        facts.push({ label: 'Uses', value: inMap(s, x, y) ? watts(sprinklerWatts(s, x, y)) : '–', sub: `${water === null ? 'far from water' : 'near water'}${lift ? `, lifting it ${lift} level${lift > 1 ? 's' : ''}` : ''}` });
+        facts.push(pylonFact());
+        break;
+      }
+      case 'hive': {
+        const near = s.buildings.filter((b): b is FieldBuilding => b.type === 'field' && hiveReaches(b, x, y));
+        const flowers = Math.min(HIVE.maxFlowers, near.filter((f) => CROPS[f.crop].flowers).length);
+        facts.push({ label: 'Honey', value: `+${fmt1(flowers * 60 / HIVE.honeySeconds)}`, sub: 'a minute', tone: flowers ? undefined : 'bad' });
+        facts.push({ label: 'Flowers', value: `${flowers} field${flowers === 1 ? '' : 's'}`, sub: `flowering within ${HIVE.reach} tiles` });
+        facts.push({ label: 'Pollinates', value: `${near.filter((f) => CROPS[f.crop].flowers).length}`, sub: 'flowering fields' });
+        break;
+      }
+      case 'solar': {
+        const sc = s.scenario;
+        facts.push({ label: 'Now', value: watts(POWER.solar * sunAt(sc, s.time)), sub: 'in this sun' });
+        facts.push({ label: 'Midday', value: watts(POWER.solar * sc.weather.sun), sub: `sun ${String(sc.weather.sunrise).padStart(2, '0')}:00–${sc.weather.sunset}:00` });
+        facts.push(pylonFact());
+        break;
+      }
+      case 'turbine': {
+        const w = inMap(s, x, y) ? windExposure(s, x, y) : { shelter: 1, height: 1, exposure: 1 }, exp = w.exposure;
+        facts.push({ label: 'Wind', value: `${Math.round(exp * 100)}%`, sub: w.height > 1 ? `reaches it here, ${Math.round((w.height - 1) * 100)}% more up high` : 'reaches it here', tone: w.shelter < 1 ? 'bad' : w.height > 1 ? 'good' : undefined });
+        facts.push({ label: 'Now', value: watts(POWER.turbine * windAt(s.scenario, s.time) * exp), sub: 'in this wind' });
+        facts.push(pylonFact());
+        break;
+      }
+      case 'pylon': {
+        const links = pylonsInLink(s, x, y).length;
+        const reached = s.buildings.filter((b) => POWERED(b) && pylonReaches(b, x, y));
+        const fresh = reached.filter((b) => !networks(s).of.get(b.id)).length;
+        facts.push({ label: 'Links', value: `${links} pylon${links === 1 ? '' : 's'}`, sub: links ? `within ${POWER.pylon.link} tiles` : 'a new network' });
+        facts.push({ label: 'Reaches', value: `${reached.length}`, sub: `building${reached.length === 1 ? '' : 's'}${fresh ? `, ${fresh} not yet powered` : ''}` });
+        break;
+      }
+      case 'wheel': {
+        const site = inMap(s, x, y) ? wheelSite(s, x, y) : null;
+        if (site) {
+          facts.push({ label: 'Makes', value: watts(site.watts), sub: 'day and night' });
+          facts.push({ label: 'Current', value: `${site.current.toFixed(1)} m/s`, sub: site.fall ? 'beside a fall' : 'no fall beside it', tone: site.fall ? 'good' : undefined });
+        } else facts.push({ label: 'River', value: 'none', sub: 'it needs a river at its bank', tone: 'bad' });
+        facts.push(pylonFact());
+        break;
+      }
+      case 'sapling':
+        facts.push({ label: 'Grows', value: `${SAPLING_SECONDS} s`, sub: 'into a tree' });
+        facts.push({ label: 'Soil health', value: `+${TREE_HEALTH.perTree}`, sub: `a tree, up to ${TREE_HEALTH.cap} in all` });
+        break;
+      default: {
+        const r = recipesFor(type).find((x) => x.id === set.recipe) ?? recipesFor(type)[0];
+        if (r && r.outputs.length) facts.push({ label: 'Full speed', value: fmt1(r.outputs[0].n * 60 / r.time), sub: `${ITEMS[r.outputs[0].item].name.toLowerCase()} a minute` });
+        if (type === 'digester') facts.push({ label: 'Makes', value: watts(POWER.digester), sub: 'while burning' });
+        if (type === 'battery') facts.push({ label: 'Stores', value: `${POWER.battery.capacity} J`, sub: `${POWER.battery.rate} W in and out` });
+        if (def.power || POWERED({ type } as Building)) facts.push(pylonFact());
+      }
     }
-    case 'sprinkler': {
-      const fields = s.buildings.filter((b) => b.type === 'field' && sprinklerWaters(x, y, b)), water = inMap(s, x, y) ? waterLevelNear(s, x, y) : null;
-      const lift = water === null ? here : Math.max(0, here - water);
-      facts.push({ label: 'Waters', value: `${fields.length} field${fields.length === 1 ? '' : 's'}`, sub: `centres within ${POWER.sprinklerReach} tiles` });
-      facts.push({ label: 'Uses', value: inMap(s, x, y) ? watts(sprinklerWatts(s, x, y)) : '–', sub: `${water === null ? 'far from water' : 'near water'}${lift ? `, lifting it ${lift} level${lift > 1 ? 's' : ''}` : ''}` });
-      facts.push(pylonFact());
-      break;
-    }
-    case 'hive': {
-      const near = s.buildings.filter((b): b is FieldBuilding => b.type === 'field' && hiveReaches(b, x, y));
-      const flowers = Math.min(HIVE.maxFlowers, near.filter((f) => CROPS[f.crop].flowers).length);
-      facts.push({ label: 'Honey', value: `+${fmt1(flowers * 60 / HIVE.honeySeconds)}`, sub: 'a minute', tone: flowers ? undefined : 'bad' });
-      facts.push({ label: 'Flowers', value: `${flowers} field${flowers === 1 ? '' : 's'}`, sub: `flowering within ${HIVE.reach} tiles` });
-      facts.push({ label: 'Pollinates', value: `${near.filter((f) => CROPS[f.crop].flowers).length}`, sub: 'flowering fields' });
-      break;
-    }
-    case 'solar': {
-      const sc = s.scenario;
-      facts.push({ label: 'Now', value: watts(POWER.solar * sunAt(sc, s.time)), sub: 'in this sun' });
-      facts.push({ label: 'Midday', value: watts(POWER.solar * sc.weather.sun), sub: `sun ${String(sc.weather.sunrise).padStart(2, '0')}:00–${sc.weather.sunset}:00` });
-      facts.push(pylonFact());
-      break;
-    }
-    case 'turbine': {
-      const w = inMap(s, x, y) ? windExposure(s, x, y) : { shelter: 1, height: 1, exposure: 1 }, exp = w.exposure;
-      facts.push({ label: 'Wind', value: `${Math.round(exp * 100)}%`, sub: w.height > 1 ? `reaches it here, ${Math.round((w.height - 1) * 100)}% more up high` : 'reaches it here', tone: w.shelter < 1 ? 'bad' : w.height > 1 ? 'good' : undefined });
-      facts.push({ label: 'Now', value: watts(POWER.turbine * windAt(s.scenario, s.time) * exp), sub: 'in this wind' });
-      facts.push(pylonFact());
-      break;
-    }
-    case 'pylon': {
-      const links = pylonsInLink(s, x, y).length;
-      const reached = s.buildings.filter((b) => POWERED(b) && pylonReaches(b, x, y));
-      const fresh = reached.filter((b) => !networks(s).of.get(b.id)).length;
-      facts.push({ label: 'Links', value: `${links} pylon${links === 1 ? '' : 's'}`, sub: links ? `within ${POWER.pylon.link} tiles` : 'a new network' });
-      facts.push({ label: 'Reaches', value: `${reached.length}`, sub: `building${reached.length === 1 ? '' : 's'}${fresh ? `, ${fresh} not yet powered` : ''}` });
-      break;
-    }
-    case 'wheel': {
-      const site = inMap(s, x, y) ? (gw.ok && gw.value.level !== null ? null : wheelSite(s, x, y)) : null;
-      if (site) {
-        facts.push({ label: 'Makes', value: watts(site.watts), sub: 'day and night' });
-        facts.push({ label: 'Current', value: `${site.current.toFixed(1)} m/s`, sub: site.fall ? 'beside a fall' : 'no fall beside it', tone: site.fall ? 'good' : undefined });
-      } else facts.push({ label: 'River', value: gw.ok ? 'once levelled' : 'none', sub: 'it needs a river at its bank', tone: gw.ok ? undefined : 'bad' });
-      facts.push(pylonFact());
-      break;
-    }
-    case 'sapling':
-      facts.push({ label: 'Grows', value: `${SAPLING_SECONDS} s`, sub: 'into a tree' });
-      facts.push({ label: 'Soil health', value: `+${TREE_HEALTH.perTree}`, sub: `a tree, up to ${TREE_HEALTH.cap} in all` });
-      break;
-    default: {
-      const r = recipesFor(type).find((x) => x.id === set.recipe) ?? recipesFor(type)[0];
-      if (r && r.outputs.length) facts.push({ label: 'Full speed', value: fmt1(r.outputs[0].n * 60 / r.time), sub: `${ITEMS[r.outputs[0].item].name.toLowerCase()} a minute` });
-      if (type === 'digester') facts.push({ label: 'Makes', value: watts(POWER.digester), sub: 'while burning' });
-      if (type === 'battery') facts.push({ label: 'Stores', value: `${POWER.battery.capacity} J`, sub: `${POWER.battery.rate} W in and out` });
-      if (def.power || POWERED({ type } as Building)) facts.push(pylonFact());
-    }
-  }
   return { facts, next: describeLinks(linksAt(s, type, x, y, set)) };
+  };
+  return gw.ok && gw.value.level !== null ? levelledFor(s, x, y, def.size, gw.value.level, there) : there();
 }
 
 // ---- Tonight ----

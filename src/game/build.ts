@@ -248,6 +248,8 @@ export function setCrop(s: GameState, b: Building, crop: CropId): Action {
   for (const r of s.routes) for (const st of r.stops) {
     if (st.building === b.id && st.pick.includes(b.crop) && !st.pick.includes(crop)) { st.pick.push(crop); st.drop = st.drop.filter((i) => i !== crop); }
   }
+  // A bean field guards the fields beside it against erosion: worked out again when one starts or stops growing beans.
+  if (b.crop === 'beans' || crop === 'beans') touchLayout(s);
   b.crop = crop; b.growth = 0;
   return done(`The field now grows ${CROPS[crop].name.toLowerCase()}${b.stored ? ` (once its ${CROPS[b.harvest ?? crop].name.toLowerCase()} harvest has gone)` : ''}.`);
 }
