@@ -5,6 +5,7 @@ import { h, icon } from './dom.ts';
 import { num } from './format.ts';
 import { buildingCard } from './guide.ts';
 import type { Tool } from './hud.ts';
+import { keyNames, keysVersion, tip } from './keyhints.ts';
 
 // The dock, bottom centre: the building categories over a row of building tiles (price, and watts for those that use power),
 // and Remove. A tile you can't afford is greyed; the one in hand is ink. Keys are in each tile's tooltip, not printed.
@@ -46,7 +47,7 @@ export class Dock {
   /** Redraws when the category or tool changed; otherwise only which tiles you can afford. */
   update() {
     const s = this.host.state(), tool = this.host.tool();
-    const key = JSON.stringify([this.category, tool.kind === 'build' ? tool.type : tool.kind]);
+    const key = JSON.stringify([this.category, tool.kind === 'build' ? tool.type : tool.kind, keysVersion()]);
     if (key === this.key) {
       for (const [id, b] of this.tiles) b.classList.toggle('is-poor', s.credits < priceOf(s, id));
       return;
@@ -61,7 +62,7 @@ export class Dock {
     const tiles = ids.map((id) => {
       const d = BUILDINGS[id], on = tool.kind === 'build' && tool.type === id;
       const b = h('button', {
-        class: `cd-tile${on ? ' is-on' : ''}${s.credits < priceOf(s, id) ? ' is-poor' : ''}`, title: `${d.name}${d.key ? ` (${d.key})` : ''}`,
+        class: `cd-tile${on ? ' is-on' : ''}${s.credits < priceOf(s, id) ? ' is-poor' : ''}`, title: tip(d.name, ...(d.key ? keyNames(`build:${id}`) : [])),
         onclick: () => { const t = this.host.tool(); this.host.setTool(on ? { kind: 'select' } : { kind: 'build', type: id, rot: t.kind === 'build' ? t.rot : 1 }); },
         onpointerenter: () => this.host.tip(id), onpointerleave: () => this.host.tip(null),
       }, icon(id), h('span', { class: 'label' }, d.name), h('span', { class: 'cd-tile__cost' }, costLine(s, id)));
@@ -70,7 +71,7 @@ export class Dock {
     });
     const removing = tool.kind === 'remove';
     const remove = h('button', {
-      class: `cd-tile is-remove${removing ? ' is-on' : ''}`, title: 'Remove: buildings refund in full; trees and rock cost to clear (X)',
+      class: `cd-tile is-remove${removing ? ' is-on' : ''}`, title: tip('Remove: buildings refund in full; trees and rock cost to clear', ...keyNames('remove')),
       onclick: () => this.host.setTool(removing ? { kind: 'select' } : { kind: 'remove' }),
     }, icon('trash'), h('span', { class: 'label' }, 'Remove'), h('span', { class: 'cd-tile__cost' }, 'full refund'));
     this.el.replaceChildren(h('div', { class: 'tabs' }, tabs), h('div', { class: 'tiles' }, ...tiles, h('span', { class: 'sep' }), remove));

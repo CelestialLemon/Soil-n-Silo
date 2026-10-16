@@ -10,6 +10,7 @@ import { netColour } from '../world/powerView.ts';
 import { NET_COLOURS } from '../world/shapes.ts';
 import { fill, h, icon, svg } from './dom.ts';
 import { clock, clockAt, dec, hex, pct, plural, watts } from './format.ts';
+import { keyNames, tip } from './keyhints.ts';
 
 // The Power panel (W): what is made, used and stored now; power by source over the last 24 in-game hours as a radial chart
 // (an hour a slice, night shaded, short hours marked); each network; tonight's charge until sunrise if use stays as it is
@@ -131,7 +132,7 @@ export function powerSheet(host: PowerHost) {
         h('div', { class: 'pw-read' }, h('b', null, watts(made)), h('small', null, 'made now')),
         h('div', { class: 'pw-read' }, h('b', null, watts(used)), h('small', null, 'used now')),
         h('div', { class: 'pw-read' }, h('b', null, cap ? pct(stored / cap) : '–'), h('small', null, `stored · ${plural(bats.length, 'battery', 'batteries')}`)),
-        h('button', { class: 'cd-btn is-icon', title: 'Close (Esc or W)', 'aria-label': 'Close', onclick: host.close }, icon('close', 18))),
+        h('button', { class: 'cd-btn is-icon', title: tip('Close', ...keyNames('power'), 'Esc'), 'aria-label': 'Close', onclick: host.close }, icon('close', 18))),
       h('div', { class: 'sheet-body pw-body' },
         h('div', { class: 'pw-col' },
           h('div', { class: 'row-head' }, h('span', { class: 'cd-label', style: 'color: var(--ochre)' }, 'Power by source · the last 24 hours'), h('span', { class: 'cd-small' }, 'each hour a slice')),

@@ -32,8 +32,8 @@ export function canPlace(s: GameState, type: BuildingId, x: number, y: number): 
   for (let ty = y; ty < y + def.size; ty++) for (let tx = x; tx < x + def.size; tx++) {
     if (!inMap(s, tx, ty)) return no('Off the edge of the map.');
     const t = terrainAt(s, tx, ty);
-    if (t === TERRAIN.tree) return no('A tree is in the way. Remove it first (X).');
-    if (t === TERRAIN.rock) return no('Rock is in the way. Remove it first (X).');
+    if (t === TERRAIN.tree) return no('A tree is in the way. Remove it first.');
+    if (t === TERRAIN.rock) return no('Rock is in the way. Remove it first.');
     if (t === TERRAIN.water && !def.onWater) return no(`The ${def.name.toLowerCase()} can't stand on water.`);
     const o = buildingAt(s, tx, ty);
     if (o) return no(`The ${BUILDINGS[o.type].name.toLowerCase()} is in the way.`);

@@ -3,14 +3,16 @@ import { networks, usedBy } from '../game/power.ts';
 import { dayAt, hourAt } from '../game/sim/clock.ts';
 import type { BatteryBuilding, GameState, Status } from '../game/state.ts';
 import { must } from '../game/result.ts';
+import { ACTIONS, GROUPS, type GroupId } from '../keybindings.ts';
 import { h, icon } from './dom.ts';
 import { clock, itemName, num, pct, playTime, watts } from './format.ts';
 import { commissionLabel } from './playhud.ts';
-import { PIXEL_SIZES, UI_SIZES, type Settings, type SettingsStore } from './settings.ts';
+import { keyNames } from './keyhints.ts';
+import type { SettingsStore } from './settings.ts';
 import { gauge, goalIcon, goalNow, medalTimes, statusPill } from './widgets.ts';
 
 // The pause screen: resume, where the commission stands, the level select and restart (restart asks twice and says what it
-// loses); the settings; what the markers mean (a shape and a word); and the keys, the one place they are printed.
+// loses); the way to the settings; what the markers mean (a shape and a word); and the keys, the one place they are printed.
 
 export interface PauseHost {
   state(): GameState;
@@ -18,38 +20,7 @@ export interface PauseHost {
   resume(): void;
   menu(): void;
   restart(): void;
-}
-
-/** A switch for a yes/no setting. */
-function toggle(on: boolean, label: string, change: (v: boolean) => void) {
-  const b = h('button', { class: `switch${on ? ' is-on' : ''}`, role: 'switch', 'aria-checked': String(on), 'aria-label': label });
-  b.addEventListener('click', () => { const v = b.getAttribute('aria-checked') !== 'true'; b.setAttribute('aria-checked', String(v)); b.classList.toggle('is-on', v); change(v); });
-  return b;
-}
-
-/** The settings, as rows (also on the level select). */
-export function settingsCard(store: SettingsStore) {
-  const st = store.get();
-  const size = h('b', { class: 'cd-num' }, pct(st.uiSize));
-  const slider = h('input', {
-    type: 'range', class: 'cd-range', min: UI_SIZES.min, max: UI_SIZES.max, step: UI_SIZES.step, value: st.uiSize, 'aria-label': 'Interface size',
-    oninput: () => { size.textContent = pct(Number(slider.value)); },
-    onchange: () => store.set({ uiSize: Number(slider.value) }),
-  });
-  const pixels = h('div', { class: 'cd-seg wide' }, ...PIXEL_SIZES.map((n) => {
-    const b = h('button', { class: st.pixelSize === n ? 'is-on' : '', onclick: () => { store.set({ pixelSize: n }); for (const x of pixels.children) x.classList.toggle('is-on', x === b); } }, `${n} × ${n}`);
-    return b;
-  }));
-  const yes = (k: keyof Settings, label: string, words: string) => h('div', { class: 'set' },
-    h('b', null, label), toggle(st[k] as boolean, label, (v) => store.set({ [k]: v })), h('span', { class: 'cd-small' }, words));
-  return h('div', { class: 'cd-card settings' },
-    h('div', { class: 'cd-label' }, 'Settings'),
-    h('div', { class: 'set is-slider' }, h('b', null, 'Interface size'), slider, size),
-    h('div', { class: 'set is-seg' }, h('b', null, 'Pixel size'), pixels,
-      h('span', { class: 'cd-small' }, 'Screen pixels for each pixel of the art. Smaller pixels show finer detail and cost more to draw.')),
-    yes('reduceMotion', 'Reduce motion', 'Cards and gauges appear without springing.'),
-    yes('showPace', 'Show pace', '“Done by” on the commission card and gold and silver ticks on the goals. Off: you see only where you are.'),
-    yes('problemsStrip', 'Problems strip', 'Experimental. A strip on the right edge listing problems. Off: find them on the map.'));
+  openSettings(): void;
 }
 
 const MARKERS: [Status, string, string][] = [
@@ -68,25 +39,26 @@ export function markersCard() {
 }
 
 const key = (k: string) => h('span', { class: 'cd-key' }, k);
-type KeyRow = [string, ...(string | [string])[]];
-/** Every control, grouped: a key in brackets is a word between keys ("back", "out"). */
-const KEYS: [string, string, KeyRow[]][] = [
-  ['Build', 'var(--pine)', [['Field · silo · garage', 'F', 'L', 'T'], ['Pylon · solar panel', 'P', 'S'], ['Turn the building', 'R', ['back'], 'Shift', 'R'],
-    ['Remove (full refund)', 'X'], ['Place · a row', 'Click', ['or'], 'Drag'], ['Drop what is in hand', 'Right click']]],
-  ['View', 'var(--tide)', [['Turn the view', 'Q', 'E'], ['Zoom', 'Z', ['out'], 'Shift', 'Z'], ['Zoom a step', '+', '−'], ['Overlay: soil, water, power, roads, bees', 'V'],
-    ['Pan', 'Drag', ['or'], 'Arrows']]],
-  ['Time', 'var(--ochre)', [['Pause and play', 'Space'], ['Normal speed, 1×', '1'], ['Fast, 2×', '2'], ['Fastest, 4×', '3']]],
-  ['Panels', 'var(--plum)', [['Ledger · routes', 'Tab', 'O'], ['Power', 'W'], ['Guide', 'G'], ['Close a panel · pause', 'Esc']]],
-];
+/** Controls that are not keys, and the one that cannot be changed, by group. */
+const FIXED: Record<GroupId, [string, ...string[]][]> = {
+  build: [['Place · a row', 'Click', 'or', 'Drag'], ['Drop what is in hand', 'Right click']],
+  view: [['Pan', 'Drag']],
+  time: [],
+  panels: [['Close a panel · pause', 'Esc']],
+};
 
-/** The keys, as rows: the one place keys are printed. */
+/** The keys, as rows, as they are now set. */
 export function keysCard() {
   return h('div', { class: 'cd-card keys' },
     h('div', { class: 'cd-label' }, 'Keys'),
-    h('div', { class: 'cols' }, ...KEYS.map(([group, col, rows]) => h('div', null,
-      h('div', { class: 'cd-label group', style: `--col: ${col}` }, h('i'), group),
-      h('div', { class: 'cd-keyrows' }, ...rows.map(([what, ...keys]) => h('div', { class: 'cd-keyrow' }, h('span', null, what),
-        ...keys.map((k) => (Array.isArray(k) ? h('small', null, k[0]) : key(k))))))))));
+    h('div', { class: 'cols' }, ...GROUPS.map((g) => h('div', null,
+      h('div', { class: 'cd-label group', style: `--col: ${g.col}` }, h('i'), g.name),
+      h('div', { class: 'cd-keyrows' },
+        ...ACTIONS.filter((a) => a.group === g.id).map((a) => {
+          const names = keyNames(a.id);
+          return h('div', { class: 'cd-keyrow', title: a.note }, h('span', null, a.label), ...(names.length ? names.map(key) : [h('small', null, 'no key')]));
+        }),
+        ...FIXED[g.id].map(([what, ...keys]) => h('div', { class: 'cd-keyrow' }, h('span', null, what), ...keys.map((k) => (k === 'or' ? h('small', null, k) : key(k))))))))));
 }
 
 /** Where the commission stands, for the pause screen: its goals as gauges, credits and power. */
@@ -125,11 +97,11 @@ export function pauseScreen(host: PauseHost) {
     h('div', { class: 'title' }, h('div', { class: 'big-title' }, 'Paused'),
       h('div', { class: 'sub' }, `${sc.name} · day ${dayAt(s.time)}, ${clock(hourAt(s.time))}${sc.sandbox ? '' : ` · ${playTime(s.time)} of ${playTime(sc.par)}`}`)),
     h('div', { class: 'grid' },
-      settingsCard(host.settings),
+      standing(s),
       h('div', { class: 'centre' },
-        h('button', { class: 'cd-btn is-primary is-lg resume', onclick: () => host.resume() }, icon('play', 18, 'inv'), 'Resume', h('span', { class: 'keys' }, h('span', { class: 'cd-key' }, 'Esc'), h('span', { class: 'cd-key' }, 'Space'))),
-        standing(s),
+        h('button', { class: 'cd-btn is-primary is-lg resume', onclick: () => host.resume() }, icon('play', 18, 'inv'), 'Resume', h('span', { class: 'keys' }, h('span', { class: 'cd-key' }, 'Esc'), ...keyNames('pause').map((k) => h('span', { class: 'cd-key' }, k)))),
         h('div', { class: 'two' }, h('button', { class: 'cd-btn is-lg', onclick: () => host.menu() }, 'Level select'), restart),
+        h('button', { class: 'cd-btn is-lg settings-btn', onclick: () => host.openSettings() }, icon('menu', 18), 'Settings'),
         note),
       markersCard()),
     keysCard());

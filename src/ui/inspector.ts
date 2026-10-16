@@ -29,6 +29,7 @@ import type { Tool } from './hud.ts';
 import { routeCss, truckName } from './routing.ts';
 import { ring, statusLabel, statusPill } from './widgets.ts';
 import { must } from '../game/result.ts';
+import { keyNames, keysVersion, tip } from './keyhints.ts';
 
 // The inspector: a side card on the right for the selected building or truck. A building's header (name, kind, size, power),
 // its recipe as a line of stores with the batch timer, its status with since when, and what it makes a minute; then three
@@ -93,8 +94,8 @@ export class Inspector {
     // Made again when what it shows changes: the building's settings, the trucks and routes it lists.
     const routes = runtimeOf(s).routesVersion;
     const setting = b?.type === 'field' ? [b.crop, b.harvest ?? null] : b && isMachine(b) ? b.recipe : null;
-    const key = JSON.stringify(t ? ['truck', t.id, t.route, routes, this.tab]
-      : [b?.id, b?.type, setting, routes, this.tab]);
+    const key = JSON.stringify([keysVersion(), ...(t ? ['truck', t.id, t.route, routes, this.tab]
+      : [b?.id, b?.type, setting, routes, this.tab])]);
     if (key !== this.key) {
       this.key = key;
       this.el.hidden = false;
@@ -111,7 +112,7 @@ export class Inspector {
     return h('div', { class: 'side-head' },
       h('span', { class: 'disc' }, icon(ic, 48)),
       h('div', { class: 'grow' }, h('h2', { class: 'cd-title' }, title), h('div', { class: 'cd-small' }, sub)),
-      h('button', { class: 'cd-btn is-icon is-sm', title: 'Its page in the guide (G)', 'aria-label': 'Guide', onclick: () => this.host.openGuide(guide) }, icon('book', 18)),
+      h('button', { class: 'cd-btn is-icon is-sm', title: tip('Its page in the guide', ...keyNames('guide')), 'aria-label': 'Guide', onclick: () => this.host.openGuide(guide) }, icon('book', 18)),
       h('button', { class: 'cd-btn is-icon is-sm', title: 'Close (Esc)', 'aria-label': 'Close', onclick: () => this.close() }, icon('close', 14)));
   }
 

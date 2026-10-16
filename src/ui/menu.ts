@@ -6,7 +6,7 @@ import type { GameState } from '../game/state.ts';
 import { fill, h, icon, svg } from './dom.ts';
 import { itemName, num, pct, playTime } from './format.ts';
 import { guidePanel } from './guide.ts';
-import { settingsCard } from './pause.ts';
+import { settingsPanel } from './settingsPanel.ts';
 import { uiScale, type SettingsStore } from './settings.ts';
 import { goalIcon, goalNow, MEDAL_NAME, medal, ring } from './widgets.ts';
 
@@ -170,7 +170,7 @@ export function showMenu(root: HTMLElement, host: MenuHost) {
         h('button', { class: 'cd-btn is-icon', 'aria-label': 'Continue', title: 'Continue', onclick: host.resume }, icon('play', 18))) : null,
       h('div', { class: 'top-buttons' },
         h('button', { class: 'cd-btn', onclick: () => { sheets.classList.add('is-open'); fill(sheets, h('div', { class: 'scrim', onclick: closeSheet }), h('div', { class: 'sheet-wrap' }, guidePanel({ kind: 'topic', id: 'start' }, null, closeSheet))); } }, icon('book', 22), 'Guide'),
-        h('button', { class: 'cd-btn', onclick: () => { sheets.classList.add('is-open'); fill(sheets, h('div', { class: 'scrim', onclick: closeSheet }), h('div', { class: 'sheet-wrap' }, h('div', { class: 'menu-settings' }, settingsCard(host.settings), h('button', { class: 'cd-btn is-primary', onclick: closeSheet }, 'Done')))); } }, icon('menu', 20), 'Settings')),
+        h('button', { class: 'cd-btn', onclick: () => { sheets.classList.add('is-open'); fill(sheets, h('div', { class: 'scrim', onclick: closeSheet }), h('div', { class: 'sheet-wrap' }, settingsPanel(host.settings, closeSheet))); } }, icon('menu', 20), 'Settings')),
       h('div', { class: 'cd-label path-label' }, `${CAMPAIGN.length} commissions · down the valley`),
       path, card, warn,
       h('div', { class: 'cd-card random' },

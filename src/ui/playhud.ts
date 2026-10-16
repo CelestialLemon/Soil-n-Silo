@@ -8,6 +8,8 @@ import { must } from '../game/result.ts';
 import type { Overlay } from '../world/view.ts';
 import { fill, h, icon, set, setVar } from './dom.ts';
 import { clock, num, pct, playTime, watts } from './format.ts';
+import type { ActionId } from '../keybindings.ts';
+import { keyNames, tip, titledBy } from './keyhints.ts';
 import type { Settings } from './settings.ts';
 import { gauge, goalIcon, goalNow, goalOrder } from './widgets.ts';
 
@@ -177,13 +179,13 @@ export class TopRight {
     const sky = h('div', { class: 'cd-dial__sky' });
     sky.style.background = skyFor(w.sunrise, w.sunset);
     this.dial.append(sky, h('div', { class: 'cd-dial__sun' }), h('div', { class: 'cd-dial__face' }, h('div', null, this.time, this.day)));
-    const seg = h('div', { class: 'cd-seg' }, ...([[0, icon('pause'), 'Pause (Space)'], [1, '1×', 'Normal speed (1)'], [2, '2×', 'Double speed (2)'], [4, '4×', 'Fast (3)']] as const).map(([n, label, title]) => {
-      const b = h('button', { title, 'aria-label': title, onclick: () => host.setSpeed(n) }, label);
+    const seg = h('div', { class: 'cd-seg' }, ...([[0, icon('pause'), 'Pause', 'pause'], [1, '1×', 'Normal speed', 'speed1'], [2, '2×', 'Double speed', 'speed2'], [4, '4×', 'Fast', 'speed3']] as const).map(([n, label, title, action]) => {
+      const b = titledBy(h('button', { 'aria-label': title, onclick: () => host.setSpeed(n) }, label), () => tip(title, ...keyNames(action)));
       this.speeds.push(b);
       return b;
     }));
-    const panelBtn = (p: Panel, name: string, ic: string, key: string) => {
-      const b = h('button', { class: 'cd-panelbtn', title: `${name} (${key})`, onclick: () => host.togglePanel(p) }, icon(ic), name);
+    const panelBtn = (p: Panel, name: string, ic: string, action: ActionId) => {
+      const b = titledBy(h('button', { class: 'cd-panelbtn', onclick: () => host.togglePanel(p) }, icon(ic), name), () => tip(name, ...keyNames(action)));
       this.panels.set(p, b);
       return b;
     };
@@ -194,7 +196,7 @@ export class TopRight {
           h('span', { class: 'cd-chip', title: 'The sun\'s strength now' }, icon('sun'), this.sun),
           h('span', { class: 'cd-chip', title: 'The wind\'s strength now' }, icon('wind'), this.wind), this.next), seg),
         this.dial),
-      h('div', { class: 'panels' }, panelBtn('ledger', 'Ledger', 'chart', 'Tab'), panelBtn('routes', 'Routes', 'route', 'O'), panelBtn('power', 'Power', 'bolt', 'W'), panelBtn('guide', 'Guide', 'book', 'G')));
+      h('div', { class: 'panels' }, panelBtn('ledger', 'Ledger', 'chart', 'ledger'), panelBtn('routes', 'Routes', 'route', 'routes'), panelBtn('power', 'Power', 'bolt', 'power'), panelBtn('guide', 'Guide', 'book', 'guide')));
   }
 
   /** The speed and panel buttons, every frame. */
@@ -239,8 +241,10 @@ export class ViewBar {
   constructor(host: PlayHost) {
     this.host = host;
     for (const [o, name, ic] of VIEWS) {
-      const b = h('button', { class: ic ? '' : 'is-off', title: `${o === 'none' ? 'No overlay' : `Show ${name.toLowerCase()}`} (V cycles)`, onclick: () => host.setOverlay(o) },
-        ic ? icon(ic) : null, h('span', null, name));
+      const b = titledBy(h('button', { class: ic ? '' : 'is-off', onclick: () => host.setOverlay(o) }, ic ? icon(ic) : null, h('span', null, name)), () => {
+        const keys = keyNames('overlay');
+        return `${o === 'none' ? 'No overlay' : `Show ${name.toLowerCase()}`}${keys.length ? ` (${keys.join(' or ')} cycles)` : ''}`;
+      });
       this.buttons.set(o, b);
       this.el.append(b);
     }
@@ -252,10 +256,10 @@ export class ViewBar {
 /** Turning the view, zooming and the menu: every key works too. */
 export function viewControls(host: PlayHost) {
   return h('div', { class: 'cd-viewbar hud-controls' },
-    h('button', { title: 'Turn the view (Q)', 'aria-label': 'Turn the view left', onclick: () => host.turn(-1) }, icon('rotate', undefined, 'flip')),
-    h('button', { title: 'Turn the view (E)', 'aria-label': 'Turn the view right', onclick: () => host.turn(1) }, icon('rotate')),
-    h('button', { title: 'Zoom out (wheel, − or Shift+Z)', 'aria-label': 'Zoom out', onclick: () => host.zoom(-1) }, '−'),
-    h('button', { title: 'Zoom in (wheel, + or Z)', 'aria-label': 'Zoom in', onclick: () => host.zoom(1) }, '+'),
+    titledBy(h('button', { 'aria-label': 'Turn the view left', onclick: () => host.turn(-1) }, icon('rotate', undefined, 'flip')), () => tip('Turn the view', ...keyNames('turnLeft'))),
+    titledBy(h('button', { 'aria-label': 'Turn the view right', onclick: () => host.turn(1) }, icon('rotate')), () => tip('Turn the view', ...keyNames('turnRight'))),
+    titledBy(h('button', { 'aria-label': 'Zoom out', onclick: () => host.zoom(-1) }, '−'), () => tip('Zoom out', 'wheel', ...keyNames('zoomOut'))),
+    titledBy(h('button', { 'aria-label': 'Zoom in', onclick: () => host.zoom(1) }, '+'), () => tip('Zoom in', 'wheel', ...keyNames('zoomIn'))),
     h('button', { title: 'Menu (Esc)', 'aria-label': 'Menu', onclick: () => host.openPause() }, icon('menu')));
 }
 

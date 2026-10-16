@@ -10,6 +10,7 @@ import { guidePanel, type GuidePage } from './guide.ts';
 import { Inspector } from './inspector.ts';
 import { ledgerSheet } from './ledger.ts';
 import { pauseScreen } from './pause.ts';
+import { settingsPanel } from './settingsPanel.ts';
 import { CommissionCard, TopRight, ViewBar, viewControls, type Panel, type PlayHost } from './playhud.ts';
 import { powerSheet } from './powerpanel.ts';
 import { ProblemsStrip } from './problems.ts';
@@ -60,7 +61,7 @@ export interface HudHost {
 }
 
 /** A screen or panel over the world: `blocking` ones pause the game; `update` redraws a live one a few times a second. */
-interface Modal { name: string; el: HTMLElement; blocking: boolean; update?: () => void }
+interface Modal { name: string; el: HTMLElement; blocking: boolean; update?: () => void; onClose?: () => void }
 
 export class Hud {
   private readonly host: HudHost;
@@ -231,9 +232,9 @@ export class Hud {
 
   // ---- Modal screens ----
 
-  private openModal(name: string, el: HTMLElement, blocking: boolean, update?: () => void) {
+  private openModal(name: string, el: HTMLElement, blocking: boolean, update?: () => void, onClose?: () => void) {
     this.modals = this.modals.filter((m) => m.name !== name);
-    this.modals.push({ name, el, blocking, update });
+    this.modals.push({ name, el, blocking, update, onClose });
     this.drawModals();
   }
   private drawModals() {
@@ -250,11 +251,17 @@ export class Hud {
   }
   /** Closes the topmost modal or panel; false if none was open. */
   closeTop(): boolean {
-    if (this.modals.length) { this.modals.pop(); this.drawModals(); return true; }
+    const top = this.modals.pop();
+    if (top) { top.onClose?.(); this.drawModals(); return true; }
     if (this.routesShown) { this.toggleRoutes(); return true; }
     return false;
   }
-  private close(name: string) { this.modals = this.modals.filter((m) => m.name !== name); this.drawModals(); }
+  private close(name: string) {
+    const gone = this.modals.filter((m) => m.name === name);
+    this.modals = this.modals.filter((m) => m.name !== name);
+    for (const m of gone) m.onClose?.();
+    this.drawModals();
+  }
 
   /** Opens the guide on `page`; by default on what's in hand, selected or pointed at in the dock. G again closes it. */
   openGuide(page?: GuidePage) {
@@ -274,10 +281,20 @@ export class Hud {
     this.openModal('intro', briefing(this.host.state(), () => this.close('intro'), () => { this.close('intro'); this.openGuide({ kind: 'topic', id: 'start' }); }), true);
   }
 
-  openPause() {
-    this.openModal('pause', pauseScreen({
+  private pauseEl() {
+    return pauseScreen({
       state: () => this.host.state(), settings: this.host.settings, resume: () => { this.close('pause'); this.host.resume(); }, menu: () => this.host.menu(), restart: () => this.host.restart(),
-    }), true);
+      openSettings: () => this.openSettings(),
+    });
+  }
+  openPause() { this.openModal('pause', this.pauseEl(), true); }
+
+  /** The settings, over the pause screen (which is drawn again after, for the keys it lists). */
+  private openSettings() {
+    this.openModal('settings', settingsPanel(this.host.settings, () => this.close('settings')), true, undefined, () => {
+      const pause = this.modals.find((m) => m.name === 'pause');
+      if (pause) pause.el = this.pauseEl();
+    });
   }
 
   /** The results, when the commission is complete. */
