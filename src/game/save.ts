@@ -63,7 +63,8 @@ function scenario(sc: Scenario): boolean {
 function complete(s: GameState): boolean {
   const m = s.map, st = s.stats;
   return scenario(s.scenario)
-    && !!m && num(m.width) && num(m.height) && arr(m.terrain) && m.terrain.length === m.width * m.height
+    && !!m && int(m.width) && int(m.height) && m.width > 0 && m.height > 0 && m.width === s.scenario.width && m.height === s.scenario.height
+    && arr(m.terrain) && m.terrain.length === m.width * m.height
     && arr(m.fertility) && m.fertility.length === m.width * m.height && m.fertility.every(num)
     && arr(s.soilBase) && s.soilBase.length === m.fertility.length && s.soilBase.every(num) && !!m.depot && num(m.depot.x) && num(m.depot.y)
     && [s.credits, s.time, s.carry, s.nextId, s.earned, s.initialTrees].every(num) && Math.abs(s.carry) <= TICK
