@@ -16,9 +16,11 @@ import type { GameState } from '../game/state.ts';
 import { fill, h, icon, svg } from './dom.ts';
 import { clockAt, plural } from './format.ts';
 import { HISTORY_WINDOWS } from './historyView.ts';
+import { ACTIONS } from '../keybindings.ts';
 import { keysCard, markersCard } from './pause.ts';
 import { ring, statusLabel, statusPill } from './widgets.ts';
 import { must } from '../game/result.ts';
+import { keyNames, tip } from './keyhints.ts';
 
 // The guide: a page for every building (what it does, how to use it, its numbers, what it takes and makes), a page of
 // goods, and a few pages on the basics (trucks and routes, power, soil, the markers). The words are written here; every number comes
@@ -69,7 +71,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
   field: {
     what: `Grows the chosen crop on its ${BUILDINGS.field.size} × ${BUILDINGS.field.size} tiles. Crops are the start of every chain.`,
     how: [
-      `Build it on good soil: its placement card shows the soil under it now and in ${SOIL_AHEAD / 60} minutes, and the Soil overlay (V) shows the whole map.`,
+      `Build it on good soil: its placement card shows the soil under it now and in ${SOIL_AHEAD / 60} minutes, and the Soil overlay shows the whole map.`,
       'Select it and choose the crop. Wheat is the default.',
       'Build it beside the machine that uses its crop (a mill for wheat), and the machine takes the harvest itself. Or make it a stop on a route: trucks pick up the harvest. A full field stops growing.',
       `Put a sprinkler within ${POWER.sprinklerReach} tiles of its centre: dry fields grow at ×${FIELD.dry} speed.`,
@@ -165,7 +167,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
       'Pylons close enough to each other link into one network, which shares all its power.',
       'Drag to lay a line: pylons go down spaced so their reaches meet and each links to the next.',
     ],
-    tips: ['Two networks that don\'t link don\'t share power. Each network has its own colour on the Power overlay (V): its reach, the wires between its pylons and a line to every building it powers.', 'Select or point at a pylon, or select any powered building, to see its network.'],
+    tips: ['Two networks that don\'t link don\'t share power. Each network has its own colour on the Power overlay: its reach, the wires between its pylons and a line to every building it powers.', 'Select or point at a pylon, or select any powered building, to see its network.'],
   },
   sapling: {
     what: 'Grows into a tree. Trees add to soil health; some commissions ask for it.',
@@ -241,7 +243,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
       for (const id of Object.keys(BUILDINGS) as BuildingId[]) if (`${BUILDINGS[id].name} ${ENTRIES[id].what}`.toLowerCase().includes(query)) hits.push(h('button', { class: 'hit', onclick: () => go({ kind: 'building', id }) }, icon(id, 28), h('b', null, BUILDINGS[id].name), h('span', { class: 'cd-small' }, BUILDINGS[id].hint)));
       for (const i of ITEM_IDS) if (`${ITEMS[i].name} ${ITEMS[i].hint}`.toLowerCase().includes(query)) hits.push(h('button', { class: 'hit', onclick: () => go({ kind: 'goods' }) }, icon(i, 28), h('b', null, ITEMS[i].name), h('span', { class: 'cd-small' }, ITEMS[i].hint)));
       for (const t of TOPICS) if (t.name.toLowerCase().includes(query)) hits.push(h('button', { class: 'hit', onclick: () => go({ kind: 'topic', id: t.id }) }, icon('book', 28), h('b', null, t.name), h('span', { class: 'cd-small' }, 'Topic')));
-      for (const [what, keys] of KEY_LIST) if (`${what} ${keys}`.toLowerCase().includes(query)) hits.push(h('button', { class: 'hit', onclick: () => go({ kind: 'topic', id: 'keys' }) }, h('span', { class: 'cd-key' }, keys), h('b', null, what), h('span', { class: 'cd-small' }, 'Key')));
+      for (const [what, keys] of keyList()) if (`${what} ${keys}`.toLowerCase().includes(query)) hits.push(h('button', { class: 'hit', onclick: () => go({ kind: 'topic', id: 'keys' }) }, h('span', { class: 'cd-key' }, keys), h('b', null, what), h('span', { class: 'cd-small' }, 'Key')));
       list = [h('div', { class: 'hits' }, ...(hits.length ? hits : [h('p', { class: 'cd-small' }, 'Nothing matches.')]))];
     } else {
       list = [
@@ -259,7 +261,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
 
   function draw() {
     drawIndex();
-    fill(body, h('button', { class: 'cd-btn is-icon close', title: 'Close (Esc or G)', 'aria-label': 'Close', onclick: close }, icon('close', 16)),
+    fill(body, h('button', { class: 'cd-btn is-icon close', title: tip('Close', ...keyNames('guide'), 'Esc'), 'aria-label': 'Close', onclick: close }, icon('close', 16)),
       ...(page.kind === 'building' ? buildingPage(page.id) : page.kind === 'goods' ? goodsPage() : topicPage(page.id)));
   }
 
@@ -275,7 +277,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
         h('div', { class: 'main' },
           h('div', { class: 'title-row' }, h('span', { class: 'big-icon' }, icon(id, 116)),
             h('div', null, h('h1', { class: 'cd-display' }, d.name), h('p', { class: 'lead' }, e.what),
-              d.category && host ? h('button', { class: 'cd-btn is-primary', title: d.key ? `Build (${d.key})` : 'Build', onclick: () => { host.build(id); close(); } }, `Build · ${d.cost} credits`) : null)),
+              d.category && host ? h('button', { class: 'cd-btn is-primary', title: tip('Build', ...keyNames(`build:${id}`)), onclick: () => { host.build(id); close(); } }, `Build · ${d.cost} credits`) : null)),
           rs.length ? h('div', { class: 'cd-label sec' }, rs.length > 1 ? 'Recipes' : 'Recipe') : null,
           rs.length ? h('div', { class: 'recipes' }, ...rs.map(recipeRow)) : null,
           facts(id),
@@ -537,7 +539,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
       case 'markers': return [...head('Statuses and markers', 'A marker floats over any building that isn\'t working. Each has a shape as well as a colour; click the building for the details.'),
         markersCard(),
         P(`A building's inspector has its history: a ribbon of what it was doing over the last ${HISTORY_WINDOWS.slice(0, -1).map((w) => w / 60).join(', ')} or ${HISTORY_WINDOWS[HISTORY_WINDOWS.length - 1] / 60} minutes, the share of time in each status, its output against full speed, and what it waited for most. Solar panels, turbines and batteries chart their power or charge instead.`)];
-      case 'keys': return [...head('Keys', 'Every key, and the mouse. They are also listed on the pause screen.'), keysCard()];
+      case 'keys': return [...head('Keys', 'Every key, and the mouse. Change the keys in Settings, on the level select and the pause screen.'), keysCard()];
     }
   }
 
@@ -545,11 +547,8 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
   return h('div', { class: 'cd-card guide' }, index, body);
 }
 
-/** Keys and what they do, for searching the guide. */
-const KEY_LIST: [string, string][] = [
-  ['Field', 'F'], ['Silo', 'L'], ['Garage', 'T'], ['Pylon', 'P'], ['Solar panel', 'S'], ['Turn the building', 'R'], ['Remove', 'X'], ['Turn the view', 'Q E'],
-  ['Zoom', 'Z'], ['Overlays', 'V'], ['Pause', 'Space'], ['Speed', '1 2 3'], ['Ledger', 'Tab'], ['Routes', 'O'], ['Power', 'W'], ['Guide', 'G'], ['Close, pause', 'Esc'],
-];
+/** Every key and what it does, as they are set now, for the guide's search. */
+const keyList = (): [string, string][] => [...ACTIONS.map((a): [string, string] => [a.label, keyNames(a.id).join(' ')]).filter(([, k]) => k), ['Close a panel, pause', 'Esc']];
 
 /** What a building does with power, in a few words. */
 function powerLine(id: BuildingId): string {

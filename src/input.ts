@@ -2,6 +2,8 @@
 // `InputHost`. It owns the pointer, the press (click, pan or paint a drag) and the held keys; what a click does with the tool
 // in hand is the game's to decide.
 
+import { canon } from './keybindings.ts';
+
 /** How far (px) a press moves before it is a drag rather than a click. */
 const DRAG_THRESHOLD = 4;
 const WHEEL_STEP = 100, PINCH_GAIN = 4;
@@ -37,7 +39,7 @@ export class Input {
   /** When the pointer last moved (ms), for the hover card. */
   movedAt = 0;
   press: Press | null = null;
-  /** The key codes held down. */
+  /** The key codes held down (a numpad key as its main-keyboard twin, see `canon`). */
   readonly keys = new Set<string>();
 
   private readonly canvas: HTMLCanvasElement;
@@ -83,11 +85,11 @@ export class Input {
     addEventListener('keydown', (e) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'SELECT') return;
-      this.keys.add(e.code);
+      this.keys.add(canon(e.code));
       if (e.code === 'Escape' && this.press?.mode === 'paint') { this.press.mode = 'void'; return; }
       host.key(e);
     });
-    addEventListener('keyup', (e) => this.keys.delete(e.code));
+    addEventListener('keyup', (e) => this.keys.delete(canon(e.code)));
     addEventListener('blur', () => this.keys.clear());
   }
 

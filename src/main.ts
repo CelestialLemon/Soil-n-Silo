@@ -18,6 +18,7 @@ import {
 import { Input } from './input.ts';
 import { Hud, type Tool } from './ui/hud.ts';
 import { showMenu } from './ui/menu.ts';
+import { followKeys, actionOf, isHeld, keyNames } from './ui/keyhints.ts';
 import { SettingsStore } from './ui/settings.ts';
 import { truckName } from './ui/routing.ts';
 import { statusLabel } from './ui/widgets.ts';
@@ -57,6 +58,7 @@ const loading = must(document.querySelector<HTMLElement>('#loading'), '#loading'
 const SAVE_KEY = saveKey(location.pathname), PROGRESS_KEY = `${SAVE_KEY}:progress`;
 /** The settings. */
 const settings = new SettingsStore(`${SAVE_KEY}:settings`);
+followKeys(settings);
 
 const loaded = deserialize(localStorage.getItem(SAVE_KEY));
 const saved = loaded.ok ? loaded.value : null;
@@ -349,37 +351,44 @@ async function play(initial: GameState) {
       return;
     }
     if (e.repeat) return;
-    if (e.code === 'Space') {
-      // A control reached with the keyboard takes Space as a press; after a click, Space still pauses.
-      if (e.target instanceof HTMLElement && e.target !== document.body && e.target.matches(':focus-visible')) return;
+    // A control reached with the keyboard takes Space as a press; after a click, Space still does its game action.
+    if (e.code === 'Space' && e.target instanceof HTMLElement && e.target !== document.body && e.target.matches(':focus-visible')) return;
+    const action = actionOf(e.code);
+    if (action === 'pause') {
       e.preventDefault();
-      // On the pause screen Space resumes; another screen that stops the game (the briefing, the guide) ignores it, so closing
+      // On the pause screen the key resumes; another screen that stops the game (the briefing, the guide) ignores it, so closing
       // it can't leave the game paused unseen.
       if (hud.closeIf('pause')) paused = false; else if (!hud.modal) paused = !paused;
       return;
     }
-    // G closes the guide it opened (the other keys stay blocked); typing in its search box never reaches here (input.ts).
-    if (e.code === 'KeyG' && hud.closeIf('guide')) { hud.refresh(); return; }
+    // The guide's key closes the guide it opened (the other keys stay blocked); typing in its search box never reaches here (input.ts).
+    if (action === 'guide' && hud.closeIf('guide')) { hud.refresh(); return; }
     // A screen that stops the game (pause, briefing, guide, results) takes no game keys; they would act unseen behind it.
     if (hud.modal) return;
-    if (e.code === 'Digit1') { speed = 1; paused = false; }
-    if (e.code === 'Digit2') { speed = 2; paused = false; }
-    if (e.code === 'Digit3') { speed = 4; paused = false; }
-    if (e.code === 'KeyQ') camera.turn(-1);
-    if (e.code === 'KeyE') camera.turn(1);
-    if (e.code === 'KeyZ') camera.zoomStep(e.shiftKey ? -1 : 1, pointer ?? undefined);
-    if (e.code === 'Equal' || e.code === 'NumpadAdd') camera.zoomStep(1, pointer ?? undefined);
-    if (e.code === 'Minus' || e.code === 'NumpadSubtract') camera.zoomStep(-1, pointer ?? undefined);
-    if (e.code === 'Tab') { e.preventDefault(); hud.toggleSheet('ledger'); }
-    if (e.code === 'KeyW') hud.toggleSheet('power');
-    if (e.code === 'KeyO') hud.toggleRoutes();
-    if (e.code === 'KeyG') { hud.openGuide(); hud.refresh(); return; }
-    if (e.code === 'KeyV') { const order: Overlay[] = ['none', 'fertility', 'water', 'power', 'roads', 'bees']; overlay = order[(order.indexOf(overlay) + 1) % order.length]; }
-    if (e.code === 'KeyX') setTool(tool.kind === 'remove' ? { kind: 'select' } : { kind: 'remove' });
-    if (e.code === 'KeyR' && tool.kind === 'build') { tool = { ...tool, rot: ((tool.rot + (e.shiftKey ? 3 : 1)) % 4) as Dir }; repick = 2; }
-    const k = e.code.startsWith('Key') ? e.code.slice(3) : '';
-    const hot = (Object.keys(BUILDINGS) as BuildingId[]).find((id) => BUILDINGS[id].key === k);
-    if (hot) setTool(tool.kind === 'build' && tool.type === hot ? { kind: 'select' } : { kind: 'build', type: hot, rot: tool.kind === 'build' ? tool.rot : 1 });
+    // Tab would also move the focus, and Space press a focused button.
+    if (action && (e.code === 'Tab' || e.code === 'Space')) e.preventDefault();
+    switch (action) {
+      case 'speed1': speed = 1; paused = false; break;
+      case 'speed2': speed = 2; paused = false; break;
+      case 'speed3': speed = 4; paused = false; break;
+      case 'turnLeft': camera.turn(-1); break;
+      case 'turnRight': camera.turn(1); break;
+      // Shift with a letter key reverses it, as it does turning the building.
+      case 'zoomIn': camera.zoomStep(e.shiftKey && e.code.startsWith('Key') ? -1 : 1, pointer ?? undefined); break;
+      case 'zoomOut': camera.zoomStep(-1, pointer ?? undefined); break;
+      case 'ledger': hud.toggleSheet('ledger'); break;
+      case 'power': hud.toggleSheet('power'); break;
+      case 'routes': hud.toggleRoutes(); break;
+      case 'guide': hud.openGuide(); hud.refresh(); return;
+      case 'overlay': { const order: Overlay[] = ['none', 'fertility', 'water', 'power', 'roads', 'bees']; overlay = order[(order.indexOf(overlay) + 1) % order.length]; break; }
+      case 'remove': setTool(tool.kind === 'remove' ? { kind: 'select' } : { kind: 'remove' }); break;
+      case 'rotate': if (tool.kind === 'build') { tool = { ...tool, rot: ((tool.rot + (e.shiftKey ? 3 : 1)) % 4) as Dir }; repick = 2; } break;
+      default:
+        if (action?.startsWith('build:')) {
+          const hot = action.slice('build:'.length) as BuildingId;
+          setTool(tool.kind === 'build' && tool.type === hot ? { kind: 'select' } : { kind: 'build', type: hot, rot: tool.kind === 'build' ? tool.rot : 1 });
+        }
+    }
     hud.refresh();
   }
 
@@ -403,7 +412,7 @@ async function play(initial: GameState) {
       };
     }
     if (!hoverTile) return null;
-    const t = terrainAt(state, hoverTile.x, hoverTile.y), clear = (k: 'tree' | 'rock') => `${clearPrice(state, k)} credits to clear (X).`;
+    const t = terrainAt(state, hoverTile.x, hoverTile.y), clear = (k: 'tree' | 'rock') => `${clearPrice(state, k)} credits to clear${keyNames('remove').length ? ` (${keyNames('remove').join(' or ')})` : ''}.`;
     if (t === TERRAIN.water) return { title: 'Water', icon: 'water', text: 'Pylons can stand in it; trucks drive round it.' };
     if (t === TERRAIN.tree) return { title: 'A tree', icon: 'sapling', text: `Shelters wind turbines nearby; counts towards soil health. ${clear('tree')}` };
     if (t === TERRAIN.rock) return { title: 'Rock', text: clear('rock') };
@@ -466,9 +475,9 @@ async function play(initial: GameState) {
     sinceSave += dt;
     if (sinceSave > AUTOSAVE_SECONDS) { sinceSave = 0; save(); }
 
-    // Arrow keys pan, but not behind a screen that stops the game.
+    // The pan keys (the arrows) pan, but not behind a screen that stops the game.
     if (hud.modal) input.keys.clear();
-    const kx = (input.keys.has('ArrowRight') ? 1 : 0) - (input.keys.has('ArrowLeft') ? 1 : 0), ky = (input.keys.has('ArrowDown') ? 1 : 0) - (input.keys.has('ArrowUp') ? 1 : 0);
+    const kx = (isHeld('panRight', input.keys) ? 1 : 0) - (isHeld('panLeft', input.keys) ? 1 : 0), ky = (isHeld('panDown', input.keys) ? 1 : 0) - (isHeld('panUp', input.keys) ? 1 : 0);
     if (kx || ky) camera.pan(-kx * dt * 600, -ky * dt * 600);
 
     const hour = hourAt(state.time);

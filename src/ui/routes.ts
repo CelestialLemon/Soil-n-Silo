@@ -16,6 +16,7 @@ import { dec, itemName, pct, playTime, plural } from './format.ts';
 import type { GuidePage } from './guide.ts';
 import type { Tool } from './hud.ts';
 import { routeCss, routeGoods, routeProblems, stopsText, trucksDoing, truckName, typingIn } from './routing.ts';
+import { keyNames, tip, titledBy } from './keyhints.ts';
 
 // The routes card: every route on one side card, the open one expanded. A route shows its stops in a few words, the goods it
 // moves, goods a minute, its loop time and how often a truck reaches its slowest stop. Open, each stop has its drop and
@@ -67,8 +68,8 @@ export class RoutesCard {
     this.el.append(
       h('div', { class: 'side-head' }, icon('route', 40), h('div', { class: 'grow' }, h('h2', { class: 'cd-title' }, 'Routes'), this.sub),
         h('button', { class: 'cd-btn is-sm', title: 'Make a route, then click buildings on the map to add its stops', onclick: () => this.edit(newRoute(this.host.state())) }, '+ New route'),
-        h('button', { class: 'cd-btn is-icon is-sm', title: 'Trucks and routes in the guide (G)', 'aria-label': 'Guide', onclick: () => this.host.openGuide({ kind: 'topic', id: 'trucks' }) }, icon('book', 18)),
-        h('button', { class: 'cd-btn is-icon is-sm', title: 'Close (O or Esc)', 'aria-label': 'Close', onclick: () => this.host.close() }, icon('close', 14))),
+        titledBy(h('button', { class: 'cd-btn is-icon is-sm', 'aria-label': 'Guide', onclick: () => this.host.openGuide({ kind: 'topic', id: 'trucks' }) }, icon('book', 18)), () => tip('Trucks and routes in the guide', ...keyNames('guide'))),
+        titledBy(h('button', { class: 'cd-btn is-icon is-sm', 'aria-label': 'Close', onclick: () => this.host.close() }, icon('close', 14)), () => tip('Close', ...keyNames('routes'), 'Esc'))),
       this.warn, this.filterEl, this.list, this.foot);
   }
 

@@ -8,6 +8,7 @@ import { countTrees, type GameState } from '../game/state.ts';
 import { fill, h, icon, svg } from './dom.ts';
 import { clock, dec, num, pct, plural, watts } from './format.ts';
 import { ring } from './widgets.ts';
+import { keyNames, tip } from './keyhints.ts';
 
 // The ledger (Tab): the valley's health (soil health with its parts and trend, trees, pollination) and a calm table of goods:
 // made, used by your buildings and sent to the depot, a minute (the last five minutes) and in all, with what sits in stores
@@ -63,9 +64,9 @@ export function ledgerSheet(host: LedgerHost) {
     fill(head,
       h('div', null, h('div', { class: 'cd-label' }, `${s.scenario.name} · day ${dayAt(s.time)}, ${clock(hourAt(s.time))}`), h('h1', { class: 'cd-display' }, 'Ledger')),
       h('span', { class: 'fill' }),
-      h('button', { class: 'cd-btn power-link', title: 'The Power panel (W)', onclick: host.openPower }, icon('bolt', 20), 'Power',
+      h('button', { class: 'cd-btn power-link', title: tip('The Power panel', ...keyNames('power')), onclick: host.openPower }, icon('bolt', 20), 'Power',
         h('span', { class: 'cd-small' }, nets.length ? `${watts(made)} made · ${watts(used)} used${cap ? ` · ${pct(stored / cap)} stored` : ''}` : 'no network yet'), '›'),
-      h('button', { class: 'cd-btn is-icon', title: 'Close (Esc or Tab)', 'aria-label': 'Close', onclick: host.close }, icon('close', 16)));
+      h('button', { class: 'cd-btn is-icon', title: tip('Close', ...keyNames('ledger'), 'Esc'), 'aria-label': 'Close', onclick: host.close }, icon('close', 16)));
     const goals = new Set(s.scenario.goals.flatMap((g) => (g.kind === 'soil' ? [] : [g.item])));
     const heldNow = goodsHeld(s);
     const goods = ITEM_IDS.filter((i) => s.made[i] || s.delivered[i] || heldNow[i] || goals.has(i));
