@@ -115,7 +115,7 @@ export interface BuildingDef {
 export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   silo: { name: 'Silo', size: 2, cost: 80, category: 'logistics', tall: true, key: 'L', hint: 'Stores goods: trucks drop them here and pick them up again.' },
   garage: { name: 'Garage', size: 2, cost: 100, category: 'logistics', power: 20, key: 'T', hint: 'Home of up to 4 trucks: buy them here, give them routes. Charges them.' },
-  field: { name: 'Field', size: 3, cost: 30, category: 'farming', key: 'F', hint: 'Grows a crop on rich soil. Water it with sprinklers; feed it compost.' },
+  field: { name: 'Field', size: 3, cost: 30, category: 'farming', key: 'F', hint: 'Grows a crop on rich soil. Water it with sprinklers, or build it beside a river or pond; feed it compost.' },
   sprinkler: { name: 'Sprinkler', size: 1, cost: 25, category: 'farming', power: 3, hint: 'Waters fields within 3 tiles. Cheaper to run near water.' },
   coop: { name: 'Coop', size: 3, cost: 150, category: 'farming', hint: 'Chickens: 2 feed → 2 eggs + manure.' },
   hive: { name: 'Beehive', size: 1, cost: 60, category: 'farming', hint: 'Honey from flowering fields nearby; pollinates them for a bigger harvest.' },
