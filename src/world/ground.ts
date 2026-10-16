@@ -44,6 +44,8 @@ export function lay(r: Relief, x: number, y: number, lift: number, pos: THREE.Ve
 
 /** Grass by fertility band: dry and yellow-green on poor soil, deep green on rich. */
 export const GRASS = [[0xa8a860, 0xb0ae66], [0x92a456, 0x98aa5a], [0x7c9e4c, 0x82a450], [0x6c9846, 0x72a04a], [0x5e9042, 0x649646]];
+/** A ramp's top: worn turf, a way up you can pick out at a glance. */
+const RAMP = [0xa6a064, 0xaea86a];
 /** Cliff faces: earth for the low levels, stone higher up, a level a band; the turf lip along the top. */
 const EARTH = [0x9c7e5a, 0x8c714f], STONE = [0x8e877a, 0x807a6e], LIP = 0x5d7d3a;
 /** How deep the turf lip over a cliff is (m). */
@@ -52,7 +54,7 @@ const LIP_DEPTH = 0.09;
 const STONE_FROM = 3;
 
 /** Every colour the ground uses, so the palette can be chosen with them (MapGround's swatch). */
-const COLOURS = [...GRASS.flat(), ...EARTH, ...STONE, LIP];
+const COLOURS = [...GRASS.flat(), ...RAMP, ...EARTH, ...STONE, LIP];
 
 const OUT: readonly (readonly [number, number])[] = SIDES;
 
@@ -149,8 +151,8 @@ export function cliff(t: Tris, x: number, y: number, side: number, own: readonly
   }
 }
 
-/** A grass colour for a tile: its fertility band, and one of two shades by a hash of where it is. */
-export const grassOf = (fertility: number, x: number, y: number) => GRASS[Math.min(4, Math.floor(fertility / 20))][hash(x, y) < 0.5 ? 0 : 1];
+/** A grass colour for a tile: its fertility band, and one of two shades by a hash of where it is; a ramp is worn turf. */
+export const grassOf = (fertility: number, x: number, y: number, ramp = false) => (ramp ? RAMP : GRASS[Math.min(4, Math.floor(fertility / 20))])[hash(x, y) < 0.5 ? 0 : 1];
 
 /** The relief of the land around a map, indexed in map coordinates (map tile (0, 0) is land tile (margin, margin)). */
 export const landRelief = (land: Land): Relief => ({ width: land.width, height: land.height, level: land.level, ramp: land.ramp });
@@ -239,7 +241,7 @@ export class MapGround {
     for (let y = cy * CHUNK; y < Math.min(m.height, (cy + 1) * CHUNK); y++) for (let x = cx * CHUNK; x < Math.min(m.width, (cx + 1) * CHUNK); x++) {
       const i = y * m.width + x;
       if (m.terrain[i] === TERRAIN.water) continue;
-      tileTop(t, x, y, corners(m, x, y), grassOf(this.s.soilBase[i], x, y));
+      tileTop(t, x, y, corners(m, x, y), grassOf(this.s.soilBase[i], x, y, m.ramp[i] !== FLAT));
       for (let side = 0; side < 4; side++) {
         const nx = x + SIDES[side][0], ny = y + SIDES[side][1], own = sideOf(m, x, y, side);
         const onMap = nx >= 0 && ny >= 0 && nx < m.width && ny < m.height;

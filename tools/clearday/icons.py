@@ -107,7 +107,7 @@ icon('battery', 'teal', '<rect x="16" y="12" width="32" height="46" rx="6" fill=
 icon('digester', 'green', '<path d="M10 56 V36 C 10 18, 54 18, 54 36 V56 Z" fill="@a"/>', '<rect x="8" y="52" width="48" height="6" rx="2" fill="#6f8590"/>',
   '<path d="M32 44 C 26 40, 28 32, 32 28 C 36 32, 38 40, 32 44 Z" fill="#f5c53d"/>', '<rect x="44" y="12" width="6" height="14" fill="#6f8590"/>')
 icon('wheel', 'wood', '<path d="M2 50 C 12 46, 20 54, 32 50 C 44 46, 52 54, 62 50 V62 H2 Z" fill="#7fa6dc"/>',
-  '<circle cx="30" cy="32" r="20" fill="none" stroke="@b" stroke-width="5"/>', '<circle cx="30" cy="32" r="5" fill="@b"/>',
+  '<circle class="ln" cx="30" cy="32" r="20" stroke="@b" stroke-width="5"/>', '<circle cx="30" cy="32" r="5" fill="@b"/>',
   *[f'<rect x="27.5" y="9" width="5" height="12" rx="1" fill="@a" transform="rotate({a} 30 32)"/>' for a in range(0, 360, 45)],
   '<rect x="46" y="18" width="16" height="26" rx="2" fill="#9fb1ba"/>', '<path d="M44 20 L54 10 L64 20 Z" fill="#4f7d2e"/>')
 icon('earth', 'brown', '<path d="M4 58 V44 H22 V32 H40 V20 H60 V58 Z" fill="@a"/>', '<path d="M4 44 H22 V48 H4 Z M22 32 H40 V36 H22 Z M40 20 H60 V24 H40 Z" fill="#78a94a"/>',

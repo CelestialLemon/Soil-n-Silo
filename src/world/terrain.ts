@@ -114,7 +114,7 @@ export function buildWorld(map: MapData, land: Land, models: { trees: THREE.Buff
     const far = beyond(cx, cz);
     if (canopy(x, y) || hidden(x, y)) { countryTile(x, y, dim(FLOOR)); continue; }
     if (track(x, y)) { countryTile(x, y, dim(x === trackAt(y) ? RUT : ROAD[n < 0.5 ? 0 : 1])); continue; }
-    countryTile(x, y, dim(grassOf(land.fertility[li(x, y)], x, y)));
+    countryTile(x, y, dim(grassOf(land.fertility[li(x, y)], x, y, lr.ramp[li(x, y)] !== -1)));
     if (far > NEAR) continue;
     // Trees and rocks the same as on the map (view.ts), only dulled.
     if (t === TERRAIN.tree) s.pushPrepared(country(models.trees[n < 0.55 ? 0 : n < 0.85 ? 1 : 2], place(cx, gy(cx, cz) - 0.02, cz, 0, n * Math.PI * 2, 0, 0.62 + 0.25 * n)));
