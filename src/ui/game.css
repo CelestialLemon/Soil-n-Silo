@@ -85,7 +85,7 @@ button { font: inherit; }
 /* Above the dock: messages, and the card of the building pointed at in the dock. */
 .hud-above { position: absolute; left: 50%; bottom: 236px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 10px; pointer-events: none !important; }
 .hud-above > * { pointer-events: none; }
-.hud-above.has-strip { bottom: 296px; }
+.hud-above.has-strip { bottom: 304px; }
 .cd-toast { transition: opacity 0.5s; }
 .cd-toast.is-gone { opacity: 0; }
 .hud-tip { width: 460px; }

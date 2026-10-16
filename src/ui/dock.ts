@@ -101,7 +101,7 @@ export class Dock {
     const el = h('div', { class: 'cd-card hud-strip' }, h('div', { class: 'cd-seg' }, ...chips), pointer);
     this.el.append(el);
     // Over the tile, centred on it where it fits, else kept inside the dock; the pointer stays on the tile either way.
-    el.style.top = `${tile.offsetTop - el.offsetHeight - 14}px`;
+    el.style.top = `${tile.offsetTop - el.offsetHeight - 22}px`;
     const mid = tile.offsetLeft + tile.offsetWidth / 2, w = el.offsetWidth;
     const left = Math.max(0, Math.min(mid - w / 2, this.el.offsetWidth - w));
     el.style.left = `${left}px`;
