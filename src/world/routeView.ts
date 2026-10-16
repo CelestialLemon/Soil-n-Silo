@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { PixelObject, PixelRenderer } from 'pixel3d-renderer';
 import { legPath } from '../game/roads.ts';
 import { buildingById, layoutOf, sizeOf, type GameState, type Route } from '../game/state.ts';
+import { groundY, standY } from './ground.ts';
 import type { Models } from './models.ts';
 import { ROUTE_COLOURS } from './shapes.ts';
 
@@ -46,11 +47,12 @@ export class RouteView {
         if (!a || !b || a === b) continue;
         const p = legPath(s, a, b);
         if (!p) continue;
-        // Straight runs as one bar each.
-        const at = (k: number) => new THREE.Vector3(p[k] % w + 0.5, y, Math.floor(p[k] / w) + 0.5);
+        // Straight runs on even ground as one bar each, following the ground.
+        const at = (k: number) => new THREE.Vector3(p[k] % w + 0.5, y + groundY(s.map, p[k] % w + 0.5, Math.floor(p[k] / w) + 0.5), Math.floor(p[k] / w) + 0.5);
+        const rise = (k: number) => at(k + 1).y - at(k).y;
         let from = 0;
         for (let k = 1; k < p.length; k++) {
-          const turn = k === p.length - 1 || p[k + 1] - p[k] !== p[k] - p[k - 1];
+          const turn = k === p.length - 1 || p[k + 1] - p[k] !== p[k] - p[k - 1] || Math.abs(rise(k) - rise(k - 1)) > 1e-6;
           if (turn) { this.bar(c, at(from), at(k)); from = k; }
         }
       }
@@ -62,7 +64,7 @@ export class RouteView {
         const b = buildingById(s, id);
         if (!b) continue;
         const n = sizeOf(b), h = this.m.buildings[b.type].height;
-        this.shownLabels.push({ x: b.x + n / 2, y: (b.type === 'field' ? 0.9 : h) + 0.9, z: b.y + n / 2, colour: ROUTE_COLOURS[c], text: nums.join(' · ') });
+        this.shownLabels.push({ x: b.x + n / 2, y: standY(s.map, n, b.x, b.y) + (b.type === 'field' ? 0.9 : h) + 0.9, z: b.y + n / 2, colour: ROUTE_COLOURS[c], text: nums.join(' · ') });
       }
     }
   }

@@ -231,7 +231,7 @@ export class TopRight {
   }
 }
 
-const VIEWS: [Overlay, string, string | null][] = [['none', 'Off', null], ['fertility', 'Soil', 'soil'], ['water', 'Water', 'water'], ['power', 'Power', 'bolt'], ['roads', 'Roads', 'road'], ['bees', 'Bees', 'bee']];
+const VIEWS: [Overlay, string, string | null][] = [['none', 'Off', null], ['fertility', 'Soil', 'soil'], ['height', 'Height', 'earth'], ['water', 'Water', 'water'], ['power', 'Power', 'bolt'], ['roads', 'Roads', 'road'], ['bees', 'Bees', 'bee']];
 
 export class ViewBar {
   readonly el = h('div', { class: 'cd-viewbar hud-view' });

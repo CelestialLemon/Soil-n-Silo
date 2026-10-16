@@ -6,7 +6,7 @@ import { BUILDINGS, type BuildingId } from './game/data.ts';
 // panel, backs out and pauses.
 
 export type ActionId =
-  | `build:${BuildingId}` | 'remove' | 'rotate' | 'choice'
+  | `build:${BuildingId}` | 'earth' | 'remove' | 'rotate' | 'choice'
   | 'turnLeft' | 'turnRight' | 'zoomIn' | 'zoomOut' | 'overlay' | 'panLeft' | 'panRight' | 'panUp' | 'panDown'
   | 'pause' | 'speed1' | 'speed2' | 'speed3'
   | 'ledger' | 'routes' | 'power' | 'guide';
@@ -33,14 +33,15 @@ const buildActions = (): ActionDef[] => KEYED.flatMap((id) => {
 /** Every action, in the order they are listed. */
 export const ACTIONS: readonly ActionDef[] = [
   ...buildActions(),
+  { id: 'earth', label: 'Earthworks', group: 'build', keys: ['KeyK'] },
   { id: 'remove', label: 'Remove', group: 'build', keys: ['KeyX'] },
-  { id: 'rotate', label: 'Turn the building', group: 'build', keys: ['KeyR'], note: 'With Shift it turns back.' },
-  { id: 'choice', label: 'Next crop or recipe', group: 'build', keys: ['KeyC'], note: 'For the field or bakery in hand. With Shift it goes back.' },
+  { id: 'rotate', label: 'Turn the building', group: 'build', keys: ['KeyR'], note: 'With Shift it turns back. Turns a ramp too.' },
+  { id: 'choice', label: 'Next crop or recipe', group: 'build', keys: ['KeyC'], note: 'For the field or bakery in hand, or raise, lower and ramp with earthworks. With Shift it goes back.' },
   { id: 'turnLeft', label: 'Turn the view left', group: 'view', keys: ['KeyQ'] },
   { id: 'turnRight', label: 'Turn the view right', group: 'view', keys: ['KeyE'] },
   { id: 'zoomIn', label: 'Zoom in', group: 'view', keys: ['KeyZ', 'Equal'], note: 'With Shift, a letter key zooms out.' },
   { id: 'zoomOut', label: 'Zoom out', group: 'view', keys: ['Minus'] },
-  { id: 'overlay', label: 'Next overlay', group: 'view', keys: ['KeyV'], note: 'Soil, water, power, roads, bees.' },
+  { id: 'overlay', label: 'Next overlay', group: 'view', keys: ['KeyV'], note: 'Soil, height, water, power, roads, bees.' },
   { id: 'panLeft', label: 'Pan left', group: 'view', keys: ['ArrowLeft'] },
   { id: 'panRight', label: 'Pan right', group: 'view', keys: ['ArrowRight'] },
   { id: 'panUp', label: 'Pan up', group: 'view', keys: ['ArrowUp'] },
