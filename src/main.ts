@@ -18,6 +18,7 @@ import {
 import { Input } from './input.ts';
 import { Hud, type Tool } from './ui/hud.ts';
 import { showMenu } from './ui/menu.ts';
+import { watchScrollHints } from './ui/scrollHints.ts';
 import { followKeys, actionOf, isHeld, keyNames } from './ui/keyhints.ts';
 import { SettingsStore } from './ui/settings.ts';
 import { truckName } from './ui/routing.ts';
@@ -91,6 +92,8 @@ else if (!saved || params.has('menu')) {
 } else {
   await play(saved);
 }
+
+watchScrollHints();
 
 async function play(initial: GameState) {
   let state = initial;
