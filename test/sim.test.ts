@@ -14,6 +14,7 @@ import { accessTiles, distanceTo, isOpen, pathTo } from '../src/game/roads.ts';
 import {
   advance, deliver, describeLinks, describeStatus, exposureOf, linksAt, fieldFertility, goalDone, hourAt, linksOf, medalFor, passes, ratePerMin, routeRate, soilHealth, stopProblems,
   tradesNextDoor,
+  fieldPace,
   sunAt, truckProblems, windAt,
 } from '../src/game/sim.ts';
 import { buildingAt, newGame, type Building, type Dir, type GameState, type Route, type Truck } from '../src/game/state.ts';
@@ -508,6 +509,20 @@ test('sprinklers water fields and speed them up', () => {
   advance(dry, 60); advance(wet, 60);
   assert.equal(dry.made.wheat ?? 0, 0);
   assert.equal(wet.made.wheat, 3);
+});
+
+test('a field sharing an edge with water is fully watered; diagonal contact is not', () => {
+  const s = flat();
+  s.map.terrain[3 * s.map.width + 6] = TERRAIN.water; // beside the field's top row: (6, 3) sits above (6, 4)
+  const side = put(s, 'field', 4, 4);
+  assert.equal(fieldPace(s, side).water, 1);
+  const t = flat();
+  t.map.terrain[3 * t.map.width + 7] = TERRAIN.water; // diagonal to a field at 4..6
+  const diag = put(t, 'field', 4, 4);
+  assert.equal(fieldPace(t, diag).water, 0);
+  const edge = flat();
+  edge.map.terrain[0] = TERRAIN.water;
+  assert.equal(fieldPace(edge, put(edge, 'field', 0, 1)).water, 1); // map edge doesn't wrap
 });
 
 test('coops lay eggs from feed; composters make compost', () => {

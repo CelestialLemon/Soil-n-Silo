@@ -2,7 +2,7 @@ import { BUILDINGS, CROPS, DAY_SECONDS, FIELD, HIVE, ITEMS, POWER, recipesFor, S
 import { TERRAIN } from './map.ts';
 import { networks, POWERED, pylonsInLink } from './power.ts';
 import { HOUR_SECONDS } from './powerlog.ts';
-import { describeLinks, hourAt, linksAt, makes, shareOf, sunAt, windAt } from './sim.ts';
+import { describeLinks, hourAt, linksAt, makes, shareOf, sunAt, touchesWater, windAt } from './sim.ts';
 import { buildingAt, inMap, reachTo, terrainAt, type Building, type GameState } from './state.ts';
 
 // Forecasts from what the game already knows: what a building in hand would do on a tile (facts about the tile, no advice),
@@ -31,7 +31,8 @@ function soilUnder(s: GameState, x: number, y: number, n: number) {
 function waterAt(s: GameState, x: number, y: number) {
   const cx = x + 1.5, cy = y + 1.5;
   const sp = s.buildings.filter((b) => b.type === 'sprinkler' && Math.max(Math.abs(b.x + 0.5 - cx), Math.abs(b.y + 0.5 - cy)) <= POWER.sprinklerReach + 0.5);
-  return { sprinklers: sp.length, water: sp.reduce((m, b) => Math.max(m, shareOf(s, b)), 0) };
+  const shore = touchesWater(s, x, y);
+  return { sprinklers: sp.length, shore, water: shore ? 1 : sp.reduce((m, b) => Math.max(m, shareOf(s, b)), 0) };
 }
 
 const paceOf = (water: number, soil: number) => (FIELD.dry + (1 - FIELD.dry) * water) * (FIELD.poorSoil + (FIELD.richSoil - FIELD.poorSoil) * soil / 100);
@@ -59,14 +60,14 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number):
   const pylonFact = (): Fact => (powered(s, type, x, y) ? { label: 'Power', value: 'in reach', sub: 'of a pylon' } : { label: 'Power', value: 'none', sub: 'no pylon in reach', tone: 'bad' });
   switch (type) {
     case 'field': {
-      const crop = CROPS.wheat, soil = soilUnder(s, x, y, 3), { sprinklers, water } = waterAt(s, x, y);
+      const crop = CROPS.wheat, soil = soilUnder(s, x, y, 3), { sprinklers, shore, water } = waterAt(s, x, y);
       const perMin = crop.yield * 60 * paceOf(water, soil) / crop.grow;
       // Ten minutes of harvests, each wearing the soil and slowing the next.
       let t = 0, later = soil;
       for (;;) { t += crop.grow / paceOf(water, later); if (t > 600) break; later = Math.max(0, Math.min(100, later + crop.soil)); }
       facts.push({ label: crop.name, value: `+${fmt1(perMin)}`, sub: 'a minute' });
       facts.push({ label: 'Soil', value: String(Math.round(soil)), then: String(Math.round(later)), sub: 'in 10 min' });
-      facts.push(sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round((FIELD.dry + (1 - FIELD.dry) * water) * 100)}%` }
+      facts.push(shore ? { label: 'Water', value: 'beside water', sub: 'grows at 100%' } : sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round((FIELD.dry + (1 - FIELD.dry) * water) * 100)}%` }
         : { label: 'Water', value: 'none', sub: `grows at ${Math.round(FIELD.dry * 100)}%`, tone: 'bad' });
       break;
     }

@@ -13,7 +13,7 @@ import { noise1 } from './rng.ts';
 import { noteRun, noteRunUse } from './runlog.ts';
 import type { Scenario } from './scenarios.ts';
 import {
-  buildingAt, buildingById, centre, countTrees, layoutOf, reachTo, removeBuilding, routeById, STAT_BUCKET, STAT_BUCKETS,
+  buildingAt, buildingById, centre, countTrees, inMap, layoutOf, reachTo, removeBuilding, routeById, STAT_BUCKET, STAT_BUCKETS,
   terrainAt, tileIndex, touchLayout, type Building, type GameState, type Route, type Stop, type Truck,
 } from './state.ts';
 
@@ -117,6 +117,13 @@ export function besides(s: GameState, b: { type: BuildingId; x: number; y: numbe
 /** Whether a building trades goods with trucks: it grows, makes or uses goods. */
 export const handlesGoods = (b: Building) => b.type === 'field' || b.type === 'hive' || !!b.recipe;
 
+/** Whether a field's 3x3 footprint at (x, y) shares an edge with a water tile (diagonal contact doesn't count). */
+export function touchesWater(s: GameState, x: number, y: number) {
+  const wet = (tx: number, ty: number) => inMap(s, tx, ty) && terrainAt(s, tx, ty) === TERRAIN.water;
+  for (let k = 0; k < 3; k++) if (wet(x + k, y - 1) || wet(x + k, y + 3) || wet(x - 1, y + k) || wet(x + 3, y + k)) return true;
+  return false;
+}
+
 export const sprinklersOf = (s: GameState, b: Building) => derived(s).sprinklers.get(b.id) ?? [];
 export const isPollinated = (s: GameState, b: Building) => derived(s).pollinated.has(b.id);
 export const exposureOf = (s: GameState, b: Building) => derived(s).exposure.get(b.id) ?? 1;
@@ -147,7 +154,7 @@ export function soilHealth(s: GameState) {
 
 /** Growth per second of a field as a multiple of its crop's normal pace, and the parts it's made of. */
 export function fieldPace(s: GameState, f: Building) {
-  const wet = sprinklersOf(s, f).reduce((m, sp) => Math.max(m, shareOf(s, sp)), 0);
+  const wet = touchesWater(s, f.x, f.y) ? 1 : sprinklersOf(s, f).reduce((m, sp) => Math.max(m, shareOf(s, sp)), 0);
   const water = FIELD.dry + (1 - FIELD.dry) * wet;
   const soil = FIELD.poorSoil + (FIELD.richSoil - FIELD.poorSoil) * fieldFertility(s, f) / 100;
   return { pace: water * soil, water: wet, soil };
