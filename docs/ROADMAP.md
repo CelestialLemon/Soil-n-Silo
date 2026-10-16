@@ -103,7 +103,7 @@ numbers behind them are pure modules in `src/game/` (`flows.ts`, `fleet.ts`, `po
 - Play the **problems strip** (experimental, off by default, a setting on the pause screen) and decide whether it stays.
   It lists the buildings with a problem now, longest first; the plan was to build it on the history instead (buildings below
   about 70% working over the last few minutes, worst first) and perhaps group it by cause.
-- From the UI revamp, not built yet: **rebinding keys** (the pause screen lists them), a **sound** volume (with sound), and
+- From the UI revamp, not built yet: a **sound** volume (with sound), and
   **moving** a building from its inspector (there is no rule for it yet).
 
 - Play every campaign commission and tune: target times, prices, crop and machine times, power numbers. Bot layouts for the
