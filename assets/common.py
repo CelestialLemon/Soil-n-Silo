@@ -24,6 +24,12 @@ PALETTE = {
     'ceramic': '#f4f5e9', 'copper': '#b96c49', 'brass': '#d4ad60',
     'solar': '#234c83', 'solar_light': '#4c85b0', 'glass': '#8ecac6',
     'moss': '#638456', 'linen': '#dddcc2', 'charge': '#a7e5b3',
+    'oak_leaf': '#467348', 'oak_light': '#588650',
+    'birch_bark': '#eee8d6', 'birch_mark': '#494b43', 'birch_leaf': '#b5ce76',
+    'pine_leaf': '#28564f', 'pine_light': '#34675b',
+    'willow_leaf': '#83b390', 'willow_shade': '#659478',
+    'poplar_leaf': '#2e633d', 'poplar_light': '#3f7746',
+    'apple_leaf': '#567843', 'apple_red': '#e76a65', 'blossom': '#f3bbbf',
 }
 MATERIAL_NAMES = {
     'feather': 'Hen ivory feathers', 'chalk': 'Eggshell warm white', 'cream': 'Cream linen and trim',
@@ -41,6 +47,14 @@ MATERIAL_NAMES = {
     'solar_light': 'Solar cell blue highlights', 'glass': 'Sea glass teal',
     'moss': 'Living moss roof', 'linen': 'Unbleached flax linen',
     'charge': 'Mint charge indicator',
+    'oak_leaf': 'Oak mid forest green', 'oak_light': 'Oak sunlit green',
+    'birch_bark': 'Birch ivory bark', 'birch_mark': 'Birch charcoal bark scars',
+    'birch_leaf': 'Birch fresh yellow green',
+    'pine_leaf': 'Pine deep blue green', 'pine_light': 'Pine blue green tips',
+    'willow_leaf': 'Willow soft silver green', 'willow_shade': 'Willow curtain shade',
+    'poplar_leaf': 'Poplar deep green', 'poplar_light': 'Poplar sunlit green',
+    'apple_leaf': 'Orchard apple green', 'apple_red': 'Orchard coral red apples',
+    'blossom': 'Orchard pale pink blossom',
 }
 _MATERIALS = {}
 
@@ -297,18 +311,26 @@ def _canonical_glb(path):
     path.write_bytes(data)
 
 
-def export_and_preview(name, budget, stages=False, states=False, root_prefix='stage_'):
+def export_and_preview(name, budget, stages=False, states=False, root_prefix='stage_',
+                       bounds=None, bounds_overrides=None):
     """Validate geometry, export ALL states, then render cardinal contact sheets.
 
     Static sheets: front/back/left/right in a 2x2 grid. Crop sheets: stages
     top to bottom, same four directions left to right. states=True gives
     machines idle/running rows. root_prefix='variant_' shows rock
-    variants in separate rows. Camera pitch = 30 deg.
+    variants in separate rows. Camera pitch = 30 deg. Explicit bounds are
+    ((min_x,min_y,min_z),(max_x,max_y,max_z)) in world metres, for assets whose
+    origin anchors a trunk or bank rather than the geometry's bounding centre.
+    Named bounds_overrides are checked per mesh; all other meshes remain
+    grounded and inside bounds. The default checks are unchanged.
     """
     bpy.context.view_layer.update()
     meshes = [o for o in bpy.context.scene.objects if o.type=='MESH']
     points = []
     counts = {}
+    bounds_overrides = bounds_overrides or {}
+    assert bounds is not None or not bounds_overrides, 'Overrides need default bounds'
+    assert set(bounds_overrides) <= {o.name for o in meshes}, 'Unknown bounds override'
     for obj in meshes:
         obj.data.calc_loop_triangles()
         root = obj
@@ -316,15 +338,22 @@ def export_and_preview(name, budget, stages=False, states=False, root_prefix='st
             root = root.parent
         key = root.name if stages else name
         counts[key] = counts.get(key,0)+len(obj.data.loop_triangles)
-        points.extend(obj.matrix_world@v.co for v in obj.data.vertices)
+        object_points = [obj.matrix_world@v.co for v in obj.data.vertices]
+        points.extend(object_points)
+        if bounds is not None:
+            lower, upper = bounds_overrides.get(obj.name, bounds)
+            for p in object_points:
+                assert all(lower[i]-.001 <= p[i] <= upper[i]+.001 for i in range(3)), f'{obj.name} outside explicit bounds: {tuple(p)}'
+        else:
+            assert min(p.z for p in object_points) >= -.001, 'Below ground: '+obj.name
         for tri in obj.data.loop_triangles:
             a,b,c = [obj.data.vertices[i].co for i in tri.vertices]
             assert (b-a).cross(c-a).length>1e-10, 'Degenerate '+obj.name
         assert all(not f.use_smooth for f in obj.data.polygons), 'Smooth mesh '+obj.name
     low = Vector(tuple(min(p[i] for p in points) for i in range(3)))
     high = Vector(tuple(max(p[i] for p in points) for i in range(3)))
-    assert low.z >= -.001, f'Below ground: {low.z}'
-    assert abs(low.x+high.x)<.1 and abs(low.y+high.y)<.1, 'Footprint not centred'
+    if bounds is None:
+        assert abs(low.x+high.x)<.1 and abs(low.y+high.y)<.1, 'Footprint not centred'
     assert max(counts.values()) <= budget, f'Triangle budget: {counts} > {budget}'
     output = ROOT/'public'/'models'/f'{name}.glb'
     output.parent.mkdir(parents=True, exist_ok=True)

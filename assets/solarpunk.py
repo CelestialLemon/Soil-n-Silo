@@ -68,22 +68,40 @@ def solar_tile(name, location, size, tilt=0):
     box(name+'_cell_separator',point(0,0,.11),(w-.13,.065,.025),'solar_light',rot=(tilt,0,0))
 
 
-def build_complete(name, footprint, states=False, budget=3000, overhang_above=None):
+def build_complete(name, footprint, states=False, budget=3000, overhang_above=None,
+                   front_water_parts=()):
     """Check static and swept bounds, then use the existing export pipeline.
 
     footprint is a square side length or an (X, Y) pair for rectangular models.
     overhang_above lets a move_spin_ part (a turbine's rotor) sweep past the footprint, as long as its whole swept disc
-    stays above that height, clear of the buildings beside it."""
+    stays above that height, clear of the buildings beside it.
+
+    front_water_parts explicitly names the water wheel and its axle/bearings.
+    Only these meshes may extend 0.9 m past the front (-Y) bank edge. Named
+    spinning geometry may dip to -0.26 m; static parts remain above ground.
+    Their complete swept bounds are checked against that envelope; every
+    other mesh stays grounded inside the bank footprint. Bank-anchored
+    geometry must not be recentered around its overhanging wheel.
+    """
     bounds = (footprint, footprint) if isinstance(footprint, (int, float)) else footprint
-    centre_xy()
+    assert not (front_water_parts and overhang_above is not None), 'Choose one overhang convention'
+    if not front_water_parts:
+        centre_xy()
     bpy.context.view_layer.update()
+    normal_bounds = ((-bounds[0]/2,-bounds[1]/2,0),(bounds[0]/2,bounds[1]/2,math.inf))
+    overrides = {part: ((-bounds[0]/2,-bounds[1]/2-.9,-.26 if part.startswith('move_spin_') else 0),
+                        (bounds[0]/2,bounds[1]/2,1.3)) for part in front_water_parts}
+    assert set(front_water_parts) <= {o.name for o in bpy.context.scene.objects if o.type == 'MESH'}, 'Unknown water part'
     for obj in bpy.context.scene.objects:
         if obj.type != 'MESH':
             continue
         for v in obj.data.vertices:
             p = obj.matrix_world@v.co
             spins = obj.name.startswith('move_spin_')
-            if not (spins and overhang_above is not None):
+            lower,upper = overrides.get(obj.name,normal_bounds)
+            if obj.name in overrides:
+                assert all(lower[i]-1e-5 <= p[i] <= upper[i]+1e-5 for i in range(3)), f'{obj.name} outside front water envelope'
+            elif not (spins and overhang_above is not None):
                 assert abs(p.x) <= bounds[0]/2+1e-5, f'{obj.name} outside X footprint'
                 assert abs(p.y) <= bounds[1]/2+1e-5, f'{obj.name} outside Y footprint'
             if spins:
@@ -97,7 +115,11 @@ def build_complete(name, footprint, states=False, budget=3000, overhang_above=No
                     assert abs(axial.x) <= bounds[0]/2+1e-5 and abs(axial.y) <= bounds[1]/2+1e-5, f'{obj.name} hub outside footprint'
                     continue
                 for i in [0,1]:
-                    reach = abs(axial[i])+radial*math.sqrt(max(0,1-axis[i]**2))
-                    assert reach <= bounds[i]/2+1e-5, f'{obj.name} rotation outside footprint'
-                assert axial.z-radial*math.sqrt(max(0,1-axis.z**2)) >= -.001, 'Rotation below ground'
-    export_and_preview(name,budget,states=states)
+                    reach = radial*math.sqrt(max(0,1-axis[i]**2))
+                    assert axial[i]-reach >= lower[i]-1e-5 and axial[i]+reach <= upper[i]+1e-5, f'{obj.name} rotation outside footprint'
+                low = axial.z-radial*math.sqrt(max(0,1-axis.z**2))
+                high = axial.z+radial*math.sqrt(max(0,1-axis.z**2))
+                assert low >= lower[2]-.001 and high <= upper[2]+.001, 'Rotation outside vertical bounds'
+    export_and_preview(name,budget,states=states,
+                       bounds=normal_bounds if front_water_parts else None,
+                       bounds_overrides=overrides)
