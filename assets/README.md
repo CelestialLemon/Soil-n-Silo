@@ -45,6 +45,23 @@ rotor sweeps past its one tile: `build_complete(..., overhang_above=2.3)` lets a
 `move_spin_` part do that while its whole swept disc stays above 2.3 m. The silo
 stands in its back-left corner on a stone apron with three small pads.
 
+The six trees (`tree_oak`, `tree_birch`, `tree_pine`, `tree_willow`,
+`tree_poplar`, `tree_apple`) also use three `variant_<n>` roots at the trunk
+foot, with variant rows and front/back/left/right columns. `trees.py` checks
+the 700-triangle limit per variant and woody stems inside their one tile.
+Crowns may overhang; asymmetric crowns do not move the trunk origin. Each
+builder's docstring gives its representative distant-canopy hex.
+
+The water wheel's 2×2 footprint is the bank, centred on the origin; its front
+faces the water (-Y). `build_complete(..., front_water_parts=(...))` allows
+only the named wheel, axle, bearings and dynamo/conduit to extend as far as
+Y = -1.9 m, with X still in [-1, 1]. Only `move_spin_` geometry may dip to
+Z = -0.26 m; named static parts stay above Z = 0. Their upper bound is 1.3 m.
+All other parts stay grounded inside the footprint, and spinning parts are
+checked through a complete revolution. This exception preserves the bank
+origin instead of recentering the model on its overhang. `move_spin_wheel`
+has local X along the bank and `speed = 2*pi/5` rad/s (five seconds per turn).
+
 With the Blender Flatpak, use an absolute script path (its working directory
 may differ from the shell's):
 
@@ -58,6 +75,12 @@ flatpak run org.blender.Blender -b --python-exit-code 1 --python "$PWD/assets/wh
 | Warm crops/paint | red_light `#d65a4b`, tomato `#e25136` |
 | Grain | gold `#ddba57`, straw `#b48d42` |
 | Plants | green `#528447`, leaf `#76a84e`, darkleaf `#326043`, sprout `#91bc61` |
+| Oak | oak_leaf `#467348`, oak_light `#588650` |
+| Birch | birch_bark `#eee8d6`, birch_mark `#494b43`, birch_leaf `#b5ce76` |
+| Pine | pine_leaf `#28564f`, pine_light `#34675b` |
+| Willow | willow_leaf `#83b390`, willow_shade `#659478` |
+| Poplar | poplar_leaf `#2e633d`, poplar_light `#3f7746` |
+| Apple | apple_leaf `#567843`, apple_red `#e76a65`, blossom `#f3bbbf` |
 | Timber | wood `#8a6a44`, lightwood `#a07a50`, darkwood `#59432f`, bark `#674735` |
 | Stone/metal | stone `#898c83`, stone_light `#b5ad94`, slate `#4b6470`, slate_light `#627c84`, iron `#38484a`, black `#262d2c` |
 | Clay/cloth/light | clay `#cb7852`, brick `#aa523c`, sack `#c5aa70`, glow `#ffd68b`, fire `#ff9c39` |

@@ -13,8 +13,10 @@ hopper, a loom's frame, a bakery's chimney).
 From the camera (`DESIGN.md`, "Camera"): low-poly, flat-colour models, seen from 4 sides (the camera turns in 90° steps), so every
 model must read well all the way round. The orthographic camera looks down at 30°, and the renderer turns the scene into pixel art
 at about 16 art pixels per metre of view height, so small details under ~0.06 m disappear or flicker. Prefer bold shapes and a few
-deliberate colours over fine detail. Models are seen packed close together on a grid, so keep each inside its footprint. One exception: a wind turbine's rotor
-sweeps past its tile, high enough (above 2.3 m) to clear the buildings beside it.
+deliberate colours over fine detail. Models are seen packed close together on a grid, so keep each inside its footprint, with
+explicit exceptions: a wind turbine's rotor sweeps past its tile above 2.3 m to clear neighbouring buildings; tree crowns may
+overhang their one-tile trunk footprints; and a water wheel's rotating wheel and named axle/bearing/dynamo assembly may project
+into the water in front of its 2×2 bank footprint.
 
 ## Pipeline
 
@@ -37,6 +39,8 @@ Besides the renderer's prefixes (`decor_`, `thin_`, `move_spin_` ...), the game 
   (a wind turbine's rotor always turns).
 - `smoke_emitter`: an Empty where a running machine's steam or smoke leaves (the game adds the puffs).
 - `charge_<n>`: a battery's charge rings, `n` from 0 (lowest) to 3. The game shows rings 0..k−1 for k quarters of charge.
+- `variant_<n>`: rocks and each tree species contain three overlapping alternatives,
+  numbered 0…2. Each root stays at (0,0,0); show one root and its descendants.
 
 A model that fails to load is drawn from simple shapes built in code (`src/world/shapes.ts`), so the game never waits for a model.
 
@@ -55,6 +59,7 @@ mill's model is `mill_electric` and the coop's `coop_solar`.
 | `beehive` | 1 × 1 | ~0.9 | A stacked hive on legs with a planter of flowers |
 | `composter` | 2 × 2 | ~1.0 | Slatted timber bins, dark compost showing |
 | `mill_electric` | 2 × 2 | ~2.0 | An electric grain mill: a hopper on a timber tower; `running_` a turning wheel or vibrating sieve |
+| `water_wheel` | 2 × 2 bank | 1.91 above bank | Timber-and-stone generator house, moss roof, copper dynamo/conduit and `running_control_window` (emission 0.8). Ten-paddle wheel projects ~0.70 m beyond the front bank edge, down to ~−0.23 m at rest (~−0.25 m through a turn); `move_spin_wheel`, local X along the bank, `speed = 2*pi/5` rad/s. 1,288 triangles total |
 | `oil_press` | 2 × 2 | ~1.4 | A screw press with a big wheel (`move_spin_`) and a jar of golden oil |
 | `spinner` | 2 × 2 | ~1.3 | Spinning frame with bobbins (`move_spin_` wheel) |
 | `loom` | 2 × 2 | ~1.5 | A timber loom with linen on it |
@@ -67,10 +72,44 @@ mill's model is `mill_electric` and the coop's `coop_solar`.
 | `pylon` | 1 × 1 | ~1.45 | Quiet: a short slim timber pole, a ceramic insulator, a copper cap and a tiny lamp. There are many, so they sit in the background; the game draws their wires and reach when you work with power (redrawn 2026-10-11) |
 | `depot` | 3 × 3 | ~2.5 | The freight depot: a station platform with a cargo airship mast or a rail car; the commission's destination |
 | `rock` | 1 × 1 | ~0.6 | Two or three variants as `variant_<n>` roots |
-| `tree_oak`, `tree_pine`, `bush` | | | Exist |
+| `tree_oak` | 1 × 1 trunk; crown overhang | 2.76–3.39 | Three variants; broad lumpy crown, stout forked trunk; distant canopy `#467348` |
+| `tree_birch` | 1 × 1 trunk; crown overhang | 3.07–3.48 | Three variants; pale marked bark, airy yellow-green lobes, variant 1 has two stems; distant canopy `#b5ce76` |
+| `tree_pine` | 1 × 1 trunk; crown overhang | 2.85–3.42 | Three variants; dark blue-green tiered spire with bare trunk at foot; distant canopy `#28564f` |
+| `tree_willow` | 1 × 1 trunk; crown overhang | 2.62–3.16 | Three variants; soft-green dome and long drooping curtains near ground; distant canopy `#83b390` |
+| `tree_poplar` | 1 × 1 trunk; crown overhang | 3.70–4.45 | Three variants; tall narrow Lombardy column, deep green; distant canopy `#2e633d` |
+| `tree_apple` | 1 × 1 trunk; crown overhang | 2.04–2.25 | Three variants; small low orchard crown, coral fruit and pink blossom dots; distant canopy `#567843` |
+| `bush` | 1 × 1 | ~0.8 | Existing rounded berry shrub |
 | `sapling` | 1 × 1 | ~0.6 | A staked young tree |
 
 Goods are small tokens (~0.25 m) built in code, one shape and colour per good, carried in a truck's bed.
+
+Trees are authored at full model scale; the game uses 0.62–0.87× scale. Each
+variant is flat shaded, grounded at its trunk foot and limited to 700 triangles.
+Measurements below are in variant order 0 / 1 / 2; crown width is the larger
+world X/Y extent of foliage, excluding fruit.
+
+| Species | Triangles | Height (m) | Crown width (m) |
+| --- | --- | --- | --- |
+| Oak | 400 / 400 / 400 | 3.140 / 2.763 / 3.391 | 2.300 / 1.995 / 2.257 |
+| Birch | 320 / 400 / 320 | 3.274 / 3.069 / 3.478 | 1.720 / 1.510 / 1.670 |
+| Pine | 94 / 94 / 94 | 3.350 / 2.855 / 3.421 | 1.760 / 1.537 / 1.505 |
+| Willow | 544 / 544 / 544 | 2.980 / 2.622 / 3.159 | 2.320 / 2.019 / 2.413 |
+| Poplar | 278 / 278 / 278 | 4.200 / 3.696 / 4.452 | 1.392 / 1.422 / 1.335 |
+| Apple | 482 / 482 / 482 | 2.120 / 2.035 / 2.247 | 1.760 / 1.487 / 1.793 |
+
+The water wheel's exception is checked by name (`front_water_parts` in
+`assets/solarpunk.py`): `move_spin_wheel`, `Waterwheel_axle`,
+`Waterwheel_bank_bearings`, `Waterwheel_dynamo_and_conduit`. They remain within
+X = [−1,1], Y = [−1.9,1], Z ≤ 1.3 m. Only the rotating wheel may reach
+Z = −0.26 m; the other named parts stay grounded. Every other mesh stays
+inside the grounded 2×2 footprint. The complete swept envelope is validated,
+and the origin stays at the bank footprint centre, without recentering on the
+overhang. River surface is ~−0.12 m; the bed is ~−0.42 m.
+The complete model bounds at rest are 1.779 × 2.605 × 2.142 m (X/Y/Z),
+including the submerged paddles; its highest point is 1.910 m above the bank.
+The wheel is 0.340 m wide, with a 1.437 m swept diameter and its axle at
+(0, −0.980, 0.470) in Blender metres. Its lowest paddle reaches −0.248 m
+through a full turn.
 
 ## Needed for the silos (2026-10-10, built 2026-10-11)
 
