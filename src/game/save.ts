@@ -1,6 +1,6 @@
 import { isStop } from './sim/trucks.ts';
 import { type Medal } from './sim/stats.ts';
-import { bays, BUILDINGS, CROPS, ITEMS, recipesFor, TICK, TRUCK } from './data.ts';
+import { bays, BUILDINGS, CROPS, ITEMS, recipesFor, TICK, TRUCK, type BuildingId } from './data.ts';
 import { err, ok, tryParseJson, type Result } from './result.ts';
 import type { Mark, RunLog } from './runlog.ts';
 import type { Scenario } from './scenarios.ts';
@@ -26,7 +26,7 @@ export function deserialize(json: string | null): Result<GameState> {
   const parsed = tryParseJson(json);
   if (!parsed.ok) return err(`The save isn't JSON: ${parsed.error}`);
   const s = parsed.value as GameState | null;
-  if (s?.version !== 4) return err('The save is from another version (this game reads version 4).');
+  if (s?.version !== 5) return err('The save is from another version (this game reads version 5).');
   if (!complete(s)) return err('The save is broken: its state is incomplete or out of range.');
   if (!validRun(s.run, s.scenario.goals.length)) return err('The save is broken: its run log is incomplete or out of range.');
   return ok(s);
@@ -35,14 +35,15 @@ export function deserialize(json: string | null): Result<GameState> {
 const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
 const nums = (o: unknown) => !!o && typeof o === 'object' && !Array.isArray(o) && Object.values(o).every(num);
 const arr = Array.isArray;
-const item = (v: unknown) => typeof v === 'string' && v in ITEMS;
+const known = (o: object, v: unknown) => typeof v === 'string' && Object.hasOwn(o, v);
+const item = (v: unknown) => known(ITEMS, v);
 const items = (v: unknown) => arr(v) && v.every(item);
 /** Counts by good: every key a good, every value a number. */
 const counts = (o: unknown) => nums(o) && Object.keys(o as object).every(item);
 /** Goods held: counts that are whole and not negative. */
 const stock = (o: unknown) => counts(o) && Object.values(o as object).every((v) => Number.isInteger(v) && v >= 0);
-const crop = (v: unknown) => typeof v === 'string' && v in CROPS;
-const type = (v: unknown) => typeof v === 'string' && v in BUILDINGS;
+const crop = (v: unknown) => known(CROPS, v);
+const type = (v: unknown) => known(BUILDINGS, v);
 const dir = (v: unknown) => v === 0 || v === 1 || v === 2 || v === 3;
 const goal = (g: { kind?: string; item?: unknown; n?: unknown; perMin?: unknown; min?: unknown }) =>
   !!g && ((g.kind === 'deliver' && item(g.item) && num(g.n)) || (g.kind === 'rate' && item(g.item) && num(g.perMin)) || (g.kind === 'soil' && num(g.min)));
@@ -70,11 +71,18 @@ function complete(s: GameState): boolean {
     && stock(s.delivered) && stock(s.made) && arr(s.reached) && s.reached.length === s.scenario.goals.length
     && !!st && num(st.since) && arr(st.made) && st.made.length > 0 && st.made.every(counts)
     && !!st.delivered && typeof st.delivered === 'object' && Object.entries(st.delivered).every(([k, v]) => item(k) && arr(v) && v.every(num))
+    && validChosen(s.chosen)
     && arr(s.buildings) && s.buildings.every((b) => validBuilding(b, m.width, m.height))
     && arr(s.routes) && s.routes.every(validRoute) && stopsExist(s) && arr(s.trucks) && s.trucks.every((t) => validTruck(s, t)) && docksFit(s) && uniqueIds(s);
 }
 
 const int = (v: unknown) => Number.isInteger(v);
+
+/** The choices remembered for placing: a crop, and for each building a recipe it works. */
+function validChosen(c: GameState['chosen']): boolean {
+  return !!c && crop(c.crop) && !!c.recipes && typeof c.recipes === 'object' && !arr(c.recipes)
+    && Object.entries(c.recipes).every(([k, v]) => type(k) && recipesFor(k as BuildingId).some((r) => r.id === v));
+}
 
 const MARKS = ['first', 'night', 'truck', 'second', 'loop', 'goal'];
 /** The run's log: milestones (each with what its kind needs), the curve, and seconds by kind of building, problem and night. */

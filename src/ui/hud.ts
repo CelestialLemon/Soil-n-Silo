@@ -1,4 +1,4 @@
-import { messageOf, type Action } from '../game/build.ts';
+import { choicesOf, messageOf, type Action, type Setting } from '../game/build.ts';
 import type { BuildingId } from '../game/data.ts';
 import type { Medal } from '../game/sim/stats.ts';
 import { buildingById, type Dir, type GameState, type Route } from '../game/state.ts';
@@ -27,7 +27,8 @@ import { WorldLayer } from './world.ts';
 
 export type Tool =
   | { kind: 'select' }
-  | { kind: 'build'; type: BuildingId; rot: Dir }
+  /** `crop` and `recipe` are what a field or machine in hand will be placed with (see `Setting`). */
+  | ({ kind: 'build'; type: BuildingId; rot: Dir } & Setting)
   | { kind: 'remove' }
   /** Editing a route: clicking a building adds it as a stop. */
   | { kind: 'route'; route: number };
@@ -36,6 +37,8 @@ export interface HudHost {
   state(): GameState;
   tool(): Tool;
   setTool(t: Tool): void;
+  /** Changes what the field or machine in hand is placed with, and remembers it for the level. */
+  choose(set: Setting): void;
   /** 0 when paused. */
   speed(): number;
   setSpeed(n: number): void;
@@ -77,6 +80,7 @@ export class Hud {
   private readonly toasts = h('div', { class: 'toasts' });
   /** The card of the building pointed at in the dock, above it. */
   private readonly tip = h('div');
+  private readonly above = h('div', { class: 'hud-above' }, this.toasts, this.tip);
   private tipFor: BuildingId | null = null;
   private zoom = 1;
   /** The side card for the selected building or truck. */
@@ -113,9 +117,9 @@ export class Hud {
       close: () => { this.routesOpen = false; host.previewRoute(null); if (host.tool().kind === 'route') host.setTool({ kind: 'select' }); },
     });
     this.problems = new ProblemsStrip((id) => host.focus(id));
-    this.dock = new Dock({ state: () => host.state(), tool: () => host.tool(), setTool: (t) => host.setTool(t), tip: (id) => this.showTip(id) });
+    this.dock = new Dock({ state: () => host.state(), tool: () => host.tool(), setTool: (t) => host.setTool(t), choose: (c) => host.choose(c), tip: (id) => this.showTip(id) });
     this.hud.append(this.commission.el, this.commission.pill, this.top.el, this.view.el, this.controls, this.dock.el, this.side.el, this.routes.el, this.problems.el, this.problems.popover,
-      h('div', { class: 'hud-above' }, this.toasts, this.tip));
+      this.above);
     this.ui.append(this.world.el, this.hud, this.sheets);
     root.append(this.ui);
     host.settings.listen((st) => { this.ui.classList.toggle('is-calm', st.reduceMotion); this.fit(); this.lastSlow = 0; });
@@ -148,6 +152,8 @@ export class Hud {
     const tool = this.host.tool();
     this.dock.showCategoryOf(tool.kind === 'build' ? tool.type : null);
     this.dock.update();
+    // The dock's strip of choices takes the room the card of what is pointed at would have.
+    this.above.classList.toggle('has-strip', tool.kind === 'build' && choicesOf(tool.type).length > 0);
     const routes = this.routesShown;
     this.routes.update(routes);
     this.side.update(!routes);

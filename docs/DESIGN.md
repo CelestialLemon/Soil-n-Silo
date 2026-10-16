@@ -53,6 +53,7 @@ It is build-only and point-and-click. There is no character and no manual farmin
 | The dock (bottom) or hotkeys (by default F field, L silo, T garage, P pylon, S solar) | Pick a building to place; its placement card says what it would do on the tile under the pointer |
 | Click / drag | Place it; a drag places a row (pylons: a power line, spaced so their reaches meet) |
 | R | Turn what you're placing (for looks) |
+| A chip in the strip above a field's or bakery's dock tile; C / Shift+C | Choose the crop (wheat, beans, tomato, sunflower, flax) or the recipe (bread, honey cake) the buildings you place get, without putting the tool down |
 | Click a building with nothing in hand | Select it: the inspector shows its status, buffers, settings and history |
 | A garage's inspector | Buy a truck; give each of its trucks a route, or none |
 | O, or the Routes button | The routes card: every route with its stops, goods, goods a minute, loop time, the gap between trucks at its slowest stop, and problems; point at one to draw it on the map; click it to open it |
@@ -312,7 +313,7 @@ playing trucks: every level needed many trucks, and routes doing a field-to-mill
 
 | Building | Size | Cost | Power | Notes |
 | --- | --- | --- | --- | --- |
-| Field | 3 × 3 | 30 | — | Grows the chosen crop on its 9 tiles. Takes compost (a truck brings it) |
+| Field | 3 × 3 | 30 | — | Grows the crop chosen as it is placed (wheat, until you choose another) on its 9 tiles. Takes compost (a truck brings it) |
 | Sprinkler | 1 × 1 | 25 | 3 W within 8 tiles of water, else 8 W | Waters fields whose centre is within 3 tiles |
 | Coop | 3 × 3 | 150 | — | Four chickens. Every 2 feed (beans, bran or seed cake) give 2 eggs and 1 manure, 16 s |
 | Beehive | 1 × 1 | 60 | — | Makes honey from flowering fields (not wheat) within 4 tiles, faster with more of them (up to 3). Pollinates fields within 4 tiles |
@@ -328,6 +329,14 @@ playing trucks: every level needed many trucks, and routes doing a field-to-mill
 | Sunflower | 70 s | 3 | −2 |
 | Flax | 55 s | 3 | −1.5 |
 
+- **Choosing while placing.** While a field or bakery is in hand, a strip above its dock tile (its pointer on the tile) has a
+  chip for each crop or recipe (a bakery's shows its inputs); the one in hand is lit. Click a chip, or press C (Shift+C goes
+  back), to change it; the tool stays in hand. A click places one building with the choice, and a drag places every
+  building in it with the choice, so four fields of beans are one pick and one drag. The ghost of a field shows the crop, and
+  the placement card and the toast name it. The level remembers the last choice for each of the two (it is in the save), so
+  the next pickup starts on it; a level starts on wheat and bread. Changing a placed building in its inspector doesn't change
+  what is remembered. (Chosen on 2026-10-16: players forgot to switch after placing, and found a field grew the wrong crop
+  much later.)
 - Grow times are with water at fertility 60. Growth speed is ×0.4 without water, and from ×0.4 (fertility 0) to ×1.4
   (fertility 100) by the field's average fertility.
 - A pollinated field (a hive within 4 tiles) yields 1 more of a flowering crop.
@@ -353,7 +362,7 @@ playing trucks: every level needed many trucks, and routes doing a field-to-mill
 | Oil press | 2 × 2 | 220 | 15 W | 2 sunflower → oil + seed cake, 8 s |
 | Spinner | 2 × 2 | 200 | 10 W | 2 flax → yarn, 6 s |
 | Loom | 2 × 2 | 300 | 20 W | 3 yarn → linen, 10 s |
-| Bakery | 2 × 2 | 350 | 25 W | flour + egg → bread, 8 s; or flour + egg + honey → honey cake, 12 s (choose) |
+| Bakery | 2 × 2 | 350 | 25 W | flour + egg → bread, 8 s; or flour + egg + honey → honey cake, 12 s (chosen as it is placed; bread until you choose another) |
 | Cannery | 2 × 2 | 300 | 18 W | 3 tomato + oil → tomato sauce, 10 s |
 
 A machine holds a small buffer of each input and each output. It starts a batch when it has the inputs and room for every output.

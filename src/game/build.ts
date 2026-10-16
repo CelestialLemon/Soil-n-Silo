@@ -1,4 +1,4 @@
-import { BUILDINGS, CLEAR_COST, CROPS, ITEM_IDS, ITEMS, recipesFor, TRUCK, type BuildingId, type CropId, type ItemId } from './data.ts';
+import { BUILDINGS, CLEAR_COST, CROP_IDS, CROPS, ITEM_IDS, ITEMS, recipeById, recipesFor, TRUCK, type BuildingId, type CropId, type ItemId } from './data.ts';
 import { TERRAIN } from './map.ts';
 import { err, ok, type Result } from './result.ts';
 import { accessTiles, nearestOpen } from './roads.ts';
@@ -6,9 +6,11 @@ import { givesGoods, takesGoods } from './sim/goods.ts';
 import { touchRoutes } from './runtime.ts';
 import { isStop, redirect, routeChanged } from './sim/trucks.ts';
 import {
-  addBuilding, buildingAt, inMap, makeBuilding, removeBuilding, terrainAt, tileIndex, touchLayout, type Building, type BuildingOf, type Dir, type GameState, type MachineBuilding,
+  addBuilding, applySetting, buildingAt, inMap, makeBuilding, removeBuilding, terrainAt, tileIndex, touchLayout, type Building, type BuildingOf, type Dir, type GameState, type MachineBuilding, type Setting,
   type Route, type Stop, type Truck,
 } from './state.ts';
+
+export type { Setting };
 
 // What the player does: place, remove and configure buildings, clear trees and rock, buy trucks and set their routes. Every
 // action checks its rules and returns a result the UI can show.
@@ -42,13 +44,53 @@ export function canPlace(s: GameState, type: BuildingId, x: number, y: number): 
   return ok(null);
 }
 
-export function place<K extends BuildingId>(s: GameState, type: K, x: number, y: number, rot: Dir): Action<{ building: BuildingOf<K> }> {
+/** The choices a type offers while placing: a field's crops, or the recipes of a machine with more than one (the bakery). */
+export function choicesOf(type: BuildingId): Setting[] {
+  if (type === 'field') return CROP_IDS.map((crop) => ({ crop }));
+  const rs = recipesFor(type);
+  return rs.length > 1 ? rs.map((r) => ({ recipe: r.id })) : [];
+}
+
+/** What the player last chose for a type this level (its first choice before that); nothing for a type with no choice. */
+export function settingFor(s: GameState, type: BuildingId): Setting {
+  const all = choicesOf(type);
+  if (!all.length) return {};
+  if (type === 'field') return { crop: s.chosen.crop };
+  const recipe = s.chosen.recipes[type];
+  return all.find((c) => c.recipe === recipe) ?? all[0];
+}
+
+/** Remembers a choice for the level, for the next time the type is picked up (a setting that doesn't fit the type is left out). */
+export function remember(s: GameState, type: BuildingId, set: Setting) {
+  if (type === 'field' && set.crop) s.chosen.crop = set.crop;
+  else if (set.recipe && choicesOf(type).some((c) => c.recipe === set.recipe)) s.chosen.recipes[type] = set.recipe;
+}
+
+/** The choice `d` steps on from `now` (round the list), for a key that cycles. */
+export function stepSetting(type: BuildingId, now: Setting, d: 1 | -1): Setting {
+  const all = choicesOf(type);
+  if (!all.length) return {};
+  const i = all.findIndex((c) => c.crop === now.crop && c.recipe === now.recipe);
+  return all[(Math.max(i, 0) + d + all.length) % all.length];
+}
+
+/** A choice in words, lower case ("beans", "honey cake"; '' for none). */
+export function settingName(set: Setting): string {
+  if (set.crop) return CROPS[set.crop].name.toLowerCase();
+  return set.recipe ? ITEMS[recipeById(set.recipe).outputs[0].item].name.toLowerCase() : '';
+}
+
+/** Places a building; `set` is what a field grows or a machine makes (without it, the type's first). */
+export function place<K extends BuildingId>(s: GameState, type: K, x: number, y: number, rot: Dir, set: Setting = {}): Action<{ building: BuildingOf<K> }> {
   const check = canPlace(s, type, x, y);
   if (!check.ok) return check;
-  const b = makeBuilding(s, type, x, y, rot) as BuildingOf<K>;
+  const fits = choicesOf(type);
+  if ((set.crop || set.recipe) && !fits.some((c) => c.crop === set.crop && c.recipe === set.recipe)) throw new Error(`A ${type} can't be placed with ${JSON.stringify(set)}`);
+  const b = applySetting(makeBuilding(s, type, x, y, rot), set) as BuildingOf<K>;
   s.credits -= priceOf(s, type);
   addBuilding(s, b);
-  return ok({ message: `Built a ${BUILDINGS[type].name.toLowerCase()}.`, building: b });
+  const what = settingName(set);
+  return ok({ message: `Built a ${BUILDINGS[type].name.toLowerCase()}${what ? ` (${what})` : ''}.`, building: b });
 }
 
 export function remove(s: GameState, b: Building): Action {

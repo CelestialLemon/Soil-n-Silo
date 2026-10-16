@@ -143,7 +143,7 @@ export interface Stats {
 export const STAT_BUCKET = 10, STAT_BUCKETS = 7;
 
 export interface GameState {
-  version: 4;
+  version: 5;
   scenario: Scenario;
   map: MapData;
   /** Each tile's fertility at the start: resting ground recovers up to it. */
@@ -169,14 +169,17 @@ export interface GameState {
   made: Partial<Record<ItemId, number>>;
   /** The run so far, for the results (runlog.ts). */
   run: RunLog;
+  /** What the player last chose while placing, for the level: the crop of the next field, and a recipe by building type (none: its first). */
+  chosen: { crop: CropId; recipes: Record<string, string> };
 }
 
 export function newGame(sc: Scenario): GameState {
   const map = generateMap(sc);
   const s: GameState = {
-    version: 4, scenario: sc, map, soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
+    version: 5, scenario: sc, map, soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
     buildings: [], routes: [], trucks: [], nextId: 1, credits: sc.credits, time: 0, carry: 0, delivered: {}, earned: 0,
     stats: { since: 0, made: [{}], delivered: {} }, reached: sc.goals.map(() => false), completedAt: null, made: {}, run: newRunLog(),
+    chosen: { crop: 'wheat', recipes: {} },
   };
   s.buildings.push(makeBuilding(s, 'depot', map.depot.x, map.depot.y, 0));
   return s;
@@ -197,6 +200,16 @@ export function blankBuilding(id: number, type: BuildingId, x: number, y: number
   }
   if (isMachineId(type)) return { ...base, type, recipe: recipesFor(type)[0].id, inputs: {}, outputs: {}, progress: null };
   return { ...base, type };
+}
+
+/** What a field grows or a machine makes, chosen as it is placed (none: the type's first). */
+export interface Setting { crop?: CropId; recipe?: string }
+
+/** Gives a new building what the player chose for it (a setting for another kind of building is a bug, checked by `place`). */
+export function applySetting(b: Building, set: Setting): Building {
+  if (b.type === 'field' && set.crop) b.crop = set.crop;
+  else if (isMachine(b) && set.recipe) b.recipe = set.recipe;
+  return b;
 }
 
 export const sizeOf = (b: { type: BuildingId }) => BUILDINGS[b.type].size;

@@ -1,4 +1,4 @@
-import { BUILDINGS, CROPS, DAY_SECONDS, HIVE, ITEMS, POWER, recipesFor, SAPLING_SECONDS, TREE_HEALTH, type BuildingId } from './data.ts';
+import { BUILDINGS, CROPS, DAY_SECONDS, HIVE, ITEMS, POLLINATION_BONUS, POWER, recipesFor, SAPLING_SECONDS, TREE_HEALTH, type BuildingId } from './data.ts';
 import { networks, POWERED, pylonsInLink } from './power.ts';
 import { HOUR_SECONDS } from './powerlog.ts';
 import { exposureAt, hiveReaches, nearWaterAt, paceOf, pylonReaches, sprinklerWaters, waterPace } from './rules.ts';
@@ -6,7 +6,7 @@ import { hourAt, sunAt, windAt } from './sim/clock.ts';
 import { linksAt } from './sim/goods.ts';
 import { makes, shareOf } from './sim/energy.ts';
 import { describeLinks } from './sim/describe.ts';
-import { inMap, type Building, type FieldBuilding, type GameState } from './state.ts';
+import { inMap, type Building, type FieldBuilding, type GameState, type Setting } from './state.ts';
 
 // Forecasts from what the game already knows: what a building in hand would do on a tile (facts about the tile, no advice),
 // and how tonight's battery charge will go if power is used as it is now (the weather is seeded, so the game knows it).
@@ -43,13 +43,15 @@ function waterAt(s: GameState, x: number, y: number) {
 const powered = (s: GameState, type: BuildingId, x: number, y: number) => s.buildings.some((p) => BUILDINGS[p.type].grid === 'link' && pylonReaches({ type, x, y }, p.x, p.y));
 
 /** What a building of `type` placed with its north-west tile at (x, y) would do there. */
-export function placement(s: GameState, type: BuildingId, x: number, y: number): Placement {
+export function placement(s: GameState, type: BuildingId, x: number, y: number, set: Setting = {}): Placement {
   const def = BUILDINGS[type], facts: Fact[] = [];
   const pylonFact = (): Fact => (powered(s, type, x, y) ? { label: 'Power', value: 'in reach', sub: 'of a pylon' } : { label: 'Power', value: 'none', sub: 'no pylon in reach', tone: 'bad' });
   switch (type) {
     case 'field': {
-      const crop = CROPS.wheat, soil = soilUnder(s, x, y, 3), { sprinklers, water } = waterAt(s, x, y);
-      const perMin = crop.yield * 60 * paceOf(water, soil).pace / crop.grow;
+      const crop = CROPS[set.crop ?? 'wheat'], soil = soilUnder(s, x, y, 3), { sprinklers, water } = waterAt(s, x, y);
+      // A hive within reach of a flowering crop adds a good to every harvest.
+      const pollinated = crop.flowers && s.buildings.some((b) => b.type === 'hive' && hiveReaches({ type: 'field', x, y }, b.x, b.y));
+      const perMin = (crop.yield + (pollinated ? POLLINATION_BONUS : 0)) * 60 * paceOf(water, soil).pace / crop.grow;
       // The harvests over the next SOIL_AHEAD seconds, each wearing the soil and slowing the next.
       let t = 0, later = soil;
       for (;;) { t += crop.grow / paceOf(water, later).pace; if (t > SOIL_AHEAD) break; later = Math.max(0, Math.min(100, later + crop.soil)); }
@@ -101,14 +103,14 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number):
       facts.push({ label: 'Soil health', value: `+${TREE_HEALTH.perTree}`, sub: `a tree, up to ${TREE_HEALTH.cap} in all` });
       break;
     default: {
-      const r = recipesFor(type)[0];
+      const r = recipesFor(type).find((x) => x.id === set.recipe) ?? recipesFor(type)[0];
       if (r && r.outputs.length) facts.push({ label: 'Full speed', value: fmt1(r.outputs[0].n * 60 / r.time), sub: `${ITEMS[r.outputs[0].item].name.toLowerCase()} a minute` });
       if (type === 'digester') facts.push({ label: 'Makes', value: watts(POWER.digester), sub: 'while burning' });
       if (type === 'battery') facts.push({ label: 'Stores', value: `${POWER.battery.capacity} J`, sub: `${POWER.battery.rate} W in and out` });
       if (def.power || POWERED({ type } as Building)) facts.push(pylonFact());
     }
   }
-  return { facts, next: describeLinks(linksAt(s, type, x, y)) };
+  return { facts, next: describeLinks(linksAt(s, type, x, y, set)) };
 }
 
 // ---- Tonight ----

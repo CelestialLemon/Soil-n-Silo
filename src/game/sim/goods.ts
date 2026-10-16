@@ -5,7 +5,7 @@ import {
 import { noteFlow } from '../flows.ts';
 import { noteMade, noteTaken } from '../history.ts';
 import { noteRunUse } from '../runlog.ts';
-import { blankBuilding, isMachine, type Building, type GameState, type MachineBuilding } from '../state.ts';
+import { applySetting, blankBuilding, isMachine, type Building, type Setting, type GameState, type MachineBuilding } from '../state.ts';
 import { derived, besides, handlesGoods } from './layout.ts';
 import { fieldFertility, changeSoil } from './soil.ts';
 import { runtimeOf } from '../runtime.ts';
@@ -148,9 +148,9 @@ export function linksOf(s: GameState, b: Building, near: Building[] = neighbours
   return { from, to };
 }
 
-/** What a building about to be placed at (x, y) would trade with the buildings next door (with its first recipe, a field wheat). */
-export function linksAt(s: GameState, type: BuildingId, x: number, y: number): { from: Link[]; to: Link[] } {
-  const b = blankBuilding(0, type, x, y, 0);
+/** What a building about to be placed at (x, y) would trade with the buildings next door (with the setting it would be placed with: else its first recipe, a field wheat). */
+export function linksAt(s: GameState, type: BuildingId, x: number, y: number, set: Setting = {}): { from: Link[]; to: Link[] } {
+  const b = applySetting(blankBuilding(0, type, x, y, 0), set);
   return linksOf(s, b, besides(s, b));
 }
 
