@@ -1,5 +1,6 @@
-import type { Goal } from '../game/scenarios.ts';
-import { goalDone, ratePerMin, soilHealth, type Medal } from '../game/sim.ts';
+import { SILVER_PAR, type Goal } from '../game/scenarios.ts';
+import { soilHealth } from '../game/sim/soil.ts';
+import { goalDone, ratePerMin, type Medal } from '../game/sim/stats.ts';
 import type { Building, GameState, Status } from '../game/state.ts';
 import { h } from './dom.ts';
 import { dec, itemName, pct, playTime } from './format.ts';
@@ -116,6 +117,6 @@ export function goalOrder(g: Goal) {
 /** Gold and silver times, a line: "gold within 35:00 · silver 52:30". */
 export const medalTimes = (par: number) => [
   h('span', null, h('i', { class: 'dot', style: 'background: var(--medal-gold)' }), `gold within ${playTime(par)}`),
-  h('span', null, h('i', { class: 'dot', style: 'background: var(--medal-silver)' }), `silver ${playTime(par * 1.5)}`),
+  h('span', null, h('i', { class: 'dot', style: 'background: var(--medal-silver)' }), `silver ${playTime(par * SILVER_PAR)}`),
 ];
 

@@ -1,5 +1,6 @@
 import { ITEMS, type ItemId } from './data.ts';
-import { STAT_BUCKET, STAT_BUCKETS, type GameState } from './state.ts';
+import { isMachine, STAT_BUCKET, STAT_BUCKETS, type GameState } from './state.ts';
+import { runtimeOf } from './runtime.ts';
 
 // Goods moving through the valley over the last ten minutes, for the ledger: what was made, what buildings used, and what
 // reached the depot, in buckets of FLOW_BUCKET seconds; and soil health sampled as it goes, for its trend. Kept in memory
@@ -12,7 +13,7 @@ type Counts = Partial<Record<ItemId, number>>;
 
 interface FlowBucket { from: number; made: Counts; used: Counts; delivered: Counts }
 
-interface Flows {
+export interface Flows {
   /** When recording began. */
   since: number;
   /** Oldest first. */
@@ -21,11 +22,10 @@ interface Flows {
   soil: { t: number; v: number }[];
 }
 
-const all = new WeakMap<GameState, Flows>();
-
 function flows(s: GameState): Flows {
-  let f = all.get(s);
-  if (!f) all.set(s, (f = { since: s.time, buckets: [], soil: [] }));
+  const r = runtimeOf(s);
+  let f = r.flows;
+  if (!f) r.flows = (f = { since: s.time, buckets: [], soil: [] });
   return f;
 }
 
@@ -54,11 +54,14 @@ export function tickFlows(s: GameState, soilHealth: () => number) {
   }
 }
 
+/** Seconds of play that count as "recent" for a rate: the pace shown as a minute's average over the last few minutes. */
+export const RECENT_WINDOW = 300;
+
 /** Seconds of play the flows cover within the last `window` seconds. */
 const covered = (s: GameState, window: number) => Math.max(0, Math.min(window, s.time - flows(s).since));
 
 /** A good made, used or delivered a minute, averaged over the last `window` seconds (or as much of it as was recorded). */
-export function flowRate(s: GameState, kind: FlowKind, item: ItemId, window = 300): number {
+export function flowRate(s: GameState, kind: FlowKind, item: ItemId, window = RECENT_WINDOW): number {
   const span = covered(s, window);
   if (span <= 0) return 0;
   let n = 0;
@@ -95,8 +98,9 @@ export function goodsHeld(s: GameState): Counts {
   const out: Counts = {};
   const add = (i: ItemId, n: number) => { if (n > 0) out[i] = (out[i] ?? 0) + n; };
   for (const b of s.buildings) {
-    for (const src of [b.inputs, b.outputs, b.store]) if (src) for (const [i, n] of Object.entries(src) as [ItemId, number][]) add(i, n);
-    if (b.type === 'field' && b.stored) add(b.harvest ?? b.crop!, b.stored);
+    const stores = isMachine(b) ? [b.inputs, b.outputs] : b.type === 'silo' ? [b.store] : [];
+    for (const src of stores) for (const [i, n] of Object.entries(src) as [ItemId, number][]) add(i, n);
+    if (b.type === 'field' && b.stored) add(b.harvest ?? b.crop, b.stored);
     if (b.type === 'hive' && b.stored) add('honey', b.stored);
   }
   for (const t of s.trucks) for (const i of t.cargo) add(i, 1);

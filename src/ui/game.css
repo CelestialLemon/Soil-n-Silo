@@ -4,6 +4,7 @@
 
 html, body { margin: 0; height: 100%; overflow: hidden; background: #2b3a33; }
 #view { position: fixed; display: block; image-rendering: pixelated; touch-action: none; }
+.tile-cursor { position: fixed; display: block; image-rendering: pixelated; pointer-events: none; }
 button { font: inherit; }
 .loading { position: fixed; inset: 0; display: grid; place-items: center; color: var(--chalk); font: 600 18px/1 var(--font-ui); }
 
@@ -67,7 +68,7 @@ button { font: inherit; }
 
 /* ---- The dock, bottom centre ---- */
 .hud-dock { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 14px 16px 16px; border-radius: 28px; }
-.hud-dock .tabs { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.hud-dock .tabs { display: flex; justify-content: center; margin-top: 12px; }
 .hud-dock .tiles { display: flex; gap: 10px; }
 .hud-dock .sep { width: 1px; background: var(--chalk-3); margin: 8px 4px; }
 .hud-dock .cd-tile.is-remove { background: transparent; box-shadow: inset 0 0 0 1.5px var(--chalk-3); }
@@ -75,9 +76,16 @@ button { font: inherit; }
 .hud-dock .cd-tile.is-remove.is-on .cd-tile__cost { color: #f1d3ca; }
 .hud-dock .cd-tile .label { white-space: nowrap; }
 
+/* The choices of the field or bakery in hand, over its tile. */
+.hud-strip { position: absolute; z-index: 0; background: var(--chalk); backdrop-filter: none; padding: 6px; border-radius: 26px; width: max-content; }
+.hud-strip .cd-seg { display: flex; }
+.hud-strip .cd-seg button { height: 40px; }
+.hud-strip .pointer { position: absolute; z-index: -1; top: 100%; width: 14px; height: 14px; margin: -7px 0 0 -7px; transform: rotate(45deg); border-radius: 3px; background: var(--chalk); box-shadow: 3px 3px 5px -2px rgba(20, 30, 25, 0.18); }
+
 /* Above the dock: messages, and the card of the building pointed at in the dock. */
 .hud-above { position: absolute; left: 50%; bottom: 236px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 10px; pointer-events: none !important; }
 .hud-above > * { pointer-events: none; }
+.hud-above.has-strip { bottom: 304px; }
 .cd-toast { transition: opacity 0.5s; }
 .cd-toast.is-gone { opacity: 0; }
 .hud-tip { width: 460px; }
@@ -267,7 +275,7 @@ button { font: inherit; }
 .pause .resume .cd-key { background: #36423b; color: var(--chalk); box-shadow: none; }
 .cd-i.inv { filter: invert(1); }
 .pause .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.pause .two .cd-btn { background: var(--chalk); box-shadow: var(--float); }
+.pause .two .cd-btn, .pause .settings-btn { background: var(--chalk); box-shadow: var(--float); }
 .pause .two .cd-btn.is-danger { box-shadow: inset 0 0 0 1.5px var(--rust), var(--float); }
 .pause .restart-note { text-align: right; font: 600 12px/1.35 var(--font-ui); color: #f0cdc3; padding-right: 8px; }
 .pause .keys.cd-card { margin-top: 26px; }
@@ -295,6 +303,28 @@ button { font: inherit; }
 .cd-range { appearance: none; width: 100%; height: 6px; border-radius: 99px; background: var(--chalk-3); accent-color: var(--ink); cursor: pointer; }
 .cd-range::-webkit-slider-thumb { appearance: none; width: 22px; height: 22px; border-radius: 99px; background: var(--chalk); box-shadow: inset 0 0 0 2px var(--ink), 0 2px 6px rgba(20, 30, 25, 0.25); }
 .cd-range::-moz-range-thumb { width: 22px; height: 22px; border: 0; border-radius: 99px; background: var(--chalk); box-shadow: inset 0 0 0 2px var(--ink), 0 2px 6px rgba(20, 30, 25, 0.25); }
+/* The settings panel and its Keys tab */
+.settings-panel { width: 660px; }
+.settings-panel .sp-head { display: flex; align-items: center; gap: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--chalk-3); }
+.settings-panel .sp-head .cd-label { flex: 1; }
+.settings-panel .sp-body { max-height: 560px; overflow: auto; margin: 0 -12px; padding: 0 12px; }
+.kb-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0 4px; }
+.kb-bar .cd-small { max-width: 400px; }
+.kb-note { min-height: 18px; padding: 4px 0 2px; color: var(--ochre); font-weight: 700; }
+.kb-group { margin-top: 10px; }
+.kb-group .group { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; color: var(--ink-2); }
+.kb-group .group i { width: 8px; height: 8px; border-radius: 99px; background: var(--col); }
+.kb-row { display: grid; grid-template-columns: 1fr 96px 96px 28px; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--chalk-2); font-size: 14px; }
+.kb-what { color: var(--ink-2); }
+.kb-what small { display: block; font: 600 11px/1.3 var(--font-ui); color: var(--ink-3); }
+.kb-slot { display: inline-flex; align-items: center; gap: 2px; }
+.kb-key { appearance: none; border: 0; cursor: pointer; min-width: 56px; height: 32px; font-size: 13px; }
+.kb-key.is-empty { color: var(--ink-3); background: transparent; box-shadow: inset 0 0 0 1.5px var(--chalk-3); }
+.kb-key.is-listening { background: var(--ink); color: var(--chalk); box-shadow: none; }
+.kb-key:focus-visible, .kb-clear:focus-visible, .kb-reset:focus-visible { outline: 3px solid var(--ochre); outline-offset: 2px; }
+.kb-clear, .kb-reset { appearance: none; border: 0; background: transparent; color: var(--ink-3); cursor: pointer; width: 22px; height: 22px; padding: 0; border-radius: 99px; font: 700 15px/1 var(--font-ui); display: inline-grid; place-items: center; }
+.kb-clear:hover, .kb-reset:hover { color: var(--ink); background: var(--chalk-2); }
+.kb-reset.is-hidden { visibility: hidden; }
 .markers { padding: 24px 26px; }
 .markers .list { display: grid; gap: 9px; margin-top: 16px; }
 .markers .list > div { display: flex; align-items: center; gap: 10px; }
@@ -409,8 +439,6 @@ button { font: inherit; }
 .menu .tag, .briefing .tag { padding: 4px 10px; border-radius: 99px; box-shadow: inset 0 0 0 1.5px var(--chalk-3); }
 .menu .random .act, .menu .sandbox .act { justify-content: flex-end; }
 .menu .random .act .cd-btn, .menu .sandbox .act .cd-btn { width: 100%; }
-.menu-settings { width: 600px; display: grid; gap: 14px; justify-items: end; }
-.menu-settings .settings { width: 100%; }
 
 /* ---- The results ---- */
 .results { position: absolute; inset: 0; overflow: auto; padding: 40px 80px 40px; color: var(--chalk); }

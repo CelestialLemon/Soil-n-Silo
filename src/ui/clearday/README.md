@@ -65,15 +65,15 @@ framework: the UI's `h()` helper applies them directly. Manrope is bundled in `f
 
 ## Components
 
-Each is a class (or a few) in `clearday.css`, used by the screens in `src/ui/`; the forecast waits for the weather station on the roadmap.
+Each is a class (or a few) in `clearday.css`, used by the screens in `src/ui/`.
 
 | Component | Classes | What it is for |
 | --- | --- | --- |
-| Card | `cd-card`, `is-ink`, `is-tight`, `cd-inset`, `cd-divider` | The one surface: frosted chalk floating over the world. The ink card is the thing in hand. |
+| Card | `cd-card`, `is-ink`, `cd-inset` | The one surface: frosted chalk floating over the world. The ink card is the thing in hand. |
 | Sheet | `cd-sheet`, `cd-sheet__head` | A full-screen panel over the blurred world: ledger, power, guide, pause, results. |
 | Gauge | `cd-gauge`, `__in`, `__tick`, `__foot` | A goal as a 270° arc. Pace ticks only with Show pace on. |
 | Ring | `cd-ring`, `cd-ringbox`, `__in` | A share or a total as a full ring (valley health, share of time). Goals use the gauge. |
-| Pill | `cd-pill`, `is-flat`, `cd-chip` | Readouts (credits, power, charge) and small chips for goods and tags. |
+| Pill | `cd-pill`, `cd-chip` | Readouts (credits, power, charge) and small chips for goods and tags. |
 | Button | `cd-btn`, `is-primary`, `is-ghost`, `is-danger`, `is-on`, `is-sm`, `is-lg`, `is-icon` | Pill buttons; ink for the one thing to do. |
 | Panel button | `cd-panelbtn`, `is-on` | Opens a panel (Ledger, Routes, Power, Guide). No key badge. |
 | Segmented | `cd-seg` | Speed, tabs, ranges, crop choice. |
@@ -87,7 +87,6 @@ Each is a class (or a few) in `clearday.css`, used by the screens in `src/ui/`; 
 | Toast | `cd-toast`, `is-bad` | The result of an action, gone after a few seconds. |
 | Bar | `cd-bar`, `__mark` | A soft progress bar. |
 | Dial | `cd-dial`, `__sky`, `__sun`, `__face` | The day as a clock face, top right. |
-| Forecast | `cd-forecast` | Sun and wind by hour, for the weather station (on the roadmap). |
 | Receipt | `cd-receipt`, `__row`, `__total` | What reached the depot, on the results screen. |
 | Key rows | `cd-keyrows`, `cd-keyrow`, `cd-key` | The controls list on the pause screen, the one place keys are shown. |
 | Medal | `cd-medal`, `is-silver`, `is-bronze`, `is-none` | Gold, silver, bronze. |

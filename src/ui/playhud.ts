@@ -1,11 +1,15 @@
-import { flowRate, creditsPerMin } from '../game/flows.ts';
+import { flowRate, creditsPerMin, RECENT_WINDOW } from '../game/flows.ts';
 import { networks, usedBy } from '../game/power.ts';
-import { CAMPAIGN, type Goal } from '../game/scenarios.ts';
-import { dayAt, hourAt, medalFor, sunAt, windAt } from '../game/sim.ts';
+import { CAMPAIGN, SILVER_PAR, type Goal } from '../game/scenarios.ts';
+import { dayAt, hourAt, sunAt, windAt } from '../game/sim/clock.ts';
+import { medalFor } from '../game/sim/stats.ts';
 import type { GameState } from '../game/state.ts';
+import { must } from '../game/result.ts';
 import type { Overlay } from '../world/view.ts';
 import { fill, h, icon, set, setVar } from './dom.ts';
 import { clock, num, pct, playTime, watts } from './format.ts';
+import type { ActionId } from '../keybindings.ts';
+import { keyNames, tip, titledBy } from './keyhints.ts';
 import type { Settings } from './settings.ts';
 import { gauge, goalIcon, goalNow, goalOrder } from './widgets.ts';
 
@@ -50,7 +54,7 @@ export function clockLine(s: GameState) {
   if (sc.sandbox) return [b(s.time), ' played'];
   if (s.completedAt !== null) return ['done in ', b(s.completedAt), ' · ', ...medalDot(sc.par, s.completedAt)];
   const m = medalFor(sc.par, s.time);
-  return [b(s.time), ' · ', ...medalDot(sc.par, s.time), m === 'gold' ? ` by ${playTime(sc.par)}` : m === 'silver' ? ` by ${playTime(sc.par * 1.5)}` : ''];
+  return [b(s.time), ' · ', ...medalDot(sc.par, s.time), m === 'gold' ? ` by ${playTime(sc.par)}` : m === 'silver' ? ` by ${playTime(sc.par * SILVER_PAR)}` : ''];
 }
 
 /** What a goal asks, after its count: "/150", "/5 a min", "/40+". */
@@ -59,7 +63,7 @@ function goalOf(g: Goal) {
 }
 
 /**
- * When the commission would be done at the pace of the last five minutes (null: some goal isn't moving, or can't be told):
+ * When the commission would be done at the pace of the last five minutes (null: some goal isn't moving, is a rate or an unmet soil goal, or can't be told):
  * for "Show pace" only.
  */
 export function doneBy(s: GameState): number | null {
@@ -67,9 +71,9 @@ export function doneBy(s: GameState): number | null {
   let last = s.time;
   for (const [i, g] of s.scenario.goals.entries()) {
     const now = goalNow(s, i);
-    if (now.done || g.kind === 'soil') continue;
-    if (g.kind === 'rate') return null;
-    const rate = flowRate(s, 'delivered', g.item, 300);
+    if (now.done) continue;
+    if (g.kind === 'rate' || g.kind === 'soil') return null;
+    const rate = flowRate(s, 'delivered', g.item, RECENT_WINDOW);
     if (rate <= 0) return null;
     last = Math.max(last, s.time + (g.n - (s.delivered[g.item] ?? 0)) / rate * 60);
   }
@@ -109,7 +113,7 @@ export class CommissionCard {
         h('div', { class: 'who', title: commissionLabel(s) }, h('b', { class: 'name' }, sc.name), this.clock, st.showPace && !sc.sandbox ? this.pace : null),
         h('span', { class: 'sep' }),
         sc.goals.length ? h('div', { class: 'goals' }, ...this.parts.map((p) => p.el)) : h('span', { class: 'cd-small' }, 'No goals: build whatever you like.'));
-      this.pill.querySelector('.name')!.textContent = sc.name;
+      must(this.pill.querySelector('.name'), '.name').textContent = sc.name;
     }
     this.clock.replaceChildren(...clockLine(s));
     this.parts.forEach((p, i) => {
@@ -129,14 +133,14 @@ export class CommissionCard {
         let ticks = p.g.querySelectorAll<HTMLElement>('.cd-gauge__tick');
         if (!ticks.length) { p.g.prepend(h('span', { class: 'cd-gauge__tick' }), h('span', { class: 'cd-gauge__tick is-silver' })); ticks = p.g.querySelectorAll('.cd-gauge__tick'); }
         setVar(ticks[0], '--at', Math.min(1, s.time / sc.par));
-        setVar(ticks[1], '--at', Math.min(1, s.time / (sc.par * 1.5)));
+        setVar(ticks[1], '--at', Math.min(1, s.time / (sc.par * SILVER_PAR)));
       } else p.g.querySelectorAll('.cd-gauge__tick').forEach((t) => t.remove());
     });
     if (st.showPace && !sc.sandbox) {
       const by = doneBy(s);
       this.pace.hidden = s.completedAt !== null;
       set(this.pace, by === null ? 'not done at this pace yet' : `done by ${playTime(by)} at this pace`);
-      this.pace.title = 'At the pace of the last 5 minutes';
+      this.pace.title = `At the pace of the last ${RECENT_WINDOW / 60} minutes`;
     }
     // The pill: the first goal, the name, where it stands.
     const first = sc.goals.length ? goalNow(s, 0) : null;
@@ -175,13 +179,13 @@ export class TopRight {
     const sky = h('div', { class: 'cd-dial__sky' });
     sky.style.background = skyFor(w.sunrise, w.sunset);
     this.dial.append(sky, h('div', { class: 'cd-dial__sun' }), h('div', { class: 'cd-dial__face' }, h('div', null, this.time, this.day)));
-    const seg = h('div', { class: 'cd-seg' }, ...([[0, icon('pause'), 'Pause (Space)'], [1, '1×', 'Normal speed (1)'], [2, '2×', 'Double speed (2)'], [4, '4×', 'Fast (3)']] as const).map(([n, label, title]) => {
-      const b = h('button', { title, 'aria-label': title, onclick: () => host.setSpeed(n) }, label);
+    const seg = h('div', { class: 'cd-seg' }, ...([[0, icon('pause'), 'Pause', 'pause'], [1, '1×', 'Normal speed', 'speed1'], [2, '2×', 'Double speed', 'speed2'], [4, '4×', 'Fast', 'speed3']] as const).map(([n, label, title, action]) => {
+      const b = titledBy(h('button', { 'aria-label': title, onclick: () => host.setSpeed(n) }, label), () => tip(title, ...keyNames(action)));
       this.speeds.push(b);
       return b;
     }));
-    const panelBtn = (p: Panel, name: string, ic: string, key: string) => {
-      const b = h('button', { class: 'cd-panelbtn', title: `${name} (${key})`, onclick: () => host.togglePanel(p) }, icon(ic), name);
+    const panelBtn = (p: Panel, name: string, ic: string, action: ActionId) => {
+      const b = titledBy(h('button', { class: 'cd-panelbtn', onclick: () => host.togglePanel(p) }, icon(ic), name), () => tip(name, ...keyNames(action)));
       this.panels.set(p, b);
       return b;
     };
@@ -192,7 +196,7 @@ export class TopRight {
           h('span', { class: 'cd-chip', title: 'The sun\'s strength now' }, icon('sun'), this.sun),
           h('span', { class: 'cd-chip', title: 'The wind\'s strength now' }, icon('wind'), this.wind), this.next), seg),
         this.dial),
-      h('div', { class: 'panels' }, panelBtn('ledger', 'Ledger', 'chart', 'Tab'), panelBtn('routes', 'Routes', 'route', 'O'), panelBtn('power', 'Power', 'bolt', 'W'), panelBtn('guide', 'Guide', 'book', 'G')));
+      h('div', { class: 'panels' }, panelBtn('ledger', 'Ledger', 'chart', 'ledger'), panelBtn('routes', 'Routes', 'route', 'routes'), panelBtn('power', 'Power', 'bolt', 'power'), panelBtn('guide', 'Guide', 'book', 'guide')));
   }
 
   /** The speed and panel buttons, every frame. */
@@ -237,8 +241,10 @@ export class ViewBar {
   constructor(host: PlayHost) {
     this.host = host;
     for (const [o, name, ic] of VIEWS) {
-      const b = h('button', { class: ic ? '' : 'is-off', title: `${o === 'none' ? 'No overlay' : `Show ${name.toLowerCase()}`} (V cycles)`, onclick: () => host.setOverlay(o) },
-        ic ? icon(ic) : null, h('span', null, name));
+      const b = titledBy(h('button', { class: ic ? '' : 'is-off', onclick: () => host.setOverlay(o) }, ic ? icon(ic) : null, h('span', null, name)), () => {
+        const keys = keyNames('overlay');
+        return `${o === 'none' ? 'No overlay' : `Show ${name.toLowerCase()}`}${keys.length ? ` (${keys.join(' or ')} cycles)` : ''}`;
+      });
       this.buttons.set(o, b);
       this.el.append(b);
     }
@@ -250,10 +256,10 @@ export class ViewBar {
 /** Turning the view, zooming and the menu: every key works too. */
 export function viewControls(host: PlayHost) {
   return h('div', { class: 'cd-viewbar hud-controls' },
-    h('button', { title: 'Turn the view (Q)', 'aria-label': 'Turn the view left', onclick: () => host.turn(-1) }, icon('rotate', undefined, 'flip')),
-    h('button', { title: 'Turn the view (E)', 'aria-label': 'Turn the view right', onclick: () => host.turn(1) }, icon('rotate')),
-    h('button', { title: 'Zoom out (wheel, − or Shift+Z)', 'aria-label': 'Zoom out', onclick: () => host.zoom(-1) }, '−'),
-    h('button', { title: 'Zoom in (wheel, + or Z)', 'aria-label': 'Zoom in', onclick: () => host.zoom(1) }, '+'),
+    titledBy(h('button', { 'aria-label': 'Turn the view left', onclick: () => host.turn(-1) }, icon('rotate', undefined, 'flip')), () => tip('Turn the view', ...keyNames('turnLeft'))),
+    titledBy(h('button', { 'aria-label': 'Turn the view right', onclick: () => host.turn(1) }, icon('rotate')), () => tip('Turn the view', ...keyNames('turnRight'))),
+    titledBy(h('button', { 'aria-label': 'Zoom out', onclick: () => host.zoom(-1) }, '−'), () => tip('Zoom out', 'wheel', ...keyNames('zoomOut'))),
+    titledBy(h('button', { 'aria-label': 'Zoom in', onclick: () => host.zoom(1) }, '+'), () => tip('Zoom in', 'wheel', ...keyNames('zoomIn'))),
     h('button', { title: 'Menu (Esc)', 'aria-label': 'Menu', onclick: () => host.openPause() }, icon('menu')));
 }
 

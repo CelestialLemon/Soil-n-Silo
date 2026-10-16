@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { collectGltf, GeometryCollector, loadGltf, motion, movingPartMotion, namedMeshRule, type Motion } from 'pixel3d-renderer';
 import { BUILDING_IDS, CROP_IDS, CROPS, ITEM_IDS, type BuildingId, type CropId, type ItemId } from '../game/data.ts';
-import { bar, C, cropStandIn, frame, GHOST_WIRE, itemShape, NET_COLOURS, rock, ROUTE_COLOURS, SOIL_BANDS, soilTile, standIn, tileFill, truck } from './shapes.ts';
+import { bar, cropStandIn, frame, GHOST_WIRE, itemShape, NET_COLOURS, rock, ROUTE_COLOURS, SOIL_BANDS, soilTile, standIn, tileFill, truck } from './shapes.ts';
 
 // The game's object geometries, in local space (origin on the ground at the footprint centre, front facing +z). They come
 // from the Blender models in public/models/ (assets/<name>/build.py) where those exist, split by the node names the asset
@@ -28,19 +28,18 @@ export interface Models {
   trees: Geo[];
   rocks: Geo[];
   truck: Geo;
-  cursor: Geo;
   frames: { ok: Geo[]; bad: Geo[] };
   /** A flat square filling a tile, tinted per overlay. */
   fill: Geo;
 }
 
-/** Which Blender model draws each building, in order of preference. */
-const FILES: Partial<Record<BuildingId, string[]>> = {
-  silo: ['silo'],
-  sprinkler: ['sprinkler'], coop: ['coop_solar', 'coop'], hive: ['beehive'], composter: ['composter'],
-  mill: ['mill_electric'], press: ['oil_press'], spinner: ['spinner'], loom: ['loom'], bakery: ['bakery'], cannery: ['cannery'],
-  solar: ['solar_panel'], turbine: ['wind_turbine'], battery: ['battery'], digester: ['digester'], pylon: ['pylon'],
-  sapling: ['sapling'], depot: ['depot'],
+/** Which Blender model draws each building. */
+const FILES: Partial<Record<BuildingId, string>> = {
+  silo: 'silo', garage: 'garage',
+  sprinkler: 'sprinkler', coop: 'coop_solar', hive: 'beehive', composter: 'composter',
+  mill: 'mill_electric', press: 'oil_press', spinner: 'spinner', loom: 'loom', bakery: 'bakery', cannery: 'cannery',
+  solar: 'solar_panel', turbine: 'wind_turbine', battery: 'battery', digester: 'digester', pylon: 'pylon',
+  sapling: 'sapling', depot: 'depot',
 };
 
 const url = (name: string) => `${import.meta.env.BASE_URL}models/${name}.glb`;
@@ -110,14 +109,14 @@ const heightOf = (g: Geo) => { g.computeBoundingBox(); return g.boundingBox ? g.
 
 export async function loadModels(): Promise<Models> {
   const names = new Set<string>(['wheat', 'tomato', 'beans', 'sunflower', 'flax', 'rock', 'truck', 'tree_oak', 'tree_pine', 'bush']);
-  for (const list of Object.values(FILES)) for (const n of list!) names.add(n);
+  for (const n of Object.values(FILES)) names.add(n);
   const roots = new Map<string, THREE.Group | null>(await Promise.all([...names].map(async (n) => [n, await load(n)] as const)));
   const missing = [...roots].filter(([, r]) => !r).map(([n]) => n);
   if (missing.length) console.info(`models drawn from stand-ins: ${missing.join(', ')}`);
 
   const buildings = {} as Record<BuildingId, Look>;
   BUILDING_IDS.forEach((id, i) => {
-    const root = FILES[id]?.map((n) => roots.get(n)).find((r) => r) ?? null;
+    const file = FILES[id], root = file ? roots.get(file) ?? null : null;
     const look = root ? lookFrom(root, i * 0.13) : standIn(id);
     buildings[id] = { ...look, height: heightOf(look.idle) };
   });
@@ -167,7 +166,6 @@ export async function loadModels(): Promise<Models> {
     wires: [...NET_COLOURS, GHOST_WIRE].map(bar), routes: ROUTE_COLOURS.map(bar),
     soil: Array.from({ length: SOIL_BANDS }, (_, b) => soilTile(b)),
     truck: truckRoot ? collect(truckRoot).build() : truck(),
-    cursor: frame(1, 0xfff0c0),
     frames: { ok: [1, 2, 3].map((n) => frame(n, 0xd8ffb0)), bad: [1, 2, 3].map((n) => frame(n, 0xff5040)) },
     fill: tileFill(0xf4f0e0),
   };
@@ -177,9 +175,7 @@ export async function loadModels(): Promise<Models> {
 export function allGeometries(m: Models): Geo[] {
   return [
     ...Object.values(m.buildings).flatMap((l) => [l.idle, l.running]), ...m.turbine, ...m.battery, ...m.wires, ...m.routes, ...Object.values(m.crops).flat(), ...Object.values(m.items),
-    ...m.soil, ...m.trees, ...m.rocks, m.truck, m.cursor, ...m.frames.ok, ...m.frames.bad,
+    ...m.soil, ...m.trees, ...m.rocks, m.truck, ...m.frames.ok, ...m.frames.bad,
     m.fill,
   ];
 }
-
-export { C };

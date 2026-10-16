@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { addStop, buyTruck, newRoute, place, setTruckRoute } from '../src/game/build.ts';
 import { chainBuildings, chainOf } from '../src/game/chain.ts';
-import { DAY_SECONDS, FIELD, ITEMS, POWER, type ItemId } from '../src/game/data.ts';
+import { DAY_SECONDS, FIELD, ITEMS, POWER, type BuildingId, type ItemId } from '../src/game/data.ts';
 import { FLEET_SECONDS, routeTiming, truckTime } from '../src/game/fleet.ts';
 import { creditsPerMin, flowRate, flowSeries, goodsHeld, soilTrend } from '../src/game/flows.ts';
 import { nextHour, placement, tonight } from '../src/game/forecast.ts';
@@ -11,8 +11,10 @@ import { HOUR_SECONDS, nightsOf, powerDay } from '../src/game/powerlog.ts';
 import { RUN_MAX_NIGHTS, RUN_MAX_SAMPLES, RUN_SAMPLE, runWaits } from '../src/game/runlog.ts';
 import { deserialize, serialize } from '../src/game/save.ts';
 import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
-import { advance, deliver, hourAt } from '../src/game/sim.ts';
-import { newGame, type Building, type GameState, type Route, type Truck } from '../src/game/state.ts';
+import { hourAt } from '../src/game/sim/clock.ts';
+import { deliver } from '../src/game/sim/goods.ts';
+import { advance } from '../src/game/sim/step.ts';
+import { newGame, type Building, type BuildingOf, type GameState, type Route, type Truck } from '../src/game/state.ts';
 
 // The numbers the HUD shows beyond the rules themselves: goods flows, route timing, power over a day, the run log, the
 // placement and tonight forecasts, what a building waits for, and the guide's chains.
@@ -28,10 +30,13 @@ function flat(extra: Partial<Scenario> = {}): GameState {
   return s;
 }
 
-function put(s: GameState, type: Parameters<typeof place>[1], x: number, y: number): Building {
+/** A save read back, or null if it's refused. */
+const load = (json: string) => { const r = deserialize(json); return r.ok ? r.value : null; };
+
+function put<K extends BuildingId>(s: GameState, type: K, x: number, y: number): BuildingOf<K> {
   const r = place(s, type, x, y, 0);
-  assert.ok(r.ok, `${type} at ${x},${y}: ${r.message}`);
-  return r.building!;
+  if (!r.ok) assert.fail(`${type} at ${x},${y}: ${r.error}`);
+  return r.value.building;
 }
 
 /** A pylon with a full battery beside it. */
@@ -45,7 +50,7 @@ function powerAt(s: GameState, x: number, y: number) {
 function trucksAt(s: GameState, x: number, y: number, n = 1): Truck[] {
   const g = put(s, 'garage', x, y);
   powerAt(s, x + 2, y);
-  return Array.from({ length: n }, () => buyTruck(s, g).truck!);
+  return Array.from({ length: n }, () => { const r = buyTruck(s, g); if (!r.ok) assert.fail(r.error); return r.value.truck; });
 }
 
 function route(s: GameState, trucks: Truck[], ...stops: Building[]): Route {
@@ -79,7 +84,7 @@ test('goods flows: made, used and delivered a minute, over the window recorded',
 test('goods held count every store and truck; soil trend follows soil health', () => {
   const s = flat();
   const silo = put(s, 'silo', 4, 4);
-  silo.store!.wheat = 7;
+  silo.store.wheat = 7;
   const [t] = trucksAt(s, 10, 10);
   t.cargo = ['wheat', 'egg'];
   const f = put(s, 'field', 20, 4);
@@ -99,7 +104,7 @@ test('route timing: arrivals per stop, the loop, gaps between trucks, idle share
   const s = flat();
   const trucks = trucksAt(s, 2, 24, 2);
   const silo = put(s, 'silo', 8, 18);
-  silo.store!.wheat = 30;
+  silo.store.wheat = 30;
   const far = put(s, 'silo', 20, 6);
   const r = route(s, trucks, silo, far);
   r.stops[0].drop = []; r.stops[0].pick = ['wheat'];
@@ -111,8 +116,8 @@ test('route timing: arrivals per stop, the loop, gaps between trucks, idle share
   assert.ok(tm.window > 190 && tm.window <= FLEET_SECONDS);
   assert.ok(tm.stops[0].arrivals >= 3 && tm.stops[1].arrivals >= 3, JSON.stringify(tm.stops));
   assert.ok(tm.loop !== null && tm.loop > 0);
-  assert.ok(tm.driving !== null && tm.driving < tm.loop!, 'a round takes longer than the driving alone');
-  assert.ok(tm.stops[0].gap !== null && tm.stops[0].gap < tm.loop!, 'two trucks: the gap is shorter than a round');
+  assert.ok(tm.driving !== null && tm.driving < tm.loop, 'a round takes longer than the driving alone');
+  assert.ok(tm.stops[0].gap !== null && tm.stops[0].gap < tm.loop, 'two trucks: the gap is shorter than a round');
   assert.ok(tm.slowest);
   const time = truckTime(s, trucks[0], r.id);
   assert.ok(time.total > 100 && time.idle !== null && time.idle >= 0 && time.idle < 1);
@@ -143,7 +148,7 @@ test('power over a day: sources by hour, the digester among them, use by buildin
   assert.ok(day.avg.solar > 0 && day.avg.digester > 0, JSON.stringify(day.avg));
   assert.ok(Math.abs(day.avg.made - (day.avg.solar + day.avg.wind + day.avg.digester)) < 1e-9);
   assert.ok((day.use.mill ?? 0) > 0);
-  assert.ok(day.hours.some((h) => h!.night) && day.hours.some((h) => !h!.night));
+  assert.ok(day.hours.some((h) => h.night) && day.hours.some((h) => !h.night));
   const nights = nightsOf(s);
   assert.ok(nights.length >= 1);
   assert.ok(nights[0].lowest !== null);
@@ -166,7 +171,7 @@ test('tonight: a battery feeding a steady load runs dry when its charge is spent
   assert.equal(t.sunset, null, 'it is night');
   assert.ok(t.dryAt !== null);
   const expect = s.time + POWER.battery.capacity / 2 / 20;
-  assert.ok(Math.abs(t.dryAt! - expect) <= HOUR_SECONDS / 6 + 1e-6, `dry at ${t.dryAt}, expected ${expect}`);
+  assert.ok(Math.abs(t.dryAt - expect) <= HOUR_SECONDS / 6 + 1e-6, `dry at ${t.dryAt}, expected ${expect}`);
   assert.ok(Math.abs(t.shortAfter - 20) < 1e-6, `short ${t.shortAfter}`);
   assert.ok(Math.abs(hourAt(t.sunrise) - 6) < 1e-6);
   const none = flat();
@@ -184,6 +189,49 @@ test('tonight: the batteries run dry only once every network\'s are spent', () =
   s.time = nextHour(s.time, 20) + 1;
   const t = tonight(s)!;
   assert.equal(t.dryAt, null, 'the second network\'s battery still holds');
+});
+
+/** A load (a 20 W loom, or an 8 W sprinkler) and a battery on one network, `at` the hour with the battery holding `charge` J; `solar` panels. */
+function forecastAt(at: number, charge: number, solar = 0, load: 'loom' | 'sprinkler' = 'loom') {
+  const s = flat({ weather: { sunrise: 6, sunset: 20, sun: 1, wind: 0.05, gust: 0 } });
+  put(s, 'pylon', 5, 5);
+  const bat = put(s, 'battery', 6, 5);
+  if (load === 'loom') put(s, 'loom', 5, 7).inputs = { yarn: 30 }; else put(s, 'sprinkler', 5, 7);
+  for (let i = 0; i < solar; i++) put(s, 'solar', 3 + i * 2, 3);
+  advance(s, 1);
+  s.time = nextHour(s.time, at);
+  bat.charge = charge;
+  return tonight(s)!;
+}
+
+test('tonight: a battery empty in the morning that the sun refills is not a night failure', () => {
+  const t = forecastAt(7, 0, 1, 'sprinkler'); // empty at first, short for an hour, then the sun fills it for the night
+  assert.equal(t.dryAt, null);
+  assert.equal(t.shortFor, 0);
+});
+
+test('tonight: running dry in the hour after sunrise is not a night failure', () => {
+  const t = forecastAt(20, 2100); // 105 s at 20 W: out at 06:30
+  assert.equal(t.dryAt, null);
+  assert.equal(t.shortFor, 0);
+});
+
+test('tonight: running dry mid-night is reported between sunset and sunrise', () => {
+  const t = forecastAt(20, 1200); // 60 s: out around 02:00
+  assert.ok(t.dryAt !== null && t.dryAt > t.sunrise - 10 * HOUR_SECONDS && t.dryAt < t.sunrise, `dry at ${t.dryAt}`);
+  assert.ok(t.shortFor > 0);
+});
+
+test('tonight: running dry in a step that ends at sunrise still counts', () => {
+  const t = forecastAt(5 + 55 / 60, 10); // 10 J at 20 W: out 0.5 s in, five minutes before sunrise
+  assert.ok(t.dryAt !== null && t.dryAt <= t.sunrise, `dry at ${t.dryAt}`);
+  assert.ok(t.shortFor > 0);
+});
+
+test('tonight: at exactly sunrise it is day, and the night is tonight\'s', () => {
+  const t = forecastAt(6, 0, 1, 'sprinkler');
+  assert.ok(t.sunset !== null && Math.abs(hourAt(t.sunset) - 20) < 1e-6 && t.sunrise - t.sunset > 9 * HOUR_SECONDS);
+  assert.equal(t.dryAt, null);
 });
 
 test('placing: a field forecasts its harvest, its soil in ten minutes and its water', () => {
@@ -207,7 +255,7 @@ test('placing: a field forecasts its harvest, its soil in ten minutes and its wa
   assert.ok(placement(s, 'mill', 13, 4).next.some((l) => l.includes('wheat')));
 });
 
-test('the run log: milestones, the goal good\'s curve, waits; it saves, and an older save starts one', () => {
+test('the run log: milestones, the goal good\'s curve, waits; it saves', () => {
   const s = flat({ goals: [{ kind: 'deliver', item: 'flour', n: 3 }] });
   s.reached = [false];
   const mill = put(s, 'mill', 4, 4);
@@ -222,7 +270,7 @@ test('the run log: milestones, the goal good\'s curve, waits; it saves, and an o
   advance(s, 1.5);
   assert.ok(s.run.marks.some((m) => m.kind === 'goal' && m.goal === 0));
   assert.ok(s.completedAt !== null);
-  assert.equal(s.run.curve.length, Math.floor(s.completedAt! / RUN_SAMPLE) + 2, 'a sample every RUN_SAMPLE seconds, and one at completion');
+  assert.equal(s.run.curve.length, Math.floor(s.completedAt / RUN_SAMPLE) + 2, 'a sample every RUN_SAMPLE seconds, and one at completion');
   assert.equal(s.run.curve[s.run.curve.length - 1], 3, 'the last sample has every delivery');
   assert.equal(s.run.curve[0], 0);
   const waits = runWaits(s.run);
@@ -231,17 +279,12 @@ test('the run log: milestones, the goal good\'s curve, waits; it saves, and an o
   const saved = JSON.stringify(s.run);
   advance(s, DAY_SECONDS * 2);
   assert.equal(JSON.stringify(s.run), saved);
-  const back = deserialize(serialize(s))!;
+  const back = load(serialize(s))!;
   assert.deepEqual(back.run, s.run);
   const old = JSON.parse(serialize(s));
-  delete old.run;
-  const migrated = deserialize(JSON.stringify(old))!;
-  assert.ok(migrated.run.marks.every((m) => m.t === -1));
-  assert.equal(migrated.run.curve.length, 1);
-  assert.ok(migrated.run.marks.some((m) => m.kind === 'goal' && m.goal === 0), 'a goal already met is marked');
-  assert.ok(migrated.run.marks.some((m) => m.kind === 'second' && m.type === 'mill'), 'so is a second mill');
-  assert.equal(deserialize(JSON.stringify({ ...old, run: { ...s.run, curve: ['x'] } })), null);
-  const bad = (mark: object) => deserialize(JSON.stringify({ ...old, run: { ...s.run, marks: [mark] } }));
+  assert.equal(load(JSON.stringify({ ...old, run: undefined })), null, 'a save without a run log is refused');
+  assert.equal(load(JSON.stringify({ ...old, run: { ...s.run, curve: ['x'] } })), null);
+  const bad = (mark: object) => load(JSON.stringify({ ...old, run: { ...s.run, marks: [mark] } }));
   assert.equal(bad({ t: 0, kind: 'goal', goal: 999 }), null, 'a goal that isn\'t the commission\'s');
   assert.equal(bad({ t: 0, kind: 'goal' }), null);
   assert.equal(bad({ t: 0, kind: 'first' }), null, 'a first with no good');
@@ -293,7 +336,7 @@ test('chains: bread comes from a bakery fed by a mill and a coop, back to the fi
   const c = chainOf('bread');
   assert.equal(c.from?.building, 'bakery');
   assert.deepEqual(chainBuildings(c), ['bakery', 'mill', 'field', 'coop']);
-  const egg = c.from!.inputs.find((i) => 'item' in i && i.item === 'egg')!;
+  const egg = c.from.inputs.find((i) => 'item' in i && i.item === 'egg')!;
   assert.ok('item' in egg && egg.from?.building === 'coop' && egg.from.inputs.some((i) => 'group' in i && i.group === 'feed'));
   assert.equal(chainOf('wheat').from?.verb, 'grow');
   assert.equal(chainOf('bran').from?.building, 'mill', 'a byproduct comes from its maker');

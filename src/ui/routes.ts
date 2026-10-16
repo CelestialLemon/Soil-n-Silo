@@ -1,16 +1,22 @@
 import {
   buyTruck, copyRoute, deleteRoute, dumpCargo, moveStop, newRoute, removeStop, renameRoute, ROUTE_NAME_MAX, setStopGood, setStopWait, setTruckRoute,
-  type Result,
+  type Action,
 } from '../game/build.ts';
+import { err, ok } from '../game/result.ts';
 import { BUILDINGS, ITEM_IDS, ITEMS, TRUCK, type ItemId } from '../game/data.ts';
 import { routeTiming, truckTime, type StopTiming } from '../game/fleet.ts';
-import { cargoText, describeTruck, givesGoods, routeRate, stopProblems, takesGoods, truckProblems, trucksOn } from '../game/sim.ts';
+import { givesGoods, takesGoods } from '../game/sim/goods.ts';
+import { runtimeOf } from '../game/runtime.ts';
+import { trucksOn } from '../game/sim/trucks.ts';
+import { routeRate } from '../game/sim/stats.ts';
+import { cargoText, describeTruck, stopProblems, truckProblems } from '../game/sim/describe.ts';
 import { buildingById, type GameState, type Route } from '../game/state.ts';
 import { fill, h, icon, rebuild, set, setVar } from './dom.ts';
 import { dec, itemName, pct, playTime, plural } from './format.ts';
 import type { GuidePage } from './guide.ts';
 import type { Tool } from './hud.ts';
-import { routeCss, routeGoods, routeProblems, stopsKey, stopsText, trucksDoing, truckName, typingIn } from './routing.ts';
+import { routeCss, routeGoods, routeProblems, stopsText, trucksDoing, truckName, typingIn } from './routing.ts';
+import { keyNames, tip, titledBy } from './keyhints.ts';
 
 // The routes card: every route on one side card, the open one expanded. A route shows its stops in a few words, the goods it
 // moves, goods a minute, its loop time and how often a truck reaches its slowest stop. Open, each stop has its drop and
@@ -21,7 +27,7 @@ export interface RoutesHost {
   state(): GameState;
   tool(): Tool;
   setTool(t: Tool): void;
-  did(r: Result): void;
+  did(r: Action): void;
   toast(msg: string, ok?: boolean): void;
   openGuide(page: GuidePage): void;
   /** Draws a route on the map while the pointer is over it (null: none). */
@@ -62,8 +68,8 @@ export class RoutesCard {
     this.el.append(
       h('div', { class: 'side-head' }, icon('route', 40), h('div', { class: 'grow' }, h('h2', { class: 'cd-title' }, 'Routes'), this.sub),
         h('button', { class: 'cd-btn is-sm', title: 'Make a route, then click buildings on the map to add its stops', onclick: () => this.edit(newRoute(this.host.state())) }, '+ New route'),
-        h('button', { class: 'cd-btn is-icon is-sm', title: 'Trucks and routes in the guide (G)', 'aria-label': 'Guide', onclick: () => this.host.openGuide({ kind: 'topic', id: 'trucks' }) }, icon('book', 18)),
-        h('button', { class: 'cd-btn is-icon is-sm', title: 'Close (O or Esc)', 'aria-label': 'Close', onclick: () => this.host.close() }, icon('close', 14))),
+        titledBy(h('button', { class: 'cd-btn is-icon is-sm', 'aria-label': 'Guide', onclick: () => this.host.openGuide({ kind: 'topic', id: 'trucks' }) }, icon('book', 18)), () => tip('Trucks and routes in the guide', ...keyNames('guide'))),
+        titledBy(h('button', { class: 'cd-btn is-icon is-sm', 'aria-label': 'Close', onclick: () => this.host.close() }, icon('close', 14)), () => tip('Close', ...keyNames('routes'), 'Esc'))),
       this.warn, this.filterEl, this.list, this.foot);
   }
 
@@ -78,8 +84,8 @@ export class RoutesCard {
     this.el.hidden = !show;
     if (!show) { this.key = ''; this.updater = null; return; }
     const s = this.host.state(), tool = this.host.tool(), editing = tool.kind === 'route' ? tool.route : null;
-    const key = JSON.stringify([s.routes.map((r) => [r.id, r.name, stopsKey(r), routeGoods(s, r), trucksOn(s, r).map((t) => t.id), stopProblems(s, r),
-      r.id === editing ? r.stops.map((st) => { const b = buildingById(s, st.building); return b?.type === 'silo' ? Object.keys(b.store!) : b?.type === 'field' ? [b.crop, b.harvest] : null; }) : 0]),
+    const key = JSON.stringify([runtimeOf(s).routesVersion, s.routes.map((r) => [r.id, routeGoods(s, r), stopProblems(s, r),
+      r.id === editing ? r.stops.map((st) => { const b = buildingById(s, st.building); return b?.type === 'silo' ? Object.keys(b.store) : b?.type === 'field' ? [b.crop, b.harvest] : null; }) : 0]),
     s.trucks.filter((t) => t.route === null).length, s.buildings.filter((b) => b.type === 'garage').length, this.filter, editing, [...this.allGoods]]);
     if (key !== this.key && !typingIn(this.el)) {
       this.key = key;
@@ -104,17 +110,17 @@ export class RoutesCard {
   }
 
   /** Puts a truck on a route: one with no route, else a new one from a garage with room. */
-  private addTruck(s: GameState, r: Route): Result {
+  private addTruck(s: GameState, r: Route): Action {
     const idle = s.trucks.find((t) => t.route === null);
     if (idle) return setTruckRoute(s, idle, r);
     const garages = s.buildings.filter((b) => b.type === 'garage');
-    if (!garages.length) return { ok: false, message: 'Build a garage (T) first: trucks are bought there.' };
+    if (!garages.length) return err('Build a garage (T) first: trucks are bought there.');
     const g = garages.find((x) => s.trucks.filter((t) => t.garage === x.id).length < TRUCK.perGarage);
-    if (!g) return { ok: false, message: `Every garage holds ${TRUCK.perGarage} trucks. Build another garage for more.` };
+    if (!g) return err(`Every garage holds ${TRUCK.perGarage} trucks. Build another garage for more.`);
     const bought = buyTruck(s, g);
     if (!bought.ok) return bought;
-    setTruckRoute(s, bought.truck!, r);
-    return { ok: true, message: `Bought a truck for ${r.name}.` };
+    setTruckRoute(s, bought.value.truck, r);
+    return ok({ message: `Bought a truck for ${r.name}.` });
   }
 
   /** A route's head line: its colour, name, stops and trucks, and goods a minute. */
@@ -169,7 +175,7 @@ export class RoutesCard {
     const trucks = trucksOn(s, r);
     const name = h('input', {
       class: 'route-name-input', value: r.name, maxLength: ROUTE_NAME_MAX, title: 'Click to rename', spellcheck: false, 'aria-label': 'Route name',
-      onchange: () => { const res = renameRoute(r, name.value); if (!res.ok) name.value = r.name; this.host.did(res); },
+      onchange: () => { const res = renameRoute(s, r, name.value); if (!res.ok) name.value = r.name; this.host.did(res); },
       onkeydown: (e: KeyboardEvent) => { if (e.key === 'Escape') { name.value = r.name; e.stopPropagation(); } if (e.key === 'Enter' || e.key === 'Escape') name.blur(); },
     });
     const problems = stopProblems(s, r);
@@ -178,21 +184,21 @@ export class RoutesCard {
     const moved = new Set<ItemId>();
     for (const st of r.stops) {
       const b = buildingById(s, st.building);
-      if (!b || b.type === 'silo' || b.type === 'depot') continue;
+      if (!b || BUILDINGS[b.type].stores) continue;
       for (const i of st.pick) if (givesGoods(b).includes(i)) moved.add(i);
       for (const i of st.drop) if (takesGoods(b).includes(i)) moved.add(i);
     }
     const stops = r.stops.map((st, i) => {
       const b = buildingById(s, st.building);
       if (!b) return null;
-      const open = this.allGoods.has(`${r.id}:${i}`), anything = b.type === 'silo' || b.type === 'depot';
+      const open = this.allGoods.has(`${r.id}:${i}`), anything = !!BUILDINGS[b.type].stores;
       // Always with the goods it is set to, so any of them can be turned off (a field's old crop, say).
-      const choices = (all: ItemId[], how: 'drop' | 'pick') => (anything && !open ? ITEM_IDS.filter((x) => moved.has(x) || st.pick.includes(x) || (b.type === 'silo' && b.store![x]))
+      const choices = (all: ItemId[], how: 'drop' | 'pick') => (anything && !open ? ITEM_IDS.filter((x) => moved.has(x) || st.pick.includes(x) || (b.type === 'silo' && b.store[x]))
         : ITEM_IDS.filter((x) => all.includes(x) || st[how].includes(x)));
       const toggle = (item: ItemId, how: 'drop' | 'pick') => h('button', {
         class: 'cd-gtoggle is-sm', 'aria-pressed': String(st[how].includes(item)), 'aria-label': `${how === 'drop' ? 'Drop' : 'Pick up'} ${itemName(item)}`,
         title: `${ITEMS[item].name}: ${st[how].includes(item) ? 'click to stop' : 'click to start'} ${how === 'drop' ? 'dropping it' : 'picking it up'} here`,
-        onclick: () => this.host.did(setStopGood(r, i, item, st[how].includes(item) ? null : how)),
+        onclick: () => this.host.did(setStopGood(s, r, i, item, st[how].includes(item) ? null : how)),
       }, icon(item, 20));
       const group = (label: string, how: 'drop' | 'pick', all: ItemId[]) => {
         const list = choices(all, how), hidden = anything && !open ? st[how].filter((x) => !list.includes(x)).length : 0;
@@ -204,7 +210,7 @@ export class RoutesCard {
         h('span', { class: 'num', style: `background: ${routeCss(s, r)}` }, String(i + 1)),
         h('div', { class: 'top' }, h('b', null, BUILDINGS[b.type].name), h('span', { class: 'fill' }),
           h('span', { class: 'tseg', title: 'How long a truck waits here for room or goods' }, ...waits.map((w) => h('button', {
-            class: w === st.wait ? 'is-on' : '', onclick: () => this.host.did(setStopWait(r, i, w)),
+            class: w === st.wait ? 'is-on' : '', onclick: () => this.host.did(setStopWait(s, r, i, w)),
           }, w === st.wait ? `${w} s` : String(w)))),
           h('span', { class: 'moves' },
             h('button', { title: 'Earlier', 'aria-label': 'Move earlier', disabled: i === 0, onclick: () => this.host.did(moveStop(s, r, i, -1)) }, '↑'),

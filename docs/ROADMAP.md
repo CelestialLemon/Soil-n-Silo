@@ -23,7 +23,7 @@ Pinned: **v0.3.0** (`package.json`). The game owns the loop, state, input, UI, a
 | --- | --- | --- |
 | Build preview ("ghost") drawn see-through and tinted green/red | Yes ([#30](https://github.com/CelestialLemon/pixel3d-renderer/issues/30), v0.3.0) | `opacity` and `tint`; `pick` sees through it. |
 | Overlays (fertility, power reach, water, bees) without a geometry per colour | Yes (#30) | One tile geometry, tinted per tile. |
-| Many goods moving (once on belts, now under drones) without redrawing the object shadow map | Yes ([#31](https://github.com/CelestialLemon/pixel3d-renderer/issues/31)) | Goods, markers, ghosts and overlays have `castShadow = false`. |
+| Many goods moving (now in trucks) without redrawing the object shadow map | Yes ([#31](https://github.com/CelestialLemon/pixel3d-renderer/issues/31)) | Goods, markers, ghosts and overlays have `castShadow = false`. |
 | Turbine rotors turning with the wind | Worked around | Three rotor speeds, swapped by wind strength (spin speed is baked into the geometry). |
 | Lamps on placed objects (pylon lanterns at night) | No | Lamps are scene data; emissive parts glow after dusk instead. |
 | Buildings fading when they hide the tile under the pointer | Not needed yet | Picking a tile uses the ground plane, so tall buildings don't block placement. |
@@ -31,11 +31,12 @@ Pinned: **v0.3.0** (`package.json`). The game owns the loop, state, input, UI, a
 ## v0.1: the pivot (2026-10-09)
 
 - Game rules in `src/game/`: goods, crops, buildings and recipes as data (`data.ts`); seeded maps (`map.ts`); commissions
-  (`scenarios.ts`); the fixed-step simulation (`sim.ts`): belts, splitters, sorters, crossings, drone pads (replaced by silos, below), fields with
+  (`scenarios.ts`); the fixed-step simulation (`src/game/sim/`): belts, splitters, sorters, crossings, drone pads (replaced by silos, below), fields with
   fertility, water and pollination, machines with strict byproducts, pylon power networks with batteries, goals and medals;
   building and configuring (`build.ts`); saves (`save.ts`). Unit tests in `test/`.
 - `npm run sim`: a bot builds a fixed layout as credits allow and plays a commission on the real rules (layouts for First
-  Light, Morning Bread and Linen for the Looms so far, `tools/layouts.ts`).
+  Light, Morning Bread and Linen for the Looms so far, `tools/layouts.ts`). `npm test` plays every layout and checks it clears
+  its commission within the target time.
 - The world (`src/world/`): the static terrain per map, every building/crop/good as a Blender model or an in-code stand-in,
   status markers, goods on belts, drones in flight, overlays.
 - The HUD (`src/ui/`): commission clock and medal pace, credits, power and weather, goals, build bar, inspector, stats, intro,
@@ -108,8 +109,8 @@ numbers behind them are pure modules in `src/game/` (`flows.ts`, `fleet.ts`, `po
 - Play every campaign commission and tune: target times, prices, crop and machine times, power numbers. Bot layouts for the
   other five commissions in `tools/layouts.ts`, so `npm run sim` checks them all.
 - Play the trucks and tune them (cargo, speed, battery, waits, one truck at a time per building) and the target times: the
-  bot clears First Light in about 14 minutes, Morning Bread in about 29 (target 35) and Linen for the Looms in about 26
-  (target 50).
+  bot clears First Light in about 14 minutes (target 20), Morning Bread in about 30 (26 built round neighbours; target 35)
+  and Linen for the Looms in about 25 (target 50). `npm test` plays every layout and fails if one misses its target.
 - Models for the `truck` and the `garage`, and the silo without its drone pads (`ASSET_BRIEF.md`).
 - Drones as automatic helpers beside the trucks (`DESIGN.md`, Open questions), once trucks have been played.
 - Copy and paste / blueprints for repeated blocks (a row of fields with sprinklers).
@@ -120,7 +121,7 @@ numbers behind them are pure modules in `src/game/` (`flows.ts`, `fleet.ts`, `po
 
 - A **weather station** building (proposed 1×1, 80 credits, 2 W): owning one unlocks the forecast, sun and wind by hour from
   the seeded weather curves, in its inspector and in a Weather panel opened from the sun and wind chips by the dial. Without one
-  you see only the weather now. Clearday has a `cd-forecast` component for it (sun and wind bars by hour).
+  you see only the weather now.
 - From the UI revamp, set aside: a **difficulty fingerprint** for each commission (an advanced option in the level select);
   a **soil map and soil forecast** in the ledger; a **route loop diagram** with each stop's share of the loop.
 - Weather events (rain waters fields, storms stop turbines), seasons as commission modifiers.

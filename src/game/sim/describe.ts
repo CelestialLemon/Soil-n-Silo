@@ -1,0 +1,156 @@
+import { BUILDINGS, CROPS, HIVE, ITEMS, TRUCK, type ItemId } from '../data.ts';
+import { networkOf, networks } from '../power.ts';
+import { accessTiles, distanceTo, legLength } from '../roads.ts';
+import { buildingById, isMachine, type Building, type GameState, type Route, type Truck } from '../state.ts';
+import { members, recipeOf, missing, outputsFit, wantsCompost, takesGoods, takesNow, givesNow, passes, neighboursOf, type Link } from './goods.ts';
+import { shareOf } from './energy.ts';
+import { tileOf, garageOf, routeOf, trucksOn } from './trucks.ts';
+import { must } from '../result.ts';
+
+// Player-facing text: what a building or truck is doing, and what is wrong with it.
+
+/** Links in a few words, one line per kind of building and goods: "Takes wheat from 2 fields", "Gives bran to the coop". */
+export function describeLinks(links: { from: Link[]; to: Link[] }): string[] {
+  const says = (list: Link[], verb: string, word: string) => {
+    const groups = new Map<string, Link & { n: number }>();
+    for (const l of list) { const k = `${l.b.type} ${l.goods.join(',')}`, g = groups.get(k); if (g) g.n++; else groups.set(k, { ...l, n: 1 }); }
+    return [...groups.values()].map((g) => {
+      const name = BUILDINGS[g.b.type].name.toLowerCase(), who = g.n === 1 ? `the ${name}` : `${g.n} ${name}${name.endsWith('s') ? 'es' : 's'}`;
+      return `${verb} ${g.goods.map(lcItem).join(', ')} ${word} ${who}`;
+    });
+  };
+  return [...says(links.from, 'Takes', 'from'), ...says(links.to, 'Gives', 'to')];
+}
+
+/** The good a building can't get rid of, if its outputs are full. */
+export function blockedGood(b: Building): ItemId | null {
+  if (b.type === 'field') return b.stored ? b.harvest ?? b.crop : null;
+  if (b.type === 'hive') return 'honey';
+  return isMachine(b) ? outputsFit(b, recipeOf(b))?.item ?? null : null;
+}
+
+/** Whether a building next door takes `item` from it (or gives it), or some route with trucks picks it up there (or drops it). */
+export function served(s: GameState, b: Building, item: ItemId, how: 'pick' | 'drop') {
+  if (neighboursOf(s, b).some((n) => (how === 'pick' ? passes(b, n) : passes(n, b)).includes(item))) return true;
+  return s.routes.some((r) => r.stops.some((st) => st.building === b.id && st[how].includes(item)) && s.trucks.some((t) => t.route === r.id));
+}
+
+/** Whether anything would take a composter's compost now: a field wanting it (next door, or at a stop of a route that picks it up there), or a depot or silo drop. */
+function compostWelcome(s: GameState, b: Building): boolean {
+  if (neighboursOf(s, b).some((n) => n.type === 'field' && wantsCompost(s, n))) return true;
+  return s.routes.some((r) => r.stops.some((st) => st.building === b.id && st.pick.includes('compost'))
+    && r.stops.some((st) => {
+      const d = buildingById(s, st.building);
+      return !!d && st.drop.includes('compost') && (d.type === 'field' ? wantsCompost(s, d) : takesGoods(d).includes('compost'));
+    }));
+}
+
+/** Goods a truck carries that none of its route's stops takes, and what it can't do, in a few words (for the inspector). */
+export function truckProblems(s: GameState, t: Truck): string[] {
+  const out: string[] = [], r = routeOf(s, t), g = garageOf(s, t);
+  if (t.phase === 'stuck') out.push(r?.stops.length ? 'It can reach none of its stops.' : 'It can\'t reach its garage.');
+  else if (g && distanceTo(s, g, tileOf(s, t)) === Infinity) out.push('It can\'t reach its garage to charge.');
+  const dead = [...new Set(t.cargo)].filter((i) => !(r?.stops ?? []).some((st) => {
+    const b = buildingById(s, st.building);
+    return b && st.drop.includes(i) && takesNow(b).includes(i);
+  }));
+  if (dead.length) out.push(`It carries ${dead.map((i) => ITEMS[i].name.toLowerCase()).join(', ')}, which none of its stops takes.`);
+  // Full, with nothing a stop takes now: compost for fields whose soil is good. It can pick nothing up, so it may never empty.
+  else if (r && t.cargo.length >= TRUCK.cargo && !t.cargo.some((i) => r.stops.some((st) => {
+    const b = buildingById(s, st.building);
+    return b && st.drop.includes(i) && takesNow(b).includes(i) && !(b.type === 'field' && !wantsCompost(s, b));
+  }))) out.push('It is full of compost none of its fields takes now (their soil is good), so it can pick nothing up.');
+  return out;
+}
+
+/** What's wrong with a route's stops, by stop: it can't be reached, or it has nothing to do. */
+export function stopProblems(s: GameState, r: Route): (string | null)[] {
+  return r.stops.map((st, i) => {
+    const b = buildingById(s, st.building);
+    if (!b) return 'Gone.';
+    if (!accessTiles(s, b).length) return 'No open tile beside it: trucks can\'t reach it.';
+    const prev = buildingById(s, r.stops[(i + r.stops.length - 1) % r.stops.length].building);
+    if (prev && prev !== b && legLength(s, prev, b) === Infinity) return 'Trucks can\'t drive here from the stop before.';
+    const homes = new Set(trucksOn(s, r).map((t) => buildingById(s, t.garage)));
+    if ([...homes].some((g) => g && legLength(s, g, b) === Infinity)) return 'Trucks can\'t drive here from their garage.';
+    const takes = takesNow(b), gives = givesNow(b);
+    if (!st.drop.some((it) => takes.includes(it)) && !st.pick.some((it) => gives.includes(it))) return 'Nothing to do: it takes none of the goods dropped and gives none of those picked up.';
+    return null;
+  });
+}
+
+const lcItem = (i: ItemId) => ITEMS[i].name.toLowerCase();
+/** A truck's cargo in a few words: "6 wheat", "3 flour and 3 bran". */
+export function cargoText(cargo: ItemId[]) {
+  const n = new Map<ItemId, number>();
+  for (const i of cargo) n.set(i, (n.get(i) ?? 0) + 1);
+  const parts = [...n].map(([i, k]) => `${k} ${lcItem(i)}`);
+  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0] ?? 'nothing';
+}
+
+/** What a truck is doing, in a few words, for the inspector. */
+export function describeTruck(s: GameState, t: Truck): string {
+  const b = t.target !== null ? buildingById(s, t.target) : null, name = b ? BUILDINGS[b.type].name.toLowerCase() : '';
+  const full = Math.round(t.energy / TRUCK.battery * 100);
+  switch (t.phase) {
+    case 'parked': return t.energy < TRUCK.battery - 1e-6 ? `Parked at its garage, charging (${full}%)` : 'Parked at its garage';
+    case 'charge': return t.idle > 0.5 ? 'At its garage, waiting for power to charge' : `Charging at its garage (${full}%)`;
+    case 'stuck': return truckProblems(s, t)[0] ?? 'Waiting';
+    case 'drive':
+      if (b?.id === t.garage) return routeOf(s, t)?.stops.length ? 'Driving home to charge' : 'Driving home';
+      return t.cargo.length ? `Taking ${cargoText(t.cargo)} to the ${name}` : `Driving to the ${name}`;
+    case 'queue': {
+      const ahead = s.trucks.filter((o) => o !== t && o.target === t.target && (o.phase === 'dock' || (o.phase === 'queue' && (o.arrived < t.arrived || (o.arrived === t.arrived && o.id < t.id))))).length;
+      return `Waiting for its turn at the ${name} (${ahead} ahead)`;
+    }
+    case 'dock': {
+      const st = routeOf(s, t)?.stops[t.stop];
+      if (t.idle > 0.2 && st) {
+        const drop = t.cargo.filter((i) => st.drop.includes(i));
+        return drop.length ? `Waiting at the ${name} for room for ${lcItem(drop[0])}` : `Waiting at the ${name} for ${st.pick.map(lcItem).join(' or ')}`;
+      }
+      return `Loading and unloading at the ${name}`;
+    }
+  }
+}
+
+/** One line on what a building is doing, for the hover and the inspector. */
+export function describeStatus(s: GameState, b: Building): string {
+  const def = BUILDINGS[b.type];
+  switch (b.status) {
+    case 'input': {
+      const lack = isMachine(b) ? missing(b, recipeOf(b)) : null;
+      const brought = !lack || members(lack).some((i) => served(s, b, i, 'drop'));
+      return `Waiting for ${b.need ?? 'goods'}${brought ? '' : ': no route or building next door brings it'}`;
+    }
+    case 'blocked':
+      if (b.need === 'compost' && b.type === 'composter' && !compostWelcome(s, b)) return 'Full of compost: no field needs any. Sell it at the depot or let fields draw it down';
+      return `Output blocked: nowhere for ${b.need ?? 'its goods'} to go`;
+    case 'power': return networkOf(s, b) ? `No power: the network is out of power${b.type === 'garage' ? ', so its trucks can\'t charge' : ''}` : 'No power: not in reach of a pylon';
+    case 'lowpower': return `Low power: ${b.type === 'garage' ? 'trucks charging' : 'running'} at ${Math.round(shareOf(s, b) * 100)}%`;
+    case 'nolink': return 'Not connected: no pylon in reach';
+    case 'noroad': return 'No road: trucks can\'t reach it. Leave an open tile beside it, and a way there from the garage';
+    case 'noroute': return `Full of ${b.need}: no route with trucks or building next door takes it`;
+    case 'flowers': return `No flowering fields within ${HIVE.reach} tiles`;
+    case 'idle':
+      if (b.type === 'solar') return 'Night: no sun';
+      if (b.type === 'silo') {
+        const n = Object.values(b.store).reduce((a, k) => a + k, 0);
+        return n ? `Holds ${n} goods` : 'Empty';
+      }
+      if (b.type === 'garage') { const n = s.trucks.filter((t) => t.garage === b.id).length; return n ? `${n} truck${n > 1 ? 's' : ''}, none charging` : 'No trucks yet: buy one'; }
+      return 'Idle';
+    case 'dry': return b.type === 'field' ? `Growing ${CROPS[b.crop].name.toLowerCase()} slowly: no water` : def.name;
+    case 'ok':
+      if (b.type === 'field') return `Growing ${CROPS[b.crop].name.toLowerCase()}`;
+      if (b.type === 'garage') {
+        const mine = s.trucks.filter((t) => t.garage === b.id), k = mine.filter((t) => t.phase === 'parked' || t.phase === 'charge').length;
+        return `Charging ${k} of ${mine.length} truck${mine.length > 1 ? 's' : ''}`;
+      }
+      if (b.type === 'pylon') {
+        const net = must(networks(s).of.get(b.id), 'network'), k = net.pylons.length - 1, n = net.members.length;
+        return `${k ? `Linked to ${k} other pylon${k > 1 ? 's' : ''}` : 'Linked to no other pylon'} · its network powers ${n} building${n === 1 ? '' : 's'}`;
+      }
+      return isMachine(b) ? 'Working' : def.name;
+  }
+}

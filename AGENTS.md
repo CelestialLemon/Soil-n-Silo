@@ -6,14 +6,17 @@
   **Renderer issues** below.
 - Game rules live in `src/game/` as pure TypeScript (no DOM, no three.js, no renderer), so `npm test` runs them in Node. Drawing
   and input live outside it.
+- Expected failures (an action against the rules, a broken save or settings) return a `Result` (`src/game/result.ts`) rather
+  than throwing; throw only for a programmer's bug or a broken invariant.
 
 ## Workflow
 
 1. **Branch.** Work on a branch off `dev`. Never commit to `dev` or `main` directly. New work goes into `dev` (deployed to
    `/dev/` for testing) and reaches `main` only through a PR from `dev` to `main`, opened when the user asks for one.
-2. **Implement and verify.** Run `npm test` and `npm run build` (which typechecks first). The dev server is `npm run dev`, on
-   127.0.0.1:5190. If it's already running, use it and don't kill it. Once the game has golden images, update them only on the
-   work's branch, so new baselines reach `dev` only through the PR, where the user reviews them.
+2. **Implement and verify.** Run `npm test`, `npm run lint` (errors fail; don't add warnings) and `npm run build` (which
+   typechecks first). The dev server is `npm run dev`, on 127.0.0.1:5190. If it's already running, use it and don't kill it.
+   Once the game has golden images, update them only on the work's branch, so new baselines reach `dev` only through the PR,
+   where the user reviews them.
 3. **Clean the working tree.** Remove the scratch files, probes and debug renders you created for this work, so the PR holds
    only the changes the work needs. Never delete or revert changes you didn't make (the user may have uncommitted work in the
    tree), and don't run `git checkout`/`reset`/`clean`/`stash` on them.
@@ -47,13 +50,31 @@
    (`gh api repos/CelestialLemon/Soil-n-Silo/pulls/<N>/comments` and `.../reviews`). Judge each one the same way as in step 5,
    and push fixes to the same PR. A thumbs-up reaction on the PR instead of a review means it found nothing.
 
+## Looking at the game in a browser
+
+Agents run on a headless server. The T3 Code preview tools (`mcp__t3-code__preview_*`, deferred: load them with `ToolSearch`
+first) drive a browser inside the T3 Code **desktop** app, so they only work while a desktop client is connected. From the
+mobile app they fail with "No preview automation host is available… a headless server has no browser of its own". That is not
+"no browser available".
+
+1. Try `preview_open` once. If it succeeds, use the preview tools. Their browser runs on the user's machine, so
+   `127.0.0.1:5190` there may not be the dev server in this worktree; check the page is the one you expect.
+2. If the tools can't be loaded or called, or `preview_open` fails with that error, don't retry. Use headless Chromium on the
+   server: Playwright's copy is cached in `~/.cache/ms-playwright`, so don't download another into `/tmp`. It isn't on `PATH` and
+   the revision number changes, so find it:
+   `find ~/.cache/ms-playwright -name chrome-headless-shell -type f`. If the cache is missing (a different host), install it
+   once into that default location with `npx playwright install chromium-headless-shell` and tell the user. Start the dev server first (`npm run dev`, which needs
+   `npm install` in a fresh worktree) because nothing else serves port 5190 there, then screenshot or script it from the shell,
+   e.g. `<that path> --no-sandbox --screenshot=/tmp/shot.png --window-size=1280,800 http://127.0.0.1:5190/`.
+3. Tell the user which route you used, and keep the screenshots and scripts out of the repo (see Workflow, step 3).
+
 ## Renderer issues
 
 When the game needs something the renderer doesn't do, or hits a renderer bug:
 
 1. Check the renderer's open issues and `docs/ROADMAP.md` there first; it may already be known or planned.
 2. Make sure it is really the renderer's job (the renderer draws; the game owns state, input, UI and timing, see the renderer's
-   roadmap, "Who owns what"). Prefer a game-side workaround when one is cheap and honest.
+   roadmap, "Who owns what").
 3. Open the issue in `CelestialLemon/pixel3d-renderer` with the `soil-n-silo` label and the `bug` or `enhancement` label: what the
    game needs, a minimal repro or screenshot, the renderer version the game pins, and what the game does meanwhile. If game work
    is blocked on it, link it from a game issue labelled `renderer`.

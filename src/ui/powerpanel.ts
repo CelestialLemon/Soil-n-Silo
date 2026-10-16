@@ -2,12 +2,15 @@ import { BUILDINGS, POWER, TRUCK, type BuildingId } from '../game/data.ts';
 import { gameSpan, tonight } from '../game/forecast.ts';
 import { networks, usedBy } from '../game/power.ts';
 import { HOUR_SECONDS, nightsOf, powerDay } from '../game/powerlog.ts';
-import { dayAt, exposureOf, hourAt, nearWater, shareOf, sunAt, wants } from '../game/sim.ts';
-import type { GameState } from '../game/state.ts';
+import { dayAt, hourAt, sunAt } from '../game/sim/clock.ts';
+import { exposureOf, nearWater } from '../game/sim/layout.ts';
+import { shareOf, wants } from '../game/sim/energy.ts';
+import type { BatteryBuilding, GameState, MachineBuilding } from '../game/state.ts';
 import { netColour } from '../world/powerView.ts';
 import { NET_COLOURS } from '../world/shapes.ts';
 import { fill, h, icon, svg } from './dom.ts';
 import { clock, clockAt, dec, hex, pct, plural, watts } from './format.ts';
+import { keyNames, tip } from './keyhints.ts';
 
 // The Power panel (W): what is made, used and stored now; power by source over the last 24 in-game hours as a radial chart
 // (an hour a slice, night shaded, short hours marked); each network; tonight's charge until sunrise if use stays as it is
@@ -16,7 +19,7 @@ import { clock, clockAt, dec, hex, pct, plural, watts } from './format.ts';
 
 export interface PowerHost {
   state(): GameState;
-  close(): void;
+  close: () => void;
 }
 
 const SRC: { key: 'solar' | 'wind' | 'digester' | 'given' | 'short'; col: string; name: string }[] = [
@@ -106,7 +109,7 @@ export function powerSheet(host: PowerHost) {
     if (performance.now() - last < 1000) return;
     last = performance.now();
     const nets = networks(s).list, made = nets.reduce((n, x) => n + x.made, 0), used = nets.reduce((n, x) => n + usedBy(x), 0);
-    const bats = s.buildings.filter((b) => b.type === 'battery' && networks(s).of.has(b.id)), cap = bats.length * POWER.battery.capacity, stored = bats.reduce((n, b) => n + b.charge!, 0);
+    const bats = s.buildings.filter((b): b is BatteryBuilding => b.type === 'battery' && networks(s).of.has(b.id)), cap = bats.length * POWER.battery.capacity, stored = bats.reduce((n, b) => n + b.charge, 0);
     const day = powerDay(s), nights = nightsOf(s);
     // Where the watts go: each kind of building that draws power, over the day and now.
     const types = (Object.keys(BUILDINGS) as BuildingId[]).filter((t) => BUILDINGS[t].power && s.buildings.some((b) => b.type === t));
@@ -119,7 +122,7 @@ export function powerSheet(host: PowerHost) {
       return `${BUILDINGS[t].power} W while working`;
     };
     const lastNight = nights.length ? nights[nights.length - 1] : null;
-    const solar = s.buildings.filter((b) => b.type === 'solar').length, turbines = s.buildings.filter((b) => b.type === 'turbine'), digesters = s.buildings.filter((b) => b.type === 'digester');
+    const solar = s.buildings.filter((b) => b.type === 'solar').length, turbines = s.buildings.filter((b) => b.type === 'turbine'), digesters = s.buildings.filter((b): b is MachineBuilding => b.type === 'digester');
     const sheltered = turbines.filter((b) => exposureOf(s, b) < 1).length;
     const peak = day.hours.reduce<{ v: number; t: number } | null>((m, x) => (x && (!m || x.solar > m.v) ? { v: x.solar, t: x.from } : m), null);
     fill(el,
@@ -129,7 +132,7 @@ export function powerSheet(host: PowerHost) {
         h('div', { class: 'pw-read' }, h('b', null, watts(made)), h('small', null, 'made now')),
         h('div', { class: 'pw-read' }, h('b', null, watts(used)), h('small', null, 'used now')),
         h('div', { class: 'pw-read' }, h('b', null, cap ? pct(stored / cap) : '–'), h('small', null, `stored · ${plural(bats.length, 'battery', 'batteries')}`)),
-        h('button', { class: 'cd-btn is-icon', title: 'Close (Esc or W)', 'aria-label': 'Close', onclick: host.close }, icon('close', 18))),
+        h('button', { class: 'cd-btn is-icon', title: tip('Close', ...keyNames('power'), 'Esc'), 'aria-label': 'Close', onclick: host.close }, icon('close', 18))),
       h('div', { class: 'sheet-body pw-body' },
         h('div', { class: 'pw-col' },
           h('div', { class: 'row-head' }, h('span', { class: 'cd-label', style: 'color: var(--ochre)' }, 'Power by source · the last 24 hours'), h('span', { class: 'cd-small' }, 'each hour a slice')),
@@ -176,7 +179,7 @@ export function powerSheet(host: PowerHost) {
                 h('span', { class: 'tr' }, h('i', { style: `width: ${k * 100}%` }), h('u', { style: `left: ${k * 100}%; width: ${after * 100}%` })),
                 h('span', { class: `end${n.dryAt ? ' cd-bad' : ' cd-good'}` }, n.dryAt ? `dry ${clockAt(n.dryAt)}` : n.lowest !== null ? `held · ${pct(n.lowest)} left` : 'held'));
             }) : [h('p', { class: 'cd-small' }, cap ? 'No night recorded yet.' : 'No batteries.')]),
-            nights.some((n) => n.dryAt) ? h('div', { class: 'cd-small note' }, `Ran dry: ${nights.filter((n) => n.dryAt).map((n) => clockAt(n.dryAt!)).join(', ')}.`) : null))));
+            nights.some((n) => n.dryAt) ? h('div', { class: 'cd-small note' }, `Ran dry: ${nights.flatMap((n) => (n.dryAt ? [clockAt(n.dryAt)] : [])).join(', ')}.`) : null))));
   };
   update();
   return { el, update };

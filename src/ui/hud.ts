@@ -1,6 +1,6 @@
-import type { Result } from '../game/build.ts';
+import { choicesOf, messageOf, type Action, type Setting } from '../game/build.ts';
 import type { BuildingId } from '../game/data.ts';
-import type { Medal } from '../game/sim.ts';
+import type { Medal } from '../game/sim/stats.ts';
 import { buildingById, type Dir, type GameState, type Route } from '../game/state.ts';
 import type { Overlay } from '../world/view.ts';
 import { h, icon } from './dom.ts';
@@ -10,6 +10,7 @@ import { guidePanel, type GuidePage } from './guide.ts';
 import { Inspector } from './inspector.ts';
 import { ledgerSheet } from './ledger.ts';
 import { pauseScreen } from './pause.ts';
+import { settingsPanel } from './settingsPanel.ts';
 import { CommissionCard, TopRight, ViewBar, viewControls, type Panel, type PlayHost } from './playhud.ts';
 import { powerSheet } from './powerpanel.ts';
 import { ProblemsStrip } from './problems.ts';
@@ -26,7 +27,8 @@ import { WorldLayer } from './world.ts';
 
 export type Tool =
   | { kind: 'select' }
-  | { kind: 'build'; type: BuildingId; rot: Dir }
+  /** `crop` and `recipe` are what a field or machine in hand will be placed with (see `Setting`). */
+  | ({ kind: 'build'; type: BuildingId; rot: Dir } & Setting)
   | { kind: 'remove' }
   /** Editing a route: clicking a building adds it as a stop. */
   | { kind: 'route'; route: number };
@@ -35,6 +37,8 @@ export interface HudHost {
   state(): GameState;
   tool(): Tool;
   setTool(t: Tool): void;
+  /** Changes what the field or machine in hand is placed with, and remembers it for the level. */
+  choose(set: Setting): void;
   /** 0 when paused. */
   speed(): number;
   setSpeed(n: number): void;
@@ -60,7 +64,7 @@ export interface HudHost {
 }
 
 /** A screen or panel over the world: `blocking` ones pause the game; `update` redraws a live one a few times a second. */
-interface Modal { name: string; el: HTMLElement; blocking: boolean; update?: () => void }
+interface Modal { name: string; el: HTMLElement; blocking: boolean; update?: () => void; onClose?: () => void }
 
 export class Hud {
   private readonly host: HudHost;
@@ -76,6 +80,7 @@ export class Hud {
   private readonly toasts = h('div', { class: 'toasts' });
   /** The card of the building pointed at in the dock, above it. */
   private readonly tip = h('div');
+  private readonly above = h('div', { class: 'hud-above' }, this.toasts, this.tip);
   private tipFor: BuildingId | null = null;
   private zoom = 1;
   /** The side card for the selected building or truck. */
@@ -85,6 +90,8 @@ export class Hud {
   private readonly problems: ProblemsStrip;
   private modals: Modal[] = [];
   private routesOpen = false;
+  /** The routes card shows when opened with O or while a route is being edited (from an inspector). */
+  private get routesShown() { return this.routesOpen || this.host.tool().kind === 'route'; }
   private readonly routes: RoutesCard;
   private lastSlow = 0;
 
@@ -110,9 +117,9 @@ export class Hud {
       close: () => { this.routesOpen = false; host.previewRoute(null); if (host.tool().kind === 'route') host.setTool({ kind: 'select' }); },
     });
     this.problems = new ProblemsStrip((id) => host.focus(id));
-    this.dock = new Dock({ state: () => host.state(), tool: () => host.tool(), setTool: (t) => host.setTool(t), tip: (id) => this.showTip(id) });
+    this.dock = new Dock({ state: () => host.state(), tool: () => host.tool(), setTool: (t) => host.setTool(t), choose: (c) => host.choose(c), tip: (id) => this.showTip(id) });
     this.hud.append(this.commission.el, this.commission.pill, this.top.el, this.view.el, this.controls, this.dock.el, this.side.el, this.routes.el, this.problems.el, this.problems.popover,
-      h('div', { class: 'hud-above' }, this.toasts, this.tip));
+      this.above);
     this.ui.append(this.world.el, this.hud, this.sheets);
     root.append(this.ui);
     host.settings.listen((st) => { this.ui.classList.toggle('is-calm', st.reduceMotion); this.fit(); this.lastSlow = 0; });
@@ -143,9 +150,11 @@ export class Hud {
     this.top.updateButtons();
     this.view.update();
     const tool = this.host.tool();
-    if (tool.kind === 'build') this.dock.showCategoryOf(tool.type);
+    this.dock.showCategoryOf(tool.kind === 'build' ? tool.type : null);
     this.dock.update();
-    const routes = this.routesOpen || tool.kind === 'route';
+    // The dock's strip of choices takes the room the card of what is pointed at would have.
+    this.above.classList.toggle('has-strip', tool.kind === 'build' && choicesOf(tool.type).length > 0);
+    const routes = this.routesShown;
     this.routes.update(routes);
     this.side.update(!routes);
     const side = this.side.open || routes;
@@ -168,7 +177,7 @@ export class Hud {
     if (!msg) return;
     const t = h('span', { class: `cd-toast${ok ? '' : ' is-bad'}` }, ic ? icon(ic) : icon(ok ? 'check' : 'warn'), msg);
     this.toasts.append(t);
-    while (this.toasts.children.length > 4) this.toasts.firstChild!.remove();
+    while (this.toasts.children.length > 4) this.toasts.firstElementChild?.remove();
     setTimeout(() => t.classList.add('is-gone'), 2200);
     setTimeout(() => t.remove(), 2800);
   }
@@ -182,7 +191,7 @@ export class Hud {
   /** Whether a panel is open. */
   panelOpen(p: Panel) {
     if (p === 'ledger' || p === 'power') return this.modals.some((m) => m.name === p);
-    if (p === 'routes') return this.routesOpen;
+    if (p === 'routes') return this.routesShown;
     if (p === 'guide') return this.modals.some((m) => m.name === 'guide');
     return false;
   }
@@ -195,8 +204,9 @@ export class Hud {
   // ---- Side cards ----
 
   /** Shows a result as a message (if it has one) and redraws the side cards. */
-  private did(r: Result) {
-    if (r.message) this.toast(r.message, r.ok);
+  private did(r: Action) {
+    const message = messageOf(r);
+    if (message) this.toast(message, r.ok);
     this.refresh();
     this.host.changed();
   }
@@ -221,16 +231,16 @@ export class Hud {
 
   /** Opens or closes the routes card. */
   toggleRoutes() {
-    this.routesOpen = !this.routesOpen;
+    this.routesOpen = !this.routesShown;
     if (!this.routesOpen) { this.host.previewRoute(null); if (this.host.tool().kind === 'route') this.host.setTool({ kind: 'select' }); }
     this.refresh();
   }
 
   // ---- Modal screens ----
 
-  private openModal(name: string, el: HTMLElement, blocking: boolean, update?: () => void) {
+  private openModal(name: string, el: HTMLElement, blocking: boolean, update?: () => void, onClose?: () => void) {
     this.modals = this.modals.filter((m) => m.name !== name);
-    this.modals.push({ name, el, blocking, update });
+    this.modals.push({ name, el, blocking, update, onClose });
     this.drawModals();
   }
   private drawModals() {
@@ -247,11 +257,17 @@ export class Hud {
   }
   /** Closes the topmost modal or panel; false if none was open. */
   closeTop(): boolean {
-    if (this.modals.length) { this.modals.pop(); this.drawModals(); return true; }
-    if (this.routesOpen) { this.toggleRoutes(); return true; }
+    const top = this.modals.pop();
+    if (top) { top.onClose?.(); this.drawModals(); return true; }
+    if (this.routesShown) { this.toggleRoutes(); return true; }
     return false;
   }
-  private close(name: string) { this.modals = this.modals.filter((m) => m.name !== name); this.drawModals(); }
+  private close(name: string) {
+    const gone = this.modals.filter((m) => m.name === name);
+    this.modals = this.modals.filter((m) => m.name !== name);
+    for (const m of gone) m.onClose?.();
+    this.drawModals();
+  }
 
   /** Opens the guide on `page`; by default on what's in hand, selected or pointed at in the dock. G again closes it. */
   openGuide(page?: GuidePage) {
@@ -271,10 +287,20 @@ export class Hud {
     this.openModal('intro', briefing(this.host.state(), () => this.close('intro'), () => { this.close('intro'); this.openGuide({ kind: 'topic', id: 'start' }); }), true);
   }
 
-  openPause() {
-    this.openModal('pause', pauseScreen({
+  private pauseEl() {
+    return pauseScreen({
       state: () => this.host.state(), settings: this.host.settings, resume: () => { this.close('pause'); this.host.resume(); }, menu: () => this.host.menu(), restart: () => this.host.restart(),
-    }), true);
+      openSettings: () => this.openSettings(),
+    });
+  }
+  openPause() { this.openModal('pause', this.pauseEl(), true); }
+
+  /** The settings, over the pause screen (which is drawn again after, for the keys it lists). */
+  private openSettings() {
+    this.openModal('settings', settingsPanel(this.host.settings, () => this.close('settings')), true, undefined, () => {
+      const pause = this.modals.find((m) => m.name === 'pause');
+      if (pause) pause.el = this.pauseEl();
+    });
   }
 
   /** The results, when the commission is complete. */

@@ -1,12 +1,12 @@
 import { generateMap, TERRAIN } from '../game/map.ts';
 import { seedOf } from '../game/rng.ts';
 import type { Progress } from '../game/save.ts';
-import { CAMPAIGN, randomScenario, SANDBOX, type Scenario } from '../game/scenarios.ts';
+import { CAMPAIGN, randomScenario, SANDBOX, SILVER_PAR, type Scenario } from '../game/scenarios.ts';
 import type { GameState } from '../game/state.ts';
 import { fill, h, icon, svg } from './dom.ts';
 import { itemName, num, pct, playTime } from './format.ts';
 import { guidePanel } from './guide.ts';
-import { settingsCard } from './pause.ts';
+import { settingsPanel } from './settingsPanel.ts';
 import { uiScale, type SettingsStore } from './settings.ts';
 import { goalIcon, goalNow, MEDAL_NAME, medal, ring } from './widgets.ts';
 
@@ -18,7 +18,7 @@ export interface MenuHost {
   saved: GameState | null;
   progress: Progress;
   settings: SettingsStore;
-  resume(): void;
+  resume: () => void;
   start(id: string): void;
 }
 
@@ -96,12 +96,12 @@ export function showMenu(root: HTMLElement, host: MenuHost) {
         svg('path', { d: `M 150 ${ys[0] + 30} ${xs.map((x, i) => `L ${x} ${ys[i] + 40}`).join(' ')} L 1790 ${ys[7] + 20}` })),
       ...CAMPAIGN.map((sc, i) => {
         const best = host.progress[sc.id], here = saved?.scenario.id === sc.id, on = sc.id === chosen.id;
-        const v = best ? 1 : here ? progressOf(saved!) : 0;
+        const v = best ? 1 : here ? progressOf(saved) : 0;
         const col = best ? `var(--medal-${best.medal})` : 'var(--pine)';
         return h('button', { class: `st${on ? ' is-on' : ''}`, style: `left: ${(xs[i] / 1920 * 100).toFixed(2)}%; top: ${ys[i] - (on ? 26 : 0)}px`, onclick: () => { chosen = sc; draw(); } },
           h('span', { class: 'disc' }, ring({ v, d: on ? 128 : 76, w: on ? 8 : 6, col }, h('div', null, h('div', { class: on ? 'n big' : 'n' }, String(i + 1)), on && here && !best ? h('div', { class: 'cd-small' }, pct(v)) : null))),
           h('span', { class: 'name' }, sc.name),
-          h('span', { class: 'sub' }, best ? `${best.medal} · ${playTime(best.time)} of ${playTime(sc.par)}` : here ? `in progress · ${playTime(saved!.time)}` : `par ${playTime(sc.par)}`));
+          h('span', { class: 'sub' }, best ? `${best.medal} · ${playTime(best.time)} of ${playTime(sc.par)}` : here ? `in progress · ${playTime(saved.time)}` : `par ${playTime(sc.par)}`));
       }));
   }
 
@@ -123,7 +123,7 @@ export function showMenu(root: HTMLElement, host: MenuHost) {
         h('div', { class: 'cd-label', style: 'margin-bottom: 12px' }, 'Medal times'),
         h('div', { class: 'row' },
           h('span', { class: 'mchip' }, medal('gold', 30), h('b', null, playTime(sc.par)), h('small', null, 'gold')),
-          h('span', { class: 'mchip' }, medal('silver', 30), h('b', null, playTime(sc.par * 1.5)), h('small', null, 'silver')),
+          h('span', { class: 'mchip' }, medal('silver', 30), h('b', null, playTime(sc.par * SILVER_PAR)), h('small', null, 'silver')),
           h('span', { class: 'mchip' }, medal('bronze', 30), h('small', null, 'after')))),
       h('div', { class: 'vsep' }),
       h('div', { class: 'col' },
@@ -136,13 +136,13 @@ export function showMenu(root: HTMLElement, host: MenuHost) {
           : h('button', { class: 'cd-btn is-primary is-lg', onclick: () => host.start(sc.id) }, icon('play', 16, 'inv'), best ? 'Play again' : 'Begin'),
         here ? h('button', { class: 'link small', onclick: () => host.start(sc.id) }, 'or start over') : null));
     const other = saved && saved.scenario.id !== sc.id && saved.completedAt === null;
-    fill(warn, other ? [icon('warn', 18), `Starting any other commission replaces ${saved!.scenario.name} in progress (${playTime(saved!.time)} played).`] : []);
+    fill(warn, other ? [icon('warn', 18), `Starting any other commission replaces ${saved.scenario.name} in progress (${playTime(saved.time)} played).`] : []);
   }
 
   function draw() { drawPath(); drawCard(); }
 
   // A random commission: a seed and a difficulty, with a live preview.
-  const seed = h('input', { class: 'seed cd-num', type: 'text', value: String(Math.floor(Math.random() * 100000)), size: 8, 'aria-label': 'Seed', spellcheck: false }) as HTMLInputElement;
+  const seed = h('input', { class: 'seed cd-num', type: 'text', value: String(Math.floor(Math.random() * 100000)), size: 8, 'aria-label': 'Seed', spellcheck: false });
   let difficulty: 1 | 2 | 3 = 2;
   const diff = h('div', { class: 'cd-seg wide' });
   const preview = h('div', { class: 'preview' });
@@ -170,7 +170,7 @@ export function showMenu(root: HTMLElement, host: MenuHost) {
         h('button', { class: 'cd-btn is-icon', 'aria-label': 'Continue', title: 'Continue', onclick: host.resume }, icon('play', 18))) : null,
       h('div', { class: 'top-buttons' },
         h('button', { class: 'cd-btn', onclick: () => { sheets.classList.add('is-open'); fill(sheets, h('div', { class: 'scrim', onclick: closeSheet }), h('div', { class: 'sheet-wrap' }, guidePanel({ kind: 'topic', id: 'start' }, null, closeSheet))); } }, icon('book', 22), 'Guide'),
-        h('button', { class: 'cd-btn', onclick: () => { sheets.classList.add('is-open'); fill(sheets, h('div', { class: 'scrim', onclick: closeSheet }), h('div', { class: 'sheet-wrap' }, h('div', { class: 'menu-settings' }, settingsCard(host.settings), h('button', { class: 'cd-btn is-primary', onclick: closeSheet }, 'Done')))); } }, icon('menu', 20), 'Settings')),
+        h('button', { class: 'cd-btn', onclick: () => { sheets.classList.add('is-open'); fill(sheets, h('div', { class: 'scrim', onclick: closeSheet }), h('div', { class: 'sheet-wrap' }, settingsPanel(host.settings, closeSheet))); } }, icon('menu', 20), 'Settings')),
       h('div', { class: 'cd-label path-label' }, `${CAMPAIGN.length} commissions · down the valley`),
       path, card, warn,
       h('div', { class: 'cd-card random' },

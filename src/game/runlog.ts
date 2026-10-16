@@ -1,7 +1,8 @@
-import type { BuildingId, ItemId } from './data.ts';
+import { BUILDINGS, type BuildingId, type ItemId } from './data.ts';
 import { nightOf } from './powerlog.ts';
 import type { Scenario } from './scenarios.ts';
 import type { GameState } from './state.ts';
+import { must } from './result.ts';
 
 // The run, for the results screen: milestones as they happen (the first of each good, the first night short of power, the
 // first trucks, a second of a building, a byproduct put to use, each goal reached), the goal good delivered over time, and
@@ -17,13 +18,12 @@ export const RUN_SAMPLE = 10, RUN_MAX_SAMPLES = 2000;
 export const RUN_MAX_NIGHTS = 500;
 
 export type MarkKind = 'first' | 'night' | 'truck' | 'second' | 'loop' | 'goal';
-/** A milestone. `t` is when it happened; -1 if before the run was recorded (a save from before the log). */
+/** A milestone. `t` is when it happened. */
 export interface Mark { t: number; kind: MarkKind; item?: ItemId; type?: BuildingId; goal?: number; n?: number }
 
 export interface RunLog {
   marks: Mark[];
-  /** The goal good delivered, sampled every `curveStep` seconds from `curveFrom`. */
-  curveFrom: number;
+  /** The goal good delivered, sampled every `curveStep` seconds from the start. */
   curveStep: number;
   curve: number[];
   /** Seconds each kind of building stood, and seconds spent in each problem, keyed `type|status|need`. */
@@ -35,7 +35,7 @@ export interface RunLog {
   trucks: { total: number; wait: number; at: Partial<Record<BuildingId, number>> };
 }
 
-export const newRunLog = (): RunLog => ({ marks: [], curveFrom: 0, curveStep: RUN_SAMPLE, curve: [0], time: {}, problems: {}, nights: [], trucks: { total: 0, wait: 0, at: {} } });
+export const newRunLog = (): RunLog => ({ marks: [], curveStep: RUN_SAMPLE, curve: [0], time: {}, problems: {}, nights: [], trucks: { total: 0, wait: 0, at: {} } });
 
 /** Byproducts: put to use, they close a loop. */
 const BYPRODUCTS: ItemId[] = ['bran', 'seedcake', 'manure'];
@@ -48,24 +48,6 @@ const FINE = new Set(['ok', 'idle']);
 export function goalGood(sc: Scenario): ItemId | null {
   const g = sc.goals.find((x) => x.kind === 'deliver') ?? sc.goals.find((x) => x.kind === 'rate');
   return g && 'item' in g ? g.item : null;
-}
-
-/**
- * A log for a game saved before runs were logged: what has already happened (goods made, trucks, second buildings, delivery
- * goals met and rate goals reached) is marked as before the record (t −1), and the curve starts now.
- */
-export function startedRunLog(s: GameState): RunLog {
-  const run = newRunLog();
-  for (const i of Object.keys(s.made) as ItemId[]) if (s.made[i]) run.marks.push({ t: -1, kind: 'first', item: i });
-  for (let k = 1; k <= Math.min(2, s.trucks.length); k++) run.marks.push({ t: -1, kind: 'truck', n: k });
-  for (const type of SECONDS) if (s.buildings.filter((b) => b.type === type).length >= 2) run.marks.push({ t: -1, kind: 'second', type });
-  s.scenario.goals.forEach((g, i) => {
-    if (g.kind === 'deliver' ? (s.delivered[g.item] ?? 0) >= g.n : g.kind === 'rate' && s.reached[i]) run.marks.push({ t: -1, kind: 'goal', goal: i });
-  });
-  run.curveFrom = Math.floor(s.time / RUN_SAMPLE) * RUN_SAMPLE;
-  const item = goalGood(s.scenario);
-  run.curve = [item ? s.delivered[item] ?? 0 : 0];
-  return run;
 }
 
 /**
@@ -92,7 +74,7 @@ export function noteRun(s: GameState, dt: number, night: boolean, short: boolean
   const n = night ? nightEntry(s) : null;
   if (n && short) n.short += dt;
   for (const b of s.buildings) {
-    if (b.type === 'depot' || b.type === 'pylon' || b.type === 'sapling') continue;
+    if (BUILDINGS[b.type].inert) continue;
     run.time[b.type] = (run.time[b.type] ?? 0) + dt;
     if (FINE.has(b.status)) continue;
     const key = `${b.type}|${b.status}|${b.need ?? ''}`;
@@ -110,7 +92,7 @@ export function noteRun(s: GameState, dt: number, night: boolean, short: boolean
   // The curve, every `curveStep` seconds until the commission is complete, and a last sample on the step that completes it
   // (the results draw it at the completion time).
   const item = goalGood(s.scenario);
-  if (item && (s.completedAt !== null || s.time >= run.curveFrom + run.curve.length * run.curveStep - 1e-6)) {
+  if (item && (s.completedAt !== null || s.time >= run.curve.length * run.curveStep - 1e-6)) {
     if (run.curve.length >= RUN_MAX_SAMPLES) {
       run.curve = run.curve.filter((_, i) => i % 2 === 0);
       run.curveStep *= 2;
@@ -126,7 +108,7 @@ export function noteRun(s: GameState, dt: number, night: boolean, short: boolean
   for (const [type, k] of count) if (k >= 2 && !marked(run, 'second', (m) => m.type === type)) run.marks.push({ t: s.time, kind: 'second', type });
   done().forEach((d, i) => { if (d && !marked(run, 'goal', (m) => m.goal === i)) run.marks.push({ t: s.time, kind: 'goal', goal: i }); });
   if (run.nights.some((x) => x.short > 0) && !marked(run, 'night', () => true)) {
-    const first = run.nights.find((x) => x.short > 0)!;
+    const first = must(run.nights.find((x) => x.short > 0), 'short night');
     run.marks.push({ t: s.time, kind: 'night', n: first.day });
   }
 }

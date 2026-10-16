@@ -50,9 +50,10 @@ It is build-only and point-and-click. There is no character and no manual farmin
 
 | Input | Does |
 | --- | --- |
-| The dock (bottom) or hotkeys (F field, L silo, T garage, P pylon, S solar) | Pick a building to place; its placement card says what it would do on the tile under the pointer |
+| The dock (bottom) or hotkeys (by default F field, L silo, T garage, P pylon, S solar) | Pick a building to place; its placement card says what it would do on the tile under the pointer |
 | Click / drag | Place it; a drag places a row (pylons: a power line, spaced so their reaches meet) |
 | R | Turn what you're placing (for looks) |
+| A chip in the strip above a field's or bakery's dock tile; C / Shift+C | Choose the crop (wheat, beans, tomato, sunflower, flax) or the recipe (bread, honey cake) the buildings you place get, without putting the tool down |
 | Click a building with nothing in hand | Select it: the inspector shows its status, buffers, settings and history |
 | A garage's inspector | Buy a truck; give each of its trucks a route, or none |
 | O, or the Routes button | The routes card: every route with its stops, goods, goods a minute, loop time, the gap between trucks at its slowest stop, and problems; point at one to draw it on the map; click it to open it |
@@ -65,7 +66,7 @@ It is build-only and point-and-click. There is no character and no manual farmin
 | W | The Power panel: the last day by source, each network, tonight's charge, where the watts go |
 | G | The guide: a page for every building (what it does, how to use it, what it takes and gives, its numbers), the goods, and the basics |
 | V (or the view bar) | Views: soil fertility, sprinkler water, power reach, roads, bee range |
-| Esc | Close what is open; with nothing open, the pause screen (settings, what the markers mean, every key) |
+| Esc | Close what is open; with nothing open, the pause screen (the way to the settings, what the markers mean, every key as set) |
 
 The build preview is see-through, green where it fits and red where it doesn't.
 
@@ -123,7 +124,7 @@ screen kept nearly empty so the valley is what you look at. Its principles:
 - **Projections are optional.** "Done by" and the gold and silver pace ticks appear only with the *Show pace* setting.
 - **Keep the HUD quiet; heavy data gets its own place.** Power has its own panel; production chains and lead times live in the
   guide; building rates live in the inspector, never as labels over the map.
-- **No hotkeys printed in the HUD.** Every key still works; keys are listed on the pause screen and appear in tooltips.
+- **No hotkeys printed in the HUD.** Every key still works; keys are listed on the pause screen and appear in tooltips. Every key but Esc can be changed in Settings (Keys tab, from the level select or the pause screen); the panel's Game tab holds the other settings.
 - **Status never by colour alone.** Each status pairs its tint with a shape and a word.
 - **Two clocks, and watts not energy.** A game day lasts four minutes of play. Anything measured over minutes of play (history,
   rates a minute, idle shares, the commission clock, the results' milestones) is in play time ("5 min ago", `13:00` of play);
@@ -278,8 +279,8 @@ go, or a route of its own.
 
 **Problems a route shows** (on the route, on its trucks, in the routes panel, and as a marker on the building): a stop that
 can't be reached, a stop with nothing to do (it neither takes nor gives any of its goods), a truck carrying goods none of its
-stops takes, a truck that can't reach its garage, a route with no trucks, and a building whose outputs are full with no
-route or neighbour taking them. A truck stuck with goods no stop takes can **dump** its cargo: the goods are lost.
+stops takes (or full of compost none of its fields takes now), a truck that can't reach its garage, a route with no trucks,
+and a building whose outputs are full with no route or neighbour taking them. A truck stuck with goods no stop takes can **dump** its cargo: the goods are lost.
 
 **Next door.** Buildings that share an edge (touching only at a corner doesn't count) trade without trucks. Each step, every
 machine takes up to one of each good its recipe uses from the buildings next door that have it waiting, from whichever has
@@ -312,7 +313,7 @@ playing trucks: every level needed many trucks, and routes doing a field-to-mill
 
 | Building | Size | Cost | Power | Notes |
 | --- | --- | --- | --- | --- |
-| Field | 3 × 3 | 30 | — | Grows the chosen crop on its 9 tiles. Takes compost (a truck brings it) |
+| Field | 3 × 3 | 30 | — | Grows the crop chosen as it is placed (wheat, until you choose another) on its 9 tiles. Takes compost (a truck brings it) |
 | Sprinkler | 1 × 1 | 25 | 3 W within 8 tiles of water, else 8 W | Waters fields whose centre is within 3 tiles |
 | Coop | 3 × 3 | 150 | — | Four chickens. Every 2 feed (beans, bran or seed cake) give 2 eggs and 1 manure, 16 s |
 | Beehive | 1 × 1 | 60 | — | Makes honey from flowering fields (not wheat) within 4 tiles, faster with more of them (up to 3). Pollinates fields within 4 tiles |
@@ -328,6 +329,14 @@ playing trucks: every level needed many trucks, and routes doing a field-to-mill
 | Sunflower | 70 s | 3 | −2 |
 | Flax | 55 s | 3 | −1.5 |
 
+- **Choosing while placing.** While a field or bakery is in hand, a strip over its dock tile (its pointer on the tile) has a
+  chip for each crop or recipe; the one in hand is lit. Click a chip, or press C (Shift+C goes
+  back), to change it; the tool stays in hand. A click places one building with the choice, and a drag places every
+  building in it with the choice, so four fields of beans are one pick and one drag. The ghost of a field shows the crop, and
+  the placement card and the toast name it. The level remembers the last choice for each of the two (it is in the save), so
+  the next pickup starts on it; a level starts on wheat and bread. Changing a placed building in its inspector doesn't change
+  what is remembered. (Chosen on 2026-10-16: players forgot to switch after placing, and found a field grew the wrong crop
+  much later.)
 - Grow times are with water at fertility 60. Growth speed is ×0.4 without water (a field sharing an edge with a river or pond counts as watered), and from ×0.4 (fertility 0) to ×1.4
   (fertility 100) by the field's average fertility.
 - A pollinated field (a hive within 4 tiles) yields 1 more of a flowering crop.
@@ -337,6 +346,11 @@ playing trucks: every level needed many trucks, and routes doing a field-to-mill
   doesn't wait for a field whose soil is good to take it (it still waits for a harvest the stop picks up). Compost no field
   needs has to go somewhere (the depot or a silo), or the composter fills and stops. (Chosen on 2026-10-15: fields used to
   keep up to 4 compost for later, so the first field on a route took every unit and the rest starved.)
+- A route whose only compost drops are fields picks up only as much compost as they take now, counting what its trucks
+  already carry; a route that also drops compost at the depot or a silo picks it up freely. So a truck never fills up with
+  compost its fields won't take and jams: with no room for their harvest the fields would stop growing, and their soil would
+  never wear down to take it. A truck that ends up full of it anyway (a composter next door fed the fields first) says so,
+  and can dump it. (Chosen on 2026-10-15, after the Morning Bread bot locked up that way.)
 - Ground without a field rests: it regains 0.1 fertility a second (6 a minute), up to what it started at. Moving a field
   lets worn ground recover.
 
@@ -348,7 +362,7 @@ playing trucks: every level needed many trucks, and routes doing a field-to-mill
 | Oil press | 2 × 2 | 220 | 15 W | 2 sunflower → oil + seed cake, 8 s |
 | Spinner | 2 × 2 | 200 | 10 W | 2 flax → yarn, 6 s |
 | Loom | 2 × 2 | 300 | 20 W | 3 yarn → linen, 10 s |
-| Bakery | 2 × 2 | 350 | 25 W | flour + egg → bread, 8 s; or flour + egg + honey → honey cake, 12 s (choose) |
+| Bakery | 2 × 2 | 350 | 25 W | flour + egg → bread, 8 s; or flour + egg + honey → honey cake, 12 s (chosen as it is placed; bread until you choose another) |
 | Cannery | 2 × 2 | 300 | 18 W | 3 tomato + oil → tomato sauce, 10 s |
 
 A machine holds a small buffer of each input and each output. It starts a batch when it has the inputs and room for every output.
@@ -401,10 +415,10 @@ A commission has goals, a target time and modifiers. It ends when every goal is 
 | 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 55 min | Wet and cramped |
 | 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 60 min | Everything |
 
-The bot (`npm run sim`) clears First Light in about 14 minutes, Morning Bread in about 29 and Linen for the Looms in about 26 with
+The bot (`npm run sim`) clears First Light in about 14 minutes, Morning Bread in about 30 and Linen for the Looms in about 25 with
 trucks (with silos and drones it took about 14, 38 and 45), building as credits allow. Its Morning Bread layout built round
 neighbours (`npm run sim -- c2:next`: a mill between two fields, a bakery beside it, a coop under both, a composter beside the
-coop) clears it in about 25 minutes with 3 trucks on 2 routes, where the all-truck layout uses 4 on 3; a person needs a few minutes more to plan and
+coop) clears it in about 26 minutes with 3 trucks on 2 routes, where the all-truck layout uses 4 on 3; a person needs a few minutes more to plan and
 place. Trucks made the later commissions much quicker, so their target times may be too generous now. The other targets are guesses
 until they have bot layouts too.
 
@@ -421,7 +435,7 @@ Early on, raw goods are the way to afford the first machines; products pay far b
 ## Saving
 
 The game saves the commission in progress (one at a time) in the browser every 30 s and when the page is hidden, and remembers
-each commission's best medal and time.
+each commission's best medal and time. A save from an older version of the game is refused.
 
 ## Open questions
 

@@ -1,15 +1,26 @@
 import { chainOf, type Step } from '../game/chain.ts';
 import {
-  BUILDINGS, CATEGORIES, CLEAR_COST, CROP_IDS, CROPS, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, ITEMS, OUTPUT_BATCHES,
-  POWER, RECIPES, recipesFor, SAPLING_SECONDS, SILO, TRUCK, type BuildingId, type Ingredient, type ItemId, type Recipe,
+  bays, BUILDINGS, CATEGORIES, CLEAR_COST, CROP_IDS, CROPS, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, ITEMS, OUTPUT_BATCHES,
+  POLLINATION_BONUS, POWER, RECIPES, recipesFor, SAPLING_SECONDS, SILO, TREE_HEALTH, TRUCK, type BuildingId, type Ingredient, type ItemId, type Recipe,
 } from '../game/data.ts';
+import { FLEET_SECONDS } from '../game/fleet.ts';
+import { SOIL_AHEAD } from '../game/forecast.ts';
+import { RECENT_WINDOW } from '../game/flows.ts';
+import { paceOf } from '../game/rules.ts';
+import { isPollinated } from '../game/sim/layout.ts';
+import { fieldFertility } from '../game/sim/soil.ts';
+import { recipeOf } from '../game/sim/goods.ts';
 import { historyOf, summarize } from '../game/history.ts';
-import { dayAt } from '../game/sim.ts';
+import { dayAt } from '../game/sim/clock.ts';
 import type { GameState } from '../game/state.ts';
 import { fill, h, icon, svg } from './dom.ts';
-import { clockAt } from './format.ts';
+import { clockAt, plural } from './format.ts';
+import { HISTORY_WINDOWS } from './historyView.ts';
+import { ACTIONS } from '../keybindings.ts';
 import { keysCard, markersCard } from './pause.ts';
 import { ring, statusLabel, statusPill } from './widgets.ts';
+import { must } from '../game/result.ts';
+import { keyNames, tip } from './keyhints.ts';
 
 // The guide: a page for every building (what it does, how to use it, its numbers, what it takes and makes), a page of
 // goods, and a few pages on the basics (trucks and routes, power, soil, the markers). The words are written here; every number comes
@@ -43,7 +54,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
     ],
     tips: [
       'One route can bring goods in (a few fields, then the silo) and another take them out (the silo, then a mill): each runs at its own pace.',
-      'It loads one truck at a time. A queue of trucks beside it means it is busy: a second silo shares the work.',
+      `It loads ${plural(bays('silo'), 'truck')} at a time. A queue of trucks beside it means it is busy: a second silo shares the work.`,
     ],
   },
   garage: {
@@ -58,16 +69,16 @@ const ENTRIES: Record<BuildingId, Entry> = {
     ],
   },
   field: {
-    what: 'Grows the chosen crop on its 3 × 3 tiles. Crops are the start of every chain.',
+    what: `Grows the chosen crop on its ${BUILDINGS.field.size} × ${BUILDINGS.field.size} tiles. Crops are the start of every chain.`,
     how: [
-      'Build it on good soil: its placement card shows the soil under it now and in ten minutes, and the Soil overlay (V) shows the whole map.',
+      `Build it on good soil: its placement card shows the soil under it now and in ${SOIL_AHEAD / 60} minutes, and the Soil overlay shows the whole map.`,
       'Select it and choose the crop. Wheat is the default.',
       'Build it beside the machine that uses its crop (a mill for wheat), and the machine takes the harvest itself. Or make it a stop on a route: trucks pick up the harvest. A full field stops growing.',
-      'Put it beside water, or a sprinkler within 3 tiles of its centre: dry fields grow at under half speed.',
+      `Put it beside water, or a sprinkler within ${POWER.sprinklerReach} tiles of its centre: dry fields grow at ×${FIELD.dry} speed.`,
     ],
     tips: [
       'Every harvest wears the soil out, except beans, which restore it. Compost brings it back: a field stop drops compost by itself.',
-      'A beehive within 4 tiles adds 1 to every harvest of a flowering crop.',
+      `A beehive within ${HIVE.reach} tiles adds 1 to every harvest of a flowering crop.`,
     ],
   },
   sprinkler: {
@@ -89,7 +100,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
   hive: {
     what: 'Bees make honey from flowering fields nearby (anything but wheat), and pollinate them for a bigger harvest.',
     how: [
-      'Place it within 4 tiles of flowering fields: up to 3 of them count. The Bees overlay shows its range.',
+      `Place it within ${HIVE.reach} tiles of flowering fields: up to ${HIVE.maxFlowers} of them count. The Bees overlay shows its range.`,
       'Build it beside a bakery making honey cake, or make it a stop on a route, so trucks pick up the honey.',
     ],
   },
@@ -138,7 +149,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
   },
   turbine: {
     what: 'Makes power from the wind, day and night. The wind comes and goes.',
-    how: ['Place it in the open, within a pylon\'s reach. Trees and tall buildings within 2 tiles shelter it and cost power.'],
+    how: [`Place it in the open, within a pylon's reach. Trees and tall buildings within ${POWER.shelterReach} tiles shelter it and cost power.`],
   },
   battery: {
     what: 'Stores spare power and gives it back when the network falls short, such as at night. Its cells light up from the bottom as it fills: one ring a quarter.',
@@ -156,7 +167,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
       'Pylons close enough to each other link into one network, which shares all its power.',
       'Drag to lay a line: pylons go down spaced so their reaches meet and each links to the next.',
     ],
-    tips: ['Two networks that don\'t link don\'t share power. Each network has its own colour on the Power overlay (V): its reach, the wires between its pylons and a line to every building it powers.', 'Select or point at a pylon, or select any powered building, to see its network.'],
+    tips: ['Two networks that don\'t link don\'t share power. Each network has its own colour on the Power overlay: its reach, the wires between its pylons and a line to every building it powers.', 'Select or point at a pylon, or select any powered building, to see its network.'],
   },
   sapling: {
     what: 'Grows into a tree. Trees add to soil health; some commissions ask for it.',
@@ -169,7 +180,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
       'Make it the last stop of a route: trucks drop their goods here and the depot buys them all.',
       'Choose what a route drops here: a route can drop only the product and keep the rest aboard for its other stops.',
     ],
-    tips: ['It loads two trucks at a time.'],
+    tips: [`It loads ${plural(bays('depot'), 'truck')} at a time.`],
   },
 };
 
@@ -216,7 +227,8 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
   const search = h('input', { class: 'cd-input', placeholder: 'Search buildings, goods, keys…', spellcheck: false, 'aria-label': 'Search the guide',
     oninput: () => { query = search.value.trim().toLowerCase(); drawIndex(); },
     // Esc closes the guide from the search field too (the game's keys skip text fields; G types a G here).
-    onkeydown: (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } } }) as HTMLInputElement;
+    onkeydown: (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } } });
+  const results = h('div', { class: 'guide-results' });
   const have = new Set(s ? s.buildings.map((b) => b.type) : []);
 
   function drawIndex() {
@@ -231,7 +243,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
       for (const id of Object.keys(BUILDINGS) as BuildingId[]) if (`${BUILDINGS[id].name} ${ENTRIES[id].what}`.toLowerCase().includes(query)) hits.push(h('button', { class: 'hit', onclick: () => go({ kind: 'building', id }) }, icon(id, 28), h('b', null, BUILDINGS[id].name), h('span', { class: 'cd-small' }, BUILDINGS[id].hint)));
       for (const i of ITEM_IDS) if (`${ITEMS[i].name} ${ITEMS[i].hint}`.toLowerCase().includes(query)) hits.push(h('button', { class: 'hit', onclick: () => go({ kind: 'goods' }) }, icon(i, 28), h('b', null, ITEMS[i].name), h('span', { class: 'cd-small' }, ITEMS[i].hint)));
       for (const t of TOPICS) if (t.name.toLowerCase().includes(query)) hits.push(h('button', { class: 'hit', onclick: () => go({ kind: 'topic', id: t.id }) }, icon('book', 28), h('b', null, t.name), h('span', { class: 'cd-small' }, 'Topic')));
-      for (const [what, keys] of KEY_LIST) if (`${what} ${keys}`.toLowerCase().includes(query)) hits.push(h('button', { class: 'hit', onclick: () => go({ kind: 'topic', id: 'keys' }) }, h('span', { class: 'cd-key' }, keys), h('b', null, what), h('span', { class: 'cd-small' }, 'Key')));
+      for (const [what, keys] of keyList()) if (`${what} ${keys}`.toLowerCase().includes(query)) hits.push(h('button', { class: 'hit', onclick: () => go({ kind: 'topic', id: 'keys' }) }, h('span', { class: 'cd-key' }, keys), h('b', null, what), h('span', { class: 'cd-small' }, 'Key')));
       list = [h('div', { class: 'hits' }, ...(hits.length ? hits : [h('p', { class: 'cd-small' }, 'Nothing matches.')]))];
     } else {
       list = [
@@ -239,15 +251,17 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
           h('div', { class: 'gtiles' }, ...(Object.keys(BUILDINGS) as BuildingId[]).filter((id) => BUILDINGS[id].category === c.id || (c.id === 'logistics' && id === 'depot')).map(tile)))),
         s ? h('div', { class: 'cd-small legend' }, h('i'), 'Outlined: you have one in this valley') : null,
         s ? h('div', { class: 'cd-inset worth' }, h('div', { class: 'cd-label' }, `Worth reading for ${s.scenario.name}`),
-          h('div', { class: 'chips' }, ...worthReading(s).map((t) => h('button', { class: 'cd-chip', onclick: () => go({ kind: 'topic', id: t }) }, TOPICS.find((x) => x.id === t)!.name)))) : null,
+          h('div', { class: 'chips' }, ...worthReading(s).map((t) => h('button', { class: 'cd-chip', onclick: () => go({ kind: 'topic', id: t }) }, must(TOPICS.find((x) => x.id === t), 'topic').name)))) : null,
       ];
     }
-    fill(index, h('div', { class: 'cd-label' }, 'The guide'), search, topics, ...list);
+    fill(results, topics, ...list);
   }
+
+  fill(index, h('div', { class: 'cd-label' }, 'The guide'), search, results);
 
   function draw() {
     drawIndex();
-    fill(body, h('button', { class: 'cd-btn is-icon close', title: 'Close (Esc or G)', 'aria-label': 'Close', onclick: close }, icon('close', 16)),
+    fill(body, h('button', { class: 'cd-btn is-icon close', title: tip('Close', ...keyNames('guide'), 'Esc'), 'aria-label': 'Close', onclick: close }, icon('close', 16)),
       ...(page.kind === 'building' ? buildingPage(page.id) : page.kind === 'goods' ? goodsPage() : topicPage(page.id)));
   }
 
@@ -263,7 +277,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
         h('div', { class: 'main' },
           h('div', { class: 'title-row' }, h('span', { class: 'big-icon' }, icon(id, 116)),
             h('div', null, h('h1', { class: 'cd-display' }, d.name), h('p', { class: 'lead' }, e.what),
-              d.category && host ? h('button', { class: 'cd-btn is-primary', title: d.key ? `Build (${d.key})` : 'Build', onclick: () => { host.build(id); close(); } }, `Build · ${d.cost} credits`) : null)),
+              d.category && host ? h('button', { class: 'cd-btn is-primary', title: tip('Build', ...keyNames(`build:${id}`)), onclick: () => { host.build(id); close(); } }, `Build · ${d.cost} credits`) : null)),
           rs.length ? h('div', { class: 'cd-label sec' }, rs.length > 1 ? 'Recipes' : 'Recipe') : null,
           rs.length ? h('div', { class: 'recipes' }, ...rs.map(recipeRow)) : null,
           facts(id),
@@ -274,7 +288,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
           nums.length ? h('div', { class: 'num-rows' }, ...nums) : null,
           ...extraTables(id)),
         h('div', { class: 'side' },
-          s && d.category ? valleyNow(id) : null,
+          s && d.category ? valleyNow(id, s) : null,
           worksWith(id),
           e.tips ? h('div', null, h('div', { class: 'cd-label' }, 'Good to know'), h('div', { class: 'tips' }, ...e.tips.map((t) => h('div', { class: 'tip' }, icon('check', 20), h('span', null, t))))) : null)),
     ];
@@ -307,20 +321,29 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
   }
 
   /** Every building of this kind in the valley now, with its status and rate, and a way to go to it. */
-  function valleyNow(id: BuildingId) {
-    const mine = s!.buildings.filter((b) => b.type === id), item = chainItemOf(id);
-    const rates = mine.map((b) => { const hist = historyOf(s!, b); return hist && item ? summarize(hist, s!.time, 300).perMin[item] ?? 0 : 0; });
-    const r = recipesFor(id)[0], full = r && item ? mine.length * r.outputs[0].n * 60 / r.time : 0, total = rates.reduce((n, x) => n + x, 0);
+  function valleyNow(id: BuildingId, s: GameState) {
+    const mine = s.buildings.filter((b) => b.type === id);
+    // Each building's own good and full-speed rate: a field's current crop, a machine's current recipe.
+    const goods = mine.map((b): { item: ItemId; full: number } | null => {
+      if (b.type === 'field') { const c = CROPS[b.crop]; return { item: b.crop, full: (c.yield + (c.flowers && isPollinated(s, b) ? POLLINATION_BONUS : 0)) * paceOf(1, fieldFertility(s, b)).pace * 60 / c.grow }; } // best case now: watered, pollinated if it is
+      const r = recipeOf(b), o = r?.outputs[0];
+      return r && o ? { item: o.item, full: o.n * 60 / r.time } : id === 'hive' ? { item: 'honey', full: 0 } : null;
+    });
+    const rates = mine.map((b, i) => { const hist = historyOf(s, b), g = goods[i]; return hist && g ? summarize(hist, s.time, RECENT_WINDOW).perMin[g.item] ?? 0 : 0; });
+    const item = goods.some((g) => g), full = goods.reduce((n, g) => n + (g?.full ?? 0), 0), total = rates.reduce((n, x) => n + x, 0);
+    const by = new Map<ItemId, number>();
+    goods.forEach((g, i) => { if (g) by.set(g.item, (by.get(g.item) ?? 0) + rates[i]); });
+    const together = [...by].map(([i, n]) => `${fmt(Math.round(n * 10) / 10)} ${lc(i)}`).join(', ');
     const name = (n: number) => (n === 1 ? BUILDINGS[id].name.toLowerCase() : `${BUILDINGS[id].name.toLowerCase()}${BUILDINGS[id].name.endsWith('s') ? 'es' : 's'}`);
     return h('div', { class: 'cd-card is-ink valley-now' },
-      h('div', { class: 'row-head' }, h('span', { class: 'cd-label' }, 'In your valley now'), h('span', { class: 'cd-small' }, `${clockAt(s!.time)} · day ${dayAt(s!.time)}`)),
+      h('div', { class: 'row-head' }, h('span', { class: 'cd-label' }, 'In your valley now'), h('span', { class: 'cd-small' }, `${clockAt(s.time)} · day ${dayAt(s.time)}`)),
       mine.length ? h('div', { class: 'sum' },
         item ? ring({ v: full ? total / full : 0, d: 96, w: 8, col: 'var(--ochre)' }, h('div', null, h('div', { class: 'big' }, fmt(Math.round(total * 10) / 10)), full ? h('div', { class: 'cd-small' }, `of ${fmt(full)}`) : null)) : null,
-        h('div', null, h('div', { class: 'what' }, `${mine.length} ${name(mine.length)}${item ? ` · ${fmt(Math.round(total * 10) / 10)} ${lc(item)} a minute together` : ''}`),
+        h('div', null, h('div', { class: 'what' }, `${mine.length} ${name(mine.length)}${item ? ` · ${together} a minute together` : ''}`),
           full ? h('div', { class: 'cd-small' }, `at full speed they would make ${fmt(full)}`) : null)) : h('p', { class: 'cd-small' }, `No ${name(2)} yet.`),
       ...mine.slice(0, 6).map((b, i) => h('div', { class: 'vrow' },
         h('div', null, h('div', { class: 'vname' }, `${BUILDINGS[id].name} ${i + 1}`), statusPill(b.status, statusLabel(b, b.status, b.need))),
-        item ? h('span', null, h('span', { class: 'big' }, fmt(Math.round(rates[i] * 10) / 10)), h('span', { class: 'cd-small' }, ' / min')) : h('span'),
+        goods[i] ? h('span', null, h('span', { class: 'big' }, fmt(Math.round(rates[i] * 10) / 10)), h('span', { class: 'cd-small' }, ' / min')) : h('span'),
         host ? h('button', { class: 'cd-btn is-sm', onclick: () => { host.focus(b.id); close(); } }, 'Show ›') : null)),
       mine.length > 6 ? h('div', { class: 'cd-small' }, `and ${mine.length - 6} more`) : null);
   }
@@ -328,14 +351,15 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
   /** The buildings it trades goods with: what it takes from, and gives to. */
   function worksWith(id: BuildingId) {
     const takes = new Set(takesOf(id)), gives = new Set(givesOf(id)), out = new Map<BuildingId, string[]>();
+    const into = (k: BuildingId) => { let a = out.get(k); if (!a) out.set(k, a = []); return a; };
     for (const r of RECIPES) {
       if (r.building === id) continue;
-      for (const o of r.outputs) if (takes.has(o.item)) (out.get(r.building) ?? out.set(r.building, []).get(r.building)!).push(lc(o.item));
-      for (const ing of r.inputs) for (const i of 'item' in ing ? [ing.item] : GROUPS[ing.group]) if (gives.has(i)) (out.get(r.building) ?? out.set(r.building, []).get(r.building)!).push(lc(i));
+      for (const o of r.outputs) if (takes.has(o.item)) into(r.building).push(lc(o.item));
+      for (const ing of r.inputs) for (const i of 'item' in ing ? [ing.item] : GROUPS[ing.group]) if (gives.has(i)) into(r.building).push(lc(i));
     }
-    for (const c of CROP_IDS) if (takes.has(c) && id !== 'field') (out.get('field') ?? out.set('field', []).get('field')!).push(lc(c));
+    for (const c of CROP_IDS) if (takes.has(c) && id !== 'field') into('field').push(lc(c));
     if (takes.has('honey') && id !== 'hive') out.set('hive', ['honey']);
-    if (gives.has('compost')) (out.get('field') ?? out.set('field', []).get('field')!).push('compost');
+    if (gives.has('compost')) into('field').push('compost');
     if (!out.size) return null;
     return h('div', null, h('div', { class: 'cd-label' }, 'Works with'),
       h('div', { class: 'chips' }, ...[...out].map(([b, goods]) => h('button', { class: 'cd-chip', onclick: () => go({ kind: 'building', id: b }) }, icon(b, 24), `${BUILDINGS[b].name} · ${[...new Set(goods)].join(', ')}`))));
@@ -391,7 +415,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
   function numbers(id: BuildingId): HTMLElement[] {
     const rows: [string, string][] = [];
     switch (id) {
-      case 'silo': rows.push(['Holds', `${SILO.perGood} of each good`], ['Loads', 'one truck at a time']); break;
+      case 'silo': rows.push(['Holds', `${SILO.perGood} of each good`], ['Loads', `${plural(bays('silo'), 'truck')} at a time`]); break;
       case 'garage':
         rows.push(['Holds', `${TRUCK.perGarage} trucks`], ['A truck costs', `${TRUCK.cost} credits`], ['A truck carries', `${TRUCK.cargo} goods, of any mix`],
           ['Speed', `${TRUCK.speed} tiles a second (${TRUCK.crawl} on an empty battery)`], ['Loading and unloading', `${TRUCK.moveRate} goods a second`],
@@ -405,17 +429,17 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
       case 'sprinkler': rows.push(['Reach', `fields whose centre is within ${POWER.sprinklerReach} tiles`], ['Near water', `within ${POWER.waterNear} tiles`]); break;
       case 'hive':
         rows.push(['Reach', `${HIVE.reach} tiles`], ['Honey', `one every ${HIVE.honeySeconds} s with 1 flowering field, ${HIVE.honeySeconds / HIVE.maxFlowers} s with ${HIVE.maxFlowers}`],
-          ['Holds', `${HIVE.store} honey`], ['Pollinated fields', 'one more good every harvest of a flowering crop']);
+          ['Holds', `${HIVE.store} honey`], ['Pollinated fields', `+${POLLINATION_BONUS} good every harvest of a flowering crop`]);
         break;
       case 'solar': rows.push(['At midday, full sun', `${POWER.solar} W (times the sun's strength)`], ['At night', '0 W']); break;
-      case 'turbine': rows.push(['In full wind', `${POWER.turbine} W`], ['Shelter', `−${POWER.shelter * 100}% for each tree or tall building within 2 tiles, down to ${POWER.shelterFloor * 100}%`]); break;
+      case 'turbine': rows.push(['In full wind', `${POWER.turbine} W`], ['Shelter', `−${POWER.shelter * 100}% for each tree or tall building within ${POWER.shelterReach} tiles, down to ${POWER.shelterFloor * 100}%`]); break;
       case 'battery': rows.push(['Stores', `${POWER.battery.capacity} J (${Math.round(POWER.battery.capacity / 60)} W for a minute)`], ['Charges and gives', `up to ${POWER.battery.rate} W`]); break;
       case 'pylon': rows.push(['Powers', `buildings with a tile within ${POWER.pylon.reach} tiles`], ['Links to', `pylons within ${POWER.pylon.link} tiles`]); break;
       case 'sapling': rows.push(['Grows into a tree in', `${SAPLING_SECONDS} s`]); break;
-      case 'depot': rows.push(['Pays', 'each good\'s price (see Goods)'], ['Loads', 'two trucks at a time']); break;
+      case 'depot': rows.push(['Pays', 'each good\'s price (see Goods)'], ['Loads', `${plural(bays('depot'), 'truck')} at a time`]); break;
     }
     if (recipesFor(id).length && id !== 'digester') rows.push(['Buffers', `${INPUT_BATCHES} batches of each input, ${OUTPUT_BATCHES} of each output`]);
-    if (BUILDINGS[id].tall) rows.push(['Tall', 'shelters wind turbines within 2 tiles']);
+    if (BUILDINGS[id].tall) rows.push(['Tall', `shelters wind turbines within ${POWER.shelterReach} tiles`]);
     if (BUILDINGS[id].onWater) rows.push(['Water', 'can be built on water']);
     return rows.map(([k, v]) => h('div', { class: 'cd-row' }, h('span', null, k), h('i'), h('b', null, v)));
   }
@@ -481,13 +505,13 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
           h('li', null, 'A new stop picks up everything the building makes and drops everything it takes: a field, then a mill, then the ', bLink('depot'), ' is a whole route. A silo stop drops everything; choose what to take from it.'),
           h('li', null, `At a stop a truck drops first, then picks up into the room left. It leaves when it has nothing more to do, or after waiting ${TRUCK.wait} s (you can change it) for room or goods.`),
           h('li', null, 'More trucks make a route faster. Two routes picking up the same good share it by how often their trucks come.'),
-          h('li', null, 'The routes card shows each route\'s loop time and how often a truck reaches its slowest stop, measured from the last ten minutes, and how much of the time each truck waited at stops.'),
+          h('li', null, `The routes card shows each route's loop time and how often a truck reaches its slowest stop, measured from the last ${FLEET_SECONDS / 60} minutes, and how much of the time each truck waited at stops.`),
           h('li', null, 'A truck stuck with goods no stop takes can dump its cargo: the goods are lost.')),
         h('div', { class: 'cd-label sec' }, 'Next door'),
         P('Buildings that share an edge trade without trucks: a machine takes what it uses from the buildings next door, a field takes compost. A ', bLink('mill'), ' between wheat fields grinds their wheat, a ', bLink('coop'), ' beside the mill eats its bran, a ', bLink('bakery'), ' beside both bakes their flour and eggs. Touching only at a corner doesn\'t count; ', bLink('silo'), 's and the ', bLink('depot'), ' trade only with trucks.'),
         P('A building takes from its neighbours before trucks load there, from whichever has the most. Selecting a building tints the neighbours it trades with, and placing one says who it would. Packed buildings leave trucks fewer open tiles, so keep a way in for the goods that still go by truck.'),
         h('div', { class: 'cd-label sec' }, 'Roads and charging'),
-        P('Trucks drive on any open grass, the shortest way, and pass through each other. To load, a truck parks on an open tile next to the building: a building with none can\'t be reached. The Roads view shows the open ground. A building loads one truck at a time (the depot two); the others queue beside it.'),
+        P(`Trucks drive on any open grass, the shortest way, and pass through each other. To load, a truck parks on an open tile next to the building: a building with none can't be reached. The Roads view shows the open ground. A building loads ${plural(bays('silo'), 'truck')} at a time (the depot ${bays('depot')}); the others queue beside it.`),
         P(`A truck's battery holds ${TRUCK.battery} J, ${TRUCK.joulesPerTile} J a tile. When it would run short, it drives home to its garage and charges, from the garage's network. With no power there it goes on after ${TRUCK.giveUp} s, and crawls once empty.`),
         h('div', { class: 'cd-label sec' }, 'Byproducts'),
         P('A machine stops when an output has nowhere to go, so every byproduct needs a home: a ', bLink('coop'), ', a ', bLink('composter'), ', a ', bLink('digester'), ' or the depot. Trucks share their room, so a truck full of something no stop takes carries nothing else.'),
@@ -509,13 +533,13 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
           h('li', null, B('Wearing out:'), ' every harvest takes some soil (see the crops on the ', bLink('field'), ' page). Beans give some back.'),
           h('li', null, B('Compost:'), ` a field takes compost only while its soil is under ${FIELD.compostBelow}, and spreads each one at once for +${FIELD.compostGain} on every tile; above that, trucks carry it on to the next field. Make it in a `, bLink('composter'), '.'),
           h('li', null, B('Resting:'), ` ground without a field slowly recovers (${FIELD.rest * 60} a minute), up to what it started at.`),
-          h('li', null, B('Soil health'), ' is the fields\' average fertility, nudged up or down (at most 10) by trees planted or cleared. A soil goal checks it at the end.'),
+          h('li', null, B('Soil health'), ` is the fields' average fertility, nudged up or down (at most ${TREE_HEALTH.cap}) by trees planted or cleared. A soil goal checks it at the end.`),
           h('li', null, B('Clearing:'), ` a tree costs ${CLEAR_COST.tree} credits to remove and a rock ${CLEAR_COST.rock}. `, bLink('sapling'), 's plant new trees.')),
       ];
       case 'markers': return [...head('Statuses and markers', 'A marker floats over any building that isn\'t working. Each has a shape as well as a colour; click the building for the details.'),
         markersCard(),
-        P('A building\'s inspector has its history: a ribbon of what it was doing over the last 1, 5 or 10 minutes, the share of time in each status, its output against full speed, and what it waited for most. Solar panels, turbines and batteries chart their power or charge instead.')];
-      case 'keys': return [...head('Keys', 'Every key, and the mouse. They are also listed on the pause screen.'), keysCard()];
+        P(`A building's inspector has its history: a ribbon of what it was doing over the last ${HISTORY_WINDOWS.slice(0, -1).map((w) => w / 60).join(', ')} or ${HISTORY_WINDOWS[HISTORY_WINDOWS.length - 1] / 60} minutes, the share of time in each status, its output against full speed, and what it waited for most. Solar panels, turbines and batteries chart their power or charge instead.`)];
+      case 'keys': return [...head('Keys', 'Every key, and the mouse. Change the keys in Settings, on the level select and the pause screen.'), keysCard()];
     }
   }
 
@@ -523,11 +547,8 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
   return h('div', { class: 'cd-card guide' }, index, body);
 }
 
-/** Keys and what they do, for searching the guide. */
-const KEY_LIST: [string, string][] = [
-  ['Field', 'F'], ['Silo', 'L'], ['Garage', 'T'], ['Pylon', 'P'], ['Solar panel', 'S'], ['Turn the building', 'R'], ['Remove', 'X'], ['Turn the view', 'Q E'],
-  ['Zoom', 'Z'], ['Overlays', 'V'], ['Pause', 'Space'], ['Speed', '1 2 3'], ['Ledger', 'Tab'], ['Routes', 'O'], ['Power', 'W'], ['Guide', 'G'], ['Close, pause', 'Esc'],
-];
+/** Every key and what it does, as they are set now, for the guide's search. */
+const keyList = (): [string, string][] => [...ACTIONS.map((a): [string, string] => [a.label, keyNames(a.id).join(' ')]).filter(([, k]) => k), ['Close a panel, pause', 'Esc']];
 
 /** What a building does with power, in a few words. */
 function powerLine(id: BuildingId): string {

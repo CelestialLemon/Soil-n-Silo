@@ -1,7 +1,8 @@
-import { BUILDINGS, recipesFor, type BuildingId, type CropId, type ItemId } from './data.ts';
-import { DEPOT_SIZE, generateMap, TERRAIN, type MapData } from './map.ts';
+import { BUILDINGS, isMachineId, recipesFor, type BuildingId, type CropId, type MachineId, type ItemId } from './data.ts';
+import { generateMap, TERRAIN, type MapData } from './map.ts';
 import { newRunLog, type RunLog } from './runlog.ts';
 import type { Scenario } from './scenarios.ts';
+import { nextVersion, runtimeOf } from './runtime.ts';
 
 // The state of a commission in progress: plain data, so it saves as JSON. Lookups that only speed things up (which building
 // is on a tile, the power networks) live in a cache beside it and are rebuilt when the layout changes.
@@ -60,9 +61,8 @@ export interface Truck {
 
 export type Status = 'ok' | 'idle' | 'input' | 'blocked' | 'power' | 'lowpower' | 'nolink' | 'noroad' | 'noroute' | 'flowers' | 'dry';
 
-export interface Building {
+interface BuildingBase {
   id: number;
-  type: BuildingId;
   /** North-west tile. */
   x: number; y: number;
   rot: Dir;
@@ -70,25 +70,65 @@ export interface Building {
   status: Status;
   /** What it's waiting for or blocked by, for the status line. */
   need?: string;
-  // Machines (and the coop, composter and digester).
-  recipe?: string;
-  inputs?: Partial<Record<ItemId, number>>;
-  outputs?: Partial<Record<ItemId, number>>;
-  /** Seconds into the batch it's working on; null when it isn't. */
-  progress?: number | null;
-  // Fields and hives.
-  crop?: CropId;
+}
+
+export interface FieldBuilding extends BuildingBase {
+  type: 'field';
+  crop: CropId;
   /** The crop the stored harvest is (it may differ from `crop` just after the crop was changed). */
   harvest?: CropId;
-  growth?: number;
-  stored?: number;
-  // Batteries.
-  charge?: number;
-  // Silos: goods held.
-  store?: Partial<Record<ItemId, number>>;
-  // Saplings.
-  age?: number;
+  growth: number;
+  stored: number;
 }
+
+export interface HiveBuilding extends BuildingBase {
+  type: 'hive';
+  growth: number;
+  stored: number;
+}
+
+/** A building that works a recipe: the machines, and the coop, composter and digester. */
+export interface MachineBuilding extends BuildingBase {
+  type: MachineId;
+  recipe: string;
+  inputs: Partial<Record<ItemId, number>>;
+  outputs: Partial<Record<ItemId, number>>;
+  /** Seconds into the batch it's working on; null when it isn't. */
+  progress: number | null;
+}
+
+export interface BatteryBuilding extends BuildingBase {
+  type: 'battery';
+  charge: number;
+}
+
+/** Holds goods. */
+export interface SiloBuilding extends BuildingBase {
+  type: 'silo';
+  store: Partial<Record<ItemId, number>>;
+}
+
+export interface SaplingBuilding extends BuildingBase {
+  type: 'sapling';
+  age: number;
+}
+
+/** A building with no state of its own. */
+export interface PlainBuilding extends BuildingBase {
+  type: Exclude<BuildingId, MachineId | 'field' | 'hive' | 'battery' | 'silo' | 'sapling'>;
+}
+
+export type Building = FieldBuilding | HiveBuilding | MachineBuilding | BatteryBuilding | SiloBuilding | SaplingBuilding | PlainBuilding;
+
+/** The shape of the building of a type (or of a union of types). */
+export type BuildingOf<K extends BuildingId> =
+  K extends MachineId ? MachineBuilding : K extends PlainBuilding['type'] ? PlainBuilding : Extract<Building, { type: K }>;
+
+/** Whether a building works a recipe (the data says which types do). */
+export const isMachine = (b: Building): b is MachineBuilding => isMachineId(b.type);
+
+/** Where a building stands, or would: its type (for its size) and north-west tile. */
+export type Footprint = Pick<Building, 'type' | 'x' | 'y'>;
 
 export interface Stats {
   /** Start time of the newest bucket. */
@@ -103,7 +143,7 @@ export interface Stats {
 export const STAT_BUCKET = 10, STAT_BUCKETS = 7;
 
 export interface GameState {
-  version: 3;
+  version: 5;
   scenario: Scenario;
   map: MapData;
   /** Each tile's fertility at the start: resting ground recovers up to it. */
@@ -129,52 +169,63 @@ export interface GameState {
   made: Partial<Record<ItemId, number>>;
   /** The run so far, for the results (runlog.ts). */
   run: RunLog;
+  /** What the player last chose while placing, for the level: the crop of the next field, and a recipe by building type (none: its first). */
+  chosen: { crop: CropId; recipes: Record<string, string> };
 }
 
 export function newGame(sc: Scenario): GameState {
   const map = generateMap(sc);
   const s: GameState = {
-    version: 3, scenario: sc, map, soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
+    version: 5, scenario: sc, map, soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
     buildings: [], routes: [], trucks: [], nextId: 1, credits: sc.credits, time: 0, carry: 0, delivered: {}, earned: 0,
     stats: { since: 0, made: [{}], delivered: {} }, reached: sc.goals.map(() => false), completedAt: null, made: {}, run: newRunLog(),
+    chosen: { crop: 'wheat', recipes: {} },
   };
   s.buildings.push(makeBuilding(s, 'depot', map.depot.x, map.depot.y, 0));
   return s;
 }
 
 /** A new building with the state its type needs (not yet in the game). */
-export function makeBuilding(s: GameState, type: BuildingId, x: number, y: number, rot: Dir): Building {
-  const b: Building = { id: s.nextId++, type, x, y, rot, status: 'idle' };
+export const makeBuilding = (s: GameState, type: BuildingId, x: number, y: number, rot: Dir): Building => blankBuilding(s.nextId++, type, x, y, rot);
+
+/** A building with an id of the caller's choosing and the state its type needs. */
+export function blankBuilding(id: number, type: BuildingId, x: number, y: number, rot: Dir): Building {
+  const base = { id, x, y, rot, status: 'idle' as Status };
   switch (type) {
-    case 'field': b.crop = 'wheat'; b.growth = 0; b.stored = 0; break;
-    case 'hive': b.growth = 0; b.stored = 0; break;
-    case 'battery': b.charge = 0; break;
-    case 'silo': b.store = {}; break;
-    case 'sapling': b.age = 0; break;
-    default: {
-      const rs = recipesFor(type);
-      if (rs.length) { b.recipe = rs[0].id; b.inputs = {}; b.outputs = {}; b.progress = null; }
-    }
+    case 'field': return { ...base, type, crop: 'wheat', growth: 0, stored: 0 };
+    case 'hive': return { ...base, type, growth: 0, stored: 0 };
+    case 'battery': return { ...base, type, charge: 0 };
+    case 'silo': return { ...base, type, store: {} };
+    case 'sapling': return { ...base, type, age: 0 };
   }
+  if (isMachineId(type)) return { ...base, type, recipe: recipesFor(type)[0].id, inputs: {}, outputs: {}, progress: null };
+  return { ...base, type };
+}
+
+/** What a field grows or a machine makes, chosen as it is placed (none: the type's first). */
+export interface Setting { crop?: CropId; recipe?: string }
+
+/** Gives a new building what the player chose for it (a setting for another kind of building is a bug, checked by `place`). */
+export function applySetting(b: Building, set: Setting): Building {
+  if (b.type === 'field' && set.crop) b.crop = set.crop;
+  else if (isMachine(b) && set.recipe) b.recipe = set.recipe;
   return b;
 }
 
 export const sizeOf = (b: { type: BuildingId }) => BUILDINGS[b.type].size;
-export const DEPOT = DEPOT_SIZE;
 
 // ---- The cache: who stands where, by id ----
 
-interface Cache { grid: Int32Array; byId: Map<number, Building>; layout: number }
-const caches = new WeakMap<GameState, Cache>();
-/** Bumped whenever buildings are added or removed, so derived caches (power networks, the view) know to rebuild. */
-let layoutVersion = 1;
+export interface Cache { grid: Int32Array; byId: Map<number, Building>; layout: number }
+/** The cache's layout number changes whenever buildings are added or removed, so derived caches (power networks, the view) know to rebuild. */
 
 function cache(s: GameState): Cache {
-  let c = caches.get(s);
+  const rt = runtimeOf(s);
+  let c = rt.tiles;
   if (!c) {
-    c = { grid: new Int32Array(s.map.width * s.map.height), byId: new Map(), layout: layoutVersion++ };
+    c = { grid: new Int32Array(s.map.width * s.map.height), byId: new Map(), layout: nextVersion() };
     for (const b of s.buildings) occupy(s, c, b, b.id);
-    caches.set(s, c);
+    rt.tiles = c;
   }
   return c;
 }
@@ -192,12 +243,12 @@ export function addBuilding(s: GameState, b: Building) {
   const c = cache(s);
   s.buildings.push(b);
   occupy(s, c, b, b.id);
-  c.layout = layoutVersion++;
+  c.layout = nextVersion();
 }
 
 /** Marks the layout changed without adding or removing anything (a tree cleared, a sapling grown). */
 export function touchLayout(s: GameState) {
-  cache(s).layout = layoutVersion++;
+  cache(s).layout = nextVersion();
 }
 
 export function removeBuilding(s: GameState, b: Building) {
@@ -205,7 +256,7 @@ export function removeBuilding(s: GameState, b: Building) {
   const i = s.buildings.indexOf(b);
   if (i >= 0) s.buildings.splice(i, 1);
   occupy(s, c, b, 0);
-  c.layout = layoutVersion++;
+  c.layout = nextVersion();
 }
 
 export const inMap = (s: GameState, x: number, y: number) => x >= 0 && y >= 0 && x < s.map.width && y < s.map.height;
@@ -225,21 +276,13 @@ export const truckById = (s: GameState, id: number | null) => (id === null ? nul
 export const terrainAt = (s: GameState, x: number, y: number) => s.map.terrain[y * s.map.width + x];
 
 /** The centre of a building's footprint, in tiles. */
-export function centre(b: Building) {
+export function centre(b: Footprint) {
   const n = sizeOf(b);
   return { x: b.x + n / 2, y: b.y + n / 2 };
 }
 
-/** The gap in tiles between two buildings' footprints (0 when they touch or overlap), as the larger of the axes. */
-export function gapBetween(a: Building, b: Building) {
-  const na = sizeOf(a), nb = sizeOf(b);
-  const dx = Math.max(0, a.x - (b.x + nb - 1), b.x - (a.x + na - 1));
-  const dy = Math.max(0, a.y - (b.y + nb - 1), b.y - (a.y + na - 1));
-  return Math.max(dx, dy);
-}
-
 /** The distance in tiles from a tile to the nearest tile of a building (0 when on it), as the larger of the axes. */
-export function reachTo(b: Building, x: number, y: number) {
+export function reachTo(b: Footprint, x: number, y: number) {
   const n = sizeOf(b);
   const dx = x < b.x ? b.x - x : x >= b.x + n ? x - (b.x + n - 1) : 0;
   const dy = y < b.y ? b.y - y : y >= b.y + n ? y - (b.y + n - 1) : 0;

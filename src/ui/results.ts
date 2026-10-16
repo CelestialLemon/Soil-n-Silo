@@ -1,9 +1,11 @@
 import { chainOf, type Step } from '../game/chain.ts';
 import { BUILDINGS, ITEMS, START_HOUR, type ItemId } from '../game/data.ts';
+import { must } from '../game/result.ts';
 import { HOUR_SECONDS } from '../game/powerlog.ts';
 import { goalGood, runWaits, type Mark } from '../game/runlog.ts';
-import { CAMPAIGN } from '../game/scenarios.ts';
-import { soilHealth, type Medal } from '../game/sim.ts';
+import { CAMPAIGN, SILVER_PAR } from '../game/scenarios.ts';
+import { soilHealth } from '../game/sim/soil.ts';
+import { type Medal } from '../game/sim/stats.ts';
 import { countTrees, type GameState } from '../game/state.ts';
 import { h, icon, svg } from './dom.ts';
 import { dec, itemName, lcBuilding, num, pct, playTime } from './format.ts';
@@ -15,8 +17,8 @@ import { gauge, MEDAL_NAME } from './widgets.ts';
 // the level select.
 
 export interface ResultsHost {
-  keepPlaying(): void;
-  menu(): void;
+  keepPlaying: () => void;
+  menu: () => void;
   start(id: string): void;
 }
 
@@ -33,13 +35,13 @@ function chainItems(item: ItemId): Set<ItemId> {
 /** A milestone's words and icon. */
 function markLabel(s: GameState, m: Mark): { text: string; icon: string; bad?: boolean; gold?: boolean } {
   switch (m.kind) {
-    case 'first': return { text: `First ${itemName(m.item!)}`, icon: m.item! };
+    case 'first': { const item = must(m.item, 'mark item'); return { text: `First ${itemName(item)}`, icon: item }; };
     case 'night': return { text: 'First night short', icon: 'moon', bad: true };
     case 'truck': return { text: m.n === 2 ? 'Second truck' : 'First truck', icon: 'truck' };
-    case 'second': return { text: `Second ${lcBuilding(m.type!)}`, icon: m.type! };
-    case 'loop': return { text: `${cap(itemName(m.item!))} loop closed`, icon: m.item! };
+    case 'second': { const type = must(m.type, 'mark building'); return { text: `Second ${lcBuilding(type)}`, icon: type }; };
+    case 'loop': { const item = must(m.item, 'mark item'); return { text: `${cap(itemName(item))} loop closed`, icon: item }; };
     case 'goal': {
-      const g = s.scenario.goals[m.goal!];
+      const g = s.scenario.goals[must(m.goal, 'mark goal')];
       return g.kind === 'deliver' ? { text: `${g.n} ${itemName(g.item)}`, icon: g.item, gold: true }
         : g.kind === 'rate' ? { text: `${g.perMin} ${itemName(g.item)} a minute`, icon: g.item, gold: true } : { text: `Soil ${g.min}+`, icon: 'soil', gold: true };
     }
@@ -69,7 +71,7 @@ function runChart(s: GameState, end: number) {
     if (b > a) parts.push(svg('rect', { x: x(a), y: top + H + 6, width: Math.max(4, x(b) - x(a)), height: 6, rx: 3, class: 'short' }));
   }
   // The curve.
-  const pts = run.curve.map((v, i) => [x(Math.min(end, run.curveFrom + i * run.curveStep)), y(v)] as const);
+  const pts = run.curve.map((v, i) => [x(Math.min(end, i * run.curveStep)), y(v)] as const);
   if (pts.length) {
     const line = pts.map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(' ');
     parts.push(svg('polygon', { points: `${pts[0][0]},${top + H} ${line} ${pts[pts.length - 1][0]},${top + H}`, class: 'area' }));
@@ -88,14 +90,14 @@ function runChart(s: GameState, end: number) {
   const rank = (m: Mark) => ({ goal: 0, night: 1, loop: 2, second: 3, truck: 4, first: 5 })[m.kind];
   // Taken in order of how telling they are, each kept only where it has room beside those kept already.
   const kept: Mark[] = [];
-  for (const m of run.marks.filter((m) => m.t >= 0 && m.t <= end + 1 && (m.kind !== 'first' || chain.has(m.item!)) && (m.kind !== 'truck' || m.n === 2)
+  for (const m of run.marks.filter((m) => m.t <= end + 1 && (m.kind !== 'first' || (m.item !== undefined && chain.has(m.item))) && (m.kind !== 'truck' || m.n === 2)
     // A soil goal is judged at the end: being met early is no milestone.
-    && (m.kind !== 'goal' || s.scenario.goals[m.goal!]?.kind !== 'soil'))
+    && (m.kind !== 'goal' || m.goal === undefined || s.scenario.goals[m.goal]?.kind !== 'soil'))
     .sort((a, b) => rank(a) - rank(b) || a.t - b.t)) {
     if (kept.length < 8 && kept.every((k) => Math.abs(x(k.t) - x(m.t)) >= 70)) kept.push(m);
   }
   const marks = kept.sort((a, b) => a.t - b.t);
-  const valueAt = (t: number) => run.curve[Math.max(0, Math.min(run.curve.length - 1, Math.round((t - run.curveFrom) / run.curveStep)))] ?? 0;
+  const valueAt = (t: number) => run.curve[Math.max(0, Math.min(run.curve.length - 1, Math.round(t / run.curveStep)))] ?? 0;
   const discs = marks.map((m, i) => {
     const l = markLabel(s, m), px = x(m.t), py = y(valueAt(m.t)), up = i % 2 === 0 ? -1 : 1;
     const ly = Math.max(14, Math.min(top + H + 30, py + up * 46));
@@ -146,8 +148,8 @@ function differences(s: GameState, end: number) {
 export function resultsScreen(s: GameState, medalWon: Medal, host: ResultsHost) {
   const sc = s.scenario, end = s.completedAt ?? s.time, par = sc.par, i = CAMPAIGN.findIndex((c) => c.id === sc.id);
   const next = i >= 0 ? CAMPAIGN[i + 1] ?? null : null;
-  const lead = medalWon === 'gold' ? `${playTime(par - end)} inside gold` : medalWon === 'silver' ? `gold needs ${playTime(par)}: ${playTime(end - par)} faster` : `silver needs ${playTime(par * 1.5)}: ${playTime(end - par * 1.5)} faster`;
-  const delivered = (Object.keys(s.delivered) as ItemId[]).filter((k) => s.delivered[k]).sort((a, b) => s.delivered[b]! * ITEMS[b].price - s.delivered[a]! * ITEMS[a].price);
+  const lead = medalWon === 'gold' ? `${playTime(par - end)} inside gold` : medalWon === 'silver' ? `gold needs ${playTime(par)}: ${playTime(end - par)} faster` : `silver needs ${playTime(par * SILVER_PAR)}: ${playTime(end - par * SILVER_PAR)} faster`;
+  const delivered = (Object.keys(s.delivered) as ItemId[]).filter((k) => s.delivered[k]).sort((a, b) => (s.delivered[b] ?? 0) * ITEMS[b].price - (s.delivered[a] ?? 0) * ITEMS[a].price);
   const item = goalGood(sc), goal = sc.goals.find((g) => g.kind === 'deliver');
   const trees = countTrees(s) - s.initialTrees, saplings = s.buildings.filter((b) => b.type === 'sapling').length, soil = soilHealth(s), soilGoal = sc.goals.find((g) => g.kind === 'soil');
   // Left better: no fewer trees, the valley's soil in all at least what it started at (wherever fields stood, now or before),
@@ -163,14 +165,14 @@ export function resultsScreen(s: GameState, medalWon: Medal, host: ResultsHost) 
       h('div', { class: 'time' },
         h('div', { class: 'num' }, h('div', { class: 'v' }, playTime(end)), h('div', { class: 'sub' }, lead)),
         h('div', { class: 'line' },
-          h('div', { class: 'cd-bar', style: `--v: ${Math.min(1, end / (par * 1.5))}; --col: var(--medal-${medalWon === 'gold' ? 'gold' : medalWon === 'silver' ? 'silver' : 'bronze'})` }, h('i'),
-            h('span', { class: 'cd-bar__mark', style: 'left: 66.67%' }), h('span', { class: 'cd-bar__mark is-silver', style: 'left: calc(100% - 3px)' })),
-          h('div', { class: 'ticks' }, h('span', null, '0:00'), h('span', { class: 'gold' }, `gold ${playTime(par)}`), h('span', null, `silver ${playTime(par * 1.5)}`))))),
+          h('div', { class: 'cd-bar', style: `--v: ${Math.min(1, end / (par * SILVER_PAR))}; --col: var(--medal-${medalWon === 'gold' ? 'gold' : medalWon === 'silver' ? 'silver' : 'bronze'})` }, h('i'),
+            h('span', { class: 'cd-bar__mark', style: `left: ${(100 / SILVER_PAR).toFixed(2)}%` }), h('span', { class: 'cd-bar__mark is-silver', style: 'left: calc(100% - 3px)' })),
+          h('div', { class: 'ticks' }, h('span', null, '0:00'), h('span', { class: 'gold' }, `gold ${playTime(par)}`), h('span', null, `silver ${playTime(par * SILVER_PAR)}`))))),
     h('div', { class: 'cd-receipt' },
       h('div', { class: 'row-head' }, h('span', { class: 'cd-label' }, 'Freight depot · receipt'), icon('depot', 30)),
       h('div', { class: 'cd-small' }, `${sc.name} · 0:00 to ${playTime(end)}`),
       h('div', { class: 'rows' }, ...delivered.slice(0, 8).map((k) => h('div', { class: 'cd-receipt__row' }, icon(k), h('span', null, ITEMS[k].name),
-        h('span', { class: 'cd-small' }, `${num(s.delivered[k]!)} × ${ITEMS[k].price}`), h('b', null, num(s.delivered[k]! * ITEMS[k].price))))),
+        h('span', { class: 'cd-small' }, `${num(s.delivered[k] ?? 0)} × ${ITEMS[k].price}`), h('b', null, num((s.delivered[k] ?? 0) * ITEMS[k].price))))),
       delivered.length > 8 ? h('div', { class: 'cd-small' }, `and ${delivered.length - 8} more goods`) : null,
       h('div', { class: 'cd-receipt__total' }, h('span', null, 'Earned'), h('span', null, `${num(s.earned)} credits`))),
     h('div', { class: 'cd-card run' },

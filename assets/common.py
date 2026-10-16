@@ -13,23 +13,21 @@ from mathutils import Vector, Matrix
 ROOT = Path(__file__).resolve().parents[1]
 PALETTE = {
     'feather': '#fff5e2', 'chalk': '#f2e8cc', 'cream': '#e5c992',
-    'red': '#bb4743', 'red_light': '#d65a4b', 'tomato': '#e25136',
-    'pumpkin': '#e58a32', 'pumpkin_dark': '#bc6127',
+    'red_light': '#d65a4b', 'tomato': '#e25136',
     'gold': '#ddba57', 'straw': '#b48d42',
     'green': '#528447', 'leaf': '#76a84e', 'darkleaf': '#326043', 'sprout': '#91bc61',
     'wood': '#8a6a44', 'lightwood': '#a07a50', 'darkwood': '#59432f', 'bark': '#674735',
     'stone': '#898c83', 'stone_light': '#b5ad94', 'slate': '#4b6470', 'slate_light': '#627c84',
     'iron': '#38484a', 'black': '#262d2c', 'clay': '#cb7852', 'brick': '#aa523c',
     'sack': '#c5aa70', 'glow': '#ffd68b', 'fire': '#ff9c39',
-    'dung': '#68412e', 'dung_light': '#8a5835',
+    'dung': '#68412e',
     'ceramic': '#f4f5e9', 'copper': '#b96c49', 'brass': '#d4ad60',
     'solar': '#234c83', 'solar_light': '#4c85b0', 'glass': '#8ecac6',
     'moss': '#638456', 'linen': '#dddcc2', 'charge': '#a7e5b3',
 }
 MATERIAL_NAMES = {
     'feather': 'Hen ivory feathers', 'chalk': 'Eggshell warm white', 'cream': 'Cream linen and trim',
-    'red': 'Barn vermilion paint', 'red_light': 'Warm scarlet paint', 'tomato': 'Ripe tomato red',
-    'pumpkin': 'Pumpkin orange', 'pumpkin_dark': 'Pumpkin russet ribs',
+    'red_light': 'Warm scarlet paint', 'tomato': 'Ripe tomato red',
     'gold': 'Ripe wheat gold', 'straw': 'Nest straw ochre',
     'green': 'Plant stem green', 'leaf': 'Leaf meadow green', 'darkleaf': 'Deep foliage green',
     'sprout': 'Fresh sprout green', 'wood': 'Weathered honey wood', 'lightwood': 'Sunlit honey wood',
@@ -37,7 +35,7 @@ MATERIAL_NAMES = {
     'stone_light': 'Pale sandstone', 'slate': 'Blue slate roof', 'slate_light': 'Slate ridge highlight',
     'iron': 'Forged blue iron', 'black': 'Charcoal eyes and interior', 'clay': 'Warm terracotta clay',
     'brick': 'Fired red brick', 'sack': 'Seed sack burlap', 'glow': 'Warm window light',
-    'fire': 'Oven amber fire', 'dung': 'Manure cocoa brown', 'dung_light': 'Manure warm brown',
+    'fire': 'Oven amber fire', 'dung': 'Manure cocoa brown',
     'ceramic': 'Solarpunk white ceramic', 'copper': 'Warm crafted copper',
     'brass': 'Honey brass fittings', 'solar': 'Deep blue solar glass',
     'solar_light': 'Solar cell blue highlights', 'glass': 'Sea glass teal',
@@ -299,15 +297,13 @@ def _canonical_glb(path):
     path.write_bytes(data)
 
 
-def export_and_preview(name, budget, stages=False, states=False, root_prefix='stage_', airborne=False):
+def export_and_preview(name, budget, stages=False, states=False, root_prefix='stage_'):
     """Validate geometry, export ALL states, then render cardinal contact sheets.
 
     Static sheets: front/back/left/right in a 2x2 grid. Crop sheets: stages
-    top to bottom, same four directions left to right. Coop/oven sheets have
-    closed/open and idle/running rows respectively; states=True also enables
-    idle/running rows for other machines. root_prefix='variant_' shows rock
-    variants in separate rows. airborne=True allows a centred flying origin
-    with geometry below it. Camera pitch = 30 deg.
+    top to bottom, same four directions left to right. states=True gives
+    machines idle/running rows. root_prefix='variant_' shows rock
+    variants in separate rows. Camera pitch = 30 deg.
     """
     bpy.context.view_layer.update()
     meshes = [o for o in bpy.context.scene.objects if o.type=='MESH']
@@ -327,8 +323,7 @@ def export_and_preview(name, budget, stages=False, states=False, root_prefix='st
         assert all(not f.use_smooth for f in obj.data.polygons), 'Smooth mesh '+obj.name
     low = Vector(tuple(min(p[i] for p in points) for i in range(3)))
     high = Vector(tuple(max(p[i] for p in points) for i in range(3)))
-    if not airborne:
-        assert low.z >= -.001, f'Below ground: {low.z}'
+    assert low.z >= -.001, f'Below ground: {low.z}'
     assert abs(low.x+high.x)<.1 and abs(low.y+high.y)<.1, 'Footprint not centred'
     assert max(counts.values()) <= budget, f'Triangle budget: {counts} > {budget}'
     output = ROOT/'public'/'models'/f'{name}.glb'
@@ -365,18 +360,14 @@ def export_and_preview(name, budget, stages=False, states=False, root_prefix='st
     # Same framing for every direction and stage, so growth stays comparable.
     camera.data.ortho_scale = max(high.x-low.x,high.y-low.y,high.z-low.z)*1.38
     stage_roots = sorted([o for o in scene.objects if o.name.startswith(root_prefix)], key=lambda o:o.name)
-    stateful = name in ('coop', 'oven') or states
+    stateful = states
     rows = len(stage_roots) if stages else 2
     columns = 4 if stages or stateful else 2
     sheet_width, sheet_height = columns*size, rows*size
     pixels = [0.0]*(sheet_width*sheet_height*4)
     variants = stage_roots if stages else ([False,True] if stateful else [None])
-    door = bpy.data.objects.get('door') if name == 'coop' else None
-    door_rotation = door.rotation_euler.copy() if door else None
     directions = [(0,-1,0),(0,1,0),(-1,0,0),(1,0,0)]
     for s,root in enumerate(variants):
-        if door:
-            door.rotation_euler.z = math.radians(-105) if root else 0
         for obj in meshes:
             if stages:
                 obj.hide_render = obj.parent != root
@@ -407,5 +398,3 @@ def export_and_preview(name, budget, stages=False, states=False, root_prefix='st
     sheet.save()
     for obj in meshes:
         obj.hide_render = False
-    if door:
-        door.rotation_euler = door_rotation

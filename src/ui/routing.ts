@@ -1,5 +1,7 @@
 import { BUILDINGS, ITEM_IDS, type ItemId } from '../game/data.ts';
-import { givesGoods, stopProblems, truckProblems, trucksOn } from '../game/sim.ts';
+import { givesGoods } from '../game/sim/goods.ts';
+import { trucksOn } from '../game/sim/trucks.ts';
+import { stopProblems, truckProblems } from '../game/sim/describe.ts';
 import { buildingById, type GameState, type Route, type Truck } from '../game/state.ts';
 import { ROUTE_COLOURS } from '../world/shapes.ts';
 import { routeColour } from '../world/routeView.ts';
@@ -57,9 +59,6 @@ export function trucksDoing(s: GameState, r: Route): string {
   }
   return [...n].map(([w, k]) => `${k} ${w}`).join(' · ');
 }
-
-/** What of a route's stops a panel shows (not the stops' turns, which change all the time). */
-export const stopsKey = (r: Route) => r.stops.map((st) => [st.building, st.drop, st.pick, st.wait]);
 
 /** Whether the caret is in a text box inside `el` (a rebuild would lose it). */
 export const typingIn = (el: HTMLElement) => document.activeElement instanceof HTMLInputElement && el.contains(document.activeElement);

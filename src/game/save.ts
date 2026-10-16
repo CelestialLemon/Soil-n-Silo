@@ -1,8 +1,10 @@
-import { changeSoil, isStop, type Medal } from './sim.ts';
-import { bays, BUILDINGS, CROPS, FIELD, ITEMS, recipesFor, TRUCK } from './data.ts';
-import { startedRunLog, type Mark, type RunLog } from './runlog.ts';
+import { isStop } from './sim/trucks.ts';
+import { type Medal } from './sim/stats.ts';
+import { bays, BUILDINGS, CROPS, ITEMS, recipesFor, TICK, TRUCK, type BuildingId } from './data.ts';
+import { err, ok, tryParseJson, type Result } from './result.ts';
+import type { Mark, RunLog } from './runlog.ts';
 import type { Scenario } from './scenarios.ts';
-import type { Building, GameState, Route, Truck } from './state.ts';
+import { isMachine, type Building, type GameState, type Route, type Truck } from './state.ts';
 
 // Saving: the commission in progress (one at a time) and each commission's best result. The game state is plain data, so a
 // save is its JSON.
@@ -18,35 +20,30 @@ export function saveKey(pathname: string): string {
 
 export const serialize = (s: GameState) => JSON.stringify(s);
 
-/** The saved game, or null if there is none, or it's from another version or broken. */
-export function deserialize(json: string | null): GameState | null {
-  if (!json) return null;
-  try {
-    const s = JSON.parse(json) as GameState;
-    if (s?.version !== 3 || !complete(s)) return null;
-    // Saved before the run was logged: it is logged from now on.
-    if (s.run === undefined) s.run = startedRunLog(s);
-    // Saved when fields held compost: what a field held goes into its soil.
-    for (const b of s.buildings as OldBuilding[]) {
-      if (b.type === 'field' && b.compost) changeSoil(s, b, FIELD.compostGain * b.compost);
-      delete b.compost;
-    }
-    return validRun(s.run, s.scenario.goals.length) ? s : null;
-  } catch {
-    return null;
-  }
+/** The saved game, or why it was refused: there is none, or it's from another version or broken. */
+export function deserialize(json: string | null): Result<GameState> {
+  if (!json) return err('There is no saved game.');
+  const parsed = tryParseJson(json);
+  if (!parsed.ok) return err(`The save isn't JSON: ${parsed.error}`);
+  const s = parsed.value as GameState | null;
+  if (s?.version !== 5) return err('The save is from another version (this game reads version 5).');
+  if (!complete(s)) return err('The save is broken: its state is incomplete or out of range.');
+  if (!validRun(s.run, s.scenario.goals.length)) return err('The save is broken: its run log is incomplete or out of range.');
+  return ok(s);
 }
 
 const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
 const nums = (o: unknown) => !!o && typeof o === 'object' && !Array.isArray(o) && Object.values(o).every(num);
 const arr = Array.isArray;
-const item = (v: unknown) => typeof v === 'string' && v in ITEMS;
+const known = (o: object, v: unknown) => typeof v === 'string' && Object.hasOwn(o, v);
+const item = (v: unknown) => known(ITEMS, v);
 const items = (v: unknown) => arr(v) && v.every(item);
 /** Counts by good: every key a good, every value a number. */
 const counts = (o: unknown) => nums(o) && Object.keys(o as object).every(item);
 /** Goods held: counts that are whole and not negative. */
 const stock = (o: unknown) => counts(o) && Object.values(o as object).every((v) => Number.isInteger(v) && v >= 0);
-const crop = (v: unknown) => typeof v === 'string' && v in CROPS;
+const crop = (v: unknown) => known(CROPS, v);
+const type = (v: unknown) => known(BUILDINGS, v);
 const dir = (v: unknown) => v === 0 || v === 1 || v === 2 || v === 3;
 const goal = (g: { kind?: string; item?: unknown; n?: unknown; perMin?: unknown; min?: unknown }) =>
   !!g && ((g.kind === 'deliver' && item(g.item) && num(g.n)) || (g.kind === 'rate' && item(g.item) && num(g.perMin)) || (g.kind === 'soil' && num(g.min)));
@@ -69,16 +66,23 @@ function complete(s: GameState): boolean {
     && !!m && num(m.width) && num(m.height) && arr(m.terrain) && m.terrain.length === m.width * m.height
     && arr(m.fertility) && m.fertility.length === m.width * m.height && m.fertility.every(num)
     && arr(s.soilBase) && s.soilBase.length === m.fertility.length && s.soilBase.every(num) && !!m.depot && num(m.depot.x) && num(m.depot.y)
-    && [s.credits, s.time, s.carry, s.nextId, s.earned, s.initialTrees].every(num)
+    && [s.credits, s.time, s.carry, s.nextId, s.earned, s.initialTrees].every(num) && Math.abs(s.carry) <= TICK
     && (s.completedAt === null || num(s.completedAt))
     && stock(s.delivered) && stock(s.made) && arr(s.reached) && s.reached.length === s.scenario.goals.length
     && !!st && num(st.since) && arr(st.made) && st.made.length > 0 && st.made.every(counts)
     && !!st.delivered && typeof st.delivered === 'object' && Object.entries(st.delivered).every(([k, v]) => item(k) && arr(v) && v.every(num))
+    && validChosen(s.chosen)
     && arr(s.buildings) && s.buildings.every((b) => validBuilding(b, m.width, m.height))
-    && arr(s.routes) && s.routes.every(validRoute) && stopsExist(s) && docksFit(s) && arr(s.trucks) && s.trucks.every((t) => validTruck(s, t)) && uniqueIds(s);
+    && arr(s.routes) && s.routes.every(validRoute) && stopsExist(s) && arr(s.trucks) && s.trucks.every((t) => validTruck(s, t)) && docksFit(s) && uniqueIds(s);
 }
 
 const int = (v: unknown) => Number.isInteger(v);
+
+/** The choices remembered for placing: a crop, and for each building a recipe it works. */
+function validChosen(c: GameState['chosen']): boolean {
+  return !!c && crop(c.crop) && !!c.recipes && typeof c.recipes === 'object' && !arr(c.recipes)
+    && Object.entries(c.recipes).every(([k, v]) => type(k) && recipesFor(k as BuildingId).some((r) => r.id === v));
+}
 
 const MARKS = ['first', 'night', 'truck', 'second', 'loop', 'goal'];
 /** The run's log: milestones (each with what its kind needs), the curve, and seconds by kind of building, problem and night. */
@@ -87,9 +91,9 @@ function validRun(r: RunLog, goals: number): boolean {
   const needs = (m: Mark) => (m.kind === 'first' || m.kind === 'loop' ? m.item !== undefined : m.kind === 'second' ? m.type !== undefined
     : m.kind === 'goal' ? m.goal !== undefined && m.goal >= 0 && m.goal < goals : true);
   return !!r && arr(r.marks) && r.marks.every((m) => !!m && num(m.t) && MARKS.includes(m.kind) && (m.item === undefined || item(m.item))
-      && (m.type === undefined || m.type in BUILDINGS) && (m.goal === undefined || int(m.goal)) && (m.n === undefined || num(m.n)) && needs(m))
-    && num(r.curveFrom) && num(r.curveStep) && r.curveStep > 0 && arr(r.curve) && r.curve.every(num) && kinds(r.time) && nums(r.problems)
-    && arr(r.nights) && r.nights.every((n) => !!n && num(n.day) && num(n.short) && arr(n.types) && n.types.every((t) => t in BUILDINGS))
+      && (m.type === undefined || type(m.type)) && (m.goal === undefined || int(m.goal)) && (m.n === undefined || num(m.n)) && needs(m))
+    && num(r.curveStep) && r.curveStep > 0 && arr(r.curve) && r.curve.every(num) && kinds(r.time) && nums(r.problems)
+    && arr(r.nights) && r.nights.every((n) => !!n && num(n.day) && num(n.short) && arr(n.types) && n.types.every(type))
     && !!r.trucks && num(r.trucks.total) && num(r.trucks.wait) && kinds(r.trucks.at);
 }
 
@@ -135,23 +139,20 @@ function uniqueIds(s: GameState): boolean {
   return int(s.nextId) && new Set(ids).size === ids.length && ids.every((id) => int(id) && id > 0 && id < s.nextId);
 }
 
-/** A building as saved before fields stopped holding compost. */
-type OldBuilding = Building & { compost?: number };
-
 /** A building has what its type's rules read. */
-function validBuilding(b: OldBuilding, w: number, h: number): boolean {
-  if (!b || !num(b.id) || !num(b.x) || !num(b.y) || !(b.type in BUILDINGS) || !dir(b.rot)) return false;
+function validBuilding(b: Building, w: number, h: number): boolean {
+  if (!b || !num(b.id) || !num(b.x) || !num(b.y) || !type(b.type) || !dir(b.rot)) return false;
   const n = BUILDINGS[b.type].size;
   if (b.x < 0 || b.y < 0 || b.x + n > w || b.y + n > h) return false;
   switch (b.type) {
     case 'silo': return stock(b.store);
-    case 'field': return crop(b.crop) && (b.harvest === undefined || crop(b.harvest)) && num(b.growth) && num(b.stored)
-      && (b.compost === undefined || (int(b.compost) && b.compost >= 0));
+    case 'field': return crop(b.crop) && (b.harvest === undefined || crop(b.harvest)) && num(b.growth) && num(b.stored);
     case 'hive': return num(b.growth) && num(b.stored);
     case 'battery': return num(b.charge);
     case 'sapling': return num(b.age);
   }
-  if (recipesFor(b.type).length) {
+  // A machine's recipe is one it makes (the rules look recipes up by id).
+  if (isMachine(b)) {
     return recipesFor(b.type).some((r) => r.id === b.recipe) && stock(b.inputs) && stock(b.outputs) && (b.progress === null || num(b.progress));
   }
   return true;
@@ -161,12 +162,8 @@ export interface Best { medal: Medal; time: number }
 export type Progress = Record<string, Best>;
 
 export function readProgress(json: string | null): Progress {
-  try {
-    const p = JSON.parse(json ?? '{}');
-    return p && typeof p === 'object' ? p as Progress : {};
-  } catch {
-    return {};
-  }
+  const p = tryParseJson(json ?? '{}');
+  return p.ok && p.value && typeof p.value === 'object' ? p.value as Progress : {};
 }
 
 const RANK: Record<Medal, number> = { gold: 3, silver: 2, bronze: 1 };

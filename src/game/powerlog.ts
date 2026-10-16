@@ -1,5 +1,6 @@
 import { DAY_SECONDS, START_HOUR, type BuildingId } from './data.ts';
 import type { GameState } from './state.ts';
+import { runtimeOf } from './runtime.ts';
 
 // Power over the last game day, for the Power panel: each in-game hour's average watts by source (solar, wind, digester,
 // from batteries), what was used and what was short; the watts each kind of building drew; and each night's battery record
@@ -48,12 +49,12 @@ export interface Night {
   dryAt: number | null;
 }
 
-interface Log { hours: Hour[]; nights: Night[] }
-const all = new WeakMap<GameState, Log>();
+export interface Log { hours: Hour[]; nights: Night[] }
 
 function log(s: GameState): Log {
-  let l = all.get(s);
-  if (!l) all.set(s, (l = { hours: [], nights: [] }));
+  const r = runtimeOf(s);
+  let l = r.powerLog;
+  if (!l) r.powerLog = (l = { hours: [], nights: [] });
   return l;
 }
 
@@ -128,7 +129,7 @@ export function powerDay(s: GameState): PowerDay {
   const avg = { ...total, made: 0 };
   if (seconds > 0) {
     for (const k of SUM_KEYS) avg[k] = total[k] / seconds;
-    for (const k of Object.keys(use) as BuildingId[]) use[k] = use[k]! / seconds;
+    for (const k of Object.keys(use) as BuildingId[]) use[k] = (use[k] ?? 0) / seconds;
   }
   avg.made = avg.solar + avg.wind + avg.digester;
   return { hours, seconds, avg, use };

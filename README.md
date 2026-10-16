@@ -16,9 +16,10 @@ byproducts have to go somewhere, and the sun sets every few minutes. A 3D world 
 ```sh
 npm install
 npm run dev          # http://127.0.0.1:5190
-npm test             # the game rules (src/game/), in Node
+npm test             # the game rules (src/game/), and the bot clearing each commission it has a layout for, in Node
 npm run sim -- c2     # a bot plays a commission on the real rules (c1, c2, c2:next, c4), to check it can be cleared and how fast
 npm run typecheck
+npm run lint         # ESLint: errors fail, warnings are known debt to clear (see eslint.config.js)
 npm run build        # typecheck, then the game into dist/
 ```
 
@@ -37,15 +38,21 @@ select and `?play=<id>` (`c1`…`c8`, `sandbox`, `r<seed>-<1..3>`) starts a comm
 **Builds online.** Every push to `main` or `dev` is built and deployed to GitHub Pages (`.github/workflows/deploy.yml`):
 [`/main/`](https://celestiallemon.github.io/Soil-n-Silo/main/) and [`/dev/`](https://celestiallemon.github.io/Soil-n-Silo/dev/).
 The site's root redirects to `/main/`. Each build keeps its own save. New work is merged into `dev` and moves to `main` in a
-PR from `dev`.
+PR from `dev`. Every PR to either, and every push to them, runs the tests and the build on Node 22.18 and the deploy's Node
+(`.github/workflows/ci.yml`).
 
 ## Layout
 
 ```
 src/
-  main.ts       the game: loop, input, camera, picking and clicking
+  main.ts       the game: loop, state, hover and placement previews, and what clicks and keys do
+  input.ts      pointer, wheel and key events turned into intents the game answers (the press/drag state machine)
   game/         game rules and state as pure TypeScript (no DOM, no renderer), unit-tested in test/
-  world/        what the renderer draws: the static farm, the models, and the view that mirrors the state into objects
+    sim/        the fixed-step simulation, one concern per module, each importing only the ones above it in this list:
+                clock (time, sun, wind), layout (derived lookups), soil, goods (recipes, next-door trades), energy (power
+                networks, garage charging), buildings (machines, fields, hives), trucks, stats (history, rates, goals),
+                describe (player-facing text), step (advance and tick)
+  world/        what the renderer draws: the static farm, the models, the camera, and the view that mirrors the state into objects
   ui/           the HTML HUD and menus over the canvas, and the item icons
     clearday/   the design system (tokens, components, icons, the bundled font)
 assets/         Blender build scripts for the models (the source of truth), exported to public/models/
@@ -54,6 +61,18 @@ tools/          the commission bot (npm run sim) and its layouts
 test/           unit tests (Node's test runner)
 docs/           design, roadmap, asset brief
 ```
+
+### Adding a building
+
+Behaviour shared by a kind of building is declared as data, not written as `type === '...'` checks.
+
+1. **Data entry.** Add the id to `BuildingId` and an entry to `BUILDINGS` in `src/game/data.ts`, with the role flags that apply:
+   `power` (watts it draws), `stores` (holds any goods; trucks stop there), `harvests` (grows goods and keeps them on site),
+   `grid` (`'source'`, `'storage'` or `'link'` in the power network), `inert` (no work to report on: out of the run log and
+   histories), `tall`, `onWater`. A machine also needs a recipe in `RECIPES`.
+2. **Model.** Add the model to `assets/` and `public/models/`, wire it in `src/world/`, and give it an icon and guide page in `src/ui/`.
+3. **Unique behaviour.** Only what no flag covers: a state shape in `src/game/state.ts` (the `Building` union and `blankBuilding`),
+   its per-step logic in `src/game/sim/`, its entry in `forecast.ts`, and a test.
 
 ## The renderer
 

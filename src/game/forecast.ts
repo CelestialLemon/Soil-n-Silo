@@ -1,9 +1,12 @@
-import { BUILDINGS, CROPS, DAY_SECONDS, FIELD, HIVE, ITEMS, POWER, recipesFor, SAPLING_SECONDS, TREE_HEALTH, type BuildingId } from './data.ts';
-import { TERRAIN } from './map.ts';
+import { BUILDINGS, CROPS, DAY_SECONDS, HIVE, ITEMS, POLLINATION_BONUS, POWER, recipesFor, SAPLING_SECONDS, TREE_HEALTH, type BuildingId } from './data.ts';
 import { networks, POWERED, pylonsInLink } from './power.ts';
 import { HOUR_SECONDS } from './powerlog.ts';
-import { describeLinks, hourAt, linksAt, makes, shareOf, sunAt, touchesWater, windAt } from './sim.ts';
-import { buildingAt, inMap, reachTo, terrainAt, type Building, type GameState } from './state.ts';
+import { exposureAt, hiveReaches, nearWaterAt, paceOf, pylonReaches, sprinklerWaters, touchesWater, waterPace } from './rules.ts';
+import { hourAt, sunAt, windAt } from './sim/clock.ts';
+import { linksAt } from './sim/goods.ts';
+import { makes, shareOf } from './sim/energy.ts';
+import { describeLinks } from './sim/describe.ts';
+import { inMap, type Building, type FieldBuilding, type GameState, type Setting } from './state.ts';
 
 // Forecasts from what the game already knows: what a building in hand would do on a tile (facts about the tile, no advice),
 // and how tonight's battery charge will go if power is used as it is now (the weather is seeded, so the game knows it).
@@ -17,6 +20,9 @@ export interface Placement {
   next: string[];
 }
 
+/** How far ahead, in seconds of play, the placement card shows a field's soil. */
+export const SOIL_AHEAD = 600;
+
 const fmt1 = (n: number) => (Math.abs(n) >= 10 ? String(Math.round(n)) : n.toFixed(1).replace(/\.0$/, ''));
 const watts = (w: number) => `${fmt1(w)} W`;
 
@@ -29,67 +35,46 @@ function soilUnder(s: GameState, x: number, y: number, n: number) {
 
 /** The sprinklers that would water a field at (x, y), and the most water any gives (the share of power it gets). */
 function waterAt(s: GameState, x: number, y: number) {
-  const cx = x + 1.5, cy = y + 1.5;
-  const sp = s.buildings.filter((b) => b.type === 'sprinkler' && Math.max(Math.abs(b.x + 0.5 - cx), Math.abs(b.y + 0.5 - cy)) <= POWER.sprinklerReach + 0.5);
+  const sp = s.buildings.filter((b) => b.type === 'sprinkler' && sprinklerWaters(b.x, b.y, { type: 'field', x, y }));
   const shore = touchesWater(s, x, y);
   return { sprinklers: sp.length, shore, water: shore ? 1 : sp.reduce((m, b) => Math.max(m, shareOf(s, b)), 0) };
 }
 
-const paceOf = (water: number, soil: number) => (FIELD.dry + (1 - FIELD.dry) * water) * (FIELD.poorSoil + (FIELD.richSoil - FIELD.poorSoil) * soil / 100);
-
 /** Whether a pylon would reach a footprint at (x, y). */
-const powered = (s: GameState, type: BuildingId, x: number, y: number) =>
-  s.buildings.some((p) => p.type === 'pylon' && reachTo({ type, x, y } as Building, p.x, p.y) <= POWER.pylon.reach);
-
-/** The share of the wind a turbine at (x, y) would get, after the trees and tall buildings within 2 tiles. */
-export function exposureAt(s: GameState, x: number, y: number) {
-  let n = 0;
-  const tall = new Set<Building>();
-  for (let ty = y - 2; ty <= y + 2; ty++) for (let tx = x - 2; tx <= x + 2; tx++) {
-    if ((tx === x && ty === y) || !inMap(s, tx, ty)) continue;
-    const o = buildingAt(s, tx, ty);
-    if (terrainAt(s, tx, ty) === TERRAIN.tree) n++;
-    else if (o && BUILDINGS[o.type].tall) tall.add(o);
-  }
-  return Math.max(POWER.shelterFloor, 1 - POWER.shelter * (n + tall.size));
-}
+const powered = (s: GameState, type: BuildingId, x: number, y: number) => s.buildings.some((p) => BUILDINGS[p.type].grid === 'link' && pylonReaches({ type, x, y }, p.x, p.y));
 
 /** What a building of `type` placed with its north-west tile at (x, y) would do there. */
-export function placement(s: GameState, type: BuildingId, x: number, y: number): Placement {
+export function placement(s: GameState, type: BuildingId, x: number, y: number, set: Setting = {}): Placement {
   const def = BUILDINGS[type], facts: Fact[] = [];
   const pylonFact = (): Fact => (powered(s, type, x, y) ? { label: 'Power', value: 'in reach', sub: 'of a pylon' } : { label: 'Power', value: 'none', sub: 'no pylon in reach', tone: 'bad' });
   switch (type) {
     case 'field': {
-      const crop = CROPS.wheat, soil = soilUnder(s, x, y, 3), { sprinklers, shore, water } = waterAt(s, x, y);
-      const perMin = crop.yield * 60 * paceOf(water, soil) / crop.grow;
-      // Ten minutes of harvests, each wearing the soil and slowing the next.
+      const crop = CROPS[set.crop ?? 'wheat'], soil = soilUnder(s, x, y, 3), { sprinklers, shore, water } = waterAt(s, x, y);
+      // A hive within reach of a flowering crop adds a good to every harvest.
+      const pollinated = crop.flowers && s.buildings.some((b) => b.type === 'hive' && hiveReaches({ type: 'field', x, y }, b.x, b.y));
+      const perMin = (crop.yield + (pollinated ? POLLINATION_BONUS : 0)) * 60 * paceOf(water, soil).pace / crop.grow;
+      // The harvests over the next SOIL_AHEAD seconds, each wearing the soil and slowing the next.
       let t = 0, later = soil;
-      for (;;) { t += crop.grow / paceOf(water, later); if (t > 600) break; later = Math.max(0, Math.min(100, later + crop.soil)); }
+      for (;;) { t += crop.grow / paceOf(water, later).pace; if (t > SOIL_AHEAD) break; later = Math.max(0, Math.min(100, later + crop.soil)); }
       facts.push({ label: crop.name, value: `+${fmt1(perMin)}`, sub: 'a minute' });
-      facts.push({ label: 'Soil', value: String(Math.round(soil)), then: String(Math.round(later)), sub: 'in 10 min' });
-      facts.push(shore ? { label: 'Water', value: 'beside water', sub: 'grows at 100%' } : sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round((FIELD.dry + (1 - FIELD.dry) * water) * 100)}%` }
-        : { label: 'Water', value: 'none', sub: `grows at ${Math.round(FIELD.dry * 100)}%`, tone: 'bad' });
+      facts.push({ label: 'Soil', value: String(Math.round(soil)), then: String(Math.round(later)), sub: `in ${SOIL_AHEAD / 60} min if harvests are carried off` });
+      facts.push(shore ? { label: 'Water', value: 'beside water', sub: 'grows at 100%' } : sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round(waterPace(water) * 100)}%` }
+        : { label: 'Water', value: 'none', sub: `grows at ${Math.round(waterPace(0) * 100)}%`, tone: 'bad' });
       break;
     }
     case 'sprinkler': {
-      const cx = x + 0.5, cy = y + 0.5;
-      const fields = s.buildings.filter((b) => b.type === 'field' && Math.max(Math.abs(b.x + 1.5 - cx), Math.abs(b.y + 1.5 - cy)) <= POWER.sprinklerReach + 0.5);
-      let near = false;
-      const r = POWER.waterNear;
-      for (let ty = y - r; ty <= y + r && !near; ty++) for (let tx = x - r; tx <= x + r; tx++) {
-        if (inMap(s, tx, ty) && Math.hypot(tx - x, ty - y) <= r && terrainAt(s, tx, ty) === TERRAIN.water) { near = true; break; }
-      }
+      const fields = s.buildings.filter((b) => b.type === 'field' && sprinklerWaters(x, y, b)), near = nearWaterAt(s, x, y);
       facts.push({ label: 'Waters', value: `${fields.length} field${fields.length === 1 ? '' : 's'}`, sub: `centres within ${POWER.sprinklerReach} tiles` });
       facts.push({ label: 'Uses', value: watts(near ? POWER.sprinklerNearWater : POWER.sprinklerFar), sub: near ? 'near water' : 'far from water' });
       facts.push(pylonFact());
       break;
     }
     case 'hive': {
-      const near = s.buildings.filter((b) => b.type === 'field' && reachTo(b, x, y) <= HIVE.reach);
-      const flowers = Math.min(HIVE.maxFlowers, near.filter((f) => CROPS[f.crop!].flowers).length);
+      const near = s.buildings.filter((b): b is FieldBuilding => b.type === 'field' && hiveReaches(b, x, y));
+      const flowers = Math.min(HIVE.maxFlowers, near.filter((f) => CROPS[f.crop].flowers).length);
       facts.push({ label: 'Honey', value: `+${fmt1(flowers * 60 / HIVE.honeySeconds)}`, sub: 'a minute', tone: flowers ? undefined : 'bad' });
       facts.push({ label: 'Flowers', value: `${flowers} field${flowers === 1 ? '' : 's'}`, sub: `flowering within ${HIVE.reach} tiles` });
-      facts.push({ label: 'Pollinates', value: `${near.filter((f) => CROPS[f.crop!].flowers).length}`, sub: 'flowering fields' });
+      facts.push({ label: 'Pollinates', value: `${near.filter((f) => CROPS[f.crop].flowers).length}`, sub: 'flowering fields' });
       break;
     }
     case 'solar': {
@@ -108,7 +93,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number):
     }
     case 'pylon': {
       const links = pylonsInLink(s, x, y).length;
-      const reached = s.buildings.filter((b) => POWERED(b) && reachTo(b, x, y) <= POWER.pylon.reach);
+      const reached = s.buildings.filter((b) => POWERED(b) && pylonReaches(b, x, y));
       const fresh = reached.filter((b) => !networks(s).of.get(b.id)).length;
       facts.push({ label: 'Links', value: `${links} pylon${links === 1 ? '' : 's'}`, sub: links ? `within ${POWER.pylon.link} tiles` : 'a new network' });
       facts.push({ label: 'Reaches', value: `${reached.length}`, sub: `building${reached.length === 1 ? '' : 's'}${fresh ? `, ${fresh} not yet powered` : ''}` });
@@ -119,14 +104,14 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number):
       facts.push({ label: 'Soil health', value: `+${TREE_HEALTH.perTree}`, sub: `a tree, up to ${TREE_HEALTH.cap} in all` });
       break;
     default: {
-      const r = recipesFor(type)[0];
+      const r = recipesFor(type).find((x) => x.id === set.recipe) ?? recipesFor(type)[0];
       if (r && r.outputs.length) facts.push({ label: 'Full speed', value: fmt1(r.outputs[0].n * 60 / r.time), sub: `${ITEMS[r.outputs[0].item].name.toLowerCase()} a minute` });
       if (type === 'digester') facts.push({ label: 'Makes', value: watts(POWER.digester), sub: 'while burning' });
       if (type === 'battery') facts.push({ label: 'Stores', value: `${POWER.battery.capacity} J`, sub: `${POWER.battery.rate} W in and out` });
       if (def.power || POWERED({ type } as Building)) facts.push(pylonFact());
     }
   }
-  return { facts, next: describeLinks(linksAt(s, type, x, y)) };
+  return { facts, next: describeLinks(linksAt(s, type, x, y, set)) };
 }
 
 // ---- Tonight ----
@@ -158,39 +143,43 @@ export interface Tonight {
  */
 export function tonight(s: GameState): Tonight | null {
   const sc = s.scenario, w = sc.weather, now = s.time, h = hourAt(now);
-  const night = h <= w.sunrise || h >= w.sunset;
+  const night = h < w.sunrise || h >= w.sunset;
   const sunset = night ? null : nextHour(now, w.sunset);
   const sunrise = nextHour(sunset ?? now, w.sunrise), end = sunrise + HOUR_SECONDS;
   const nets = networks(s).list.map((net) => {
-    const bats = net.members.filter((b) => b.type === 'battery').map((b) => b.charge!);
+    const bats = net.members.filter((b) => b.type === 'battery').map((b) => b.charge);
     return { net, bats, solar: net.members.filter((b) => b.type === 'solar').length, turbines: net.members.filter((b) => b.type === 'turbine'),
       digesters: net.members.filter((b) => b.type === 'digester').reduce((n, b) => n + makes(s, b, 0, 0), 0) };
   });
   const capacity = nets.reduce((n, x) => n + x.bats.length, 0) * POWER.battery.capacity;
   if (!capacity) return null;
   const step = HOUR_SECONDS / 6, points: { t: number; k: number }[] = [];
+  const nightFrom = sunset ?? now; // only the coming night counts as a failure; before it the batteries just fill or drain
   let dryAt: number | null = null, shortSum = 0, shortFor = 0;
   const stored = () => nets.reduce((n, x) => n + x.bats.reduce((a, b) => a + b, 0), 0);
   let peak = { t: now, k: stored() / capacity };
   points.push({ t: now, k: peak.k });
-  for (let t = now; t < end - 1e-6; t += step) {
-    const sun = sunAt(sc, t + step / 2), wind = windAt(sc, t + step / 2);
+  for (let t = now, dt: number; t < end - 1e-6; t += dt) {
+    // Cut a step short where it would cross sunset or sunrise, so each one is wholly in the night or wholly out.
+    dt = Math.min(step, end - t, ...[nightFrom, sunrise].filter((b) => b > t + 1e-6).map((b) => b - t));
+    const sun = sunAt(sc, t + dt / 2), wind = windAt(sc, t + dt / 2);
     let short = 0;
     for (const x of nets) {
       const made = POWER.solar * sun * x.solar + x.turbines.reduce((n, b) => n + makes(s, b, 0, wind), 0) + x.digesters;
-      let spare = (made - x.net.wanted) * step;
+      let spare = (made - x.net.wanted) * dt;
       for (let i = 0; i < x.bats.length; i++) {
-        const move = spare > 0 ? Math.min(spare, POWER.battery.rate * step, POWER.battery.capacity - x.bats[i]) : Math.max(spare, -POWER.battery.rate * step, -x.bats[i]);
+        const move = spare > 0 ? Math.min(spare, POWER.battery.rate * dt, POWER.battery.capacity - x.bats[i]) : Math.max(spare, -POWER.battery.rate * dt, -x.bats[i]);
         x.bats[i] += move; spare -= move;
       }
-      if (spare < -1e-6) short += -spare / step;
+      if (spare < -1e-6) short += -spare / dt;
     }
     // Dry once every battery is spent (one network's going first still leaves the rest holding) and something goes short.
     const k = stored() / capacity;
-    if (dryAt === null && k < 1e-6 && short > 1e-6) dryAt = t + step;
-    points.push({ t: t + step, k });
-    if ((sunset === null || t + step <= sunset) && k > peak.k) peak = { t: t + step, k };
-    if (dryAt !== null && t + step <= sunrise && short > 1e-6) { shortSum += short * step; shortFor += step; }
+    const inNight = t >= nightFrom - 1e-6 && t + dt <= sunrise + 1e-6;
+    if (inNight && dryAt === null && k < 1e-6 && short > 1e-6) dryAt = t + dt;
+    points.push({ t: t + dt, k });
+    if ((sunset === null || t + dt <= sunset) && k > peak.k) peak = { t: t + dt, k };
+    if (inNight && dryAt !== null && short > 1e-6) { shortSum += short * dt; shortFor += dt; }
   }
   return { points, sunset, sunrise, dryAt, shortAfter: shortFor ? shortSum / shortFor : 0, shortFor, peak };
 }

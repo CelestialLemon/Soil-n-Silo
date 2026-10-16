@@ -1,5 +1,6 @@
-import type { ItemId } from './data.ts';
+import { BUILDINGS, type ItemId } from './data.ts';
 import type { Building, GameState, Status } from './state.ts';
+import { runtimeOf } from './runtime.ts';
 
 // What each building has been doing lately, for the inspector's history: when its status changed (and to what), the goods
 // it made and the goods taken from it (by trucks or buildings next door), and a reading sampled each step (a generator's watts, a battery's charge), in buckets of HISTORY_BUCKET seconds.
@@ -39,19 +40,18 @@ export interface History {
   buckets: Bucket[];
 }
 
-const all = new WeakMap<GameState, Map<number, History>>();
-const lastPrune = new WeakMap<GameState, number>();
 
-export const historyOf = (s: GameState, b: Building): History | null => all.get(s)?.get(b.id) ?? null;
+export const historyOf = (s: GameState, b: Building): History | null => runtimeOf(s).histories?.get(b.id) ?? null;
 
-/** Pylons, silos, the depot and saplings have nothing to look back on: always the same, or shown elsewhere. */
-export const hasHistory = (b: Building) => b.type !== 'pylon' && b.type !== 'silo' && b.type !== 'depot' && b.type !== 'sapling';
+/** Inert buildings and stores (pylons, saplings, silos, the depot) have nothing to look back on: always the same, or shown elsewhere. */
+export const hasHistory = (b: Building) => !BUILDINGS[b.type].inert && !BUILDINGS[b.type].stores;
 
 const bucketStart = (t: number) => Math.floor(t / HISTORY_BUCKET + 1e-9) * HISTORY_BUCKET;
 
 function current(s: GameState, b: Building, start: number): History {
-  let map = all.get(s);
-  if (!map) all.set(s, (map = new Map()));
+  const r = runtimeOf(s);
+  let map = r.histories;
+  if (!map) r.histories = (map = new Map());
   let h = map.get(b.id);
   if (!h) map.set(b.id, (h = { since: start, runs: [], buckets: [] }));
   return h;
@@ -95,9 +95,9 @@ export function noteStep(s: GameState, b: Building, dt: number, share: number, v
 
 /** Drops what is older than HISTORY_SECONDS, and the histories of buildings that are gone. Cheap to call every step. */
 export function pruneHistory(s: GameState) {
-  const map = all.get(s);
-  if (!map || s.time - (lastPrune.get(s) ?? -Infinity) < HISTORY_BUCKET) return;
-  lastPrune.set(s, s.time);
+  const r = runtimeOf(s), map = r.histories;
+  if (!map || s.time - (r.historyPruned ?? -Infinity) < HISTORY_BUCKET) return;
+  r.historyPruned = s.time;
   const cut = s.time - HISTORY_SECONDS - HISTORY_BUCKET, here = new Set(s.buildings.map((b) => b.id));
   for (const [id, h] of map) {
     if (!here.has(id)) { map.delete(id); continue; }
@@ -140,7 +140,7 @@ export interface Summary {
   reading: { avg: number; min: number; max: number } | null;
 }
 
-const runShare = (r: { share?: number; steps?: number }) => (r.steps ? r.share! / r.steps : undefined);
+const runShare = (r: { share?: number; steps?: number }) => (r.steps && r.share !== undefined ? r.share / r.steps : undefined);
 
 /** A building's history over the last `window` seconds, in about `bars` bars (each a whole number of buckets). */
 export function summarize(h: History, now: number, window: number, bars = 60): Summary {
@@ -185,7 +185,7 @@ export function summarize(h: History, now: number, window: number, bars = 60): S
   out.forEach((b, i) => { if (sums[i].steps) b.value = sums[i].value / sums[i].steps; });
   // A rate over the time the bars cover, since the building was recorded.
   const covered = now - Math.max(first, h.since);
-  for (const item of Object.keys(perMin) as ItemId[]) perMin[item] = covered > 0 ? (perMin[item]! / covered) * 60 : 0;
+  for (const item of Object.keys(perMin) as ItemId[]) perMin[item] = covered > 0 ? ((perMin[item] ?? 0) / covered) * 60 : 0;
   const read = out.flatMap((x) => (x.value === null ? [] : [x.value]));
   const reading = steps ? { avg: value / steps, min: Math.min(...read), max: Math.max(...read) } : null;
   return { start, now, since: h.since, spans, shares, bars: out, step, perMin, made, taken, reading };

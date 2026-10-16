@@ -43,19 +43,18 @@ A model that fails to load is drawn from simple shapes built in code (`src/world
 ## Needed for v0.1 (all built, 2026-10-09)
 
 Footprints are in tiles (metres). The game draws the Blender model where there is one and an in-code stand-in otherwise. The
-mill's model is `mill_electric` and the coop's `coop_solar` (the season-era `mill` and `coop` are kept).
+mill's model is `mill_electric` and the coop's `coop_solar`.
 
 | Model | Footprint | Height | Notes |
 | --- | --- | --- | --- |
-| `drone` | ~0.7 | ~0.25 | Four rotors (`move_spin_` each), a cargo basket; seen from above mostly |
 | `field` | 3 × 3 | — | Built in code (soil per tile, coloured by fertility), plus the crop models |
 | `beans`, `sunflower`, `flax` | 1 × 1 | | New crops, 4 `stage_<n>` each. Sunflower tall (~1.4 m ripe) with a big yellow head; beans on a small pole; flax fine blue-flowered |
 | `wheat`, `tomato` | | | Exist (`assets/wheat`, `assets/tomato`) |
 | `sprinkler` | 1 × 1 | ~0.8 | A copper riser with a spinning head (`move_spin_head`) |
-| `coop` | 3 × 3 | | Exists (`assets/coop`), can stay; a solarpunk version (green roof, solar tiles) is welcome |
+| `coop_solar` | 3 × 3 | | The coop: a green roof, solar tiles, a fixed open entrance |
 | `beehive` | 1 × 1 | ~0.9 | A stacked hive on legs with a planter of flowers |
 | `composter` | 2 × 2 | ~1.0 | Slatted timber bins, dark compost showing |
-| `mill` | 2 × 2 | ~2.0 | An electric grain mill: a hopper on a timber tower; `running_` a turning wheel or vibrating sieve |
+| `mill_electric` | 2 × 2 | ~2.0 | An electric grain mill: a hopper on a timber tower; `running_` a turning wheel or vibrating sieve |
 | `oil_press` | 2 × 2 | ~1.4 | A screw press with a big wheel (`move_spin_`) and a jar of golden oil |
 | `spinner` | 2 × 2 | ~1.3 | Spinning frame with bobbins (`move_spin_` wheel) |
 | `loom` | 2 × 2 | ~1.5 | A timber loom with linen on it |
@@ -75,22 +74,16 @@ Goods are small tokens (~0.25 m) built in code, one shape and colour per good, c
 
 ## Needed for the silos (2026-10-10, built 2026-10-11)
 
-Belts, splitters, sorters, crossings and drone pads were removed (their models with them); silos and their drones carry the
-goods now.
 
 | Model | Footprint | Height | Notes |
 | --- | --- | --- | --- |
-| `silo` | 2 × 2 | ~2.4 | A ceramic grain silo with copper hoops and a green or moss roof, and three small landing pads for its drones at local (x, z) (0.5, 0.5), (−0.4, 0.55) and (0.55, −0.45) (`SILO_PADS` in `src/world/shapes.ts`), each with a small light. The drones park 0.42 m up, so keep the pads clear above that. Tall: it shelters turbines |
+| `silo` | 2 × 2 | ~2.4 | A ceramic grain silo with copper hoops and a green or moss roof, on a stone apron. Tall: it shelters turbines |
 
-## Needed for the trucks (2026-10-12, stand-ins in code until built)
+## Needed for the trucks (2026-10-12, built 2026-10-16)
 
-Drones are gone for now (the `drone` model is kept for later); trucks on routes carry the goods, and the silo only stores them.
+Trucks on routes carry the goods, and the silo only stores them.
 
 | Model | Footprint | Height | Notes |
 | --- | --- | --- | --- |
-| `truck` | ~0.8 × 0.5 | ~0.45 | A small electric farm truck: a rounded cab, an open timber bed (the game puts up to 6 goods tokens on its floor at 0.27 m, `TRUCK_BED` in `src/world/shapes.ts`, so keep the floor flat there), solar glass on the cab roof. Front facing +Z. Seen moving in 8 directions |
-| `garage` | 2 × 2 | ~1.6 | A timber shed with a moss or solar roof, open at the front, room under it for parked trucks, a copper charging post |
-| `silo` | 2 × 2 | | Exists; the drone landing pads aren't needed any more |
-
-**Unused since the pivot** (kept for later chains): `chicken`, `egg_nest`, `manure`, `trough`, `farmhouse`, `shop_stall`,
-`shipping_bin`, `oven`, `pumpkin`, `mill`, `coop`.
+| `truck` | ~0.86 long × 0.51 wide | ~0.47 | A small electric farm truck: a rounded ceramic cab, emissive sea-glass windows, solar glass on the cab roof, and an open timber bed. Its flat floor is at 0.27 m (`TRUCK_BED` in `src/world/shapes.ts`), with all 6 goods slots clear above it; the builder checks their clearance. Front facing +Z. Seen moving in 8 directions |
+| `garage` | 2 × 2 | ~1.66 | An open-front timber shelter on individual stone shoes, slatted side/back walls, a pitched moss and solar-glass roof, planting and a copper charging post. Trucks park on the ground under the canopy |

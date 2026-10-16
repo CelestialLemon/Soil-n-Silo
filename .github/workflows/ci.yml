@@ -1,19 +1,28 @@
 name: CI
 
+# Lint, the tests (with the bot playing every layout) and the build, on every PR to dev or main and every push to them. On the
+# oldest Node the game supports (package.json "engines") and on the one the deploy uses.
+
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
+    branches: [main, dev]
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['22.18', '26']
+    name: check (Node ${{ matrix.node }})
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 26
+          node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci                # also builds the renderer package from its git tag (its "prepare" script)
-      - run: npm test              # the game rules, in Node
+      - run: npm run lint          # ESLint; warnings are known debt and don't fail
+      - run: npm test              # the game rules and the bot's layouts, in Node
       - run: npm run build         # typecheck, then the game

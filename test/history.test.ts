@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { place, remove } from '../src/game/build.ts';
-import { POWER } from '../src/game/data.ts';
+import { POWER, type BuildingId } from '../src/game/data.ts';
 import { HISTORY_SECONDS, historyOf, summarize, type Bucket, type History } from '../src/game/history.ts';
 import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
-import { advance } from '../src/game/sim.ts';
-import { newGame, type Building, type GameState } from '../src/game/state.ts';
+import { advance } from '../src/game/sim/step.ts';
+import { newGame, type BuildingOf, type GameState } from '../src/game/state.ts';
 
 function flat(): GameState {
   const sc: Scenario = {
@@ -18,10 +18,10 @@ function flat(): GameState {
   return s;
 }
 
-function put(s: GameState, type: Parameters<typeof place>[1], x: number, y: number): Building {
+function put<K extends BuildingId>(s: GameState, type: K, x: number, y: number): BuildingOf<K> {
   const r = place(s, type, x, y, 0);
-  assert.ok(r.ok, `${type} at ${x},${y}: ${r.message}`);
-  return r.building!;
+  if (!r.ok) assert.fail(`${type} at ${x},${y}: ${r.error}`);
+  return r.value.building;
 }
 
 /** A powered mill with nothing to grind. */
@@ -35,7 +35,7 @@ function mill(s: GameState) {
 test('a building\'s history records how long it spent in each status, with what it waited for', () => {
   const s = flat(), { m } = mill(s);
   advance(s, 30);
-  m.inputs!.wheat = 6;
+  m.inputs.wheat = 6;
   advance(s, 30);
   const sum = summarize(historyOf(s, m)!, s.time, 300);
   const waiting = sum.shares.find((x) => x.status === 'input')!, working = sum.shares.find((x) => x.status === 'ok')!;
@@ -73,7 +73,7 @@ test('batteries and generators record a reading; the windows give about 60 bars'
   assert.ok(h.buckets.every((k) => k.steps > 0));
   const sum = summarize(h, s.time, 60);
   assert.equal(sum.bars.length, 12);
-  assert.ok(Math.abs(sum.bars[sum.bars.length - 1].value! - bat.charge!) < 50);
+  assert.ok(Math.abs(sum.bars[sum.bars.length - 1].value! - bat.charge) < 50);
   assert.equal(summarize(h, s.time, 600).step, 10);
   assert.equal(summarize(h, s.time, 300).step, 5);
   // Bars before it was built have no reading.
