@@ -2,7 +2,7 @@ import { canPlace, priceOf } from '../game/build.ts';
 import { BUILDINGS, type BuildingId } from '../game/data.ts';
 import { placement } from '../game/forecast.ts';
 import { usedBy, type Network } from '../game/power.ts';
-import type { GameState, Status } from '../game/state.ts';
+import type { GameState, Setting, Status } from '../game/state.ts';
 import { fill, h, icon, set } from './dom.ts';
 import { hex, num, pct, watts } from './format.ts';
 import { statusLook, statusPill } from './widgets.ts';
@@ -18,7 +18,7 @@ export interface NetSpot extends Spot { colour: number; net: Network }
 export interface StopSpot extends Spot { colour: number; text: string }
 export interface TruckSpot extends Spot { id: number; name: string; what: string }
 /** The building in hand at the pointer: where its north-west tile is, and how many a drag would place. */
-export interface PlaceSpot extends Spot { type: BuildingId; x: number; y: number; count: number }
+export interface PlaceSpot extends Spot, Setting { type: BuildingId; x: number; y: number; count: number }
 /** What is under the pointer, for the hover card. */
 export interface Hover { title: string; icon?: string; status?: { status: Status; label: string }; text?: string }
 
@@ -93,11 +93,11 @@ export class WorldLayer {
     if (!spot) { this.forecastKey = ''; return; }
     this.forecast.style.left = `${Math.round(spot.sx / this.z)}px`; this.forecast.style.top = `${Math.round(spot.sy / this.z)}px`;
     // Made again when the tile changes, and twice a second of play (the soil and the sun move).
-    const key = `${spot.type} ${spot.x} ${spot.y} ${spot.count} ${Math.floor(s.time * 2)} ${s.credits >= priceOf(s, spot.type)}`;
+    const key = `${spot.type} ${spot.x} ${spot.y} ${spot.count} ${spot.crop} ${spot.recipe} ${Math.floor(s.time * 2)} ${s.credits >= priceOf(s, spot.type)}`;
     if (key === this.forecastKey) return;
     this.forecastKey = key;
     const def = BUILDINGS[spot.type], price = priceOf(s, spot.type), fit = canPlace(s, spot.type, spot.x, spot.y);
-    const p = fit.ok ? placement(s, spot.type, spot.x, spot.y) : null;
+    const p = fit.ok ? placement(s, spot.type, spot.x, spot.y, spot) : null;
     fill(this.forecast,
       h('div', { class: 'head' }, icon(spot.type), h('b', null, spot.count > 1 ? `${spot.count} × ${def.name.toLowerCase()}` : `A${/^[aeiou]/i.test(def.name) ? 'n' : ''} ${def.name.toLowerCase()} here`),
         h('span', { class: 'cd-small', style: 'margin-left: auto' }, price ? `${num(price * spot.count)} credits` : 'free')),

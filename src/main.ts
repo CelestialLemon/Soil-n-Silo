@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObject } from 'pixel3d-renderer';
-import { addStop, canPlace, clearPrice, messageOf, place, priceOf, remove, removeAt } from './game/build.ts';
+import { addStop, canPlace, clearPrice, messageOf, place, priceOf, remember, remove, removeAt, settingFor, settingName, stepSetting, type Setting } from './game/build.ts';
 import { BUILDINGS, POWER, type BuildingId } from './game/data.ts';
 import { TERRAIN } from './game/map.ts';
 import { deserialize, readProgress, recordResult, saveKey, serialize } from './game/save.ts';
@@ -123,6 +123,7 @@ async function play(initial: GameState) {
     state: () => state,
     tool: () => tool,
     setTool: (t) => setTool(t),
+    choose: (set) => choose(set),
     speed: () => (paused ? 0 : speed),
     setSpeed: (n) => { if (n === 0) paused = !paused; else { speed = n; paused = false; } },
     resume: () => { paused = false; },
@@ -151,10 +152,20 @@ async function play(initial: GameState) {
   if (state.time === 0) hud.showIntro();
 
   function setTool(t: Tool) {
+    // A field or bakery comes up with the choice last made for it this level.
+    if (t.kind === 'build') { const last = settingFor(state, t.type); t = { ...t, crop: t.crop ?? last.crop, recipe: t.recipe ?? last.recipe }; }
     tool = t;
     // Editing a route keeps what is selected (the truck or garage it was opened from).
     if (t.kind === 'build' || t.kind === 'remove') selected = null;
     clearGhosts();
+    repick = 2;
+  }
+
+  /** Changes what the field or machine in hand is placed with, and remembers it for the level. */
+  function choose(set: Setting) {
+    if (tool.kind !== 'build') return;
+    remember(state, tool.type, set);
+    tool = { ...tool, ...settingFor(state, tool.type) };
     repick = 2;
   }
 
@@ -230,7 +241,7 @@ async function play(initial: GameState) {
       let credits = state.credits;
       // One building in hand shows who it would trade with next door.
       if (spots.length === 1 && canPlace(state, type, spots[0].x, spots[0].y).ok) {
-        const l = linksAt(state, type, spots[0].x, spots[0].y);
+        const l = linksAt(state, type, spots[0].x, spots[0].y, tool);
         ghostLinks = [...new Set([...l.from, ...l.to].map((x) => x.b.id))];
       }
       for (const sp of spots) {
@@ -240,6 +251,11 @@ async function play(initial: GameState) {
         const cx = sp.x + n / 2, cz = sp.y + n / 2;
         ghost(`frame ${okHere} ${n}`, (okHere ? models.frames.ok : models.frames.bad)[n - 1], cx, 0.03, cz);
         ghost(`b ${type}`, models.buildings[type].idle, cx, 0.04, cz, YAW[sp.rot], okHere);
+        // A field shows its crop, grown enough to tell apart.
+        if (type === 'field' && tool.crop) {
+          const stages = models.crops[tool.crop], g = stages[Math.min(2, stages.length - 1)];
+          for (let ty = sp.y; ty < sp.y + n; ty++) for (let tx = sp.x; tx < sp.x + n; tx++) ghost(`crop ${tool.crop}`, g, tx + 0.5, 0.06, ty + 0.5, 0, okHere);
+        }
       }
       // The roads, the sprinklers' water and the bees' range; anything that makes, stores or uses power shows the power
       // networks.
@@ -285,7 +301,7 @@ async function play(initial: GameState) {
       case 'build': {
         if (!t) return;
         const n = BUILDINGS[tool.type].size, a = anchor(t, n);
-        const r = place(state, tool.type, a.x, a.y, tool.rot), message = messageOf(r);
+        const r = place(state, tool.type, a.x, a.y, tool.rot, tool), message = messageOf(r);
         if (message) hud.toast(r.ok && priceOf(state, tool.type) ? `${message.replace(/\.$/, '')} · −${priceOf(state, tool.type)} credits` : message, r.ok, r.ok ? tool.type : undefined);
         return;
       }
@@ -306,10 +322,11 @@ async function play(initial: GameState) {
     if (tool.kind === 'build') {
       let built = 0, last = '';
       for (const sp of plan(tool.type, from, to, tool.rot)) {
-        const r = place(state, tool.type, sp.x, sp.y, sp.rot);
+        const r = place(state, tool.type, sp.x, sp.y, sp.rot, tool);
         if (r.ok) built++; else if (r.error) last = r.error;
       }
-      if (built) hud.toast(`Built ${built} × ${BUILDINGS[tool.type].name.toLowerCase()}`, true, tool.type);
+      const what = settingName(tool);
+      if (built) hud.toast(`Built ${built} × ${BUILDINGS[tool.type].name.toLowerCase()}${what ? ` (${what})` : ''}`, true, tool.type);
       else if (last) hud.toast(last, false);
     } else if (tool.kind === 'remove') {
       const x0 = Math.min(from.x, to.x), x1 = Math.max(from.x, to.x), y0 = Math.min(from.y, to.y), y1 = Math.max(from.y, to.y);
@@ -381,6 +398,7 @@ async function play(initial: GameState) {
       case 'routes': hud.toggleRoutes(); break;
       case 'guide': hud.openGuide(); hud.refresh(); return;
       case 'overlay': { const order: Overlay[] = ['none', 'fertility', 'water', 'power', 'roads', 'bees']; overlay = order[(order.indexOf(overlay) + 1) % order.length]; break; }
+      case 'choice': if (tool.kind === 'build') choose(stepSetting(tool.type, tool, e.shiftKey ? -1 : 1)); break;
       case 'remove': setTool(tool.kind === 'remove' ? { kind: 'select' } : { kind: 'remove' }); break;
       case 'rotate': if (tool.kind === 'build') { tool = { ...tool, rot: ((tool.rot + (e.shiftKey ? 3 : 1)) % 4) as Dir }; repick = 2; } break;
       default:
@@ -453,7 +471,7 @@ async function play(initial: GameState) {
     if (tool.kind !== 'build' || !hoverTile || hud.modal) return null;
     const type = tool.type, n = BUILDINGS[type].size, a = anchor(hoverTile, n);
     const count = input.press?.mode === 'paint' && input.press.from && input.press.to ? plan(type, input.press.from, input.press.to, tool.rot).length : 1;
-    return { type, x: a.x, y: a.y, count, ...camera.toScreen(a.x + n / 2, models.buildings[type].height + 0.3, a.y + n / 2) };
+    return { type, x: a.x, y: a.y, count, crop: tool.crop, recipe: tool.recipe, ...camera.toScreen(a.x + n / 2, models.buildings[type].height + 0.3, a.y + n / 2) };
   }
 
   // ---- Loop ----
