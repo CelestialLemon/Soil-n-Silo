@@ -42,8 +42,8 @@ export interface Groundwork { level: number | null; steps: number }
 const stepsTo = (s: GameState, i: number, x: number, y: number, level: number) =>
   Math.abs(centreLevel(s.map, x, y) - level) + (s.map.ramp[i] === FLAT ? 0 : 0.5);
 
-/** Runs `f` with a square of the map levelled flat at `level`, then puts the ground back. */
-function levelledFor<T>(s: GameState, x: number, y: number, n: number, level: number, f: () => T): T {
+/** Runs `f` with a square of the map levelled flat at `level`, then puts the ground back (to ask what a building would find there). */
+export function levelledFor<T>(s: GameState, x: number, y: number, n: number, level: number, f: () => T): T {
   const saved: [number, number, number][] = [];
   for (let ty = y; ty < y + n; ty++) for (let tx = x; tx < x + n; tx++) {
     const i = tileIndex(s, tx, ty);

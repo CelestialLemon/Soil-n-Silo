@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObject } from 'pixel3d-renderer';
 import {
-  addStop, canPlace, canReshape, clearPrice, earthPrice, EARTHWORK_NAMES, EARTHWORKS, messageOf, place, placePrice, priceOf, remember, remove, removeAt, reshape, settingFor, settingName, stepSetting, type Setting,
+  addStop, canPlace, canReshape, levelledFor, clearPrice, earthPrice, EARTHWORK_NAMES, EARTHWORKS, messageOf, place, placePrice, priceOf, remember, remove, removeAt, reshape, settingFor, settingName, stepSetting, type Setting,
 } from './game/build.ts';
 import { BUILDINGS, POWER, type BuildingId } from './game/data.ts';
 import { generateLand, TERRAIN } from './game/map.ts';
 import { corners, MAX_LEVEL } from './game/relief.ts';
+import { wheelSite } from './game/rules.ts';
 import { deserialize, readProgress, recordResult, saveKey, serialize } from './game/save.ts';
 import { scenarioById } from './game/scenarios.ts';
 import { hourAt } from './game/sim/clock.ts';
@@ -264,7 +265,9 @@ async function play(initial: GameState) {
         const cx = sp.x + n / 2, cz = sp.y + n / 2, level = fit.ok ? fit.value.level : null;
         const base = level !== null ? level * LEVEL_HEIGHT : standY(state.map, n, sp.x, sp.y);
         ghost(`frame ${okHere} ${n}`, (okHere ? models.frames.ok : models.frames.bad)[n - 1], cx, base + 0.03, cz);
-        ghost(`b ${type}`, models.buildings[type].idle, cx, base + 0.04, cz, YAW[sp.rot], okHere);
+        // A water wheel turns to face the river, as it will once placed.
+        const site = BUILDINGS[type].onBank && fit.ok ? (level === null ? wheelSite(state, sp.x, sp.y) : levelledFor(state, sp.x, sp.y, n, level, () => wheelSite(state, sp.x, sp.y))) : null;
+        ghost(`b ${type}`, models.buildings[type].idle, cx, base + 0.04, cz, YAW[site ? site.rot : sp.rot], okHere);
         // A field shows its crop, grown enough to tell apart.
         if (type === 'field' && tool.crop) {
           const stages = models.crops[tool.crop], g = stages[Math.min(2, stages.length - 1)];
