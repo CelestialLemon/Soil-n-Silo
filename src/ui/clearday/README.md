@@ -27,7 +27,7 @@ framework: the UI's `h()` helper applies them directly. Manrope is bundled in `f
 - **Find problems in the world.** Problems show as markers over buildings. A problems strip exists only as an experimental opt-in setting.
 - **Projections are optional.** "Done by" and gold/silver pace ticks appear only with the Show pace setting (off by default).
 - **Keep the HUD quiet; heavy data gets its own place.** Power has its own panel. Production chains and lead times live in the guide. Building rates live in the inspector, never as labels over the map.
-- **No hotkeys printed in the HUD.** Keys are listed on the pause screen and appear in tooltips.
+- **No hotkeys printed in the HUD.** Keys are listed in the guide and appear in tooltips.
 
 ## Content fundamentals
 
@@ -88,6 +88,6 @@ Each is a class (or a few) in `clearday.css`, used by the screens in `src/ui/`.
 | Bar | `cd-bar`, `__mark` | A soft progress bar. |
 | Dial | `cd-dial`, `__sky`, `__sun`, `__face` | The day as a clock face, top right. |
 | Receipt | `cd-receipt`, `__row`, `__total` | What reached the depot, on the results screen. |
-| Key rows | `cd-keyrows`, `cd-keyrow`, `cd-key` | The controls list on the pause screen, the one place keys are shown. |
+| Key rows | `cd-keyrows`, `cd-keyrow`, `cd-key` | The controls list in the guide's Keys page, the one place keys are listed. |
 | Medal | `cd-medal`, `is-silver`, `is-bronze`, `is-none` | Gold, silver, bronze. |
 | Charts | `cd-chart` (`.axis`, `.grid`) | Text and axis colours for inline SVG charts. |
