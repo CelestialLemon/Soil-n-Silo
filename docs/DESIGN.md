@@ -149,9 +149,12 @@ Each level is generated from a seed: a grid of about 48 × 40 one-metre tiles.
 | Tile | Notes |
 | --- | --- |
 | Grass | Buildable. Has a fertility (0–100) from noise, which fields use |
-| Water | A river or ponds. Not buildable. Sprinklers near water use less power. A field sharing an edge with water is fully watered without a sprinkler |
+| Water | A river (running, over small falls) or ponds. Not buildable. Sprinklers near water use less power. A field sharing an edge with water is fully watered without a sprinkler |
 | Rock | Not buildable. Can be cleared for 15 credits |
 | Tree | Not buildable. Slows wind turbines next to it. Can be cleared for 5 credits (soil health drops a little) |
+
+Beyond the edge the country carries on, a shade duller: the river, a track from the depot, woods rising into hills. It is
+only scenery.
 
 A **freight depot** (3 × 3) stands at one edge. Anything a truck drops at it counts towards the goals and pays credits (see Logistics).
 

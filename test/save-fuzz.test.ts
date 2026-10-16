@@ -115,3 +115,16 @@ test('regression: a non-numeric carry is refused, not thrown on', () => {
   try { r = deserialize(JSON.stringify(s)); } catch (e) { assert.fail(`deserialize threw: ${String(e)}`); }
   assert.equal(r.ok, false);
 });
+
+test('a save whose map size disagrees with its commission, or is fractional, is refused', () => {
+  const good = JSON.parse(serialize(played())) as GameState;
+  assert.ok(deserialize(JSON.stringify(good)).ok);
+  for (const [what, edit] of [
+    ['fractional width', (j: GameState) => { j.scenario.width = 30.5; }],
+    ['width unlike the map', (j: GameState) => { j.scenario.width = 31; }],
+  ] as const) {
+    const j = structuredClone(good);
+    edit(j);
+    assert.equal(deserialize(JSON.stringify(j)).ok, false, what);
+  }
+});
