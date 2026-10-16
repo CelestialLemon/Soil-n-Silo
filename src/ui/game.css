@@ -68,7 +68,7 @@ button { font: inherit; }
 
 /* ---- The dock, bottom centre ---- */
 .hud-dock { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 14px 16px 16px; border-radius: 28px; }
-.hud-dock .tabs { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.hud-dock .tabs { display: flex; justify-content: center; margin-top: 12px; }
 .hud-dock .tiles { display: flex; gap: 10px; }
 .hud-dock .sep { width: 1px; background: var(--chalk-3); margin: 8px 4px; }
 .hud-dock .cd-tile.is-remove { background: transparent; box-shadow: inset 0 0 0 1.5px var(--chalk-3); }
@@ -76,17 +76,16 @@ button { font: inherit; }
 .hud-dock .cd-tile.is-remove.is-on .cd-tile__cost { color: #f1d3ca; }
 .hud-dock .cd-tile .label { white-space: nowrap; }
 
-/* The choices of the field or bakery in hand, above its tile. */
-.hud-strip { position: absolute; bottom: calc(100% + 14px); padding: 6px; border-radius: 26px; width: max-content; }
+/* The choices of the field or bakery in hand, over its tile. */
+.hud-strip { position: absolute; z-index: 0; background: var(--chalk); backdrop-filter: none; padding: 6px; border-radius: 26px; width: max-content; }
 .hud-strip .cd-seg { display: flex; }
 .hud-strip .cd-seg button { height: 40px; }
-.hud-strip .cd-seg button small { font-weight: 600; font-size: 11px; color: var(--ink-3, var(--ink-2)); }
-.hud-strip .pointer { position: absolute; top: 100%; width: 14px; height: 14px; margin: -7px 0 0 -7px; transform: rotate(45deg); border-radius: 3px; background: inherit; box-shadow: 3px 3px 5px -2px rgba(20, 30, 25, 0.18); }
+.hud-strip .pointer { position: absolute; z-index: -1; top: 100%; width: 14px; height: 14px; margin: -7px 0 0 -7px; transform: rotate(45deg); border-radius: 3px; background: var(--chalk); box-shadow: 3px 3px 5px -2px rgba(20, 30, 25, 0.18); }
 
 /* Above the dock: messages, and the card of the building pointed at in the dock. */
 .hud-above { position: absolute; left: 50%; bottom: 236px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 10px; pointer-events: none !important; }
 .hud-above > * { pointer-events: none; }
-.hud-above.has-strip { bottom: 310px; }
+.hud-above.has-strip { bottom: 304px; }
 .cd-toast { transition: opacity 0.5s; }
 .cd-toast.is-gone { opacity: 0; }
 .hud-tip { width: 460px; }

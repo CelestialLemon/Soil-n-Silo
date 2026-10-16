@@ -329,8 +329,8 @@ playing trucks: every level needed many trucks, and routes doing a field-to-mill
 | Sunflower | 70 s | 3 | −2 |
 | Flax | 55 s | 3 | −1.5 |
 
-- **Choosing while placing.** While a field or bakery is in hand, a strip above its dock tile (its pointer on the tile) has a
-  chip for each crop or recipe (a bakery's shows its inputs); the one in hand is lit. Click a chip, or press C (Shift+C goes
+- **Choosing while placing.** While a field or bakery is in hand, a strip over its dock tile (its pointer on the tile) has a
+  chip for each crop or recipe; the one in hand is lit. Click a chip, or press C (Shift+C goes
   back), to change it; the tool stays in hand. A click places one building with the choice, and a drag places every
   building in it with the choice, so four fields of beans are one pick and one drag. The ghost of a field shows the crop, and
   the placement card and the toast name it. The level remembers the last choice for each of the two (it is in the save), so

@@ -7,10 +7,10 @@ import { buildingCard } from './guide.ts';
 import type { Tool } from './hud.ts';
 import { keyNames, keysVersion, tip } from './keyhints.ts';
 
-// The dock, bottom centre: the building categories over a row of building tiles (price, and watts for those that use power),
+// The dock, bottom centre: a row of building tiles over the building categories (price, and watts for those that use power),
 // and Remove. A tile you can't afford is greyed; the one in hand is ink. Keys are in each tile's tooltip, not printed.
 // Pointing at a tile shows its card above the dock. A field or bakery in hand has a strip of choices (its crops, its recipes)
-// above its own tile, pointing at it.
+// over its own tile, pointing at it.
 
 export interface DockHost {
   state(): GameState;
@@ -79,11 +79,11 @@ export class Dock {
       class: `cd-tile is-remove${removing ? ' is-on' : ''}`, title: tip('Remove: buildings refund in full; trees and rock cost to clear', ...keyNames('remove')),
       onclick: () => this.host.setTool(removing ? { kind: 'select' } : { kind: 'remove' }),
     }, icon('trash'), h('span', { class: 'label' }, 'Remove'), h('span', { class: 'cd-tile__cost' }, 'full refund'));
-    this.el.replaceChildren(h('div', { class: 'tabs' }, tabs), h('div', { class: 'tiles' }, ...tiles, h('span', { class: 'sep' }), remove));
+    this.el.replaceChildren(h('div', { class: 'tiles' }, ...tiles, h('span', { class: 'sep' }), remove), h('div', { class: 'tabs' }, tabs));
     if (tool.kind === 'build' && held) this.strip(tool, held);
   }
 
-  /** The choices of the field or bakery in hand, above its tile; the strip's pointer is on the tile's middle. */
+  /** The choices of the field or bakery in hand, over its tile; the strip's pointer is on the tile's middle. */
   private strip(tool: Extract<Tool, { kind: 'build' }>, tile: HTMLButtonElement) {
     const all = choicesOf(tool.type);
     if (!all.length) return;
@@ -95,12 +95,13 @@ export class Dock {
       const on = c.crop ? tool.crop === c.crop : tool.recipe === c.recipe;
       const info = c.crop ? `${CROPS[c.crop].grow} s · ${CROPS[c.crop].yield} a harvest` : (recipe?.inputs ?? []).map((i) => ('item' in i ? itemName(i.item) : '')).join(' + ');
       return h('button', { class: on ? 'is-on' : '', title: tip(`${name}: ${info}`, ...keys.map((k) => `${k}, Shift+${k} to change`)), onclick: () => this.host.choose(c) },
-        icon(c.crop ?? out ?? 'check', 18), h('span', null, name), ...(recipe ? [h('small', null, info)] : []));
+        icon(c.crop ?? out ?? 'check', 18), h('span', null, name));
     });
     const pointer = h('i', { class: 'pointer' });
     const el = h('div', { class: 'cd-card hud-strip' }, h('div', { class: 'cd-seg' }, ...chips), pointer);
     this.el.append(el);
-    // Centred on the tile where it fits, else kept inside the dock; the pointer stays on the tile either way.
+    // Over the tile, centred on it where it fits, else kept inside the dock; the pointer stays on the tile either way.
+    el.style.top = `${tile.offsetTop - el.offsetHeight - 22}px`;
     const mid = tile.offsetLeft + tile.offsetWidth / 2, w = el.offsetWidth;
     const left = Math.max(0, Math.min(mid - w / 2, this.el.offsetWidth - w));
     el.style.left = `${left}px`;
