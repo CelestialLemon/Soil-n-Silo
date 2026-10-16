@@ -16,7 +16,7 @@ const FOCUSABLE = 'a[href],button,input,select,textarea,[tabindex]';
 const lastGone = new Map<string, number>();
 const kindOf = (el: HTMLElement) => SELECTORS.find((q) => el.matches(q)) ?? '';
 
-function attach(el: HTMLElement): { cleanup: () => void; focused: () => boolean } {
+function attach(el: HTMLElement): { kind: string; cleanup: () => void; focused: () => boolean } {
   const kind = kindOf(el);
   const rebuilt = performance.now() - (lastGone.get(kind) ?? -Infinity) < REBUILD_MS;
   let hide = 0;
@@ -67,7 +67,7 @@ function attach(el: HTMLElement): { cleanup: () => void; focused: () => boolean 
     el.classList.remove('sc', 'can-up', 'can-down', 'scrolling', 'flash');
     if (addedTabindex) el.removeAttribute('tabindex');
   };
-  return { cleanup, focused: () => focused };
+  return { kind, cleanup, focused: () => focused };
 }
 
 /** Styles every scroll container under `root`, now and as panels are added or removed. */
@@ -87,7 +87,7 @@ export function watchScrollHints(root: HTMLElement = document.body): () => void 
     const focused = new Set<string>();
     for (const [el, a] of attached) {
       if (el.isConnected) continue;
-      if (a.focused()) focused.add(kindOf(el));
+      if (a.focused()) focused.add(a.kind);
       a.cleanup();
       attached.delete(el);
     }
