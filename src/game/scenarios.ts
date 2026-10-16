@@ -18,6 +18,8 @@ export interface Terrain {
   water: 'river' | 'ponds' | 'lake' | 'none';
   /** Share of the map under forest and rock, roughly. */
   forest: number; rock: number;
+  /** How hilly the map is, 0 (flat) to 1 (rugged): how many levels it climbs and how broken its terraces are (relief.ts). */
+  relief: number;
 }
 
 export interface Weather {
@@ -47,14 +49,14 @@ export interface Scenario {
 }
 
 const CALM: Weather = { sunrise: 6, sunset: 20, sun: 1, wind: 0.5, gust: 0.35 };
-const LOAM: Terrain = { soil: 60, soilSpread: 25, water: 'river', forest: 0.12, rock: 0.04 };
+const LOAM: Terrain = { soil: 60, soilSpread: 25, water: 'river', forest: 0.12, rock: 0.04, relief: 0.4 };
 const MIN = 60;
 
 export const CAMPAIGN: Scenario[] = [
   {
     id: 'c1', name: 'First Light', seed: 1101, width: 44, height: 36, credits: 1200, par: 20 * MIN,
     blurb: 'Brightwater needs grain and flour to get through the season. Lay your first fields, a powered mill, and trucks to carry it all.',
-    terrain: { ...LOAM, forest: 0.08, rock: 0.02 }, weather: CALM, tags: ['Gentle'],
+    terrain: { ...LOAM, forest: 0.08, rock: 0.02, relief: 0.2 }, weather: CALM, tags: ['Gentle'],
     goals: [{ kind: 'deliver', item: 'wheat', n: 120 }, { kind: 'deliver', item: 'flour', n: 80 }],
     tips: [
       'Place a few fields (F) on rich soil (V shows it). Leave open ground between buildings: trucks drive on it.',
@@ -79,7 +81,7 @@ export const CAMPAIGN: Scenario[] = [
   {
     id: 'c3', name: 'Windy Ridge', seed: 3303, width: 48, height: 40, credits: 1100, par: 40 * MIN,
     blurb: 'The ridge co-op cooks with sunflower oil, but the sun is weak up here. The wind never stops, though.',
-    terrain: { ...LOAM, water: 'ponds', rock: 0.12, forest: 0.06 }, weather: { ...CALM, sun: 0.6, wind: 0.75, gust: 0.25 },
+    terrain: { ...LOAM, water: 'ponds', rock: 0.12, forest: 0.06, relief: 0.9 }, weather: { ...CALM, sun: 0.6, wind: 0.75, gust: 0.25 },
     tags: ['Weak sun', 'Strong wind', 'Rocky'],
     goals: [{ kind: 'deliver', item: 'oil', n: 90 }, { kind: 'deliver', item: 'bread', n: 80 }],
   },
@@ -92,25 +94,25 @@ export const CAMPAIGN: Scenario[] = [
   {
     id: 'c5', name: 'Long Nights', seed: 5505, width: 48, height: 40, credits: 1400, par: 45 * MIN,
     blurb: 'Late autumn: short days and long nights. The midwinter fair wants honey cake.',
-    terrain: { ...LOAM, water: 'lake' }, weather: { ...CALM, sunrise: 8, sunset: 17, wind: 0.45 }, tags: ['Short days'],
+    terrain: { ...LOAM, water: 'lake', relief: 0.5 }, weather: { ...CALM, sunrise: 8, sunset: 17, wind: 0.45 }, tags: ['Short days'],
     goals: [{ kind: 'deliver', item: 'honeycake', n: 60 }],
   },
   {
     id: 'c6', name: 'Tired Soil', seed: 6606, width: 48, height: 40, credits: 1400, par: 45 * MIN,
     blurb: 'Years of monoculture left this valley worn out. Make sauce for the cannery town, and leave the soil better than you found it.',
-    terrain: { ...LOAM, soil: 28, soilSpread: 15, forest: 0.05 }, weather: CALM, tags: ['Poor soil'],
+    terrain: { ...LOAM, soil: 28, soilSpread: 15, forest: 0.05, relief: 0.6 }, weather: CALM, tags: ['Poor soil'],
     goals: [{ kind: 'deliver', item: 'sauce', n: 50 }, { kind: 'soil', min: 55 }],
   },
   {
     id: 'c7', name: 'Riverlands', seed: 7707, width: 52, height: 42, credits: 1600, par: 55 * MIN,
     blurb: 'Three villages along the river put in orders at once. Space is short between the water and the woods.',
-    terrain: { ...LOAM, water: 'river', forest: 0.22, rock: 0.06 }, weather: CALM, tags: ['Cramped', 'Wet'],
+    terrain: { ...LOAM, water: 'river', forest: 0.22, rock: 0.06, relief: 0.3 }, weather: CALM, tags: ['Cramped', 'Wet'],
     goals: [{ kind: 'deliver', item: 'linen', n: 30 }, { kind: 'deliver', item: 'sauce', n: 30 }, { kind: 'deliver', item: 'bread', n: 80 }],
   },
   {
     id: 'c8', name: 'Harvest Festival', seed: 8808, width: 56, height: 44, credits: 1800, par: 60 * MIN,
     blurb: 'The whole valley comes together for the festival. Everything, at once, on healthy soil.',
-    terrain: { ...LOAM, soil: 50, rock: 0.07, forest: 0.14 }, weather: { ...CALM, sunset: 19, wind: 0.55 }, tags: ['Everything'],
+    terrain: { ...LOAM, soil: 50, rock: 0.07, forest: 0.14, relief: 0.7 }, weather: { ...CALM, sunset: 19, wind: 0.55 }, tags: ['Everything'],
     goals: [{ kind: 'deliver', item: 'honeycake', n: 40 }, { kind: 'deliver', item: 'sauce', n: 30 }, { kind: 'deliver', item: 'linen', n: 30 }, { kind: 'soil', min: 60 }],
   },
 ];
@@ -118,7 +120,7 @@ export const CAMPAIGN: Scenario[] = [
 export const SANDBOX: Scenario = {
   id: 'sandbox', name: 'Sandbox', seed: 4242, width: 64, height: 52, credits: 1_000_000, par: 0, sandbox: true,
   blurb: 'A big calm valley with unlimited credits and no goals, for trying things out.',
-  terrain: { ...LOAM, forest: 0.08, rock: 0.03 }, weather: CALM, tags: ['No goals', 'Unlimited credits'], goals: [],
+  terrain: { ...LOAM, forest: 0.08, rock: 0.03, relief: 0.5 }, weather: CALM, tags: ['No goals', 'Unlimited credits'], goals: [],
 };
 
 /** Products a random commission can ask for, by difficulty, with a count per difficulty step. */
@@ -138,7 +140,7 @@ export function randomScenario(seed: number, difficulty: 1 | 2 | 3): Scenario {
   const name = `${pick(NAMES_A)}${pick(NAMES_B)}`;
   const tags: string[] = [];
   const weather: Weather = { ...CALM };
-  const terrain: Terrain = { ...LOAM, water: pick(['river', 'ponds', 'lake', 'river'] as const) };
+  const terrain: Terrain = { ...LOAM, water: pick(['river', 'ponds', 'lake', 'river'] as const), relief: 0.25 + 0.15 * difficulty };
   // Up to two modifiers.
   const mods = [
     () => { weather.sun = 0.6; weather.wind = 0.75; tags.push('Weak sun', 'Strong wind'); },
@@ -147,6 +149,8 @@ export function randomScenario(seed: number, difficulty: 1 | 2 | 3): Scenario {
     () => { terrain.rock = 0.12; tags.push('Rocky'); },
     () => { terrain.forest = 0.24; tags.push('Wooded'); },
     () => { weather.wind = 0.25; weather.gust = 0.2; tags.push('Still air'); },
+    () => { terrain.relief = 0.9; tags.push('Hilly'); },
+    () => { terrain.relief = 0.1; tags.push('Flat'); },
   ];
   const nMods = Math.min(difficulty, 2) - (r() < 0.4 ? 1 : 0);
   const used = new Set<number>();

@@ -1,4 +1,5 @@
 import { fbm2, hash2, mulberry32, noise2 } from './rng.ts';
+import { FLAT } from './relief.ts';
 import type { Scenario } from './scenarios.ts';
 
 // The map of a commission, generated from its seed: grass with a fertility per tile, water, rock and trees, and where the
@@ -15,6 +16,9 @@ export interface MapData {
   terrain: TerrainKind[];
   /** Soil fertility 0–100 per tile (what a field on it starts from). */
   fertility: number[];
+  /** Each tile's level (0 the valley floor, at most MAX_LEVEL), and for a ramp the side it rises towards (FLAT if none); see relief.ts. */
+  level: number[];
+  ramp: number[];
   /** The depot's north-west tile (it is 3 × 3). */
   depot: { x: number; y: number };
 }
@@ -31,6 +35,9 @@ export interface Land {
   height: number;
   terrain: TerrainKind[];
   fertility: number[];
+  /** Levels and ramps as on the map (relief.ts); beyond the edge the land rises higher than MAX_LEVEL into hills. */
+  level: number[];
+  ramp: number[];
   /** The depot's north-west tile, in map coordinates. */
   depot: { x: number; y: number };
   /** The river's current over each tile (vx, vz in m/s, two numbers a tile); 0 off the river and on still water. */
@@ -44,8 +51,8 @@ export const DEPOT_SIZE = 3;
 const CLEARING = 8;
 
 export function generateMap(sc: Scenario): MapData {
-  const { width, height, terrain, fertility, depot } = generateLand(sc, 0);
-  return { width, height, terrain, fertility, depot };
+  const { width, height, terrain, fertility, level, ramp, depot } = generateLand(sc, 0);
+  return { width, height, terrain, fertility, level, ramp, depot };
 }
 
 /** The river's speed (m/s) where it is narrowest and widest. */
@@ -57,6 +64,7 @@ export function generateLand(sc: Scenario, margin: number): Land {
   const M = margin, lw = w + 2 * M, lh = h + 2 * M;
   const terrain: TerrainKind[] = new Array<TerrainKind>(lw * lh).fill(TERRAIN.grass);
   const fertility: number[] = new Array<number>(lw * lh).fill(0);
+  const level: number[] = new Array<number>(lw * lh).fill(0), ramp: number[] = new Array<number>(lw * lh).fill(FLAT);
   const flow = new Float32Array(lw * lh * 2), drop = new Uint8Array(lw * lh);
   // Map coordinates throughout; the land reaches `margin` tiles past every edge.
   const idx = (x: number, y: number) => (y + M) * lw + x + M;
@@ -152,5 +160,5 @@ export function generateLand(sc: Scenario, margin: number): Land {
     terrain[i] = TERRAIN.grass; flow[i * 2] = flow[i * 2 + 1] = 0; drop[i] = 0;
   }
 
-  return { seed, margin: M, width: lw, height: lh, terrain, fertility, depot, flow, drop };
+  return { seed, margin: M, width: lw, height: lh, terrain, fertility, level, ramp, depot, flow, drop };
 }

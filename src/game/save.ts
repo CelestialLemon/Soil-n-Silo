@@ -4,6 +4,7 @@ import { bays, BUILDINGS, CROPS, ITEMS, recipesFor, TICK, TRUCK, type BuildingId
 import { err, ok, tryParseJson, type Result } from './result.ts';
 import type { Mark, RunLog } from './runlog.ts';
 import type { Scenario } from './scenarios.ts';
+import { FLAT, MAX_LEVEL } from './relief.ts';
 import { isMachine, type Building, type GameState, type Route, type Truck } from './state.ts';
 
 // Saving: the commission in progress (one at a time) and each commission's best result. The game state is plain data, so a
@@ -26,7 +27,7 @@ export function deserialize(json: string | null): Result<GameState> {
   const parsed = tryParseJson(json);
   if (!parsed.ok) return err(`The save isn't JSON: ${parsed.error}`);
   const s = parsed.value as GameState | null;
-  if (s?.version !== 5) return err('The save is from another version (this game reads version 5).');
+  if (s?.version !== 6) return err('The save is from another version (this game reads version 6).');
   if (!complete(s)) return err('The save is broken: its state is incomplete or out of range.');
   if (!validRun(s.run, s.scenario.goals.length)) return err('The save is broken: its run log is incomplete or out of range.');
   return ok(s);
@@ -57,7 +58,7 @@ function scenario(sc: Scenario): boolean {
     && arr(sc.tags) && sc.tags.every(str) && (sc.tips === undefined || (arr(sc.tips) && sc.tips.every(str)))
     && arr(sc.goals) && sc.goals.every(goal)
     && !!w && [w.sunrise, w.sunset, w.sun, w.wind, w.gust].every(num)
-    && !!t && [t.soil, t.soilSpread, t.forest, t.rock].every(num) && ['river', 'ponds', 'lake', 'none'].includes(t.water);
+    && !!t && [t.soil, t.soilSpread, t.forest, t.rock, t.relief].every(num) && ['river', 'ponds', 'lake', 'none'].includes(t.water);
 }
 
 function complete(s: GameState): boolean {
@@ -66,6 +67,8 @@ function complete(s: GameState): boolean {
     && !!m && int(m.width) && int(m.height) && m.width > 0 && m.height > 0 && m.width === s.scenario.width && m.height === s.scenario.height
     && arr(m.terrain) && m.terrain.length === m.width * m.height
     && arr(m.fertility) && m.fertility.length === m.width * m.height && m.fertility.every(num)
+    && arr(m.level) && m.level.length === m.width * m.height && m.level.every((l) => int(l) && l >= 0 && l <= MAX_LEVEL)
+    && arr(m.ramp) && m.ramp.length === m.width * m.height && m.ramp.every((d) => d === FLAT || d === 0 || d === 1 || d === 2 || d === 3)
     && arr(s.soilBase) && s.soilBase.length === m.fertility.length && s.soilBase.every(num) && !!m.depot && num(m.depot.x) && num(m.depot.y)
     && [s.credits, s.time, s.carry, s.nextId, s.earned, s.initialTrees].every(num) && Math.abs(s.carry) <= TICK
     && (s.completedAt === null || num(s.completedAt))
