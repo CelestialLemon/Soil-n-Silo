@@ -1,5 +1,5 @@
 import { BUILDINGS, type BuildingId } from '../data.ts';
-import { exposureAt, hiveReaches, nearWaterAt, sprinklerWaters } from '../rules.ts';
+import { exposureAt, guardedAt, handsDown, hiveReaches, sprinklerWaters, sprinklerWatts, wheelSite } from '../rules.ts';
 import { buildingAt, isMachine, layoutOf, tileIndex, type Building, type FieldBuilding, type GameState } from '../state.ts';
 import { runtimeOf } from '../runtime.ts';
 
@@ -15,12 +15,16 @@ export interface Derived {
   flowers: Map<number, FieldBuilding[]>;
   /** Wind turbines' shelter factor. */
   exposure: Map<number, number>;
-  /** Sprinklers near water. */
-  nearWater: Set<number>;
+  /** The watts each sprinkler needs (by the water near it and how high it lifts it), and each water wheel makes. */
+  watts: Map<number, number>;
+  /** Fields guarded against erosion (rules.ts, `guardedAt`). */
+  guarded: Set<number>;
   /** Tiles under a field (the rest of the ground rests). */
   fielded: Set<number>;
   /** The buildings sharing an edge with each building. */
   neighbours: Map<number, Building[]>;
+  /** The neighbours each building can hand goods down to (not up a cliff). */
+  below: Map<number, Set<number>>;
 }
 
 export function derived(s: GameState): Derived {
@@ -28,7 +32,7 @@ export function derived(s: GameState): Derived {
   const rt = runtimeOf(s);
   let d = rt.derived;
   if (d && d.layout === layout) return d;
-  d = { layout, sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), nearWater: new Set(), fielded: new Set(), neighbours: new Map() };
+  d = { layout, sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), watts: new Map(), guarded: new Set(), fielded: new Set(), neighbours: new Map(), below: new Map() };
   const fields = s.buildings.filter((b): b is FieldBuilding => b.type === 'field');
   const hives = s.buildings.filter((b) => b.type === 'hive');
   const sprinklers = s.buildings.filter((b) => b.type === 'sprinkler');
@@ -36,11 +40,17 @@ export function derived(s: GameState): Derived {
     for (let y = f.y; y < f.y + 3; y++) for (let x = f.x; x < f.x + 3; x++) d.fielded.add(tileIndex(s, x, y));
     d.sprinklers.set(f.id, sprinklers.filter((sp) => sprinklerWaters(sp.x, sp.y, f)));
     if (hives.some((h) => hiveReaches(f, h.x, h.y))) d.pollinated.add(f.id);
+    if (guardedAt(s, f.x, f.y)) d.guarded.add(f.id);
   }
   for (const h of hives) d.flowers.set(h.id, fields.filter((f) => hiveReaches(f, h.x, h.y)));
   for (const t of s.buildings) if (t.type === 'turbine') d.exposure.set(t.id, exposureAt(s, t.x, t.y));
-  for (const sp of sprinklers) if (nearWaterAt(s, sp.x, sp.y)) d.nearWater.add(sp.id);
-  for (const b of s.buildings) d.neighbours.set(b.id, besides(s, b));
+  for (const sp of sprinklers) d.watts.set(sp.id, sprinklerWatts(s, sp.x, sp.y));
+  for (const b of s.buildings) if (b.type === 'wheel') d.watts.set(b.id, wheelSite(s, b.x, b.y)?.watts ?? 0);
+  for (const b of s.buildings) {
+    const near = besides(s, b);
+    d.neighbours.set(b.id, near);
+    d.below.set(b.id, new Set(near.filter((n) => handsDown(s, b, n)).map((n) => n.id)));
+  }
   rt.derived = d;
   return d;
 }
@@ -63,4 +73,12 @@ export const handlesGoods = (b: Building) => !!BUILDINGS[b.type].harvests || isM
 export const sprinklersOf = (s: GameState, b: Building) => derived(s).sprinklers.get(b.id) ?? [];
 export const isPollinated = (s: GameState, b: Building) => derived(s).pollinated.has(b.id);
 export const exposureOf = (s: GameState, b: Building) => derived(s).exposure.get(b.id) ?? 1;
-export const nearWater = (s: GameState, b: Building) => derived(s).nearWater.has(b.id);
+/** The watts a sprinkler needs or a water wheel makes (worked out from where it stands). */
+export const wattsOf = (s: GameState, b: Building) => derived(s).watts.get(b.id) ?? 0;
+export const isGuarded = (s: GameState, b: Building) => derived(s).guarded.has(b.id);
+/** Whether building `a` can hand goods to `b` next door (not up a cliff). */
+export function handsTo(s: GameState, a: Building, b: Building) {
+  const d = derived(s);
+  // Only placed buildings are worked out ahead; one in hand is checked as it is.
+  return d.neighbours.get(a.id)?.includes(b) ? d.below.get(a.id)?.has(b.id) ?? false : handsDown(s, a, b);
+}

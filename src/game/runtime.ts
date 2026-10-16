@@ -41,6 +41,8 @@ export interface Runtime {
   flows?: Flows;
   /** The hours and nights of the power log (powerlog.ts). */
   powerLog?: Log;
+  /** Bumped whenever earthworks change the ground's levels, so the view redraws it (state.ts, `touchRelief`). */
+  relief?: number;
   /** Bumped whenever a route, a stop or a truck's assignment changes, so the interface knows to redraw its panels. Numbered across games (see nextVersion). */
   routesVersion: number;
 }

@@ -1,12 +1,14 @@
 import { BUILDINGS, CROPS, DAY_SECONDS, HIVE, ITEMS, POLLINATION_BONUS, POWER, recipesFor, SAPLING_SECONDS, TREE_HEALTH, type BuildingId } from './data.ts';
 import { networks, POWERED, pylonsInLink } from './power.ts';
 import { HOUR_SECONDS } from './powerlog.ts';
-import { exposureAt, hiveReaches, nearWaterAt, paceOf, pylonReaches, sprinklerWaters, touchesWater, waterPace } from './rules.ts';
+import { erosionAt, guardedAt, hiveReaches, paceOf, pylonReaches, sprinklerWaters, sprinklerWatts, touchesWater, waterLevelNear, waterPace, wheelSite, windExposure } from './rules.ts';
+import { earthPrice, groundworkFor } from './build.ts';
+import { FLAT } from './relief.ts';
 import { hourAt, sunAt, windAt } from './sim/clock.ts';
 import { linksAt } from './sim/goods.ts';
 import { makes, shareOf } from './sim/energy.ts';
 import { describeLinks } from './sim/describe.ts';
-import { inMap, type Building, type FieldBuilding, type GameState, type Setting } from './state.ts';
+import { inMap, tileIndex, type Building, type FieldBuilding, type GameState, type Setting } from './state.ts';
 
 // Forecasts from what the game already knows: what a building in hand would do on a tile (facts about the tile, no advice),
 // and how tonight's battery charge will go if power is used as it is now (the weather is seeded, so the game knows it).
@@ -47,25 +49,36 @@ const powered = (s: GameState, type: BuildingId, x: number, y: number) => s.buil
 export function placement(s: GameState, type: BuildingId, x: number, y: number, set: Setting = {}): Placement {
   const def = BUILDINGS[type], facts: Fact[] = [];
   const pylonFact = (): Fact => (powered(s, type, x, y) ? { label: 'Power', value: 'in reach', sub: 'of a pylon' } : { label: 'Power', value: 'none', sub: 'no pylon in reach', tone: 'bad' });
+  const gw = groundworkFor(s, type, x, y), here = inMap(s, x, y) ? s.map.level[tileIndex(s, x, y)] : 0;
+  if (gw.ok && gw.value.level !== null) facts.push({ label: 'Earthworks', value: String(earthPrice(s, gw.value.steps)), sub: `levels the ground to level ${gw.value.level} (${fmt1(gw.value.steps)} steps)`, tone: 'bad' });
   switch (type) {
     case 'field': {
       const crop = CROPS[set.crop ?? 'wheat'], soil = soilUnder(s, x, y, 3), { sprinklers, shore, water } = waterAt(s, x, y);
       // A hive within reach of a flowering crop adds a good to every harvest.
       const pollinated = crop.flowers && s.buildings.some((b) => b.type === 'hive' && hiveReaches({ type: 'field', x, y }, b.x, b.y));
       const perMin = (crop.yield + (pollinated ? POLLINATION_BONUS : 0)) * 60 * paceOf(water, soil).pace / crop.grow;
+      // Ramp tiles under it wear faster (erosion), unless the ground is levelled for it.
+      const guarded = guardedAt(s, x, y), level = gw.ok && gw.value.level !== null;
+      let slopes = 0, wear = 0;
+      for (let ty = y; ty < y + 3; ty++) for (let tx = x; tx < x + 3; tx++) {
+        const k = !level && inMap(s, tx, ty) ? erosionAt(s, tx, ty, guarded) : 1;
+        wear += k / 9; if (k > 1) slopes++;
+      }
       // The harvests over the next SOIL_AHEAD seconds, each wearing the soil and slowing the next.
       let t = 0, later = soil;
-      for (;;) { t += crop.grow / paceOf(water, later).pace; if (t > SOIL_AHEAD) break; later = Math.max(0, Math.min(100, later + crop.soil)); }
+      for (;;) { t += crop.grow / paceOf(water, later).pace; if (t > SOIL_AHEAD) break; later = Math.max(0, Math.min(100, later + crop.soil * (crop.soil < 0 ? wear : 1))); }
       facts.push({ label: crop.name, value: `+${fmt1(perMin)}`, sub: 'a minute' });
       facts.push({ label: 'Soil', value: String(Math.round(soil)), then: String(Math.round(later)), sub: `in ${SOIL_AHEAD / 60} min if harvests are carried off` });
       facts.push(shore ? { label: 'Water', value: 'beside water', sub: 'grows at 100%' } : sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round(waterPace(water) * 100)}%` }
         : { label: 'Water', value: 'none', sub: `grows at ${Math.round(waterPace(0) * 100)}%`, tone: 'bad' });
+      if (slopes) facts.push({ label: 'Slope', value: `${slopes} of 9 tiles`, sub: guarded ? 'wear faster; trees or beans beside it help' : 'wear twice as fast', tone: guarded ? undefined : 'bad' });
       break;
     }
     case 'sprinkler': {
-      const fields = s.buildings.filter((b) => b.type === 'field' && sprinklerWaters(x, y, b)), near = nearWaterAt(s, x, y);
+      const fields = s.buildings.filter((b) => b.type === 'field' && sprinklerWaters(x, y, b)), water = inMap(s, x, y) ? waterLevelNear(s, x, y) : null;
+      const lift = water === null ? here : Math.max(0, here - water);
       facts.push({ label: 'Waters', value: `${fields.length} field${fields.length === 1 ? '' : 's'}`, sub: `centres within ${POWER.sprinklerReach} tiles` });
-      facts.push({ label: 'Uses', value: watts(near ? POWER.sprinklerNearWater : POWER.sprinklerFar), sub: near ? 'near water' : 'far from water' });
+      facts.push({ label: 'Uses', value: inMap(s, x, y) ? watts(sprinklerWatts(s, x, y)) : '–', sub: `${water === null ? 'far from water' : 'near water'}${lift ? `, lifting it ${lift} level${lift > 1 ? 's' : ''}` : ''}` });
       facts.push(pylonFact());
       break;
     }
@@ -85,8 +98,8 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
       break;
     }
     case 'turbine': {
-      const exp = exposureAt(s, x, y);
-      facts.push({ label: 'Wind', value: `${Math.round(exp * 100)}%`, sub: 'reaches it here', tone: exp < 1 ? 'bad' : undefined });
+      const w = inMap(s, x, y) ? windExposure(s, x, y) : { shelter: 1, height: 1, exposure: 1 }, exp = w.exposure;
+      facts.push({ label: 'Wind', value: `${Math.round(exp * 100)}%`, sub: w.height > 1 ? `reaches it here, ${Math.round((w.height - 1) * 100)}% more up high` : 'reaches it here', tone: w.shelter < 1 ? 'bad' : w.height > 1 ? 'good' : undefined });
       facts.push({ label: 'Now', value: watts(POWER.turbine * windAt(s.scenario, s.time) * exp), sub: 'in this wind' });
       facts.push(pylonFact());
       break;
@@ -97,6 +110,15 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
       const fresh = reached.filter((b) => !networks(s).of.get(b.id)).length;
       facts.push({ label: 'Links', value: `${links} pylon${links === 1 ? '' : 's'}`, sub: links ? `within ${POWER.pylon.link} tiles` : 'a new network' });
       facts.push({ label: 'Reaches', value: `${reached.length}`, sub: `building${reached.length === 1 ? '' : 's'}${fresh ? `, ${fresh} not yet powered` : ''}` });
+      break;
+    }
+    case 'wheel': {
+      const site = inMap(s, x, y) ? (gw.ok && gw.value.level !== null ? null : wheelSite(s, x, y)) : null;
+      if (site) {
+        facts.push({ label: 'Makes', value: watts(site.watts), sub: 'day and night' });
+        facts.push({ label: 'Current', value: `${site.current.toFixed(1)} m/s`, sub: site.fall ? 'beside a fall' : 'no fall beside it', tone: site.fall ? 'good' : undefined });
+      } else facts.push({ label: 'River', value: gw.ok ? 'once levelled' : 'none', sub: 'it needs a river at its bank', tone: gw.ok ? undefined : 'bad' });
+      facts.push(pylonFact());
       break;
     }
     case 'sapling':
@@ -149,7 +171,7 @@ export function tonight(s: GameState): Tonight | null {
   const nets = networks(s).list.map((net) => {
     const bats = net.members.filter((b) => b.type === 'battery').map((b) => b.charge);
     return { net, bats, solar: net.members.filter((b) => b.type === 'solar').length, turbines: net.members.filter((b) => b.type === 'turbine'),
-      digesters: net.members.filter((b) => b.type === 'digester').reduce((n, b) => n + makes(s, b, 0, 0), 0) };
+      digesters: net.members.filter((b) => b.type === 'digester' || b.type === 'wheel').reduce((n, b) => n + makes(s, b, 0, 0), 0) };
   });
   const capacity = nets.reduce((n, x) => n + x.bats.length, 0) * POWER.battery.capacity;
   if (!capacity) return null;

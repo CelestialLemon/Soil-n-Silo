@@ -251,6 +251,15 @@ export function touchLayout(s: GameState) {
   cache(s).layout = nextVersion();
 }
 
+/** Marks the ground's levels changed (earthworks): the roads and everything else that hangs on the layout are worked out again. */
+export function touchRelief(s: GameState) {
+  runtimeOf(s).relief = nextVersion();
+  touchLayout(s);
+}
+
+/** The version of the ground's levels: changes with every earthwork (0 before the first). */
+export const reliefOf = (s: GameState) => runtimeOf(s).relief ?? 0;
+
 export function removeBuilding(s: GameState, b: Building) {
   const c = cache(s);
   const i = s.buildings.indexOf(b);

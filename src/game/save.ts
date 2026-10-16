@@ -68,6 +68,7 @@ function complete(s: GameState): boolean {
     && arr(m.terrain) && m.terrain.length === m.width * m.height
     && arr(m.fertility) && m.fertility.length === m.width * m.height && m.fertility.every(num)
     && arr(m.level) && m.level.length === m.width * m.height && m.level.every((l) => int(l) && l >= 0 && l <= MAX_LEVEL)
+    && arr(m.current) && m.current.length === m.width * m.height && m.current.every((c) => num(c) && c >= 0)
     && arr(m.ramp) && m.ramp.length === m.width * m.height && m.ramp.every((d) => d === FLAT || d === 0 || d === 1 || d === 2 || d === 3)
     && arr(s.soilBase) && s.soilBase.length === m.fertility.length && s.soilBase.every(num) && !!m.depot && num(m.depot.x) && num(m.depot.y)
     && [s.credits, s.time, s.carry, s.nextId, s.earned, s.initialTrees].every(num) && Math.abs(s.carry) <= TICK

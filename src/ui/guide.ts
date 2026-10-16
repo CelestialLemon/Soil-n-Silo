@@ -1,6 +1,6 @@
 import { chainOf, type Step } from '../game/chain.ts';
 import {
-  bays, BUILDINGS, CATEGORIES, CLEAR_COST, CROP_IDS, CROPS, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, ITEMS, OUTPUT_BATCHES,
+  bays, BUILDINGS, CATEGORIES, CLEAR_COST, CROP_IDS, CROPS, EARTH, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, ITEMS, OUTPUT_BATCHES,
   POLLINATION_BONUS, POWER, RECIPES, recipesFor, SAPLING_SECONDS, SILO, TREE_HEALTH, TRUCK, type BuildingId, type Ingredient, type ItemId, type Recipe,
 } from '../game/data.ts';
 import { FLEET_SECONDS } from '../game/fleet.ts';
@@ -74,9 +74,10 @@ const ENTRIES: Record<BuildingId, Entry> = {
       `Build it on good soil: its placement card shows the soil under it now and in ${SOIL_AHEAD / 60} minutes, and the Soil overlay shows the whole map.`,
       'Select it and choose the crop. Wheat is the default.',
       'Build it beside the machine that uses its crop (a mill for wheat), and the machine takes the harvest itself. Or make it a stop on a route: trucks pick up the harvest. A full field stops growing.',
-      `Put it beside water, or a sprinkler within ${POWER.sprinklerReach} tiles of its centre: dry fields grow at ×${FIELD.dry} speed.`,
+      `Put it beside water at its own level, or a sprinkler within ${POWER.sprinklerReach} tiles of its centre: dry fields grow at ×${FIELD.dry} speed.`,
     ],
     tips: [
+      `It can lie over a ramp, but not across a cliff (placing it there levels the ground). Its ramp tiles wear ${1 + FIELD.erosion} times as fast; a tree or sapling beside it, or a bean field next door, holds the soil (${1 + FIELD.erosionGuarded} times).`,
       'Every harvest wears the soil out, except beans, which restore it. Compost brings it back: a field stop drops compost by itself.',
       `A beehive within ${HIVE.reach} tiles adds 1 to every harvest of a flowering crop.`,
     ],
@@ -86,6 +87,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
     how: [
       'Place it next to or between fields. The Water overlay shows what it reaches.',
       'Put it within a pylon\'s reach: it needs a little power all the time, less near water.',
+      `Lifting water costs ${POWER.sprinklerLift} W a level: above the highest water within ${POWER.waterNear} tiles, or from the valley floor when there is none.`,
     ],
     tips: ['One sprinkler between four fields waters all of them.'],
   },
@@ -149,7 +151,18 @@ const ENTRIES: Record<BuildingId, Entry> = {
   },
   turbine: {
     what: 'Makes power from the wind, day and night. The wind comes and goes.',
-    how: [`Place it in the open, within a pylon's reach. Trees and tall buildings within ${POWER.shelterReach} tiles shelter it and cost power.`],
+    how: [
+      `Place it in the open, within a pylon's reach. Trees, tall buildings and higher ground within ${POWER.shelterReach} tiles shelter it and cost power.`,
+      `Up high the wind is stronger: ${Math.round(POWER.windPerLevel * 100)}% more for every level it stands up.`,
+    ],
+  },
+  wheel: {
+    what: 'Turns a river\'s current into steady power, day and night, with nothing to burn.',
+    how: [
+      'Place it on a river bank, at the river\'s level, sharing an edge with the running water: it faces the river by itself. Still ponds and lakes don\'t turn it.',
+      `It makes ${POWER.wheel} W in a current of 1 m/s, more in a faster one, and ${POWER.wheelFall} times as much beside a fall, where the river drops a level.`,
+    ],
+    tips: ['There are only a few good places for it. A wheel beside a fall can carry a small farm through the night.'],
   },
   battery: {
     what: 'Stores spare power and gives it back when the network falls short, such as at night. Its cells light up from the bottom as it fills: one ring a quarter.',
@@ -184,10 +197,10 @@ const ENTRIES: Record<BuildingId, Entry> = {
   },
 };
 
-export type TopicId = 'start' | 'trucks' | 'power' | 'soil' | 'markers' | 'keys';
+export type TopicId = 'start' | 'trucks' | 'power' | 'soil' | 'land' | 'markers' | 'keys';
 const TOPICS: { id: TopicId; name: string; chip: string }[] = [
   { id: 'start', name: 'First steps', chip: 'First steps' }, { id: 'trucks', name: 'Trucks and routes', chip: 'Routes' }, { id: 'power', name: 'Power', chip: 'Power' },
-  { id: 'soil', name: 'Soil and water', chip: 'Soil' }, { id: 'markers', name: 'Statuses and markers', chip: 'Statuses' }, { id: 'keys', name: 'Keys', chip: 'Keys' },
+  { id: 'soil', name: 'Soil and water', chip: 'Soil' }, { id: 'land', name: 'Height and earthworks', chip: 'Height' }, { id: 'markers', name: 'Statuses and markers', chip: 'Statuses' }, { id: 'keys', name: 'Keys', chip: 'Keys' },
 ];
 
 const lc = (id: ItemId) => ITEMS[id].name.toLowerCase();
@@ -206,6 +219,7 @@ function worthReading(s: GameState): TopicId[] {
   if (sc.goals.some((g) => g.kind === 'soil') || sc.terrain.soil < 50) out.push('soil');
   if (sc.weather.sun < 1 || sc.weather.sunset - sc.weather.sunrise < 12 || sc.weather.wind < 0.4) out.push('power');
   if (sc.goals.some((g) => g.kind !== 'soil' && chainOf(g.item).from?.inputs.length)) out.push('trucks');
+  if (sc.terrain.relief >= 0.6) out.push('land');
   return out;
 }
 
@@ -511,10 +525,24 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
         P('Buildings that share an edge trade without trucks: a machine takes what it uses from the buildings next door, a field takes compost. A ', bLink('mill'), ' between wheat fields grinds their wheat, a ', bLink('coop'), ' beside the mill eats its bran, a ', bLink('bakery'), ' beside both bakes their flour and eggs. Touching only at a corner doesn\'t count; ', bLink('silo'), 's and the ', bLink('depot'), ' trade only with trucks.'),
         P('A building takes from its neighbours before trucks load there, from whichever has the most. Selecting a building tints the neighbours it trades with, and placing one says who it would. Packed buildings leave trucks fewer open tiles, so keep a way in for the goods that still go by truck.'),
         h('div', { class: 'cd-label sec' }, 'Roads and charging'),
-        P(`Trucks drive on any open grass, the shortest way, and pass through each other. To load, a truck parks on an open tile next to the building: a building with none can't be reached. The Roads view shows the open ground. A building loads ${plural(bays('silo'), 'truck')} at a time (the depot ${bays('depot')}); the others queue beside it.`),
+        P(`Trucks drive on any open grass, the easiest way, and pass through each other. To load, a truck parks on an open tile next to the building: a building with none can't be reached. The Roads view shows the open ground. A building loads ${plural(bays('silo'), 'truck')} at a time (the depot ${bays('depot')}); the others queue beside it.`),
         P(`A truck's battery holds ${TRUCK.battery} J, ${TRUCK.joulesPerTile} J a tile. When it would run short, it drives home to its garage and charges, from the garage's network. With no power there it goes on after ${TRUCK.giveUp} s, and crawls once empty.`),
+        P('Climbing costs: every level up a ramp counts as ', String(TRUCK.climb), ' more tiles, in time and in battery. Cliffs stop trucks: they go the long way round, by a ramp. Goods next door go down a cliff but not up it.'),
         h('div', { class: 'cd-label sec' }, 'Byproducts'),
         P('A machine stops when an output has nowhere to go, so every byproduct needs a home: a ', bLink('coop'), ', a ', bLink('composter'), ', a ', bLink('digester'), ' or the depot. Trucks share their room, so a truck full of something no stop takes carries nothing else.'),
+      ];
+      case 'land': return [
+        ...head('Height and earthworks', 'The valley is terraced: each tile stands at a level, joined to the next by ramps; where levels meet without one, there is a cliff.'),
+        h('ul', null,
+          h('li', null, B('Building:'), ' machines, silos, garages, panels and batteries need flat ground at one level; a ', bLink('field'), ' can lie over a ramp but not a cliff; one-tile buildings stand anywhere. Placing on uneven ground levels it for you, at the earthworks price.'),
+          h('li', null, B('Trucks:'), ` cliffs stop them, so ramps are the ways up. Each level climbed costs ${TRUCK.climb} more tiles, in time and in battery.`),
+          h('li', null, B('Next door:'), ' goods go down a cliff, so a mill on a ledge can feed a bakery below it, but never up one.'),
+          h('li', null, B('Water:'), ' a field is watered by water at its own level only. A ', bLink('sprinkler'), ` needs ${POWER.sprinklerLift} W more for every level it lifts water. The river turns a `, bLink('wheel'), ', best beside a fall.'),
+          h('li', null, B('Wind:'), ' a ', bLink('turbine'), ` gets ${Math.round(POWER.windPerLevel * 100)}% more wind a level up; higher ground beside it shelters it.`),
+          h('li', null, B('Soil:'), ' low ground is richer, high ground poorer. Fields on ramps wear faster unless trees or beans hold the soil.')),
+        h('div', { class: 'cd-label sec' }, 'Earthworks'),
+        P(`Earthworks (in the dock) raise or lower a tile one level, or make it a ramp (R turns it), for ${EARTH.step} credits a step. Clear trees and rock first; nothing can stand on the tile, and ground can't go below the water beside it. Earthworks aren't refunded.`),
+        P('The Height view tints each level and marks the cliffs.'),
       ];
       case 'power': return [
         ...head('Power', 'Machines, sprinklers and garages (to charge their trucks) need power. Power travels only through pylons.'),
@@ -522,7 +550,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
           h('li', null, 'A building is powered when one of its tiles is within ', String(POWER.pylon.reach), ' tiles of a ', bLink('pylon'), '. Pylons within ', String(POWER.pylon.link), ' tiles of each other link into one network.'),
           h('li', null, 'Each network adds up what its generators make and what its machines want. Spare power charges its ', bLink('battery'), ' banks; a shortfall drains them.'),
           h('li', null, 'If that isn\'t enough, every machine on the network slows to the share it gets.'),
-          h('li', null, bLink('solar'), ' panels make nothing at night, and a ', bLink('turbine'), ' only makes power when there is wind. A ', bLink('digester'), ' is steady, but needs waste to burn.')),
+          h('li', null, bLink('solar'), ' panels make nothing at night, and a ', bLink('turbine'), ' only makes power when there is wind. A ', bLink('digester'), ' is steady, but needs waste to burn; a ', bLink('wheel'), ' is steady too, but only on a river.')),
         P('The readouts at the top show the power made and used across all networks, and the charge stored. The Power panel has the last day hour by hour, by source, each network, where the watts go, and how tonight\'s charge will go if use stays as it is. The Power view draws each network in its own colour.'),
       ];
       case 'soil': return [
@@ -553,7 +581,8 @@ const keyList = (): [string, string][] => [...ACTIONS.map((a): [string, string] 
 /** What a building does with power, in a few words. */
 function powerLine(id: BuildingId): string {
   const d = BUILDINGS[id];
-  if (id === 'sprinkler') return `uses ${POWER.sprinklerNearWater} W near water, else ${POWER.sprinklerFar} W`;
+  if (id === 'sprinkler') return `uses ${POWER.sprinklerNearWater} W near water, else ${POWER.sprinklerFar} W, more up high`;
+  if (id === 'wheel') return `makes about ${POWER.wheel} W, ${POWER.wheelFall}× beside a fall`;
   if (id === 'garage') return `up to ${TRUCK.chargeRate} W for each truck charging`;
   if (d.power) return `uses ${d.power} W while working`;
   if (id === 'solar') return `makes up to ${POWER.solar} W in full sun`;

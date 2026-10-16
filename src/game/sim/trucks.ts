@@ -2,6 +2,7 @@ import { bays, BUILDINGS, TRUCK, type ItemId } from '../data.ts';
 import { noteArrival } from '../fleet.ts';
 import { networkOf } from '../power.ts';
 import { accessTiles, distanceTo, isOpen, legLength, nearestOpen, pathTo } from '../roads.ts';
+import { centreLevel, heightAt } from '../relief.ts';
 import {
   buildingById, layoutOf, routeById, tileIndex, type Building, type GameState, type Route, type Stop, type Truck,
 } from '../state.ts';
@@ -131,16 +132,18 @@ function atStop(s: GameState, t: Truck, dt: number, queued: boolean) {
 /** Drives a truck along its path; at the end it parks at its garage or joins the queue at its stop. */
 function drive(s: GameState, t: Truck, dt: number) {
   const w = s.map.width;
+  // `left` is effort (tiles of flat road): climbing a level uses TRUCK.climb more, in time and in battery.
   let left = (t.energy > 0 ? TRUCK.speed : TRUCK.crawl) * dt;
   while (left > 1e-9 && t.path.length) {
     const i = t.path[0], tx = i % w + 0.5, ty = Math.floor(i / w) + 0.5;
     const dx = tx - t.x, dy = ty - t.y, d = Math.hypot(dx, dy);
     if (d > 1e-6) t.heading = Math.atan2(dx, dy);
-    const step = Math.min(d, left);
-    if (d > 1e-9) { t.x += dx / d * step; t.y += dy / d * step; }
+    const rise = Math.max(0, centreLevel(s.map, i % w, Math.floor(i / w)) - heightAt(s.map, t.x, t.y));
+    const effort = d + TRUCK.climb * rise, step = Math.min(effort, left), k = effort > 1e-9 ? step / effort : 1;
+    t.x += dx * k; t.y += dy * k;
     left -= step;
     t.energy = Math.max(0, t.energy - step * TRUCK.joulesPerTile);
-    if (step >= d - 1e-9) { t.x = tx; t.y = ty; t.path.shift(); }
+    if (k >= 1 - 1e-9) { t.x = tx; t.y = ty; t.path.shift(); }
   }
   if (t.path.length) return;
   const b = t.target !== null ? buildingById(s, t.target) : null;

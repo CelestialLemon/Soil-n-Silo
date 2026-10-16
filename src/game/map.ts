@@ -19,6 +19,8 @@ export interface MapData {
   /** Each tile's level (0 the valley floor, at most MAX_LEVEL), and for a ramp the side it rises towards (FLAT if none); see relief.ts. */
   level: number[];
   ramp: number[];
+  /** The speed of the river's current over each tile (m/s, 0 off the river and on still water). */
+  current: number[];
   /** The depot's north-west tile (it is 3 × 3). */
   depot: { x: number; y: number };
 }
@@ -51,8 +53,9 @@ export const DEPOT_SIZE = 3;
 const CLEARING = 8;
 
 export function generateMap(sc: Scenario): MapData {
-  const { width, height, terrain, fertility, level, ramp, depot } = generateLand(sc, 0);
-  return { width, height, terrain, fertility, level, ramp, depot };
+  const { width, height, terrain, fertility, level, ramp, depot, flow } = generateLand(sc, 0);
+  const current = terrain.map((_, i) => Math.round(Math.hypot(flow[i * 2], flow[i * 2 + 1]) * 100) / 100);
+  return { width, height, terrain, fertility, level, ramp, current, depot };
 }
 
 /** The river's speed (m/s) where it is narrowest and widest. */

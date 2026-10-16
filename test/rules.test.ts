@@ -6,7 +6,7 @@ import { placement } from '../src/game/forecast.ts';
 import { TERRAIN, type TerrainKind } from '../src/game/map.ts';
 import { networkOf } from '../src/game/power.ts';
 import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
-import { exposureOf, nearWater } from '../src/game/sim/layout.ts';
+import { exposureOf, wattsOf } from '../src/game/sim/layout.ts';
 import { fieldPace } from '../src/game/sim/buildings.ts';
 import { describeStatus } from '../src/game/sim/describe.ts';
 import { advance } from '../src/game/sim/step.ts';
@@ -78,12 +78,12 @@ test('a field grows at the pace the placement card says, watered or dry, on any 
   }
 });
 
-test('a sprinkler is near water, and a building in reach of a pylon, as the placement card says', () => {
+test('a sprinkler uses what the placement card says, by the water near it, and a building in reach of a pylon', () => {
   for (const water of [[[10, 2]], [[10, 1]], [[17, 10]], []] as [number, number][][]) {
     const s = flat();
     setTerrain(s, TERRAIN.water, water);
-    const said = fact(s, 'sprinkler', 10, 10, 'Uses').sub === 'near water';
-    assert.equal(said, nearWater(s, put(s, 'sprinkler', 10, 10)), JSON.stringify(water));
+    const said = fact(s, 'sprinkler', 10, 10, 'Uses').value;
+    assert.equal(said, `${wattsOf(s, put(s, 'sprinkler', 10, 10))} W`, JSON.stringify(water));
   }
   for (const [x, y] of [[3, 3], [4, 4], [5, 3], [3, 6]]) {
     const s = flat();

@@ -6,7 +6,7 @@ import { noteFlow } from '../flows.ts';
 import { noteMade, noteTaken } from '../history.ts';
 import { noteRunUse } from '../runlog.ts';
 import { applySetting, blankBuilding, isMachine, type Building, type Setting, type GameState, type MachineBuilding } from '../state.ts';
-import { derived, besides, handlesGoods } from './layout.ts';
+import { derived, besides, handlesGoods, handsTo } from './layout.ts';
 import { fieldFertility, changeSoil } from './soil.ts';
 import { runtimeOf } from '../runtime.ts';
 import { must } from '../result.ts';
@@ -141,7 +141,7 @@ export interface Link { b: Building; goods: ItemId[] }
 export function linksOf(s: GameState, b: Building, near: Building[] = neighboursOf(s, b)): { from: Link[]; to: Link[] } {
   const from: Link[] = [], to: Link[] = [];
   for (const n of near) {
-    const i = passes(n, b), o = passes(b, n);
+    const i = handsTo(s, n, b) ? passes(n, b) : [], o = handsTo(s, b, n) ? passes(b, n) : [];
     if (i.length) from.push({ b: n, goods: i });
     if (o.length) to.push({ b: n, goods: o });
   }
@@ -156,7 +156,7 @@ export function linksAt(s: GameState, type: BuildingId, x: number, y: number, se
 
 
 /** Whether a building trades any good with a building next door. */
-export const tradesNextDoor = (s: GameState, b: Building) => neighboursOf(s, b).some((n) => passes(n, b).length > 0 || passes(b, n).length > 0);
+export const tradesNextDoor = (s: GameState, b: Building) => { const l = linksOf(s, b); return l.from.length > 0 || l.to.length > 0; };
 
 /** A good handed next door, for the view to show it crossing over. Kept for a moment, not saved. */
 export interface Handoff { from: number; to: number; item: ItemId; time: number }
@@ -178,7 +178,7 @@ export function feedNeighbours(s: GameState) {
   const order = s.buildings.filter((c) => consumer(c) && neighboursOf(s, c).length > 0);
   order.sort((a, b) => (fed.get(a.id) ?? -1) - (fed.get(b.id) ?? -1) || a.id - b.id);
   for (const c of order) {
-    const near = neighboursOf(s, c).filter(producer);
+    const near = neighboursOf(s, c).filter((p) => producer(p) && handsTo(s, p, c));
     if (!near.length) continue;
     for (const item of takesNow(c)) {
       let best: Building | null = null, most = 0;
