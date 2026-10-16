@@ -1,5 +1,5 @@
 import { BUILDINGS, CROPS, FIELD, HIVE, ITEMS, POLLINATION_BONUS } from '../data.ts';
-import { paceOf } from '../rules.ts';
+import { paceOf, touchesWater } from '../rules.ts';
 import { type FieldBuilding, type GameState, type HiveBuilding, type MachineBuilding } from '../state.ts';
 import { derived, isPollinated, sprinklersOf } from './layout.ts';
 import { changeSoil, fieldFertility } from './soil.ts';
@@ -10,7 +10,7 @@ import { shareOf } from './energy.ts';
 
 /** Growth per second of a field as a multiple of its crop's normal pace, and the parts it's made of. */
 export function fieldPace(s: GameState, f: FieldBuilding) {
-  const wet = sprinklersOf(s, f).reduce((m, sp) => Math.max(m, shareOf(s, sp)), 0);
+  const wet = touchesWater(s, f.x, f.y) ? 1 : sprinklersOf(s, f).reduce((m, sp) => Math.max(m, shareOf(s, sp)), 0);
   const p = paceOf(wet, fieldFertility(s, f));
   return { pace: p.pace, water: wet, soil: p.bySoil };
 }

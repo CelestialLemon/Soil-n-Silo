@@ -18,6 +18,13 @@ export function sprinklerWaters(x: number, y: number, field: Footprint) {
   return Math.max(Math.abs(x + 0.5 - c.x), Math.abs(y + 0.5 - c.y)) <= POWER.sprinklerReach + 0.5;
 }
 
+/** Whether a field's 3x3 footprint at (x, y) shares an edge with a water tile (diagonal contact doesn't count). */
+export function touchesWater(s: GameState, x: number, y: number) {
+  const wet = (tx: number, ty: number) => inMap(s, tx, ty) && terrainAt(s, tx, ty) === TERRAIN.water;
+  for (let k = 0; k < 3; k++) if (wet(x + k, y - 1) || wet(x + k, y + 3) || wet(x - 1, y + k) || wet(x + 3, y + k)) return true;
+  return false;
+}
+
 /** Whether a sprinkler at (x, y) is near water (and so cheaper to run). */
 export function nearWaterAt(s: GameState, x: number, y: number) {
   const r = POWER.waterNear;

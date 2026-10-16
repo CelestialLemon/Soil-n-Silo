@@ -74,7 +74,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
       `Build it on good soil: its placement card shows the soil under it now and in ${SOIL_AHEAD / 60} minutes, and the Soil overlay shows the whole map.`,
       'Select it and choose the crop. Wheat is the default.',
       'Build it beside the machine that uses its crop (a mill for wheat), and the machine takes the harvest itself. Or make it a stop on a route: trucks pick up the harvest. A full field stops growing.',
-      `Put a sprinkler within ${POWER.sprinklerReach} tiles of its centre: dry fields grow at ×${FIELD.dry} speed.`,
+      `Put it beside water, or a sprinkler within ${POWER.sprinklerReach} tiles of its centre: dry fields grow at ×${FIELD.dry} speed.`,
     ],
     tips: [
       'Every harvest wears the soil out, except beans, which restore it. Compost brings it back: a field stop drops compost by itself.',

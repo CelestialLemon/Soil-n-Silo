@@ -149,7 +149,7 @@ Each level is generated from a seed: a grid of about 48 × 40 one-metre tiles.
 | Tile | Notes |
 | --- | --- |
 | Grass | Buildable. Has a fertility (0–100) from noise, which fields use |
-| Water | A river or ponds. Not buildable. Sprinklers near water use less power |
+| Water | A river or ponds. Not buildable. Sprinklers near water use less power. A field sharing an edge with water is fully watered without a sprinkler |
 | Rock | Not buildable. Can be cleared for 15 credits |
 | Tree | Not buildable. Slows wind turbines next to it. Can be cleared for 5 credits (soil health drops a little) |
 
@@ -337,7 +337,7 @@ playing trucks: every level needed many trucks, and routes doing a field-to-mill
   the next pickup starts on it; a level starts on wheat and bread. Changing a placed building in its inspector doesn't change
   what is remembered. (Chosen on 2026-10-16: players forgot to switch after placing, and found a field grew the wrong crop
   much later.)
-- Grow times are with water at fertility 60. Growth speed is ×0.4 without water, and from ×0.4 (fertility 0) to ×1.4
+- Grow times are with water at fertility 60. Growth speed is ×0.4 without water (a field sharing an edge with a river or pond counts as watered), and from ×0.4 (fertility 0) to ×1.4
   (fertility 100) by the field's average fertility.
 - A pollinated field (a hive within 4 tiles) yields 1 more of a flowering crop.
 - A harvest waits in the field (up to 6) until a truck picks it up. A full field stops growing.

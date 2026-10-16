@@ -1,7 +1,7 @@
 import { BUILDINGS, CROPS, DAY_SECONDS, HIVE, ITEMS, POLLINATION_BONUS, POWER, recipesFor, SAPLING_SECONDS, TREE_HEALTH, type BuildingId } from './data.ts';
 import { networks, POWERED, pylonsInLink } from './power.ts';
 import { HOUR_SECONDS } from './powerlog.ts';
-import { exposureAt, hiveReaches, nearWaterAt, paceOf, pylonReaches, sprinklerWaters, waterPace } from './rules.ts';
+import { exposureAt, hiveReaches, nearWaterAt, paceOf, pylonReaches, sprinklerWaters, touchesWater, waterPace } from './rules.ts';
 import { hourAt, sunAt, windAt } from './sim/clock.ts';
 import { linksAt } from './sim/goods.ts';
 import { makes, shareOf } from './sim/energy.ts';
@@ -36,7 +36,8 @@ function soilUnder(s: GameState, x: number, y: number, n: number) {
 /** The sprinklers that would water a field at (x, y), and the most water any gives (the share of power it gets). */
 function waterAt(s: GameState, x: number, y: number) {
   const sp = s.buildings.filter((b) => b.type === 'sprinkler' && sprinklerWaters(b.x, b.y, { type: 'field', x, y }));
-  return { sprinklers: sp.length, water: sp.reduce((m, b) => Math.max(m, shareOf(s, b)), 0) };
+  const shore = touchesWater(s, x, y);
+  return { sprinklers: sp.length, shore, water: shore ? 1 : sp.reduce((m, b) => Math.max(m, shareOf(s, b)), 0) };
 }
 
 /** Whether a pylon would reach a footprint at (x, y). */
@@ -48,7 +49,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
   const pylonFact = (): Fact => (powered(s, type, x, y) ? { label: 'Power', value: 'in reach', sub: 'of a pylon' } : { label: 'Power', value: 'none', sub: 'no pylon in reach', tone: 'bad' });
   switch (type) {
     case 'field': {
-      const crop = CROPS[set.crop ?? 'wheat'], soil = soilUnder(s, x, y, 3), { sprinklers, water } = waterAt(s, x, y);
+      const crop = CROPS[set.crop ?? 'wheat'], soil = soilUnder(s, x, y, 3), { sprinklers, shore, water } = waterAt(s, x, y);
       // A hive within reach of a flowering crop adds a good to every harvest.
       const pollinated = crop.flowers && s.buildings.some((b) => b.type === 'hive' && hiveReaches({ type: 'field', x, y }, b.x, b.y));
       const perMin = (crop.yield + (pollinated ? POLLINATION_BONUS : 0)) * 60 * paceOf(water, soil).pace / crop.grow;
@@ -57,7 +58,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
       for (;;) { t += crop.grow / paceOf(water, later).pace; if (t > SOIL_AHEAD) break; later = Math.max(0, Math.min(100, later + crop.soil)); }
       facts.push({ label: crop.name, value: `+${fmt1(perMin)}`, sub: 'a minute' });
       facts.push({ label: 'Soil', value: String(Math.round(soil)), then: String(Math.round(later)), sub: `in ${SOIL_AHEAD / 60} min if harvests are carried off` });
-      facts.push(sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round(waterPace(water) * 100)}%` }
+      facts.push(shore ? { label: 'Water', value: 'beside water', sub: 'grows at 100%' } : sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round(waterPace(water) * 100)}%` }
         : { label: 'Water', value: 'none', sub: `grows at ${Math.round(waterPace(0) * 100)}%`, tone: 'bad' });
       break;
     }
