@@ -4,6 +4,7 @@ import { TERRAIN, type Land, type MapData } from '../game/map.ts';
 import { corners, sideOf, SIDES } from '../game/relief.ts';
 import { cliff, grassOf, groundY, landRelief, LEVEL_HEIGHT, tileTop, Tris } from './ground.ts';
 import { box, hash } from './kit.ts';
+import { CANOPY, treeAt, wetAt, type TreeKind } from './trees.ts';
 
 // The static world of a commission, built once from its map: river and pond basins with water over them, and the country
 // around the map so the camera never looks past the world. The river runs with its current, over falls where it drops a
@@ -25,7 +26,8 @@ const RIM = 10;
 /** How far past the edge trees and rocks are models; further out the woods are rounded crowns over the hills. */
 const NEAR = 12;
 
-const CANOPY = [0x4a7a38, 0x52823c, 0x5a8a40, 0x447034], FLOOR = 0x4a6a34;
+/** The distant apron's woods, a few greens; nearer woods take their trees' own colours (trees.ts). */
+const WOODS = [0x4a7a38, 0x52823c, 0x5a8a40, 0x447034], FLOOR = 0x4a6a34;
 const ROAD = [0xa48c62, 0x9a845c], RUT = 0x8a7652;
 const BED = 0x8a7a5a, BANK = 0x6a5a3e, LEDGE = 0x8a8478, BOULDER = 0x8c8a80, DECK = 0x8a6440;
 
@@ -54,7 +56,7 @@ const country = (g: THREE.BufferGeometry, m: THREE.Matrix4) => {
   return c;
 };
 
-export function buildWorld(map: MapData, land: Land, models: { trees: THREE.BufferGeometry[]; rocks: THREE.BufferGeometry[] }): World {
+export function buildWorld(map: MapData, land: Land, models: { trees: Record<TreeKind, THREE.BufferGeometry[]>; rocks: THREE.BufferGeometry[] }): World {
   const s = new GeometryCollector(), d = new GeometryCollector(true), fluids = new FluidCollector();
   const { width: w, height: h } = map, M = land.margin, seed = land.seed;
   const onMap = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h;
@@ -76,6 +78,9 @@ export function buildWorld(map: MapData, land: Land, models: { trees: THREE.Buff
   const lr = landRelief(land);
   const gy = (qx: number, qz: number) => groundY(lr, qx + M, qz + M);
   const levelAt = (x: number, y: number) => lr.level[li(x, y)];
+  /** Whether water is near a tile, and the tree model there (its species by where it stands, trees.ts). */
+  const wet = (x: number, y: number) => wetAt((wx, wy) => onLand(wx, wy) && kind(wx, wy) === TERRAIN.water, x, y);
+  const treeModel = (x: number, y: number) => { const t = treeAt(x, y, levelAt(x, y), wet(x, y)); return models.trees[t.species][t.variant]; };
 
   // Woods far out are cheap crowns over a dark forest floor rather than tree models.
   const canopy = (x: number, y: number) => onLand(x, y) && !onMap(x, y) && land.terrain[li(x, y)] === TERRAIN.tree && !track(x, y)
@@ -103,7 +108,8 @@ export function buildWorld(map: MapData, land: Land, models: { trees: THREE.Buff
     // A crown for each 2 × 2 block of far woods.
     if ((canopy(x, y) || hidden(x, y)) && (x & 1) === 0 && (y & 1) === 0) {
       const r = 1.1 + 0.4 * n, ox = hash(x + 3, y) - 0.5, oz = hash(x, y + 3) - 0.5;
-      s.add(STONE, place(x + 1 + ox, gy(x + 1 + ox, y + 1 + oz) + 0.5 + r * 0.6, y + 1 + oz, 0, n * 6, 0, r, r * 0.85, r), lin(dim(CANOPY[Math.floor(hash(y, x + 1) * 4)])), FLAG.NORMAL, true);
+      const crown = CANOPY[treeAt(x, y, levelAt(x, y), wet(x, y)).species];
+      s.add(STONE, place(x + 1 + ox, gy(x + 1 + ox, y + 1 + oz) + 0.5 + r * 0.6, y + 1 + oz, 0, n * 6, 0, r, r * 0.85, r), lin(dim(crown)), FLAG.NORMAL, true);
     }
     if (water(x, y)) {
       waterTile(x, y);
@@ -117,7 +123,7 @@ export function buildWorld(map: MapData, land: Land, models: { trees: THREE.Buff
     countryTile(x, y, dim(grassOf(land.fertility[li(x, y)], x, y, lr.ramp[li(x, y)] !== -1)));
     if (far > NEAR) continue;
     // Trees and rocks the same as on the map (view.ts), only dulled.
-    if (t === TERRAIN.tree) s.pushPrepared(country(models.trees[n < 0.55 ? 0 : n < 0.85 ? 1 : 2], place(cx, gy(cx, cz) - 0.02, cz, 0, n * Math.PI * 2, 0, 0.62 + 0.25 * n)));
+    if (t === TERRAIN.tree) s.pushPrepared(country(treeModel(x, y), place(cx, gy(cx, cz) - 0.02, cz, 0, n * Math.PI * 2, 0, 0.62 + 0.25 * n)));
     else if (t === TERRAIN.rock) s.pushPrepared(country(models.rocks[Math.floor(n * 3) % 3], place(cx, gy(cx, cz), cz, 0, n * Math.PI * 2, 0)));
   }
   s.pushPrepared(ground.geometry());
@@ -134,7 +140,7 @@ export function buildWorld(map: MapData, land: Land, models: { trees: THREE.Buff
   for (let j = 0; j + 1 < ys.length; j++) for (let i = 0; i + 1 < xs.length; i++) {
     const x = xs[i], y = ys[j], xe = xs[i + 1], ye = ys[j + 1];
     if (x >= -M && xe <= w + M && y >= -M && ye <= h + M) continue;   // the country itself
-    apron.quad([x, apronY(x, y), y], [x, apronY(x, ye), ye], [xe, apronY(xe, ye), ye], [xe, apronY(xe, y), y], dim(dim(CANOPY[Math.floor(hash(x, y) * 4)])), [0, 1, 0]);
+    apron.quad([x, apronY(x, y), y], [x, apronY(x, ye), ye], [xe, apronY(xe, ye), ye], [xe, apronY(xe, y), y], dim(dim(WOODS[Math.floor(hash(x, y) * 4)])), [0, 1, 0]);
   }
   s.pushPrepared(apron.geometry());
 

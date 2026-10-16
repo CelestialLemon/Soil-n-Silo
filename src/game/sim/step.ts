@@ -7,6 +7,7 @@ import { noteRun } from '../runlog.ts';
 import { isMachine, removeBuilding, tileIndex, touchLayout, type Building, type GameState } from '../state.ts';
 import { sunAt, windAt } from './clock.ts';
 import { soilHealth } from './soil.ts';
+import { wattsOf } from './layout.ts';
 import { feedNeighbours } from './goods.ts';
 import { shareOf, balancePower, countCharging, runGarages } from './energy.ts';
 import { runMachine, runField, runHive } from './buildings.ts';
@@ -40,11 +41,12 @@ export function tick(s: GameState) {
       case 'silo': b.status = 'idle'; break;
       case 'field': runField(s, b, dt); break;
       case 'hive': runHive(s, b, dt); break;
-      case 'sprinkler': case 'battery': case 'pylon': case 'solar': case 'turbine': {
+      case 'sprinkler': case 'battery': case 'pylon': case 'solar': case 'turbine': case 'wheel': {
         const net = BUILDINGS[b.type].grid === 'link' ? null : networkOf(s, b);
         if (BUILDINGS[b.type].grid !== 'link' && !net) { b.status = 'nolink'; break; }
         if (b.type === 'sprinkler') { const sh = shareOf(s, b); b.status = sh <= 0 ? 'power' : sh < 1 ? 'lowpower' : 'ok'; }
         else if (b.type === 'solar') b.status = sun > 0 ? 'ok' : 'idle';
+        else if (b.type === 'wheel') b.status = wattsOf(s, b) > 0 ? 'ok' : 'idle';
         else b.status = 'ok';
         break;
       }

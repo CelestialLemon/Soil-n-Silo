@@ -134,6 +134,7 @@ export function describeStatus(s: GameState, b: Building): string {
     case 'flowers': return `No flowering fields within ${HIVE.reach} tiles`;
     case 'idle':
       if (b.type === 'solar') return 'Night: no sun';
+      if (b.type === 'wheel') return 'Still: no river current beside it';
       if (b.type === 'silo') {
         const n = Object.values(b.store).reduce((a, k) => a + k, 0);
         return n ? `Holds ${n} goods` : 'Empty';

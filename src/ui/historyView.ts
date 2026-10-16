@@ -4,6 +4,7 @@ import { tonight } from '../game/forecast.ts';
 import { historyOf, summarize, waitsOf, type Summary, type Wait } from '../game/history.ts';
 import { networkOf, usedBy } from '../game/power.ts';
 import { sprinklersOf } from '../game/sim/layout.ts';
+import { MAX_LEVEL } from '../game/relief.ts';
 import { recipeOf } from '../game/sim/goods.ts';
 import { routesAt, trucksOn } from '../game/sim/trucks.ts';
 import { isMachine, type Building, type GameState, type Status } from '../game/state.ts';
@@ -36,7 +37,8 @@ const RAW_COL: Record<Status, string> = {
 type Reading = { max: number; fmt: (v: number) => string; what: string };
 function readingOf(b: Building): Reading | null {
   if (b.type === 'solar') return { max: POWER.solar, fmt: watts, what: 'Power made' };
-  if (b.type === 'turbine') return { max: POWER.turbine, fmt: watts, what: 'Power made' };
+  if (b.type === 'turbine') return { max: POWER.turbine * (1 + POWER.windPerLevel * MAX_LEVEL), fmt: watts, what: 'Power made' };
+  if (b.type === 'wheel') return { max: POWER.wheel * 1.2 * POWER.wheelFall, fmt: watts, what: 'Power made' };
   if (b.type === 'battery') return { max: POWER.battery.capacity, fmt: (v) => pct(v / POWER.battery.capacity), what: 'Charge' };
   return null;
 }

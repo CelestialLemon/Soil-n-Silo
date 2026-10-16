@@ -7,9 +7,10 @@ import { isOpen } from '../game/roads.ts';
 import { windAt } from '../game/sim/clock.ts';
 import { HANDOFF_SECONDS, recentHandoffs } from '../game/sim/goods.ts';
 import { cutOff } from '../game/sim/trucks.ts';
-import { buildingById, isMachine, layoutOf, reliefOf, sizeOf, type Building, type Dir, type FieldBuilding, type GameState, type Status, type Truck } from '../game/state.ts';
+import { buildingById, inMap, isMachine, layoutOf, reliefOf, sizeOf, terrainAt, type Building, type Dir, type FieldBuilding, type GameState, type Status, type Truck } from '../game/state.ts';
 import { groundY, lay, standY } from './ground.ts';
 import { hash } from './kit.ts';
+import { treeAt, wetAt } from './trees.ts';
 import type { Models } from './models.ts';
 import { soilBand, TRUCK_BED } from './shapes.ts';
 
@@ -239,7 +240,8 @@ export class WorldView {
       if (cur && cur.key === want) return;
       if (cur) { this.terrainTiles.delete(cur.obj); this.drop(cur.obj); this.terrain[i] = null; }
       if (!want) return;
-      const g = t === TERRAIN.tree ? this.m.trees[n < 0.55 ? 0 : n < 0.85 ? 1 : 2] : this.m.rocks[Math.floor(n * 3) % 3];
+      const tree = t === TERRAIN.tree ? treeAt(x, y, s.map.level[i], wetAt((wx, wy) => inMap(s, wx, wy) && terrainAt(s, wx, wy) === TERRAIN.water, x, y)) : null;
+      const g = tree ? this.m.trees[tree.species][tree.variant] : this.m.rocks[Math.floor(n * 3) % 3];
       const obj = this.add(g, null);
       obj.setTransform(v.set(x + 0.5, groundY(s.map, x + 0.5, y + 0.5), y + 0.5), e.set(0, n * Math.PI * 2, 0), t === TERRAIN.tree ? 0.62 + 0.25 * n : 1);
       this.terrainTiles.set(obj, { x, y });

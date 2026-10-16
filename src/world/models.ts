@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { collectGltf, GeometryCollector, loadGltf, motion, movingPartMotion, namedMeshRule, type Motion } from 'pixel3d-renderer';
 import { BUILDING_IDS, CROP_IDS, CROPS, ITEM_IDS, type BuildingId, type CropId, type ItemId } from '../game/data.ts';
+import { TREE_SPECIES, type TreeKind } from './trees.ts';
 import { bar, cropStandIn, frame, GHOST_WIRE, itemShape, NET_COLOURS, rock, ROUTE_COLOURS, SOIL_BANDS, soilTile, standIn, tileFill, truck } from './shapes.ts';
 
 // The game's object geometries, in local space (origin on the ground at the footprint centre, front facing +z). They come
@@ -25,7 +26,8 @@ export interface Models {
   crops: Record<CropId, Geo[]>;
   items: Record<ItemId, Geo>;
   soil: Geo[];
-  trees: Geo[];
+  /** Each tree species' three variants (a bush's three are the one model). */
+  trees: Record<TreeKind, Geo[]>;
   rocks: Geo[];
   truck: Geo;
   frames: { ok: Geo[]; bad: Geo[] };
@@ -38,7 +40,7 @@ const FILES: Partial<Record<BuildingId, string>> = {
   silo: 'silo', garage: 'garage',
   sprinkler: 'sprinkler', coop: 'coop_solar', hive: 'beehive', composter: 'composter',
   mill: 'mill_electric', press: 'oil_press', spinner: 'spinner', loom: 'loom', bakery: 'bakery', cannery: 'cannery',
-  solar: 'solar_panel', turbine: 'wind_turbine', battery: 'battery', digester: 'digester', pylon: 'pylon',
+  solar: 'solar_panel', turbine: 'wind_turbine', wheel: 'water_wheel', battery: 'battery', digester: 'digester', pylon: 'pylon',
   sapling: 'sapling', depot: 'depot',
 };
 
@@ -108,7 +110,7 @@ function lookFrom(root: THREE.Group, seed: number): { idle: Geo; running: Geo } 
 const heightOf = (g: Geo) => { g.computeBoundingBox(); return g.boundingBox ? g.boundingBox.max.y : 1; };
 
 export async function loadModels(): Promise<Models> {
-  const names = new Set<string>(['wheat', 'tomato', 'beans', 'sunflower', 'flax', 'rock', 'truck', 'tree_oak', 'tree_pine', 'bush']);
+  const names = new Set<string>(['wheat', 'tomato', 'beans', 'sunflower', 'flax', 'rock', 'truck', 'bush', ...TREE_SPECIES.map((t) => `tree_${t}`)]);
   for (const n of Object.values(FILES)) names.add(n);
   const roots = new Map<string, THREE.Group | null>(await Promise.all([...names].map(async (n) => [n, await load(n)] as const)));
   const missing = [...roots].filter(([, r]) => !r).map(([n]) => n);
@@ -152,10 +154,13 @@ export async function loadModels(): Promise<Models> {
     const r = rockRoot?.getObjectByName(`variant_${v}`);
     return r ? collect(r).build() : rock(v);
   });
-  const trees = (['tree_oak', 'tree_pine', 'bush'] as const).map((n) => {
-    const r = roots.get(n);
-    return r ? collect(r).build() : standIn('sapling').idle;
-  });
+  const trees = {} as Record<TreeKind, Geo[]>;
+  for (const t of TREE_SPECIES) {
+    const root = roots.get(`tree_${t}`);
+    trees[t] = [0, 1, 2].map((v) => { const r = root?.getObjectByName(`variant_${v}`); return r ? collect(r).build() : standIn('sapling').idle; });
+  }
+  const bushRoot = roots.get('bush'), bush = bushRoot ? collect(bushRoot).build() : standIn('sapling').idle;
+  trees.bush = [bush, bush, bush];
   const truckRoot = roots.get('truck');
 
   const items = {} as Record<ItemId, Geo>;
@@ -173,9 +178,10 @@ export async function loadModels(): Promise<Models> {
 
 /** Every geometry, for choosing the palette together with the scene's. */
 export function allGeometries(m: Models): Geo[] {
-  return [
+  // Each once: some are shared (a bush's variants, stand-ins), and the palette recolours every geometry it is given.
+  return [...new Set([
     ...Object.values(m.buildings).flatMap((l) => [l.idle, l.running]), ...m.turbine, ...m.battery, ...m.wires, ...m.routes, ...Object.values(m.crops).flat(), ...Object.values(m.items),
-    ...m.soil, ...m.trees, ...m.rocks, m.truck, ...m.frames.ok, ...m.frames.bad,
+    ...m.soil, ...Object.values(m.trees).flat(), ...m.rocks, m.truck, ...m.frames.ok, ...m.frames.bad,
     m.fill,
-  ];
+  ])];
 }
