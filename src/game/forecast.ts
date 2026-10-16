@@ -3,7 +3,6 @@ import { networks, POWERED, pylonsInLink } from './power.ts';
 import { HOUR_SECONDS } from './powerlog.ts';
 import { erosionAt, guardedAt, hiveReaches, paceOf, pylonReaches, sprinklerWaters, sprinklerWatts, touchesWater, waterLevelNear, waterPace, wheelSite, windExposure } from './rules.ts';
 import { earthPrice, groundworkFor } from './build.ts';
-import { FLAT } from './relief.ts';
 import { hourAt, sunAt, windAt } from './sim/clock.ts';
 import { linksAt } from './sim/goods.ts';
 import { makes, shareOf } from './sim/energy.ts';

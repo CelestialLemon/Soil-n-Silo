@@ -10,7 +10,7 @@ import { touchesWater, wheelSite } from '../src/game/rules.ts';
 import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
 import { exposureOf, wattsOf } from '../src/game/sim/layout.ts';
 import { advance } from '../src/game/sim/step.ts';
-import { newGame, touchRelief, type BuildingOf, type Dir, type GameState, type MachineBuilding } from '../src/game/state.ts';
+import { newGame, touchRelief, type BuildingOf, type Dir, type GameState } from '../src/game/state.ts';
 
 // Height: levels and ramps (relief.ts), and what they do to trucks, placing, next door, water, wind and soil.
 
@@ -136,7 +136,7 @@ test('next door: goods go down a cliff but not up it', () => {
     put(s, 'pylon', 14, 12);
     const bat = put(s, 'battery', 15, 12);
     bat.charge = POWER.battery.capacity;
-    const f = put(s, 'field', 10, 7), m = put(s, 'mill', 11, 10) as MachineBuilding;
+    const f = put(s, 'field', 10, 7), m = put(s, 'mill', 11, 10);
     f.stored = 6;
     advance(s, 1);
     assert.equal((m.inputs.wheat ?? 0) > 0 || (m.progress ?? null) !== null, fieldUp, `field ${fieldUp ? 'above' : 'below'} the mill`);
