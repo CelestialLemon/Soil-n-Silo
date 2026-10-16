@@ -12,7 +12,7 @@ import type { SettingsStore } from './settings.ts';
 import { gauge, goalIcon, goalNow, medalTimes, statusPill } from './widgets.ts';
 
 // The pause screen: resume, where the commission stands, the level select and restart (restart asks twice and says what it
-// loses); the way to the settings; what the markers mean (a shape and a word); and the keys, the one place they are printed.
+// loses); the way to the settings; and what the markers mean (a shape and a word).
 
 export interface PauseHost {
   state(): GameState;
@@ -103,6 +103,5 @@ export function pauseScreen(host: PauseHost) {
         h('div', { class: 'two' }, h('button', { class: 'cd-btn is-lg', onclick: () => host.menu() }, 'Level select'), restart),
         h('button', { class: 'cd-btn is-lg settings-btn', onclick: () => host.openSettings() }, icon('menu', 18), 'Settings'),
         note),
-      markersCard()),
-    keysCard());
+      markersCard()));
 }

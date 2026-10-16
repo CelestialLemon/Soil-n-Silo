@@ -66,7 +66,7 @@ It is build-only and point-and-click. There is no character and no manual farmin
 | W | The Power panel: the last day by source, each network, tonight's charge, where the watts go |
 | G | The guide: a page for every building (what it does, how to use it, what it takes and gives, its numbers), the goods, and the basics |
 | V (or the view bar) | Views: soil fertility, sprinkler water, power reach, roads, bee range |
-| Esc | Close what is open; with nothing open, the pause screen (the way to the settings, what the markers mean, every key as set) |
+| Esc | Close what is open; with nothing open, the pause screen (the way to the settings, what the markers mean) |
 
 The build preview is see-through, green where it fits and red where it doesn't.
 
@@ -124,7 +124,7 @@ screen kept nearly empty so the valley is what you look at. Its principles:
 - **Projections are optional.** "Done by" and the gold and silver pace ticks appear only with the *Show pace* setting.
 - **Keep the HUD quiet; heavy data gets its own place.** Power has its own panel; production chains and lead times live in the
   guide; building rates live in the inspector, never as labels over the map.
-- **No hotkeys printed in the HUD.** Every key still works; keys are listed on the pause screen and appear in tooltips. Every key but Esc can be changed in Settings (Keys tab, from the level select or the pause screen); the panel's Game tab holds the other settings.
+- **No hotkeys printed in the HUD.** Every key still works; keys are listed in the guide and appear in tooltips. Every key but Esc can be changed in Settings (Keys tab, from the level select or the pause screen); the panel's Game tab holds the other settings.
 - **Status never by colour alone.** Each status pairs its tint with a shape and a word.
 - **Two clocks, and watts not energy.** A game day lasts four minutes of play. Anything measured over minutes of play (history,
   rates a minute, idle shares, the commission clock, the results' milestones) is in play time ("5 min ago", `13:00` of play);
