@@ -5,7 +5,7 @@ import { groundOf, wheelSite } from './rules.ts';
 import { err, ok, type Result } from './result.ts';
 import { accessTiles, nearestOpen } from './roads.ts';
 import { givesGoods, takesGoods } from './sim/goods.ts';
-import { touchRoutes } from './runtime.ts';
+import { runtimeOf, touchRoutes } from './runtime.ts';
 import { isStop, redirect, routeChanged } from './sim/trucks.ts';
 import {
   addBuilding, applySetting, buildingAt, inMap, makeBuilding, removeBuilding, terrainAt, tileIndex, touchLayout, touchRelief, type Building, type BuildingOf, type Dir, type GameState, type MachineBuilding, type Setting,
@@ -42,15 +42,25 @@ export interface Groundwork { level: number | null; steps: number }
 const stepsTo = (s: GameState, i: number, x: number, y: number, level: number) =>
   Math.abs(centreLevel(s.map, x, y) - level) + (s.map.ramp[i] === FLAT ? 0 : 0.5);
 
-/** Runs `f` with a square of the map levelled flat at `level`, then puts the ground back (to ask what a building would find there). */
-export function levelledFor<T>(s: GameState, x: number, y: number, n: number, level: number, f: () => T): T {
+/**
+ * Runs `f` with a square of the map levelled flat at `level`, then puts the ground back (to ask what a building would find
+ * there); with `level` null, on the ground as it lies. What is worked out from the ground (the roads, the per-layout facts)
+ * is worked out afresh for `f` and dropped after, so nothing found on the levelled ground outlives it.
+ */
+export function levelledFor<T>(s: GameState, x: number, y: number, n: number, level: number | null, f: () => T): T {
+  if (level === null) return f();
   const saved: [number, number, number][] = [];
   for (let ty = y; ty < y + n; ty++) for (let tx = x; tx < x + n; tx++) {
     const i = tileIndex(s, tx, ty);
     saved.push([i, s.map.level[i], s.map.ramp[i]]);
     s.map.level[i] = level; s.map.ramp[i] = FLAT;
   }
-  try { return f(); } finally { for (const [i, l, r] of saved) { s.map.level[i] = l; s.map.ramp[i] = r; } }
+  const rt = runtimeOf(s), { roads, derived } = rt;
+  rt.roads = undefined; rt.derived = undefined;
+  try { return f(); } finally {
+    for (const [i, l, r] of saved) { s.map.level[i] = l; s.map.ramp[i] = r; }
+    rt.roads = roads; rt.derived = derived;
+  }
 }
 
 /**
@@ -280,7 +290,7 @@ export function buyTruck(s: GameState, g: Building): Action<{ truck: Truck }> {
   s.credits -= truckPrice(s);
   const t: Truck = {
     id: s.nextId++, garage: g.id, route: null, stop: 0, phase: 'parked', x: at % w + 0.5, y: Math.floor(at / w) + 0.5, heading: 0,
-    path: [], target: g.id, energy: TRUCK.battery, cargo: [], idle: 0, budget: 0, arrived: 0, charged: false,
+    path: [], from: at, target: g.id, energy: TRUCK.battery, cargo: [], idle: 0, budget: 0, arrived: 0, charged: false,
   };
   s.trucks.push(t);
   touchRoutes(s);

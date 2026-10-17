@@ -254,8 +254,10 @@ async function play(initial: GameState) {
         : hoverTile ? [{ ...anchor(hoverTile, n), rot: tool.rot }] : [];
       let credits = state.credits;
       // One building in hand shows who it would trade with next door.
-      if (spots.length === 1 && canPlace(state, type, spots[0].x, spots[0].y).ok) {
-        const l = linksAt(state, type, spots[0].x, spots[0].y, tool);
+      const one = spots.length === 1 ? canPlace(state, type, spots[0].x, spots[0].y) : null;
+      if (one?.ok) {
+        // On the ground as it will be once levelled.
+        const { x, y } = spots[0], set = tool, l = levelledFor(state, x, y, n, one.value.level, () => linksAt(state, type, x, y, set));
         ghostLinks = [...new Set([...l.from, ...l.to].map((x) => x.b.id))];
       }
       for (const sp of spots) {
@@ -268,7 +270,7 @@ async function play(initial: GameState) {
         const base = level !== null ? level * LEVEL_HEIGHT : standY(state.map, n, sp.x, sp.y);
         ghost(`frame ${okHere} ${n}`, (okHere ? models.frames.ok : models.frames.bad)[n - 1], cx, base + 0.03, cz);
         // A water wheel turns to face the river, as it will once placed.
-        const site = BUILDINGS[type].onBank && fit.ok ? (level === null ? wheelSite(state, sp.x, sp.y) : levelledFor(state, sp.x, sp.y, n, level, () => wheelSite(state, sp.x, sp.y))) : null;
+        const site = BUILDINGS[type].onBank && fit.ok ? levelledFor(state, sp.x, sp.y, n, level, () => wheelSite(state, sp.x, sp.y)) : null;
         ghost(`b ${type}`, models.buildings[type].idle, cx, base + 0.04, cz, YAW[site ? site.rot : sp.rot], okHere);
         // A field shows its crop, grown enough to tell apart.
         if (type === 'field' && tool.crop) {

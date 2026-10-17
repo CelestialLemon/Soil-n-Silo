@@ -169,7 +169,8 @@ const CHUNK = 8;
  * later match, and adds the chunks to the renderer.
  */
 export class MapGround {
-  private readonly objs: (PixelObject | null)[] = [];
+  /** Each chunk's object and its geometry (the renderer leaves disposing that to us), null where it has no land. */
+  private readonly chunks: ({ o: PixelObject; g: THREE.BufferGeometry } | null)[] = [];
   private readonly level: number[];
   private readonly ramp: number[];
   private readonly swatch: THREE.BufferGeometry;
@@ -201,7 +202,7 @@ export class MapGround {
     this.r = r;
     const c = this.swatch.getAttribute('aColor');
     COLOURS.forEach((hex, i) => this.painted.set(hex, [c.getX(i * 3), c.getY(i * 3), c.getZ(i * 3)]));
-    for (const g of this.first) this.objs.push(g ? this.add(g) : null);
+    for (const g of this.first) this.chunks.push(g ? { o: this.add(g), g } : null);
     this.first.length = 0;
   }
 
@@ -229,9 +230,10 @@ export class MapGround {
       }
     }
     for (const k of dirty) {
-      this.objs[k]?.remove();
+      const old = this.chunks[k];
+      if (old) { old.o.remove(); old.g.dispose(); }
       const g = this.build(k % cols, Math.floor(k / cols));
-      this.objs[k] = g ? this.add(g) : null;
+      this.chunks[k] = g ? { o: this.add(g), g } : null;
     }
   }
 

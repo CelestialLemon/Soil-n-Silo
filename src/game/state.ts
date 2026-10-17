@@ -46,6 +46,8 @@ export interface Truck {
   x: number; y: number; heading: number;
   /** Tiles still to drive through, by index, the last one beside its target. */
   path: number[];
+  /** The tile it set off from towards the first tile of its path: a step's climb is from that tile's centre. */
+  from: number;
   target: number | null;
   energy: number;
   cargo: ItemId[];

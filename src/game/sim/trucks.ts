@@ -29,7 +29,7 @@ export const trucksOn = (s: GameState, r: Route) => s.trucks.filter((t) => t.rou
 function driveTo(s: GameState, t: Truck, b: Building): boolean {
   const p = pathTo(s, b, tileOf(s, t));
   if (!p) return false;
-  t.path = p; t.target = b.id; t.phase = 'drive'; t.idle = 0;
+  t.path = p; t.from = tileOf(s, t); t.target = b.id; t.phase = 'drive'; t.idle = 0;
   return true;
 }
 
@@ -75,7 +75,7 @@ function setOff(s: GameState, t: Truck, from: number) {
   if (!t.charged && back < Infinity && distanceTo(s, g, here) < Infinity
     && t.energy < (leg + back) * TRUCK.joulesPerTile) { goHome(s, t); return; }
   t.charged = false;
-  t.path = path; t.target = b.id; t.phase = 'drive'; t.idle = 0;
+  t.path = path; t.from = here; t.target = b.id; t.phase = 'drive'; t.idle = 0;
 }
 
 /**
@@ -150,14 +150,14 @@ function drive(s: GameState, t: Truck, dt: number) {
     const i = t.path[0], tx = i % w + 0.5, ty = Math.floor(i / w) + 0.5;
     const dx = tx - t.x, dy = ty - t.y, d = Math.hypot(dx, dy);
     if (d > 1e-6) t.heading = Math.atan2(dx, dy);
-    // The step's effort a tile, as the roads count it: from the tile behind the target (it moves a tile at a time) to it.
-    const tx0 = i % w, ty0 = Math.floor(i / w), bx = tx0 - Math.sign(Math.round(dx * 1e6)), by = ty0 - Math.sign(Math.round(dy * 1e6));
+    // The step's effort a tile, as the roads count it: from the tile it set off from to the target.
+    const tx0 = i % w, ty0 = Math.floor(i / w), bx = t.from % w, by = Math.floor(t.from / w);
     const len = Math.hypot(tx0 - bx, ty0 - by) || 1, rise = Math.max(0, centreLevel(s.map, tx0, ty0) - centreLevel(s.map, bx, by));
     const effort = d * (1 + TRUCK.climb * rise / len), step = Math.min(effort, left), k = effort > 1e-9 ? step / effort : 1;
     t.x += dx * k; t.y += dy * k;
     left -= step;
     t.energy = Math.max(0, t.energy - step * TRUCK.joulesPerTile);
-    if (k >= 1 - 1e-9) { t.x = tx; t.y = ty; t.path.shift(); }
+    if (k >= 1 - 1e-9) { t.x = tx; t.y = ty; t.from = i; t.path.shift(); }
   }
   if (t.path.length) return;
   const b = t.target !== null ? buildingById(s, t.target) : null;

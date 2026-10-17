@@ -1,4 +1,4 @@
-import { BUILDINGS, CROPS, DAY_SECONDS, HIVE, ITEMS, POLLINATION_BONUS, POWER, recipesFor, SAPLING_SECONDS, TREE_HEALTH, type BuildingId } from './data.ts';
+import { BUILDINGS, CROPS, DAY_SECONDS, FIELD, HIVE, ITEMS, POLLINATION_BONUS, POWER, recipesFor, SAPLING_SECONDS, TREE_HEALTH, type BuildingId } from './data.ts';
 import { networks, POWERED, pylonsInLink } from './power.ts';
 import { HOUR_SECONDS } from './powerlog.ts';
 import { erosionAt, guardedAt, hiveReaches, paceOf, pylonReaches, sprinklerWaters, sprinklerWatts, touchesWater, waterLevelNear, waterPace, wheelSite, windExposure } from './rules.ts';
@@ -72,7 +72,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         facts.push({ label: 'Soil', value: String(Math.round(soil)), then: String(Math.round(later)), sub: `in ${SOIL_AHEAD / 60} min if harvests are carried off` });
         facts.push(shore ? { label: 'Water', value: 'beside water', sub: 'grows at 100%' } : sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round(waterPace(water) * 100)}%` }
           : { label: 'Water', value: 'none', sub: `grows at ${Math.round(waterPace(0) * 100)}%`, tone: 'bad' });
-        if (slopes) facts.push({ label: 'Slope', value: `${slopes} of 9 tiles`, sub: guarded ? 'wear faster; trees or beans beside it help' : 'wear twice as fast', tone: guarded ? undefined : 'bad' });
+        if (slopes) facts.push({ label: 'Slope', value: `${slopes} of 9 tiles`, sub: guarded ? `wear ${1 + FIELD.erosionGuarded}× as fast; trees or beans beside it help` : `wear ${1 + FIELD.erosion}× as fast`, tone: guarded ? undefined : 'bad' });
         break;
       }
       case 'sprinkler': {
@@ -136,7 +136,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
     }
   return { facts, next: describeLinks(linksAt(s, type, x, y, set)) };
   };
-  return gw.ok && gw.value.level !== null ? levelledFor(s, x, y, def.size, gw.value.level, there) : there();
+  return levelledFor(s, x, y, def.size, gw.ok ? gw.value.level : null, there);
 }
 
 // ---- Tonight ----

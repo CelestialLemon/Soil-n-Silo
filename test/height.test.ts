@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addStop, buyTruck, canPlace, canReshape, earthPrice, newRoute, place, priceOf, reshape, setCrop, setTruckRoute } from '../src/game/build.ts';
+import { addStop, buyTruck, canPlace, canReshape, earthPrice, levelledFor, newRoute, place, priceOf, reshape, setCrop, setTruckRoute } from '../src/game/build.ts';
 import { CROPS, EARTH, FIELD, POWER, TRUCK, type BuildingId } from '../src/game/data.ts';
 import { placement } from '../src/game/forecast.ts';
 import { TERRAIN } from '../src/game/map.ts';
@@ -11,6 +11,7 @@ import { touchesWater, wheelSite } from '../src/game/rules.ts';
 import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
 import { exposureOf, handsTo, isGuarded, wattsOf } from '../src/game/sim/layout.ts';
 import { advance } from '../src/game/sim/step.ts';
+import { redirect } from '../src/game/sim/trucks.ts';
 import { newGame, touchRelief, type BuildingOf, type Dir, type GameState } from '../src/game/state.ts';
 
 // Height: levels and ramps (relief.ts), and what they do to trucks, placing, next door, water, wind and soil.
@@ -223,6 +224,26 @@ test('a truck spends on each step exactly what the roads counted for it', () => 
   assert.ok(Math.abs(before - tr.energy - effort * TRUCK.joulesPerTile) < 1e-6, `used ${before - tr.energy}, the roads say ${effort * TRUCK.joulesPerTile}`);
 });
 
+test('a truck sent off again part way across a tile climbs from where it set off', () => {
+  const s = flat();
+  // The one way up is the ramp at (5, 15); the ramp at (6, 16) beside the truck goes elsewhere.
+  ground(s, 0, 0, 29, 15, 1); ground(s, 5, 15, 5, 15, 0, 0); ground(s, 6, 16, 6, 16, 0, 1);
+  const g = put(s, 'garage', 3, 22), silo = put(s, 'silo', 4, 3);
+  const t = buyTruck(s, g);
+  assert.ok(t.ok);
+  const r = newRoute(s);
+  assert.ok(addStop(s, r, silo).ok);
+  const tr = t.value.truck;
+  setTruckRoute(s, tr, r);
+  Object.assign(tr, { x: 5.55, y: 16.5, phase: 'drive' });
+  redirect(s, tr);
+  // Within a hundredth of a tile: it starts a little off the tile's centre. Missing the climb would be a whole tile out.
+  const effort = distanceTo(s, silo, 16 * 30 + 5), before = tr.energy;
+  for (let k = 0; k < 600 && tr.phase !== 'queue' && tr.phase !== 'dock'; k++) advance(s, 0.1);
+  assert.ok(tr.phase === 'queue' || tr.phase === 'dock', tr.phase);
+  assert.ok(Math.abs(before - tr.energy - effort * TRUCK.joulesPerTile) < 0.01 * TRUCK.joulesPerTile, `used ${before - tr.energy}, the roads say ${effort * TRUCK.joulesPerTile}`);
+});
+
 test('a field next door that starts or stops growing beans guards a field against erosion at once', () => {
   const s = flat();
   const f = put(s, 'field', 4, 4), n = put(s, 'field', 7, 4);
@@ -243,6 +264,20 @@ test('the placement card judges water on the ground as it will be once levelled'
   assert.equal(card.facts.find((f) => f.label === 'Water')?.value, 'beside water');
   const f = put(s, 'field', 4, 5);
   assert.ok(touchesWater(s, f.x, f.y));
+});
+
+test('what is worked out on ground levelled for a question holds only while it is levelled', () => {
+  const s = flat();
+  const turbine = put(s, 'turbine', 10, 10);
+  ground(s, 12, 10, 12, 10, 2);
+  const sheltered = exposureOf(s, turbine);
+  assert.ok(sheltered < 1, 'the higher ground shelters it');
+  // Warm and cold: inside, it is worked out for the levelled ground; after, for the ground as it is again.
+  assert.equal(levelledFor(s, 12, 10, 2, 0, () => exposureOf(s, turbine)), 1);
+  assert.equal(exposureOf(s, turbine), sheltered);
+  touchRelief(s);
+  assert.equal(levelledFor(s, 12, 10, 2, 0, () => exposureOf(s, turbine)), 1);
+  assert.equal(exposureOf(s, turbine), sheltered);
 });
 
 test('a save whose ramp rises above the highest level is refused', () => {
