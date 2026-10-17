@@ -217,8 +217,11 @@ export function generateLand(sc: Scenario, margin: number): Land {
   return land;
 }
 
-/** The eight-neighbour distance transform is the greatest integer surface below the samples whose tiles are gentle.
- * Two sweeps suffice for the Chebyshev metric; adjacent cells can then share all four corners without seams or ramps. */
+/**
+ * Lowers a grid of corner heights (`w` × `h` points, row by row) to the highest surface below it whose every tile is gentle:
+ * no point more than a level above any of its eight neighbours. Two sweeps of the distance transform suffice, and tiles
+ * reading their four corners from the grid then join their neighbours everywhere.
+ */
 function gentleVertices(v: Int16Array, w: number, h: number) {
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = y * w + x;
@@ -248,6 +251,7 @@ function basinSites(sc: Scenario, r: () => number, home: (x: number, y: number) 
   }
   return basins;
 }
+
 /** A tile-scale river; the same functions continue the channel into the drawing margin. */
 interface River {
   vertical: boolean;
@@ -293,7 +297,6 @@ function riverCourse(sc: Scenario, depot: Land['depot'], r: () => number): River
   return { vertical, sign, span, falls, course, bounds, level };
 }
 
-
 /** The drivable graph uses map indices, so country tiles cannot affect reachability or scatter quotas. */
 function landGraph(sc: Scenario, land: Land): number[][] {
   const { width: w, height: h } = sc, { margin: M, width: lw } = land;
@@ -322,8 +325,11 @@ function regionCount(graph: number[][]): number {
   return count;
 }
 
-/** A mesa is a second gentle sheet, cut along a broad irregular oval. Its western flank rises gradually onto the top;
- * the other flank is a three-level rim. Reject a candidate if that rim severs an existing truck region. */
+/**
+ * Mesas at high relief: a second gentle sheet of ground over a broad, irregular oval, rising gradually onto its top on one
+ * flank and standing CLIFF_HEIGHT above the land round it on the other. A site whose rim would cut off land trucks reach
+ * is passed over.
+ */
 function addMesas(sc: Scenario, land: Land, r: () => number) {
   const { width: w, height: h, seed, terrain: t } = sc, { margin: M, width: lw, corner, depot } = land;
   if (t.relief < MESA_RELIEF) return;
@@ -365,8 +371,10 @@ function addMesas(sc: Scenario, land: Land, r: () => number) {
   }
 }
 
-/** Cover may consume a leaf of the grass network, but never an articulation tile. This keeps truck routes open while
- * letting the habitat quantiles place dense, natural stands instead of reserving a visible grid of grass corridors. */
+/**
+ * Whether a tree or rock may take a map tile (by map index): only where the grass trucks drive on stays connected round it,
+ * so the woods and rock grow in dense stands without ever closing a route, and need no visible grid of corridors.
+ */
 function coverGuard(sc: Scenario, land: Land): (i: number) => boolean {
   const graph = landGraph(sc, land), { width: w } = sc, { margin: M, width: lw, terrain } = land;
   const landIndex = (i: number) => (Math.floor(i / w) + M) * lw + i % w + M;
@@ -441,7 +449,7 @@ function fertilise(sc: Scenario, land: Land, country: Country) {
   }
   const correction = count ? t.soil - total / count : 0;
   for (let i = 0; i < size; i++) {
-    const l = country.height[i], n = counts[l * 4];
+    const l = country.height[i], n = l * 4 < counts.length ? counts[l * 4] : 0;
     const offset = n ? t.soil + (heightTotal / count - l) * t.relief * SOIL_HEIGHT - totals[l * 4] / n : correction;
     fertility[i] = Math.round(Math.max(5, Math.min(95, fertility[i] + offset)));
   }

@@ -60,7 +60,7 @@ export const CAMPAIGN: Scenario[] = [
     goals: [{ kind: 'deliver', item: 'wheat', n: 120 }, { kind: 'deliver', item: 'flour', n: 80 }],
     tips: [
       'Place a few fields (F) on rich soil (V shows it). Leave open ground between buildings: trucks drive on it.',
-      'The valley is terraced. Trucks go up and down by ramps, never over a cliff, and the Height view shows the levels. A machine needs flat ground: placed on uneven ground, it levels it for a price.',
+      'The land rolls. Trucks drive up gentle slopes, never over a cliff, and the Height view shows how high the ground stands. A machine needs flat ground: placed on uneven ground, it levels it for a price.',
       'Build a garage (T) and buy a truck. Give it a new route and click the fields, then the depot: it takes their wheat to the depot.',
       'Build a mill right beside a couple of fields: it takes their wheat without a truck. A second route takes its flour and bran to the depot.',
       `The mill and the garage (trucks charge there) need power: a solar panel (S) and a pylon (P) within ${POWER.pylon.reach} tiles of both. A battery keeps them going at night.`,
@@ -85,7 +85,7 @@ export const CAMPAIGN: Scenario[] = [
     terrain: { ...LOAM, water: 'ponds', rock: 0.12, forest: 0.06, relief: 0.9 }, weather: { ...CALM, sun: 0.6, wind: 0.75, gust: 0.25 },
     tags: ['Weak sun', 'Strong wind', 'Rocky', 'Hilly'],
     goals: [{ kind: 'deliver', item: 'oil', n: 90 }, { kind: 'deliver', item: 'bread', n: 80 }],
-    tips: ['Up on the ridge a turbine catches more wind. Every level a truck climbs costs it time and battery, so keep the busy routes low.'],
+    tips: ['Up on the hills a turbine catches more wind. Every level a truck climbs costs it time and battery, so keep the busy routes low.'],
   },
   {
     id: 'c4', name: 'Linen for the Looms', seed: 4404, width: 50, height: 40, credits: 1300, par: 50 * MIN,
