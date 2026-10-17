@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObject } from 'pixel3d-renderer';
 import {
-  addStop, canPlace, canReshape, digArea, levelledFor, type Dig, clearPrice, earthPrice, EARTHWORK_NAMES, EARTHWORKS, messageOf, place, placePrice, priceOf, remember, remove, removeAt, reshape, settingFor, settingName, stepSetting, type Setting,
+  addStop, canPlace, canReshape, type Groundwork, digArea, levelledFor, type Dig, clearPrice, earthPrice, EARTHWORK_NAMES, EARTHWORKS, messageOf, place, placePrice, priceOf, remember, remove, removeAt, reshape, settingFor, settingName, stepSetting, type Setting,
 } from './game/build.ts';
 import { BUILDINGS, POWER, type BuildingId } from './game/data.ts';
 import { generateLand, TERRAIN } from './game/map.ts';
@@ -17,7 +17,7 @@ import { medalFor } from './game/sim/stats.ts';
 import { cargoText, describeStatus, describeTruck } from './game/sim/describe.ts';
 import { advance } from './game/sim/step.ts';
 import {
-  buildingAt, buildingById, inMap, newGame, routeById, sizeOf, terrainAt, tileIndex, truckById, type Dir, type GameState, type Route,
+  buildingAt, buildingById, inMap, layoutOf, newGame, reliefOf, routeById, sizeOf, terrainAt, tileIndex, truckById, type Dir, type GameState, type Route,
 } from './game/state.ts';
 import { Input } from './input.ts';
 import { Hud, type Tool } from './ui/hud.ts';
@@ -40,7 +40,12 @@ import './ui/clearday/tokens.css';
 import './ui/clearday/clearday.css';
 import './ui/clearday/icons.css';
 import './ui/game.css';
-import { must } from './game/result.ts';
+import { must, type Result } from './game/result.ts';
+
+/** A spot a building in hand would go: its tile and the way it faces. */
+interface Spot { x: number; y: number; rot: Dir }
+/** A spot as placing it would find it (`placed` in the game). */
+interface Placed { spot: Spot; fit: Result<Groundwork>; price: number; built: boolean; site: { rot: Dir } | null }
 
 // The game: owns the loop, the state, input and the camera, and each frame tells the renderer where everything is. It is
 // build-only: the player places, configures and removes buildings and the simulation runs on its own. The camera
@@ -261,7 +266,6 @@ async function play(initial: GameState) {
       const type = tool.type, n = BUILDINGS[type].size;
       const spots = input.press?.mode === 'paint' && input.press.from && input.press.to ? plan(type, input.press.from, input.press.to, tool.rot)
         : hoverTile ? [{ ...anchor(hoverTile, n), rot: tool.rot }] : [];
-      let credits = state.credits;
       // One building in hand shows who it would trade with next door.
       const one = spots.length === 1 ? canPlace(state, type, spots[0].x, spots[0].y) : null;
       if (one?.ok) {
@@ -269,17 +273,13 @@ async function play(initial: GameState) {
         const { x, y } = spots[0], set = tool, l = levelledFor(state, one.value.move, () => linksAt(state, type, x, y, set));
         ghostLinks = [...new Set([...l.from, ...l.to].map((x) => x.b.id))];
       }
-      for (const sp of spots) {
-        const fit = canPlace(state, type, sp.x, sp.y), price = fit.ok ? placePrice(state, type, fit.value) : priceOf(state, type);
-        const okHere = fit.ok && credits >= price;
-        if (okHere) credits -= price;
+      for (const { spot: sp, fit, built: okHere, site } of placed(type, spots)) {
         if (type === 'pylon') pylonGhosts.push({ x: sp.x, y: sp.y, ok: okHere });
         // It stands where the ground would be levelled to, or on the ground as it lies.
         const cx = sp.x + n / 2, cz = sp.y + n / 2, level = fit.ok ? fit.value.level : null;
         const base = level !== null ? level * LEVEL_HEIGHT : standY(state.map, n, sp.x, sp.y);
         ghost(`frame ${okHere} ${n}`, (okHere ? models.frames.ok : models.frames.bad)[n - 1], cx, base + 0.03, cz);
         // A water wheel turns to face the river, as it will once placed.
-        const site = BUILDINGS[type].onBank && fit.ok ? levelledFor(state, fit.value.move, () => wheelSite(state, sp.x, sp.y)) : null;
         ghost(`b ${type}`, models.buildings[type].idle, cx, base + 0.04, cz, YAW[site ? site.rot : sp.rot], okHere);
         // A field shows its crop, grown enough to tell apart.
         if (type === 'field' && tool.crop) {
@@ -338,6 +338,27 @@ async function play(initial: GameState) {
       marks = [patch(hoverTile.x, hoverTile.y, 15, [])];
     }
   }
+  /**
+   * What placing `spots` would do, one after another as a drag places them (applyDrag): each one's fit and price on the
+   * ground and credits the ones before it leave, whether it would be built, and where a water wheel would face. Worked out on
+   * a copy of the game, as levelling for one can slope the ground under the next; remembered until the spots or the game
+   * change.
+   */
+  function placed(type: BuildingId, spots: Spot[]): Placed[] {
+    const key = `${type} ${tool.kind === 'build' ? `${tool.crop ?? ''} ${tool.recipe ?? ''}` : ''} ${JSON.stringify(spots)} ${reliefOf(state)} ${layoutOf(state)} ${state.credits}`;
+    if (placedFor?.key === key) return placedFor.out;
+    const read = spots.length > 1 ? deserialize(serialize(state)) : null;
+    const s = read?.ok ? read.value : state, set = tool.kind === 'build' ? tool : {};
+    const out = spots.map((spot) => {
+      const fit = canPlace(s, type, spot.x, spot.y), price = fit.ok ? placePrice(s, type, fit.value) : priceOf(s, type);
+      const site = BUILDINGS[type].onBank && fit.ok ? levelledFor(s, fit.value.move, () => wheelSite(s, spot.x, spot.y)) : null;
+      const built = fit.ok && s.credits >= price && (s === state || place(s, type, spot.x, spot.y, spot.rot, set).ok);
+      return { spot, fit, price, built, site };
+    });
+    placedFor = { key, out };
+    return out;
+  }
+  let placedFor: { key: string; out: Placed[] } | null = null;
   /** The cursor's marks on a tile: a frame along its sides `edges` (CursorPatch), and dots at its corners `dots`. */
   const patch = (x: number, y: number, edges: number, dots: number[]): CursorPatch => ({ x, y, heights: corners(state.map, x, y).map((c) => c * LEVEL_HEIGHT), edges, dots });
   /** The dig the earthworks in hand would do: over the drag's points, or at the point pointed at. */
@@ -573,9 +594,9 @@ async function play(initial: GameState) {
   function placeSpot() {
     if (tool.kind !== 'build' || !hoverTile || hud.modal) return null;
     const type = tool.type, n = BUILDINGS[type].size, a = anchor(hoverTile, n);
-    const spots = input.press?.mode === 'paint' && input.press.from && input.press.to ? plan(type, input.press.from, input.press.to, tool.rot) : [a];
+    const spots = input.press?.mode === 'paint' && input.press.from && input.press.to ? plan(type, input.press.from, input.press.to, tool.rot) : [{ ...a, rot: tool.rot }];
     // What they cost with the earthworks each needs, as placing them would charge.
-    const price = spots.reduce((sum, sp) => { const fit = canPlace(state, type, sp.x, sp.y); return sum + (fit.ok ? placePrice(state, type, fit.value) : priceOf(state, type)); }, 0);
+    const price = placed(type, spots).reduce((sum, p) => sum + p.price, 0);
     return { type, x: a.x, y: a.y, count: spots.length, price, crop: tool.crop, recipe: tool.recipe, ...camera.toScreen(a.x + n / 2, standY(state.map, n, a.x, a.y) + models.buildings[type].height + 0.3, a.y + n / 2) };
   }
 
