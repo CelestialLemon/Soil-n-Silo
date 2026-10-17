@@ -12,7 +12,8 @@ import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
 import { exposureOf, handsTo, isGuarded, wattsOf } from '../src/game/sim/layout.ts';
 import { advance } from '../src/game/sim/step.ts';
 import { redirect } from '../src/game/sim/trucks.ts';
-import { newGame, touchRelief, type BuildingOf, type Dir, type GameState } from '../src/game/state.ts';
+import { served } from '../src/game/sim/describe.ts';
+import { buildingAt, newGame, touchRelief, type BuildingOf, type Dir, type GameState } from '../src/game/state.ts';
 
 // Height: levels and ramps (relief.ts), and what they do to trucks, placing, next door, water, wind and soil.
 
@@ -286,6 +287,8 @@ test('a save whose ramp rises above the highest level is refused', () => {
   assert.equal(deserialize(serialize(s)).ok, false);
   s.map.ramp[0] = FLAT;
   assert.equal(deserialize(serialize(s)).ok, true);
+  s.scenario.terrain.relief = -1;
+  assert.equal(deserialize(serialize(s)).ok, false, 'relief is a share, 0 to 1');
 });
 
 test('trucks load only where the ground joins the building, and goods go next door up a joined ramp but not up a cliff', () => {
@@ -300,6 +303,15 @@ test('trucks load only where the ground joins the building, and goods go next do
   assert.ok(handsTo(s, f, m), 'up a joined ramp');
   const g = put(s, 'field', 24, 10), n = put(s, 'mill', 24, 8);
   assert.ok(!handsTo(s, g, n) && handsTo(s, n, g), 'down a cliff only');
+});
+
+test('a field below a mill up a cliff is not served by it: its wheat needs a truck', () => {
+  const s = flat();
+  ground(s, 10, 0, 29, 29, 1);
+  const f = put(s, 'field', 7, 4);
+  put(s, 'mill', 10, 4);
+  assert.ok(!handsTo(s, f, buildingAt(s, 10, 4)!));
+  assert.ok(!served(s, f, 'wheat', 'pick'));
 });
 
 test('a truck at a garage between two pieces of ground leaves by the side that reaches its stop', () => {

@@ -58,7 +58,7 @@ function scenario(sc: Scenario): boolean {
     && arr(sc.tags) && sc.tags.every(str) && (sc.tips === undefined || (arr(sc.tips) && sc.tips.every(str)))
     && arr(sc.goals) && sc.goals.every(goal)
     && !!w && [w.sunrise, w.sunset, w.sun, w.wind, w.gust].every(num)
-    && !!t && [t.soil, t.soilSpread, t.forest, t.rock, t.relief].every(num) && ['river', 'ponds', 'lake', 'none'].includes(t.water);
+    && !!t && [t.soil, t.soilSpread, t.forest, t.rock, t.relief].every(num) && t.relief >= 0 && t.relief <= 1 && ['river', 'ponds', 'lake', 'none'].includes(t.water);
 }
 
 function complete(s: GameState): boolean {

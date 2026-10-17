@@ -1,6 +1,6 @@
 import { BUILDINGS, FIELD, HIVE, POWER, type BuildingId } from './data.ts';
 import { TERRAIN } from './map.ts';
-import { centreLevel, FLAT, SIDES, sideOf } from './relief.ts';
+import { centreLevel, FLAT, MAX_LEVEL, SIDES, sideOf } from './relief.ts';
 import { buildingAt, centre, inMap, reachTo, terrainAt, tileIndex, type Building, type Dir, type Footprint, type GameState } from './state.ts';
 
 // The rules about where things stand, shared by the simulation and the placement forecast: what reaches what, what shelters
@@ -73,6 +73,11 @@ export function sprinklerWatts(s: GameState, x: number, y: number) {
   const here = s.map.level[tileIndex(s, x, y)], water = waterLevelNear(s, x, y);
   return water === null ? POWER.sprinklerFar + POWER.sprinklerLift * here : POWER.sprinklerNearWater + POWER.sprinklerLift * Math.max(0, here - water);
 }
+
+/** The most a sprinkler can want: far from water, up at the highest level. */
+export const SPRINKLER_MOST = POWER.sprinklerFar + POWER.sprinklerLift * MAX_LEVEL;
+/** The most a turbine can make: unsheltered at the highest level, in full wind. */
+export const TURBINE_MOST = POWER.turbine * (1 + POWER.windPerLevel * MAX_LEVEL);
 
 /** Whether a hive at (x, y) reaches a field (to gather from it and pollinate it). */
 export const hiveReaches = (field: Footprint, x: number, y: number) => reachTo(field, x, y) <= HIVE.reach;

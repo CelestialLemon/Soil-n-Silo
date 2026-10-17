@@ -403,7 +403,7 @@ playing trucks: every level needed many trucks, and routes doing a field-to-mill
   much later.)
 - Grow times are with water at fertility 60. Growth speed is ×0.4 without water (a field sharing an edge with a river or pond
   at its own ground level counts as watered), and from ×0.4 (fertility 0) to ×1.4 (fertility 100) by average fertility.
-- On ramp tiles, each harvest loses twice the crop's normal soil loss, or 1.5 times if guarded by a tree or sapling within
+- On ramp tiles, each harvest loses 1.5 times the crop's normal soil loss, or 1.25 times if guarded by a tree or sapling within
   one tile of the field (diagonals count), or a bean field sharing an edge. Flat tiles lose the normal amount. Beans restore
   soil without this multiplier. Eroded soil is lost; it does not yet wash onto the ground below.
 - A pollinated field (a hive within 4 tiles) yields 1 more of a flowering crop.

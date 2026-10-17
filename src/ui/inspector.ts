@@ -11,7 +11,7 @@ import { hasHistory, heldSince, historyOf, summarize } from '../game/history.ts'
 import { networkOf, networks, usedBy } from '../game/power.ts';
 import { sunAt, windAt } from '../game/sim/clock.ts';
 import { exposureOf, isPollinated } from '../game/sim/layout.ts';
-import { wheelSite } from '../game/rules.ts';
+import { SPRINKLER_MOST, TURBINE_MOST, wheelSite } from '../game/rules.ts';
 import { fieldFertility } from '../game/sim/soil.ts';
 import { givesGoods, linksOf, recipeOf, takesGoods, wantsCompost } from '../game/sim/goods.ts';
 import { makes, shareOf, wants } from '../game/sim/energy.ts';
@@ -54,11 +54,11 @@ export interface InspectorHost {
 /** What a building does with power, in a few words, for its header. */
 export function powerWords(type: Building['type']) {
   const d = BUILDINGS[type];
-  if (type === 'sprinkler') return `${POWER.sprinklerNearWater}–${POWER.sprinklerFar} W`;
+  if (type === 'sprinkler') return `${POWER.sprinklerNearWater}–${SPRINKLER_MOST} W`;
   if (type === 'garage') return `${TRUCK.chargeRate} W a truck charging`;
   if (d.power) return `${d.power} W while working`;
   if (type === 'solar') return `up to ${POWER.solar} W`;
-  if (type === 'turbine') return `up to ${POWER.turbine} W`;
+  if (type === 'turbine') return `up to ${Math.round(TURBINE_MOST)} W`;
   if (type === 'wheel') return `about ${POWER.wheel} W, steady`;
   if (type === 'digester') return `${POWER.digester} W while burning`;
   if (type === 'battery') return `holds ${POWER.battery.capacity} J`;
