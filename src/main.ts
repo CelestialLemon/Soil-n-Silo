@@ -44,8 +44,11 @@ import { must, type Result } from './game/result.ts';
 
 /** A spot a building in hand would go: its tile and the way it faces. */
 interface Spot { x: number; y: number; rot: Dir }
-/** A spot as placing it would find it (`placed` in the game). */
-interface Placed { spot: Spot; fit: Result<Groundwork>; price: number; built: boolean; site: { rot: Dir } | null }
+/**
+ * A spot as placing it would find it (`placed` in the game): its fit, price, whether it would be built, where a water wheel
+ * would face, the height it stands at (m) and that of each of its tiles, row by row.
+ */
+interface Placed { spot: Spot; fit: Result<Groundwork>; price: number; built: boolean; site: { rot: Dir } | null; stand: number; tiles: number[] }
 
 // The game: owns the loop, the state, input and the camera, and each frame tells the renderer where everything is. It is
 // build-only: the player places, configures and removes buildings and the simulation runs on its own. The camera
@@ -273,20 +276,17 @@ async function play(initial: GameState) {
         const { x, y } = spots[0], set = tool, l = levelledFor(state, one.value.move, () => linksAt(state, type, x, y, set));
         ghostLinks = [...new Set([...l.from, ...l.to].map((x) => x.b.id))];
       }
-      for (const { spot: sp, fit, built: okHere, site } of placed(type, spots)) {
+      for (const { spot: sp, built: okHere, site, stand: base, tiles } of placed(type, spots)) {
         if (type === 'pylon') pylonGhosts.push({ x: sp.x, y: sp.y, ok: okHere });
         // It stands where the ground would be levelled to, or on the ground as it lies.
-        const cx = sp.x + n / 2, cz = sp.y + n / 2, level = fit.ok ? fit.value.level : null;
-        const base = level !== null ? level * LEVEL_HEIGHT : standY(state.map, n, sp.x, sp.y);
+        const cx = sp.x + n / 2, cz = sp.y + n / 2;
         ghost(`frame ${okHere} ${n}`, (okHere ? models.frames.ok : models.frames.bad)[n - 1], cx, base + 0.03, cz);
         // A water wheel turns to face the river, as it will once placed.
         ghost(`b ${type}`, models.buildings[type].idle, cx, base + 0.04, cz, YAW[site ? site.rot : sp.rot], okHere);
         // A field shows its crop, grown enough to tell apart.
         if (type === 'field' && tool.crop) {
-          const stages = models.crops[tool.crop], g = stages[Math.min(2, stages.length - 1)];
-          for (let ty = sp.y; ty < sp.y + n; ty++) for (let tx = sp.x; tx < sp.x + n; tx++) {
-            ghost(`crop ${tool.crop}`, g, tx + 0.5, (level !== null ? level * LEVEL_HEIGHT : groundAt(tx + 0.5, ty + 0.5)) + 0.06, ty + 0.5, 0, okHere);
-          }
+          const crop = tool.crop, stages = models.crops[crop], g = stages[Math.min(2, stages.length - 1)];
+          tiles.forEach((h, i) => ghost(`crop ${crop}`, g, sp.x + (i % n) + 0.5, h + 0.06, sp.y + Math.floor(i / n) + 0.5, 0, okHere));
         }
       }
       // The roads, the sprinklers' water and the bees' range; anything that makes, stores or uses power shows the power
@@ -349,11 +349,20 @@ async function play(initial: GameState) {
     if (placedFor?.key === key) return placedFor.out;
     const read = spots.length > 1 ? deserialize(serialize(state)) : null;
     const s = read?.ok ? read.value : state, set = tool.kind === 'build' ? tool : {};
+    const n = BUILDINGS[type].size;
     const out = spots.map((spot) => {
-      const fit = canPlace(s, type, spot.x, spot.y), price = fit.ok ? placePrice(s, type, fit.value) : priceOf(s, type);
+      // Judged as if credits were no object, so a spot the credits left can't pay for is still priced with its earthworks.
+      const credits = s.credits;
+      s.credits = Infinity;
+      let fit: Result<Groundwork>;
+      try { fit = canPlace(s, type, spot.x, spot.y); } finally { s.credits = credits; }
+      const price = fit.ok ? placePrice(s, type, fit.value) : priceOf(s, type), level = fit.ok ? fit.value.level : null;
       const site = BUILDINGS[type].onBank && fit.ok ? levelledFor(s, fit.value.move, () => wheelSite(s, spot.x, spot.y)) : null;
+      // Where it and its tiles would stand: on the level its ground is levelled to, or on the ground as the ones before leave it.
+      const stand = level !== null ? level * LEVEL_HEIGHT : standY(s.map, n, spot.x, spot.y);
+      const tiles = Array.from({ length: n * n }, (_, i) => (level !== null ? level * LEVEL_HEIGHT : groundY(s.map, spot.x + (i % n) + 0.5, spot.y + Math.floor(i / n) + 0.5)));
       const built = fit.ok && s.credits >= price && (s === state || place(s, type, spot.x, spot.y, spot.rot, set).ok);
-      return { spot, fit, price, built, site };
+      return { spot, fit, price, built, site, stand, tiles };
     });
     placedFor = { key, out };
     return out;
