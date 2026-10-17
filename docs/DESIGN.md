@@ -217,9 +217,7 @@ reach above the turbine tile's highest corner, not per tile.
 
 The ground is shaded smooth across joined tiles. Steep banks are worn turf. Cliff faces have strata every 2 levels under
 a turf lip, earth low down and stone from level 8. The map's ground is drawn as objects in 8 × 8 chunks so earthworks can
-redraw the changed ground and its neighbours (`src/world/ground.ts`); the country beyond is static. A renderer bug currently
-adds false outline dashes and contact darkening on smooth ground; the fix is being made upstream
-([pixel3d-renderer #38](https://github.com/CelestialLemon/pixel3d-renderer/issues/38)).
+redraw the changed ground and its neighbours (`src/world/ground.ts`); the country beyond is static.
 
 ## Goods
 

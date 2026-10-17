@@ -17,7 +17,7 @@
     "sim": "node tools/sim.ts"
   },
   "dependencies": {
-    "pixel3d-renderer": "github:CelestialLemon/pixel3d-renderer#v0.3.0",
+    "pixel3d-renderer": "github:CelestialLemon/pixel3d-renderer#v0.3.2",
     "three": "^0.180.0"
   },
   "devDependencies": {
@@ -31,7 +31,7 @@
     "vite": "^8.3.3"
   },
   "allowScripts": {
-    "github:CelestialLemon/pixel3d-renderer#9a14f83bd6613548aff1442f1c9de2c39f8ef1e0": true
+    "github:CelestialLemon/pixel3d-renderer#b2f3721ba3dca0aa5739977fc17228181326957a": true
   },
   "overrides": {
     "typescript-eslint": {

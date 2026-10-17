@@ -16,7 +16,7 @@ Items are roughly in priority order within each section.
 
 ## Renderer
 
-Pinned: **v0.3.0** (`package.json`). The game owns the loop, state, input, UI, audio and save; the renderer draws, and answers
+Pinned: **v0.3.2** (`package.json`). The game owns the loop, state, input, UI, audio and save; the renderer draws, and answers
 "what is under the pointer" (`pick`).
 
 | Need | Status | Notes |
@@ -24,7 +24,7 @@ Pinned: **v0.3.0** (`package.json`). The game owns the loop, state, input, UI, a
 | Build preview ("ghost") drawn see-through and tinted green/red | Yes ([#30](https://github.com/CelestialLemon/pixel3d-renderer/issues/30), v0.3.0) | `opacity` and `tint`; `pick` sees through it. |
 | Overlays (fertility, power reach, water, bees) without a geometry per colour | Yes (#30) | One tile geometry, tinted per tile. |
 | Many goods moving (now in trucks) without redrawing the object shadow map | Yes ([#31](https://github.com/CelestialLemon/pixel3d-renderer/issues/31)) | Goods, markers, ghosts and overlays have `castShadow = false`. |
-| Smooth ground without false outline dashes or contact darkening | Pending ([#38](https://github.com/CelestialLemon/pixel3d-renderer/issues/38)) | Fix being made upstream; joined ground is shaded smooth in the game. |
+| Smooth ground without false outline dashes or contact darkening | Yes ([#38](https://github.com/CelestialLemon/pixel3d-renderer/issues/38), v0.3.2) | Joined ground is shaded smooth in the game. |
 | Turbine rotors turning with the wind | Worked around | Three rotor speeds, swapped by wind strength (spin speed is baked into the geometry). |
 | Lamps on placed objects (pylon lanterns at night) | No | Lamps are scene data; emissive parts glow after dusk instead. |
 | Buildings fading when they hide the tile under the pointer | Not needed yet | Picking a tile uses the ground plane, so tall buildings don't block placement. |
@@ -139,8 +139,7 @@ earthworks". Ground is shaded smooth across joined tiles, steep banks are worn t
 2 levels under a turf lip, stone from level 8. The map's ground is drawn as objects in chunks so earthworks can redraw it.
 Six tree species and bushes vary by place, with willows by water and pines up high (`trees.ts`, models in `ASSET_BRIEF.md`).
 `test/height.test.ts` covers the height rules; the bot deliberately keeps its flat map to test the economy. Saves are version
-7; older ones are refused. False outline dashes and contact darkening on smooth ground are a renderer bug
-([#38](https://github.com/CelestialLemon/pixel3d-renderer/issues/38)); a fix is being made upstream.
+7; older ones are refused.
 
 ## Next
 
