@@ -277,6 +277,7 @@ test('rock and forest favour high ground and cliffs across the scenario spread',
   const rock: number[] = [], forest: number[] = [];
   for (const sc of SCENARIOS) {
     const m = map(sc), scores: number[][] = [[], [], []], top = Math.max(...m.level);
+    if (top === 0) continue; // a flat map has no ridges or cliffs to favour
     for (let i = 0; i < m.level.length; i++) {
       const x = i % m.width, y = Math.floor(i / m.width);
       if (!landTile(m, i) || m.ramp[i] !== FLAT || Math.max(Math.abs(x - m.depot.x - 1), Math.abs(y - m.depot.y - 1)) <= 8) continue;
