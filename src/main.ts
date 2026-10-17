@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObject } from 'pixel3d-renderer';
 import {
-  addStop, canPlace, canReshape, levelledFor, clearPrice, earthPrice, EARTHWORK_NAMES, EARTHWORKS, messageOf, place, placePrice, priceOf, remember, remove, removeAt, reshape, settingFor, settingName, stepSetting, type Setting,
+  addStop, canPlace, canReshape, digArea, levelledFor, type Dig, clearPrice, earthPrice, EARTHWORK_NAMES, EARTHWORKS, messageOf, place, placePrice, priceOf, remember, remove, removeAt, reshape, settingFor, settingName, stepSetting, type Setting,
 } from './game/build.ts';
 import { BUILDINGS, POWER, type BuildingId } from './game/data.ts';
 import { generateLand, TERRAIN } from './game/map.ts';
-import { corners, MAX_LEVEL } from './game/relief.ts';
+import { aroundPoint, corners, MAX_LEVEL } from './game/relief.ts';
 import { wheelSite } from './game/rules.ts';
 import { deserialize, readProgress, recordResult, saveKey, serialize } from './game/save.ts';
 import { scenarioById } from './game/scenarios.ts';
@@ -17,7 +17,7 @@ import { medalFor } from './game/sim/stats.ts';
 import { cargoText, describeStatus, describeTruck } from './game/sim/describe.ts';
 import { advance } from './game/sim/step.ts';
 import {
-  buildingAt, buildingById, newGame, routeById, sizeOf, terrainAt, truckById, type Dir, type GameState, type Route,
+  buildingAt, buildingById, inMap, newGame, routeById, sizeOf, terrainAt, truckById, type Dir, type GameState, type Route,
 } from './game/state.ts';
 import { Input } from './input.ts';
 import { Hud, type Tool } from './ui/hud.ts';
@@ -32,7 +32,7 @@ import { allGeometries, loadModels } from './world/models.ts';
 import { PowerView } from './world/powerView.ts';
 import { RouteView } from './world/routeView.ts';
 import { Camera } from './world/camera.ts';
-import { TileCursor } from './world/tileCursor.ts';
+import { TileCursor, type CursorPatch } from './world/tileCursor.ts';
 import { buildWorld, COUNTRY } from './world/terrain.ts';
 import { groundY, LEVEL_HEIGHT, MapGround, standY } from './world/ground.ts';
 import { WorldView, type Overlay } from './world/view.ts';
@@ -116,9 +116,9 @@ async function play(initial: GameState) {
   const view = new WorldView(renderer, models);
   const power = new PowerView(renderer, models);
   const routeView = new RouteView(renderer, models);
-  const cursor = new TileCursor(canvas, 0xfff0c0);
-  /** The tile the cursor frames, if any. */
-  let cursorTile: { x: number; y: number } | null = null;
+  const cursor = new TileCursor(canvas, 0xfff0c0), refused = new TileCursor(canvas, 0xe8705a);
+  /** The marks on the ground the cursor draws: the tile pointed at, the points earthworks would move; those refused in red. */
+  let marks: CursorPatch[] = [], refusedMarks: CursorPatch[] = [];
   loading.remove();
 
   let repick = 2;
@@ -184,15 +184,24 @@ async function play(initial: GameState) {
   }
 
   let hoverTile: { x: number; y: number } | null = null;
+  /** The point of the ground (a corner of the hovered tile) nearest the pointer, for earthworks. */
+  let hoverPoint: { x: number; y: number } | null = null;
+
+  /** The tile under a page point, and the corner of it (as a grid point) nearest the point of the ground there. */
+  function pointAt(x: number, y: number, tile = camera.tileAt(x, y, pickGround, TOP)) {
+    const g = camera.pointOnGround(x, y, pickGround, TOP);
+    return tile && g ? { x: tile.x + (g.x - tile.x >= 0.5 ? 1 : 0), y: tile.y + (g.y - tile.y >= 0.5 ? 1 : 0) } : null;
+  }
   /** The building or truck under the pointer (their ids are one count). */
   let hoverBuilding: number | null = null;
   let highlighted: PixelObject[] = [];
 
   function pickHover() {
-    if (!input.pointer) { hoverTile = null; hoverBuilding = null; return; }
+    if (!input.pointer) { hoverTile = null; hoverPoint = null; hoverBuilding = null; return; }
     const p = renderer.pick(input.pointer.x, input.pointer.y);
     // A tree or rock under the input.pointer is its own tile (the ground point behind it is another tile).
     hoverTile = view.terrainOf(p?.object ?? null) ?? camera.tileAt(input.pointer.x, input.pointer.y, pickGround, TOP);
+    hoverPoint = pointAt(input.pointer.x, input.pointer.y, hoverTile);
     hoverBuilding = view.buildingOf(p?.object ?? null);
     if (hoverBuilding === null && hoverTile) hoverBuilding = buildingAt(state, hoverTile.x, hoverTile.y)?.id ?? null;
   }
@@ -245,7 +254,7 @@ async function play(initial: GameState) {
 
   function showGhosts() {
     clearGhosts();
-    cursorTile = null;
+    marks = []; refusedMarks = [];
     ghostLinks = [];
     if (!hoverTile && !input.press) return;
     if (tool.kind === 'build') {
@@ -257,7 +266,7 @@ async function play(initial: GameState) {
       const one = spots.length === 1 ? canPlace(state, type, spots[0].x, spots[0].y) : null;
       if (one?.ok) {
         // On the ground as it will be once levelled.
-        const { x, y } = spots[0], set = tool, l = levelledFor(state, x, y, n, one.value.level, () => linksAt(state, type, x, y, set));
+        const { x, y } = spots[0], set = tool, l = levelledFor(state, one.value.move, () => linksAt(state, type, x, y, set));
         ghostLinks = [...new Set([...l.from, ...l.to].map((x) => x.b.id))];
       }
       for (const sp of spots) {
@@ -270,7 +279,7 @@ async function play(initial: GameState) {
         const base = level !== null ? level * LEVEL_HEIGHT : standY(state.map, n, sp.x, sp.y);
         ghost(`frame ${okHere} ${n}`, (okHere ? models.frames.ok : models.frames.bad)[n - 1], cx, base + 0.03, cz);
         // A water wheel turns to face the river, as it will once placed.
-        const site = BUILDINGS[type].onBank && fit.ok ? levelledFor(state, sp.x, sp.y, n, level, () => wheelSite(state, sp.x, sp.y)) : null;
+        const site = BUILDINGS[type].onBank && fit.ok ? levelledFor(state, fit.value.move, () => wheelSite(state, sp.x, sp.y)) : null;
         ghost(`b ${type}`, models.buildings[type].idle, cx, base + 0.04, cz, YAW[site ? site.rot : sp.rot], okHere);
         // A field shows its crop, grown enough to tell apart.
         if (type === 'field' && tool.crop) {
@@ -290,20 +299,31 @@ async function play(initial: GameState) {
       const x0 = Math.min(input.press.from.x, input.press.to.x), x1 = Math.max(input.press.from.x, input.press.to.x), y0 = Math.min(input.press.from.y, input.press.to.y), y1 = Math.max(input.press.from.y, input.press.to.y);
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) ghost('frame false 1', models.frames.bad[0], x + 0.5, groundAt(x + 0.5, y + 0.5) + 0.03, y + 0.5);
     } else if (tool.kind === 'earth') {
-      // Every tile the drag covers (or the one pointed at), framed green where the earthwork can be done, else red.
-      const from = input.press?.mode === 'paint' && input.press.from && input.press.to ? input.press.from : hoverTile, to = input.press?.mode === 'paint' && input.press.to ? input.press.to : hoverTile;
-      if (from && to) {
-        let credits = state.credits;
-        for (let y = Math.min(from.y, to.y); y <= Math.max(from.y, to.y); y++) for (let x = Math.min(from.x, to.x); x <= Math.max(from.x, to.x); x++) {
-          const ok = canReshape(state, x, y, tool.how, tool.rot).ok && credits >= earthPrice(state, 1);
-          if (ok) credits -= earthPrice(state, 1);
-          ghost(`frame ${ok} 1`, (ok ? models.frames.ok : models.frames.bad)[0], x + 0.5, groundAt(x + 0.5, y + 0.5) + 0.03, y + 0.5);
+      // The points the dig would move (or the tiles it would level), marked in the cursor's colour if it can be done, else red.
+      const d = digHere();
+      if (d) {
+        const ok = canReshape(state, d).ok, area = digArea(d), into = ok ? marks : refusedMarks;
+        if (d.how === 'level') {
+          for (let y = area.y; y < area.y + area.h; y++) for (let x = area.x; x < area.x + area.w; x++) if (inMap(state, x, y)) into.push(patch(x, y, true, []));
+        } else {
+          for (let py = Math.min(d.from.y, d.to.y); py <= Math.max(d.from.y, d.to.y); py++) for (let px = Math.min(d.from.x, d.to.x); px <= Math.max(d.from.x, d.to.x); px++) {
+            for (const t of aroundPoint(state.map, px, py)) into.push(patch(t.x, t.y, false, [t.k]));
+          }
         }
       }
       overlayFor('height');
     } else if (hoverTile) {
-      cursorTile = hoverTile;
+      marks = [patch(hoverTile.x, hoverTile.y, true, [])];
     }
+  }
+  /** The cursor's marks on a tile: its frame, and dots at its corners `dots`. */
+  const patch = (x: number, y: number, frame: boolean, dots: number[]): CursorPatch => ({ x, y, heights: corners(state.map, x, y).map((c) => c * LEVEL_HEIGHT), frame, dots });
+  /** The dig the earthworks in hand would do: over the drag's points, or at the point pointed at. */
+  function digHere(): Dig | null {
+    if (tool.kind !== 'earth' || !hoverTile) return null;
+    const press = input.press?.mode === 'paint' ? input.press : null;
+    const from = press?.from ?? hoverPoint, to = press?.to ?? hoverPoint;
+    return from && to ? { how: tool.how, from, to, at: hoverTile } : null;
   }
   let toolOverlay: Overlay = 'none';
   const overlayFor = (o: Overlay) => { toolOverlay = o; };
@@ -341,8 +361,9 @@ async function play(initial: GameState) {
         return;
       }
       case 'earth': {
-        if (!t) return;
-        const r = reshape(state, t.x, t.y, tool.how, tool.rot), message = messageOf(r);
+        const d = digHere();
+        if (!d) return;
+        const r = reshape(state, d), message = messageOf(r);
         if (message) hud.toast(message, r.ok, r.ok ? 'earth' : undefined);
         return;
       }
@@ -370,13 +391,10 @@ async function play(initial: GameState) {
       if (built) hud.toast(`Built ${built} × ${BUILDINGS[tool.type].name.toLowerCase()}${what ? ` (${what})` : ''}`, true, tool.type);
       else if (last) hud.toast(last, false);
     } else if (tool.kind === 'earth') {
-      let n = 0, last = '';
-      for (let y = Math.min(from.y, to.y); y <= Math.max(from.y, to.y); y++) for (let x = Math.min(from.x, to.x); x <= Math.max(from.x, to.x); x++) {
-        const r = reshape(state, x, y, tool.how, tool.rot);
-        if (r.ok) n++; else if (r.error) last = r.error;
-      }
-      if (n) hud.toast(`${EARTHWORK_NAMES[tool.how]}: ${n} tile${n > 1 ? 's' : ''} · −${earthPrice(state, n)} credits`, true, 'earth');
-      else if (last) hud.toast(last, false);
+      if (!hoverTile) return;
+      const r = reshape(state, { how: tool.how, from, to, at: hoverTile });
+      if (r.ok) hud.toast(`${EARTHWORK_NAMES[tool.how]}: ${r.value.steps} step${r.value.steps > 1 ? 's' : ''} · −${earthPrice(state, r.value.steps)} credits`, true, 'earth');
+      else if (r.error) hud.toast(r.error, false);
     } else if (tool.kind === 'remove') {
       const x0 = Math.min(from.x, to.x), x1 = Math.max(from.x, to.x), y0 = Math.min(from.y, to.y), y1 = Math.max(from.y, to.y);
       let n = 0;
@@ -393,7 +411,8 @@ async function play(initial: GameState) {
 
   // ---- Input ----
   const input = new Input(canvas, {
-    tileAt: (x, y) => camera.tileAt(x, y, pickGround, TOP),
+    // Earthworks drag over the points of the ground, the rest over tiles.
+    tileAt: (x, y) => (tool.kind === 'earth' ? pointAt(x, y) : camera.tileAt(x, y, pickGround, TOP)),
     paints: () => tool.kind === 'build' || tool.kind === 'remove' || tool.kind === 'earth',
     pan: (dx, dy) => camera.pan(dx, dy),
     zoom: (steps, at) => camera.zoomStep(steps, at),
@@ -451,9 +470,9 @@ async function play(initial: GameState) {
         if (tool.kind === 'build') choose(stepSetting(tool.type, tool, e.shiftKey ? -1 : 1));
         else if (tool.kind === 'earth') { tool = { ...tool, how: EARTHWORKS[(EARTHWORKS.indexOf(tool.how) + (e.shiftKey ? 2 : 1)) % 3] }; repick = 2; }
         break;
-      case 'earth': setTool(tool.kind === 'earth' ? { kind: 'select' } : { kind: 'earth', how: 'raise', rot: 0 }); break;
+      case 'earth': setTool(tool.kind === 'earth' ? { kind: 'select' } : { kind: 'earth', how: 'raise' }); break;
       case 'remove': setTool(tool.kind === 'remove' ? { kind: 'select' } : { kind: 'remove' }); break;
-      case 'rotate': if (tool.kind === 'build' || tool.kind === 'earth') { tool = { ...tool, rot: ((tool.rot + (e.shiftKey ? 3 : 1)) % 4) as Dir }; repick = 2; } break;
+      case 'rotate': if (tool.kind === 'build') { tool = { ...tool, rot: ((tool.rot + (e.shiftKey ? 3 : 1)) % 4) as Dir }; repick = 2; } break;
       default:
         if (action?.startsWith('build:')) {
           const hot = action.slice('build:'.length) as BuildingId;
@@ -469,11 +488,13 @@ async function play(initial: GameState) {
     const truck = hoverBuilding !== null ? truckById(state, hoverBuilding) : null;
     if (tool.kind === 'build') return null;
     if (tool.kind === 'earth') {
-      if (!hoverTile) return null;
-      const i = hoverTile.y * map.width + hoverTile.x, r = canReshape(state, hoverTile.x, hoverTile.y, tool.how, tool.rot);
-      const now = `level ${state.map.level[i]}${state.map.ramp[i] === -1 ? '' : ' (a ramp)'}`;
-      const then = r.ok ? `level ${r.value.level}${r.value.ramp === -1 ? '' : `, a ramp rising ${['north', 'east', 'south', 'west'][r.value.ramp]}`}` : '';
-      return { title: EARTHWORK_NAMES[tool.how], icon: 'earth', text: r.ok ? `From ${now} to ${then}. ${earthPrice(state, 1)} credits.` : r.error || `Already ${now}.` };
+      const d = digHere();
+      if (!d || !hoverTile || !hoverPoint) return null;
+      const r = canReshape(state, d), c = corners(state.map, hoverTile.x, hoverTile.y);
+      const k = [[0, 3], [1, 2]][hoverPoint.x - hoverTile.x][hoverPoint.y - hoverTile.y];
+      const now = d.how === 'level' ? `This tile is at level ${c.join(', ')} at its corners.` : `The ground here is at level ${c[k]}.`;
+      const then = r.ok ? ` ${d.how === 'level' ? `Levels it to ${r.value.level}` : `${EARTHWORK_NAMES[d.how]}s it to ${r.value.level}`}: ${r.value.move.steps} step${r.value.move.steps > 1 ? 's' : ''}, ${earthPrice(state, r.value.move.steps)} credits.` : r.error ? ` ${r.error}` : '';
+      return { title: EARTHWORK_NAMES[tool.how], icon: 'earth', text: now + then };
     }
     if (truck) { const r = routeOf(state, truck); return { title: r ? `Truck on ${r.name}` : 'Truck', icon: 'truck', text: describeTruck(state, truck) }; }
     if (tool.kind === 'route') {
@@ -607,8 +628,8 @@ async function play(initial: GameState) {
     camera.update(time, dt);
     renderer.renderGeometry(time);
     renderer.renderStyle(time);
-    const cc = cursorTile ? corners(state.map, cursorTile.x, cursorTile.y).map((c) => c * LEVEL_HEIGHT) : [0, 0, 0, 0];
-    cursor.draw(cursorTile, renderer.camera, renderer.width, renderer.height, [cc[0], cc[1], cc[3]]);
+    cursor.draw(marks, renderer.camera, renderer.width, renderer.height);
+    refused.draw(refusedMarks, renderer.camera, renderer.width, renderer.height);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

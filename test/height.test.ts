@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addStop, buyTruck, canPlace, canReshape, earthPrice, levelledFor, newRoute, place, priceOf, reshape, setCrop, setTruckRoute } from '../src/game/build.ts';
+import { addStop, buyTruck, canPlace, canReshape, earthPrice, levelledFor, levelling, newRoute, place, priceOf, reshape, setCrop, setTruckRoute, type Dig } from '../src/game/build.ts';
 import { CROPS, EARTH, FIELD, POWER, TRUCK, type BuildingId } from '../src/game/data.ts';
 import { placement } from '../src/game/forecast.ts';
 import { TERRAIN } from '../src/game/map.ts';
-import { centreLevel, corners, FLAT, heightAt, isFlat, isUnbroken, joins, MAX_LEVEL } from '../src/game/relief.ts';
-import { accessTiles, distanceTo, legLength } from '../src/game/roads.ts';
+import { centreLevel, corners, heightAt, isFlat, isGentle, isUnbroken, joins, MAX_LEVEL, sheetAt, spanOf, STEEP } from '../src/game/relief.ts';
+import { accessTiles, distanceTo, isOpen, legLength } from '../src/game/roads.ts';
 import { deserialize, serialize } from '../src/game/save.ts';
 import { touchesWater, wheelSite } from '../src/game/rules.ts';
 import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
@@ -15,7 +15,7 @@ import { redirect } from '../src/game/sim/trucks.ts';
 import { served } from '../src/game/sim/describe.ts';
 import { buildingAt, newGame, touchRelief, type BuildingOf, type Dir, type GameState } from '../src/game/state.ts';
 
-// Height: levels and ramps (relief.ts), and what they do to trucks, placing, next door, water, wind and soil.
+// Height: corner heights (relief.ts), and what they do to trucks, placing, earthworks, next door, water, wind and soil.
 
 function flat(): GameState {
   const sc: Scenario = {
@@ -23,15 +23,28 @@ function flat(): GameState {
     terrain: { soil: 60, soilSpread: 0, water: 'none', forest: 0, rock: 0, relief: 0 },
   };
   const s = newGame(sc);
+  s.map.corner.fill(0);
   s.map.fertility.fill(60);
   s.soilBase.fill(60);
+  touchRelief(s);
   return s;
 }
 
-/** Sets the level (and ramp) of every tile in a box, x0..x1 and y0..y1 inclusive. */
-function ground(s: GameState, x0: number, y0: number, x1: number, y1: number, level: number, ramp = FLAT) {
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const i = y * s.map.width + x; s.map.level[i] = level; s.map.ramp[i] = ramp; }
+/** Sets every corner of every tile in a box, x0..x1 and y0..y1 inclusive, to `level` (a cliff where it meets other ground). */
+function ground(s: GameState, x0: number, y0: number, x1: number, y1: number, level: number) {
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) tile(s, x, y, [level, level, level, level]);
+}
+
+/** Sets one tile's corners (north-west, north-east, south-east, south-west). */
+function tile(s: GameState, x: number, y: number, c: number[]) {
+  const i = (y * s.map.width + x) * 4;
+  for (let k = 0; k < 4; k++) s.map.corner[i + k] = c[k];
   touchRelief(s);
+}
+
+/** Lays the whole map as one sheet of ground, each point (px, py) at `f(px, py)`: slopes that join everywhere. */
+function shape(s: GameState, f: (px: number, py: number) => number) {
+  for (let y = 0; y < s.map.height; y++) for (let x = 0; x < s.map.width; x++) tile(s, x, y, [f(x, y), f(x + 1, y), f(x + 1, y + 1), f(x, y + 1)]);
 }
 
 function put<K extends BuildingId>(s: GameState, type: K, x: number, y: number, rot: Dir = 0): BuildingOf<K> {
@@ -40,39 +53,53 @@ function put<K extends BuildingId>(s: GameState, type: K, x: number, y: number, 
   return r.value.building;
 }
 
-test('relief: a ramp rises one level towards its side and joins the ground at both ends; elsewhere a level step is a cliff', () => {
+/** A dig at a single point, from the tile `at` that touches it. */
+const at = (how: Dig['how'], px: number, py: number, x: number, y: number): Dig => ({ how, from: { x: px, y: py }, to: { x: px, y: py }, at: { x, y } });
+
+test('relief: a tile slopes between its corners, joins its neighbours where their corners meet, and is a cliff elsewhere', () => {
   const s = flat();
-  ground(s, 0, 0, 29, 9, 1);           // a terrace along the north
-  ground(s, 5, 10, 5, 10, 0, 0);       // a ramp at (5, 10) rising north onto it
-  assert.deepEqual(corners(s.map, 5, 10), [1, 1, 0, 0]);
-  assert.equal(centreLevel(s.map, 5, 10), 0.5);
-  assert.equal(heightAt(s.map, 5.5, 10), 1);
+  ground(s, 0, 0, 29, 9, 2);           // a terrace along the north
+  tile(s, 5, 10, [2, 2, 0, 0]);        // a bank at (5, 10) up onto it
+  tile(s, 6, 10, [2, 2, 1, 1]);        // and a gentle slope beside it, down to a step
+  assert.equal(centreLevel(s.map, 5, 10), 1);
+  assert.equal(heightAt(s.map, 5.5, 10), 2);
   assert.equal(heightAt(s.map, 5.5, 11), 0);
-  assert.ok(joins(s.map, 5, 10, 0), 'up onto the terrace');
-  assert.ok(joins(s.map, 5, 10, 2), 'down onto the floor');
-  assert.ok(!joins(s.map, 5, 10, 1) && !joins(s.map, 5, 10, 3), 'its sides are cliffs');
-  assert.ok(!joins(s.map, 4, 10, 0), 'a level step with no ramp is a cliff');
+  assert.equal(spanOf(s.map, 5, 10), STEEP);
+  assert.ok(!isGentle(s.map, 5, 10) && isGentle(s.map, 6, 10), 'steep and gentle');
+  assert.ok(joins(s.map, 5, 10, 0) && joins(s.map, 5, 10, 2), 'up onto the terrace, down onto the floor');
+  assert.ok(!joins(s.map, 5, 10, 1) && !joins(s.map, 6, 10, 2), 'a bank and a slope that don\'t meet; a slope ending in a step');
+  assert.ok(!joins(s.map, 4, 10, 0), 'a step with no slope is a cliff');
   assert.ok(isFlat(s.map, 0, 0, 3) && !isFlat(s.map, 4, 9, 2));
-  assert.ok(isUnbroken(s.map, 4, 9, 1) && isUnbroken(s.map, 5, 9, 1) && !isUnbroken(s.map, 3, 8, 3) && isUnbroken(s.map, 5, 9, 1));
+  assert.ok(isUnbroken(s.map, 5, 9, 1) && !isUnbroken(s.map, 4, 9, 2));
+  // At the point between them, the terrace and the bank are one sheet; the floor below the cliff is another.
+  assert.deepEqual(sheetAt(s.map, 5, 10, { x: 5, y: 9 }).map((t) => `${t.x},${t.y}`).sort(), ['4,9', '5,10', '5,9']);
 });
 
-test('trucks: a cliff stops them, a ramp lets them climb, and each level climbed costs TRUCK.climb more tiles', () => {
+test('trucks: a cliff stops them, a slope lets them climb, a steep bank doesn\'t; each level climbed costs TRUCK.climb more tiles', () => {
   const s = flat();
   ground(s, 0, 0, 29, 9, 1);
   const a = put(s, 'silo', 10, 4), b = put(s, 'silo', 10, 20);
   assert.equal(legLength(s, b, a), Infinity, 'no way up');
-  const r = reshape(s, 12, 10, 'ramp', 0);
+  // Raising the two points at the foot of the cliff below (12, 9) slopes the tile below them up to the terrace.
+  const r = reshape(s, { how: 'raise', from: { x: 12, y: 10 }, to: { x: 13, y: 10 }, at: { x: 12, y: 10 } });
   assert.ok(r.ok, r.ok ? '' : r.error);
+  assert.deepEqual(corners(s.map, 12, 10), [1, 1, 0, 0]);
   const up = legLength(s, b, a), down = legLength(s, a, b);
   assert.ok(up < Infinity && down < Infinity);
   assert.ok(Math.abs(up - down - TRUCK.climb) < 1e-9, `up ${up}, down ${down}`);
+  // Steepened into a bank, the slope is no road.
+  tile(s, 12, 10, [2, 2, 0, 0]);
+  assert.ok(!isOpen(s, 12, 10));
 });
 
-test('a truck climbing a ramp is slower and uses more battery than on the flat', () => {
+/** The terrace of `rise` levels over the north of the map, a slope of a level a row down to the floor (or all on the flat). */
+const terrace = (s: GameState, rise: number) => shape(s, (_, py) => Math.max(0, Math.min(rise, 16 - py)));
+
+test('a truck climbing a slope is slower and uses more battery than on the flat', () => {
   const run = (climb: boolean) => {
     const s = flat();
-    // The garage on the floor, the silo up on a terrace past a wide ramp (or all on the flat).
-    if (climb) { ground(s, 0, 0, 29, 14, 1); ground(s, 0, 15, 29, 15, 0, 0); }
+    // The garage on the floor, the silo up on the terrace (or all on the flat).
+    if (climb) terrace(s, 3);
     const g = put(s, 'garage', 3, 22), silo = put(s, 'silo', 4, 3);
     const t = buyTruck(s, g);
     assert.ok(t.ok);
@@ -83,66 +110,81 @@ test('a truck climbing a ramp is slower and uses more battery than on the flat',
     while (t.value.truck.phase !== 'queue' && t.value.truck.phase !== 'dock' && time < 60) { advance(s, 0.1); time += 0.1; }
     return { time, used: TRUCK.battery - t.value.truck.energy };
   };
-  const low = run(false), high = run(true);
-  assert.ok(high.time > low.time + TRUCK.climb / TRUCK.speed * 0.8, `${high.time} vs ${low.time}`);
-  assert.ok(Math.abs(high.used - low.used - TRUCK.climb * TRUCK.joulesPerTile) < 0.2, `${high.used} vs ${low.used}`);
+  const low = run(false), high = run(true), extra = 3 * TRUCK.climb;
+  assert.ok(high.time > low.time + extra / TRUCK.speed * 0.8, `${high.time} vs ${low.time}`);
+  assert.ok(Math.abs(high.used - low.used - extra * TRUCK.joulesPerTile) < 0.2, `${high.used} vs ${low.used}`);
 });
 
-test('placing: machines need flat ground and level it for the earthworks price; fields lie over ramps; one tile stands anywhere', () => {
+test('placing: machines need flat ground and level it for the earthworks price, sloping the ground round them; fields lie on slopes', () => {
   const s = flat();
   ground(s, 0, 0, 29, 9, 1);
-  ground(s, 3, 10, 8, 10, 0, 0);
-  // A mill half on the terrace, half below: levelled, for two steps.
+  // A mill half on the terrace, half below: levelled to the lower, for six steps (three points on the terrace, and three
+  // along the cliff's edge, at the top of the cliff).
   const c = canPlace(s, 'mill', 10, 9);
-  assert.ok(c.ok && c.value.level !== null && c.value.steps === 2, JSON.stringify(c));
+  assert.ok(c.ok && c.value.level === 0 && c.value.move.steps === 6, JSON.stringify(c.ok && { level: c.value.level, steps: c.value.move.steps }));
   const before = s.credits;
   const m = put(s, 'mill', 10, 9);
-  assert.equal(before - s.credits, priceOf(s, 'mill') + earthPrice(s, 2));
+  assert.equal(before - s.credits, priceOf(s, 'mill') + earthPrice(s, 6));
   assert.ok(isFlat(s.map, m.x, m.y, 2));
-  // A field over the ramp needs nothing; one across the cliff is levelled.
-  const f = canPlace(s, 'field', 3, 9);
-  assert.ok(f.ok && f.value.level === null, 'over a ramp');
-  const g = canPlace(s, 'field', 14, 9);
-  assert.ok(g.ok && g.value.level !== null && g.value.steps === 3, 'across a cliff');
-  // A pylon or sprinkler on the ramp itself.
-  for (const t of ['pylon', 'sprinkler', 'turbine'] as const) { const p = canPlace(s, t, 5, 10); assert.ok(p.ok && p.value.steps === 0, t); }
+  // The terrace it was cut into slopes down to it rather than standing over it at a cliff.
+  assert.deepEqual(corners(s.map, 10, 8), [1, 1, 0, 0]);
+  assert.ok(joins(s.map, 10, 8, 2) && joins(s.map, 9, 9, 1));
+  // A field on a gentle slope needs nothing; one across the cliff is levelled.
+  terrace(s, 3);
+  const f = canPlace(s, 'field', 3, 12);
+  assert.ok(f.ok && f.value.level === null, 'on a slope');
+  ground(s, 14, 20, 29, 29, 4);
+  const g = canPlace(s, 'field', 13, 19);
+  assert.ok(g.ok && g.value.level !== null && g.value.move.steps > 0, 'across a cliff');
+  // A pylon, sprinkler or turbine on the slope itself.
+  for (const t of ['pylon', 'sprinkler', 'turbine'] as const) { const p = canPlace(s, t, 5, 14); assert.ok(p.ok && p.value.move.steps === 0, t); }
   // The placement card says what levelling costs.
-  const card = placement(s, 'bakery', 20, 9).facts.find((x) => x.label === 'Earthworks');
-  assert.equal(card?.value, String(earthPrice(s, 2)));
+  const card = placement(s, 'bakery', 20, 13).facts.find((x) => x.label === 'Earthworks');
+  const gw = canPlace(s, 'bakery', 20, 13);
+  assert.ok(gw.ok);
+  assert.equal(card?.value, String(earthPrice(s, gw.value.move.steps)));
 });
 
-test('earthworks raise, lower and ramp a tile, a step at a time, and refuse what they can\'t do', () => {
+test('earthworks raise and lower the ground at a point a level, with every tile that joins there, and refuse what they can\'t do', () => {
   const s = flat();
   const before = s.credits;
-  assert.ok(reshape(s, 4, 4, 'raise', 0).ok);
-  assert.equal(s.map.level[4 * 30 + 4], 1);
+  assert.ok(reshape(s, at('raise', 5, 5, 4, 4)).ok);
+  assert.deepEqual([corners(s.map, 4, 4)[2], corners(s.map, 5, 4)[3], corners(s.map, 5, 5)[0], corners(s.map, 4, 5)[1]], [1, 1, 1, 1]);
   assert.equal(before - s.credits, EARTH.step);
-  assert.ok(reshape(s, 4, 5, 'ramp', 0).ok, 'a ramp up onto it');
-  assert.ok(joins(s.map, 4, 5, 0));
-  assert.ok(!reshape(s, 4, 5, 'ramp', 0).ok, 'already that ramp');
-  assert.ok(reshape(s, 4, 5, 'raise', 0).ok);
-  assert.deepEqual([s.map.level[5 * 30 + 4], s.map.ramp[5 * 30 + 4]], [1, FLAT], 'raising a ramp flattens it at its top');
-  assert.ok(!canReshape(s, 7, 7, 'lower', 0).ok, 'nothing below the valley floor');
+  assert.ok(reshape(s, at('raise', 5, 5, 4, 4)).ok);
+  assert.ok(!canReshape(s, at('raise', 5, 5, 4, 4)).ok, 'too steep');
+  // An area: every point in it, for a step each.
+  const area: Dig = { how: 'raise', from: { x: 10, y: 10 }, to: { x: 12, y: 12 }, at: { x: 10, y: 10 } };
+  const r = reshape(s, area);
+  assert.ok(r.ok && r.value.steps === 9);
+  assert.ok(isFlat(s.map, 10, 10, 2) && corners(s.map, 10, 10)[0] === 1);
+  assert.ok(!canReshape(s, at('lower', 7, 7, 7, 7)).ok, 'nothing below the valley floor');
+  // Levelling flattens a tile at its middle height (rounded), the ground round it following.
+  assert.ok(reshape(s, at('level', 5, 5, 4, 4)).ok);
+  assert.ok(isFlat(s.map, 4, 4, 1));
   put(s, 'pylon', 8, 8);
-  assert.ok(!canReshape(s, 8, 8, 'raise', 0).ok, 'not under a building');
-  s.map.terrain[9 * 30 + 9] = TERRAIN.water; s.map.level[9 * 30 + 10] = 1;
-  assert.ok(!canReshape(s, 9, 9, 'raise', 0).ok, 'water stays');
-  s.map.level[9 * 30 + 9] = 1;
-  assert.ok(!canReshape(s, 10, 9, 'lower', 0).ok, 'not below the water beside it');
+  assert.ok(!canReshape(s, at('raise', 8, 8, 7, 7)).ok, 'not under a building');
+  // Water stays, and the ground can't go below it.
+  ground(s, 18, 18, 24, 24, 2);
+  s.map.terrain[20 * 30 + 20] = TERRAIN.water;
+  touchRelief(s);
+  assert.ok(!canReshape(s, at('raise', 20, 20, 20, 20)).ok, 'water stays');
+  assert.ok(!canReshape(s, at('lower', 20, 20, 19, 19)).ok, 'not below the water beside it');
+  assert.ok(reshape(s, at('raise', 20, 20, 19, 19)).ok, 'the bank rises; the water doesn\'t');
+  assert.equal(spanOf(s.map, 20, 20), 0);
 });
 
-test('next door: goods go down a cliff but not up it', () => {
-  for (const fieldUp of [true, false]) {
+test('next door: goods pass where the ground joins, never across a cliff', () => {
+  for (const cliff of [true, false]) {
     const s = flat();
-    ground(s, 0, 0, 29, 9, fieldUp ? 1 : 0);
-    ground(s, 0, 10, 29, 29, fieldUp ? 0 : 1);
+    if (cliff) ground(s, 0, 0, 29, 9, 1);
     put(s, 'pylon', 14, 12);
     const bat = put(s, 'battery', 15, 12);
     bat.charge = POWER.battery.capacity;
     const f = put(s, 'field', 10, 7), m = put(s, 'mill', 11, 10);
     f.stored = 6;
     advance(s, 1);
-    assert.equal((m.inputs.wheat ?? 0) > 0 || (m.progress ?? null) !== null, fieldUp, `field ${fieldUp ? 'above' : 'below'} the mill`);
+    assert.equal((m.inputs.wheat ?? 0) > 0 || (m.progress ?? null) !== null, !cliff, cliff ? 'across a cliff' : 'on the flat');
   }
 });
 
@@ -165,24 +207,25 @@ test('wind: a turbine gets more up high, and higher ground beside it shelters it
   const t = put(s, 'turbine', 15, 15);
   assert.ok(Math.abs(exposureOf(s, t) - (1 + 2 * POWER.windPerLevel)) < 1e-9);
   const low = put(s, 'turbine', 9, 15);
-  assert.ok(Math.abs(exposureOf(s, low) - (1 - 2 * POWER.shelter)) < 1e-9, 'two levels of hill beside it');
+  assert.ok(Math.abs(exposureOf(s, low) - (1 - 2 * POWER.shelterHill)) < 1e-9, 'two levels of hill beside it');
 });
 
-test('erosion: a harvest wears a field\'s ramp tiles more, less so with a tree beside it', () => {
+test('erosion: a harvest wears a field\'s sloping tiles more the steeper they are, less so with a tree beside it', () => {
   const wear = (guard: boolean) => {
     const s = flat();
-    ground(s, 0, 0, 29, 9, 1);
-    ground(s, 4, 10, 6, 10, 0, 0);
-    if (guard) { s.map.terrain[10 * 30 + 7] = TERRAIN.tree; touchRelief(s); }
-    const f = put(s, 'field', 4, 9);
+    // The field's rows: flat, gentle (a level across), steep (two).
+    shape(s, (_, py) => (py <= 5 ? 3 : py === 6 ? 2 : 0));
+    if (guard) { s.map.terrain[5 * 30 + 7] = TERRAIN.tree; touchRelief(s); }
+    const f = put(s, 'field', 4, 4);
     f.growth = 0.999;
     advance(s, 0.5);
-    return [60 - s.map.fertility[9 * 30 + 4], 60 - s.map.fertility[10 * 30 + 4]];
+    return [4, 5, 6].map((y) => 60 - s.map.fertility[y * 30 + 4]);
   };
   const loss = -CROPS.wheat.soil;
-  const [flatTile, rampTile] = wear(false), [, guarded] = wear(true);
+  const [flatTile, gentle, steep] = wear(false), [, , guarded] = wear(true);
   assert.ok(Math.abs(flatTile - loss) < 1e-9);
-  assert.ok(Math.abs(rampTile - loss * (1 + FIELD.erosion)) < 1e-9, `${rampTile}`);
+  assert.ok(Math.abs(gentle - loss * (1 + FIELD.erosion / 2)) < 1e-9, `${gentle}`);
+  assert.ok(Math.abs(steep - loss * (1 + FIELD.erosion)) < 1e-9, `${steep}`);
   assert.ok(Math.abs(guarded - loss * (1 + FIELD.erosionGuarded)) < 1e-9, `${guarded}`);
 });
 
@@ -197,8 +240,8 @@ test('a water wheel stands on a river bank at the water\'s level, faces it, and 
   const w = put(s, 'wheel', 12, 4);
   assert.equal(w.rot, 1);
   assert.ok(Math.abs(wattsOf(s, w) - POWER.wheel) < 1e-9);
-  // A fall: the river a level lower from row 12 down.
-  ground(s, 14, 12, 15, 29, 0); ground(s, 0, 0, 29, 11, 1); ground(s, 16, 12, 29, 29, 0); ground(s, 0, 12, 13, 29, 0);
+  // A fall: the river a few levels lower from row 12 down.
+  ground(s, 0, 0, 29, 11, 3); ground(s, 0, 12, 29, 29, 0);
   const fall = wheelSite(s, 12, 10);
   assert.ok(fall && fall.fall && Math.abs(fall.watts - POWER.wheel * POWER.wheelFall) < 1e-9, JSON.stringify(fall));
   assert.equal(wheelSite(s, 16, 10)?.rot, 3);
@@ -209,7 +252,7 @@ test('a water wheel stands on a river bank at the water\'s level, faces it, and 
 
 test('a truck spends on each step exactly what the roads counted for it', () => {
   const s = flat();
-  ground(s, 0, 0, 29, 14, 1); ground(s, 0, 15, 29, 15, 0, 0);
+  terrace(s, 3);
   const g = put(s, 'garage', 3, 22), silo = put(s, 'silo', 4, 3);
   const t = buyTruck(s, g);
   assert.ok(t.ok);
@@ -227,8 +270,8 @@ test('a truck spends on each step exactly what the roads counted for it', () => 
 
 test('a truck sent off again part way across a tile climbs from where it set off', () => {
   const s = flat();
-  // The one way up is the ramp at (5, 15); the ramp at (6, 16) beside the truck goes elsewhere.
-  ground(s, 0, 0, 29, 15, 1); ground(s, 5, 15, 5, 15, 0, 0); ground(s, 6, 16, 6, 16, 0, 1);
+  // The one way up is the slope at (5, 15); the slope at (6, 16) beside the truck goes nowhere.
+  ground(s, 0, 0, 29, 15, 1); tile(s, 5, 15, [1, 1, 0, 0]); tile(s, 6, 16, [0, 1, 1, 0]);
   const g = put(s, 'garage', 3, 22), silo = put(s, 'silo', 4, 3);
   const t = buyTruck(s, g);
   assert.ok(t.ok);
@@ -238,7 +281,7 @@ test('a truck sent off again part way across a tile climbs from where it set off
   setTruckRoute(s, tr, r);
   Object.assign(tr, { x: 5.55, y: 16.5, phase: 'drive' });
   redirect(s, tr);
-  // Within a hundredth of a tile: it starts a little off the tile's centre. Missing the climb would be a whole tile out.
+  // Within a hundredth of a tile: it starts a little off the tile's centre. Missing the climb would be TRUCK.climb out.
   const effort = distanceTo(s, silo, 16 * 30 + 5), before = tr.energy;
   for (let k = 0; k < 600 && tr.phase !== 'queue' && tr.phase !== 'dock'; k++) advance(s, 0.1);
   assert.ok(tr.phase === 'queue' || tr.phase === 'dock', tr.phase);
@@ -274,35 +317,40 @@ test('what is worked out on ground levelled for a question holds only while it i
   const sheltered = exposureOf(s, turbine);
   assert.ok(sheltered < 1, 'the higher ground shelters it');
   // Warm and cold: inside, it is worked out for the levelled ground; after, for the ground as it is again.
-  assert.equal(levelledFor(s, 12, 10, 2, 0, () => exposureOf(s, turbine)), 1);
+  const move = levelling(s, { x: 12, y: 10, w: 1, h: 1 }, 0);
+  assert.equal(levelledFor(s, move, () => exposureOf(s, turbine)), 1);
   assert.equal(exposureOf(s, turbine), sheltered);
   touchRelief(s);
-  assert.equal(levelledFor(s, 12, 10, 2, 0, () => exposureOf(s, turbine)), 1);
+  assert.equal(levelledFor(s, move, () => exposureOf(s, turbine)), 1);
   assert.equal(exposureOf(s, turbine), sheltered);
 });
 
-test('a save whose ramp rises above the highest level is refused', () => {
+test('a save with ground the rules don\'t allow is refused', () => {
   const s = flat();
-  s.map.level[0] = MAX_LEVEL; s.map.ramp[0] = 0;
-  assert.equal(deserialize(serialize(s)).ok, false);
-  s.map.ramp[0] = FLAT;
+  tile(s, 0, 0, [STEEP + 1, 0, 0, 0]);
+  assert.equal(deserialize(serialize(s)).ok, false, 'steeper than a bank');
+  tile(s, 0, 0, [MAX_LEVEL + 1, MAX_LEVEL + 1, MAX_LEVEL + 1, MAX_LEVEL + 1]);
+  assert.equal(deserialize(serialize(s)).ok, false, 'above the highest level');
+  tile(s, 0, 0, [1, 0, 0, 0]);
   assert.equal(deserialize(serialize(s)).ok, true);
+  s.map.terrain[0] = TERRAIN.water;
+  assert.equal(deserialize(serialize(s)).ok, false, 'water on a slope');
+  s.map.terrain[0] = TERRAIN.grass;
   s.scenario.terrain.relief = -1;
   assert.equal(deserialize(serialize(s)).ok, false, 'relief is a share, 0 to 1');
 });
 
-test('trucks load only where the ground joins the building, and goods go next door up a joined ramp but not up a cliff', () => {
+test('trucks load only where the ground joins the building, and goods go next door up a joined slope but not across a cliff', () => {
   const s = flat();
   ground(s, 0, 0, 29, 9, 1);
   const silo = put(s, 'silo', 10, 8);   // on the terrace's edge: its south side faces a cliff
   assert.ok(accessTiles(s, silo).every((i) => Math.floor(i / 30) < 10), 'never from below the cliff');
-  // A field on the floor rising onto the terrace by a ramp under it hands its harvest up to a mill whose edge it joins.
-  ground(s, 20, 10, 22, 10, 0, 0);
+  // A field on the floor rising onto the terrace by a slope under it trades with a mill whose edge it joins.
+  for (const x of [20, 21, 22]) tile(s, x, 10, [1, 1, 0, 0]);
   const f = put(s, 'field', 20, 10), m = put(s, 'mill', 20, 8);
-  assert.ok(joins(s.map, 20, 10, 0));
-  assert.ok(handsTo(s, f, m), 'up a joined ramp');
+  assert.ok(handsTo(s, f, m) && handsTo(s, m, f), 'up and down a joined slope');
   const g = put(s, 'field', 24, 10), n = put(s, 'mill', 24, 8);
-  assert.ok(!handsTo(s, g, n) && handsTo(s, n, g), 'down a cliff only');
+  assert.ok(!handsTo(s, g, n) && !handsTo(s, n, g), 'not across a cliff');
 });
 
 test('a field below a mill up a cliff is not served by it: its wheat needs a truck', () => {

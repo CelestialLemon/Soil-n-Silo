@@ -4,7 +4,8 @@ import { bays, BUILDINGS, CROPS, ITEMS, recipesFor, TICK, TRUCK, type BuildingId
 import { err, ok, tryParseJson, type Result } from './result.ts';
 import type { Mark, RunLog } from './runlog.ts';
 import type { Scenario } from './scenarios.ts';
-import { FLAT, MAX_LEVEL } from './relief.ts';
+import { MAX_LEVEL, spanOf, STEEP } from './relief.ts';
+import { TERRAIN } from './map.ts';
 import { isMachine, type Building, type GameState, type Route, type Truck } from './state.ts';
 
 // Saving: the commission in progress (one at a time) and each commission's best result. The game state is plain data, so a
@@ -27,7 +28,7 @@ export function deserialize(json: string | null): Result<GameState> {
   const parsed = tryParseJson(json);
   if (!parsed.ok) return err(`The save isn't JSON: ${parsed.error}`);
   const s = parsed.value as GameState | null;
-  if (s?.version !== 6) return err('The save is from another version (this game reads version 6).');
+  if (s?.version !== 7) return err('The save is from another version (this game reads version 7).');
   if (!complete(s)) return err('The save is broken: its state is incomplete or out of range.');
   if (!validRun(s.run, s.scenario.goals.length)) return err('The save is broken: its run log is incomplete or out of range.');
   return ok(s);
@@ -61,16 +62,24 @@ function scenario(sc: Scenario): boolean {
     && !!t && [t.soil, t.soilSpread, t.forest, t.rock, t.relief].every(num) && t.relief >= 0 && t.relief <= 1 && ['river', 'ponds', 'lake', 'none'].includes(t.water);
 }
 
+/** Whether a map's corners are ground the rules allow: no tile steeper than STEEP, water flat. */
+function relief(m: GameState['map']) {
+  for (let y = 0; y < m.height; y++) for (let x = 0; x < m.width; x++) {
+    const span = spanOf(m, x, y);
+    if (span > STEEP || (m.terrain[y * m.width + x] === TERRAIN.water && span)) return false;
+  }
+  return true;
+}
+
 function complete(s: GameState): boolean {
   const m = s.map, st = s.stats;
   return scenario(s.scenario)
     && !!m && int(m.width) && int(m.height) && m.width > 0 && m.height > 0 && m.width === s.scenario.width && m.height === s.scenario.height
     && arr(m.terrain) && m.terrain.length === m.width * m.height
     && arr(m.fertility) && m.fertility.length === m.width * m.height && m.fertility.every(num)
-    && arr(m.level) && m.level.length === m.width * m.height && m.level.every((l) => int(l) && l >= 0 && l <= MAX_LEVEL)
+    && arr(m.corner) && m.corner.length === m.width * m.height * 4 && m.corner.every((c) => int(c) && c >= 0 && c <= MAX_LEVEL)
     && arr(m.current) && m.current.length === m.width * m.height && m.current.every((c) => num(c) && c >= 0)
-    && arr(m.ramp) && m.ramp.length === m.width * m.height && m.ramp.every((d) => d === FLAT || d === 0 || d === 1 || d === 2 || d === 3)
-    && m.level.every((l, i) => l + (m.ramp[i] === FLAT ? 0 : 1) <= MAX_LEVEL)
+    && relief(m)
     && arr(s.soilBase) && s.soilBase.length === m.fertility.length && s.soilBase.every(num) && !!m.depot && num(m.depot.x) && num(m.depot.y)
     && [s.credits, s.time, s.carry, s.nextId, s.earned, s.initialTrees].every(num) && Math.abs(s.carry) <= TICK
     && (s.completedAt === null || num(s.completedAt))

@@ -126,8 +126,8 @@ export function sheetAt(r: Relief, px: number, py: number, from: { x: number; y:
   if (start < 0) throw new Error(`sheetAt: tile ${from.x},${from.y} doesn't touch point ${px},${py}`);
   const stack = [start];
   seen.add(start);
-  while (stack.length) {
-    const t = all[stack.pop()!];
+  for (let top = stack.pop(); top !== undefined; top = stack.pop()) {
+    const t = all[top];
     for (let j = 0; j < all.length; j++) {
       if (seen.has(j)) continue;
       const o = all[j], side = SIDES.findIndex(([dx, dy]) => t.x + dx === o.x && t.y + dy === o.y);

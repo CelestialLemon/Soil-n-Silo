@@ -1,6 +1,6 @@
 import { BUILDINGS, CLEAR_COST, CROP_IDS, CROPS, EARTH, ITEM_IDS, ITEMS, recipeById, recipesFor, TRUCK, type BuildingId, type CropId, type ItemId } from './data.ts';
 import { TERRAIN } from './map.ts';
-import { centreLevel, FLAT, isFlat, isUnbroken, MAX_LEVEL } from './relief.ts';
+import { aroundPoint, baseLevel, corners, isFlat, isUnbroken, MAX_LEVEL, sheetAt, STEEP } from './relief.ts';
 import { groundOf, wheelSite } from './rules.ts';
 import { err, ok, type Result } from './result.ts';
 import { accessTiles, nearestOpen } from './roads.ts';
@@ -33,32 +33,78 @@ export const clearPrice = (s: GameState, kind: keyof typeof CLEAR_COST) => (s.sc
 export const earthPrice = (s: GameState, steps: number) => (s.scenario.sandbox ? 0 : Math.round(EARTH.step * steps));
 
 /**
- * The ground a building needs made under it: the level its footprint is levelled to and the steps that takes, or none
- * (`level` null) when it fits as the ground lies.
+ * Earthworks worked out but not yet done: the corners they set (`[corner index, height]`, a corner index being a tile's
+ * index × 4 + which corner) and the steps they take, a step being a point of the ground moved a level.
  */
-export interface Groundwork { level: number | null; steps: number }
-
-/** The steps that level a tile to `level`: a level each, and half a step more to flatten a ramp. */
-const stepsTo = (s: GameState, i: number, x: number, y: number, level: number) =>
-  Math.abs(centreLevel(s.map, x, y) - level) + (s.map.ramp[i] === FLAT ? 0 : 0.5);
+export interface Earthmove { set: [number, number][]; steps: number }
 
 /**
- * Runs `f` with a square of the map levelled flat at `level`, then puts the ground back (to ask what a building would find
- * there); with `level` null, on the ground as it lies. What is worked out from the ground (the roads, the per-layout facts)
- * is worked out afresh for `f` and dropped after, so nothing found on the levelled ground outlives it.
+ * The ground a building needs made under it: the level its footprint is levelled to and the earthworks that takes, or none
+ * (`level` null) when it fits as the ground lies.
  */
-export function levelledFor<T>(s: GameState, x: number, y: number, n: number, level: number | null, f: () => T): T {
-  if (level === null) return f();
-  const saved: [number, number, number][] = [];
-  for (let ty = y; ty < y + n; ty++) for (let tx = x; tx < x + n; tx++) {
+export interface Groundwork { level: number | null; move: Earthmove }
+
+const NONE: Earthmove = { set: [], steps: 0 };
+
+/** Whether earthworks may move a tile's ground: not water, and nothing built on it. */
+const movable = (s: GameState, x: number, y: number) => terrainAt(s, x, y) !== TERRAIN.water && !buildingAt(s, x, y);
+
+/** A rectangle of tiles: its north-west tile and its size in tiles. */
+export interface Area { x: number; y: number; w: number; h: number }
+
+/**
+ * The earthworks that level an area of the map flat at `level`. The ground around it follows where it joined the area and
+ * can (it stays a slope, at most STEEP across a tile; nothing built on it, not water); where it can't, the area is cut down
+ * or built up from it, a cliff. A step is each height the area's ground had at one of its points, moved a level to `level`.
+ */
+export function levelling(s: GameState, { x, y, w, h }: Area, level: number): Earthmove {
+  const m = s.map, inside = (tx: number, ty: number) => tx >= x && ty >= y && tx < x + w && ty < y + h;
+  const next = new Map<number, number[]>(), set: [number, number][] = [];
+  const cornersOf = (tx: number, ty: number) => {
     const i = tileIndex(s, tx, ty);
-    saved.push([i, s.map.level[i], s.map.ramp[i]]);
-    s.map.level[i] = level; s.map.ramp[i] = FLAT;
+    let c = next.get(i);
+    if (!c) { c = corners(m, tx, ty); next.set(i, c); }
+    return c;
+  };
+  let steps = 0;
+  for (let py = y; py <= y + h; py++) for (let px = x; px <= x + w; px++) {
+    const heights = new Set<number>();
+    for (const t of aroundPoint(m, px, py)) {
+      if (!inside(t.x, t.y)) continue;
+      heights.add(corners(m, t.x, t.y)[t.k]);
+      for (const o of sheetAt(m, px, py, t)) if (inside(o.x, o.y) || movable(s, o.x, o.y)) cornersOf(o.x, o.y)[o.k] = level;
+    }
+    for (const h of heights) steps += Math.abs(h - level);
   }
+  for (const [i, c] of next) {
+    const tx = i % m.width, ty = Math.floor(i / m.width), was = corners(m, tx, ty);
+    // A tile round the square that would grow too steep keeps its ground: the square meets it at a cliff.
+    if (!inside(tx, ty) && Math.max(...c) - Math.min(...c) > STEEP) continue;
+    c.forEach((h, k) => { if (h !== was[k]) set.push([i * 4 + k, h]); });
+  }
+  return { set, steps };
+}
+
+/** Does earthworks: sets their corners and marks the ground changed. */
+function dig(s: GameState, move: Earthmove) {
+  if (!move.set.length) return;
+  for (const [k, h] of move.set) s.map.corner[k] = h;
+  touchRelief(s);
+}
+
+/**
+ * Runs `f` with earthworks done (to ask what a building would find on levelled ground), then puts the ground back; with
+ * `move` null, on the ground as it lies. What is worked out from the ground (the roads, the per-layout facts) is worked out
+ * afresh for `f` and dropped after, so nothing found on the moved ground outlives it.
+ */
+export function levelledFor<T>(s: GameState, move: Earthmove | null, f: () => T): T {
+  if (!move || !move.set.length) return f();
+  const saved = move.set.map(([k]) => [k, s.map.corner[k]] as const);
+  for (const [k, h] of move.set) s.map.corner[k] = h;
   const rt = runtimeOf(s), { roads, derived } = rt;
   rt.roads = undefined; rt.derived = undefined;
   try { return f(); } finally {
-    for (const [i, l, r] of saved) { s.map.level[i] = l; s.map.ramp[i] = r; }
+    for (const [k, h] of saved) s.map.corner[k] = h;
     rt.roads = roads; rt.derived = derived;
   }
 }
@@ -71,18 +117,18 @@ export function levelledFor<T>(s: GameState, x: number, y: number, n: number, le
 export function groundworkFor(s: GameState, type: BuildingId, x: number, y: number): Result<Groundwork> {
   const n = BUILDINGS[type].size, ground = groundOf(type), wheel = !!BUILDINGS[type].onBank;
   const fits = ground === 'any' || (ground === 'unbroken' ? isUnbroken(s.map, x, y, n) : isFlat(s.map, x, y, n));
-  if (fits && (!wheel || wheelSite(s, x, y))) return ok({ level: null, steps: 0 });
+  if (fits && (!wheel || wheelSite(s, x, y))) return ok({ level: null, move: NONE });
   // Water beside it sets the lowest the ground can go.
-  let floor = 0;
+  let floor = 0, hi = 0;
   for (let ty = y - 1; ty <= y + n; ty++) for (let tx = x - 1; tx <= x + n; tx++) {
-    if (inMap(s, tx, ty) && terrainAt(s, tx, ty) === TERRAIN.water) floor = Math.max(floor, s.map.level[tileIndex(s, tx, ty)]);
+    if (inMap(s, tx, ty) && terrainAt(s, tx, ty) === TERRAIN.water) floor = Math.max(floor, baseLevel(s.map, tx, ty));
   }
+  for (let ty = y; ty < y + n; ty++) for (let tx = x; tx < x + n; tx++) hi = Math.max(hi, ...corners(s.map, tx, ty));
   let best: Groundwork | null = null;
-  for (let level = floor; level <= MAX_LEVEL; level++) {
-    if (wheel && !levelledFor(s, x, y, n, level, () => wheelSite(s, x, y))) continue;
-    let steps = 0;
-    for (let ty = y; ty < y + n; ty++) for (let tx = x; tx < x + n; tx++) steps += stepsTo(s, tileIndex(s, tx, ty), tx, ty, level);
-    if (!best || steps < best.steps) best = { level, steps };
+  for (let level = floor; level <= Math.max(floor, hi); level++) {
+    const move = levelling(s, { x, y, w: n, h: n }, level);
+    if (wheel && !levelledFor(s, move, () => wheelSite(s, x, y))) continue;
+    if (!best || move.steps < best.move.steps) best = { level, move };
   }
   if (!best) return no(wheel ? `The ${BUILDINGS[type].name.toLowerCase()} stands on a river bank, beside the running water.` : 'The ground here can\'t be levelled for it.');
   return ok(best);
@@ -90,7 +136,7 @@ export function groundworkFor(s: GameState, type: BuildingId, x: number, y: numb
 
 /** What placing `type` at (x, y) costs: the building and levelling the ground for it. */
 export function placePrice(s: GameState, type: BuildingId, gw: Groundwork) {
-  return priceOf(s, type) + earthPrice(s, gw.steps);
+  return priceOf(s, type) + earthPrice(s, gw.move.steps);
 }
 
 /** Whether `type` fits with its north-west tile at (x, y), and the groundwork it would need. */
@@ -109,7 +155,7 @@ export function canPlace(s: GameState, type: BuildingId, x: number, y: number): 
   const gw = groundworkFor(s, type, x, y);
   if (!gw.ok) return gw;
   const price = placePrice(s, type, gw.value);
-  if (s.credits < price) return no(`Not enough credits: the ${def.name.toLowerCase()} costs ${priceOf(s, type)}${gw.value.steps ? `, and levelling the ground ${earthPrice(s, gw.value.steps)}` : ''}.`);
+  if (s.credits < price) return no(`Not enough credits: the ${def.name.toLowerCase()} costs ${priceOf(s, type)}${gw.value.move.steps ? `, and levelling the ground ${earthPrice(s, gw.value.move.steps)}` : ''}.`);
   return gw;
 }
 
@@ -155,18 +201,15 @@ export function place<K extends BuildingId>(s: GameState, type: K, x: number, y:
   if (!check.ok) return check;
   const fits = choicesOf(type);
   if ((set.crop || set.recipe) && !fits.some((c) => c.crop === set.crop && c.recipe === set.recipe)) throw new Error(`A ${type} can't be placed with ${JSON.stringify(set)}`);
-  const gw = check.value, n = BUILDINGS[type].size;
+  const gw = check.value;
   s.credits -= placePrice(s, type, gw);
-  if (gw.level !== null) {
-    for (let ty = y; ty < y + n; ty++) for (let tx = x; tx < x + n; tx++) { const i = tileIndex(s, tx, ty); s.map.level[i] = gw.level; s.map.ramp[i] = FLAT; }
-    touchRelief(s);
-  }
+  dig(s, gw.move);
   // A water wheel faces the river.
   const site = BUILDINGS[type].onBank ? wheelSite(s, x, y) : null;
   const b = applySetting(makeBuilding(s, type, x, y, site ? site.rot : rot), set) as BuildingOf<K>;
   addBuilding(s, b);
   const what = settingName(set);
-  return ok({ message: `Built a ${BUILDINGS[type].name.toLowerCase()}${what ? ` (${what})` : ''}${gw.steps ? `, levelling the ground (${earthPrice(s, gw.steps)} credits)` : ''}.`, building: b });
+  return ok({ message: `Built a ${BUILDINGS[type].name.toLowerCase()}${what ? ` (${what})` : ''}${gw.move.steps ? `, levelling the ground (${earthPrice(s, gw.move.steps)} credits)` : ''}.`, building: b });
 }
 
 export function remove(s: GameState, b: Building): Action {
@@ -208,49 +251,107 @@ export function removeAt(s: GameState, x: number, y: number): Action {
 
 // ---- Earthworks ----
 
-export type Earthwork = 'raise' | 'lower' | 'ramp';
-export const EARTHWORKS: Earthwork[] = ['raise', 'lower', 'ramp'];
-export const EARTHWORK_NAMES: Record<Earthwork, string> = { raise: 'Raise', lower: 'Lower', ramp: 'Ramp' };
+export type Earthwork = 'raise' | 'lower' | 'level';
+export const EARTHWORKS: Earthwork[] = ['raise', 'lower', 'level'];
+export const EARTHWORK_NAMES: Record<Earthwork, string> = { raise: 'Raise', lower: 'Lower', level: 'Level' };
 
-/**
- * Whether earthwork `how` can be done on a tile: open grass on the map (trees and rock cleared first, nothing built), raised
- * to at most MAX_LEVEL, lowered no lower than water beside it, made a ramp rising towards `dir` (a ramp already there is
- * turned). Raising or lowering a ramp makes it flat at its top or its foot.
- */
-export function canReshape(s: GameState, x: number, y: number, how: Earthwork, dir: Dir): Result<{ level: number; ramp: number }> {
-  if (!inMap(s, x, y)) return no('Off the edge of the map.');
-  const t = terrainAt(s, x, y);
-  if (t === TERRAIN.water) return no('Water can\'t be moved.');
-  if (t === TERRAIN.tree) return no('A tree is in the way. Remove it first.');
-  if (t === TERRAIN.rock) return no('Rock is in the way. Remove it first.');
-  const o = buildingAt(s, x, y);
-  if (o) return no(`The ${BUILDINGS[o.type].name.toLowerCase()} is in the way.`);
-  const i = tileIndex(s, x, y), l = s.map.level[i], r = s.map.ramp[i];
-  // Water beside it, corners too (as when levelling under a building), sets the lowest it can go.
-  let water = -1;
-  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (inMap(s, x + dx, y + dy) && terrainAt(s, x + dx, y + dy) === TERRAIN.water) water = Math.max(water, s.map.level[tileIndex(s, x + dx, y + dy)]);
-  let to: { level: number; ramp: number };
-  if (how === 'raise') to = { level: l + 1, ramp: FLAT };
-  else if (how === 'lower') to = { level: r === FLAT ? l - 1 : l, ramp: FLAT };
-  else to = { level: l, ramp: dir };
-  if (how === 'ramp' && r === dir) return no('');
-  if (to.level > MAX_LEVEL || (how === 'ramp' && l + 1 > MAX_LEVEL)) return no('The ground is as high as it goes.');
-  if (to.level < 0) return no('The ground is as low as it goes.');
-  if (to.level < water) return no('The ground can\'t go below the water beside it.');
-  const cost = earthPrice(s, 1);
-  if (s.credits < cost) return no(`Not enough credits: earthworks cost ${cost} a step.`);
-  return ok(to);
+/** Why earthworks can't move a tile's ground ('' if they can): trees and rock are cleared first, and nothing built on it. */
+function inTheWay(s: GameState, x: number, y: number) {
+  const t = terrainAt(s, x, y), o = buildingAt(s, x, y);
+  if (t === TERRAIN.tree) return 'A tree is in the way. Remove it first.';
+  if (t === TERRAIN.rock) return 'Rock is in the way. Remove it first.';
+  return o ? `The ${BUILDINGS[o.type].name.toLowerCase()} is in the way.` : '';
 }
 
-/** Raises, lowers or ramps a tile, one step. */
-export function reshape(s: GameState, x: number, y: number, how: Earthwork, dir: Dir): Action {
-  const c = canReshape(s, x, y, how, dir);
+/**
+ * Earthworks the player asks for, over the points of the ground (where tiles meet at their corners) from `from` to `to`:
+ * raise or lower each a level, or level the tiles between them flat. `at` is the tile under the pointer, which picks the
+ * ground moved at a single point (at the foot or the top of a cliff) and the tile levelled when there are none between.
+ */
+export interface Dig { how: Earthwork; from: { x: number; y: number }; to: { x: number; y: number }; at: { x: number; y: number } }
+
+/** The tiles between a dig's points (at least the tile under the pointer across, where the points are in one row or column). */
+export function digArea(d: Dig): Area {
+  const x = Math.min(d.from.x, d.to.x), y = Math.min(d.from.y, d.to.y), w = Math.abs(d.to.x - d.from.x), h = Math.abs(d.to.y - d.from.y);
+  return { x: w ? x : d.at.x, y: h ? y : d.at.y, w: Math.max(1, w), h: Math.max(1, h) };
+}
+
+/**
+ * The earthworks a dig would do, and the level its ground ends at (the highest raised, the lowest lowered, or the level
+ * levelled to). Raising or lowering moves each point a level, and with it the ground of every tile that joins there (one
+ * sheet of ground, relief.ts `sheetAt`): at a single point the sheet of the tile under the pointer, else every sheet with a
+ * tile between the points. No tile may grow steeper than STEEP or go out of 0–MAX_LEVEL, and none go below water beside it.
+ * Levelling flattens the tiles between the points at their middle height, rounded, as under a building. Trees and rock are
+ * cleared first, nothing can be built on the ground moved, and water stays. The whole dig is done or none of it.
+ */
+export function canReshape(s: GameState, d: Dig): Result<{ move: Earthmove; level: number }> {
+  const m = s.map, area = digArea(d), one = d.from.x === d.to.x && d.from.y === d.to.y;
+  for (const p of [d.from, d.to]) if (p.x < 0 || p.y < 0 || p.x > m.width || p.y > m.height) return no('Off the edge of the map.');
+  if (!inMap(s, d.at.x, d.at.y)) return no('Off the edge of the map.');
+  if (one && terrainAt(s, d.at.x, d.at.y) === TERRAIN.water) return no('Water can\'t be moved.');
+  let move: Earthmove, level: number;
+  if (d.how === 'level') {
+    let sum = 0, all = true;
+    for (let ty = area.y; ty < area.y + area.h; ty++) for (let tx = area.x; tx < area.x + area.w; tx++) {
+      if (!inMap(s, tx, ty)) return no('Off the edge of the map.');
+      const why = terrainAt(s, tx, ty) === TERRAIN.water ? 'Water can\'t be moved.' : inTheWay(s, tx, ty);
+      if (why) return no(why);
+      sum += corners(m, tx, ty).reduce((a, b) => a + b, 0);
+    }
+    level = Math.round(sum / (area.w * area.h * 4));
+    for (let ty = area.y; ty < area.y + area.h; ty++) for (let tx = area.x; tx < area.x + area.w; tx++) if (corners(m, tx, ty).some((c) => c !== level)) all = false;
+    if (all) return no('');
+    move = levelling(s, area, level);
+  } else {
+    const up = d.how === 'raise' ? 1 : -1, next = new Map<number, number[]>();
+    const inside = (t: { x: number; y: number }) => t.x >= area.x && t.y >= area.y && t.x < area.x + area.w && t.y < area.y + area.h;
+    let steps = 0;
+    level = up > 0 ? 0 : MAX_LEVEL;
+    for (let py = Math.min(d.from.y, d.to.y); py <= Math.max(d.from.y, d.to.y); py++) for (let px = Math.min(d.from.x, d.to.x); px <= Math.max(d.from.x, d.to.x); px++) {
+      const around = aroundPoint(m, px, py), done = new Set<number>();
+      const starts = (one ? around.filter((t) => t.x === d.at.x && t.y === d.at.y) : around.filter(inside)).filter((t) => terrainAt(s, t.x, t.y) !== TERRAIN.water);
+      for (const start of starts) {
+        if (done.has(tileIndex(s, start.x, start.y))) continue;
+        const h = corners(m, start.x, start.y)[start.k] + up;
+        if (h > MAX_LEVEL) return no('The ground is as high as it goes.');
+        if (h < 0) return no('The ground is as low as it goes.');
+        if (up < 0 && around.some((t) => terrainAt(s, t.x, t.y) === TERRAIN.water && baseLevel(m, t.x, t.y) > h)) return no('The ground can\'t go below the water beside it.');
+        let moved = false;
+        for (const t of sheetAt(m, px, py, start)) {
+          const i = tileIndex(s, t.x, t.y);
+          done.add(i);
+          if (terrainAt(s, t.x, t.y) === TERRAIN.water) continue;
+          const why = inTheWay(s, t.x, t.y);
+          if (why) return no(why);
+          let c = next.get(i);
+          if (!c) { c = corners(m, t.x, t.y); next.set(i, c); }
+          c[t.k] = h; moved = true;
+        }
+        if (moved) { steps++; level = up > 0 ? Math.max(level, h) : Math.min(level, h); }
+      }
+    }
+    const set: [number, number][] = [];
+    for (const [i, c] of next) {
+      if (Math.max(...c) - Math.min(...c) > STEEP) return no('Too steep: raise or lower the ground around it first.');
+      const was = corners(m, i % m.width, Math.floor(i / m.width));
+      c.forEach((h, k) => { if (h !== was[k]) set.push([i * 4 + k, h]); });
+    }
+    if (!steps) return no('');
+    move = { set, steps };
+  }
+  const cost = earthPrice(s, move.steps);
+  if (s.credits < cost) return no(`Not enough credits: that costs ${cost}, ${earthPrice(s, 1)} a step.`);
+  return ok({ move, level });
+}
+
+/** Does a dig: raises or lowers the ground at its points a level, or levels the tiles between them. */
+export function reshape(s: GameState, d: Dig): Action<{ steps: number }> {
+  const c = canReshape(s, d);
   if (!c.ok) return c;
-  const i = tileIndex(s, x, y), cost = earthPrice(s, 1);
-  s.map.level[i] = c.value.level; s.map.ramp[i] = c.value.ramp;
+  const { move } = c.value, cost = earthPrice(s, move.steps);
+  dig(s, move);
   s.credits -= cost;
-  touchRelief(s);
-  return done(`${how === 'raise' ? 'Raised the ground' : how === 'lower' ? 'Lowered the ground' : 'Made a ramp'}${cost ? ` (${cost} credits)` : ''}.`);
+  return ok({ message: `${d.how === 'raise' ? 'Raised the ground' : d.how === 'lower' ? 'Lowered the ground' : 'Levelled the ground'}${cost ? ` (${cost} credits)` : ''}.`, steps: move.steps });
 }
 
 export function setCrop(s: GameState, b: Building, crop: CropId): Action {

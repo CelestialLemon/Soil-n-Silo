@@ -27,9 +27,12 @@ export function wetAt(isWater: (x: number, y: number) => boolean, x: number, y: 
   return false;
 }
 
+/** The levels from which trees grow as on middle and on high ground. */
+const MIDDLE = 5, HIGH = 9;
+
 /** The species and model variant of the tree on tile (x, y), standing at `level`, `wet` when water is within two tiles. */
 export function treeAt(x: number, y: number, level: number, wet: boolean): { species: TreeKind; variant: number } {
-  const mix = MIX[wet ? 'water' : level >= 3 ? 'high' : level === 2 ? 'middle' : 'low'];
+  const mix = MIX[wet ? 'water' : level >= HIGH ? 'high' : level >= MIDDLE ? 'middle' : 'low'];
   const total = Object.values(mix).reduce((a, b) => a + b, 0);
   let pick = hash(x * 1.7, y * 2.3) * total;
   let species: TreeKind = 'oak';
