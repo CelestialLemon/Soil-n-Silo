@@ -16,7 +16,7 @@ Items are roughly in priority order within each section.
 
 ## Renderer
 
-Pinned: **v0.3.2** (`package.json`). The game owns the loop, state, input, UI, audio and save; the renderer draws, and answers
+Pinned: **v0.3.3** (`package.json`). The game owns the loop, state, input, UI, audio and save; the renderer draws, and answers
 "what is under the pointer" (`pick`).
 
 | Need | Status | Notes |
@@ -25,6 +25,7 @@ Pinned: **v0.3.2** (`package.json`). The game owns the loop, state, input, UI, a
 | Overlays (fertility, power reach, water, bees) without a geometry per colour | Yes (#30) | One tile geometry, tinted per tile. |
 | Many goods moving (now in trucks) without redrawing the object shadow map | Yes ([#31](https://github.com/CelestialLemon/pixel3d-renderer/issues/31)) | Goods, markers, ghosts and overlays have `castShadow = false`. |
 | Smooth ground without false outline dashes or contact darkening | Yes ([#38](https://github.com/CelestialLemon/pixel3d-renderer/issues/38), v0.3.2) | Joined ground is shaded smooth in the game. |
+| Gentle folds between flat ground faces without outline ink or contact darkening | Yes ([#41](https://github.com/CelestialLemon/pixel3d-renderer/issues/41), v0.3.3) | Meadows and slopes read clean; cliffs and buildings keep their ink. |
 | Turbine rotors turning with the wind | Worked around | Three rotor speeds, swapped by wind strength (spin speed is baked into the geometry). |
 | Lamps on placed objects (pylon lanterns at night) | No | Lamps are scene data; emissive parts glow after dusk instead. |
 | Buildings fading when they hide the tile under the pointer | Not needed yet | Picking a tile uses the ground plane, so tall buildings don't block placement. |
