@@ -47,13 +47,19 @@ export class RouteView {
         if (!a || !b || a === b) continue;
         const p = legPath(s, a, b);
         if (!p) continue;
-        // Straight runs on even ground as one bar each, following the ground.
-        const at = (k: number) => new THREE.Vector3(p[k] % w + 0.5, y + groundY(s.map, p[k] % w + 0.5, Math.floor(p[k] / w) + 0.5), Math.floor(p[k] / w) + 0.5);
-        const rise = (k: number) => at(k + 1).y - at(k).y;
+        // Following the ground through each tile's centre and the edge it crosses to the next (where a ramp's slope starts
+        // or ends), with each straight, even run as one bar.
+        const pts: THREE.Vector3[] = [];
+        const on = (x: number, z: number) => pts.push(new THREE.Vector3(x, y + groundY(s.map, x, z), z));
+        p.forEach((i, k) => {
+          const x = i % w + 0.5, z = Math.floor(i / w) + 0.5;
+          if (k) on((pts[pts.length - 1].x + x) / 2, (pts[pts.length - 1].z + z) / 2);
+          on(x, z);
+        });
+        const way = (k: number) => new THREE.Vector3().subVectors(pts[k + 1], pts[k]).normalize();
         let from = 0;
-        for (let k = 1; k < p.length; k++) {
-          const turn = k === p.length - 1 || p[k + 1] - p[k] !== p[k] - p[k - 1] || Math.abs(rise(k) - rise(k - 1)) > 1e-6;
-          if (turn) { this.bar(c, at(from), at(k)); from = k; }
+        for (let k = 1; k < pts.length; k++) {
+          if (k === pts.length - 1 || way(k).distanceTo(way(k - 1)) > 1e-6) { this.bar(c, pts[from], pts[k]); from = k; }
         }
       }
       if (!numbers) continue;

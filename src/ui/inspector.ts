@@ -59,7 +59,7 @@ export function powerWords(type: Building['type']) {
   if (d.power) return `${d.power} W while working`;
   if (type === 'solar') return `up to ${POWER.solar} W`;
   if (type === 'turbine') return `up to ${Math.round(TURBINE_MOST)} W`;
-  if (type === 'wheel') return `about ${POWER.wheel} W, steady`;
+  if (type === 'wheel') return `${POWER.wheel} W at 1 m/s, steady`;
   if (type === 'digester') return `${POWER.digester} W while burning`;
   if (type === 'battery') return `holds ${POWER.battery.capacity} J`;
   return '';
