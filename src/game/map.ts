@@ -1,5 +1,5 @@
 import { fbm2, hash2, mulberry32, noise2 } from './rng.ts';
-import { FLAT, MAX_LEVEL, SIDES } from './relief.ts';
+import { SIDES } from './relief.ts';
 import type { Scenario } from './scenarios.ts';
 
 // The map of a commission, generated from its seed: grass with a fertility per tile, water, rock and trees, and where the
@@ -16,9 +16,8 @@ export interface MapData {
   terrain: TerrainKind[];
   /** Soil fertility 0–100 per tile (what a field on it starts from). */
   fertility: number[];
-  /** Each tile's level (0 the valley floor, at most MAX_LEVEL), and for a ramp the side it rises towards (FLAT if none); see relief.ts. */
-  level: number[];
-  ramp: number[];
+  /** Each tile's corner heights, four a tile (north-west, north-east, south-east, south-west; 0 the valley floor, at most MAX_LEVEL); see relief.ts. */
+  corner: number[];
   /** The speed of the river's current over each tile (m/s, 0 off the river and on still water). */
   current: number[];
   /** The depot's north-west tile (it is 3 × 3). */
@@ -37,9 +36,8 @@ export interface Land {
   height: number;
   terrain: TerrainKind[];
   fertility: number[];
-  /** Levels and ramps as on the map (relief.ts); beyond the edge the land rises higher than MAX_LEVEL into hills. */
-  level: number[];
-  ramp: number[];
+  /** Corner heights as on the map (relief.ts); beyond the edge the land rises higher than MAX_LEVEL into hills. */
+  corner: number[];
   /** The depot's north-west tile, in map coordinates. */
   depot: { x: number; y: number };
   /** The river's current over each tile (vx, vz in m/s, two numbers a tile); 0 off the river and on still water. */
@@ -55,9 +53,9 @@ export const DEPOT_SIZE = 3;
 const CLEARING = 8;
 
 export function generateMap(sc: Scenario): MapData {
-  const { width, height, terrain, fertility, level, ramp, depot, flow } = generateLand(sc, 0);
+  const { width, height, terrain, fertility, corner, depot, flow } = generateLand(sc, 0);
   const current = terrain.map((_, i) => Math.round(Math.hypot(flow[i * 2], flow[i * 2 + 1]) * 100) / 100);
-  return { width, height, terrain, fertility, level, ramp, current, depot };
+  return { width, height, terrain, fertility, corner, current, depot };
 }
 
 /** The country settles to this level for its outermost RIM tiles, where the distant woods start. */
@@ -83,7 +81,28 @@ const SOIL_HEIGHT = 9, SOIL_WATER = 10, SOIL_REACH = 2;
 const RIVER_FAST = 1.1, RIVER_SLOW = 0.6;
 const smoothstep = (a: number, b: number, v: number) => { const t = Math.min(1, Math.max(0, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
 
+// TEMPORARY: the stepped generator below still works in whole levels and ramps; until it is rewritten for corner heights,
+// its levels are stood at OLD_LEVEL corner levels each and turned into corners at the end.
+const OLD_LEVEL = 3, OLD_MAX = 4, FLAT = -1;
+type Staged = Omit<Land, 'corner'> & { level: number[]; ramp: number[] };
+
+function oldCorners(l: number, d: number): number[] {
+  const u = l + 1;
+  switch (d) {
+    case FLAT: return [l, l, l, l];
+    case 0: return [u, u, l, l];
+    case 1: return [l, u, u, l];
+    case 2: return [l, l, u, u];
+    default: return [u, l, l, u];
+  }
+}
+
 export function generateLand(sc: Scenario, margin: number): Land {
+  const { level, ramp, ...rest } = stagedLand(sc, margin);
+  return { ...rest, corner: level.flatMap((l, i) => oldCorners(l, ramp[i]).map((c) => c * OLD_LEVEL)) };
+}
+
+function stagedLand(sc: Scenario, margin: number): Staged {
   const { width: w, height: h, seed, terrain: t } = sc, r = mulberry32(seed);
   const M = margin, lw = w + 2 * M, lh = h + 2 * M, size = lw * lh;
   const terrain = new Array<TerrainKind>(size).fill(TERRAIN.grass), fertility = new Array<number>(size).fill(0);
@@ -93,8 +112,8 @@ export function generateLand(sc: Scenario, margin: number): Land {
   const onMap = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h;
   const inside = (x: number, y: number) => x >= -M && y >= -M && x < w + M && y < h + M;
   const depot = { x: Math.floor(w / 2 - 1 + (r() - 0.5) * w * 0.4), y: h - DEPOT_SIZE - 1 };
-  const land: Land = { seed, margin: M, width: lw, height: lh, terrain, fertility, level, ramp, depot, flow, drop, track };
-  const top = Math.min(MAX_LEVEL, Math.ceil(t.relief * MAX_LEVEL));
+  const land: Staged = { seed, margin: M, width: lw, height: lh, terrain, fertility, level, ramp, depot, flow, drop, track };
+  const top = Math.min(OLD_MAX, Math.ceil(t.relief * OLD_MAX));
 
   const river = riverCourse(sc, depot, r);
   const surface = generateRelief(sc, depot, river, r);
@@ -120,7 +139,7 @@ export function generateLand(sc: Scenario, margin: number): Land {
   return land;
 }
 
-type Surface = Pick<MapData, 'width' | 'height' | 'terrain' | 'level' | 'ramp' | 'depot'>;
+type Surface = Pick<MapData, 'width' | 'height' | 'terrain' | 'depot'> & { level: number[]; ramp: number[] };
 
 /** A tile-scale river; the same functions continue the channel into the drawing margin. */
 interface River {
@@ -150,7 +169,7 @@ function riverCourse(sc: Scenario, depot: Land['depot'], r: () => number): River
     a = axis(a);
     return Math.max(RIVER_EDGE, Math.min(breadth - 1 - RIVER_EDGE, centre + RIVER_SWAY * Math.sin(a / period + phase) + RIVER_RIPPLE * Math.sin(a / RIVER_RIPPLE_PERIOD + phase)));
   };
-  const top = Math.min(MAX_LEVEL, Math.ceil(t.relief * MAX_LEVEL));
+  const top = Math.min(OLD_MAX, Math.ceil(t.relief * OLD_MAX));
   const falls = top === 0 ? [] : top === 1 ? [Math.round(span * 0.5)] : [Math.round(span * 0.34), Math.round(span * 0.68)];
   const level = (a: number) => falls.length - falls.filter((f) => sign > 0 ? a >= f : a < f).length;
   const rawBounds = (a: number) => {
@@ -174,7 +193,7 @@ function generateRelief(sc: Scenario, depot: Land['depot'], river: River, r: () 
   const terrain = new Array<TerrainKind>(w * h).fill(TERRAIN.grass), level = new Array<number>(w * h).fill(0);
   const ramp = new Array<number>(w * h).fill(FLAT), surface: Surface = { width: w, height: h, terrain, level, ramp, depot };
   const idx = (x: number, y: number) => y * w + x;
-  const top = Math.min(MAX_LEVEL, Math.ceil(t.relief * MAX_LEVEL));
+  const top = Math.min(OLD_MAX, Math.ceil(t.relief * OLD_MAX));
   const fixed = new Uint8Array(w * h), minimum = new Uint8Array(w * h);
   const home = (x: number, y: number) => Math.hypot((x - depot.x - 1) / HOME_STRETCH, y - depot.y - 1);
   const desired = new Float64Array(w * h);
@@ -214,7 +233,7 @@ function generateRelief(sc: Scenario, depot: Land['depot'], river: River, r: () 
 /** Still water is cut from ellipses, with a flat bank and broad terraces around each basin. */
 function cutBasins(sc: Scenario, surface: Surface, r: () => number, home: (x: number, y: number) => number) {
   const { width: w, height: h, terrain, level } = surface, t = sc.terrain;
-  const top = Math.min(MAX_LEVEL, Math.ceil(t.relief * MAX_LEVEL)), idx = (x: number, y: number) => y * w + x;
+  const top = Math.min(OLD_MAX, Math.ceil(t.relief * OLD_MAX)), idx = (x: number, y: number) => y * w + x;
   const basinHeight = (l: number, distance: number, radius: number) => l + Math.round(Math.max(0, distance - radius - BASIN_BANK) / BASIN_STEP);
   if (t.water !== 'river' && t.water !== 'none') {
     // Keep one broad summit: several overlapping basin envelopes must not erase the scenario's relief range.
@@ -274,7 +293,7 @@ function settleWater(surface: Surface, river: boolean, fixed: Uint8Array, minimu
   const waterBodies = regions(surface, true).groups;
   for (const body of waterBodies) {
     if (!river) {
-      let l = MAX_LEVEL;
+      let l = OLD_MAX;
       for (const i of body) { l = Math.min(l, level[i]); neighbours(surface, i, (j) => { l = Math.min(l, level[j]); }); }
       // Protect the shores too: later corner cleanup must not lift them out of watering reach.
       for (const i of body) {
@@ -451,7 +470,7 @@ function connectTerraces(sc: Scenario, surface: Surface) {
   }
 }
 
-function countryside(sc: Scenario, land: Land, channel: River) {
+function countryside(sc: Scenario, land: Staged, channel: River) {
   const { width: w, height: h, seed, terrain: t } = sc;
   const { margin: M, width: lw, height: lh, terrain, level, ramp, depot, track, flow, drop } = land, size = lw * lh;
   const { vertical, sign, course, bounds, level: riverLevel } = channel;
@@ -543,7 +562,7 @@ function countryside(sc: Scenario, land: Land, channel: River) {
   return { away, soilNoise, gw, gh, gx, gy };
 }
 
-function scatter(sc: Scenario, land: Land, habitat: Float32Array, away: Float32Array, share: number, scale: number, s: number, kind: TerrainKind, thicken: number) {
+function scatter(sc: Scenario, land: Staged, habitat: Float32Array, away: Float32Array, share: number, scale: number, s: number, kind: TerrainKind, thicken: number) {
   const { width: w, height: h } = sc, { margin: M, width: lw, terrain, ramp, track, depot } = land;
   const gx = Math.floor(-M / CELL), gy = Math.floor(-M / CELL);
   const gw = Math.floor((w + M - 1) / CELL) - gx + 1, gh = Math.floor((h + M - 1) / CELL) - gy + 1;
@@ -574,10 +593,10 @@ function scatter(sc: Scenario, land: Land, habitat: Float32Array, away: Float32A
   }
 }
 
-function fertilise(sc: Scenario, land: Land, country: ReturnType<typeof countryside>) {
+function fertilise(sc: Scenario, land: Staged, country: ReturnType<typeof countryside>) {
   const { width: w, height: h, seed, terrain: t } = sc;
   const { margin: M, width: lw, height: lh, terrain, level, fertility } = land, size = lw * lh;
-  const { soilNoise, gw, gx, gy } = country, top = Math.min(MAX_LEVEL, Math.ceil(t.relief * MAX_LEVEL));
+  const { soilNoise, gw, gx, gy } = country, top = Math.min(OLD_MAX, Math.ceil(t.relief * OLD_MAX));
   const idx = (x: number, y: number) => (y + M) * lw + x + M;
   const onMap = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h;
   const inside = (x: number, y: number) => x >= -M && y >= -M && x < w + M && y < h + M;
