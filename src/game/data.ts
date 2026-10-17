@@ -90,7 +90,7 @@ export const FIELD = {
   /** Fertility a second that ground without a field regains, up to what it started at. */
   rest: 0.1,
   /** How much more soil a harvest takes from a field's ramp tiles (×2 at 1), and from those of a field a tree or a bean field guards. */
-  erosion: 1, erosionGuarded: 0.5,
+  erosion: 0.5, erosionGuarded: 0.25,
 };
 
 // ---- Buildings ----
@@ -155,7 +155,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   solar: { name: 'Solar panel', size: 2, cost: 70, category: 'power', grid: 'source', key: 'S', get hint() { return `${POWER.solar} W at noon; nothing at night.`; } },
   turbine: { name: 'Wind turbine', size: 1, cost: 120, category: 'power', grid: 'source', tall: true, get hint() { return `${POWER.turbine} W in full wind. Trees and tall buildings close by shelter it.`; } },
   battery: { name: 'Battery', size: 2, cost: 150, category: 'power', grid: 'storage', hint: 'Stores power for the night.' },
-  wheel: { name: 'Water wheel', size: 2, cost: 240, category: 'power', grid: 'source', onBank: true, get hint() { return `A steady ${POWER.wheel} W from a river's current; ${POWER.wheelFall} times that beside a fall.`; } },
+  wheel: { name: 'Water wheel', size: 2, cost: 200, category: 'power', grid: 'source', onBank: true, get hint() { return `A steady ${POWER.wheel} W from a river's current; ${POWER.wheelFall} times that beside a fall.`; } },
   digester: { name: 'Digester', size: 2, cost: 180, category: 'power', grid: 'source', get hint() { return `Burns ${anyOf('organic')} for a steady ${POWER.digester} W.`; } },
   pylon: { name: 'Pylon', size: 1, cost: 10, category: 'power', inert: true, grid: 'link', onWater: true, key: 'P', get hint() { return `Powers buildings within ${POWER.pylon.reach} tiles; links to pylons within ${POWER.pylon.link}.`; } },
   sapling: { name: 'Sapling', size: 1, cost: 5, category: 'ecology', inert: true, hint: 'Grows into a tree.' },
@@ -221,13 +221,13 @@ export const POWER = {
   /** How much more wind a turbine gets for each level it stands up. */
   windPerLevel: 0.15,
   /** A water wheel's watts on a river at 1 m/s (more in a faster current), and how many times that beside a fall. */
-  wheel: 14, wheelFall: 2.5,
+  wheel: 20, wheelFall: 2,
   digester: 30,
   battery: { capacity: 2400, rate: 40 },
   pylon: { reach: 3, link: 8 },
   sprinklerNearWater: 3, sprinklerFar: 8, waterNear: 8,
   /** Watts more a sprinkler needs for each level it lifts water: above the highest water near it, or above the valley floor. */
-  sprinklerLift: 2,
+  sprinklerLift: 1,
   sprinklerReach: 3,
 };
 
@@ -266,7 +266,7 @@ export const bays = (b: BuildingId) => (b === 'depot' ? 2 : 1);
 
 export const CLEAR_COST = { tree: 5, rock: 15 };
 /** Earthworks: credits a step (a tile raised or lowered a level, or made a ramp). Levelling ground under a building costs the same. */
-export const EARTH = { step: 40 };
+export const EARTH = { step: 20 };
 /** Soil health gained per tree more than the map started with (lost per tree fewer), and the most it moves either way. */
 export const TREE_HEALTH = { perTree: 0.25, cap: 10 };
 
