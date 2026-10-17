@@ -74,20 +74,32 @@ export class TileCursor {
     if (x1 <= x0 || y1 <= y0) return;
 
     // Which of each art pixel's SUB points fall on a mark (a bit each), found triangle by triangle in the tile's own
-    // coordinates.
+    // coordinates; only over the marks (the frame's strips, a square round each dot), mapped onto the screen the way the
+    // triangle maps, as the tiles between are empty.
     const bw = x1 - x0, hits = new Uint16Array(bw * (y1 - y0)), t = this.width;
     for (const { p, uv, patch } of tris) {
       const [a, b, c] = p, det = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
       if (Math.abs(det) < 1e-9) continue;
+      // The triangle's map from (u, v) to the screen.
+      const du1 = uv[1][0] - uv[0][0], dv1 = uv[1][1] - uv[0][1], du2 = uv[2][0] - uv[0][0], dv2 = uv[2][1] - uv[0][1], d = du1 * dv2 - du2 * dv1;
+      const screen = (u: number, v: number) => {
+        const s1 = ((u - uv[0][0]) * dv2 - (v - uv[0][1]) * du2) / d, s2 = ((v - uv[0][1]) * du1 - (u - uv[0][0]) * dv1) / d;
+        return [a[0] + (b[0] - a[0]) * s1 + (c[0] - a[0]) * s2, a[1] + (b[1] - a[1]) * s1 + (c[1] - a[1]) * s2];
+      };
       const tx0 = Math.max(x0, Math.floor(Math.min(a[0], b[0], c[0]))), tx1 = Math.min(x1, Math.ceil(Math.max(a[0], b[0], c[0])));
       const ty0 = Math.max(y0, Math.floor(Math.min(a[1], b[1], c[1]))), ty1 = Math.min(y1, Math.ceil(Math.max(a[1], b[1], c[1])));
-      for (let py = ty0; py < ty1; py++) for (let px = tx0; px < tx1; px++) SUB.forEach(([sx, sy], bit) => {
-        const x = px + sx, y = py + sy;
-        const la = ((b[1] - c[1]) * (x - c[0]) + (c[0] - b[0]) * (y - c[1])) / det, lb = ((c[1] - a[1]) * (x - c[0]) + (a[0] - c[0]) * (y - c[1])) / det, lc = 1 - la - lb;
-        if (la < 0 || lb < 0 || lc < 0) return;
-        const u = la * uv[0][0] + lb * uv[1][0] + lc * uv[2][0], v = la * uv[0][1] + lb * uv[1][1] + lc * uv[2][1];
-        if (onFrame(patch.edges, u, v, t) || patch.dots.some((k) => Math.hypot(u - UV[k][0], v - UV[k][1]) < DOT)) hits[(py - y0) * bw + px - x0] |= 1 << bit;
-      });
+      for (const [u0, v0, u1, v1] of marksOf(patch, t)) {
+        const q = [screen(u0, v0), screen(u1, v0), screen(u1, v1), screen(u0, v1)];
+        const rx0 = Math.max(tx0, Math.floor(Math.min(...q.map((e) => e[0])))), rx1 = Math.min(tx1, Math.ceil(Math.max(...q.map((e) => e[0]))));
+        const ry0 = Math.max(ty0, Math.floor(Math.min(...q.map((e) => e[1])))), ry1 = Math.min(ty1, Math.ceil(Math.max(...q.map((e) => e[1]))));
+        for (let py = ry0; py < ry1; py++) for (let px = rx0; px < rx1; px++) SUB.forEach(([sx, sy], bit) => {
+          const x = px + sx, y = py + sy;
+          const la = ((b[1] - c[1]) * (x - c[0]) + (c[0] - b[0]) * (y - c[1])) / det, lb = ((c[1] - a[1]) * (x - c[0]) + (a[0] - c[0]) * (y - c[1])) / det, lc = 1 - la - lb;
+          if (la < 0 || lb < 0 || lc < 0) return;
+          const u = la * uv[0][0] + lb * uv[1][0] + lc * uv[2][0], v = la * uv[0][1] + lb * uv[1][1] + lc * uv[2][1];
+          if (onFrame(patch.edges, u, v, t) || patch.dots.some((k) => Math.hypot(u - UV[k][0], v - UV[k][1]) < DOT)) hits[(py - y0) * bw + px - x0] |= 1 << bit;
+        });
+      }
     }
     const img = ctx.createImageData(bw, y1 - y0), [r, g, b] = this.rgb;
     hits.forEach((m, i) => {
@@ -104,3 +116,17 @@ export class TileCursor {
 /** Whether (u, v) across a tile lies on its frame's sides `edges` (CursorPatch), `t` wide. */
 const onFrame = (edges: number, u: number, v: number, t: number) =>
   ((edges & 1) && v < t) || ((edges & 2) && 1 - u < t) || ((edges & 4) && 1 - v < t) || ((edges & 8) && u < t);
+
+/** Where a patch's marks lie across its tile, as rectangles [u0, v0, u1, v1]: a strip `t` wide along each framed side, a square round each dot. */
+function marksOf(patch: CursorPatch, t: number): number[][] {
+  const out: number[][] = [];
+  if (patch.edges & 1) out.push([0, 0, 1, t]);
+  if (patch.edges & 2) out.push([1 - t, 0, 1, 1]);
+  if (patch.edges & 4) out.push([0, 1 - t, 1, 1]);
+  if (patch.edges & 8) out.push([0, 0, t, 1]);
+  for (const k of patch.dots) {
+    const [u, v] = UV[k];
+    out.push([Math.max(0, u - DOT), Math.max(0, v - DOT), Math.min(1, u + DOT), Math.min(1, v + DOT)]);
+  }
+  return out;
+}

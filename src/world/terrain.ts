@@ -58,7 +58,7 @@ const country = (g: THREE.BufferGeometry, m: THREE.Matrix4) => {
 
 export function buildWorld(map: MapData, land: Land, models: { trees: Record<TreeKind, THREE.BufferGeometry[]>; rocks: THREE.BufferGeometry[] }): World {
   const s = new GeometryCollector(), d = new GeometryCollector(true), fluids = new FluidCollector();
-  const { width: w, height: h } = map, M = land.margin, seed = land.seed;
+  const { width: w, height: h } = map, M = land.margin;
   const onMap = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h;
   const onLand = (x: number, y: number) => x >= -M && y >= -M && x < w + M && y < h + M;
   const li = (x: number, y: number) => (y + M) * land.width + x + M;
@@ -69,10 +69,8 @@ export function buildWorld(map: MapData, land: Land, models: { trees: Record<Tre
   /** How far (tiles) a point is beyond the map's edge. */
   const beyond = (x: number, y: number) => Math.hypot(Math.max(0, -x, x - w), Math.max(0, -y, y - h));
 
-  // A track leads off the south edge from the depot, bending away once it is out of sight of the map.
-  const bend = hash(seed, 3) < 0.5 ? -1 : 1;
-  const trackAt = (y: number) => land.depot.x + 1 + Math.round(bend * 5 * smoothstep(h + 6, h + 26, y));
-  const track = (x: number, y: number) => y >= h && Math.abs(x - trackAt(y)) <= 1;
+  // A track leads off the south edge from the depot, bending away once it is out of sight of the map (laid by the generator).
+  const track = (x: number, y: number) => onLand(x, y) && land.track[li(x, y)] === 1;
 
   // The land's relief, in map coordinates; the country is drawn as the generator made it.
   const lr = landRelief(land);
@@ -119,7 +117,7 @@ export function buildWorld(map: MapData, land: Land, models: { trees: Record<Tre
     if (onMap(x, y)) continue;   // the map's ground is MapGround's
     const far = beyond(cx, cz);
     if (canopy(x, y) || hidden(x, y)) { countryTile(x, y, dim(FLOOR)); continue; }
-    if (track(x, y)) { countryTile(x, y, dim(x === trackAt(y) ? RUT : ROAD[n < 0.5 ? 0 : 1])); continue; }
+    if (track(x, y)) { countryTile(x, y, dim(track(x - 1, y) && track(x + 1, y) ? RUT : ROAD[n < 0.5 ? 0 : 1])); continue; }
     countryTile(x, y, dim(grassOf(land.fertility[li(x, y)], x, y, isBank(lr, x + M, y + M))));
     if (far > NEAR) continue;
     // Trees and rocks the same as on the map (view.ts), only dulled.
