@@ -1,6 +1,6 @@
 import { BUILDINGS, CLEAR_COST, CROP_IDS, CROPS, EARTH, ITEM_IDS, ITEMS, recipeById, recipesFor, TRUCK, type BuildingId, type CropId, type ItemId } from './data.ts';
 import { TERRAIN } from './map.ts';
-import { centreLevel, FLAT, isFlat, isUnbroken, MAX_LEVEL, SIDES } from './relief.ts';
+import { centreLevel, FLAT, isFlat, isUnbroken, MAX_LEVEL } from './relief.ts';
 import { groundOf, wheelSite } from './rules.ts';
 import { err, ok, type Result } from './result.ts';
 import { accessTiles, nearestOpen } from './roads.ts';
@@ -216,8 +216,9 @@ export function canReshape(s: GameState, x: number, y: number, how: Earthwork, d
   const o = buildingAt(s, x, y);
   if (o) return no(`The ${BUILDINGS[o.type].name.toLowerCase()} is in the way.`);
   const i = tileIndex(s, x, y), l = s.map.level[i], r = s.map.ramp[i];
+  // Water beside it, corners too (as when levelling under a building), sets the lowest it can go.
   let water = -1;
-  for (const [dx, dy] of SIDES) if (inMap(s, x + dx, y + dy) && terrainAt(s, x + dx, y + dy) === TERRAIN.water) water = Math.max(water, s.map.level[tileIndex(s, x + dx, y + dy)]);
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (inMap(s, x + dx, y + dy) && terrainAt(s, x + dx, y + dy) === TERRAIN.water) water = Math.max(water, s.map.level[tileIndex(s, x + dx, y + dy)]);
   let to: { level: number; ramp: number };
   if (how === 'raise') to = { level: l + 1, ramp: FLAT };
   else if (how === 'lower') to = { level: r === FLAT ? l - 1 : l, ramp: FLAT };

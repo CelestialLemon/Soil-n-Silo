@@ -54,14 +54,17 @@ function roads(s: GameState): Roads {
 /** Whether trucks can drive on a tile. */
 export const isOpen = (s: GameState, x: number, y: number) => inMap(s, x, y) && roads(s).open[y * s.map.width + x] === 1;
 
-/** The open tiles next to a building (sharing an edge with it), by index: north side west to east, then east, south, west. */
+/**
+ * The open tiles next to a building where a truck can load (sharing an edge with it, the ground joined across it: not
+ * below or above a cliff), by index: north side west to east, then east, south, west.
+ */
 export function accessTiles(s: GameState, b: Building): number[] {
   const n = sizeOf(b), w = s.map.width, out: number[] = [];
-  const at = (x: number, y: number) => { if (isOpen(s, x, y)) out.push(y * w + x); };
-  for (let x = b.x; x < b.x + n; x++) at(x, b.y - 1);
-  for (let y = b.y; y < b.y + n; y++) at(b.x + n, y);
-  for (let x = b.x; x < b.x + n; x++) at(x, b.y + n);
-  for (let y = b.y; y < b.y + n; y++) at(b.x - 1, y);
+  const at = (x: number, y: number, ix: number, iy: number, side: number) => { if (isOpen(s, x, y) && joins(s.map, ix, iy, side)) out.push(y * w + x); };
+  for (let x = b.x; x < b.x + n; x++) at(x, b.y - 1, x, b.y, 0);
+  for (let y = b.y; y < b.y + n; y++) at(b.x + n, y, b.x + n - 1, y, 1);
+  for (let x = b.x; x < b.x + n; x++) at(x, b.y + n, x, b.y + n - 1, 2);
+  for (let y = b.y; y < b.y + n; y++) at(b.x - 1, y, b.x, y, 3);
   return out;
 }
 

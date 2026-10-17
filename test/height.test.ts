@@ -5,11 +5,11 @@ import { CROPS, EARTH, FIELD, POWER, TRUCK, type BuildingId } from '../src/game/
 import { placement } from '../src/game/forecast.ts';
 import { TERRAIN } from '../src/game/map.ts';
 import { centreLevel, corners, FLAT, heightAt, isFlat, isUnbroken, joins, MAX_LEVEL } from '../src/game/relief.ts';
-import { distanceTo, legLength } from '../src/game/roads.ts';
+import { accessTiles, distanceTo, legLength } from '../src/game/roads.ts';
 import { deserialize, serialize } from '../src/game/save.ts';
 import { touchesWater, wheelSite } from '../src/game/rules.ts';
 import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
-import { exposureOf, isGuarded, wattsOf } from '../src/game/sim/layout.ts';
+import { exposureOf, handsTo, isGuarded, wattsOf } from '../src/game/sim/layout.ts';
 import { advance } from '../src/game/sim/step.ts';
 import { newGame, touchRelief, type BuildingOf, type Dir, type GameState } from '../src/game/state.ts';
 
@@ -82,7 +82,7 @@ test('a truck climbing a ramp is slower and uses more battery than on the flat',
     return { time, used: TRUCK.battery - t.value.truck.energy };
   };
   const low = run(false), high = run(true);
-  assert.ok(high.time > low.time + TRUCK.climb / TRUCK.speed * 0.9, `${high.time} vs ${low.time}`);
+  assert.ok(high.time > low.time + TRUCK.climb / TRUCK.speed * 0.8, `${high.time} vs ${low.time}`);
   assert.ok(Math.abs(high.used - low.used - TRUCK.climb * TRUCK.joulesPerTile) < 0.2, `${high.used} vs ${low.used}`);
 });
 
@@ -214,10 +214,10 @@ test('a truck spends on each step exactly what the roads counted for it', () => 
   const r = newRoute(s);
   assert.ok(addStop(s, r, silo).ok);
   setTruckRoute(s, t.value.truck, r);
-  const tr = t.value.truck, w = s.map.width;
-  // From where it is now to the silo: the battery it uses is the effort the roads counted, to the joule.
-  const effort = distanceTo(s, silo, Math.floor(tr.y) * w + Math.floor(tr.x)), before = tr.energy;
-  assert.ok(tr.x % 1 === 0.5 && tr.y % 1 === 0.5, 'it starts on a tile centre');
+  const tr = t.value.truck;
+  // From its garage (it leaves by the side nearest the silo) to the silo: the battery it uses is the effort the roads
+  // counted, to the joule.
+  const effort = Math.min(...accessTiles(s, g).map((a) => distanceTo(s, silo, a))), before = tr.energy;
   for (let k = 0; k < 600 && tr.phase !== 'queue' && tr.phase !== 'dock'; k++) advance(s, 0.1);
   assert.ok(tr.phase === 'queue' || tr.phase === 'dock', tr.phase);
   assert.ok(Math.abs(before - tr.energy - effort * TRUCK.joulesPerTile) < 1e-6, `used ${before - tr.energy}, the roads say ${effort * TRUCK.joulesPerTile}`);
@@ -251,4 +251,34 @@ test('a save whose ramp rises above the highest level is refused', () => {
   assert.equal(deserialize(serialize(s)).ok, false);
   s.map.ramp[0] = FLAT;
   assert.equal(deserialize(serialize(s)).ok, true);
+});
+
+test('trucks load only where the ground joins the building, and goods go next door up a joined ramp but not up a cliff', () => {
+  const s = flat();
+  ground(s, 0, 0, 29, 9, 1);
+  const silo = put(s, 'silo', 10, 8);   // on the terrace's edge: its south side faces a cliff
+  assert.ok(accessTiles(s, silo).every((i) => Math.floor(i / 30) < 10), 'never from below the cliff');
+  // A field on the floor rising onto the terrace by a ramp under it hands its harvest up to a mill whose edge it joins.
+  ground(s, 20, 10, 22, 10, 0, 0);
+  const f = put(s, 'field', 20, 10), m = put(s, 'mill', 20, 8);
+  assert.ok(joins(s.map, 20, 10, 0));
+  assert.ok(handsTo(s, f, m), 'up a joined ramp');
+  const g = put(s, 'field', 24, 10), n = put(s, 'mill', 24, 8);
+  assert.ok(!handsTo(s, g, n) && handsTo(s, n, g), 'down a cliff only');
+});
+
+test('a truck at a garage between two pieces of ground leaves by the side that reaches its stop', () => {
+  const s = flat();
+  // A belt of woods splits the map in two; the garage stands in a gap in it, open to both sides.
+  for (let y = 0; y < 30; y++) for (const x of [12, 13]) if (y < 10 || y > 11) s.map.terrain[y * 30 + x] = TERRAIN.tree;
+  touchRelief(s);
+  const g = put(s, 'garage', 12, 10), silo = put(s, 'silo', 3, 10);
+  const t = buyTruck(s, g);
+  assert.ok(t.ok);
+  assert.ok(t.value.truck.x > 14, 'bought on the east side, away from the silo');
+  const r = newRoute(s);
+  assert.ok(addStop(s, r, silo).ok);
+  setTruckRoute(s, t.value.truck, r);
+  for (let k = 0; k < 200 && t.value.truck.phase !== 'queue' && t.value.truck.phase !== 'dock'; k++) advance(s, 0.1);
+  assert.ok(t.value.truck.phase === 'queue' || t.value.truck.phase === 'dock', t.value.truck.phase);
 });

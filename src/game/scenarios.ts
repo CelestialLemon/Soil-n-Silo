@@ -85,7 +85,7 @@ export const CAMPAIGN: Scenario[] = [
     terrain: { ...LOAM, water: 'ponds', rock: 0.12, forest: 0.06, relief: 0.9 }, weather: { ...CALM, sun: 0.6, wind: 0.75, gust: 0.25 },
     tags: ['Weak sun', 'Strong wind', 'Rocky', 'Hilly'],
     goals: [{ kind: 'deliver', item: 'oil', n: 90 }, { kind: 'deliver', item: 'bread', n: 80 }],
-    tips: ['Up on the ridge a turbine catches more wind, but every level a truck climbs costs it time and battery.'],
+    tips: ['Up on the ridge a turbine catches more wind. Every level a truck climbs costs it time and battery, so keep the busy routes low.'],
   },
   {
     id: 'c4', name: 'Linen for the Looms', seed: 4404, width: 50, height: 40, credits: 1300, par: 50 * MIN,
@@ -152,8 +152,7 @@ export function randomScenario(seed: number, difficulty: 1 | 2 | 3): Scenario {
     () => { terrain.rock = 0.12; tags.push('Rocky'); },
     () => { terrain.forest = 0.24; tags.push('Wooded'); },
     () => { weather.wind = 0.25; weather.gust = 0.2; tags.push('Still air'); },
-    () => { terrain.relief = 0.9; tags.push('Hilly'); },
-    () => { terrain.relief = 0.1; tags.push('Flat'); },
+    () => { const hilly = r() < 0.5; terrain.relief = hilly ? 0.9 : 0; tags.push(hilly ? 'Hilly' : 'Flat'); },
   ];
   const nMods = Math.min(difficulty, 2) - (r() < 0.4 ? 1 : 0);
   const used = new Set<number>();

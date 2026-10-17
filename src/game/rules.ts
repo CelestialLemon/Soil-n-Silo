@@ -121,12 +121,16 @@ export function wheelSite(s: GameState, x: number, y: number): { rot: Dir; curre
 }
 
 /**
- * Whether goods can be handed from building `a` to building `b` next door: somewhere along the edge they share, a's ground
- * is no lower than b's. Down a cliff is fine (they drop), up one is not.
+ * Whether goods can be handed from building `a` to building `b` next door: somewhere along the edge they share, the ground
+ * joins, or a's side of it stands above b's. Down a cliff is fine (they drop), up one is not.
  */
 export function handsDown(s: GameState, a: Footprint, b: Footprint) {
   const n = BUILDINGS[a.type].size;
-  return rim(a.x, a.y, n).some((t) => inMap(s, t.x, t.y) && covers(b, t.x, t.y) && centreLevel(s.map, t.ix, t.iy) >= centreLevel(s.map, t.x, t.y));
+  return rim(a.x, a.y, n).some((t) => {
+    if (!inMap(s, t.x, t.y) || !covers(b, t.x, t.y)) return false;
+    const mine = sideOf(s.map, t.ix, t.iy, t.side), theirs = sideOf(s.map, t.x, t.y, (t.side + 2) % 4);
+    return mine[0] >= theirs[0] && mine[1] >= theirs[1];
+  });
 }
 
 /** Whether a footprint covers a tile. */

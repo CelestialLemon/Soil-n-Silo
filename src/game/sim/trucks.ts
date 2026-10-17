@@ -48,7 +48,19 @@ function goHome(s: GameState, t: Truck) {
 function setOff(s: GameState, t: Truck, from: number) {
   const r = routeOf(s, t), g = must(garageOf(s, t), 'garage');
   if (!r || !r.stops.length) { goHome(s, t); return; }
-  const here = tileOf(s, t), n = r.stops.length;
+  const n = r.stops.length;
+  // At its garage it leaves by whichever side has a way to its stops (a garage can stand at a cliff).
+  if (distanceTo(s, g, tileOf(s, t)) === 0) {
+    for (let k = 0; k < n; k++) {
+      const b = buildingById(s, r.stops[(from + k) % n].building);
+      if (!b) continue;
+      const best = accessTiles(s, g).reduce((m, a) => (distanceTo(s, b, a) < distanceTo(s, b, m) ? a : m), tileOf(s, t));
+      if (distanceTo(s, b, best) === Infinity) continue;
+      t.x = best % s.map.width + 0.5; t.y = Math.floor(best / s.map.width) + 0.5;
+      break;
+    }
+  }
+  const here = tileOf(s, t);
   let i = -1;
   for (let k = 0; k < n; k++) {
     const b = buildingById(s, r.stops[(from + k) % n].building);
