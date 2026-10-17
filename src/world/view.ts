@@ -25,7 +25,7 @@ const YAW: Record<Dir, number> = { 0: Math.PI, 1: Math.PI / 2, 2: 0, 3: -Math.PI
 
 interface Shown { obj: PixelObject; key: string }
 
-const v = new THREE.Vector3(), e = new THREE.Euler(), sc = new THREE.Vector3();
+const v = new THREE.Vector3(), e = new THREE.Euler();
 
 /** Overlay colours: soil from poor (red) to rich (green), roads (and buildings trucks can't reach), sprinkler water, bee range (power: powerView.ts). */
 const FERT = [0xb03020, 0xd07020, 0xd8b020, 0x98c030, 0x50a030, 0x207a30].map((c) => new THREE.Color(c));
@@ -141,7 +141,7 @@ export class WorldView {
     let i = 0;
     for (let y = f.y; y < f.y + 3; y++) for (let x = f.x; x < f.x + 3; x++) {
       const band = soilBand(s.map.fertility[y * s.map.width + x]), lie = corners(s.map, x, y).join(',');
-      list[i] = this.show(list[i], `soil ${x} ${y} ${band} ${lie}`, () => this.m.soil[band], f.id, (o) => { lay(s.map, x, y, 0, v, e, sc); o.setTransform(v, e, sc); });
+      list[i] = this.show(list[i], `soil ${x} ${y} ${band} ${lie}`, () => lay(s.map, x, y, 0, this.m.soil[band], v), f.id, (o) => o.setTransform(v, e.set(0, 0, 0)));
       i++;
       const turn = Math.floor(hash(x, y) * 4) * Math.PI / 2;
       list[i] = this.show(list[i], `crop ${x} ${y} ${f.crop} ${stage} ${lie}`, () => this.m.crops[f.crop][stage], f.id,
@@ -256,14 +256,10 @@ export class WorldView {
     });
   }
 
-  /** Lays an overlay tile on a map tile, on its slope. */
-  private lay(s: GameState, o: PixelObject, x: number, y: number, lift: number) {
-    lay(s.map, x, y, lift, v, e, sc);
-    o.setTransform(v, e, sc);
-  }
-
-  private tile(tint: THREE.Color) {
-    const o = this.r.addObject(this.m.fill);
+  /** An overlay tile in `tint`, laid over map tile (x, y), `lift` above its ground. */
+  private tile(s: GameState, x: number, y: number, lift: number, tint: THREE.Color) {
+    const o = this.r.addObject(lay(s.map, x, y, lift, this.m.fill, v));
+    o.setTransform(v, e.set(0, 0, 0));
     o.tint = tint; o.tintStrength = 1; o.castShadow = false;
     return o;
   }
@@ -289,8 +285,7 @@ export class WorldView {
       for (let i = 0; i < w * h; i++) {
         if (s.map.terrain[i] === TERRAIN.water) continue;
         const x = i % w, y = Math.floor(i / w);
-        const o = this.tile(heightTint(centreLevel(s.map, x, y), isBank(s.map, x, y)));
-        this.lay(s, o, x, y, 0.02);
+        const o = this.tile(s, x, y, 0.02, heightTint(centreLevel(s.map, x, y), isBank(s.map, x, y)));
         this.overlayObjs.push(o);
       }
       return;
@@ -298,8 +293,7 @@ export class WorldView {
     if (kind === 'fertility') {
       for (let i = 0; i < w * h; i++) {
         if (s.map.terrain[i] !== TERRAIN.grass) continue;
-        const o = this.tile(FERT[Math.min(5, Math.floor(s.map.fertility[i] / 17))]);
-        this.lay(s, o, i % w, Math.floor(i / w), 0.02);
+        const o = this.tile(s, i % w, Math.floor(i / w), 0.02, FERT[Math.min(5, Math.floor(s.map.fertility[i] / 17))]);
         this.overlayObjs.push(o);
       }
       return;
@@ -308,16 +302,14 @@ export class WorldView {
       for (let i = 0; i < w * h; i++) {
         const x = i % w, y = Math.floor(i / w);
         if (!isOpen(s, x, y)) continue;
-        const o = this.tile(ROADS);
+        const o = this.tile(s, x, y, 0.02, ROADS);
         o.opacity = 0.4;
-        this.lay(s, o, x, y, 0.02);
         this.overlayObjs.push(o);
       }
       for (const b of s.buildings) {
         if (!cutOff(s, b)) continue;
         for (let y = b.y; y < b.y + sizeOf(b); y++) for (let x = b.x; x < b.x + sizeOf(b); x++) {
-          const o = this.tile(CUT_OFF);
-          this.lay(s, o, x, y, 0.05);
+          const o = this.tile(s, x, y, 0.05, CUT_OFF);
           this.overlayObjs.push(o);
         }
       }
@@ -329,8 +321,7 @@ export class WorldView {
     }
     const tint = kind === 'water' ? WATER : BEES;
     for (const i of mark) {
-      const o = this.tile(tint);
-      this.lay(s, o, i % w, Math.floor(i / w), 0.02);
+      const o = this.tile(s, i % w, Math.floor(i / w), 0.02, tint);
       this.overlayObjs.push(o);
     }
   }

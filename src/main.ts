@@ -5,7 +5,7 @@ import {
 } from './game/build.ts';
 import { BUILDINGS, POWER, type BuildingId } from './game/data.ts';
 import { generateLand, TERRAIN } from './game/map.ts';
-import { aroundPoint, corners, MAX_LEVEL } from './game/relief.ts';
+import { aroundPoint, corners, MAX_LEVEL, sheetAt } from './game/relief.ts';
 import { wheelSite } from './game/rules.ts';
 import { deserialize, readProgress, recordResult, saveKey, serialize } from './game/save.ts';
 import { scenarioById } from './game/scenarios.ts';
@@ -17,7 +17,7 @@ import { medalFor } from './game/sim/stats.ts';
 import { cargoText, describeStatus, describeTruck } from './game/sim/describe.ts';
 import { advance } from './game/sim/step.ts';
 import {
-  buildingAt, buildingById, inMap, newGame, routeById, sizeOf, terrainAt, truckById, type Dir, type GameState, type Route,
+  buildingAt, buildingById, inMap, newGame, routeById, sizeOf, terrainAt, tileIndex, truckById, type Dir, type GameState, type Route,
 } from './game/state.ts';
 import { Input } from './input.ts';
 import { Hud, type Tool } from './ui/hud.ts';
@@ -299,25 +299,47 @@ async function play(initial: GameState) {
       const x0 = Math.min(input.press.from.x, input.press.to.x), x1 = Math.max(input.press.from.x, input.press.to.x), y0 = Math.min(input.press.from.y, input.press.to.y), y1 = Math.max(input.press.from.y, input.press.to.y);
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) ghost('frame false 1', models.frames.bad[0], x + 0.5, groundAt(x + 0.5, y + 0.5) + 0.03, y + 0.5);
     } else if (tool.kind === 'earth') {
-      // The points the dig would move (or the tiles it would level), marked in the cursor's colour if it can be done, else red.
+      // The points the dig would move (or the tiles it would level, framed), marked in the cursor's colour if it can be
+      // done, else red where it was asked.
       const d = digHere();
       if (d) {
-        const ok = canReshape(state, d).ok, area = digArea(d), into = ok ? marks : refusedMarks;
+        const fit = canReshape(state, d), area = digArea(d), into = new Map<number, CursorPatch>();
+        const mark = (x: number, y: number, edges: number, dot?: number) => {
+          const i = tileIndex(state, x, y), p = into.get(i) ?? patch(x, y, 0, []);
+          p.edges |= edges;
+          if (dot !== undefined && !p.dots.includes(dot)) p.dots.push(dot);
+          into.set(i, p);
+        };
         if (d.how === 'level') {
-          for (let y = area.y; y < area.y + area.h; y++) for (let x = area.x; x < area.x + area.w; x++) if (inMap(state, x, y)) into.push(patch(x, y, true, []));
-        } else {
-          for (let py = Math.min(d.from.y, d.to.y); py <= Math.max(d.from.y, d.to.y); py++) for (let px = Math.min(d.from.x, d.to.x); px <= Math.max(d.from.x, d.to.x); px++) {
-            for (const t of aroundPoint(state.map, px, py)) into.push(patch(t.x, t.y, false, [t.k]));
+          // A frame round the area, its sides on the area's edge.
+          for (let y = area.y; y < area.y + area.h; y++) for (let x = area.x; x < area.x + area.w; x++) {
+            if (inMap(state, x, y)) mark(x, y, (y === area.y ? 1 : 0) | (x === area.x + area.w - 1 ? 2 : 0) | (y === area.y + area.h - 1 ? 4 : 0) | (x === area.x ? 8 : 0));
           }
         }
+        if (fit.ok) {
+          // The corners it sets, outside a levelled area (the ground round it following).
+          const inArea = (x: number, y: number) => d.how === 'level' && x >= area.x && y >= area.y && x < area.x + area.w && y < area.y + area.h;
+          for (const [c] of fit.value.move.set) {
+            const i = c >> 2, x = i % state.map.width, y = Math.floor(i / state.map.width);
+            if (!inArea(x, y)) mark(x, y, 0, c & 3);
+          }
+        } else if (d.how !== 'level') {
+          // The ground at the points it was asked to move: as canReshape starts, on the tile pointed at or those inside.
+          const one = d.from.x === d.to.x && d.from.y === d.to.y;
+          for (let py = Math.min(d.from.y, d.to.y); py <= Math.max(d.from.y, d.to.y); py++) for (let px = Math.min(d.from.x, d.to.x); px <= Math.max(d.from.x, d.to.x); px++) {
+            const starts = aroundPoint(state.map, px, py).filter((t) => (one ? t.x === d.at.x && t.y === d.at.y : t.x >= area.x && t.y >= area.y && t.x < area.x + area.w && t.y < area.y + area.h) && terrainAt(state, t.x, t.y) !== TERRAIN.water);
+            for (const start of starts) for (const t of sheetAt(state.map, px, py, start)) if (terrainAt(state, t.x, t.y) !== TERRAIN.water) mark(t.x, t.y, 0, t.k);
+          }
+        }
+        if (fit.ok) marks = [...into.values()]; else refusedMarks = [...into.values()];
       }
       overlayFor('height');
     } else if (hoverTile) {
-      marks = [patch(hoverTile.x, hoverTile.y, true, [])];
+      marks = [patch(hoverTile.x, hoverTile.y, 15, [])];
     }
   }
-  /** The cursor's marks on a tile: its frame, and dots at its corners `dots`. */
-  const patch = (x: number, y: number, frame: boolean, dots: number[]): CursorPatch => ({ x, y, heights: corners(state.map, x, y).map((c) => c * LEVEL_HEIGHT), frame, dots });
+  /** The cursor's marks on a tile: a frame along its sides `edges` (CursorPatch), and dots at its corners `dots`. */
+  const patch = (x: number, y: number, edges: number, dots: number[]): CursorPatch => ({ x, y, heights: corners(state.map, x, y).map((c) => c * LEVEL_HEIGHT), edges, dots });
   /** The dig the earthworks in hand would do: over the drag's points, or at the point pointed at. */
   function digHere(): Dig | null {
     if (tool.kind !== 'earth' || !hoverTile) return null;

@@ -377,3 +377,27 @@ test('a truck at a garage between two pieces of ground leaves by the side that r
   for (let k = 0; k < 200 && t.value.truck.phase !== 'queue' && t.value.truck.phase !== 'dock'; k++) advance(s, 0.1);
   assert.ok(t.value.truck.phase === 'queue' || t.value.truck.phase === 'dock', t.value.truck.phase);
 });
+
+test('levelling beside water never takes the ground below the water\'s surface', () => {
+  const s = flat();
+  ground(s, 5, 4, 5, 4, 2);
+  s.map.terrain[4 * 30 + 5] = TERRAIN.water;
+  touchRelief(s);
+  const d: Dig = { how: 'level', from: { x: 5, y: 5 }, to: { x: 7, y: 7 }, at: { x: 5, y: 5 } };
+  const r = canReshape(s, d);
+  if (!r.ok) assert.fail(r.error);
+  assert.equal(r.value.level, 2);
+  assert.ok(reshape(s, d).ok);
+  for (let y = 5; y < 7; y++) for (let x = 5; x < 7; x++) assert.deepEqual(corners(s.map, x, y), [2, 2, 2, 2]);
+});
+
+test('a tile\'s centre is where its ground is drawn, so a corner raised on its own climbs nothing to the middle', () => {
+  const s = flat();
+  // Folded along the diagonal through its three low corners: its middle is on the flat.
+  tile(s, 5, 5, [1, 0, 0, 0]);
+  assert.equal(centreLevel(s.map, 5, 5), 0);
+  for (const c of [[1, 0, 0, 0], [0, 1, 2, 1], [1, 0, 1, 0], [0, 1, 1, 0], [2, 1, 0, 1]]) {
+    tile(s, 8, 8, c);
+    assert.equal(centreLevel(s.map, 8, 8), heightAt(s.map, 8.5, 8.5), c.join(','));
+  }
+});

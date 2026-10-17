@@ -39,10 +39,13 @@ export const spanOf = (r: Relief, x: number, y: number) => { const c = corners(r
 /** Whether trucks can drive over a tile's ground: its corners differ by at most a level. */
 export const isGentle = (r: Relief, x: number, y: number) => spanOf(r, x, y) <= 1;
 
-/** A tile's height (in levels) at its centre: the mean of its corners. */
+/**
+ * A tile's height (in levels) at its centre, on the ground as it is drawn: the middle of the diagonal its top is split along
+ * (`splitsNwSe`), which on a tile folded along that diagonal is not the mean of its corners.
+ */
 export const centreLevel = (r: Relief, x: number, y: number) => {
-  const [a, b, c, d] = corners(r, x, y);
-  return (a + b + c + d) / 4;
+  const c = corners(r, x, y);
+  return splitsNwSe(c) ? (c[0] + c[2]) / 2 : (c[1] + c[3]) / 2;
 };
 
 /**
@@ -82,9 +85,17 @@ export function splitsNwSe(c: readonly number[]) {
  */
 export function heightAt(r: Relief, px: number, py: number): number {
   const x = Math.min(r.width - 1, Math.max(0, Math.floor(px))), y = Math.min(r.height - 1, Math.max(0, Math.floor(py)));
-  const u = Math.min(1, Math.max(0, px - x)), v = Math.min(1, Math.max(0, py - y));
-  const [nw, ne, se, sw] = corners(r, x, y);
-  if (splitsNwSe([nw, ne, se, sw])) return u >= v ? nw + (ne - nw) * u + (se - ne) * v : nw + (se - sw) * u + (sw - nw) * v;
+  return heightOn(corners(r, x, y), px - x, py - y);
+}
+
+/**
+ * The height over a tile with corner heights `c` (north-west, north-east, south-east, south-west) at (u, v) across it (0 to
+ * 1 east and south, clamped to the tile), on the triangle of its top the point falls in.
+ */
+export function heightOn(c: readonly number[], u: number, v: number): number {
+  const [nw, ne, se, sw] = c;
+  u = Math.min(1, Math.max(0, u)); v = Math.min(1, Math.max(0, v));
+  if (splitsNwSe(c)) return u >= v ? nw + (ne - nw) * u + (se - ne) * v : nw + (se - sw) * u + (sw - nw) * v;
   return u + v <= 1 ? nw + (ne - nw) * u + (sw - nw) * v : se + (sw - se) * (1 - u) + (ne - se) * (1 - v);
 }
 

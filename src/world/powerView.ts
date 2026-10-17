@@ -39,7 +39,7 @@ const GHOST = NET_COLOURS.length;
 const TILE_TINTS = NET_COLOURS.map((c) => new THREE.Color(c));
 const GHOST_TINT = new THREE.Color(0xd8ffb0);
 const X = new THREE.Vector3(1, 0, 0), dir = new THREE.Vector3(), q = new THREE.Quaternion(), scale = new THREE.Vector3();
-const v = new THREE.Vector3(), e = new THREE.Euler(), sc = new THREE.Vector3();
+const v = new THREE.Vector3(), e = new THREE.Euler();
 
 /** The colour index of a network: its place in the list, wrapping round the palette. */
 export const netColour = (s: GameState, net: Network) => networks(s).list.indexOf(net) % NET_COLOURS.length;
@@ -106,10 +106,9 @@ export class PowerView {
       }
     }
     for (const [i, tint] of owner) {
-      const o = this.r.addObject(this.m.fill);
+      const o = this.r.addObject(lay(s.map, i % w, Math.floor(i / w), 0.02, this.m.fill, v));
       o.tint = tint; o.tintStrength = TILE_STRENGTH; o.castShadow = false;
-      lay(s.map, i % w, Math.floor(i / w), 0.02, v, e, sc);
-      o.setTransform(v, e, sc);
+      o.setTransform(v, e.set(0, 0, 0));
       this.objs.push(o);
     }
   }

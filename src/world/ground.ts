@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { FLAG, linearColor as lin, type PixelObject, type PixelRenderer } from 'pixel3d-renderer';
 import { TERRAIN, type Land } from '../game/map.ts';
-import { baseLevel, centreLevel, corners, heightAt, inRelief, sheetAt, sideOf, SIDES, splitsNwSe, spanOf, STEEP, type Relief } from '../game/relief.ts';
+import { baseLevel, centreLevel, corners, heightAt, heightOn, inRelief, sheetAt, sideOf, SIDES, splitsNwSe, spanOf, STEEP, type Relief } from '../game/relief.ts';
 import { reliefOf, type GameState } from '../game/state.ts';
 import { hash } from './kit.ts';
 
@@ -27,19 +27,66 @@ export function standY(r: Relief, n: number, x: number, y: number) {
 }
 
 /**
- * Lays a flat tile-sized object (a soil bed, an overlay tile) on a tile of the relief, lifted `lift` above it: on a slope it
- * is tilted to the plane that best fits the tile's corners and stretched along it. Writes the transform into `pos`, `rot`
- * and `scale`.
+ * Lays a tile-sized object (a soil bed, an overlay tile) on a tile of the relief, lifted `lift` above it: returns its
+ * geometry draped over the tile (`drape`) and writes where it stands into `pos`, its origin at the tile's centre and the
+ * height of its lowest corner.
  */
-export function lay(r: Relief, x: number, y: number, lift: number, pos: THREE.Vector3, rot: THREE.Euler, scale: THREE.Vector3, yaw = 0) {
-  const [nw, ne, se, sw] = corners(r, x, y);
-  // How far the ground rises across the tile eastwards (+x) and southwards (+z), in metres.
-  const gx = (ne + se - nw - sw) / 2 * LEVEL_HEIGHT, gz = (sw + se - nw - ne) / 2 * LEVEL_HEIGHT;
-  pos.set(x + 0.5, centreLevel(r, x, y) * LEVEL_HEIGHT + lift, y + 0.5);
-  if (!gx && !gz) { rot.set(0, yaw, 0); scale.set(1, 1, 1); return; }
-  // Rising south tips the near edge up, a turn back about x; rising east, a turn about z.
-  rot.set(-Math.atan(gz), 0, Math.atan(gx));
-  scale.set(Math.hypot(1, gx), 1, Math.hypot(1, gz));
+export function lay(r: Relief, x: number, y: number, lift: number, g: THREE.BufferGeometry, pos: THREE.Vector3): THREE.BufferGeometry {
+  const c = corners(r, x, y), base = Math.min(...c);
+  pos.set(x + 0.5, base * LEVEL_HEIGHT + lift, y + 0.5);
+  return drape(g, c.map((h) => h - base));
+}
+
+/** Draped geometries, by the geometry and the shape of the tile it was draped over. */
+const draped = new WeakMap<THREE.BufferGeometry, Map<string, THREE.BufferGeometry>>();
+
+/**
+ * A tile-sized geometry (x and z within half a tile of its origin, non-indexed) draped over a tile whose corners stand
+ * `c` levels above its lowest: each triangle cut along the diagonal the tile's top is split along (relief.ts `splitsNwSe`),
+ * so every piece lies over one half of the top, and each vertex lifted by the ground's height under it. A flat tile gives
+ * the geometry itself. Cached, so a shape is draped once.
+ */
+export function drape(g: THREE.BufferGeometry, c: readonly number[]): THREE.BufferGeometry {
+  if (c.every((h) => h === 0)) return g;
+  let byShape = draped.get(g);
+  if (!byShape) { byShape = new Map(); draped.set(g, byShape); }
+  const key = c.join(','), known = byShape.get(key);
+  if (known) return known;
+  // The diagonal as a signed distance, in the geometry's own coordinates (the tile's centre at the origin).
+  const nwSe = splitsNwSe(c), side = (x: number, z: number) => (nwSe ? x - z : x + z);
+  const names = Object.keys(g.attributes).filter((k) => k !== 'normal'), src = names.map((k) => g.getAttribute(k));
+  const out = names.map(() => [] as number[]), pos = names.indexOf('position');
+  type Vertex = number[][];
+  const vertex = (i: number): Vertex => src.map((a) => Array.from({ length: a.itemSize }, (_, k) => a.array[i * a.itemSize + k]));
+  const mix = (a: Vertex, b: Vertex, t: number): Vertex => a.map((v, n) => v.map((x, k) => x + (b[n][k] - x) * t));
+  const emit = (tri: Vertex[]) => {
+    for (const v of tri) v.forEach((data, n) => {
+      if (n === pos) out[n].push(data[0], data[1] + heightOn(c, data[0] + 0.5, data[2] + 0.5) * LEVEL_HEIGHT, data[2]);
+      else out[n].push(...data);
+    });
+  };
+  for (let t = 0; t + 2 < src[pos].count; t += 3) {
+    const tri = [vertex(t), vertex(t + 1), vertex(t + 2)], d = tri.map((v) => side(v[pos][0], v[pos][2]));
+    // A vertex on the diagonal with the other two either side of it: cut the triangle in two through it.
+    const on = [0, 1, 2].find((i) => d[i] === 0 && d[(i + 1) % 3] * d[(i + 2) % 3] < 0);
+    if (on !== undefined) {
+      const a = tri[on], b = tri[(on + 1) % 3], e = tri[(on + 2) % 3], j = (on + 1) % 3, l = (on + 2) % 3;
+      const be = mix(b, e, d[j] / (d[j] - d[l]));
+      emit([a, b, be]); emit([a, be, e]);
+      continue;
+    }
+    // The lone vertex on one side of the diagonal, if the triangle crosses it: cut off its corner, and the quad left in two.
+    const k = [0, 1, 2].find((i) => d[i] * d[(i + 1) % 3] < 0 && d[i] * d[(i + 2) % 3] < 0);
+    if (k === undefined) { emit(tri); continue; }
+    const a = tri[k], b = tri[(k + 1) % 3], e = tri[(k + 2) % 3];
+    const ab = mix(a, b, d[k] / (d[k] - d[(k + 1) % 3])), ae = mix(a, e, d[k] / (d[k] - d[(k + 2) % 3]));
+    emit([a, ab, ae]); emit([ab, b, e]); emit([ab, e, ae]);
+  }
+  const result = new THREE.BufferGeometry();
+  names.forEach((name, n) => result.setAttribute(name, new THREE.Float32BufferAttribute(out[n], src[n].itemSize)));
+  result.computeVertexNormals();
+  byShape.set(key, result);
+  return result;
 }
 
 /** Grass by fertility band: dry and yellow-green on poor soil, deep green on rich. */

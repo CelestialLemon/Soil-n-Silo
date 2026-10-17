@@ -109,6 +109,15 @@ export function levelledFor<T>(s: GameState, move: Earthmove | null, f: () => T)
   }
 }
 
+/** The level of the highest water in or beside an area (corners too), 0 if there is none: the lowest it can be levelled to. */
+function waterFloor(s: GameState, { x, y, w, h }: Area) {
+  let floor = 0;
+  for (let ty = y - 1; ty <= y + h; ty++) for (let tx = x - 1; tx <= x + w; tx++) {
+    if (inMap(s, tx, ty) && terrainAt(s, tx, ty) === TERRAIN.water) floor = Math.max(floor, baseLevel(s.map, tx, ty));
+  }
+  return floor;
+}
+
 /**
  * How the ground at (x, y) gets ready for `type` (its tiles are on the map): nothing where it fits as it lies (relief.ts:
  * one-tile buildings anywhere, a field without a cliff inside it, the rest flat), else levelled to the level that takes the
@@ -119,10 +128,8 @@ export function groundworkFor(s: GameState, type: BuildingId, x: number, y: numb
   const fits = ground === 'any' || (ground === 'unbroken' ? isUnbroken(s.map, x, y, n) : isFlat(s.map, x, y, n));
   if (fits && (!wheel || wheelSite(s, x, y))) return ok({ level: null, move: NONE });
   // Water beside it sets the lowest the ground can go.
-  let floor = 0, hi = 0;
-  for (let ty = y - 1; ty <= y + n; ty++) for (let tx = x - 1; tx <= x + n; tx++) {
-    if (inMap(s, tx, ty) && terrainAt(s, tx, ty) === TERRAIN.water) floor = Math.max(floor, baseLevel(s.map, tx, ty));
-  }
+  const floor = waterFloor(s, { x, y, w: n, h: n });
+  let hi = 0;
   for (let ty = y; ty < y + n; ty++) for (let tx = x; tx < x + n; tx++) hi = Math.max(hi, ...corners(s.map, tx, ty));
   let best: Groundwork | null = null;
   for (let level = floor; level <= Math.max(floor, hi); level++) {
@@ -298,7 +305,8 @@ export function canReshape(s: GameState, d: Dig): Result<{ move: Earthmove; leve
       if (why) return no(why);
       sum += corners(m, tx, ty).reduce((a, b) => a + b, 0);
     }
-    level = Math.round(sum / (area.w * area.h * 4));
+    // Never below water beside it, as under a building.
+    level = Math.max(Math.round(sum / (area.w * area.h * 4)), waterFloor(s, area));
     for (let ty = area.y; ty < area.y + area.h; ty++) for (let tx = area.x; tx < area.x + area.w; tx++) if (corners(m, tx, ty).some((c) => c !== level)) all = false;
     if (all) return no('');
     move = levelling(s, area, level);

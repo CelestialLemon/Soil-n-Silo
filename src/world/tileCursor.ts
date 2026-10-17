@@ -17,10 +17,11 @@ const DOT = 0.2;
 const UV = [[0, 0], [1, 0], [1, 1], [0, 1]];
 
 /**
- * Marks on one tile: `y` is the ground's height (m) at its corners (north-west, north-east, south-east, south-west), its top
- * the two triangles the ground is drawn as; a frame round its edge, and dots at the corners listed in `dots`.
+ * Marks on one tile: `heights` is the ground's height (m) at its corners (north-west, north-east, south-east, south-west),
+ * its top the two triangles the ground is drawn as; a frame along the sides in `edges` (a bit each: 1 north, 2 east, 4
+ * south, 8 west), and dots at the corners listed in `dots`.
  */
-export interface CursorPatch { x: number; y: number; heights: readonly number[]; frame: boolean; dots: readonly number[] }
+export interface CursorPatch { x: number; y: number; heights: readonly number[]; edges: number; dots: number[] }
 
 export class TileCursor {
   private readonly el = document.createElement('canvas');
@@ -30,6 +31,8 @@ export class TileCursor {
   private readonly width: number;
   private readonly corner = new THREE.Vector3();
   private drawn = false;
+  /** What was drawn last (the marks, the camera and the size), so the same marks under a still camera aren't redrawn. */
+  private last = '';
 
   /** `hex` is the marks' colour; `width` the frame's width in tiles. */
   constructor(view: HTMLCanvasElement, hex: number, width = 0.06) {
@@ -44,14 +47,17 @@ export class TileCursor {
   /** Draws `patches` (or none) as `camera` sees them, on art `w` × `h` pixels laid out like the view. */
   draw(patches: readonly CursorPatch[], camera: THREE.Camera, w: number, h: number) {
     const el = this.el, ctx = this.ctx;
-    if (el.width !== w || el.height !== h) { el.width = w; el.height = h; this.drawn = false; }
     for (const k of ['left', 'top', 'width', 'height'] as const) el.style[k] = this.view.style[k];
+    camera.updateMatrixWorld();
+    const key = `${w} ${h} ${camera.matrixWorldInverse.elements.join(',')} ${camera.projectionMatrix.elements.join(',')} ${JSON.stringify(patches)}`;
+    if (key === this.last) return;
+    this.last = key;
+    if (el.width !== w || el.height !== h) { el.width = w; el.height = h; this.drawn = false; }
     if (this.drawn) { ctx.clearRect(0, 0, w, h); this.drawn = false; }
     if (!patches.length) return;
 
     // Each patch's corners in art pixels, and each of its two triangles with the tile coordinates of its corners. The camera
     // is orthographic, so a triangle of ground maps to the screen affinely.
-    camera.updateMatrixWorld();
     const at = (x: number, z: number, gy: number) => {
       this.corner.set(x, gy + 0.03, z).project(camera);
       return [(this.corner.x + 1) / 2 * w, (1 - this.corner.y) / 2 * h];
@@ -59,6 +65,7 @@ export class TileCursor {
     const tris: { p: number[][]; uv: number[][]; patch: CursorPatch }[] = [];
     let x0 = w, x1 = 0, y0 = h, y1 = 0;
     for (const patch of patches) {
+      if (!patch.edges && !patch.dots.length) continue;
       const p = UV.map(([u, v], k) => at(patch.x + u, patch.y + v, patch.heights[k]));
       for (const q of p) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); }
       for (const t of splitsNwSe(patch.heights) ? [[0, 1, 2], [0, 2, 3]] : [[0, 1, 3], [1, 2, 3]]) tris.push({ p: t.map((k) => p[k]), uv: t.map((k) => UV[k]), patch });
@@ -79,7 +86,7 @@ export class TileCursor {
         const la = ((b[1] - c[1]) * (x - c[0]) + (c[0] - b[0]) * (y - c[1])) / det, lb = ((c[1] - a[1]) * (x - c[0]) + (a[0] - c[0]) * (y - c[1])) / det, lc = 1 - la - lb;
         if (la < 0 || lb < 0 || lc < 0) return;
         const u = la * uv[0][0] + lb * uv[1][0] + lc * uv[2][0], v = la * uv[0][1] + lb * uv[1][1] + lc * uv[2][1];
-        if ((patch.frame && Math.min(u, 1 - u, v, 1 - v) < t) || patch.dots.some((k) => Math.hypot(u - UV[k][0], v - UV[k][1]) < DOT)) hits[(py - y0) * bw + px - x0] |= 1 << bit;
+        if (onFrame(patch.edges, u, v, t) || patch.dots.some((k) => Math.hypot(u - UV[k][0], v - UV[k][1]) < DOT)) hits[(py - y0) * bw + px - x0] |= 1 << bit;
       });
     }
     const img = ctx.createImageData(bw, y1 - y0), [r, g, b] = this.rgb;
@@ -93,3 +100,7 @@ export class TileCursor {
     this.drawn = true;
   }
 }
+
+/** Whether (u, v) across a tile lies on its frame's sides `edges` (CursorPatch), `t` wide. */
+const onFrame = (edges: number, u: number, v: number, t: number) =>
+  ((edges & 1) && v < t) || ((edges & 2) && 1 - u < t) || ((edges & 4) && 1 - v < t) || ((edges & 8) && u < t);
