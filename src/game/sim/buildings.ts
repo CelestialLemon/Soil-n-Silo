@@ -1,7 +1,7 @@
 import { BUILDINGS, CROPS, FIELD, HIVE, ITEMS, POLLINATION_BONUS } from '../data.ts';
-import { paceOf, touchesWater } from '../rules.ts';
-import { type FieldBuilding, type GameState, type HiveBuilding, type MachineBuilding } from '../state.ts';
-import { derived, isPollinated, sprinklersOf } from './layout.ts';
+import { erosionAt, paceOf, touchesWater } from '../rules.ts';
+import { tileIndex, type FieldBuilding, type GameState, type HiveBuilding, type MachineBuilding } from '../state.ts';
+import { derived, isGuarded, isPollinated, sprinklersOf } from './layout.ts';
 import { changeSoil, fieldFertility } from './soil.ts';
 import { ingName, recipeOf, missing, outputsFit, consume, made } from './goods.ts';
 import { shareOf } from './energy.ts';
@@ -53,7 +53,17 @@ export function runField(s: GameState, f: FieldBuilding, dt: number) {
     f.stored += crop.yield + bonus;
     f.harvest = f.crop;
     made(s, f, f.crop, crop.yield + bonus);
-    changeSoil(s, f, crop.soil);
+    erode(s, f, crop.soil);
+  }
+}
+
+/** A harvest's change to a field's soil: a loss is heavier on its ramp tiles (erosion), less so when the field is guarded. */
+function erode(s: GameState, f: FieldBuilding, by: number) {
+  if (by >= 0) { changeSoil(s, f, by); return; }
+  const guarded = isGuarded(s, f);
+  for (let y = f.y; y < f.y + 3; y++) for (let x = f.x; x < f.x + 3; x++) {
+    const i = tileIndex(s, x, y);
+    s.map.fertility[i] = Math.max(0, Math.min(100, s.map.fertility[i] + by * erosionAt(s, x, y, guarded)));
   }
 }
 

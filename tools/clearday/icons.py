@@ -106,6 +106,12 @@ icon('battery', 'teal', '<rect x="16" y="12" width="32" height="46" rx="6" fill=
   '<rect x="21" y="40" width="22" height="13" rx="2" fill="@c"/>', '<rect x="21" y="25" width="22" height="13" rx="2" fill="@c"/>', '<rect x="21" y="17" width="22" height="6" rx="2" fill="@a"/>')
 icon('digester', 'green', '<path d="M10 56 V36 C 10 18, 54 18, 54 36 V56 Z" fill="@a"/>', '<rect x="8" y="52" width="48" height="6" rx="2" fill="#6f8590"/>',
   '<path d="M32 44 C 26 40, 28 32, 32 28 C 36 32, 38 40, 32 44 Z" fill="#f5c53d"/>', '<rect x="44" y="12" width="6" height="14" fill="#6f8590"/>')
+icon('wheel', 'wood', '<path d="M2 50 C 12 46, 20 54, 32 50 C 44 46, 52 54, 62 50 V62 H2 Z" fill="#7fa6dc"/>',
+  '<circle class="ln" cx="30" cy="32" r="20" stroke="@b" stroke-width="5"/>', '<circle cx="30" cy="32" r="5" fill="@b"/>',
+  *[f'<rect x="27.5" y="9" width="5" height="12" rx="1" fill="@a" transform="rotate({a} 30 32)"/>' for a in range(0, 360, 45)],
+  '<rect x="46" y="18" width="16" height="26" rx="2" fill="#9fb1ba"/>', '<path d="M44 20 L54 10 L64 20 Z" fill="#4f7d2e"/>')
+icon('earth', 'brown', '<path d="M4 58 V44 H22 V32 H40 V20 H60 V58 Z" fill="@a"/>', '<path d="M4 44 H22 V48 H4 Z M22 32 H40 V36 H22 Z M40 20 H60 V24 H40 Z" fill="#78a94a"/>',
+  '<path class="ln" d="M8 14 L22 28" stroke="#8c5f34" stroke-width="3.5"/>', '<path d="M20 24 L30 34 L26 40 L14 30 Z" fill="#9fb1ba"/>')
 icon('pylon', 'wood', '<path d="M28 60 L30 10 H34 L36 60 Z" fill="@a"/>', '<rect x="16" y="14" width="32" height="5" rx="2" fill="@b"/>', '<rect x="20" y="26" width="24" height="4" rx="2" fill="@b"/>',
   '<circle cx="18" cy="13" r="2.5" fill="#4aa39b"/>', '<circle cx="46" cy="13" r="2.5" fill="#4aa39b"/>', '<path class="ln" d="M2 18 C 10 22, 14 22, 18 16 M46 16 C 50 22, 54 22, 62 18" stroke="#3c2b20" stroke-width="1.5"/>')
 icon('sapling', 'green', '<path class="ln" d="M32 58 V30" stroke="#8c5f34" stroke-width="4"/>', '<path d="M32 36 C 18 36, 12 24, 14 14 C 26 14, 32 24, 32 36 Z" fill="@a"/>',

@@ -29,8 +29,11 @@ export class TileCursor {
     this.ctx = must(this.el.getContext('2d'), '2d canvas context');
   }
 
-  /** Draws the frame round `tile` (or none) as `camera` sees it, on art `w` × `h` pixels laid out like the view. */
-  draw(tile: { x: number; y: number } | null, camera: THREE.Camera, w: number, h: number) {
+  /**
+   * Draws the frame round `tile` (or none) as `camera` sees it, on art `w` × `h` pixels laid out like the view; `y` is the
+   * ground's height (m) at the tile's north-west, north-east and south-west corners (a tile's top is a plane).
+   */
+  draw(tile: { x: number; y: number } | null, camera: THREE.Camera, w: number, h: number, y: readonly [number, number, number] = [0, 0, 0]) {
     const el = this.el, ctx = this.ctx;
     if (el.width !== w || el.height !== h) { el.width = w; el.height = h; this.drawn = false; }
     for (const k of ['left', 'top', 'width', 'height'] as const) el.style[k] = this.view.style[k];
@@ -39,11 +42,11 @@ export class TileCursor {
 
     // The tile's corners in art pixels. The camera is orthographic, so the ground maps to the screen affinely.
     camera.updateMatrixWorld();
-    const at = (x: number, z: number) => {
-      this.corner.set(x, 0.03, z).project(camera);
+    const at = (x: number, z: number, gy: number) => {
+      this.corner.set(x, gy + 0.03, z).project(camera);
       return { x: (this.corner.x + 1) / 2 * w, y: (1 - this.corner.y) / 2 * h };
     };
-    const o = at(tile.x, tile.y), ex = at(tile.x + 1, tile.y), ez = at(tile.x, tile.y + 1);
+    const o = at(tile.x, tile.y, y[0]), ex = at(tile.x + 1, tile.y, y[1]), ez = at(tile.x, tile.y + 1, y[2]);
     const ux = ex.x - o.x, uy = ex.y - o.y, vx = ez.x - o.x, vy = ez.y - o.y, det = ux * vy - uy * vx;
     if (Math.abs(det) < 1e-9) return;
     const xs = [o.x, ex.x, ez.x, ex.x + vx], ys = [o.y, ex.y, ez.y, ex.y + vy];

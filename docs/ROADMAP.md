@@ -105,7 +105,30 @@ current (along its course, faster where it narrows), drops over two small falls 
 boulder; ponds and lakes stay still. The generator carries the map's noise past the edge (`generateLand` in `map.ts`, drawn
 only, never saved, the map itself unchanged): the river runs on out of sight, a track leads off from the depot, the woods
 thicken and the ground rises into wooded hills, with an apron of distant woods beyond them. Everything past the edge is a
-shade duller, so where you can build still reads at a glance. Height on the map itself (slopes as a rule) is the next step.
+shade duller, so where you can build still reads at a glance. Height on the map itself followed on 2026-10-17, below.
+
+## Height and terrain (2026-10-17)
+
+The map now has whole levels, ramps joining terraces and cliffs where edges do not join (`relief.ts`). Stepped ground was
+chosen over smooth hills because it reads in pixel art from four sides and gives simple rules, like Terra Nil. The generator
+follows a river valley or a ridge, keeps a flat home terrace round the depot, puts the river at the bottom with banks at its
+level and one-level falls, and biases rock and forest uphill. Soil is poorer uphill with the commission's mean kept. Relief
+varies by commission; random commissions can be Hilly or Flat. The country beyond rises in stepped hills, with a track
+climbing out from the depot.
+
+Buildings level unsuitable ground on placement for an extra price. Earthworks raise, lower or ramp empty grass for 20
+credits a step; neither is refunded. Terrain should shape a layout without blocking something that has to be built
+somewhere. Cliffs stop trucks, climbing costs time and battery, and ways are chosen by effort. Next-door goods can go down
+a cliff but never up one for now, to be tuned after play. Water beside a field must meet its ground level; sprinklers pay for lift,
+turbines gain wind up high and lose it behind higher ground, and fields' ramp tiles erode faster unless trees or beans guard
+them. A water wheel makes steady power from current on a river bank, more beside a fall. Rules and numbers in `DESIGN.md`.
+
+The dock has Earthworks with raise, lower and ramp chips (K; C cycles, R turns a ramp), the Height view tints levels, placement
+cards show the terrain's costs and effects, and the guide has "Height and earthworks". Cliff faces are banded by level under
+a turf lip, ramps are worn turf, and the map's ground is drawn as objects in chunks so earthworks can redraw it. Six tree
+species and bushes vary by place, with willows by water and pines up high (`trees.ts`, models in `ASSET_BRIEF.md`).
+`test/height.test.ts` covers the height rules; the bot deliberately keeps its flat map to test the economy. Saves are version
+6; older ones are refused.
 
 ## Next
 
@@ -133,7 +156,11 @@ shade duller, so where you can build still reads at a glance. Height on the map 
   you see only the weather now.
 - From the UI revamp, set aside: a **difficulty fingerprint** for each commission (an advanced option in the level select);
   a **soil map and soil forecast** in the ledger; a **route loop diagram** with each stop's share of the loop.
-- Weather events (rain waters fields, storms stop turbines), seasons as commission modifiers.
+- Slopes facing the sun give solar panels more power; cliffs shade panels in the morning and evening.
+- Weather events (rain waters fields, storms stop turbines), with rain running off high ground and pooling low, flooding low
+  fields in storms.
+- Soil washing down from eroding fields onto the ground below.
+- Seasons as commission modifiers, with frost pockets in valley floors.
 - Pipes for water, so sprinklers need a source.
 - More chains: tomatoes into ketchup, flax into rope, bees into candles; animals (goats for milk and cheese).
 - Commission chains: a short campaign where each commission's map carries on from the last.

@@ -3,7 +3,7 @@ import { gameSpan, tonight } from '../game/forecast.ts';
 import { networks, usedBy } from '../game/power.ts';
 import { HOUR_SECONDS, nightsOf, powerDay } from '../game/powerlog.ts';
 import { dayAt, hourAt, sunAt } from '../game/sim/clock.ts';
-import { exposureOf, nearWater } from '../game/sim/layout.ts';
+import { exposureOf, wattsOf } from '../game/sim/layout.ts';
 import { shareOf, wants } from '../game/sim/energy.ts';
 import type { BatteryBuilding, GameState, MachineBuilding } from '../game/state.ts';
 import { netColour } from '../world/powerView.ts';
@@ -22,8 +22,8 @@ export interface PowerHost {
   close: () => void;
 }
 
-const SRC: { key: 'solar' | 'wind' | 'digester' | 'given' | 'short'; col: string; name: string }[] = [
-  { key: 'solar', col: '#c08a2e', name: 'solar' }, { key: 'wind', col: '#3d7a91', name: 'wind' }, { key: 'digester', col: '#8a6a4a', name: 'digester' },
+const SRC: { key: 'solar' | 'wind' | 'water' | 'digester' | 'given' | 'short'; col: string; name: string }[] = [
+  { key: 'solar', col: '#c08a2e', name: 'solar' }, { key: 'wind', col: '#3d7a91', name: 'wind' }, { key: 'water', col: '#5a8fb8', name: 'water' }, { key: 'digester', col: '#8a6a4a', name: 'digester' },
   { key: 'given', col: '#76608f', name: 'from batteries' }, { key: 'short', col: '#b4523a', name: 'short' },
 ];
 
@@ -118,10 +118,11 @@ export function powerSheet(host: PowerHost) {
     const sub = (t: BuildingId) => {
       const mine = s.buildings.filter((b) => b.type === t);
       if (t === 'garage') return `${plural(s.trucks.length, 'truck')}, ${TRUCK.chargeRate} W a truck charging`;
-      if (t === 'sprinkler') { const far = mine.filter((b) => !nearWater(s, b)).length; return far ? `${far} far from water, ${POWER.sprinklerFar} W each` : `near water, ${POWER.sprinklerNearWater} W each`; }
+      if (t === 'sprinkler') { const w = mine.map((b) => wattsOf(s, b)), lo = Math.min(...w), hi = Math.max(...w); return `${lo === hi ? lo : `${lo}–${hi}`} W each, by water and height`; }
       return `${BUILDINGS[t].power} W while working`;
     };
     const lastNight = nights.length ? nights[nights.length - 1] : null;
+    const wheels = s.buildings.filter((b) => b.type === 'wheel').length;
     const solar = s.buildings.filter((b) => b.type === 'solar').length, turbines = s.buildings.filter((b) => b.type === 'turbine'), digesters = s.buildings.filter((b): b is MachineBuilding => b.type === 'digester');
     const sheltered = turbines.filter((b) => exposureOf(s, b) < 1).length;
     const peak = day.hours.reduce<{ v: number; t: number } | null>((m, x) => (x && (!m || x.solar > m.v) ? { v: x.solar, t: x.from } : m), null);
@@ -158,6 +159,7 @@ export function powerSheet(host: PowerHost) {
             h('div', { class: 'src' },
               h('div', null, icon('solar', 30), h('b', null, watts(day.avg.solar)), h('small', null, solar ? `${plural(solar, 'panel')}${peak && peak.v > 0.5 ? ` · peak ${watts(peak.v)} at ${clockAt(peak.t)}` : ''}` : 'no panels')),
               h('div', null, icon('turbine', 30), h('b', null, watts(day.avg.wind)), h('small', null, turbines.length ? `${plural(turbines.length, 'turbine')}${sheltered ? `, ${sheltered} sheltered` : ''}` : 'no turbines')),
+              wheels ? h('div', null, icon('wheel', 30), h('b', null, watts(day.avg.water)), h('small', null, `${plural(wheels, 'water wheel')}, day and night`)) : null,
               h('div', null, icon('digester', 30), h('b', null, watts(day.avg.digester)), h('small', null, digesters.length ? `${plural(digesters.length, 'digester')}${digesters.some((b) => b.progress !== null) ? ', burning' : ', idle'}` : 'no digester')),
               h('div', null, icon('battery', 30), h('b', null, watts(day.avg.given)), h('small', null, `given · ${watts(day.avg.taken)} taken in`))))),
         h('div', { class: 'pw-col spread' },

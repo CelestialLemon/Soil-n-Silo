@@ -1,15 +1,20 @@
+import { TRUCK } from './data.ts';
 import { TERRAIN } from './map.ts';
+import { centreLevel, joins } from './relief.ts';
 import { buildingAt, inMap, layoutOf, sizeOf, terrainAt, type Building, type GameState } from './state.ts';
 import { runtimeOf } from './runtime.ts';
 import { must } from './result.ts';
 
 // The roads: trucks drive on any open tile (grass with nothing built on it), from tile centre to tile centre in 8
-// directions, a diagonal only when both tiles beside it are open. A truck loads at an open tile next to a building (sharing
-// an edge with it). Each building that trucks drive to has a distance field: how far every tile is from the nearest open
-// tile next to it, by the shortest way. A truck follows the field downhill, so it always takes a shortest way. Fields are
-// worked out when first asked for and dropped when the layout changes.
+// directions, never over a cliff (relief.ts: the ground must join), a diagonal only when both tiles beside it are open and
+// joined to both ends. Climbing costs: each level up counts as TRUCK.climb more tiles, in time and in battery, so a "distance"
+// here is the effort of the way. A truck loads at an open tile next to a building (sharing an edge with it). Each building
+// that trucks drive to has a distance field: the effort from every tile to the nearest open tile next to it, by the easiest
+// way. A truck follows the field downhill, so it always takes an easiest way. Fields are worked out when first asked for and
+// dropped when the layout changes (earthworks change it too).
 
-export interface Roads { layout: number; open: Uint8Array; fields: Map<number, Float64Array> }
+/** `steps[i * 8 + k]`: the effort of step k (STEPS) from tile i, or 0 where it can't be taken. */
+export interface Roads { layout: number; open: Uint8Array; steps: Float64Array; fields: Map<number, Float64Array> }
 
 const SQRT2 = Math.SQRT2;
 /** The 8 neighbours: dx, dy, cost. */
@@ -23,7 +28,25 @@ function roads(s: GameState): Roads {
   const { width: w, height: h } = s.map;
   const open = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) open[y * w + x] = terrainAt(s, x, y) === TERRAIN.grass && !buildingAt(s, x, y) ? 1 : 0;
-  r = { layout, open, fields: new Map() };
+  const steps = new Float64Array(w * h * 8), m = s.map;
+  /** Whether a truck can go from (x, y) one tile along a side (0 north … 3 west) to an open tile. */
+  const side = (x: number, y: number, k: number) => joins(m, x, y, k) && open[(y + [-1, 0, 1, 0][k]) * w + x + [0, 1, 0, -1][k]] === 1;
+  const SIDE_OF: Record<string, number> = { '0,-1': 0, '1,0': 1, '0,1': 2, '-1,0': 3 };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    if (!open[i]) continue;
+    STEPS.forEach(([dx, dy, c], k) => {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h || !open[ny * w + nx]) return;
+      if (dx && dy) {
+        // Round both corners: x first then y, and y first then x, every leg joined.
+        const sx = SIDE_OF[`${dx},0`], sy = SIDE_OF[`0,${dy}`];
+        if (!side(x, y, sx) || !side(nx, y, sy) || !side(x, y, sy) || !side(x, ny, sx)) return;
+      } else if (!side(x, y, SIDE_OF[`${dx},${dy}`])) return;
+      steps[i * 8 + k] = c + TRUCK.climb * Math.max(0, centreLevel(m, nx, ny) - centreLevel(m, x, y));
+    });
+  }
+  r = { layout, open, steps, fields: new Map() };
   rt.roads = r;
   return r;
 }
@@ -31,29 +54,39 @@ function roads(s: GameState): Roads {
 /** Whether trucks can drive on a tile. */
 export const isOpen = (s: GameState, x: number, y: number) => inMap(s, x, y) && roads(s).open[y * s.map.width + x] === 1;
 
-/** The open tiles next to a building (sharing an edge with it), by index: north side west to east, then east, south, west. */
+/**
+ * The open tiles next to a building where a truck can load (sharing an edge with it, the ground joined across it: not
+ * below or above a cliff), by index: north side west to east, then east, south, west.
+ */
 export function accessTiles(s: GameState, b: Building): number[] {
   const n = sizeOf(b), w = s.map.width, out: number[] = [];
-  const at = (x: number, y: number) => { if (isOpen(s, x, y)) out.push(y * w + x); };
-  for (let x = b.x; x < b.x + n; x++) at(x, b.y - 1);
-  for (let y = b.y; y < b.y + n; y++) at(b.x + n, y);
-  for (let x = b.x; x < b.x + n; x++) at(x, b.y + n);
-  for (let y = b.y; y < b.y + n; y++) at(b.x - 1, y);
+  const at = (x: number, y: number, ix: number, iy: number, side: number) => { if (isOpen(s, x, y) && joins(s.map, ix, iy, side)) out.push(y * w + x); };
+  for (let x = b.x; x < b.x + n; x++) at(x, b.y - 1, x, b.y, 0);
+  for (let y = b.y; y < b.y + n; y++) at(b.x + n, y, b.x + n - 1, y, 1);
+  for (let x = b.x; x < b.x + n; x++) at(x, b.y + n, x, b.y + n - 1, 2);
+  for (let y = b.y; y < b.y + n; y++) at(b.x - 1, y, b.x, y, 3);
   return out;
 }
 
-/** The steps from tile i a truck can take: to open neighbours, diagonals only past two open tiles. */
-function* neighbours(open: Uint8Array, w: number, h: number, i: number): Generator<[number, number]> {
+/** The steps a truck can take from tile i: each to a tile, with its effort. */
+function* neighbours(r: Roads, w: number, i: number): Generator<[number, number]> {
   const x = i % w, y = (i - x) / w;
-  for (const [dx, dy, c] of STEPS) {
-    const nx = x + dx, ny = y + dy;
-    if (nx < 0 || ny < 0 || nx >= w || ny >= h || !open[ny * w + nx]) continue;
-    if (dx && dy && (!open[y * w + nx] || !open[ny * w + x])) continue;
-    yield [ny * w + nx, c];
-  }
+  for (let k = 0; k < 8; k++) { const c = r.steps[i * 8 + k]; if (c) yield [(y + STEPS[k][1]) * w + x + STEPS[k][0], c]; }
 }
 
-/** How far every tile is from the open tiles next to a building (Infinity where trucks can't get there). */
+/** The steps a truck can take into tile j: each from a tile, with its effort (the steps out of j, turned round). */
+function* into(r: Roads, w: number, j: number): Generator<[number, number]> {
+  const x = j % w, y = (j - x) / w;
+  for (let k = 0; k < 8; k++) {
+    if (!r.steps[j * 8 + k]) continue;
+    // Every step is open both ways; the way back is the opposite one (STEPS pairs them: 0/1, 2/3, 4/7, 5/6).
+    const i = (y + STEPS[k][1]) * w + x + STEPS[k][0];
+    yield [i, r.steps[i * 8 + BACK[k]]];
+  }
+}
+const BACK = [1, 0, 3, 2, 7, 6, 5, 4];
+
+/** The effort from every tile to the open tiles next to a building (Infinity where trucks can't get there). */
 export function distanceField(s: GameState, b: Building): Float64Array {
   const r = roads(s);
   let f = r.fields.get(b.id);
@@ -89,13 +122,13 @@ export function distanceField(s: GameState, b: Building): Float64Array {
   while (heap.length) {
     const [d, i] = pop();
     if (d > f[i]) continue;
-    for (const [j, c] of neighbours(r.open, w, h, i)) if (d + c < f[j]) { f[j] = d + c; push(d + c, j); }
+    for (const [j, c] of into(r, w, i)) if (d + c < f[j]) { f[j] = d + c; push(d + c, j); }
   }
   r.fields.set(b.id, f);
   return f;
 }
 
-/** Tiles from a tile to the nearest open tile next to a building, by the shortest way (Infinity if there is none). */
+/** The effort (tiles, a level climbed counting TRUCK.climb more) from a tile to the nearest open tile next to a building, by the easiest way (Infinity if there is none). */
 export const distanceTo = (s: GameState, b: Building, tile: number) => distanceField(s, b)[tile];
 
 /**
@@ -103,12 +136,12 @@ export const distanceTo = (s: GameState, b: Building, tile: number) => distanceF
  * there), or null when there is no way.
  */
 export function pathTo(s: GameState, b: Building, from: number): number[] | null {
-  const f = distanceField(s, b), r = roads(s), { width: w, height: h } = s.map;
+  const f = distanceField(s, b), r = roads(s), w = s.map.width;
   if (!(f[from] < Infinity)) return null;
   const out: number[] = [];
   for (let i = from; f[i] > 0;) {
     let best = -1, bestD = Infinity;
-    for (const [j, c] of neighbours(r.open, w, h, i)) if (f[j] + c < bestD) { bestD = f[j] + c; best = j; }
+    for (const [j, c] of neighbours(r, w, i)) if (f[j] + c < bestD) { bestD = f[j] + c; best = j; }
     if (best < 0 || f[best] >= f[i]) return null;
     out.push(best);
     i = best;
@@ -126,7 +159,7 @@ export function legPath(s: GameState, a: Building, b: Building): number[] | null
   return p ? [start, ...p] : null;
 }
 
-/** The shortest way from building a's open tiles to building b's, in tiles (Infinity if there is none). */
+/** The effort of the easiest way from building a's open tiles to building b's, in tiles (climbs counted; Infinity if there is none). */
 export function legLength(s: GameState, a: Building, b: Building): number {
   const f = distanceField(s, b);
   let d = Infinity;

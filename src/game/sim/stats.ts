@@ -13,7 +13,7 @@ import { shareOf, makes } from './energy.ts';
 export function recordHistory(s: GameState, sun: number, wind: number, dt: number) {
   for (const b of s.buildings) {
     if (!hasHistory(b)) continue;
-    const value = b.type === 'solar' || b.type === 'turbine' ? (networkOf(s, b) ? makes(s, b, sun, wind) : 0) : b.type === 'battery' ? b.charge : null;
+    const value = b.type === 'solar' || b.type === 'turbine' || b.type === 'wheel' ? (networkOf(s, b) ? makes(s, b, sun, wind) : 0) : b.type === 'battery' ? b.charge : null;
     noteStep(s, b, dt, shareOf(s, b), value);
   }
   pruneHistory(s);

@@ -11,6 +11,7 @@ import { hasHistory, heldSince, historyOf, summarize } from '../game/history.ts'
 import { networkOf, networks, usedBy } from '../game/power.ts';
 import { sunAt, windAt } from '../game/sim/clock.ts';
 import { exposureOf, isPollinated } from '../game/sim/layout.ts';
+import { SPRINKLER_MOST, TURBINE_MOST, wheelSite } from '../game/rules.ts';
 import { fieldFertility } from '../game/sim/soil.ts';
 import { givesGoods, linksOf, recipeOf, takesGoods, wantsCompost } from '../game/sim/goods.ts';
 import { makes, shareOf, wants } from '../game/sim/energy.ts';
@@ -53,11 +54,12 @@ export interface InspectorHost {
 /** What a building does with power, in a few words, for its header. */
 export function powerWords(type: Building['type']) {
   const d = BUILDINGS[type];
-  if (type === 'sprinkler') return `${POWER.sprinklerNearWater}–${POWER.sprinklerFar} W`;
+  if (type === 'sprinkler') return `${POWER.sprinklerNearWater}–${SPRINKLER_MOST} W`;
   if (type === 'garage') return `${TRUCK.chargeRate} W a truck charging`;
   if (d.power) return `${d.power} W while working`;
   if (type === 'solar') return `up to ${POWER.solar} W`;
-  if (type === 'turbine') return `up to ${POWER.turbine} W`;
+  if (type === 'turbine') return `up to ${Math.round(TURBINE_MOST)} W`;
+  if (type === 'wheel') return `${POWER.wheel} W at 1 m/s, steady`;
   if (type === 'digester') return `${POWER.digester} W while burning`;
   if (type === 'battery') return `holds ${POWER.battery.capacity} J`;
   return '';
@@ -199,9 +201,10 @@ export class Inspector {
       }
       case 'garage': out.push(...this.garageTrucks(s, b, lines)); break;
       case 'battery': stat('Charge', () => `${pct(b.charge / POWER.battery.capacity)} · ${Math.round(b.charge)} of ${POWER.battery.capacity} J`); bar(() => b.charge / POWER.battery.capacity); break;
-      case 'solar': case 'turbine':
+      case 'solar': case 'turbine': case 'wheel':
         stat('Making', () => watts(networkOf(s, b) ? makes(s, b, sunAt(s.scenario, s.time), windAt(s.scenario, s.time)) : 0));
-        if (b.type === 'turbine') stat('Shelter', () => `${pct(exposureOf(s, b))} of the wind reaches it`);
+        if (b.type === 'turbine') stat('Wind', () => `${pct(exposureOf(s, b))} of the wind${exposureOf(s, b) > 1 ? ', up high' : ' reaches it'}`);
+        if (b.type === 'wheel') { const site = wheelSite(s, b.x, b.y); stat('River', () => (site ? `${site.current.toFixed(1)} m/s${site.fall ? ', beside a fall' : ''}` : 'no current')); }
         break;
       case 'depot': {
         const list = h('div', { class: 'chips' });

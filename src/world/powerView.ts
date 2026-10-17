@@ -3,7 +3,8 @@ import type { PixelObject, PixelRenderer } from 'pixel3d-renderer';
 import { BUILDINGS, POWER } from '../game/data.ts';
 import { feederOf, networkOf, networks, POWERED, pylonsInLink, wiresOf, type Network } from '../game/power.ts';
 import { pylonReaches, pylonsLink } from '../game/rules.ts';
-import { buildingById, layoutOf, sizeOf, type Building, type GameState } from '../game/state.ts';
+import { buildingById, layoutOf, reliefOf, sizeOf, type Building, type GameState } from '../game/state.ts';
+import { groundY, lay, standY } from './ground.ts';
 import { must } from '../game/result.ts';
 import type { Models } from './models.ts';
 import { NET_COLOURS } from './shapes.ts';
@@ -38,6 +39,7 @@ const GHOST = NET_COLOURS.length;
 const TILE_TINTS = NET_COLOURS.map((c) => new THREE.Color(c));
 const GHOST_TINT = new THREE.Color(0xd8ffb0);
 const X = new THREE.Vector3(1, 0, 0), dir = new THREE.Vector3(), q = new THREE.Quaternion(), scale = new THREE.Vector3();
+const v = new THREE.Vector3(), e = new THREE.Euler(), sc = new THREE.Vector3();
 
 /** The colour index of a network: its place in the list, wrapping round the palette. */
 export const netColour = (s: GameState, net: Network) => networks(s).list.indexOf(net) % NET_COLOURS.length;
@@ -60,7 +62,7 @@ export class PowerView {
   sync(s: GameState, f: PowerFocus) {
     const focus = f.focus !== null ? buildingById(s, f.focus) : null;
     const focusNet = focus && inPower(focus) ? (BUILDINGS[focus.type].grid === 'link' ? networks(s).of.get(focus.id) ?? null : networkOf(s, focus)) : null;
-    const key = `${layoutOf(s)} ${f.all} ${f.tiles} ${focus && inPower(focus) ? focus.id : ''} ${f.ghosts.map((g) => `${g.x},${g.y},${g.ok}`).join(';')}`;
+    const key = `${layoutOf(s)} ${reliefOf(s)} ${f.all} ${f.tiles} ${focus && inPower(focus) ? focus.id : ''} ${f.ghosts.map((g) => `${g.x},${g.y},${g.ok}`).join(';')}`;
     if (key === this.key) return;
     this.key = key;
     for (const o of this.objs) o.remove();
@@ -72,15 +74,15 @@ export class PowerView {
     const top = this.m.buildings.pylon.height - PYLON_TOP;
     for (const net of shown) {
       const c = netColour(s, net);
-      for (const [a, b] of wiresOf(net)) this.wire(c, a.x + 0.5, a.y + 0.5, b.x + 0.5, b.y + 0.5, top);
+      for (const [a, b] of wiresOf(net)) this.wire(c, a.x + 0.5, a.y + 0.5, b.x + 0.5, b.y + 0.5, top + this.at(s, a.x, a.y), top + this.at(s, b.x, b.y));
       for (const b of net.members) {
         const p = feederOf(s, b);
-        if (p) this.feed(c, p.x + 0.5, p.y + 0.5, top, b);
+        if (p) this.feed(s, c, p.x + 0.5, p.y + 0.5, top + this.at(s, p.x, p.y), b);
       }
-      const at = net.pylons.reduce((a, p) => ({ x: a.x + p.x + 0.5, z: a.z + p.y + 0.5 }), { x: 0, z: 0 });
-      this.shownLabels.push({ x: at.x / net.pylons.length, y: top + 0.9, z: at.z / net.pylons.length, colour: NET_COLOURS[c], net });
+      const at = net.pylons.reduce((a, p) => ({ x: a.x + p.x + 0.5, z: a.z + p.y + 0.5, y: a.y + this.at(s, p.x, p.y) }), { x: 0, z: 0, y: 0 });
+      this.shownLabels.push({ x: at.x / net.pylons.length, y: at.y / net.pylons.length + top + 0.9, z: at.z / net.pylons.length, colour: NET_COLOURS[c], net });
     }
-    if (focus && BUILDINGS[focus.type].grid === 'link' && focusNet) this.ranges(netColour(s, focusNet), focus.x, focus.y);
+    if (focus && BUILDINGS[focus.type].grid === 'link' && focusNet) this.ranges(s, netColour(s, focusNet), focus.x, focus.y);
     this.ghostLinks(s, f.ghosts, top);
   }
 
@@ -106,7 +108,8 @@ export class PowerView {
     for (const [i, tint] of owner) {
       const o = this.r.addObject(this.m.fill);
       o.tint = tint; o.tintStrength = TILE_STRENGTH; o.castShadow = false;
-      o.setTransform(new THREE.Vector3(i % w + 0.5, 0.02, Math.floor(i / w) + 0.5));
+      lay(s.map, i % w, Math.floor(i / w), 0.02, v, e, sc);
+      o.setTransform(v, e, sc);
       this.objs.push(o);
     }
   }
@@ -124,31 +127,38 @@ export class PowerView {
     this.objs.push(o);
   }
 
-  /** A wire between two pylon tops, sagging a little in the middle. */
-  private wire(c: number, ax: number, az: number, bx: number, bz: number, top: number) {
+  /** The ground's height (m) under a one-tile building on a tile (a pylon). */
+  private at(s: GameState, x: number, y: number) { return standY(s.map, 1, x, y); }
+
+  /** A wire between two pylon tops (at heights ta and tb), sagging a little in the middle. */
+  private wire(c: number, ax: number, az: number, bx: number, bz: number, ta: number, tb: number) {
     const sag = Math.min(MAX_SAG, Math.hypot(bx - ax, bz - az) * SAG), n = 4;
-    const at = (k: number) => new THREE.Vector3(ax + (bx - ax) * k, top - sag * 4 * k * (1 - k), az + (bz - az) * k);
+    const at = (k: number) => new THREE.Vector3(ax + (bx - ax) * k, ta + (tb - ta) * k - sag * 4 * k * (1 - k), az + (bz - az) * k);
     for (let i = 0; i < n; i++) this.bar(c, at(i / n), at((i + 1) / n), WIRE);
   }
 
   /** A feed line from a pylon's top down to the building it powers. */
-  private feed(c: number, px: number, pz: number, top: number, b: Building) {
-    const n = sizeOf(b), h = Math.min(this.m.buildings[b.type].height * 0.7, 1.4);
+  private feed(s: GameState, c: number, px: number, pz: number, top: number, b: Building) {
+    const n = sizeOf(b), h = Math.min(this.m.buildings[b.type].height * 0.7, 1.4) + standY(s.map, n, b.x, b.y);
     this.bar(c, new THREE.Vector3(px, top, pz), new THREE.Vector3(b.x + n / 2, h, b.y + n / 2), FEED, FEED, FEED_OPACITY);
   }
 
-  /** A pylon's reach (a square outline) and link range (a dashed circle), on the ground. */
-  private ranges(c: number, x: number, y: number) {
-    const r = POWER.pylon.reach, y0 = 0.05;
+  /** A pylon's reach (a square outline) and link range (a dashed circle), on the ground (a tile's length at a time, at its height). */
+  private ranges(s: GameState, c: number, x: number, y: number) {
+    const r = POWER.pylon.reach, lift = 0.05;
+    const mark = (ax: number, az: number, bx: number, bz: number) => {
+      const gy = groundY(s.map, (ax + bx) / 2, (az + bz) / 2) + lift;
+      this.bar(c, new THREE.Vector3(ax, gy, az), new THREE.Vector3(bx, gy, bz), MARK, 0.02);
+    };
     const corners = [[x - r, y - r], [x + r + 1, y - r], [x + r + 1, y + r + 1], [x - r, y + r + 1]];
     for (let i = 0; i < 4; i++) {
-      const [ax, az] = corners[i], [bx, bz] = corners[(i + 1) % 4];
-      this.bar(c, new THREE.Vector3(ax, y0, az), new THREE.Vector3(bx, y0, bz), MARK, 0.02);
+      const [ax, az] = corners[i], [bx, bz] = corners[(i + 1) % 4], len = Math.hypot(bx - ax, bz - az);
+      for (let k = 0; k < len; k++) mark(ax + (bx - ax) * k / len, az + (bz - az) * k / len, ax + (bx - ax) * (k + 1) / len, az + (bz - az) * (k + 1) / len);
     }
     const n = 56, cx = x + 0.5, cz = y + 0.5, L = POWER.pylon.link;
     for (let i = 0; i < n; i += 2) {
       const a = i / n * Math.PI * 2, b = (i + 1) / n * Math.PI * 2;
-      this.bar(c, new THREE.Vector3(cx + Math.cos(a) * L, y0, cz + Math.sin(a) * L), new THREE.Vector3(cx + Math.cos(b) * L, y0, cz + Math.sin(b) * L), MARK, 0.02);
+      mark(cx + Math.cos(a) * L, cz + Math.sin(a) * L, cx + Math.cos(b) * L, cz + Math.sin(b) * L);
     }
   }
 
@@ -162,17 +172,18 @@ export class PowerView {
     // being placed feeds only buildings without a network yet, each from the first new pylon that reaches it.
     const fed = new Set<number>();
     ok.forEach((g, i) => {
-      for (const p of pylonsInLink(s, g.x, g.y)) this.wire(GHOST, g.x + 0.5, g.y + 0.5, p.x + 0.5, p.y + 0.5, top);
+      const gt = top + this.at(s, g.x, g.y);
+      for (const p of pylonsInLink(s, g.x, g.y)) this.wire(GHOST, g.x + 0.5, g.y + 0.5, p.x + 0.5, p.y + 0.5, gt, top + this.at(s, p.x, p.y));
       const prev = ok[i - 1];
-      if (prev && pylonsLink(prev.x, prev.y, g.x, g.y)) this.wire(GHOST, prev.x + 0.5, prev.y + 0.5, g.x + 0.5, g.y + 0.5, top);
+      if (prev && pylonsLink(prev.x, prev.y, g.x, g.y)) this.wire(GHOST, prev.x + 0.5, prev.y + 0.5, g.x + 0.5, g.y + 0.5, top + this.at(s, prev.x, prev.y), gt);
       for (const b of s.buildings) {
         if (!POWERED(b) || fed.has(b.id) || networkOf(s, b) || !pylonReaches(b, g.x, g.y)) continue;
         fed.add(b.id);
-        this.feed(GHOST, g.x + 0.5, g.y + 0.5, top, b);
+        this.feed(s, GHOST, g.x + 0.5, g.y + 0.5, gt, b);
       }
     });
     const last = ghosts[ghosts.length - 1];
-    if (last) this.ranges(GHOST, last.x, last.y);
+    if (last) this.ranges(s, GHOST, last.x, last.y);
   }
 }
 

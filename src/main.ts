@@ -1,8 +1,12 @@
 import * as THREE from 'three';
 import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObject } from 'pixel3d-renderer';
-import { addStop, canPlace, clearPrice, messageOf, place, priceOf, remember, remove, removeAt, settingFor, settingName, stepSetting, type Setting } from './game/build.ts';
+import {
+  addStop, canPlace, canReshape, levelledFor, clearPrice, earthPrice, EARTHWORK_NAMES, EARTHWORKS, messageOf, place, placePrice, priceOf, remember, remove, removeAt, reshape, settingFor, settingName, stepSetting, type Setting,
+} from './game/build.ts';
 import { BUILDINGS, POWER, type BuildingId } from './game/data.ts';
 import { generateLand, TERRAIN } from './game/map.ts';
+import { corners, MAX_LEVEL } from './game/relief.ts';
+import { wheelSite } from './game/rules.ts';
 import { deserialize, readProgress, recordResult, saveKey, serialize } from './game/save.ts';
 import { scenarioById } from './game/scenarios.ts';
 import { hourAt } from './game/sim/clock.ts';
@@ -30,6 +34,7 @@ import { RouteView } from './world/routeView.ts';
 import { Camera } from './world/camera.ts';
 import { TileCursor } from './world/tileCursor.ts';
 import { buildWorld, COUNTRY } from './world/terrain.ts';
+import { groundY, LEVEL_HEIGHT, MapGround, standY } from './world/ground.ts';
 import { WorldView, type Overlay } from './world/view.ts';
 import './ui/clearday/tokens.css';
 import './ui/clearday/clearday.css';
@@ -99,9 +104,15 @@ async function play(initial: GameState) {
   let state = initial;
   const map = state.map;
   const models = await loadModels();
-  const world = buildWorld(map, generateLand(state.scenario, COUNTRY), models);
-  quantizePalette([...world.geometries, ...allGeometries(models)], 96);
+  const land = generateLand(state.scenario, COUNTRY);
+  const world = buildWorld(map, land, models), ground = new MapGround(state, land);
+  quantizePalette([...world.geometries, ...ground.geometries, ...allGeometries(models)], 96);
   const renderer = new PixelRenderer(canvas, world.scene, { shadowMapSize: 2048, warmHighlight: true });
+  ground.show(renderer);
+  /** The ground's height (m) at a point of the map, for picking a tile; nothing on the map stands above TOP. */
+  const groundAt = (x: number, z: number) => groundY(state.map, x, z), TOP = (MAX_LEVEL + 1) * LEVEL_HEIGHT;
+  /** The same for picking: no ground off the map, so a line of sight from beyond meets the map's edge, or its cliff. */
+  const pickGround = (x: number, z: number) => (x >= 0 && z >= 0 && x < map.width && z < map.height ? groundAt(x, z) : -Infinity);
   const view = new WorldView(renderer, models);
   const power = new PowerView(renderer, models);
   const routeView = new RouteView(renderer, models);
@@ -159,7 +170,7 @@ async function play(initial: GameState) {
     if (t.kind === 'build') { const last = settingFor(state, t.type); t = { ...t, crop: t.crop ?? last.crop, recipe: t.recipe ?? last.recipe }; }
     tool = t;
     // Editing a route keeps what is selected (the truck or garage it was opened from).
-    if (t.kind === 'build' || t.kind === 'remove') selected = null;
+    if (t.kind === 'build' || t.kind === 'remove' || t.kind === 'earth') selected = null;
     clearGhosts();
     repick = 2;
   }
@@ -181,7 +192,7 @@ async function play(initial: GameState) {
     if (!input.pointer) { hoverTile = null; hoverBuilding = null; return; }
     const p = renderer.pick(input.pointer.x, input.pointer.y);
     // A tree or rock under the input.pointer is its own tile (the ground point behind it is another tile).
-    hoverTile = view.terrainOf(p?.object ?? null) ?? camera.tileAt(input.pointer.x, input.pointer.y);
+    hoverTile = view.terrainOf(p?.object ?? null) ?? camera.tileAt(input.pointer.x, input.pointer.y, pickGround, TOP);
     hoverBuilding = view.buildingOf(p?.object ?? null);
     if (hoverBuilding === null && hoverTile) hoverBuilding = buildingAt(state, hoverTile.x, hoverTile.y)?.id ?? null;
   }
@@ -243,21 +254,30 @@ async function play(initial: GameState) {
         : hoverTile ? [{ ...anchor(hoverTile, n), rot: tool.rot }] : [];
       let credits = state.credits;
       // One building in hand shows who it would trade with next door.
-      if (spots.length === 1 && canPlace(state, type, spots[0].x, spots[0].y).ok) {
-        const l = linksAt(state, type, spots[0].x, spots[0].y, tool);
+      const one = spots.length === 1 ? canPlace(state, type, spots[0].x, spots[0].y) : null;
+      if (one?.ok) {
+        // On the ground as it will be once levelled.
+        const { x, y } = spots[0], set = tool, l = levelledFor(state, x, y, n, one.value.level, () => linksAt(state, type, x, y, set));
         ghostLinks = [...new Set([...l.from, ...l.to].map((x) => x.b.id))];
       }
       for (const sp of spots) {
-        const okHere = canPlace(state, type, sp.x, sp.y).ok && credits >= priceOf(state, type);
-        if (okHere) credits -= priceOf(state, type);
+        const fit = canPlace(state, type, sp.x, sp.y), price = fit.ok ? placePrice(state, type, fit.value) : priceOf(state, type);
+        const okHere = fit.ok && credits >= price;
+        if (okHere) credits -= price;
         if (type === 'pylon') pylonGhosts.push({ x: sp.x, y: sp.y, ok: okHere });
-        const cx = sp.x + n / 2, cz = sp.y + n / 2;
-        ghost(`frame ${okHere} ${n}`, (okHere ? models.frames.ok : models.frames.bad)[n - 1], cx, 0.03, cz);
-        ghost(`b ${type}`, models.buildings[type].idle, cx, 0.04, cz, YAW[sp.rot], okHere);
+        // It stands where the ground would be levelled to, or on the ground as it lies.
+        const cx = sp.x + n / 2, cz = sp.y + n / 2, level = fit.ok ? fit.value.level : null;
+        const base = level !== null ? level * LEVEL_HEIGHT : standY(state.map, n, sp.x, sp.y);
+        ghost(`frame ${okHere} ${n}`, (okHere ? models.frames.ok : models.frames.bad)[n - 1], cx, base + 0.03, cz);
+        // A water wheel turns to face the river, as it will once placed.
+        const site = BUILDINGS[type].onBank && fit.ok ? levelledFor(state, sp.x, sp.y, n, level, () => wheelSite(state, sp.x, sp.y)) : null;
+        ghost(`b ${type}`, models.buildings[type].idle, cx, base + 0.04, cz, YAW[site ? site.rot : sp.rot], okHere);
         // A field shows its crop, grown enough to tell apart.
         if (type === 'field' && tool.crop) {
           const stages = models.crops[tool.crop], g = stages[Math.min(2, stages.length - 1)];
-          for (let ty = sp.y; ty < sp.y + n; ty++) for (let tx = sp.x; tx < sp.x + n; tx++) ghost(`crop ${tool.crop}`, g, tx + 0.5, 0.06, ty + 0.5, 0, okHere);
+          for (let ty = sp.y; ty < sp.y + n; ty++) for (let tx = sp.x; tx < sp.x + n; tx++) {
+            ghost(`crop ${tool.crop}`, g, tx + 0.5, (level !== null ? level * LEVEL_HEIGHT : groundAt(tx + 0.5, ty + 0.5)) + 0.06, ty + 0.5, 0, okHere);
+          }
         }
       }
       // The roads, the sprinklers' water and the bees' range; anything that makes, stores or uses power shows the power
@@ -268,7 +288,19 @@ async function play(initial: GameState) {
       else if (usesPower(type)) overlayFor('power');
     } else if (tool.kind === 'remove' && input.press?.mode === 'paint' && input.press.from && input.press.to) {
       const x0 = Math.min(input.press.from.x, input.press.to.x), x1 = Math.max(input.press.from.x, input.press.to.x), y0 = Math.min(input.press.from.y, input.press.to.y), y1 = Math.max(input.press.from.y, input.press.to.y);
-      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) ghost('frame false 1', models.frames.bad[0], x + 0.5, 0.03, y + 0.5);
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) ghost('frame false 1', models.frames.bad[0], x + 0.5, groundAt(x + 0.5, y + 0.5) + 0.03, y + 0.5);
+    } else if (tool.kind === 'earth') {
+      // Every tile the drag covers (or the one pointed at), framed green where the earthwork can be done, else red.
+      const from = input.press?.mode === 'paint' && input.press.from && input.press.to ? input.press.from : hoverTile, to = input.press?.mode === 'paint' && input.press.to ? input.press.to : hoverTile;
+      if (from && to) {
+        let credits = state.credits;
+        for (let y = Math.min(from.y, to.y); y <= Math.max(from.y, to.y); y++) for (let x = Math.min(from.x, to.x); x <= Math.max(from.x, to.x); x++) {
+          const ok = canReshape(state, x, y, tool.how, tool.rot).ok && credits >= earthPrice(state, 1);
+          if (ok) credits -= earthPrice(state, 1);
+          ghost(`frame ${ok} 1`, (ok ? models.frames.ok : models.frames.bad)[0], x + 0.5, groundAt(x + 0.5, y + 0.5) + 0.03, y + 0.5);
+        }
+      }
+      overlayFor('height');
     } else if (hoverTile) {
       cursorTile = hoverTile;
     }
@@ -303,9 +335,15 @@ async function play(initial: GameState) {
       }
       case 'build': {
         if (!t) return;
-        const n = BUILDINGS[tool.type].size, a = anchor(t, n);
+        const n = BUILDINGS[tool.type].size, a = anchor(t, n), before = state.credits;
         const r = place(state, tool.type, a.x, a.y, tool.rot, tool), message = messageOf(r);
-        if (message) hud.toast(r.ok && priceOf(state, tool.type) ? `${message.replace(/\.$/, '')} · −${priceOf(state, tool.type)} credits` : message, r.ok, r.ok ? tool.type : undefined);
+        if (message) hud.toast(r.ok && before > state.credits ? `${message.replace(/\.$/, '')} · −${before - state.credits} credits` : message, r.ok, r.ok ? tool.type : undefined);
+        return;
+      }
+      case 'earth': {
+        if (!t) return;
+        const r = reshape(state, t.x, t.y, tool.how, tool.rot), message = messageOf(r);
+        if (message) hud.toast(message, r.ok, r.ok ? 'earth' : undefined);
         return;
       }
       case 'remove': {
@@ -331,6 +369,14 @@ async function play(initial: GameState) {
       const what = settingName(tool);
       if (built) hud.toast(`Built ${built} × ${BUILDINGS[tool.type].name.toLowerCase()}${what ? ` (${what})` : ''}`, true, tool.type);
       else if (last) hud.toast(last, false);
+    } else if (tool.kind === 'earth') {
+      let n = 0, last = '';
+      for (let y = Math.min(from.y, to.y); y <= Math.max(from.y, to.y); y++) for (let x = Math.min(from.x, to.x); x <= Math.max(from.x, to.x); x++) {
+        const r = reshape(state, x, y, tool.how, tool.rot);
+        if (r.ok) n++; else if (r.error) last = r.error;
+      }
+      if (n) hud.toast(`${EARTHWORK_NAMES[tool.how]}: ${n} tile${n > 1 ? 's' : ''} · −${earthPrice(state, n)} credits`, true, 'earth');
+      else if (last) hud.toast(last, false);
     } else if (tool.kind === 'remove') {
       const x0 = Math.min(from.x, to.x), x1 = Math.max(from.x, to.x), y0 = Math.min(from.y, to.y), y1 = Math.max(from.y, to.y);
       let n = 0;
@@ -347,8 +393,8 @@ async function play(initial: GameState) {
 
   // ---- Input ----
   const input = new Input(canvas, {
-    tileAt: (x, y) => camera.tileAt(x, y),
-    paints: () => tool.kind === 'build' || tool.kind === 'remove',
+    tileAt: (x, y) => camera.tileAt(x, y, pickGround, TOP),
+    paints: () => tool.kind === 'build' || tool.kind === 'remove' || tool.kind === 'earth',
     pan: (dx, dy) => camera.pan(dx, dy),
     zoom: (steps, at) => camera.zoomStep(steps, at),
     repick: () => { repick = 2; },
@@ -400,10 +446,14 @@ async function play(initial: GameState) {
       case 'power': hud.toggleSheet('power'); break;
       case 'routes': hud.toggleRoutes(); break;
       case 'guide': hud.openGuide(); hud.refresh(); return;
-      case 'overlay': { const order: Overlay[] = ['none', 'fertility', 'water', 'power', 'roads', 'bees']; overlay = order[(order.indexOf(overlay) + 1) % order.length]; break; }
-      case 'choice': if (tool.kind === 'build') choose(stepSetting(tool.type, tool, e.shiftKey ? -1 : 1)); break;
+      case 'overlay': { const order: Overlay[] = ['none', 'fertility', 'height', 'water', 'power', 'roads', 'bees']; overlay = order[(order.indexOf(overlay) + 1) % order.length]; break; }
+      case 'choice':
+        if (tool.kind === 'build') choose(stepSetting(tool.type, tool, e.shiftKey ? -1 : 1));
+        else if (tool.kind === 'earth') { tool = { ...tool, how: EARTHWORKS[(EARTHWORKS.indexOf(tool.how) + (e.shiftKey ? 2 : 1)) % 3] }; repick = 2; }
+        break;
+      case 'earth': setTool(tool.kind === 'earth' ? { kind: 'select' } : { kind: 'earth', how: 'raise', rot: 0 }); break;
       case 'remove': setTool(tool.kind === 'remove' ? { kind: 'select' } : { kind: 'remove' }); break;
-      case 'rotate': if (tool.kind === 'build') { tool = { ...tool, rot: ((tool.rot + (e.shiftKey ? 3 : 1)) % 4) as Dir }; repick = 2; } break;
+      case 'rotate': if (tool.kind === 'build' || tool.kind === 'earth') { tool = { ...tool, rot: ((tool.rot + (e.shiftKey ? 3 : 1)) % 4) as Dir }; repick = 2; } break;
       default:
         if (action?.startsWith('build:')) {
           const hot = action.slice('build:'.length) as BuildingId;
@@ -418,6 +468,13 @@ async function play(initial: GameState) {
     const b = hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;
     const truck = hoverBuilding !== null ? truckById(state, hoverBuilding) : null;
     if (tool.kind === 'build') return null;
+    if (tool.kind === 'earth') {
+      if (!hoverTile) return null;
+      const i = hoverTile.y * map.width + hoverTile.x, r = canReshape(state, hoverTile.x, hoverTile.y, tool.how, tool.rot);
+      const now = `level ${state.map.level[i]}${state.map.ramp[i] === -1 ? '' : ' (a ramp)'}`;
+      const then = r.ok ? `level ${r.value.level}${r.value.ramp === -1 ? '' : `, a ramp rising ${['north', 'east', 'south', 'west'][r.value.ramp]}`}` : '';
+      return { title: EARTHWORK_NAMES[tool.how], icon: 'earth', text: r.ok ? `From ${now} to ${then}. ${earthPrice(state, 1)} credits.` : r.error || `Already ${now}.` };
+    }
     if (truck) { const r = routeOf(state, truck); return { title: r ? `Truck on ${r.name}` : 'Truck', icon: 'truck', text: describeTruck(state, truck) }; }
     if (tool.kind === 'route') {
       const r = routeById(state, tool.route);
@@ -473,8 +530,10 @@ async function play(initial: GameState) {
   function placeSpot() {
     if (tool.kind !== 'build' || !hoverTile || hud.modal) return null;
     const type = tool.type, n = BUILDINGS[type].size, a = anchor(hoverTile, n);
-    const count = input.press?.mode === 'paint' && input.press.from && input.press.to ? plan(type, input.press.from, input.press.to, tool.rot).length : 1;
-    return { type, x: a.x, y: a.y, count, crop: tool.crop, recipe: tool.recipe, ...camera.toScreen(a.x + n / 2, models.buildings[type].height + 0.3, a.y + n / 2) };
+    const spots = input.press?.mode === 'paint' && input.press.from && input.press.to ? plan(type, input.press.from, input.press.to, tool.rot) : [a];
+    // What they cost with the earthworks each needs, as placing them would charge.
+    const price = spots.reduce((sum, sp) => { const fit = canPlace(state, type, sp.x, sp.y); return sum + (fit.ok ? placePrice(state, type, fit.value) : priceOf(state, type)); }, 0);
+    return { type, x: a.x, y: a.y, count: spots.length, price, crop: tool.crop, recipe: tool.recipe, ...camera.toScreen(a.x + n / 2, standY(state.map, n, a.x, a.y) + models.buildings[type].height + 0.3, a.y + n / 2) };
   }
 
   // ---- Loop ----
@@ -505,6 +564,7 @@ async function play(initial: GameState) {
     const hour = hourAt(state.time);
     if (!(Math.abs(hour - lookHour) <= 0.02)) { renderer.setLook(lookAt(hour)); lookHour = hour; }
 
+    ground.sync();
     view.sync(state);
     toolOverlay = 'none';
     if (input.pointer && frameNo % REPICK_FRAMES === 0) repick = Math.max(repick, 1);
@@ -523,7 +583,7 @@ async function play(initial: GameState) {
     hud.world.setTruckTags(tagged ? state.trucks.filter((t) => t.route === tagged.id).map((t) => {
       const to = t.target !== null ? buildingById(state, t.target) : null;
       const where = t.phase === 'drive' && to ? `to the ${BUILDINGS[to.type].name.toLowerCase()}` : t.phase === 'dock' || t.phase === 'queue' ? `at the ${to ? BUILDINGS[to.type].name.toLowerCase() : 'stop'}` : t.phase === 'charge' || t.phase === 'parked' ? 'charging' : 'stuck';
-      return { id: t.id, name: truckName(state, t), what: `${where}${t.cargo.length ? ` · ${cargoText(t.cargo)}` : ''}`, ...camera.toScreen(t.x, 0.9, t.y) };
+      return { id: t.id, name: truckName(state, t), what: `${where}${t.cargo.length ? ` · ${cargoText(t.cargo)}` : ''}`, ...camera.toScreen(t.x, groundAt(t.x, t.y) + 0.9, t.y) };
     }) : []);
     hud.world.setStopLabels(routeView.labels().map((l) => ({ ...l, ...camera.toScreen(l.x, l.y, l.z) })));
     // Power shows only while you work with it: its overlay, placing something that uses power, selecting a building on a
@@ -547,7 +607,8 @@ async function play(initial: GameState) {
     camera.update(time, dt);
     renderer.renderGeometry(time);
     renderer.renderStyle(time);
-    cursor.draw(cursorTile, renderer.camera, renderer.width, renderer.height);
+    const cc = cursorTile ? corners(state.map, cursorTile.x, cursorTile.y).map((c) => c * LEVEL_HEIGHT) : [0, 0, 0, 0];
+    cursor.draw(cursorTile, renderer.camera, renderer.width, renderer.height, [cc[0], cc[1], cc[3]]);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

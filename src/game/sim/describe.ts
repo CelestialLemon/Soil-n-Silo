@@ -4,6 +4,7 @@ import { accessTiles, distanceTo, legLength } from '../roads.ts';
 import { buildingById, isMachine, type Building, type GameState, type Route, type Truck } from '../state.ts';
 import { members, recipeOf, missing, outputsFit, wantsCompost, takesGoods, takesNow, givesNow, passes, neighboursOf, type Link } from './goods.ts';
 import { shareOf } from './energy.ts';
+import { handsTo } from './layout.ts';
 import { tileOf, garageOf, routeOf, trucksOn } from './trucks.ts';
 import { must } from '../result.ts';
 
@@ -31,13 +32,14 @@ export function blockedGood(b: Building): ItemId | null {
 
 /** Whether a building next door takes `item` from it (or gives it), or some route with trucks picks it up there (or drops it). */
 export function served(s: GameState, b: Building, item: ItemId, how: 'pick' | 'drop') {
-  if (neighboursOf(s, b).some((n) => (how === 'pick' ? passes(b, n) : passes(n, b)).includes(item))) return true;
+  const trades = (from: Building, to: Building) => handsTo(s, from, to) && passes(from, to).includes(item);
+  if (neighboursOf(s, b).some((n) => (how === 'pick' ? trades(b, n) : trades(n, b)))) return true;
   return s.routes.some((r) => r.stops.some((st) => st.building === b.id && st[how].includes(item)) && s.trucks.some((t) => t.route === r.id));
 }
 
 /** Whether anything would take a composter's compost now: a field wanting it (next door, or at a stop of a route that picks it up there), or a depot or silo drop. */
 function compostWelcome(s: GameState, b: Building): boolean {
-  if (neighboursOf(s, b).some((n) => n.type === 'field' && wantsCompost(s, n))) return true;
+  if (neighboursOf(s, b).some((n) => n.type === 'field' && handsTo(s, b, n) && wantsCompost(s, n))) return true;
   return s.routes.some((r) => r.stops.some((st) => st.building === b.id && st.pick.includes('compost'))
     && r.stops.some((st) => {
       const d = buildingById(s, st.building);
@@ -134,6 +136,7 @@ export function describeStatus(s: GameState, b: Building): string {
     case 'flowers': return `No flowering fields within ${HIVE.reach} tiles`;
     case 'idle':
       if (b.type === 'solar') return 'Night: no sun';
+      if (b.type === 'wheel') return 'Still: no river current beside it';
       if (b.type === 'silo') {
         const n = Object.values(b.store).reduce((a, k) => a + k, 0);
         return n ? `Holds ${n} goods` : 'Empty';

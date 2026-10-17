@@ -46,6 +46,8 @@ export interface Truck {
   x: number; y: number; heading: number;
   /** Tiles still to drive through, by index, the last one beside its target. */
   path: number[];
+  /** The tile it set off from towards the first tile of its path: a step's climb is from that tile's centre. */
+  from: number;
   target: number | null;
   energy: number;
   cargo: ItemId[];
@@ -143,7 +145,7 @@ export interface Stats {
 export const STAT_BUCKET = 10, STAT_BUCKETS = 7;
 
 export interface GameState {
-  version: 5;
+  version: 6;
   scenario: Scenario;
   map: MapData;
   /** Each tile's fertility at the start: resting ground recovers up to it. */
@@ -176,7 +178,7 @@ export interface GameState {
 export function newGame(sc: Scenario): GameState {
   const map = generateMap(sc);
   const s: GameState = {
-    version: 5, scenario: sc, map, soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
+    version: 6, scenario: sc, map, soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
     buildings: [], routes: [], trucks: [], nextId: 1, credits: sc.credits, time: 0, carry: 0, delivered: {}, earned: 0,
     stats: { since: 0, made: [{}], delivered: {} }, reached: sc.goals.map(() => false), completedAt: null, made: {}, run: newRunLog(),
     chosen: { crop: 'wheat', recipes: {} },
@@ -250,6 +252,15 @@ export function addBuilding(s: GameState, b: Building) {
 export function touchLayout(s: GameState) {
   cache(s).layout = nextVersion();
 }
+
+/** Marks the ground's levels changed (earthworks): the roads and everything else that hangs on the layout are worked out again. */
+export function touchRelief(s: GameState) {
+  runtimeOf(s).relief = nextVersion();
+  touchLayout(s);
+}
+
+/** The version of the ground's levels: changes with every earthwork (0 before the first). */
+export const reliefOf = (s: GameState) => runtimeOf(s).relief ?? 0;
 
 export function removeBuilding(s: GameState, b: Building) {
   const c = cache(s);

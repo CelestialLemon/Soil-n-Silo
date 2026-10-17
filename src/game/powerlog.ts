@@ -13,7 +13,7 @@ export const NIGHTS = 4;
 
 /** One step's power across every network, in watts (stored and capacity in joules). */
 export interface PowerStep {
-  solar: number; wind: number; digester: number;
+  solar: number; wind: number; water: number; digester: number;
   /** Given by batteries, and taken in to charge them. */
   given: number; taken: number;
   /** Wanted, got (used), and wanted but not got (short). */
@@ -23,8 +23,8 @@ export interface PowerStep {
   night: boolean;
 }
 
-type Sums = { solar: number; wind: number; digester: number; given: number; taken: number; wanted: number; used: number; short: number };
-const SUM_KEYS: (keyof Sums)[] = ['solar', 'wind', 'digester', 'given', 'taken', 'wanted', 'used', 'short'];
+type Sums = { solar: number; wind: number; water: number; digester: number; given: number; taken: number; wanted: number; used: number; short: number };
+const SUM_KEYS: (keyof Sums)[] = ['solar', 'wind', 'water', 'digester', 'given', 'taken', 'wanted', 'used', 'short'];
 
 interface Hour extends Sums {
   from: number;
@@ -70,7 +70,7 @@ export function notePower(s: GameState, p: PowerStep, use: Partial<Record<Buildi
   const l = log(s), start = s.time - dt, from = hourStart(start);
   let h = l.hours[l.hours.length - 1];
   if (!h || h.from < from - 1e-6) {
-    l.hours.push((h = { from, seconds: 0, night: p.night, use: {}, solar: 0, wind: 0, digester: 0, given: 0, taken: 0, wanted: 0, used: 0, short: 0 }));
+    l.hours.push((h = { from, seconds: 0, night: p.night, use: {}, solar: 0, wind: 0, water: 0, digester: 0, given: 0, taken: 0, wanted: 0, used: 0, short: 0 }));
     // A day and a bit, so the last 24 whole hours are always there.
     if (l.hours.length > 26) l.hours.splice(0, l.hours.length - 26);
   }
@@ -113,7 +113,7 @@ export function powerDay(s: GameState): PowerDay {
   const l = log(s), now = hourStart(s.time - 1e-6);
   const byFrom = new Map(l.hours.map((h) => [Math.round(h.from / HOUR_SECONDS), h]));
   const hours: (HourAvg | null)[] = [];
-  const total: Sums = { solar: 0, wind: 0, digester: 0, given: 0, taken: 0, wanted: 0, used: 0, short: 0 };
+  const total: Sums = { solar: 0, wind: 0, water: 0, digester: 0, given: 0, taken: 0, wanted: 0, used: 0, short: 0 };
   const use: Partial<Record<BuildingId, number>> = {};
   let seconds = 0;
   for (let i = 23; i >= 0; i--) {
@@ -121,7 +121,7 @@ export function powerDay(s: GameState): PowerDay {
     if (!h || h.seconds <= 0) { hours.push(null); continue; }
     const avg = { from: h.from, night: h.night } as HourAvg;
     for (const k of SUM_KEYS) { avg[k] = h[k] / h.seconds; total[k] += h[k]; }
-    avg.made = avg.solar + avg.wind + avg.digester;
+    avg.made = avg.solar + avg.wind + avg.water + avg.digester;
     hours.push(avg);
     seconds += h.seconds;
     for (const [type, e] of Object.entries(h.use) as [BuildingId, number][]) use[type] = (use[type] ?? 0) + e;
@@ -131,7 +131,7 @@ export function powerDay(s: GameState): PowerDay {
     for (const k of SUM_KEYS) avg[k] = total[k] / seconds;
     for (const k of Object.keys(use) as BuildingId[]) use[k] = (use[k] ?? 0) / seconds;
   }
-  avg.made = avg.solar + avg.wind + avg.digester;
+  avg.made = avg.solar + avg.wind + avg.water + avg.digester;
   return { hours, seconds, avg, use };
 }
 

@@ -1,12 +1,14 @@
-import { BUILDINGS, CLEAR_COST, CROP_IDS, CROPS, ITEM_IDS, ITEMS, recipeById, recipesFor, TRUCK, type BuildingId, type CropId, type ItemId } from './data.ts';
+import { BUILDINGS, CLEAR_COST, CROP_IDS, CROPS, EARTH, ITEM_IDS, ITEMS, recipeById, recipesFor, TRUCK, type BuildingId, type CropId, type ItemId } from './data.ts';
 import { TERRAIN } from './map.ts';
+import { centreLevel, FLAT, isFlat, isUnbroken, MAX_LEVEL } from './relief.ts';
+import { groundOf, wheelSite } from './rules.ts';
 import { err, ok, type Result } from './result.ts';
 import { accessTiles, nearestOpen } from './roads.ts';
 import { givesGoods, takesGoods } from './sim/goods.ts';
-import { touchRoutes } from './runtime.ts';
+import { runtimeOf, touchRoutes } from './runtime.ts';
 import { isStop, redirect, routeChanged } from './sim/trucks.ts';
 import {
-  addBuilding, applySetting, buildingAt, inMap, makeBuilding, removeBuilding, terrainAt, tileIndex, touchLayout, type Building, type BuildingOf, type Dir, type GameState, type MachineBuilding, type Setting,
+  addBuilding, applySetting, buildingAt, inMap, makeBuilding, removeBuilding, terrainAt, tileIndex, touchLayout, touchRelief, type Building, type BuildingOf, type Dir, type GameState, type MachineBuilding, type Setting,
   type Route, type Stop, type Truck,
 } from './state.ts';
 
@@ -27,8 +29,72 @@ export const priceOf = (s: GameState, type: BuildingId) => (s.scenario.sandbox ?
 /** What clearing a tree or rock costs (nothing in the sandbox). */
 export const clearPrice = (s: GameState, kind: keyof typeof CLEAR_COST) => (s.scenario.sandbox ? 0 : CLEAR_COST[kind]);
 
-/** Whether `type` fits with its north-west tile at (x, y). */
-export function canPlace(s: GameState, type: BuildingId, x: number, y: number): Result<null> {
+/** What earthworks of `steps` steps cost (nothing in the sandbox). */
+export const earthPrice = (s: GameState, steps: number) => (s.scenario.sandbox ? 0 : Math.round(EARTH.step * steps));
+
+/**
+ * The ground a building needs made under it: the level its footprint is levelled to and the steps that takes, or none
+ * (`level` null) when it fits as the ground lies.
+ */
+export interface Groundwork { level: number | null; steps: number }
+
+/** The steps that level a tile to `level`: a level each, and half a step more to flatten a ramp. */
+const stepsTo = (s: GameState, i: number, x: number, y: number, level: number) =>
+  Math.abs(centreLevel(s.map, x, y) - level) + (s.map.ramp[i] === FLAT ? 0 : 0.5);
+
+/**
+ * Runs `f` with a square of the map levelled flat at `level`, then puts the ground back (to ask what a building would find
+ * there); with `level` null, on the ground as it lies. What is worked out from the ground (the roads, the per-layout facts)
+ * is worked out afresh for `f` and dropped after, so nothing found on the levelled ground outlives it.
+ */
+export function levelledFor<T>(s: GameState, x: number, y: number, n: number, level: number | null, f: () => T): T {
+  if (level === null) return f();
+  const saved: [number, number, number][] = [];
+  for (let ty = y; ty < y + n; ty++) for (let tx = x; tx < x + n; tx++) {
+    const i = tileIndex(s, tx, ty);
+    saved.push([i, s.map.level[i], s.map.ramp[i]]);
+    s.map.level[i] = level; s.map.ramp[i] = FLAT;
+  }
+  const rt = runtimeOf(s), { roads, derived } = rt;
+  rt.roads = undefined; rt.derived = undefined;
+  try { return f(); } finally {
+    for (const [i, l, r] of saved) { s.map.level[i] = l; s.map.ramp[i] = r; }
+    rt.roads = roads; rt.derived = derived;
+  }
+}
+
+/**
+ * How the ground at (x, y) gets ready for `type` (its tiles are on the map): nothing where it fits as it lies (relief.ts:
+ * one-tile buildings anywhere, a field without a cliff inside it, the rest flat), else levelled to the level that takes the
+ * fewest steps (the lower on a tie), never below water beside it; a water wheel only to the level of the river beside it.
+ */
+export function groundworkFor(s: GameState, type: BuildingId, x: number, y: number): Result<Groundwork> {
+  const n = BUILDINGS[type].size, ground = groundOf(type), wheel = !!BUILDINGS[type].onBank;
+  const fits = ground === 'any' || (ground === 'unbroken' ? isUnbroken(s.map, x, y, n) : isFlat(s.map, x, y, n));
+  if (fits && (!wheel || wheelSite(s, x, y))) return ok({ level: null, steps: 0 });
+  // Water beside it sets the lowest the ground can go.
+  let floor = 0;
+  for (let ty = y - 1; ty <= y + n; ty++) for (let tx = x - 1; tx <= x + n; tx++) {
+    if (inMap(s, tx, ty) && terrainAt(s, tx, ty) === TERRAIN.water) floor = Math.max(floor, s.map.level[tileIndex(s, tx, ty)]);
+  }
+  let best: Groundwork | null = null;
+  for (let level = floor; level <= MAX_LEVEL; level++) {
+    if (wheel && !levelledFor(s, x, y, n, level, () => wheelSite(s, x, y))) continue;
+    let steps = 0;
+    for (let ty = y; ty < y + n; ty++) for (let tx = x; tx < x + n; tx++) steps += stepsTo(s, tileIndex(s, tx, ty), tx, ty, level);
+    if (!best || steps < best.steps) best = { level, steps };
+  }
+  if (!best) return no(wheel ? `The ${BUILDINGS[type].name.toLowerCase()} stands on a river bank, beside the running water.` : 'The ground here can\'t be levelled for it.');
+  return ok(best);
+}
+
+/** What placing `type` at (x, y) costs: the building and levelling the ground for it. */
+export function placePrice(s: GameState, type: BuildingId, gw: Groundwork) {
+  return priceOf(s, type) + earthPrice(s, gw.steps);
+}
+
+/** Whether `type` fits with its north-west tile at (x, y), and the groundwork it would need. */
+export function canPlace(s: GameState, type: BuildingId, x: number, y: number): Result<Groundwork> {
   const def = BUILDINGS[type];
   if (!def.category) return no(`The ${def.name.toLowerCase()} can't be built.`);
   for (let ty = y; ty < y + def.size; ty++) for (let tx = x; tx < x + def.size; tx++) {
@@ -40,8 +106,11 @@ export function canPlace(s: GameState, type: BuildingId, x: number, y: number): 
     const o = buildingAt(s, tx, ty);
     if (o) return no(`The ${BUILDINGS[o.type].name.toLowerCase()} is in the way.`);
   }
-  if (s.credits < priceOf(s, type)) return no(`Not enough credits: the ${def.name.toLowerCase()} costs ${priceOf(s, type)}.`);
-  return ok(null);
+  const gw = groundworkFor(s, type, x, y);
+  if (!gw.ok) return gw;
+  const price = placePrice(s, type, gw.value);
+  if (s.credits < price) return no(`Not enough credits: the ${def.name.toLowerCase()} costs ${priceOf(s, type)}${gw.value.steps ? `, and levelling the ground ${earthPrice(s, gw.value.steps)}` : ''}.`);
+  return gw;
 }
 
 /** The choices a type offers while placing: a field's crops, or the recipes of a machine with more than one (the bakery). */
@@ -86,11 +155,18 @@ export function place<K extends BuildingId>(s: GameState, type: K, x: number, y:
   if (!check.ok) return check;
   const fits = choicesOf(type);
   if ((set.crop || set.recipe) && !fits.some((c) => c.crop === set.crop && c.recipe === set.recipe)) throw new Error(`A ${type} can't be placed with ${JSON.stringify(set)}`);
-  const b = applySetting(makeBuilding(s, type, x, y, rot), set) as BuildingOf<K>;
-  s.credits -= priceOf(s, type);
+  const gw = check.value, n = BUILDINGS[type].size;
+  s.credits -= placePrice(s, type, gw);
+  if (gw.level !== null) {
+    for (let ty = y; ty < y + n; ty++) for (let tx = x; tx < x + n; tx++) { const i = tileIndex(s, tx, ty); s.map.level[i] = gw.level; s.map.ramp[i] = FLAT; }
+    touchRelief(s);
+  }
+  // A water wheel faces the river.
+  const site = BUILDINGS[type].onBank ? wheelSite(s, x, y) : null;
+  const b = applySetting(makeBuilding(s, type, x, y, site ? site.rot : rot), set) as BuildingOf<K>;
   addBuilding(s, b);
   const what = settingName(set);
-  return ok({ message: `Built a ${BUILDINGS[type].name.toLowerCase()}${what ? ` (${what})` : ''}.`, building: b });
+  return ok({ message: `Built a ${BUILDINGS[type].name.toLowerCase()}${what ? ` (${what})` : ''}${gw.steps ? `, levelling the ground (${earthPrice(s, gw.steps)} credits)` : ''}.`, building: b });
 }
 
 export function remove(s: GameState, b: Building): Action {
@@ -130,12 +206,61 @@ export function removeAt(s: GameState, x: number, y: number): Action {
   return done(kind === 'tree' ? `Cleared a tree (${cost} credits). Fewer trees: soil health falls a little.` : `Cleared rock (${cost} credits).`);
 }
 
+// ---- Earthworks ----
+
+export type Earthwork = 'raise' | 'lower' | 'ramp';
+export const EARTHWORKS: Earthwork[] = ['raise', 'lower', 'ramp'];
+export const EARTHWORK_NAMES: Record<Earthwork, string> = { raise: 'Raise', lower: 'Lower', ramp: 'Ramp' };
+
+/**
+ * Whether earthwork `how` can be done on a tile: open grass on the map (trees and rock cleared first, nothing built), raised
+ * to at most MAX_LEVEL, lowered no lower than water beside it, made a ramp rising towards `dir` (a ramp already there is
+ * turned). Raising or lowering a ramp makes it flat at its top or its foot.
+ */
+export function canReshape(s: GameState, x: number, y: number, how: Earthwork, dir: Dir): Result<{ level: number; ramp: number }> {
+  if (!inMap(s, x, y)) return no('Off the edge of the map.');
+  const t = terrainAt(s, x, y);
+  if (t === TERRAIN.water) return no('Water can\'t be moved.');
+  if (t === TERRAIN.tree) return no('A tree is in the way. Remove it first.');
+  if (t === TERRAIN.rock) return no('Rock is in the way. Remove it first.');
+  const o = buildingAt(s, x, y);
+  if (o) return no(`The ${BUILDINGS[o.type].name.toLowerCase()} is in the way.`);
+  const i = tileIndex(s, x, y), l = s.map.level[i], r = s.map.ramp[i];
+  // Water beside it, corners too (as when levelling under a building), sets the lowest it can go.
+  let water = -1;
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (inMap(s, x + dx, y + dy) && terrainAt(s, x + dx, y + dy) === TERRAIN.water) water = Math.max(water, s.map.level[tileIndex(s, x + dx, y + dy)]);
+  let to: { level: number; ramp: number };
+  if (how === 'raise') to = { level: l + 1, ramp: FLAT };
+  else if (how === 'lower') to = { level: r === FLAT ? l - 1 : l, ramp: FLAT };
+  else to = { level: l, ramp: dir };
+  if (how === 'ramp' && r === dir) return no('');
+  if (to.level > MAX_LEVEL || (how === 'ramp' && l + 1 > MAX_LEVEL)) return no('The ground is as high as it goes.');
+  if (to.level < 0) return no('The ground is as low as it goes.');
+  if (to.level < water) return no('The ground can\'t go below the water beside it.');
+  const cost = earthPrice(s, 1);
+  if (s.credits < cost) return no(`Not enough credits: earthworks cost ${cost} a step.`);
+  return ok(to);
+}
+
+/** Raises, lowers or ramps a tile, one step. */
+export function reshape(s: GameState, x: number, y: number, how: Earthwork, dir: Dir): Action {
+  const c = canReshape(s, x, y, how, dir);
+  if (!c.ok) return c;
+  const i = tileIndex(s, x, y), cost = earthPrice(s, 1);
+  s.map.level[i] = c.value.level; s.map.ramp[i] = c.value.ramp;
+  s.credits -= cost;
+  touchRelief(s);
+  return done(`${how === 'raise' ? 'Raised the ground' : how === 'lower' ? 'Lowered the ground' : 'Made a ramp'}${cost ? ` (${cost} credits)` : ''}.`);
+}
+
 export function setCrop(s: GameState, b: Building, crop: CropId): Action {
   if (b.type !== 'field' || b.crop === crop) return no('');
   // Stops that pick up the old crop here pick up the new one too (the old harvest still waiting has to go).
   for (const r of s.routes) for (const st of r.stops) {
     if (st.building === b.id && st.pick.includes(b.crop) && !st.pick.includes(crop)) { st.pick.push(crop); st.drop = st.drop.filter((i) => i !== crop); }
   }
+  // A bean field guards the fields beside it against erosion: worked out again when one starts or stops growing beans.
+  if (b.crop === 'beans' || crop === 'beans') touchLayout(s);
   b.crop = crop; b.growth = 0;
   return done(`The field now grows ${CROPS[crop].name.toLowerCase()}${b.stored ? ` (once its ${CROPS[b.harvest ?? crop].name.toLowerCase()} harvest has gone)` : ''}.`);
 }
@@ -165,7 +290,7 @@ export function buyTruck(s: GameState, g: Building): Action<{ truck: Truck }> {
   s.credits -= truckPrice(s);
   const t: Truck = {
     id: s.nextId++, garage: g.id, route: null, stop: 0, phase: 'parked', x: at % w + 0.5, y: Math.floor(at / w) + 0.5, heading: 0,
-    path: [], target: g.id, energy: TRUCK.battery, cargo: [], idle: 0, budget: 0, arrived: 0, charged: false,
+    path: [], from: at, target: g.id, energy: TRUCK.battery, cargo: [], idle: 0, budget: 0, arrived: 0, charged: false,
   };
   s.trucks.push(t);
   touchRoutes(s);

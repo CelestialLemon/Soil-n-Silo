@@ -2,7 +2,7 @@ import { BUILDINGS, POWER, TICK, TRUCK, type BuildingId } from '../data.ts';
 import { networkOf, networks } from '../power.ts';
 import { notePower, type PowerStep } from '../powerlog.ts';
 import { isMachine, type BatteryBuilding, type Building, type GameState } from '../state.ts';
-import { exposureOf, nearWater } from './layout.ts';
+import { exposureOf, wattsOf } from './layout.ts';
 import { recipeOf, missing, outputsFit } from './goods.ts';
 import { runtimeOf } from '../runtime.ts';
 
@@ -18,7 +18,7 @@ export function shareOf(s: GameState, b: Building) {
 export function wants(s: GameState, b: Building): number {
   const def = BUILDINGS[b.type];
   if (!def.power) return 0;
-  if (b.type === 'sprinkler') return nearWater(s, b) ? POWER.sprinklerNearWater : POWER.sprinklerFar;
+  if (b.type === 'sprinkler') return wattsOf(s, b);
   if (b.type === 'garage') return runtimeOf(s).charging?.get(b.id) ?? 0;
   if (!isMachine(b)) return 0;
   const r = recipeOf(b);
@@ -31,6 +31,7 @@ export function makes(s: GameState, b: Building, sun: number, wind: number): num
   switch (b.type) {
     case 'solar': return POWER.solar * sun;
     case 'turbine': return POWER.turbine * wind * exposureOf(s, b);
+    case 'wheel': return wattsOf(s, b);
     case 'digester': return b.progress !== null ? POWER.digester : 0;
     default: return 0;
   }
@@ -38,7 +39,7 @@ export function makes(s: GameState, b: Building, sun: number, wind: number): num
 
 export function balancePower(s: GameState, sun: number, wind: number, dt: number) {
   const map = new Map<number, number>();
-  const step: PowerStep = { solar: 0, wind: 0, digester: 0, given: 0, taken: 0, wanted: 0, used: 0, short: 0, stored: 0, capacity: 0, night: sun <= 0 };
+  const step: PowerStep = { solar: 0, wind: 0, water: 0, digester: 0, given: 0, taken: 0, wanted: 0, used: 0, short: 0, stored: 0, capacity: 0, night: sun <= 0 };
   const use: Partial<Record<BuildingId, number>> = {};
   for (const net of networks(s).list) {
     let made = 0, wanted = 0, capacity = 0;
@@ -46,7 +47,7 @@ export function balancePower(s: GameState, sun: number, wind: number, dt: number
     for (const b of net.members) {
       const w = makes(s, b, sun, wind), u = wants(s, b);
       made += w;
-      if (b.type === 'solar' || b.type === 'turbine' || b.type === 'digester') step[b.type === 'turbine' ? 'wind' : b.type] += w;
+      if (b.type === 'solar' || b.type === 'turbine' || b.type === 'wheel' || b.type === 'digester') step[b.type === 'turbine' ? 'wind' : b.type === 'wheel' ? 'water' : b.type] += w;
       wanted += u;
       if (u > 0) want.set(b, u);
       if (b.type === 'battery') { batteries.push(b); capacity += POWER.battery.capacity; }

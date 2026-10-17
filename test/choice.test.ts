@@ -10,7 +10,7 @@ import { newGame, type GameState } from '../src/game/state.ts';
 // Choosing a field's crop or a bakery's recipe while placing it, and the choice remembered for the level.
 
 function flat(): GameState {
-  const sc: Scenario = { ...SANDBOX, id: 'test', sandbox: false, credits: 100_000, width: 30, height: 30, goals: [], terrain: { soil: 60, soilSpread: 0, water: 'none', forest: 0, rock: 0 } };
+  const sc: Scenario = { ...SANDBOX, id: 'test', sandbox: false, credits: 100_000, width: 30, height: 30, goals: [], terrain: { soil: 60, soilSpread: 0, water: 'none', forest: 0, rock: 0, relief: 0 } };
   return newGame(sc);
 }
 

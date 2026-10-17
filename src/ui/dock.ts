@@ -1,4 +1,4 @@
-import { choicesOf, priceOf, type Setting } from '../game/build.ts';
+import { choicesOf, earthPrice, EARTHWORK_NAMES, EARTHWORKS, priceOf, type Setting } from '../game/build.ts';
 import { BUILDINGS, CATEGORIES, CROPS, recipeById, type BuildingId, type Category } from '../game/data.ts';
 import type { GameState } from '../game/state.ts';
 import { h, icon } from './dom.ts';
@@ -8,9 +8,9 @@ import type { Tool } from './hud.ts';
 import { keyNames, keysVersion, tip } from './keyhints.ts';
 
 // The dock, bottom centre: a row of building tiles over the building categories (price, and watts for those that use power),
-// and Remove. A tile you can't afford is greyed; the one in hand is ink. Keys are in each tile's tooltip, not printed.
+// Earthworks and Remove. A tile you can't afford is greyed; the one in hand is ink. Keys are in each tile's tooltip, not printed.
 // Pointing at a tile shows its card above the dock. A field or bakery in hand has a strip of choices (its crops, its recipes)
-// over its own tile, pointing at it.
+// over its own tile, pointing at it; so do earthworks (raise, lower, ramp).
 
 export interface DockHost {
   state(): GameState;
@@ -50,7 +50,7 @@ export class Dock {
   /** Redraws when the category or tool changed; otherwise only which tiles you can afford. */
   update() {
     const s = this.host.state(), tool = this.host.tool();
-    const key = JSON.stringify([this.category, tool.kind === 'build' ? [tool.type, tool.crop, tool.recipe] : tool.kind, keysVersion()]);
+    const key = JSON.stringify([this.category, tool.kind === 'build' ? [tool.type, tool.crop, tool.recipe] : tool.kind === 'earth' ? [tool.how, tool.rot] : tool.kind, keysVersion()]);
     if (key === this.key) {
       for (const [id, b] of this.tiles) b.classList.toggle('is-poor', s.credits < priceOf(s, id));
       return;
@@ -74,13 +74,19 @@ export class Dock {
       if (on) held = b;
       return b;
     });
+    const earthing = tool.kind === 'earth';
+    const earth = h('button', {
+      class: `cd-tile${earthing ? ' is-on' : ''}${s.credits < earthPrice(s, 1) ? ' is-poor' : ''}`, title: tip('Earthworks: raise or lower a tile a level, or make it a ramp', ...keyNames('earth')),
+      onclick: () => this.host.setTool(earthing ? { kind: 'select' } : { kind: 'earth', how: 'raise', rot: 0 }),
+    }, icon('earth'), h('span', { class: 'label' }, 'Earthworks'), h('span', { class: 'cd-tile__cost' }, `${num(earthPrice(s, 1))} a step`));
     const removing = tool.kind === 'remove';
     const remove = h('button', {
       class: `cd-tile is-remove${removing ? ' is-on' : ''}`, title: tip('Remove: buildings refund in full; trees and rock cost to clear', ...keyNames('remove')),
       onclick: () => this.host.setTool(removing ? { kind: 'select' } : { kind: 'remove' }),
     }, icon('trash'), h('span', { class: 'label' }, 'Remove'), h('span', { class: 'cd-tile__cost' }, 'full refund'));
-    this.el.replaceChildren(h('div', { class: 'tiles' }, ...tiles, h('span', { class: 'sep' }), remove), h('div', { class: 'tabs' }, tabs));
+    this.el.replaceChildren(h('div', { class: 'tiles' }, ...tiles, h('span', { class: 'sep' }), earth, remove), h('div', { class: 'tabs' }, tabs));
     if (tool.kind === 'build' && held) this.strip(tool, held);
+    if (tool.kind === 'earth') this.earthStrip(tool, earth);
   }
 
   /** The choices of the field or bakery in hand, over its tile; the strip's pointer is on the tile's middle. */
@@ -97,6 +103,20 @@ export class Dock {
       return h('button', { class: on ? 'is-on' : '', title: tip(`${name}: ${info}`, ...keys.map((k) => `${k}, Shift+${k} to change`)), onclick: () => this.host.choose(c) },
         icon(c.crop ?? out ?? 'check', 18), h('span', null, name));
     });
+    this.place(chips, tile);
+  }
+
+  /** Earthworks' three: raise, lower, ramp (R turns the ramp), over its tile. */
+  private earthStrip(tool: Extract<Tool, { kind: 'earth' }>, tile: HTMLButtonElement) {
+    const keys = keyNames('choice'), INFO = { raise: 'a level up', lower: 'a level down', ramp: `rising ${['north', 'east', 'south', 'west'][tool.rot]}; ${keyNames('rotate').join(' or ')} turns it` };
+    const chips = EARTHWORKS.map((how) => h('button', {
+      class: tool.how === how ? 'is-on' : '', title: tip(`${EARTHWORK_NAMES[how]}: ${INFO[how]}`, ...keys.map((k) => `${k}, Shift+${k} to change`)),
+      onclick: () => this.host.setTool({ ...tool, how }),
+    }, h('span', null, EARTHWORK_NAMES[how])));
+    this.place(chips, tile);
+  }
+
+  private place(chips: HTMLElement[], tile: HTMLButtonElement) {
     const pointer = h('i', { class: 'pointer' });
     const el = h('div', { class: 'cd-card hud-strip' }, h('div', { class: 'cd-seg' }, ...chips), pointer);
     this.el.append(el);

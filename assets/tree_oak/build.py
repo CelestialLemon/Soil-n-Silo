@@ -1,20 +1,26 @@
-"""A chunky branching oak with a round, asymmetrical crown."""
+"""Broad lumpy oak on a stout forked trunk. Distant canopy: #467348."""
 import sys
 sys.dont_write_bytecode = True
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from common import *
-reset(114)
-cylinder('Oak_trunk',(0,0,.91),.18,1.82,'bark',7,top=.12)
-for i in range(4):
-    a=i*math.tau/4+.3
-    beam('Oak_root',(0,0,.16),(.34*math.cos(a),.34*math.sin(a),.070),.13,'bark',5)
-for i in range(3):
-    a=.4+i*math.tau/3
-    beam('Oak_bough',(0,0,1.25),(.48*math.cos(a),.48*math.sin(a),2.02),.15,'wood',6)
-for location,scale,colour in [((0,0,2.34),(.87,.82,.70),'leaf'),
-    ((-.58,-.20,2.03),(.66,.64,.62),'green'),((.56,-.12,2.10),(.68,.68,.64),'leaf'),
-    ((0,.53,2.11),(.69,.68,.61),'darkleaf'),((-.10,.03,2.70),(.66,.62,.35),'leaf')]:
-    sphere('Oak_round_leaf_crown',location,scale,colour,10,5)
-centre_xy()
-export_and_preview('tree_oak',3000)
+from trees import *
+reset(314)
+
+
+def oak(n):
+    lean = [-.06,.15,-.13][n]
+    stem('Oak_stout_trunk',[(0,0,0,.22),(.02,0,.55,.17),(lean,.02,1.25,.14),(lean,.04,1.85,.085)])
+    for i in range(3):
+        a = i*math.tau/3+.2
+        beam('Oak_fork',(lean,0,1.12),(.32*math.cos(a)+lean,.32*math.sin(a),1.95),.17,'bark',6)
+    for loc,scale,colour in [
+        ((lean,0,2.29),(.81,.76,.72),'oak_leaf'),
+        ((-.55+lean,-.26,2.13),(.58,.63,.61),'oak_light'),
+        ((.53+lean,-.27,2.04),(.64,.59,.58),'oak_leaf'),
+        ((-.33+lean,.51,2.18),(.67,.56,.63),'oak_leaf'),
+        ((.43+lean,.43,2.25),(.62,.61,.59),'oak_light'),
+        ((-.15+lean,.02,2.62),(.58,.57,.52),'oak_light')]:
+        crown('Oak_cluster',loc,scale,colour,n*.19)
+
+
+variants('tree_oak',oak,[(1,1,0),(.88,.88,.32),(.97,1.08,-.28)])

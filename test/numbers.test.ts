@@ -22,7 +22,7 @@ import { newGame, type Building, type BuildingOf, type GameState, type Route, ty
 function flat(extra: Partial<Scenario> = {}): GameState {
   const sc: Scenario = {
     ...SANDBOX, id: 'test', sandbox: false, credits: 100_000, width: 30, height: 30, goals: [], par: 600,
-    terrain: { soil: 60, soilSpread: 0, water: 'none', forest: 0, rock: 0 }, ...extra,
+    terrain: { soil: 60, soilSpread: 0, water: 'none', forest: 0, rock: 0, relief: 0 }, ...extra,
   };
   const s = newGame(sc);
   s.map.fertility.fill(60);

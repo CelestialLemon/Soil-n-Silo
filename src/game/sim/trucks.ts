@@ -2,6 +2,7 @@ import { bays, BUILDINGS, TRUCK, type ItemId } from '../data.ts';
 import { noteArrival } from '../fleet.ts';
 import { networkOf } from '../power.ts';
 import { accessTiles, distanceTo, isOpen, legLength, nearestOpen, pathTo } from '../roads.ts';
+import { centreLevel } from '../relief.ts';
 import {
   buildingById, layoutOf, routeById, tileIndex, type Building, type GameState, type Route, type Stop, type Truck,
 } from '../state.ts';
@@ -28,7 +29,7 @@ export const trucksOn = (s: GameState, r: Route) => s.trucks.filter((t) => t.rou
 function driveTo(s: GameState, t: Truck, b: Building): boolean {
   const p = pathTo(s, b, tileOf(s, t));
   if (!p) return false;
-  t.path = p; t.target = b.id; t.phase = 'drive'; t.idle = 0;
+  t.path = p; t.from = tileOf(s, t); t.target = b.id; t.phase = 'drive'; t.idle = 0;
   return true;
 }
 
@@ -47,7 +48,19 @@ function goHome(s: GameState, t: Truck) {
 function setOff(s: GameState, t: Truck, from: number) {
   const r = routeOf(s, t), g = must(garageOf(s, t), 'garage');
   if (!r || !r.stops.length) { goHome(s, t); return; }
-  const here = tileOf(s, t), n = r.stops.length;
+  const n = r.stops.length;
+  // At its garage it leaves by whichever side has a way to its stops (a garage can stand at a cliff).
+  if (distanceTo(s, g, tileOf(s, t)) === 0) {
+    for (let k = 0; k < n; k++) {
+      const b = buildingById(s, r.stops[(from + k) % n].building);
+      if (!b) continue;
+      const best = accessTiles(s, g).reduce((m, a) => (distanceTo(s, b, a) < distanceTo(s, b, m) ? a : m), tileOf(s, t));
+      if (distanceTo(s, b, best) === Infinity) continue;
+      t.x = best % s.map.width + 0.5; t.y = Math.floor(best / s.map.width) + 0.5;
+      break;
+    }
+  }
+  const here = tileOf(s, t);
   let i = -1;
   for (let k = 0; k < n; k++) {
     const b = buildingById(s, r.stops[(from + k) % n].building);
@@ -62,7 +75,7 @@ function setOff(s: GameState, t: Truck, from: number) {
   if (!t.charged && back < Infinity && distanceTo(s, g, here) < Infinity
     && t.energy < (leg + back) * TRUCK.joulesPerTile) { goHome(s, t); return; }
   t.charged = false;
-  t.path = path; t.target = b.id; t.phase = 'drive'; t.idle = 0;
+  t.path = path; t.from = here; t.target = b.id; t.phase = 'drive'; t.idle = 0;
 }
 
 /**
@@ -131,16 +144,20 @@ function atStop(s: GameState, t: Truck, dt: number, queued: boolean) {
 /** Drives a truck along its path; at the end it parks at its garage or joins the queue at its stop. */
 function drive(s: GameState, t: Truck, dt: number) {
   const w = s.map.width;
+  // `left` is effort (tiles of flat road): climbing a level uses TRUCK.climb more, in time and in battery.
   let left = (t.energy > 0 ? TRUCK.speed : TRUCK.crawl) * dt;
   while (left > 1e-9 && t.path.length) {
     const i = t.path[0], tx = i % w + 0.5, ty = Math.floor(i / w) + 0.5;
     const dx = tx - t.x, dy = ty - t.y, d = Math.hypot(dx, dy);
     if (d > 1e-6) t.heading = Math.atan2(dx, dy);
-    const step = Math.min(d, left);
-    if (d > 1e-9) { t.x += dx / d * step; t.y += dy / d * step; }
+    // The step's effort a tile, as the roads count it: from the tile it set off from to the target.
+    const tx0 = i % w, ty0 = Math.floor(i / w), bx = t.from % w, by = Math.floor(t.from / w);
+    const len = Math.hypot(tx0 - bx, ty0 - by) || 1, rise = Math.max(0, centreLevel(s.map, tx0, ty0) - centreLevel(s.map, bx, by));
+    const effort = d * (1 + TRUCK.climb * rise / len), step = Math.min(effort, left), k = effort > 1e-9 ? step / effort : 1;
+    t.x += dx * k; t.y += dy * k;
     left -= step;
     t.energy = Math.max(0, t.energy - step * TRUCK.joulesPerTile);
-    if (step >= d - 1e-9) { t.x = tx; t.y = ty; t.path.shift(); }
+    if (k >= 1 - 1e-9) { t.x = tx; t.y = ty; t.from = i; t.path.shift(); }
   }
   if (t.path.length) return;
   const b = t.target !== null ? buildingById(s, t.target) : null;
