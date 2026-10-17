@@ -116,10 +116,10 @@ level and one-level falls, and biases rock and forest uphill. Soil is poorer uph
 varies by commission; random commissions can be Hilly or Flat. The country beyond rises in stepped hills, with a track
 climbing out from the depot.
 
-Buildings level unsuitable ground on placement for an extra price. Earthworks raise, lower or ramp empty grass for 40
+Buildings level unsuitable ground on placement for an extra price. Earthworks raise, lower or ramp empty grass for 20
 credits a step; neither is refunded. Terrain should shape a layout without blocking something that has to be built
 somewhere. Cliffs stop trucks, climbing costs time and battery, and ways are chosen by effort. Next-door goods can go down
-but never uphill for now, to be tuned after play. Water beside a field must meet its ground level; sprinklers pay for lift,
+a cliff but never up one for now, to be tuned after play. Water beside a field must meet its ground level; sprinklers pay for lift,
 turbines gain wind up high and lose it behind higher ground, and fields' ramp tiles erode faster unless trees or beans guard
 them. A water wheel makes steady power from current on a river bank, more beside a fall. Rules and numbers in `DESIGN.md`.
 
