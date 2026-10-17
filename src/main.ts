@@ -530,8 +530,10 @@ async function play(initial: GameState) {
   function placeSpot() {
     if (tool.kind !== 'build' || !hoverTile || hud.modal) return null;
     const type = tool.type, n = BUILDINGS[type].size, a = anchor(hoverTile, n);
-    const count = input.press?.mode === 'paint' && input.press.from && input.press.to ? plan(type, input.press.from, input.press.to, tool.rot).length : 1;
-    return { type, x: a.x, y: a.y, count, crop: tool.crop, recipe: tool.recipe, ...camera.toScreen(a.x + n / 2, standY(state.map, n, a.x, a.y) + models.buildings[type].height + 0.3, a.y + n / 2) };
+    const spots = input.press?.mode === 'paint' && input.press.from && input.press.to ? plan(type, input.press.from, input.press.to, tool.rot) : [a];
+    // What they cost with the earthworks each needs, as placing them would charge.
+    const price = spots.reduce((sum, sp) => { const fit = canPlace(state, type, sp.x, sp.y); return sum + (fit.ok ? placePrice(state, type, fit.value) : priceOf(state, type)); }, 0);
+    return { type, x: a.x, y: a.y, count: spots.length, price, crop: tool.crop, recipe: tool.recipe, ...camera.toScreen(a.x + n / 2, standY(state.map, n, a.x, a.y) + models.buildings[type].height + 0.3, a.y + n / 2) };
   }
 
   // ---- Loop ----
