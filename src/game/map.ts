@@ -1,5 +1,5 @@
 import { fbm2, hash2, mulberry32, noise2 } from './rng.ts';
-import { FLAT, MAX_LEVEL, SIDES } from './relief.ts';
+import { centreLevel, isGentle, joins, MAX_LEVEL, SIDES } from './relief.ts';
 import type { Scenario } from './scenarios.ts';
 
 // The map of a commission, generated from its seed: grass with a fertility per tile, water, rock and trees, and where the
@@ -16,9 +16,8 @@ export interface MapData {
   terrain: TerrainKind[];
   /** Soil fertility 0–100 per tile (what a field on it starts from). */
   fertility: number[];
-  /** Each tile's level (0 the valley floor, at most MAX_LEVEL), and for a ramp the side it rises towards (FLAT if none); see relief.ts. */
-  level: number[];
-  ramp: number[];
+  /** Each tile's corner heights, four a tile (north-west, north-east, south-east, south-west; 0 the valley floor, at most MAX_LEVEL); see relief.ts. */
+  corner: number[];
   /** The speed of the river's current over each tile (m/s, 0 off the river and on still water). */
   current: number[];
   /** The depot's north-west tile (it is 3 × 3). */
@@ -37,9 +36,8 @@ export interface Land {
   height: number;
   terrain: TerrainKind[];
   fertility: number[];
-  /** Levels and ramps as on the map (relief.ts); beyond the edge the land rises higher than MAX_LEVEL into hills. */
-  level: number[];
-  ramp: number[];
+  /** Corner heights as on the map (relief.ts); beyond the edge the land rises higher than MAX_LEVEL into hills. */
+  corner: number[];
   /** The depot's north-west tile, in map coordinates. */
   depot: { x: number; y: number };
   /** The river's current over each tile (vx, vz in m/s, two numbers a tile); 0 off the river and on still water. */
@@ -55,72 +53,204 @@ export const DEPOT_SIZE = 3;
 const CLEARING = 8;
 
 export function generateMap(sc: Scenario): MapData {
-  const { width, height, terrain, fertility, level, ramp, depot, flow } = generateLand(sc, 0);
+  const { width, height, terrain, fertility, corner, depot, flow } = generateLand(sc, 0);
   const current = terrain.map((_, i) => Math.round(Math.hypot(flow[i * 2], flow[i * 2 + 1]) * 100) / 100);
-  return { width, height, terrain, fertility, level, ramp, current, depot };
+  return { width, height, terrain, fertility, corner, current, depot };
 }
 
-/** The country settles to this level for its outermost RIM tiles, where the distant woods start. */
-export const RIM_LEVEL = 6;
-const RIM = 10, RIM_BLEND = 12, CELL = 4;
-/** The home oval encloses the required Chebyshev-five square; ascent distances are tiles per level. */
-const HOME = 5, HOME_OVAL = 7, HOME_STRETCH = 1.25, HOME_STEP = 3.2, HOME_SWAY = 1.2, HOME_PERIOD = 3, HOME_BLEND = 4;
-/** Gentle meanders and width variation are sampled in tiles, with short straight approaches to exits and falls. */
+// Heights are levels; distances are tiles. Keep the landform scale and grade independent of amplitude: a taller landscape
+// can use a larger HILL_HEIGHT / COUNTRY_HEIGHT and CLIFF_HEIGHT, and a steeper GRADE, without changing the construction.
+const HILL_HEIGHT = 10, HILL_SCALE = 24, GRADE = 0.38, COUNTRY_HEIGHT = 22, COUNTRY_REACH = 42;
+const HOME = 5, HOME_RADIUS = 9, HOME_STRETCH = 1.25;
+const FLOODPLAIN = 3.5, FALL_HEIGHT = 3, FALL_RELIEF = 0.55, SECOND_FALL_RELIEF = 0.85, FALL_REACH = 8;
+const CLIFF_HEIGHT = 3, MESA_RELIEF = 0.65, MESA_RADIUS = 8, MESA_ATTEMPTS = 24;
+const BASIN_BANK = 3, BASIN_STRETCH = 1.15, BASIN_GAP = 4, BASIN_ATTEMPTS = 64;
 const RIVER_PERIOD = 9, RIVER_PERIOD_SPREAD = 3, RIVER_SWAY = 2.8, RIVER_RIPPLE = 0.7, RIVER_RIPPLE_PERIOD = 5;
 const RIVER_WIDTH = 3, RIVER_WIDTH_SWAY = 0.65, RIVER_WIDTH_PERIOD = 8, RIVER_STRAIGHT = 2, RIVER_EDGE = 3;
-/** Flat river banks leave room for fields, then widen into curved upland terraces. */
-const RIVER_BANK = 4.2, VALLEY_FLOOR = 5, TERRACE_STEP = 8, RUGGED_STEP = 4.5, FALL_BLEND = 6;
-/** Basins need a flat shore and several tiles per step, rather than a thin ring of cliffs. */
-const BASIN_BANK = 3, BASIN_STEP = 3.5, BASIN_GAP = 4, BASIN_ATTEMPTS = 64, BASIN_STRETCH = 1.15, BASIN_HOME = 12;
-/** Two drifting waves bend ridge contours differently at each height. */
-const RIDGE_SWAY = 2.6, RIDGE_PERIOD = 6, RIDGE_DRIFT = 15, RIDGE_RIPPLE = 1.6, RIDGE_RIPPLE_PERIOD = 3.8, RIDGE_RIPPLE_DRIFT = 11;
-const LONG_CLIFF = 12, RAMP_GAP = 3, RUGGED = 0.8;
-const HILL_REACH = 24, HILL_BASE = 2, HILL_HEIGHT = 7, COUNTRY_TOP = 10;
-const VALLEY_INNER = 1.5, VALLEY_OUTER = 8, COUNTRY_RAMP_CHANCE = 0.04;
-const TRACK_BEND = 5, TRACK_BEND_START = 6, TRACK_BEND_END = 26;
+const TRACK_BEND = 5, TRACK_BEND_START = 6, TRACK_BEND_END = 26, TRACK_HEIGHT = 16, TRACK_REACH = 58;
 const ROCK_BIAS = 0.2, FOREST_BIAS = 0.08, FOREST_THICKEN = 0.012;
-const SOIL_HEIGHT = 9, SOIL_WATER = 10, SOIL_REACH = 2;
+const SOIL_HEIGHT = 2.25, SOIL_WATER = 10, SOIL_REACH = 2, CELL = 4;
 const RIVER_FAST = 1.1, RIVER_SLOW = 0.6;
 const smoothstep = (a: number, b: number, v: number) => { const t = Math.min(1, Math.max(0, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+interface Basin { x: number; y: number; radius: number }
+interface Country { away: Float32Array; height: Float32Array }
 
 export function generateLand(sc: Scenario, margin: number): Land {
   const { width: w, height: h, seed, terrain: t } = sc, r = mulberry32(seed);
   const M = margin, lw = w + 2 * M, lh = h + 2 * M, size = lw * lh;
   const terrain = new Array<TerrainKind>(size).fill(TERRAIN.grass), fertility = new Array<number>(size).fill(0);
-  const level = new Array<number>(size).fill(0), ramp = new Array<number>(size).fill(FLAT);
-  const flow = new Float32Array(size * 2), drop = new Uint8Array(size), track = new Uint8Array(size);
+  const corner = new Array<number>(size * 4).fill(0), flow = new Float32Array(size * 2);
+  const drop = new Uint8Array(size), track = new Uint8Array(size);
+  const depot = { x: Math.floor(w / 2 - 1 + (r() - 0.5) * w * 0.4), y: h - DEPOT_SIZE - 1 };
+  const land: Land = { seed, margin: M, width: lw, height: lh, terrain, fertility, corner, depot, flow, drop, track };
   const idx = (x: number, y: number) => (y + M) * lw + x + M;
   const onMap = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h;
-  const inside = (x: number, y: number) => x >= -M && y >= -M && x < w + M && y < h + M;
-  const depot = { x: Math.floor(w / 2 - 1 + (r() - 0.5) * w * 0.4), y: h - DEPOT_SIZE - 1 };
-  const land: Land = { seed, margin: M, width: lw, height: lh, terrain, fertility, level, ramp, depot, flow, drop, track };
-  const top = Math.min(MAX_LEVEL, Math.ceil(t.relief * MAX_LEVEL));
+  const home = (x: number, y: number) => Math.hypot((x - depot.x - 1.5) / HOME_STRETCH, y - depot.y - 1.5);
+  const river = riverCourse(sc, depot, r), basins = basinSites(sc, r, home);
+  const halo = MAX_LEVEL + COUNTRY_HEIGHT + CLIFF_HEIGHT, P = M + halo;
+  const vw = w + P * 2 + 1, vh = h + P * 2 + 1, vertices = vw * vh;
+  const slices = Array.from({ length: (river.vertical ? h : w) + P * 2 + 1 }, (_, i) => {
+    const a = i - P, bounds = river.bounds(a), previous = river.bounds(a - 1);
+    let datum = 0;
+    for (const f of river.falls) datum += FALL_HEIGHT * (1 - smoothstep(-FALL_REACH, FALL_REACH, river.sign * (a - f)));
+    return { ...bounds, vertexLo: Math.min(bounds.lo, previous.lo), vertexHi: Math.max(bounds.hi, previous.hi) + 1, centre: river.course(a), datum };
+  });
+  const bend = hash2(seed, 3, 91) < 0.5 ? -1 : 1;
+  const trackX = (y: number) => depot.x + 1 + Math.round(bend * TRACK_BEND * smoothstep(h + TRACK_BEND_START, h + TRACK_BEND_END, y));
+  const trackHeight = (y: number) => TRACK_HEIGHT * smoothstep(h + 6, h + TRACK_REACH, y);
+  const beyond = (x: number, y: number) => Math.hypot(Math.max(0, -x, x - w), Math.max(0, -y, y - h));
+  const shore = (x: number, y: number) => {
+    if (t.water === 'river') {
+      const a = river.vertical ? y : x, b = river.vertical ? x : y, slice = slices[a + P];
+      return Math.max(0, slice.vertexLo - b, b - slice.vertexHi);
+    }
+    let distance = Infinity;
+    for (const p of basins) distance = Math.min(distance, Math.hypot(x - p.x, (y - p.y) * BASIN_STRETCH) - p.radius);
+    return Math.max(0, distance);
+  };
 
-  const river = riverCourse(sc, depot, r);
-  const surface = generateRelief(sc, depot, river, r);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const i = idx(x, y), j = y * w + x;
-    terrain[i] = surface.terrain[j]; level[i] = surface.level[j]; ramp[i] = surface.ramp[j];
+  // Each reach has its own sheet of vertices. Away from a fall all sheets coincide; near it, the floodplain follows the
+  // water's datum and the scarp fades out across the bank, leaving a gentle route round either end of the fall.
+  // A halo larger than any possible height makes the lowering pass independent of the requested drawing margin: even
+  // a zero just outside the halo cannot influence a map corner. No country-only constraint is allowed to reach the map.
+  // A lower cone from water protects the bank when the home envelope cuts into an upstream reach. Like the upper
+  // envelope, it is one-Lipschitz, so the lowering pass cannot push a shore below the surface it must meet.
+  const waterDistance = new Int16Array(vertices).fill(32767);
+  if (t.water === 'river' && river.falls.length) {
+    for (let y = -P; y <= h + P; y++) for (let x = -P; x <= w + P; x++) {
+      if (shore(x, y) === 0) waterDistance[(y + P) * vw + x + P] = 0;
+    }
+    gentleVertices(waterDistance, vw, vh);
   }
-  const country = countryside(sc, land, river);
-
-  // Quantiles keep the requested shares despite the clearing. High ground and cliff edges favour rock and, more mildly,
-  // trees. Ramps and the track stay grass; neither counts against a scatter's quota.
+  const sheets = Array.from({ length: t.water === 'river' ? river.falls.length + 1 : 1 }, () => new Int16Array(vertices));
+  for (let y = -P; y <= h + P; y++) for (let x = -P; x <= w + P; x++) {
+    const i = (y + P) * vw + x + P, distance = beyond(x, y);
+    const hills = HILL_HEIGHT * t.relief * (0.25 + 0.75 * noise2(x / HILL_SCALE, y / HILL_SCALE, seed + 71));
+    const country = COUNTRY_HEIGHT * smoothstep(0, COUNTRY_REACH, distance) * (0.6 + 0.4 * noise2(x / 32, y / 32, seed + 73));
+    const homeCap = Math.max(0, home(x, y) - HOME_RADIUS) * GRADE;
+    const shoreDistance = shore(x, y), bank = t.water === 'river' ? FLOODPLAIN : BASIN_BANK;
+    const rise = Math.max(0, shoreDistance - bank) * GRADE;
+    const a = river.vertical ? y : x, b = river.vertical ? x : y;
+    const { datum, centre } = slices[a + P];
+    // Even the narrower bank has an exit before the map edge. It remains the same function in the drawing margin.
+    const breadth = river.vertical ? w : h;
+    const room = b < centre ? centre : breadth - centre;
+    const fallWeight = 1 - smoothstep(1, Math.max(3, Math.min(11, room - 5)), shoreDistance);
+    const roadDistance = y >= h ? Math.max(0, Math.abs(x - trackX(y) - 0.5) - 2.5) : Infinity;
+    for (let s = 0; s < sheets.length; s++) {
+      const waterLevel = s * FALL_HEIGHT;
+      const base = t.water === 'river' ? datum + (waterLevel - datum) * fallWeight : 0;
+      let height = base + Math.min(hills + country, rise);
+      height = Math.min(height, homeCap, trackHeight(y) + roadDistance * GRADE);
+      if (roadDistance === 0) height = trackHeight(y);
+      sheets[s][i] = Math.round(Math.max(0, waterLevel - waterDistance[i], Math.min(MAX_LEVEL + country, height)));
+    }
+  }
+  // Independent lowering can carry a sheet's influence past its sampled taper. Couple the two reaches at the lip,
+  // outside the scarp, then settle them again until both the grade and those shared vertices agree. Lowering is monotone
+  // and bounded, so this terminates; the water cone prevents a shared vertex from pulling down the upstream shore.
+  let settled = false;
+  while (!settled) {
+    for (const sheet of sheets) gentleVertices(sheet, vw, vh);
+    settled = true;
+    if (t.water !== 'river') continue;
+    for (const f of river.falls) {
+      const first = river.level(f - 1) / FALL_HEIGHT, second = river.level(f) / FALL_HEIGHT;
+      const high = Math.max(first, second), breadth = river.vertical ? w : h, slice = slices[f + P];
+      for (let b = -P; b <= breadth + P; b++) {
+        const distance = Math.max(0, slice.vertexLo - b, b - slice.vertexHi);
+        const room = b < slice.centre ? slice.centre : breadth - slice.centre;
+        if (distance < Math.max(FALL_HEIGHT, Math.min(11, room - 5))) continue;
+        const i = river.vertical ? (f + P) * vw + b + P : (b + P) * vw + f + P;
+        const height = Math.min(sheets[first][i], sheets[second][i]);
+        if (height < high * FALL_HEIGHT - waterDistance[i]) continue;
+        if (sheets[first][i] !== height || sheets[second][i] !== height) settled = false;
+        sheets[first][i] = height; sheets[second][i] = height;
+      }
+    }
+  }
+  const country: Country = { away: new Float32Array(size), height: new Float32Array(size) };
+  let highestRiver = 0;
+  for (let y = -M; y < h + M; y++) for (let x = -M; x < w + M; x++) {
+    const i = idx(x, y), a = river.vertical ? y : x, b = river.vertical ? x : y;
+    const l = t.water === 'river' ? river.level(a) : 0, sheet = sheets[l / FALL_HEIGHT];
+    const v = (y + P) * vw + x + P;
+    corner[i * 4] = sheet[v]; corner[i * 4 + 1] = sheet[v + 1];
+    corner[i * 4 + 2] = sheet[v + vw + 1]; corner[i * 4 + 3] = sheet[v + vw];
+    country.away[i] = beyond(x + 0.5, y + 0.5);
+    const bounds = slices[a + P];
+    const water = t.water === 'river' ? b >= bounds.lo && b <= bounds.hi
+      : basins.some((p) => Math.hypot(x + 0.5 - p.x, (y + 0.5 - p.y) * BASIN_STRETCH) < p.radius);
+    if (water) {
+      terrain[i] = TERRAIN.water;
+      // Water has one surface per tile, including at the lip of a fall. The shore envelope leaves the same datum at the
+      // land's shared corners; only the deliberate fall changes sheets.
+      corner.fill(l, i * 4, i * 4 + 4);
+      if (t.water === 'river') {
+        const db = (river.course(a + 0.1) - river.course(a - 0.1)) * 5, n = Math.hypot(db, 1);
+        const speed = RIVER_SLOW + (RIVER_FAST - RIVER_SLOW) * noise2(a / 12, 1, seed + 6);
+        const along = river.sign * speed / n, across = along * db;
+        flow[i * 2] = river.vertical ? across : along; flow[i * 2 + 1] = river.vertical ? along : across;
+        highestRiver = Math.max(highestRiver, l);
+      }
+    }
+    if (y >= h && Math.abs(x - trackX(y)) <= 1) track[i] = 1;
+  }
+  addMesas(sc, land, r);
   const habitat = new Float32Array(size);
   for (let y = -M; y < h + M; y++) for (let x = -M; x < w + M; x++) {
-    const i = idx(x, y), near = onMap(x, y) ? onMap : inside;
+    const i = idx(x, y), near = onMap(x, y) ? onMap : (tx: number, ty: number) => tx >= -M && ty >= -M && tx < w + M && ty < h + M;
+    const height = centreLevel(land, x + M, y + M); country.height[i] = height;
     let cliff = 0;
-    if (country.away[i] <= 12) for (const [dx, dy] of SIDES) if (near(x + dx, y + dy) && level[idx(x + dx, y + dy)] !== level[i]) { cliff = 1; break; }
-    habitat[i] = t.relief * (Math.min(1, level[i] / Math.max(1, top)) + cliff);
+    for (let d = 0; d < SIDES.length; d++) {
+      const [dx, dy] = SIDES[d];
+      if (near(x + dx, y + dy) && !joins(land, x + M, y + M, d)) { cliff = 1; break; }
+    }
+    habitat[i] = t.relief * (Math.min(1, height / Math.max(1, HILL_HEIGHT * t.relief)) + cliff);
+    if (terrain[i] === TERRAIN.water && t.water === 'river') drop[i] = highestRiver - corner[i * 4];
   }
-  scatter(sc, land, habitat, country.away, t.rock, 3.5, seed + 37, TERRAIN.rock, 0);
-  scatter(sc, land, habitat, country.away, t.forest, 7, seed + 21, TERRAIN.tree, FOREST_THICKEN);
-
+  const cover = coverGuard(sc, land);
+  scatter(sc, land, habitat, country.away, t.rock, 3.5, seed + 37, TERRAIN.rock, 0, cover);
+  scatter(sc, land, habitat, country.away, t.forest, 7, seed + 21, TERRAIN.tree, FOREST_THICKEN, cover);
   fertilise(sc, land, country);
   return land;
 }
 
-type Surface = Pick<MapData, 'width' | 'height' | 'terrain' | 'level' | 'ramp' | 'depot'>;
+/**
+ * Lowers a grid of corner heights (`w` × `h` points, row by row) to the highest surface below it whose every tile is gentle:
+ * no point more than a level above any of its eight neighbours. Two sweeps of the distance transform suffice, and tiles
+ * reading their four corners from the grid then join their neighbours everywhere.
+ */
+function gentleVertices(v: Int16Array, w: number, h: number) {
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    if (x) v[i] = Math.min(v[i], v[i - 1] + 1);
+    if (y) for (let dx = -1; dx <= 1; dx++) if (x + dx >= 0 && x + dx < w) v[i] = Math.min(v[i], v[i - w + dx] + 1);
+  }
+  for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) {
+    const i = y * w + x;
+    if (x + 1 < w) v[i] = Math.min(v[i], v[i + 1] + 1);
+    if (y + 1 < h) for (let dx = -1; dx <= 1; dx++) if (x + dx >= 0 && x + dx < w) v[i] = Math.min(v[i], v[i + w + dx] + 1);
+  }
+}
+
+function basinSites(sc: Scenario, r: () => number, home: (x: number, y: number) => number): Basin[] {
+  const { width: w, height: h, terrain: t } = sc, basins: Basin[] = [];
+  if (t.water !== 'lake' && t.water !== 'ponds') return basins;
+  const count = t.water === 'lake' ? 1 : 3 + Math.floor(r() * 3);
+  for (let k = 0; k < count; k++) {
+    const radius = t.water === 'lake' ? 6 + r() * 2 : 2 + r() * 1.3;
+    for (let attempt = 0; attempt < BASIN_ATTEMPTS; attempt++) {
+      const x = radius + BASIN_BANK + r() * (w - 2 * (radius + BASIN_BANK));
+      const y = radius + BASIN_BANK + r() * (h * 0.7 - 2 * (radius + BASIN_BANK));
+      if (home(x, y) <= HOME_RADIUS + radius + BASIN_BANK
+        || basins.some((p) => Math.hypot(x - p.x, (y - p.y) * BASIN_STRETCH) <= radius + p.radius + BASIN_GAP)) continue;
+      basins.push({ x, y, radius }); break;
+    }
+  }
+  return basins;
+}
 
 /** A tile-scale river; the same functions continue the channel into the drawing margin. */
 interface River {
@@ -150,9 +280,8 @@ function riverCourse(sc: Scenario, depot: Land['depot'], r: () => number): River
     a = axis(a);
     return Math.max(RIVER_EDGE, Math.min(breadth - 1 - RIVER_EDGE, centre + RIVER_SWAY * Math.sin(a / period + phase) + RIVER_RIPPLE * Math.sin(a / RIVER_RIPPLE_PERIOD + phase)));
   };
-  const top = Math.min(MAX_LEVEL, Math.ceil(t.relief * MAX_LEVEL));
-  const falls = top === 0 ? [] : top === 1 ? [Math.round(span * 0.5)] : [Math.round(span * 0.34), Math.round(span * 0.68)];
-  const level = (a: number) => falls.length - falls.filter((f) => sign > 0 ? a >= f : a < f).length;
+  const falls = t.relief < FALL_RELIEF ? [] : t.relief < SECOND_FALL_RELIEF ? [Math.round(span * 0.5)] : [Math.round(span * 0.34), Math.round(span * 0.68)];
+  const level = (a: number) => FALL_HEIGHT * (falls.length - falls.filter((f) => sign > 0 ? a >= f : a < f).length);
   const rawBounds = (a: number) => {
     const fall = falls.find((f) => Math.abs(a - f) <= RIVER_STRAIGHT);
     if (fall !== undefined) a = fall;
@@ -168,421 +297,138 @@ function riverCourse(sc: Scenario, depot: Land['depot'], r: () => number): River
   return { vertical, sign, span, falls, course, bounds, level };
 }
 
-/** Smooth contours give the steps their outlines; cleanup leaves room for buildings at every bend and shore. */
-function generateRelief(sc: Scenario, depot: Land['depot'], river: River, r: () => number): Surface {
-  const { width: w, height: h, seed, terrain: t } = sc;
-  const terrain = new Array<TerrainKind>(w * h).fill(TERRAIN.grass), level = new Array<number>(w * h).fill(0);
-  const ramp = new Array<number>(w * h).fill(FLAT), surface: Surface = { width: w, height: h, terrain, level, ramp, depot };
-  const idx = (x: number, y: number) => y * w + x;
-  const top = Math.min(MAX_LEVEL, Math.ceil(t.relief * MAX_LEVEL));
-  const fixed = new Uint8Array(w * h), minimum = new Uint8Array(w * h);
-  const home = (x: number, y: number) => Math.hypot((x - depot.x - 1) / HOME_STRETCH, y - depot.y - 1);
-  const desired = new Float64Array(w * h);
-  const slices = Array.from({ length: river.span }, (_, a) => ({ ...river.bounds(a), centre: river.course(a), level: river.level(a) }));
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const i = idx(x, y), a = river.vertical ? y : x, b = river.vertical ? x : y;
-    const bend = RIDGE_SWAY * Math.sin(x / RIDGE_PERIOD + seed + y / RIDGE_DRIFT)
-      + RIDGE_RIPPLE * Math.sin(x / RIDGE_RIPPLE_PERIOD + seed * 0.3 - y / RIDGE_RIPPLE_DRIFT);
-    let height = top * (1 - (y + 0.5 - bend) / h);
-    if (t.water === 'river') {
-      const slice = slices[a], distance = Math.abs(b - slice.centre);
-      const rise = Math.max(0, distance - VALLEY_FLOOR + 3 * (noise2(a / 10, b / 10, seed + 61) - 0.5)) / (t.relief >= RUGGED ? RUGGED_STEP : TERRACE_STEP);
-      height = rise;
-      for (const fall of river.falls) height += 1 - smoothstep(-FALL_BLEND, FALL_BLEND, river.sign * (a - fall) + Math.max(0, distance - 4) * 0.45 * Math.sin(b / 7 + seed));
-      if (b >= slice.lo && b <= slice.hi) { terrain[i] = TERRAIN.water; fixed[i] = 1; }
-      if (distance < RIVER_BANK) height = river.level(a);
-      height = Math.max(river.level(a), height);
-    }
-    // An oval clearing contains the required square but rounds the home terrace's outline further out.
-    const distance = home(x, y), homeBend = HOME_SWAY * Math.sin(x / HOME_PERIOD + seed) * smoothstep(HOME_OVAL, HOME_OVAL + HOME_BLEND, distance);
-    height = Math.min(height, Math.max(0, (distance - HOME_OVAL + homeBend) / HOME_STEP));
-    desired[i] = height;
-    level[i] = Math.max(0, Math.min(top, Math.round(height)));
-    if (terrain[i] === TERRAIN.water) level[i] = river.level(a);
-    if (Math.max(Math.abs(x - depot.x - 1), Math.abs(y - depot.y - 1)) <= HOME) { fixed[i] = 1; level[i] = 0; }
-  }
-
-  cutBasins(sc, surface, r, home);
-  settleWater(surface, t.water === 'river', fixed, minimum);
-  mergeNarrowTerraces(surface, fixed, minimum);
-  tidyTerraces(surface, fixed, minimum, desired);
-  mergeNarrowTerraces(surface, fixed, minimum);
-  connectTerraces(sc, surface);
-  return surface;
-}
-
-/** Still water is cut from ellipses, with a flat bank and broad terraces around each basin. */
-function cutBasins(sc: Scenario, surface: Surface, r: () => number, home: (x: number, y: number) => number) {
-  const { width: w, height: h, terrain, level } = surface, t = sc.terrain;
-  const top = Math.min(MAX_LEVEL, Math.ceil(t.relief * MAX_LEVEL)), idx = (x: number, y: number) => y * w + x;
-  const basinHeight = (l: number, distance: number, radius: number) => l + Math.round(Math.max(0, distance - radius - BASIN_BANK) / BASIN_STEP);
-  if (t.water !== 'river' && t.water !== 'none') {
-    // Keep one broad summit: several overlapping basin envelopes must not erase the scenario's relief range.
-    const summit: { x: number; y: number }[] = [];
-    for (let y = 0; y <= h - 3 && !summit.length; y++) for (let x = 0; x <= w - 3; x++) {
-      if (level[idx(x, y)] !== top || !landSquare(surface, x, y, 3)) continue;
-      for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 3; dx++) summit.push({ x: x + dx, y: y + dy });
-      break;
-    }
-    const basinAt = (cx: number, cy: number, radius: number) => {
-      let l = top;
-      for (let y = Math.max(0, Math.floor(cy - radius)); y <= Math.min(h - 1, cy + radius); y++) {
-        for (let x = Math.max(0, Math.floor(cx - radius)); x <= Math.min(w - 1, cx + radius); x++) {
-          if (Math.hypot(x - cx, (y - cy) * BASIN_STRETCH) < radius) l = Math.min(l, level[idx(x, y)]);
-        }
-      }
-      return l;
-    };
-    const n = t.water === 'lake' ? 1 : 3 + Math.floor(r() * 3);
-    const ponds: { x: number; y: number; radius: number }[] = [];
-    for (let k = 0; k < n; k++) {
-      const radius = t.water === 'lake' ? 6 + r() * 2 : 2 + r() * 1.3;
-      let cx = 0, cy = 0, basin = 0, fits = false;
-      for (let attempt = 0; attempt < BASIN_ATTEMPTS; attempt++) {
-        cx = radius + BASIN_BANK + r() * (w - 2 * (radius + BASIN_BANK)); cy = radius + BASIN_BANK + r() * (h * 0.7 - 2 * (radius + BASIN_BANK));
-        if (home(cx, cy) <= BASIN_HOME + radius || ponds.some((p) => Math.hypot(cx - p.x, (cy - p.y) * BASIN_STRETCH) <= radius + p.radius + BASIN_GAP)) continue;
-        // Ponds share a valley datum, so nearby shelves can overlap without making thin terraces between their levels.
-        const floor = basinAt(cx, cy, radius + BASIN_BANK);
-        basin = t.water === 'ponds' ? Math.max(0, Math.min(1, top - 1)) : floor;
-        if (floor < basin) continue;
-        const keepsSummit = summit.every((p) => basinHeight(basin, Math.hypot(p.x - cx, (p.y - cy) * BASIN_STRETCH), radius) >= top);
-        if (keepsSummit) { fits = true; break; }
-      }
-      if (!fits) continue;
-      ponds.push({ x: cx, y: cy, radius });
-      const water: number[] = [];
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        const distance = Math.hypot(x - cx, (y - cy) * BASIN_STRETCH), i = idx(x, y);
-        level[i] = Math.min(level[i], basinHeight(basin, distance, radius));
-        if (distance < radius) water.push(i);
-      }
-      // A tiny disc can rasterise as a rectangle. Use its actual tile bounds to cut the four corners.
-      const xs = water.map((i) => i % w), ys = water.map((i) => Math.floor(i / w));
-      const west = Math.min(...xs), east = Math.max(...xs), north = Math.min(...ys), south = Math.max(...ys);
-      for (const i of water) {
-        const x = i % w, y = Math.floor(i / w);
-        if ((x === west || x === east) && (y === north || y === south)) continue;
-        terrain[i] = TERRAIN.water; level[i] = basin;
-      }
-    }
-  }
-}
-
-/** Settle each still surface and protect the water and home while limiting every neighbouring step to one level. */
-function settleWater(surface: Surface, river: boolean, fixed: Uint8Array, minimum: Uint8Array) {
-  const { width: w, height: h, terrain, level } = surface;
-  const waterBodies = regions(surface, true).groups;
-  for (const body of waterBodies) {
-    if (!river) {
-      let l = MAX_LEVEL;
-      for (const i of body) { l = Math.min(l, level[i]); neighbours(surface, i, (j) => { l = Math.min(l, level[j]); }); }
-      // Protect the shores too: later corner cleanup must not lift them out of watering reach.
-      for (const i of body) {
-        level[i] = l;
-        neighbours(surface, i, (j) => { if (!fixed[j]) level[j] = l; fixed[j] = 1; });
-      }
-    }
-    for (const i of body) {
-      fixed[i] = 1;
-      neighbours(surface, i, (j) => { if (terrain[j] !== TERRAIN.water) { minimum[j] = Math.max(minimum[j], level[i]); level[j] = Math.max(level[j], minimum[j]); } });
-    }
-  }
-  const queue = Array.from({ length: w * h }, (_, i) => i);
-  for (let k = 0; k < queue.length; k++) neighbours(surface, queue[k], (j) => {
-    if (level[j] > level[queue[k]] + 1 && !fixed[j]) { level[j] = level[queue[k]] + 1; queue.push(j); }
-  });
-}
-
-/** Only map tiles take part in cleanup and ramp placement; the drawing margin cannot change these regions. */
-function neighbours(m: Surface, i: number, visit: (j: number, dir: number) => void) {
-  const x = i % m.width, y = Math.floor(i / m.width);
-  if (y > 0) visit(i - m.width, 0); if (x + 1 < m.width) visit(i + 1, 1);
-  if (y + 1 < m.height) visit(i + m.width, 2); if (x > 0) visit(i - 1, 3);
-}
-
-function regions(m: Surface, water: boolean) {
-  const labels = new Int32Array(m.width * m.height).fill(-1), groups: number[][] = [];
-  for (let i = 0; i < labels.length; i++) {
-    if (labels[i] >= 0 || (m.terrain[i] === TERRAIN.water) !== water) continue;
-    const q = [i], id = groups.length; labels[i] = id;
-    for (let k = 0; k < q.length; k++) neighbours(m, q[k], (j) => {
-      if (labels[j] < 0 && (m.terrain[j] === TERRAIN.water) === water && (water || m.level[j] === m.level[i])) {
-        labels[j] = id; q.push(j);
-      }
+/** The drivable graph uses map indices, so country tiles cannot affect reachability or scatter quotas. */
+function landGraph(sc: Scenario, land: Land): number[][] {
+  const { width: w, height: h } = sc, { margin: M, width: lw } = land;
+  return Array.from({ length: w * h }, (_, i) => {
+    const x = i % w, y = Math.floor(i / w), out: number[] = [];
+    if (land.terrain[(y + M) * lw + x + M] === TERRAIN.water || !isGentle(land, x + M, y + M)) return out;
+    SIDES.forEach(([dx, dy], d) => {
+      const nx = x + dx, ny = y + dy;
+      if (nx >= 0 && ny >= 0 && nx < w && ny < h && land.terrain[(ny + M) * lw + nx + M] !== TERRAIN.water
+        && isGentle(land, nx + M, ny + M) && joins(land, x + M, y + M, d)) out.push(ny * w + nx);
     });
-    groups.push(q);
-  }
-  return { labels, groups };
-}
-
-function landSquare(m: Surface, x: number, y: number, n: number) {
-  if (x < 0 || y < 0 || x + n > m.width || y + n > m.height) return false;
-  const l = m.level[y * m.width + x];
-  for (let dy = 0; dy < n; dy++) for (let dx = 0; dx < n; dx++) {
-    const i = (y + dy) * m.width + x + dx;
-    if (m.terrain[i] === TERRAIN.water || m.ramp[i] !== FLAT || m.level[i] !== l) return false;
-  }
-  return true;
-}
-
-const covered = (m: Surface, x: number, y: number) => {
-  for (let oy = -1; oy <= 0; oy++) for (let ox = -1; ox <= 0; ox++) if (landSquare(m, x + ox, y + oy, 2)) return true;
-  return false;
-};
-
-/** Merge terraces without a 3×3 field site; these narrow pockets cannot spare tiles for a ramp and flat landings. */
-function mergeNarrowTerraces(m: Surface, fixed: Uint8Array, minimum: Uint8Array) {
-  const { width: w, level } = m;
-  for (const body of regions(m, false).groups) {
-    if (body.some((i) => fixed[i] || landSquare(m, i % w, Math.floor(i / w), 3))) continue;
-    const members = new Set(body), heights = new Set<number>();
-    for (const i of body) neighbours(m, i, (j) => { if (level[j] !== level[i]) heights.add(level[j]); });
-    for (const l of heights) {
-      const fits = body.every((i) => {
-        let ok = l >= minimum[i];
-        neighbours(m, i, (j) => { if (!members.has(j) && Math.abs(l - level[j]) > 1) ok = false; });
-        return ok;
-      });
-      if (fits) { for (const i of body) level[i] = l; break; }
-    }
-  }
-}
-
-/** Repair unsupported corners with small squares, preserving water, home and the one-level envelope. */
-function tidyTerraces(surface: Surface, fixed: Uint8Array, minimum: Uint8Array, desired: Float64Array) {
-  const { width: w, height: h, terrain, level } = surface;
-  const idx = (x: number, y: number) => y * w + x;
-  const onMap = (x: number, y: number) => x >= 0 && x < w && y >= 0 && y < h;
-  const bad = (x: number, y: number) => onMap(x, y) && terrain[idx(x, y)] !== TERRAIN.water && !covered(surface, x, y);
-  // First reduce the sliver count strictly. At a stubborn bank corner, raising can move a sliver towards broader land;
-  // this second phase never lowers tiles, so even equal-count repairs terminate as the integer height sum increases.
-  let raising = false;
-  for (;;) {
-    let changes = 0;
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      if (!bad(x, y)) continue;
-      let best: { ids: number[]; height: number; removed: number; cost: number } | undefined;
-      for (const n of [2, 3]) for (let oy = 1 - n; oy <= 0; oy++) for (let ox = 1 - n; ox <= 0; ox++) {
-        const sx = x + ox, sy = y + oy;
-        if (!onMap(sx, sy) || !onMap(sx + n - 1, sy + n - 1)) continue;
-        const ids = Array.from({ length: n * n }, (_, k) => idx(sx + k % n, sy + Math.floor(k / n)));
-        if (ids.some((i) => terrain[i] === TERRAIN.water)) continue;
-        const old = ids.map((i) => level[i]);
-        for (const l of new Set(old)) {
-          if (raising && (old.some((v) => v > l) || old.every((v) => v === l))) continue;
-          if (ids.some((i) => (fixed[i] && level[i] !== l) || minimum[i] > l)) continue;
-          let before = 0, after = 0, valid = true, cost = 0;
-          for (let ty = sy - 1; ty <= sy + n; ty++) for (let tx = sx - 1; tx <= sx + n; tx++) if (bad(tx, ty)) before++;
-          ids.forEach((i) => { level[i] = l; cost += Math.abs(desired[i] - l); });
-          for (let ty = sy - 1; ty <= sy + n; ty++) for (let tx = sx - 1; tx <= sx + n; tx++) if (bad(tx, ty)) after++;
-          for (const i of ids) {
-            const x = i % w, y = Math.floor(i / w);
-            for (const [dx, dy] of SIDES) if (onMap(x + dx, y + dy) && Math.abs(level[idx(x + dx, y + dy)] - l) > 1) valid = false;
-          }
-          ids.forEach((i, k) => { level[i] = old[k]; });
-          // Prefer fewer slivers, then a small edit close to the original height field.
-          const removed = before - after; cost += n;
-          if (valid && (removed > 0 || (raising && removed === 0))
-            && (!best || removed > best.removed || (removed === best.removed && cost < best.cost))) best = { ids, height: l, removed, cost };
-        }
-      }
-      if (best) { for (const i of best.ids) level[i] = best.height; changes++; }
-    }
-    if (!changes) { if (raising) break; raising = true; }
-  }
-}
-
-/** Join the flat terraces without cutting their necks or leaving unsupported tiles beside a ramp. */
-function connectTerraces(sc: Scenario, surface: Surface) {
-  const { seed } = sc, { width: w, height: h, level, ramp, depot } = surface;
-  const { labels, groups } = regions(surface, false);
-  // Join components first; then add a second separated route along each long shared cliff.
-  const parent = groups.map((_, i) => i);
-  const root = (i: number): number => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
-  interface Boundary { low: number; high: number; dir: number; key: string }
-  const boundaries: Boundary[] = [], lengths = new Map<string, number>(), runs = new Map<string, number>();
-  for (let i = 0; i < w * h; i++) if (labels[i] >= 0) neighbours(surface, i, (j, d) => {
-    if (labels[j] < 0 || level[j] !== level[i] + 1) return;
-    const key = `${labels[i]}:${labels[j]}`;
-    boundaries.push({ low: i, high: j, dir: d, key }); lengths.set(key, (lengths.get(key) ?? 0) + 1);
+    return out;
   });
-  boundaries.sort((a, b) => hash2(a.low, a.high, seed + 81) - hash2(b.low, b.high, seed + 81));
-  const placed: number[] = [];
-  const place = (b: Boundary, gap: number, n: number) => {
-    const [dx, dy] = SIDES[b.dir], step = dy * w + dx, cross = b.dir % 2 ? w : 1;
-    for (let offset = 0; offset < n; offset++) {
-      const tiles = Array.from({ length: n }, (_, k) => b.low + (k - offset) * cross);
-      if (tiles.some((i) => {
-        const x = i % w, y = Math.floor(i / w);
-        return x < 0 || x >= w || y < 0 || y >= h || x - dx < 0 || x - dx >= w || x + dx < 0 || x + dx >= w
-          || y - dy < 0 || y - dy >= h || y + dy < 0 || y + dy >= h || (b.dir % 2 ? x !== b.low % w : y !== Math.floor(b.low / w))
-          || labels[i] !== labels[b.low] || labels[i + step] !== labels[b.high] || labels[i - step] !== labels[b.low]
-          || Math.max(Math.abs(x - depot.x - 1), Math.abs(y - depot.y - 1)) <= HOME
-          || [i - step, i, i + step].some((j) => ramp[j] !== FLAT)
-          || placed.some((j) => Math.max(Math.abs(j % w - x), Math.abs(Math.floor(j / w) - y)) < gap);
-      })) continue;
-      tiles.forEach((i) => { ramp[i] = b.dir; });
-      let ok = true;
-      const affected = new Set<number>();
-      for (const i of tiles) {
-        affected.add(i); neighbours(surface, i, (j) => { affected.add(j); neighbours(surface, j, (k) => affected.add(k)); });
-      }
-      for (const i of affected) if (labels[i] >= 0 && ramp[i] === FLAT && !covered(surface, i % w, Math.floor(i / w))) ok = false;
-      // A ramp must not cut a narrow flat neck into disconnected pieces.
-      const remaining = groups[labels[b.low]].filter((i) => ramp[i] === FLAT), visited = new Set<number>(), q = remaining.slice(0, 1);
-      if (q.length) visited.add(q[0]);
-      for (let k = 0; k < q.length; k++) neighbours(surface, q[k], (j) => {
-        if (labels[j] === labels[b.low] && ramp[j] === FLAT && !visited.has(j)) { visited.add(j); q.push(j); }
-      });
-      if (visited.size !== remaining.length) ok = false;
-      if (ok) {
-        placed.push(...tiles); parent[root(labels[b.low])] = root(labels[b.high]); runs.set(b.key, (runs.get(b.key) ?? 0) + 1); return true;
-      }
-      tiles.forEach((i) => { ramp[i] = FLAT; });
+}
+
+// Isolated vertices count too: water contributes the same constant before and after a mesa, while a newly isolated
+// land tile must count as a severed route.
+function regionCount(graph: number[][]): number {
+  const seen = new Uint8Array(graph.length);
+  let count = 0;
+  for (let i = 0; i < graph.length; i++) {
+    if (seen[i]) continue;
+    count++; const queue = [i]; seen[i] = 1;
+    for (let k = 0; k < queue.length; k++) for (const j of graph[queue[k]]) if (!seen[j]) { seen[j] = 1; queue.push(j); }
+  }
+  return count;
+}
+
+/**
+ * Mesas at high relief: a second gentle sheet of ground over a broad, irregular oval, rising gradually onto its top on one
+ * flank and standing CLIFF_HEIGHT above the land round it on the other. A site whose rim would cut off land trucks reach
+ * is passed over.
+ */
+function addMesas(sc: Scenario, land: Land, r: () => number) {
+  const { width: w, height: h, seed, terrain: t } = sc, { margin: M, width: lw, corner, depot } = land;
+  if (t.relief < MESA_RELIEF) return;
+  const count = t.relief >= 0.95 ? 2 : 1, before = regionCount(landGraph(sc, land));
+  const idx = (x: number, y: number) => (y + M) * lw + x + M;
+  const placed: Basin[] = [];
+  for (let k = 0; k < count; k++) for (let attempt = 0; attempt < MESA_ATTEMPTS; attempt++) {
+    const rx = MESA_RADIUS * (0.85 + r() * 0.3), ry = rx * (0.8 + r() * 0.3);
+    const cx = rx + 2 + r() * (w - 2 * rx - 4), cy = ry + 2 + r() * (h * 0.8 - 2 * ry - 4);
+    if (placed.some((p) => Math.hypot(cx - p.x, cy - p.y) < p.radius + rx + 3)) continue;
+    const angle = r() * Math.PI * 2, ux = Math.cos(angle), uy = Math.sin(angle);
+    const mask: number[] = [];
+    for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+      const radius = Math.hypot((x + 0.5 - cx) / rx, (y + 0.5 - cy) / ry);
+      if (radius < 1 + 0.08 * Math.sin(x / 3 + y / 5 + seed)) mask.push(y * w + x);
+    }
+    if (!mask.length || mask.some((i) => {
+      const x = i % w, y = Math.floor(i / w);
+      return land.terrain[idx(x, y)] === TERRAIN.water || Math.max(Math.abs(x - depot.x - 1), Math.abs(y - depot.y - 1)) <= HOME + 2
+        || SIDES.some(([dx, dy]) => land.terrain[idx(x + dx, y + dy)] === TERRAIN.water);
+    })) continue;
+    const vw = w + 1, vh = h + 1, lifted = new Int16Array(vw * vh);
+    for (let y = 0; y <= h; y++) for (let x = 0; x <= w; x++) {
+      const tx = Math.min(x, w - 1), ty = Math.min(y, h - 1), c = x === w ? (y === h ? 2 : 1) : y === h ? 3 : 0;
+      const base = corner[idx(tx, ty) * 4 + c], along = ((x - cx) * ux + (y - cy) * uy) / rx;
+      lifted[y * vw + x] = Math.min(MAX_LEVEL, base + Math.round(CLIFF_HEIGHT * smoothstep(-0.8, 0.45, along)));
+    }
+    gentleVertices(lifted, vw, vh);
+    const old = mask.map((i) => corner.slice(idx(i % w, Math.floor(i / w)) * 4, idx(i % w, Math.floor(i / w)) * 4 + 4));
+    mask.forEach((i) => {
+      const x = i % w, y = Math.floor(i / w), j = idx(x, y) * 4, v = y * vw + x;
+      corner[j] = lifted[v]; corner[j + 1] = lifted[v + 1]; corner[j + 2] = lifted[v + vw + 1]; corner[j + 3] = lifted[v + vw];
+    });
+    if (regionCount(landGraph(sc, land)) > before) {
+      mask.forEach((i, n) => { const j = idx(i % w, Math.floor(i / w)) * 4; for (let c = 0; c < 4; c++) corner[j + c] = old[n][c]; });
+      continue;
+    }
+    placed.push({ x: cx, y: cy, radius: rx }); break;
+  }
+}
+
+/**
+ * Whether a tree or rock may take a map tile (by map index): only where the grass trucks drive on stays connected round it,
+ * so the woods and rock grow in dense stands without ever closing a route, and need no visible grid of corridors.
+ */
+function coverGuard(sc: Scenario, land: Land): (i: number) => boolean {
+  const graph = landGraph(sc, land), { width: w } = sc, { margin: M, width: lw, terrain } = land;
+  const landIndex = (i: number) => (Math.floor(i / w) + M) * lw + i % w + M;
+  const seen = new Int32Array(graph.length), queue = new Int32Array(graph.length);
+  let stamp = 0;
+  return (i: number) => {
+    const neighbours = graph[i].filter((j) => terrain[landIndex(j)] === TERRAIN.grass);
+    if (neighbours.length <= 1) return true;
+    stamp++; seen[i] = stamp; seen[neighbours[0]] = stamp;
+    let head = 0, tail = 1, remaining = neighbours.length - 1;
+    queue[0] = neighbours[0];
+    while (head < tail) for (const j of graph[queue[head++]]) {
+      if (seen[j] === stamp || terrain[landIndex(j)] !== TERRAIN.grass) continue;
+      seen[j] = stamp; queue[tail++] = j;
+      if (neighbours.includes(j) && --remaining === 0) return true;
     }
     return false;
   };
-  // Try wide runs across all candidates before accepting a narrow one.
-  for (const gap of [RAMP_GAP, 2]) for (const n of [3, 2, 1]) for (const b of boundaries) {
-    if (root(labels[b.low]) !== root(labels[b.high])) place(b, gap, n);
-  }
-  for (const n of [3, 2, 1]) for (const b of boundaries) {
-    if ((lengths.get(b.key) ?? 0) > LONG_CLIFF && (runs.get(b.key) ?? 0) < 2) place(b, 2, n);
-  }
 }
 
-function countryside(sc: Scenario, land: Land, channel: River) {
-  const { width: w, height: h, seed, terrain: t } = sc;
-  const { margin: M, width: lw, height: lh, terrain, level, ramp, depot, track, flow, drop } = land, size = lw * lh;
-  const { vertical, sign, course, bounds, level: riverLevel } = channel;
-  const idx = (x: number, y: number) => (y + M) * lw + x + M;
-  const onMap = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h;
-  const inside = (x: number, y: number) => x >= -M && y >= -M && x < w + M && y < h + M;
-  const beyond = (x: number, y: number) => Math.hypot(Math.max(0, -x, x - w + 1), Math.max(0, -y, y - h + 1));
-  // The country continues the map's edge heights, opening into valleys by the river and the winding track. The track rises on
-  // straight sections, with flat ground at each end of a ramp; both valleys disappear beneath the level rim.
-  const bendHash = Math.sin(seed * 127.1 + 3 * 311.7) * 43758.5453;
-  const bend = bendHash - Math.floor(bendHash) < 0.5 ? -1 : 1;
-  const trackAt = (y: number) => depot.x + 1 + Math.round(bend * TRACK_BEND * smoothstep(h + TRACK_BEND_START, h + TRACK_BEND_END, y));
-  const trackX = Array.from({ length: lh }, (_, y) => trackAt(y - M));
-  const roadRamps = new Set<number>();
-  let last = h + M;
-  for (let y = h + M - RIM - 2; y > h && roadRamps.size < RIM_LEVEL; y--) {
-    if (last - y >= 2 && trackAt(y - 1) === trackAt(y) && trackAt(y) === trackAt(y + 1)) { roadRamps.add(y); last = y; }
-  }
-  const roadLevels = new Uint8Array(lh);
-  // A cropped margin may end before the ascent is complete; the track still leaves home at its level.
-  let roadLevel = 0;
-  for (let y = h; y < h + M; y++) { roadLevels[y + M] = roadLevel; if (roadRamps.has(y)) roadLevel++; }
-  const rim = (x: number, y: number) => Math.min(x + M, y + M, w + M - 1 - x, h + M - 1 - y);
-  const away = new Float32Array(size), gx = Math.floor(-M / CELL), gy = Math.floor(-M / CELL);
-  const gw = Math.floor((w + M - 1) / CELL) - gx + 1, gh = Math.floor((h + M - 1) / CELL) - gy + 1;
-  const hillNoise = new Float32Array(gw * gh), soilNoise = new Float32Array(gw * gh);
-  if (M) for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
-    hillNoise[y * gw + x] = noise2((x + gx) / 3, (y + gy) / 3, seed + 71);
-    soilNoise[y * gw + x] = fbm2((x + gx) * CELL / 9, (y + gy) * CELL / 9, seed + 51, 3);
-  }
-  const riverSpan = vertical ? h : w;
-  const river = Array.from({ length: riverSpan + M * 2 }, (_, i) => {
-    const a = i - M, db = (course(a + 0.1) - course(a - 0.1)) * 5, n = Math.hypot(db, 1);
-    const speed = RIVER_SLOW + (RIVER_FAST - RIVER_SLOW) * noise2(a / 12, 1, seed + 6);
-    return { ...bounds(a), level: riverLevel(a), along: sign * speed / n, across: sign * speed * db / n };
-  });
-  for (let y = -M; y < h + M; y++) for (let x = -M; x < w + M; x++) {
-    if (onMap(x, y)) continue;
-    const i = idx(x, y); away[i] = beyond(x, y);
-    const rimDistance = rim(x, y);
-    const roadDistance = y >= h ? Math.max(0, Math.abs(x - trackX[y + M]) - 1) : 1e6;
-    track[i] = roadDistance === 0 ? 1 : 0;
-    if (rimDistance < RIM) { level[i] = RIM_LEVEL; continue; }
-    const edge = idx(Math.max(0, Math.min(w - 1, x)), Math.max(0, Math.min(h - 1, y)));
-    const current = river[(vertical ? y : x) + M], b = vertical ? x : y;
-    const waterDistance = t.water === 'river' ? Math.max(0, current.lo - b, b - current.hi) : 1e6;
-    const open = Math.min(roadDistance, waterDistance), valley = smoothstep(VALLEY_INNER, VALLEY_OUTER, open);
-    if (waterDistance === 0 && rimDistance >= RIM + 2) terrain[i] = TERRAIN.water;
-    const hill = smoothstep(0, HILL_REACH, away[i]) * (HILL_BASE + HILL_HEIGHT * hillNoise[(Math.floor(y / CELL) - gy) * gw + Math.floor(x / CELL) - gx]) * valley;
-    const base = roadDistance < waterDistance ? roadLevels[y + M] : current.level;
-    const l = base + (level[edge] - base) * valley + hill;
-    level[i] = Math.min(COUNTRY_TOP, Math.round(l + (RIM_LEVEL - l) * (1 - smoothstep(RIM, RIM + RIM_BLEND, rimDistance))));
-    if (terrain[i] === TERRAIN.water) level[i] = current.level;
-  }
-  for (let y = -M; y < h + M; y++) for (let x = -M; x < w + M; x++) {
-    const i = idx(x, y);
-    if (terrain[i] !== TERRAIN.water) continue;
-    for (const [dx, dy] of SIDES) if (inside(x + dx, y + dy) && !onMap(x + dx, y + dy)) {
-      const j = idx(x + dx, y + dy);
-      if (terrain[j] !== TERRAIN.water) level[j] = Math.max(level[j], level[i]);
-    }
-  }
-  for (let y = h; y < h + M; y++) for (let x = trackX[y + M] - 1; x <= trackX[y + M] + 1; x++) if (inside(x, y)) {
-    const i = idx(x, y); terrain[i] = TERRAIN.grass; level[i] = roadLevels[y + M];
-    if (roadRamps.has(y)) ramp[i] = 2;
-  }
-  for (let y = -M + 1; y < h + M - 1; y++) for (let x = -M + 1; x < w + M - 1; x++) {
-    if (onMap(x, y) || rim(x, y) < RIM || hash2(x, y, seed + 83) > COUNTRY_RAMP_CHANCE) continue;
-    const i = idx(x, y);
-    if (terrain[i] !== TERRAIN.grass || track[i] || ramp[i] !== FLAT) continue;
-    if (SIDES.some(([dx, dy]) => ramp[idx(x + dx, y + dy)] !== FLAT)) continue;
-    for (let d = 0; d < 4; d++) {
-      const [dx, dy] = SIDES[d], low = idx(x - dx, y - dy), high = idx(x + dx, y + dy);
-      if (terrain[low] === TERRAIN.water || terrain[high] === TERRAIN.water || level[low] !== level[i] || level[high] !== level[i] + 1) continue;
-      ramp[i] = d; break;
-    }
-  }
-
-  let highestRiver = 0;
-  if (t.water === 'river') for (let i = 0; i < size; i++) if (terrain[i] === TERRAIN.water) highestRiver = Math.max(highestRiver, level[i]);
-  for (let y = -M; y < h + M; y++) for (let x = -M; x < w + M; x++) {
-    const i = idx(x, y);
-    if (terrain[i] !== TERRAIN.water || t.water !== 'river') continue;
-    const current = river[(vertical ? y : x) + M];
-    flow[i * 2] = vertical ? current.across : current.along; flow[i * 2 + 1] = vertical ? current.along : current.across;
-    drop[i] = highestRiver - level[i];
-  }
-
-  return { away, soilNoise, gw, gh, gx, gy };
-}
-
-function scatter(sc: Scenario, land: Land, habitat: Float32Array, away: Float32Array, share: number, scale: number, s: number, kind: TerrainKind, thicken: number) {
-  const { width: w, height: h } = sc, { margin: M, width: lw, terrain, ramp, track, depot } = land;
-  const gx = Math.floor(-M / CELL), gy = Math.floor(-M / CELL);
-  const gw = Math.floor((w + M - 1) / CELL) - gx + 1, gh = Math.floor((h + M - 1) / CELL) - gy + 1;
-  const idx = (x: number, y: number) => (y + M) * lw + x + M;
-  const onMap = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h;
-  const distanceHome = (x: number, y: number) => Math.max(Math.abs(x - depot.x - 1), Math.abs(y - depot.y - 1));
-
+function scatter(sc: Scenario, land: Land, habitat: Float32Array, away: Float32Array, share: number, scale: number, seed: number, kind: TerrainKind, thicken: number, cover: (i: number) => boolean) {
   if (share <= 0) return;
-  const scatterNoise = new Float32Array(gw * gh);
-  const noise = (x: number, y: number) => noise2(x / scale, y / scale, s) * 0.85 + noise2(x * 1.7, y * 1.7, s + 3) * 0.15;
-  if (M) for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) scatterNoise[y * gw + x] = noise((x + gx) * CELL, (y + gy) * CELL);
-  const v = (x: number, y: number) => {
-    const i = idx(x, y);
-    return (onMap(x, y) ? noise(x, y) : scatterNoise[(Math.floor(y / CELL) - gy) * gw + Math.floor(x / CELL) - gx])
-      + habitat[i] * (kind === TERRAIN.rock ? ROCK_BIAS : FOREST_BIAS);
-  };
-  const vals: number[] = [];
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const i = idx(x, y);
-    if (terrain[i] === TERRAIN.grass && ramp[i] === FLAT && distanceHome(x, y) > CLEARING) vals.push(v(x, y));
+  const { width: w, height: h } = sc, { margin: M, width: lw, terrain, track, depot } = land;
+  const idx = (x: number, y: number) => (y + M) * lw + x + M;
+  const onMap = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h;
+  const eligible = (x: number, y: number) => terrain[idx(x, y)] === TERRAIN.grass && !track[idx(x, y)]
+    && Math.max(Math.abs(x - depot.x - 1), Math.abs(y - depot.y - 1)) > CLEARING;
+  const noise = (x: number, y: number) => noise2(x / scale, y / scale, seed) * 0.85 + noise2(x * 1.7, y * 1.7, seed + 3) * 0.15;
+  const value = (x: number, y: number) => noise(x, y) + habitat[idx(x, y)] * (kind === TERRAIN.rock ? ROCK_BIAS : FOREST_BIAS);
+  const candidates: { i: number; value: number }[] = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (eligible(x, y)) candidates.push({ i: y * w + x, value: value(x, y) });
+  candidates.sort((a, b) => b.value - a.value || a.i - b.i);
+  const target = Math.round(w * h * share), cut = candidates[Math.min(candidates.length - 1, target)]?.value ?? Infinity;
+  let placed = 0;
+  for (const c of candidates) {
+    if (placed >= target) break;
+    if (!cover(c.i)) continue;
+    terrain[idx(c.i % w, Math.floor(c.i / w))] = kind; placed++;
   }
-  vals.sort((a, b) => b - a);
-  const cut = vals[Math.min(vals.length - 1, Math.floor(w * h * share))] ?? Infinity;
+  // The country uses coarse noise cells and the map's quantile, with woods thickening into the distance.
   for (let y = -M; y < h + M; y++) for (let x = -M; x < w + M; x++) {
-    const i = idx(x, y);
-    if (terrain[i] !== TERRAIN.grass || ramp[i] !== FLAT || track[i] || distanceHome(x, y) <= CLEARING) continue;
-    if (v(x, y) + thicken * away[i] >= cut) terrain[i] = kind;
+    if (onMap(x, y) || !eligible(x, y)) continue;
+    const i = idx(x, y), v = noise(Math.floor(x / CELL) * CELL, Math.floor(y / CELL) * CELL)
+      + habitat[i] * (kind === TERRAIN.rock ? ROCK_BIAS : FOREST_BIAS);
+    if (v + thicken * away[i] >= cut) terrain[i] = kind;
   }
 }
 
-function fertilise(sc: Scenario, land: Land, country: ReturnType<typeof countryside>) {
+function fertilise(sc: Scenario, land: Land, country: Country) {
   const { width: w, height: h, seed, terrain: t } = sc;
-  const { margin: M, width: lw, height: lh, terrain, level, fertility } = land, size = lw * lh;
-  const { soilNoise, gw, gx, gy } = country, top = Math.min(MAX_LEVEL, Math.ceil(t.relief * MAX_LEVEL));
+  const { margin: M, width: lw, height: lh, terrain, fertility } = land, size = lw * lh;
   const idx = (x: number, y: number) => (y + M) * lw + x + M;
   const onMap = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h;
   const inside = (x: number, y: number) => x >= -M && y >= -M && x < w + M && y < h + M;
-  // Soil retains its water bonus and local variation. Centre the grass noise separately at each height before applying
-  // the uphill penalty, so a large noise blob cannot reverse it, and relief does not change the commission's mean soil.
   const wet = new Uint8Array(size);
   for (let y = -M; y < h + M; y++) for (let x = -M; x < w + M; x++) if (terrain[idx(x, y)] === TERRAIN.water) {
     for (let dy = -SOIL_REACH; dy <= SOIL_REACH; dy++) for (let dx = -SOIL_REACH; dx <= SOIL_REACH; dx++) {
@@ -590,19 +436,21 @@ function fertilise(sc: Scenario, land: Land, country: ReturnType<typeof countrys
       if (inside(tx, ty) && (!onMap(tx, ty) || onMap(x, y))) wet[idx(tx, ty)] = 1;
     }
   }
+  // Group quarter-level means, retaining both the water bonus and the height penalty without letting a large noise blob
+  // reverse the latter. Centre the grass separately, so relief does not change the commission's requested mean soil.
+  const totals = new Float64Array(MAX_LEVEL * 4 + 1), counts = new Uint32Array(totals.length);
   let total = 0, count = 0, heightTotal = 0;
-  const totals = new Array<number>(top + 1).fill(0), counts = new Array<number>(top + 1).fill(0);
   for (let y = -M; y < h + M; y++) for (let x = -M; x < w + M; x++) {
-    const i = idx(x, y);
-    const soil = onMap(x, y) ? fbm2(x / 9, y / 9, seed + 51, 3) : soilNoise[(Math.floor(y / CELL) - gy) * gw + Math.floor(x / CELL) - gx];
-    let f = t.soil + t.soilSpread * (soil * 2 - 1) * 1.6 - level[i] * t.relief * SOIL_HEIGHT;
-    if (wet[i]) f += SOIL_WATER;
+    const i = idx(x, y), l = country.height[i], map = onMap(x, y);
+    const soil = map ? fbm2(x / 9, y / 9, seed + 51, 3) : fbm2(Math.floor(x / CELL) * CELL / 9, Math.floor(y / CELL) * CELL / 9, seed + 51, 3);
+    const f = t.soil + t.soilSpread * (soil * 2 - 1) * 1.6 - l * t.relief * SOIL_HEIGHT + (wet[i] ? SOIL_WATER : 0);
     fertility[i] = f;
-    if (onMap(x, y) && terrain[i] === TERRAIN.grass) { total += f; count++; heightTotal += level[i]; totals[level[i]] += f; counts[level[i]]++; }
+    if (map && terrain[i] === TERRAIN.grass) { total += f; count++; heightTotal += l; totals[l * 4] += f; counts[l * 4]++; }
   }
   const correction = count ? t.soil - total / count : 0;
   for (let i = 0; i < size; i++) {
-    const l = level[i], offset = counts[l] ? t.soil + (heightTotal / count - l) * t.relief * SOIL_HEIGHT - totals[l] / counts[l] : correction;
+    const l = country.height[i], n = l * 4 < counts.length ? counts[l * 4] : 0;
+    const offset = n ? t.soil + (heightTotal / count - l) * t.relief * SOIL_HEIGHT - totals[l * 4] / n : correction;
     fertility[i] = Math.round(Math.max(5, Math.min(95, fertility[i] + offset)));
   }
 }

@@ -31,8 +31,8 @@ export type Tool =
   /** `crop` and `recipe` are what a field or machine in hand will be placed with (see `Setting`). */
   | ({ kind: 'build'; type: BuildingId; rot: Dir } & Setting)
   | { kind: 'remove' }
-  /** Earthworks: raise, lower or ramp the tiles clicked; a ramp rises towards `rot`. */
-  | { kind: 'earth'; how: Earthwork; rot: Dir }
+  /** Earthworks: raise or lower the points of the ground clicked, or level the tiles between them. */
+  | { kind: 'earth'; how: Earthwork }
   /** Editing a route: clicking a building adds it as a stop. */
   | { kind: 'route'; route: number };
 

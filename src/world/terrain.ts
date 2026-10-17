@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { FLAG, FLUIDS, FluidCollector, GeometryCollector, linearColor as lin, motion, place, type PixelScene } from 'pixel3d-renderer';
 import { TERRAIN, type Land, type MapData } from '../game/map.ts';
-import { corners, sideOf, SIDES } from '../game/relief.ts';
-import { cliff, grassOf, groundY, landRelief, LEVEL_HEIGHT, tileTop, Tris } from './ground.ts';
+import { baseLevel, corners, sideOf, SIDES } from '../game/relief.ts';
+import { cliff, cornerNormals, grassOf, groundY, isBank, landRelief, LEVEL_HEIGHT, tileTop, Tris } from './ground.ts';
 import { box, hash } from './kit.ts';
 import { CANOPY, treeAt, wetAt, type TreeKind } from './trees.ts';
 
@@ -58,7 +58,7 @@ const country = (g: THREE.BufferGeometry, m: THREE.Matrix4) => {
 
 export function buildWorld(map: MapData, land: Land, models: { trees: Record<TreeKind, THREE.BufferGeometry[]>; rocks: THREE.BufferGeometry[] }): World {
   const s = new GeometryCollector(), d = new GeometryCollector(true), fluids = new FluidCollector();
-  const { width: w, height: h } = map, M = land.margin, seed = land.seed;
+  const { width: w, height: h } = map, M = land.margin;
   const onMap = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h;
   const onLand = (x: number, y: number) => x >= -M && y >= -M && x < w + M && y < h + M;
   const li = (x: number, y: number) => (y + M) * land.width + x + M;
@@ -69,15 +69,13 @@ export function buildWorld(map: MapData, land: Land, models: { trees: Record<Tre
   /** How far (tiles) a point is beyond the map's edge. */
   const beyond = (x: number, y: number) => Math.hypot(Math.max(0, -x, x - w), Math.max(0, -y, y - h));
 
-  // A track leads off the south edge from the depot, bending away once it is out of sight of the map.
-  const bend = hash(seed, 3) < 0.5 ? -1 : 1;
-  const trackAt = (y: number) => land.depot.x + 1 + Math.round(bend * 5 * smoothstep(h + 6, h + 26, y));
-  const track = (x: number, y: number) => y >= h && Math.abs(x - trackAt(y)) <= 1;
+  // A track leads off the south edge from the depot, bending away once it is out of sight of the map (laid by the generator).
+  const track = (x: number, y: number) => onLand(x, y) && land.track[li(x, y)] === 1;
 
   // The land's relief, in map coordinates; the country is drawn as the generator made it.
   const lr = landRelief(land);
   const gy = (qx: number, qz: number) => groundY(lr, qx + M, qz + M);
-  const levelAt = (x: number, y: number) => lr.level[li(x, y)];
+  const levelAt = (x: number, y: number) => baseLevel(lr, x + M, y + M);
   /** Whether water is near a tile, and the tree model there (its species by where it stands, trees.ts). */
   const wet = (x: number, y: number) => wetAt((wx, wy) => onLand(wx, wy) && kind(wx, wy) === TERRAIN.water, x, y);
   const treeModel = (x: number, y: number) => { const t = treeAt(x, y, levelAt(x, y), wet(x, y)); return models.trees[t.species][t.variant]; };
@@ -93,7 +91,7 @@ export function buildWorld(map: MapData, land: Land, models: { trees: Record<Tre
   // what it doesn't show).
   const ground = new Tris();
   const countryTile = (x: number, y: number, hex: number) => {
-    tileTop(ground, x, y, corners(lr, x + M, y + M), hex);
+    tileTop(ground, x, y, corners(lr, x + M, y + M), hex, cornerNormals(lr, x + M, y + M));
     for (let side = 0; side < 4; side++) {
       const nx = x + SIDES[side][0], ny = y + SIDES[side][1];
       if (!onLand(nx, ny)) continue;
@@ -119,8 +117,8 @@ export function buildWorld(map: MapData, land: Land, models: { trees: Record<Tre
     if (onMap(x, y)) continue;   // the map's ground is MapGround's
     const far = beyond(cx, cz);
     if (canopy(x, y) || hidden(x, y)) { countryTile(x, y, dim(FLOOR)); continue; }
-    if (track(x, y)) { countryTile(x, y, dim(x === trackAt(y) ? RUT : ROAD[n < 0.5 ? 0 : 1])); continue; }
-    countryTile(x, y, dim(grassOf(land.fertility[li(x, y)], x, y, lr.ramp[li(x, y)] !== -1)));
+    if (track(x, y)) { countryTile(x, y, dim(track(x - 1, y) && track(x + 1, y) ? RUT : ROAD[n < 0.5 ? 0 : 1])); continue; }
+    countryTile(x, y, dim(grassOf(land.fertility[li(x, y)], x, y, isBank(lr, x + M, y + M))));
     if (far > NEAR) continue;
     // Trees and rocks the same as on the map (view.ts), only dulled.
     if (t === TERRAIN.tree) s.pushPrepared(country(treeModel(x, y), place(cx, gy(cx, cz) - 0.02, cz, 0, n * Math.PI * 2, 0, 0.62 + 0.25 * n)));

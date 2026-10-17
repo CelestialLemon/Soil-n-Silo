@@ -4,7 +4,6 @@
 // water, rock or trees, even soil at the scenario's mean), since the layout is the bot's, not the map's. Run by
 // `npm run sim` (tools/sim.ts), and by the tests for every layout (test/bots.test.ts).
 
-import { FLAT } from '../src/game/relief.ts';
 import { addStop, buyTruck, newRoute, place, setCrop, setTruckRoute, truckPrice } from '../src/game/build.ts';
 import { LAYOUTS, type Step } from './layouts.ts';
 import { BUILDINGS, ITEMS } from '../src/game/data.ts';
@@ -35,8 +34,7 @@ export function playLayout(id: string, minutes = 60, log: (line: string) => void
   const s: GameState = newGame(sc);
   // A flat, open map: the layouts test the economy, not one map's lie of the land (test/height.test.ts covers height).
   s.map.terrain.fill(TERRAIN.grass);
-  s.map.level.fill(0);
-  s.map.ramp.fill(FLAT);
+  s.map.corner.fill(0);
   s.map.fertility.fill(sc.terrain.soil);
   s.soilBase.fill(sc.terrain.soil);
   s.initialTrees = 0;

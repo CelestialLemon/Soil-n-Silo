@@ -1,5 +1,5 @@
 import { BUILDINGS, type BuildingId } from '../data.ts';
-import { exposureAt, guardedAt, handsDown, hiveReaches, sprinklerWaters, sprinklerWatts, wheelSite } from '../rules.ts';
+import { exposureAt, guardedAt, hiveReaches, meets, sprinklerWaters, sprinklerWatts, wheelSite } from '../rules.ts';
 import { buildingAt, isMachine, layoutOf, tileIndex, type Building, type FieldBuilding, type GameState } from '../state.ts';
 import { runtimeOf } from '../runtime.ts';
 
@@ -23,8 +23,8 @@ export interface Derived {
   fielded: Set<number>;
   /** The buildings sharing an edge with each building. */
   neighbours: Map<number, Building[]>;
-  /** The neighbours each building can hand goods down to (not up a cliff). */
-  below: Map<number, Set<number>>;
+  /** The neighbours each building can hand goods to (the ground joined between them, not a cliff). */
+  joined: Map<number, Set<number>>;
 }
 
 export function derived(s: GameState): Derived {
@@ -32,7 +32,7 @@ export function derived(s: GameState): Derived {
   const rt = runtimeOf(s);
   let d = rt.derived;
   if (d && d.layout === layout) return d;
-  d = { layout, sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), watts: new Map(), guarded: new Set(), fielded: new Set(), neighbours: new Map(), below: new Map() };
+  d = { layout, sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), watts: new Map(), guarded: new Set(), fielded: new Set(), neighbours: new Map(), joined: new Map() };
   const fields = s.buildings.filter((b): b is FieldBuilding => b.type === 'field');
   const hives = s.buildings.filter((b) => b.type === 'hive');
   const sprinklers = s.buildings.filter((b) => b.type === 'sprinkler');
@@ -49,7 +49,7 @@ export function derived(s: GameState): Derived {
   for (const b of s.buildings) {
     const near = besides(s, b);
     d.neighbours.set(b.id, near);
-    d.below.set(b.id, new Set(near.filter((n) => handsDown(s, b, n)).map((n) => n.id)));
+    d.joined.set(b.id, new Set(near.filter((n) => meets(s, b, n)).map((n) => n.id)));
   }
   rt.derived = d;
   return d;
@@ -76,9 +76,9 @@ export const exposureOf = (s: GameState, b: Building) => derived(s).exposure.get
 /** The watts a sprinkler needs or a water wheel makes (worked out from where it stands). */
 export const wattsOf = (s: GameState, b: Building) => derived(s).watts.get(b.id) ?? 0;
 export const isGuarded = (s: GameState, b: Building) => derived(s).guarded.has(b.id);
-/** Whether building `a` can hand goods to `b` next door (not up a cliff). */
+/** Whether building `a` can hand goods to `b` next door (not across a cliff). */
 export function handsTo(s: GameState, a: Building, b: Building) {
   const d = derived(s);
   // Only placed buildings are worked out ahead; one in hand is checked as it is.
-  return d.neighbours.get(a.id)?.includes(b) ? d.below.get(a.id)?.has(b.id) ?? false : handsDown(s, a, b);
+  return d.neighbours.get(a.id)?.includes(b) ? d.joined.get(a.id)?.has(b.id) ?? false : meets(s, a, b);
 }

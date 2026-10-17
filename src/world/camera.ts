@@ -160,6 +160,16 @@ export class Camera {
    * the ground's height `ground` (metres at a point, never above `top`), so a cliff face picks the tile on top of it.
    */
   tileAt(x: number, y: number, ground: (x: number, z: number) => number = () => 0, top = 0): { x: number; y: number } | null {
+    const p = this.pointOnGround(x, y, ground, top);
+    const t = p && { x: Math.floor(p.x), y: Math.floor(p.y) };
+    return t && t.x >= 0 && t.y >= 0 && t.x < this.map.width && t.y < this.map.height ? t : null;
+  }
+
+  /**
+   * The point of the ground under a point of the page (in tiles, a tile's centre at +0.5), found as `tileAt` finds its tile;
+   * null if the line of sight misses the ground.
+   */
+  pointOnGround(x: number, y: number, ground: (x: number, z: number) => number = () => 0, top = 0): { x: number; y: number } | null {
     if (!this.groundAt(x, y)) return null;
     const ray = this.raycaster.ray, o = ray.origin, d = ray.direction;
     if (d.y > -1e-6) return null;
@@ -170,7 +180,6 @@ export class Camera {
     let t1 = t0;
     while (t1 < end && k(t1) > 0) { t0 = t1; t1 += step; }
     for (let i = 0; i < 12; i++) { const m = (t0 + t1) / 2; if (k(m) > 0) t0 = m; else t1 = m; }
-    const t = { x: Math.floor(o.x + d.x * t1), y: Math.floor(o.z + d.z * t1) };
-    return t.x >= 0 && t.y >= 0 && t.x < this.map.width && t.y < this.map.height ? t : null;
+    return { x: o.x + d.x * t1, y: o.z + d.z * t1 };
   }
 }

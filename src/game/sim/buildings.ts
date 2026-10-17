@@ -57,7 +57,7 @@ export function runField(s: GameState, f: FieldBuilding, dt: number) {
   }
 }
 
-/** A harvest's change to a field's soil: a loss is heavier on its ramp tiles (erosion), less so when the field is guarded. */
+/** A harvest's change to a field's soil: a loss is heavier on its sloping tiles (erosion), less so when the field is guarded. */
 function erode(s: GameState, f: FieldBuilding, by: number) {
   if (by >= 0) { changeSoil(s, f, by); return; }
   const guarded = isGuarded(s, f);

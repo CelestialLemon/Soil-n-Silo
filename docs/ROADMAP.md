@@ -16,7 +16,7 @@ Items are roughly in priority order within each section.
 
 ## Renderer
 
-Pinned: **v0.3.0** (`package.json`). The game owns the loop, state, input, UI, audio and save; the renderer draws, and answers
+Pinned: **v0.3.2** (`package.json`). The game owns the loop, state, input, UI, audio and save; the renderer draws, and answers
 "what is under the pointer" (`pick`).
 
 | Need | Status | Notes |
@@ -24,6 +24,7 @@ Pinned: **v0.3.0** (`package.json`). The game owns the loop, state, input, UI, a
 | Build preview ("ghost") drawn see-through and tinted green/red | Yes ([#30](https://github.com/CelestialLemon/pixel3d-renderer/issues/30), v0.3.0) | `opacity` and `tint`; `pick` sees through it. |
 | Overlays (fertility, power reach, water, bees) without a geometry per colour | Yes (#30) | One tile geometry, tinted per tile. |
 | Many goods moving (now in trucks) without redrawing the object shadow map | Yes ([#31](https://github.com/CelestialLemon/pixel3d-renderer/issues/31)) | Goods, markers, ghosts and overlays have `castShadow = false`. |
+| Smooth ground without false outline dashes or contact darkening | Yes ([#38](https://github.com/CelestialLemon/pixel3d-renderer/issues/38), v0.3.2) | Joined ground is shaded smooth in the game. |
 | Turbine rotors turning with the wind | Worked around | Three rotor speeds, swapped by wind strength (spin speed is baked into the geometry). |
 | Lamps on placed objects (pylon lanterns at night) | No | Lamps are scene data; emissive parts glow after dusk instead. |
 | Buildings fading when they hide the tile under the pointer | Not needed yet | Picking a tile uses the ground plane, so tall buildings don't block placement. |
@@ -101,34 +102,44 @@ numbers behind them are pure modules in `src/game/` (`flows.ts`, `fleet.ts`, `po
 ## Running water and the country around the map (2026-10-16)
 
 Rivers looked like still ponds, and each map was a square of grass ringed by trees with nothing beyond. The river now has a
-current (along its course, faster where it narrows), drops over two small falls onto rock ledges and breaks round the odd
-boulder; ponds and lakes stay still. The generator carries the map's noise past the edge (`generateLand` in `map.ts`, drawn
+current (along its course, faster where it narrows), drops over falls onto rock ledges (now 3 levels each, at relief 0.55
+and 0.85) and breaks round the odd boulder; ponds and lakes stay still. The generator carries the map's noise past the edge (`generateLand` in `map.ts`, drawn
 only, never saved, the map itself unchanged): the river runs on out of sight, a track leads off from the depot, the woods
 thicken and the ground rises into wooded hills, with an apron of distant woods beyond them. Everything past the edge is a
 shade duller, so where you can build still reads at a glance. Height on the map itself followed on 2026-10-17, below.
 
 ## Height and terrain (2026-10-17)
 
-The map now has whole levels, ramps joining terraces and cliffs where edges do not join (`relief.ts`). Stepped ground was
-chosen over smooth hills because it reads in pixel art from four sides and gives simple rules, like Terra Nil. The generator
-follows a river valley or a ridge, keeps a flat home terrace round the depot, puts the river at the bottom with banks at its
-level and one-level falls, and biases rock and forest uphill. Soil is poorer uphill with the commission's mean kept. Relief
-varies by commission; random commissions can be Hilly or Flat. The country beyond rises in stepped hills, with a track
-climbing out from the depot.
+The map now has rolling ground, with four corner heights per tile, whole levels from 0 to 16 at 0.25 m each (`relief.ts`).
+Chosen on 2026-10-17: the first stepped ground read as blocky and synthetic in play. The owner wanted organic solarpunk
+land: rolling hills, floodplains, meadows and plateaus, with cliffs as an occasional feature. Corner heights keep the rules
+clear. The generator makes broad, low-frequency hills, flat floodplains along rivers and round lakes and ponds, a flat home
+area round the depot, and occasional mesas with a cliff rim at relief 0.65 and above. Rivers fall 3 levels at relief 0.55,
+with a second fall at 0.85. Soil is poorer uphill with the commission's mean kept. Relief varies by commission; random
+commissions can be Hilly or Flat. The country beyond rises into higher hills, with a track climbing out from the depot.
 
-Buildings level unsuitable ground on placement for an extra price. Earthworks raise, lower or ramp empty grass for 20
-credits a step; neither is refunded. Terrain should shape a layout without blocking something that has to be built
-somewhere. Cliffs stop trucks, climbing costs time and battery, and ways are chosen by effort. Next-door goods can go down
-a cliff but never up one for now, to be tuned after play. Water beside a field must meet its ground level; sprinklers pay for lift,
-turbines gain wind up high and lose it behind higher ground, and fields' ramp tiles erode faster unless trees or beans guard
-them. A water wheel makes steady power from current on a river bank, more beside a fall. Rules and numbers in `DESIGN.md`.
+Buildings level unsuitable ground on placement for an extra price, choosing the cheapest level, never below nearby water.
+Joined ground round the footprint follows as a slope where it stays within a 2-level span; otherwise it meets a cliff.
+Fields can cross slopes but need no cliff inside; one-tile buildings stand anywhere on grass. Earthworks raise or lower a
+point with the tiles that join there, or level an area at its rounded mean height. Dragging covers a rectangle of points.
+A dig is done in full or refused: no moving buildings, trees, rock or water, going outside 0–16 or below nearby water, or
+making a tile steeper than 2 levels. Earthworks and levelling cost 6 credits per point moved a level, counting distinct
+heights at a footprint point separately; neither is refunded. Both are free in sandbox.
 
-The dock has Earthworks with raise, lower and ramp chips (K; C cycles, R turns a ramp), the Height view tints levels, placement
-cards show the terrain's costs and effects, and the guide has "Height and earthworks". Cliff faces are banded by level under
-a turf lip, ramps are worn turf, and the map's ground is drawn as objects in chunks so earthworks can redraw it. Six tree
-species and bushes vary by place, with willows by water and pines up high (`trees.ts`, models in `ASSET_BRIEF.md`).
+Trucks drive gentle, joined, open grass (a corner span of at most 1), never steep banks or cliffs. Each level climbed adds
+0.6 tiles of effort in time and battery. Next-door goods need a joined edge too: the owner agreed to drop the gravity chute
+down cliffs. Water beside a field must meet its ground edge; sprinklers pay 0.5 W per level of lift to centre height.
+Turbines gain 5% wind per centre level and lose 3% per level of higher ground above their highest corner, as well as shelter
+from trees and tall buildings. Field erosion scales with slope, up to ×1.5 at full steepness, or ×1.25 guarded by trees or
+beans. A water wheel makes steady power from current on a river bank, more beside a fall. Rules and numbers in `DESIGN.md`.
+
+The dock has Earthworks with Raise, Lower and Level chips (K; C cycles). The Height view tints centre height in bands of
+3 levels, blended between, with steep banks darker; placement cards show the terrain's costs and effects, and the guide has "Height and
+earthworks". Ground is shaded smooth across joined tiles, steep banks are worn turf, and cliff faces have strata every
+2 levels under a turf lip, stone from level 8. The map's ground is drawn as objects in chunks so earthworks can redraw it.
+Six tree species and bushes vary by place, with willows by water and pines up high (`trees.ts`, models in `ASSET_BRIEF.md`).
 `test/height.test.ts` covers the height rules; the bot deliberately keeps its flat map to test the economy. Saves are version
-6; older ones are refused.
+7; older ones are refused.
 
 ## Next
 
@@ -156,6 +167,7 @@ species and bushes vary by place, with willows by water and pines up high (`tree
   you see only the weather now.
 - From the UI revamp, set aside: a **difficulty fingerprint** for each commission (an advanced option in the level select);
   a **soil map and soil forecast** in the ledger; a **route loop diagram** with each stop's share of the loop.
+- A mountains-themed commission, with higher, more rugged ground.
 - Slopes facing the sun give solar panels more power; cliffs shade panels in the morning and evening.
 - Weather events (rain waters fields, storms stop turbines), with rain running off high ground and pooling low, flooding low
   fields in storms.

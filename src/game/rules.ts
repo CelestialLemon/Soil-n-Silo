@@ -1,6 +1,6 @@
 import { BUILDINGS, FIELD, HIVE, POWER, type BuildingId } from './data.ts';
 import { TERRAIN } from './map.ts';
-import { centreLevel, FLAT, MAX_LEVEL, SIDES, sideOf } from './relief.ts';
+import { baseLevel, centreLevel, corners, joins, MAX_LEVEL, SIDES, sideOf, spanOf, STEEP } from './relief.ts';
 import { buildingAt, centre, inMap, reachTo, terrainAt, tileIndex, type Building, type Dir, type Footprint, type GameState } from './state.ts';
 
 // The rules about where things stand, shared by the simulation and the placement forecast: what reaches what, what shelters
@@ -40,7 +40,7 @@ export function rim(x: number, y: number, n: number): { x: number; y: number; ix
 function waterAtSide(s: GameState, ix: number, iy: number, side: number) {
   const [dx, dy] = SIDES[side], wx = ix + dx, wy = iy + dy;
   if (!inMap(s, wx, wy) || terrainAt(s, wx, wy) !== TERRAIN.water) return false;
-  const l = s.map.level[tileIndex(s, wx, wy)], [a, b] = sideOf(s.map, ix, iy, side);
+  const l = baseLevel(s.map, wx, wy), [a, b] = sideOf(s.map, ix, iy, side);
   return a === l && b === l;
 }
 
@@ -58,7 +58,7 @@ export function waterLevelNear(s: GameState, x: number, y: number): number | nul
   let best: number | null = null;
   for (let ty = y - r; ty <= y + r; ty++) for (let tx = x - r; tx <= x + r; tx++) {
     if (inMap(s, tx, ty) && Math.hypot(tx - x, ty - y) <= r && terrainAt(s, tx, ty) === TERRAIN.water) {
-      const l = s.map.level[tileIndex(s, tx, ty)];
+      const l = baseLevel(s.map, tx, ty);
       if (best === null || l > best) best = l;
     }
   }
@@ -66,11 +66,11 @@ export function waterLevelNear(s: GameState, x: number, y: number): number | nul
 }
 
 /**
- * Watts a sprinkler at (x, y) needs: little near water, more far from it, and more for each level it lifts the water (above
- * the highest water near it, or from the valley floor).
+ * Watts a sprinkler at (x, y) needs: little near water, more far from it, and more for each level it lifts the water (from
+ * the highest water near it, or from the valley floor, to the ground under it).
  */
 export function sprinklerWatts(s: GameState, x: number, y: number) {
-  const here = s.map.level[tileIndex(s, x, y)], water = waterLevelNear(s, x, y);
+  const here = centreLevel(s.map, x, y), water = waterLevelNear(s, x, y);
   return water === null ? POWER.sprinklerFar + POWER.sprinklerLift * here : POWER.sprinklerNearWater + POWER.sprinklerLift * Math.max(0, here - water);
 }
 
@@ -84,19 +84,22 @@ export const hiveReaches = (field: Footprint, x: number, y: number) => reachTo(f
 
 /** How a turbine at (x, y) stands in the wind: the share the trees, tall buildings and higher ground in reach leave it, and how much more it gets up high. */
 export function windExposure(s: GameState, x: number, y: number) {
-  const r = POWER.shelterReach, tall = new Set<Building>(), here = s.map.level[tileIndex(s, x, y)];
+  const r = POWER.shelterReach, tall = new Set<Building>(), here = top(s, x, y);
   let n = 0, hill = 0;
   for (let ty = y - r; ty <= y + r; ty++) for (let tx = x - r; tx <= x + r; tx++) {
     if ((tx === x && ty === y) || !inMap(s, tx, ty)) continue;
-    const o = buildingAt(s, tx, ty), i = tileIndex(s, tx, ty);
+    const o = buildingAt(s, tx, ty);
     if (terrainAt(s, tx, ty) === TERRAIN.tree) n++;
     else if (o && BUILDINGS[o.type].tall) tall.add(o);
-    hill = Math.max(hill, s.map.level[i] + (s.map.ramp[i] === FLAT ? 0 : 1) - here);
+    hill = Math.max(hill, top(s, tx, ty) - here);
   }
-  const shelter = Math.max(POWER.shelterFloor, 1 - POWER.shelter * (n + tall.size + Math.max(0, hill - (s.map.ramp[tileIndex(s, x, y)] === FLAT ? 0 : 1))));
+  const shelter = Math.max(POWER.shelterFloor, 1 - POWER.shelter * (n + tall.size) - POWER.shelterHill * hill);
   const height = 1 + POWER.windPerLevel * centreLevel(s.map, x, y);
   return { shelter, height, exposure: shelter * height };
 }
+
+/** The highest corner of a tile (levels). */
+const top = (s: GameState, x: number, y: number) => Math.max(...corners(s.map, x, y));
 
 /** The share of the wind a turbine at (x, y) gets (above 1 up high): its shelter times its height. */
 export const exposureAt = (s: GameState, x: number, y: number) => windExposure(s, x, y).exposure;
@@ -111,13 +114,13 @@ export function wheelSite(s: GameState, x: number, y: number): { rot: Dir; curre
   let current = 0, fall = false;
   for (const t of rim(x, y, 2)) {
     if (!inMap(s, t.ix, t.iy) || !waterAtSide(s, t.ix, t.iy, t.side)) continue;
-    const i = tileIndex(s, t.x, t.y), c = s.map.current[i];
+    const c = s.map.current[tileIndex(s, t.x, t.y)];
     if (c <= 0) continue;
     sides[t.side]++;
     current = Math.max(current, c);
     for (const [dx, dy] of SIDES) {
       const nx = t.x + dx, ny = t.y + dy;
-      if (inMap(s, nx, ny) && terrainAt(s, nx, ny) === TERRAIN.water && s.map.level[tileIndex(s, nx, ny)] !== s.map.level[i]) fall = true;
+      if (inMap(s, nx, ny) && terrainAt(s, nx, ny) === TERRAIN.water && baseLevel(s.map, nx, ny) !== baseLevel(s.map, t.x, t.y)) fall = true;
     }
   }
   if (!current) return null;
@@ -125,17 +128,9 @@ export function wheelSite(s: GameState, x: number, y: number): { rot: Dir; curre
   return { rot, current, fall, watts: POWER.wheel * current * (fall ? POWER.wheelFall : 1) };
 }
 
-/**
- * Whether goods can be handed from building `a` to building `b` next door: somewhere along the edge they share, the ground
- * joins, or a's side of it stands above b's. Down a cliff is fine (they drop), up one is not.
- */
-export function handsDown(s: GameState, a: Footprint, b: Footprint) {
-  const n = BUILDINGS[a.type].size;
-  return rim(a.x, a.y, n).some((t) => {
-    if (!inMap(s, t.x, t.y) || !covers(b, t.x, t.y)) return false;
-    const mine = sideOf(s.map, t.ix, t.iy, t.side), theirs = sideOf(s.map, t.x, t.y, (t.side + 2) % 4);
-    return mine[0] >= theirs[0] && mine[1] >= theirs[1];
-  });
+/** Whether goods can pass between buildings `a` and `b` next door: somewhere along the edge they share, the ground joins (not across a cliff). */
+export function meets(s: GameState, a: Footprint, b: Footprint) {
+  return rim(a.x, a.y, BUILDINGS[a.type].size).some((t) => inMap(s, t.x, t.y) && covers(b, t.x, t.y) && joins(s.map, t.ix, t.iy, t.side));
 }
 
 /** Whether a footprint covers a tile. */
@@ -150,9 +145,12 @@ export function guardedAt(s: GameState, x: number, y: number) {
   return rim(x, y, 3).some((t) => { const o = inMap(s, t.x, t.y) ? buildingAt(s, t.x, t.y) : null; return o?.type === 'field' && o.crop === 'beans'; });
 }
 
-/** How many times a crop's soil loss a field's tile at (x, y) takes per harvest: more on a ramp, less so when guarded. */
+/**
+ * How many times a crop's soil loss a field's tile at (x, y) takes per harvest: more the steeper it slopes (FIELD.erosion
+ * more on a steep tile, half that on a gentle one), less so when guarded.
+ */
 export function erosionAt(s: GameState, x: number, y: number, guarded: boolean) {
-  return s.map.ramp[tileIndex(s, x, y)] === FLAT ? 1 : 1 + (guarded ? FIELD.erosionGuarded : FIELD.erosion);
+  return 1 + (guarded ? FIELD.erosionGuarded : FIELD.erosion) * spanOf(s.map, x, y) / STEEP;
 }
 
 /** A field's growth multiplier from water, given the most water any of its sprinklers gives (0–1). */

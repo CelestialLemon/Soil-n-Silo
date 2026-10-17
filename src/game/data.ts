@@ -89,7 +89,7 @@ export const FIELD = {
   poorSoil: 0.4, richSoil: 1.4,
   /** Fertility a second that ground without a field regains, up to what it started at. */
   rest: 0.1,
-  /** How much more soil a harvest takes from a field's ramp tiles (×2 at 1), and from those of a field a tree or a bean field guards. */
+  /** How much more soil a harvest takes from a field's steep tiles (×2 at 1; half as much more on gentle ones), and from those of a field a tree or a bean field guards. */
   erosion: 0.5, erosionGuarded: 0.25,
 };
 
@@ -216,10 +216,10 @@ export const OUTPUT_BATCHES = 3;
 export const POWER = {
   solar: 30,
   turbine: 40,
-  /** Fraction of a turbine's output lost per tree or tall building within `shelterReach` tiles (and per level of higher ground there), and the least it keeps. */
-  shelter: 0.1, shelterFloor: 0.4, shelterReach: 2,
+  /** Fraction of a turbine's output lost per tree or tall building within `shelterReach` tiles, and per level of higher ground there, and the least it keeps. */
+  shelter: 0.1, shelterHill: 0.03, shelterFloor: 0.4, shelterReach: 2,
   /** How much more wind a turbine gets for each level it stands up. */
-  windPerLevel: 0.15,
+  windPerLevel: 0.05,
   /** A water wheel's watts on a river at 1 m/s (more in a faster current), and how many times that beside a fall. */
   wheel: 20, wheelFall: 2,
   digester: 30,
@@ -227,7 +227,7 @@ export const POWER = {
   pylon: { reach: 3, link: 8 },
   sprinklerNearWater: 3, sprinklerFar: 8, waterNear: 8,
   /** Watts more a sprinkler needs for each level it lifts water: above the highest water near it, or above the valley floor. */
-  sprinklerLift: 1,
+  sprinklerLift: 0.5,
   sprinklerReach: 3,
 };
 
@@ -257,7 +257,7 @@ export const TRUCK = {
   /** Stops a route can have. */
   maxStops: 8,
   /** Tiles of flat road each level climbed costs on top, in time and battery. */
-  climb: 2,
+  climb: 0.6,
 };
 /** Trucks a building loads or unloads at once; the rest queue. */
 export const bays = (b: BuildingId) => (b === 'depot' ? 2 : 1);
@@ -265,8 +265,8 @@ export const bays = (b: BuildingId) => (b === 'depot' ? 2 : 1);
 // ---- Clearing ----
 
 export const CLEAR_COST = { tree: 5, rock: 15 };
-/** Earthworks: credits a step (a tile raised or lowered a level, or made a ramp). Levelling ground under a building costs the same. */
-export const EARTH = { step: 20 };
+/** Earthworks: credits a step (a point of the ground, where tiles meet at their corners, raised or lowered a level). Levelling ground under a building costs the same. */
+export const EARTH = { step: 6 };
 /** Soil health gained per tree more than the map started with (lost per tree fewer), and the most it moves either way. */
 export const TREE_HEALTH = { perTree: 0.25, cap: 10 };
 
