@@ -401,3 +401,19 @@ test('a tile\'s centre is where its ground is drawn, so a corner raised on its o
     assert.equal(centreLevel(s.map, 8, 8), heightAt(s.map, 8.5, 8.5), c.join(','));
   }
 });
+
+test('levelling leaves the ground under a tree or rock beside it as it lies: the area meets it at a cliff', () => {
+  const s = flat();
+  // A step of a level at px 6, sloping across the tiles at x 5; levelled at 1, the area's west edge rises.
+  shape(s, (px) => (px >= 6 ? 1 : 0));
+  s.map.terrain[6 * 30 + 4] = TERRAIN.tree;
+  s.map.terrain[5 * 30 + 4] = TERRAIN.rock;
+  touchRelief(s);
+  const r = reshape(s, { how: 'level', from: { x: 5, y: 5 }, to: { x: 8, y: 8 }, at: { x: 5, y: 5 } });
+  assert.ok(r.ok, r.ok ? '' : r.error);
+  assert.deepEqual(corners(s.map, 5, 6), [1, 1, 1, 1]);
+  assert.deepEqual(corners(s.map, 4, 7), [0, 1, 1, 0], 'open grass follows');
+  assert.deepEqual(corners(s.map, 4, 6), [0, 0, 0, 0], 'the tree\'s ground stays');
+  assert.deepEqual(corners(s.map, 4, 5), [0, 0, 0, 0], 'the rock\'s ground stays');
+  assert.ok(!joins(s.map, 4, 6, 1));
+});

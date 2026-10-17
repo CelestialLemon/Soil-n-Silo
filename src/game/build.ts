@@ -46,15 +46,15 @@ export interface Groundwork { level: number | null; move: Earthmove }
 
 const NONE: Earthmove = { set: [], steps: 0 };
 
-/** Whether earthworks may move a tile's ground: not water, and nothing built on it. */
-const movable = (s: GameState, x: number, y: number) => terrainAt(s, x, y) !== TERRAIN.water && !buildingAt(s, x, y);
+/** Whether earthworks may move a tile's ground: open grass, nothing built on it (not water, a tree or rock). */
+const movable = (s: GameState, x: number, y: number) => terrainAt(s, x, y) === TERRAIN.grass && !buildingAt(s, x, y);
 
 /** A rectangle of tiles: its north-west tile and its size in tiles. */
 export interface Area { x: number; y: number; w: number; h: number }
 
 /**
  * The earthworks that level an area of the map flat at `level`. The ground around it follows where it joined the area and
- * can (it stays a slope, at most STEEP across a tile; nothing built on it, not water); where it can't, the area is cut down
+ * can (it stays a slope, at most STEEP across a tile; open grass with nothing built on it); where it can't, the area is cut down
  * or built up from it, a cliff. A step is each height the area's ground had at one of its points, moved a level to `level`.
  */
 export function levelling(s: GameState, { x, y, w, h }: Area, level: number): Earthmove {

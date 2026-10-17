@@ -26,7 +26,7 @@ few minutes and the wind comes and goes, so power needs storage and a mix of sou
 - Trucks on routes you set, over the open ground between buildings: no belts and no roads to build; silos to store goods
 - Buildings next door trade directly: a mill between wheat fields takes their wheat without a truck
 - Pylon power networks, each with its own balance
-- Terraces, ramps and cliffs; paid earthworks and levelling on placement
+- Rolling hills, steep banks and occasional cliffs; paid earthworks and levelling on placement
 - Soil fertility, slope erosion, sprinklers, compost and pollination
 - 8 campaign commissions, random commissions from any seed, a sandbox
 - A soft timer: the commission always finishes; gold, silver or bronze by how long it took
@@ -53,8 +53,8 @@ It is build-only and point-and-click. There is no character and no manual farmin
 | --- | --- |
 | The dock (bottom) or hotkeys (by default F field, L silo, T garage, P pylon, S solar) | Pick a building to place; its placement card says what it would do on the tile under the pointer |
 | Click / drag | Place it; a drag places a row (pylons: a power line, spaced so their reaches meet) |
-| R | Turn what you're placing; with Earthworks in hand, turn the ramp; a water wheel faces the river by itself |
-| Earthworks in the dock, or K | Raise or lower a tile, or make a ramp; choose its chip above the tile, or C / Shift+C to cycle |
+| R | Turn what you're placing; a water wheel faces the river by itself |
+| Earthworks in the dock, or K | Raise or lower a ground point, or level an area; drag a rectangle of points; choose its chip, or C / Shift+C to cycle |
 | A chip in the strip above a field's or bakery's dock tile; C / Shift+C | Choose the crop (wheat, beans, tomato, sunflower, flax) or the recipe (bread, honey cake) the buildings you place get, without putting the tool down |
 | Click a building with nothing in hand | Select it: the inspector shows its status, buffers, settings and history |
 | A garage's inspector | Buy a truck; give each of its trucks a route, or none |
@@ -87,9 +87,9 @@ The build preview is see-through, green where it fits and red where it doesn't.
 - Goods handed to a building next door hop over the edge the two share. Selecting or pointing at a building tints the
   neighbours it trades with, and its inspector lists them ("Takes wheat from 2 fields", "Gives bran to the coop"); a
   building in hand tints the ones it would trade with, and its placement card says so.
-- The placement card shows Earthworks (levelling cost, level and steps), Slope (ramp tiles and soil wear), sprinkler
+- The placement card shows Earthworks (levelling cost, level and steps), Slope (sloping tiles and soil wear), sprinkler
   watts and lift, the extra wind up high and a wheel's current and fall.
-- The Height view tints each land level, with ramps a shade between their two levels. Cliff faces show the breaks.
+- The Height view tints land by centre height in blended bands of 3 levels, with steep banks darker. Cliff faces show the breaks.
 - The roads overlay shows the open ground trucks can drive on, and the buildings they can't reach.
 - The inspector keeps each building's history over the last 1, 5 or 10 minutes of play (5 by default, the choice kept from
   building to building), so a problem noticed late can be traced: a ribbon of its statuses in time (problems hatched, so they
@@ -159,52 +159,67 @@ Each level is generated from a seed: a grid of about 48 × 40 one-metre tiles.
 | Rock | Not buildable. Can be cleared for 15 credits |
 | Tree | Not buildable. Slows wind turbines next to it. Can be cleared for 5 credits (soil health drops a little) |
 
-The ground follows a valley beside a river, or a ridge on maps without one. Broad terraces leave room for buildings;
-ramps join them. The river runs along the bottom, falling one level at a time, with banks at its surface level. A flat home
-terrace at level 0 surrounds the depot. Rock and forest favour high ground and cliff edges; ramps stay clear.
+The ground rolls in broad, low-frequency hills, with flat floodplains along rivers and round lakes and ponds, and a flat
+home area at level 0 round the depot. At relief 0.65 and above, occasional mesas rise gradually on one flank and have a
+cliff rim on the other; sites that would cut off a truck route are skipped. Rivers have a 3-level fall at relief 0.55 and
+above, a second at 0.85. Rock and forest favour high ground and cliff edges, without closing the routes between open grass.
 
-Soil varies locally and is richer near water, poorer uphill. The uphill difference is 9 × relief per level; the generator
-centres the grass soil at each height to keep the commission's mean, then rounds and clamps it to 5–95.
+Soil varies locally and is richer near water, poorer uphill. The uphill difference is 2.25 × relief per level; the generator
+centres the grass soil at each quarter-level of centre height to keep the commission's mean, then rounds and clamps it to 5–95.
 
-Beyond the edge the country carries on, a shade duller: the river, a track from the depot climbing on ramps, woods rising
-in stepped hills above the map's height limit. It is only scenery. Trees are oak, birch, pine, willow, poplar and apple,
-with bushes mixed in. Willows favour water within 2 tiles, pines levels 3 and above; apples occur on low ground. Each tree
+Beyond the edge the country carries on, a shade duller: the river, a track climbing out from the depot, woods rising
+into higher hills above the map's height limit. It is only scenery. Trees are oak, birch, pine, willow, poplar and apple,
+with bushes mixed in. Willows favour water within 2 tiles, pines levels 9 and above; apples occur on low ground. Each tree
 species has three model variants (`ASSET_BRIEF.md`); the species changes only its looks.
 
 A **freight depot** (3 × 3) stands at one edge. Anything a truck drops at it counts towards the goals and pays credits (see Logistics).
 
 ### Height and earthworks
 
-Each tile stands at a whole level from 0 to 4 (`MAX_LEVEL`). It is flat or a ramp rising one level towards one of its four
-sides; a ramp cannot rise past 4. Two tiles join where both ends of their facing edges match. Otherwise there is a cliff;
-a ramp's sides can be cliffs too. Chosen on 2026-10-17: stepped levels rather than smooth hills, like Terra Nil, because they
-read in pixel art from four sides and give simple rules.
+Each tile has four corner heights, whole levels from 0 to 16 (`MAX_LEVEL`), 0.25 m per level. The ground slopes between
+its corners. A tile is gentle when its highest and lowest corners differ by at most 1 level; a span of 2 (`STEEP`) is a
+steep bank. Two tiles join where both ends of their facing edges match; otherwise there is a cliff. Water tiles are flat.
+
+Chosen on 2026-10-17: rolling ground replaces stepped levels, which looked blocky and synthetic in play. The owner wanted
+organic solarpunk land: rolling hills, floodplains, meadows and plateaus, with cliffs as an occasional feature. Corner
+heights keep the rules clear. A mountains-themed commission could come later.
 
 | Height changes | Rule now |
 | --- | --- |
-| Building ground | Fields need no cliff inside their 3 × 3 footprint and can cross ramps. One-tile buildings can stand on ramps. All other buildings need flat ground at one level |
-| Levelling on placement | If it does not fit, flatten its footprint to the level needing the fewest steps, lower on a tie, never below nearby water. A wheel must meet the river's level. Add 20 credits per step to the building price |
-| Levelling steps | Per tile: the distance from its centre height to the chosen level, plus 0.5 if it is a ramp |
-| Earthworks | 20 credits per tile per action: raise or lower one level, make or turn a ramp. Raising a ramp flattens it at its top; lowering flattens it at its foot. Free in sandbox, as is levelling on placement |
-| Trucks | Cliffs block travel. Each level climbed adds 2 tiles of effort, in time and battery; descent adds none |
-| Next door | Goods go wherever the shared edge joins, and down a cliff, never up one: along at least one shared pair of tiles the giver's side must stand no lower than the taker's |
+| Building ground | Fields need no cliff inside their 3 × 3 footprint; slopes are fine. One-tile buildings stand on any grass tile. All other buildings need flat ground at one level |
+| Levelling on placement | If it does not fit, flatten its footprint to the level needing the fewest steps, lower on a tie, never below nearby water. A wheel must meet the river's level. Add 6 credits per step to the building price |
+| Levelling steps | At each grid point of the footprint, count each distinct height there once, and add its distance to the chosen level |
+| Earthworks | Raise or lower a point one level, or level an area. 6 credits per step (a point moved a level). Free in sandbox, as is levelling on placement |
+| Trucks | Only gentle, joined, open grass. Steep banks and cliffs block travel. Each level climbed adds 0.6 tiles of effort, in time and battery; descent adds none |
+| Next door | Goods pass only where at least one shared tile edge joins; cliffs stop them in both directions |
 | Field water | An edge touching water waters the field only if both ends of the ground edge are at the water's level |
-| Sprinklers | 3 W with water within 8 tiles, else 8 W; add 1 W per level above the highest water in reach, or above level 0 without it |
-| Wind turbines | Wind × (1 + 0.15 × centre level). Shelter costs 10% per tree, tall building and level of higher ground within 2 tiles, down to 40%, before the height multiplier |
-| Erosion | Ramp tiles lose ×1.5 the crop's normal soil loss per harvest, ×1.25 when guarded; flat tiles ×1. Beans still restore soil |
+| Sprinklers | 3 W with water within 8 tiles, else 8 W; add 0.5 W per level of centre height above the highest water in reach, or above level 0 without it |
+| Wind turbines | Wind × (1 + 0.05 × centre level). Shelter costs 10% per tree or tall building within 2 tiles, plus 3% per level of higher ground, down to 40%, before the height multiplier |
+| Erosion | Soil loss × (1 + 0.5 × span / 2), or × (1 + 0.25 × span / 2) when guarded. Flat tiles ×1; full steepness ×1.5, or ×1.25 guarded. Beans still restore soil |
 | Water wheels | 20 W × current in m/s, ×2 beside a fall; a flat 2 × 2 bank at the river's level, facing it |
 
-Earthworks need empty grass: clear trees and rock first; water and buildings cannot be reshaped. Ground cannot go below 0
-or below water sharing an edge. Automatic levelling also checks diagonal water round the footprint. Neither levelling nor
-earthworks are refunded, and removing a building leaves its ground as it is. Chosen on 2026-10-17: earthworks are possible
-but costly, because terrain should shape a layout without blocking something that has to be built somewhere.
+Raise and Lower move a grid corner with every tile whose ground joins there (`sheetAt` in `relief.ts`). At a cliff, a
+single point moves the sheet under the pointer. Dragging covers a rectangle of points, moving every sheet with a tile
+between them. Level flattens the tiles between the points (or the hovered tile) at their mean corner height, rounded.
 
-For turbine shelter, each tall building counts once and the ground counts by its greatest rise in reach, not per tile.
-Ramp tops count as high ground; a turbine on a ramp subtracts its own one-level rise from that ground shelter.
+When an area is levelled, the ground round it follows where it joined and can stay within `STEEP`; where it cannot, or
+where water, a tree, rock or a building stops it moving, the area meets it at a cliff. The steps count only the area's points and their
+distinct heights, not the surrounding ground that follows.
 
-The ground is drawn in steps, 0.75 m per level. Cliff faces have a band per level under a turf lip, earth low down and stone
-from level 3. Ramps are worn turf. The map's ground is drawn as objects in 8 × 8 chunks so earthworks can redraw the changed
-ground and its neighbours (`src/world/ground.ts`); the country beyond is static.
+Earthworks need empty grass: clear trees and rock first; water stays put and buildings cannot be moved. The whole dig is
+refused if it would move a building, tree or rock, take a corner outside 0–16 or below water beside it (diagonal contact
+counts), or leave a tile steeper than `STEEP`. Neither levelling nor earthworks are refunded, and removing a building leaves
+its ground as it is. Chosen on 2026-10-17: earthworks are possible but costly, because terrain should shape a layout without
+blocking something that has to be built somewhere.
+
+For turbine shelter, each tall building counts once. Higher ground counts only by the highest neighbouring corner within
+reach above the turbine tile's highest corner, not per tile.
+
+The ground is shaded smooth across joined tiles. Steep banks are worn turf. Cliff faces have strata every 2 levels under
+a turf lip, earth low down and stone from level 8. The map's ground is drawn as objects in 8 × 8 chunks so earthworks can
+redraw the changed ground and its neighbours (`src/world/ground.ts`); the country beyond is static. A renderer bug currently
+adds false outline dashes and contact darkening on smooth ground; the fix is being made upstream
+([pixel3d-renderer #38](https://github.com/CelestialLemon/pixel3d-renderer/issues/38)).
 
 ## Goods
 
@@ -260,8 +275,8 @@ Every building is available from the start. Removing one refunds its building co
 
 | Ground needed | Buildings |
 | --- | --- |
-| No cliff inside the footprint; ramps allowed | Field |
-| Any grass tile, including a ramp | Sprinkler, beehive, wind turbine, pylon, sapling |
+| No cliff inside the footprint; slopes allowed | Field |
+| Any grass tile, including a steep bank | Sprinkler, beehive, wind turbine, pylon, sapling |
 | Flat at one level | Silo, garage, coop, composter, all processing machines, solar panel, water wheel, battery, digester, depot |
 
 Placement levels unsuitable ground for the extra price in "Height and earthworks". Trees, rock, water and buildings still
@@ -280,10 +295,10 @@ more drones was more storage. Drones come back later as automatic helpers, see O
 | Silo | 2 × 2 | 80 | — | Stores up to 30 of each good. Trucks drop goods into it and pick them up |
 | Garage | 2 × 2 | 100 | 20 W per truck charging | Home of up to 4 trucks, bought here for 60 each. Charges them |
 
-**Roads are the empty ground.** A truck drives on any grass tile with nothing on it; water, rock, trees and every building
-(fields, pylons, sprinklers and saplings too) block it. Cliffs block travel too. It chooses the least effort, from tile
+**Roads are the empty ground.** A truck drives on any gentle grass tile with nothing on it; water, rock, trees and every building
+(fields, pylons, sprinklers and saplings too) block it. Steep banks and cliffs block travel too. It chooses the least effort, from tile
 centre to tile centre in 8 directions (a diagonal only when both tiles beside it are open and all four edges round the corner join), at 3 tiles/s on
-the flat. Each level climbed adds 2 tiles of effort: 2/3 s and 2 J; downhill has no extra cost. Trucks pass through each
+the flat. Each level climbed between tile centres adds 0.6 tiles of effort: 0.2 s and 0.6 J; downhill has no extra cost. Trucks pass through each
 other on the road.
 
 To load or unload, a truck parks on an open tile next to the building: the one it can reach with the least effort, where
@@ -346,9 +361,9 @@ stops takes (or full of compost none of its fields takes now), a truck that can'
 and a building whose outputs are full with no route or neighbour taking them. A truck stuck with goods no stop takes can **dump** its cargo: the goods are lost.
 
 **Next door.** Buildings that share an edge (touching only at a corner doesn't count) trade without trucks. Goods go wherever
-the ground joins along the edge they share, and down a cliff, but never up one. Chosen on 2026-10-17: down a cliff only
-for now, to be tuned after play. Each step, every machine takes up to one of each good its recipe uses from the buildings next door that have it waiting, from whichever has
-the most, and a field takes compost the same way. Buildings sharing a giver take turns: the one that took a good longest
+the ground joins along at least one shared tile edge. Cliffs stop goods in both directions. Chosen on 2026-10-17: drop the
+gravity chute down cliffs, so next-door goods follow the same joined-edge rule. Each step, every machine takes up to one of
+each good its recipe uses from the buildings next door that have it waiting, from whichever has the most, and a field takes compost the same way. Buildings sharing a giver take turns: the one that took a good longest
 ago goes first, so two coops beside one mill both get its bran. Fields, hives and machines give (a harvest, honey, a machine's outputs);
 machines and fields take. Silos and the depot don't trade next door: storing and selling stay the trucks' job, so a farm
 still needs trucks for the long hops and the last one. Next door comes first: it runs before trucks load, so a mill beside
@@ -378,7 +393,7 @@ playing trucks: every level needed many trucks, and routes doing a field-to-mill
 | Building | Size | Cost | Power | Notes |
 | --- | --- | --- | --- | --- |
 | Field | 3 × 3 | 30 | — | Grows the crop chosen as it is placed (wheat, until you choose another) on its 9 tiles. Takes compost (a truck brings it) |
-| Sprinkler | 1 × 1 | 25 | 3 W within 8 tiles of water, else 8 W; +1 W per level lifted | Waters fields whose centre is within 3 tiles |
+| Sprinkler | 1 × 1 | 25 | 3 W within 8 tiles of water, else 8 W; +0.5 W per level lifted, from centre height | Waters fields whose centre is within 3 tiles |
 | Coop | 3 × 3 | 150 | — | Four chickens. Every 2 feed (beans, bran or seed cake) give 2 eggs and 1 manure, 16 s |
 | Beehive | 1 × 1 | 60 | — | Makes honey from flowering fields (not wheat) within 4 tiles, faster with more of them (up to 3). Pollinates fields within 4 tiles |
 | Composter | 2 × 2 | 60 | — | Any 2 of manure, bran and seed cake → 1 compost, 20 s |
@@ -403,9 +418,11 @@ playing trucks: every level needed many trucks, and routes doing a field-to-mill
   much later.)
 - Grow times are with water at fertility 60. Growth speed is ×0.4 without water (a field sharing an edge with a river or pond
   at its own ground level counts as watered), and from ×0.4 (fertility 0) to ×1.4 (fertility 100) by average fertility.
-- On ramp tiles, each harvest loses 1.5 times the crop's normal soil loss, or 1.25 times if guarded by a tree or sapling within
-  one tile of the field (diagonals count), or a bean field sharing an edge. Flat tiles lose the normal amount. Beans restore
-  soil without this multiplier. Eroded soil is lost; it does not yet wash onto the ground below.
+- On sloping tiles, each harvest loses 1 + 0.5 × span / 2 times the crop's normal soil loss (span is the difference
+  between highest and lowest corners). A tree or sapling within one tile of the field (diagonals count), or a bean field
+  sharing an edge, guards it: use 0.25 instead of 0.5. Gentle slopes lose ×1.25, steep banks ×1.5; guarded, ×1.125 and ×1.25.
+  Flat tiles lose the normal amount. Beans restore soil without this multiplier. Eroded soil is lost; it does not yet wash
+  onto the ground below.
 - A pollinated field (a hive within 4 tiles) yields 1 more of a flowering crop.
 - A harvest waits in the field (up to 6) until a truck picks it up. A full field stops growing.
 - A field holds no compost. It takes one (from a truck or a composter next door) only while its average fertility is under
@@ -441,7 +458,7 @@ digester.
 | Building | Size | Cost | Notes |
 | --- | --- | --- | --- |
 | Solar panel | 2 × 2 | 70 | 30 W at noon, following the sun; nothing at night |
-| Wind turbine | 1 × 1 | 120 | 40 W at full wind at level 0; +15% per centre level, multiplied by shelter from trees, tall buildings and higher ground (see Height and earthworks) |
+| Wind turbine | 1 × 1 | 120 | 40 W at full wind at level 0; +5% per centre level, multiplied by shelter from trees, tall buildings and higher ground (see Height and earthworks) |
 | Water wheel | 2 × 2 | 200 | A flat river bank at the water's level; faces the side with most river contact. 20 W per m/s of current, ×2 beside a fall, day and night |
 | Battery | 2 × 2 | 150 | Stores 2.4 kJ, charges and discharges at up to 40 W |
 | Digester | 2 × 2 | 180 | Burns one manure, bran or seed cake every 10 s for a steady 30 W |
@@ -498,8 +515,8 @@ until they have bot layouts too.
 ![The level select](images/menu.png)
 
 **Random commission:** any seed and a difficulty (1–3) pick the modifiers and 2–4 goals. Relief starts at
-0.25 + 0.15 × difficulty (0.4, 0.55, 0.7); Hilly sets it to 0.9, Flat to 0 (one or the other, never both). The height cap is ceil(4 × relief), at most 4,
-so Flat is all one level.
+0.25 + 0.15 × difficulty (0.4, 0.55, 0.7); Hilly sets it to 0.9, Flat to 0 (one or the other, never both). Relief
+scales the rolling hills; corner heights stay within 0–16. Flat is all one level.
 
 **Sandbox:** a large calm map (relief 0.5), unlimited credits, no goals: for trying things.
 
@@ -511,14 +528,14 @@ Early on, raw goods are the way to afford the first machines; products pay far b
 ## Saving
 
 The game saves the commission in progress (one at a time) in the browser every 30 s and when the page is hidden, and remembers
-each commission's best medal and time. Saves are version 6. A save from an older version of the game is refused.
+each commission's best medal and time. Saves are version 7. A save from an older version of the game is refused.
 
 ## Open questions
 
-- [ ] Is `EARTH.step` (20 credits) right for a tile raised, lowered or ramped, and for automatic levelling?
+- [ ] Is `EARTH.step` (6 credits per point moved a level) right for earthworks and automatic levelling?
 - [ ] Should levelling under a removed building be refunded? It stays paid and the ground stays changed for now.
 - [ ] Should the river's falls be the only wheel sites, rather than a bonus on any bank with current?
-- [ ] Does stopping next-door goods up a cliff make the right puzzle? Down a cliff only for now; tune after play.
+- [ ] Do gentle routes, steep banks and occasional cliffs shape layouts well, and is the 0.6-tile climb cost right?
 - [ ] Tuning: crop times, machine times, prices and target times are first guesses. A scripted bot run per commission
   (`npm run sim`) should check that each one can be cleared and roughly in its target time.
 - [ ] Truck numbers (6 goods, 3 tiles/s, 300 J, 5 s wait, 4 per garage) and the silo's 30 of each good are first guesses.
