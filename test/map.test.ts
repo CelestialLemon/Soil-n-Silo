@@ -4,7 +4,7 @@ import { generateLand, generateMap, RIM_LEVEL, TERRAIN, type MapData } from '../
 import { FLAT, joins, MAX_LEVEL, SIDES } from '../src/game/relief.ts';
 import { CAMPAIGN, randomScenario, SANDBOX, type Scenario } from '../src/game/scenarios.ts';
 
-const SCENARIOS: Scenario[] = [...CAMPAIGN, SANDBOX, ...[1, 7, 72, 78, 80, 92, 99, 109, 186].flatMap((s) => ([1, 2, 3] as const).map((d) => randomScenario(s, d)))];
+const SCENARIOS: Scenario[] = [...CAMPAIGN, SANDBOX, ...[1, 7, 17, 72, 78, 80, 92, 99, 109, 133, 186, 296, 771, 933, 953].flatMap((s) => ([1, 2, 3] as const).map((d) => randomScenario(s, d)))];
 const FLAT_SCENARIOS = (['river', 'ponds', 'lake', 'none'] as const).map((water) => ({ ...CAMPAIGN[0], id: `flat-${water}`, terrain: { ...CAMPAIGN[0].terrain, relief: 0, water } }));
 const DRY_SCENARIOS = [0.2, 0.5, 0.9].map((relief) => ({ ...CAMPAIGN[2], id: `dry-${relief}`, terrain: { ...CAMPAIGN[2].terrain, water: 'none' as const, relief } }));
 const ALL = [...SCENARIOS, ...FLAT_SCENARIOS, ...DRY_SCENARIOS];
@@ -45,6 +45,68 @@ function coverage(m: MapData, n: number) {
 const rampRuns = (m: MapData) => components(m, (i) => m.ramp[i] !== FLAT, (i, j, d) => m.ramp[i] === m.ramp[j]
   && m.level[i] === m.level[j] && d % 2 !== m.ramp[i] % 2).groups;
 const mean = (values: number[]) => values.reduce((a, b) => a + b, 0) / values.length;
+
+// Count flat land cliff edges in both orientations. A run keeps the same signed level pair, so turns, ramps and changes
+// of terrace end it; shorelines and the map border are not cliffs. Weight by edge length rather than by number of runs.
+function cliffStraightness(m: MapData) {
+  let edges = 0, long = 0, longest = 0;
+  for (const vertical of [false, true]) for (let b = 1; b < (vertical ? m.width : m.height); b++) {
+    let run = 0, previous = '';
+    const end = () => { edges += run; longest = Math.max(longest, run); if (run > 6) long += run; run = 0; };
+    for (let a = 0; a < (vertical ? m.height : m.width); a++) {
+      const i = vertical ? a * m.width + b : b * m.width + a, j = i - (vertical ? 1 : m.width);
+      const key = landTile(m, i) && landTile(m, j) && m.ramp[i] === FLAT && m.ramp[j] === FLAT && m.level[i] !== m.level[j]
+        ? `${m.level[i]}:${m.level[j]}` : '';
+      if (!key || key !== previous) end();
+      if (key) run++;
+      previous = key;
+    }
+    end();
+  }
+  return { edges, long, longest };
+}
+
+test('campaign cliffs follow irregular contours rather than long rectangular borders', () => {
+  let total = 0, long = 0;
+  for (const sc of CAMPAIGN) {
+    const stats = cliffStraightness(map(sc)); total += stats.edges; long += stats.long;
+    assert.ok(stats.edges > 0, `${sc.id}: cliffs to measure`);
+    assert.ok(stats.long / stats.edges < 0.25, `${sc.id}: ${stats.long}/${stats.edges} cliff edges in straight runs longer than six`);
+    assert.ok(stats.longest <= 12, `${sc.id}: straight cliff of ${stats.longest} tiles`);
+  }
+  assert.ok(long / total < 0.15, 'long straight cliff edges are rare across the campaign');
+});
+
+test('rivers wind in continuous two-to-four-tile cross sections and fall across their full width', () => {
+  for (const sc of ALL.filter((sc) => sc.terrain.water === 'river')) {
+    const m = map(sc), land = generateLand(sc, 0), first = m.terrain.indexOf(TERRAIN.water);
+    const vertical = Math.abs(land.flow[first * 2 + 1]) > Math.abs(land.flow[first * 2]);
+    const span = vertical ? m.height : m.width, breadth = vertical ? m.width : m.height;
+    let previous: number[] = [];
+    for (let a = 0; a < span; a++) {
+      const cross: number[] = [];
+      for (let b = 0; b < breadth; b++) if (m.terrain[vertical ? a * m.width + b : b * m.width + a] === TERRAIN.water) cross.push(b);
+      assert.ok(cross.length >= 2 && cross.length <= 4, `${sc.id}: river width ${cross.length} at ${a}`);
+      assert.equal(cross.at(-1)! - cross[0] + 1, cross.length, `${sc.id}: solid cross section`);
+      const levels = cross.map((b) => m.level[vertical ? a * m.width + b : b * m.width + a]);
+      assert.equal(new Set(levels).size, 1, `${sc.id}: level across the river`);
+      if (previous.length) assert.ok(cross.some((b) => previous.includes(b)), `${sc.id}: adjacent cross sections overlap`);
+      previous = cross;
+    }
+  }
+});
+
+test('ponds and lakes have rounded outlines even at the smallest radius', () => {
+  for (const sc of ALL.filter((sc) => sc.terrain.water === 'ponds' || sc.terrain.water === 'lake')) {
+    const m = map(sc);
+    for (const body of components(m, (i) => !landTile(m, i)).groups) {
+      const xs = body.map((i) => i % m.width), ys = body.map((i) => Math.floor(i / m.width)), tiles = new Set(body);
+      for (const x of [Math.min(...xs), Math.max(...xs)]) for (const y of [Math.min(...ys), Math.max(...ys)]) {
+        assert.ok(!tiles.has(y * m.width + x), `${sc.id}: a water body fills its bounding-box corner at ${x},${y}`);
+      }
+    }
+  }
+});
 
 test('generation is deterministic and the map is independent of every drawing margin', () => {
   for (const sc of ALL) {

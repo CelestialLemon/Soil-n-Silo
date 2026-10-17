@@ -62,7 +62,18 @@ export function generateMap(sc: Scenario): MapData {
 
 /** The country settles to this level for its outermost RIM tiles, where the distant woods start. */
 export const RIM_LEVEL = 6;
-const RIM = 10, RIM_BLEND = 12, CELL = 4, HOME = 6;
+const RIM = 10, RIM_BLEND = 12, CELL = 4;
+/** The home oval encloses the required Chebyshev-five square; ascent distances are tiles per level. */
+const HOME = 5, HOME_OVAL = 7, HOME_STRETCH = 1.25, HOME_STEP = 3.2, HOME_SWAY = 1.2, HOME_PERIOD = 3, HOME_BLEND = 4;
+/** Gentle meanders and width variation are sampled in tiles, with short straight approaches to exits and falls. */
+const RIVER_PERIOD = 9, RIVER_PERIOD_SPREAD = 3, RIVER_SWAY = 2.8, RIVER_RIPPLE = 0.7, RIVER_RIPPLE_PERIOD = 5;
+const RIVER_WIDTH = 3, RIVER_WIDTH_SWAY = 0.65, RIVER_WIDTH_PERIOD = 8, RIVER_STRAIGHT = 2, RIVER_EDGE = 3;
+/** Flat river banks leave room for fields, then widen into curved upland terraces. */
+const RIVER_BANK = 4.2, VALLEY_FLOOR = 5, TERRACE_STEP = 8, RUGGED_STEP = 4.5, FALL_BLEND = 6;
+/** Basins need a flat shore and several tiles per step, rather than a thin ring of cliffs. */
+const BASIN_BANK = 3, BASIN_STEP = 3.5, BASIN_GAP = 4, BASIN_ATTEMPTS = 64, BASIN_STRETCH = 1.15, BASIN_HOME = 12;
+/** Two drifting waves bend ridge contours differently at each height. */
+const RIDGE_SWAY = 2.6, RIDGE_PERIOD = 6, RIDGE_DRIFT = 15, RIDGE_RIPPLE = 1.6, RIDGE_RIPPLE_PERIOD = 3.8, RIDGE_RIPPLE_DRIFT = 11;
 const LONG_CLIFF = 12, RAMP_GAP = 3, RUGGED = 0.8;
 const HILL_REACH = 24, HILL_BASE = 2, HILL_HEIGHT = 7, COUNTRY_TOP = 10;
 const VALLEY_INNER = 1.5, VALLEY_OUTER = 8, COUNTRY_RAMP_CHANCE = 0.04;
@@ -71,8 +82,6 @@ const ROCK_BIAS = 0.2, FOREST_BIAS = 0.08, FOREST_THICKEN = 0.012;
 const SOIL_HEIGHT = 9, SOIL_WATER = 10, SOIL_REACH = 2;
 const RIVER_FAST = 1.1, RIVER_SLOW = 0.6;
 const smoothstep = (a: number, b: number, v: number) => { const t = Math.min(1, Math.max(0, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
-
-interface Cell { x: number; y: number; w: number; h: number; level: number; water: boolean }
 
 export function generateLand(sc: Scenario, margin: number): Land {
   const { width: w, height: h, seed, terrain: t } = sc, r = mulberry32(seed);
@@ -85,195 +94,15 @@ export function generateLand(sc: Scenario, margin: number): Land {
   const inside = (x: number, y: number) => x >= -M && y >= -M && x < w + M && y < h + M;
   const depot = { x: Math.floor(w / 2 - 1 + (r() - 0.5) * w * 0.4), y: h - DEPOT_SIZE - 1 };
   const land: Land = { seed, margin: M, width: lw, height: lh, terrain, fertility, level, ramp, depot, flow, drop, track };
-  const distanceHome = (x: number, y: number) => Math.max(Math.abs(x - depot.x - 1), Math.abs(y - depot.y - 1));
   const top = Math.min(MAX_LEVEL, Math.ceil(t.relief * MAX_LEVEL));
 
-  // Broad cells give every terrace room for buildings, including at the map's edges. Their height follows a valley or a
-  // ridge, rather than independent tile noise. Water uses the same cells so it cannot leave one-tile strips of bank.
-  const nx = Math.max(1, Math.floor(w / CELL)), ny = Math.max(1, Math.floor(h / CELL));
-  const xs = Array.from({ length: nx + 1 }, (_, x) => Math.floor(x * w / nx));
-  const ys = Array.from({ length: ny + 1 }, (_, y) => Math.floor(y * h / ny));
-  const cells: Cell[] = [];
-  const eachNeighbour = (i: number, visit: (j: number) => void) => {
-    const x = i % nx, y = Math.floor(i / nx);
-    if (x > 0) visit(i - 1); if (x + 1 < nx) visit(i + 1);
-    if (y > 0) visit(i - nx); if (y + 1 < ny) visit(i + nx);
-  };
-  for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
-    const ridge = 1 - (y + 0.5) / ny + 0.12 * Math.sin(x * 0.55 + seed);
-    cells.push({ x: xs[x], y: ys[y], w: xs[x + 1] - xs[x], h: ys[y + 1] - ys[y], level: Math.max(0, Math.min(top, Math.round(top * ridge))), water: false });
+  const river = riverCourse(sc, depot, r);
+  const surface = generateRelief(sc, depot, river, r);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = idx(x, y), j = y * w + x;
+    terrain[i] = surface.terrain[j]; level[i] = surface.level[j]; ramp[i] = surface.ramp[j];
   }
-  const home = (c: Cell) => c.x <= depot.x + 1 + HOME && c.x + c.w > depot.x + 1 - HOME && c.y <= depot.y + 1 + HOME && c.y + c.h > depot.y + 1 - HOME;
-  const homeCells = cells.map((c, i) => home(c) ? i : -1).filter((i) => i >= 0);
-  const homeDistance = (i: number) => Math.min(...homeCells.map((j) => Math.abs(i % nx - j % nx) + Math.abs(Math.floor(i / nx) - Math.floor(j / nx))));
-  const clear = (c: Cell) => c.x <= depot.x + 1 + CLEARING && c.x + c.w > depot.x + 1 - CLEARING
-    && c.y <= depot.y + 1 + CLEARING && c.y + c.h > depot.y + 1 - CLEARING;
-
-  const vertical = r() < 0.5, sign = vertical || hash2(seed, 1, 77) < 0.5 ? 1 : -1;
-  const length = vertical ? ny : nx, breadth = vertical ? nx : ny;
-  const phase = r() * 6.28, period = 2 + r(), amp = 0.65 + r() * 0.3;
-  const centre = vertical ? (depot.x + 1 < w / 2 ? nx - 3 : 2) : Math.max(1, Math.floor(ny * 0.3));
-  const course = (a: number) => Math.max(0, Math.min(breadth - 1, centre + Math.sin(a / period + phase) * amp));
-  const falls = top === 0 ? [] : top === 1 ? [Math.round(length * 0.5)] : [Math.round(length * 0.34), Math.round(length * 0.68)];
-  const riverLevel = (a: number) => falls.length - falls.filter((f) => sign > 0 ? a >= f : a < f).length;
-  const riverCell = (a: number, b: number) => vertical ? a * nx + b : b * nx + a;
-  const basins: number[][] = [];
-  if (t.water === 'river') {
-    for (let a = 0; a < length; a++) {
-      const b = Math.round(course(a)), prev = Math.round(course(a - 1));
-      for (let c = Math.min(b, prev); c <= Math.max(b, prev); c++) cells[riverCell(a, c)].water = true;
-    }
-    const distance = new Array<number>(cells.length).fill(1e6), queue: number[] = [];
-    cells.forEach((c, i) => { if (c.water) { distance[i] = 0; queue.push(i); } });
-    for (let q = 0; q < queue.length; q++) eachNeighbour(queue[q], (j) => {
-      if (distance[j] > distance[queue[q]] + 1) { distance[j] = distance[queue[q]] + 1; queue.push(j); }
-    });
-    cells.forEach((c, i) => {
-      const a = vertical ? Math.floor(i / nx) : i % nx;
-      c.level = Math.min(top, riverLevel(a) + Math.floor(Math.max(0, distance[i] - (t.relief >= RUGGED ? 1 : 0)) / (t.relief >= RUGGED ? 1 : 2)));
-    });
-  } else if (t.water !== 'none') {
-    const n = t.water === 'lake' ? 1 : 3 + Math.floor(r() * 3);
-    for (let k = 0; k < n; k++) {
-      const cx = 1 + r() * (nx - 2), cy = 1 + r() * (ny * 0.65 - 1);
-      const rad = t.water === 'lake' ? 1.6 + r() * 0.4 : 0.55 + r() * 0.35;
-      let nearest = -1, distance = Infinity, filled = false;
-      cells.forEach((c, i) => {
-        if (clear(c)) return;
-        const d = Math.hypot(i % nx - cx, (Math.floor(i / nx) - cy) * 1.15);
-        if (d < distance) { nearest = i; distance = d; }
-        if (d < rad) { c.water = true; filled = true; }
-      });
-      if (!filled && nearest >= 0) cells[nearest].water = true;
-    }
-    const seen = new Set<number>();
-    cells.forEach((c, i) => {
-      if (!c.water || seen.has(i)) return;
-      const body = [i]; seen.add(i);
-      for (let q = 0; q < body.length; q++) eachNeighbour(body[q], (j) => { if (cells[j].water && !seen.has(j)) { seen.add(j); body.push(j); } });
-      basins.push(body);
-      const l = Math.max(0, Math.min(...body.map((j) => Math.min(cells[j].level, homeDistance(j) - 1))));
-      for (const j of body) { cells[j].level = l; eachNeighbour(j, (k) => { if (!cells[k].water) cells[k].level = l; }); }
-    });
-  }
-
-  // Lower the envelope to one step per cell, making a generous home terrace. Match banks to their water before
-  // relaxing the rest of the land.
-  cells.forEach((c, i) => {
-    if (c.water) eachNeighbour(i, (j) => { if (!cells[j].water) cells[j].level = Math.max(cells[j].level, c.level); });
-    if (home(c)) c.level = 0;
-  });
-  const queue = cells.map((_, i) => i);
-  const relax = () => {
-    for (let q = 0; q < queue.length; q++) eachNeighbour(queue[q], (j) => {
-      const limit = cells[queue[q]].level + 1;
-      if (cells[j].level > limit) { cells[j].level = limit; queue.push(j); }
-    });
-    queue.length = 0;
-  };
-  relax();
-  // Nearby basins can share a bank. Lower their surfaces together until every body and its banks fit the same envelope.
-  let changed = true;
-  while (changed && basins.length) {
-    changed = false;
-    for (const body of basins) {
-      let l = Math.min(...body.map((i) => cells[i].level));
-      for (const i of body) eachNeighbour(i, (j) => { l = Math.min(l, cells[j].level); });
-      for (const i of body) {
-        const lower = (j: number) => { if (cells[j].level > l) { cells[j].level = l; queue.push(j); changed = true; } };
-        lower(i); eachNeighbour(i, lower);
-      }
-    }
-    relax();
-  }
-  for (const c of cells) for (let y = c.y; y < c.y + c.h; y++) for (let x = c.x; x < c.x + c.w; x++) {
-    const i = idx(x, y); level[i] = c.level;
-    if (c.water) terrain[i] = TERRAIN.water;
-  }
-
-  // Flat regions are joined by a small number of ramps. A candidate must leave every flat land tile in a 2 × 2 square,
-  // and have flat land at both ends. Long shared boundaries get a second route, separated from the first.
-  const parent = cells.map((_, i) => i);
-  const root = (i: number): number => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
-  const union = (a: number, b: number) => { parent[root(a)] = root(b); };
-  cells.forEach((c, i) => { if (!c.water) eachNeighbour(i, (j) => { if (!cells[j].water && c.level === cells[j].level) union(i, j); }); });
-  interface Boundary { low: number; high: number; dir: number; length: number; key: string }
-  const boundaries: Boundary[] = [];
-  cells.forEach((c, i) => {
-    if (c.water) return;
-    eachNeighbour(i, (j) => {
-      if (cells[j].water || cells[j].level !== c.level + 1) return;
-      const dir = j === i - nx ? 0 : j === i + 1 ? 1 : j === i + nx ? 2 : 3;
-      boundaries.push({ low: i, high: j, dir, length: dir % 2 ? c.h : c.w, key: `${root(i)}:${root(j)}` });
-    });
-  });
-  const lengths = new Map<string, number>(), runs = new Map<string, number>(), placed: { x: number; y: number }[] = [];
-  for (const b of boundaries) lengths.set(b.key, (lengths.get(b.key) ?? 0) + b.length);
-  boundaries.sort((a, b) => hash2(a.low, a.high, seed + 81) - hash2(b.low, b.high, seed + 81));
-  const flatSquare = (x: number, y: number) => {
-    const l = level[idx(x, y)];
-    for (let oy = -1; oy <= 0; oy++) for (let ox = -1; ox <= 0; ox++) {
-      let ok = true;
-      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
-        const tx = x + ox + dx, ty = y + oy + dy, i = idx(tx, ty);
-        if (!onMap(tx, ty) || terrain[i] === TERRAIN.water || level[i] !== l || ramp[i] !== FLAT) ok = false;
-      }
-      if (ok) return true;
-    }
-    return false;
-  };
-  const place = (b: Boundary, space = RAMP_GAP) => {
-    const c = cells[b.low], [dx, dy] = SIDES[b.dir];
-    for (const n of (space === 1 ? [1, 2, 3] : [3, 2, 1])) for (const start of [...new Set([0, b.length - n, ...Array.from({ length: b.length - n + 1 }, (_, k) => k)])]) {
-      const tiles: { x: number; y: number }[] = [];
-      for (let k = start; k < start + n; k++) tiles.push({ x: b.dir % 2 ? (b.dir === 1 ? c.x + c.w - 1 : c.x) : c.x + k,
-        y: b.dir % 2 ? c.y + k : (b.dir === 2 ? c.y + c.h - 1 : c.y) });
-      if (tiles.some(({ x, y }) => distanceHome(x, y) <= 5 || placed.some((p) => Math.max(Math.abs(p.x - x), Math.abs(p.y - y)) < space
-          || (Math.abs(p.x - x) + Math.abs(p.y - y) === 1 && (ramp[idx(p.x, p.y)] % 2 ? p.y === y : p.x === x))
-          || (ramp[idx(p.x, p.y)] === b.dir && level[idx(p.x, p.y)] === c.level
-            && (b.dir % 2 ? p.x === x && Math.abs(p.y - y) <= 1 : p.y === y && Math.abs(p.x - x) <= 1)))
-        || [0, -1, 1].some((step) => { const i = idx(x + dx * step, y + dy * step); return terrain[i] === TERRAIN.water || ramp[i] !== FLAT || level[i] !== c.level + (step === 1 ? 1 : 0); }))) continue;
-      for (const { x, y } of tiles) ramp[idx(x, y)] = b.dir;
-      let ok = true;
-      const flat = (x: number, y: number) => ramp[idx(x, y)] === FLAT;
-      const visited = new Set<number>(), remaining: number[] = [];
-      for (let y = c.y; y < c.y + c.h; y++) for (let x = c.x; x < c.x + c.w; x++) if (flat(x, y)) remaining.push(idx(x, y));
-      const connected = remaining.slice(0, 1);
-      if (connected.length) visited.add(connected[0]);
-      for (let k = 0; k < connected.length; k++) {
-        const x = connected[k] % lw - M, y = Math.floor(connected[k] / lw) - M;
-        for (const [dx, dy] of SIDES) if (x + dx >= c.x && x + dx < c.x + c.w && y + dy >= c.y && y + dy < c.y + c.h) {
-          const i = idx(x + dx, y + dy);
-          if (ramp[i] === FLAT && !visited.has(i)) { visited.add(i); connected.push(i); }
-        }
-      }
-      if (visited.size !== remaining.length) ok = false;
-      eachNeighbour(b.low, (j) => {
-        const other = cells[j];
-        if (other.water || other.level !== c.level) return;
-        let open = false;
-        if (other.x !== c.x) {
-          const x = other.x < c.x ? c.x : c.x + c.w - 1, dx = other.x < c.x ? -1 : 1;
-          for (let y = c.y; y < c.y + c.h; y++) if (flat(x, y) && flat(x + dx, y)) open = true;
-        } else {
-          const y = other.y < c.y ? c.y : c.y + c.h - 1, dy = other.y < c.y ? -1 : 1;
-          for (let x = c.x; x < c.x + c.w; x++) if (flat(x, y) && flat(x, y + dy)) open = true;
-        }
-        if (!open) ok = false;
-      });
-      for (const { x, y } of tiles) for (let ty = y - 1; ty <= y + 1; ty++) for (let tx = x - 1; tx <= x + 1; tx++) {
-        if (onMap(tx, ty) && terrain[idx(tx, ty)] !== TERRAIN.water && ramp[idx(tx, ty)] === FLAT && !flatSquare(tx, ty)) ok = false;
-      }
-      if (ok) { placed.push(...tiles); runs.set(b.key, (runs.get(b.key) ?? 0) + 1); union(b.low, b.high); return true; }
-      for (const { x, y } of tiles) ramp[idx(x, y)] = FLAT;
-    }
-    return false;
-  };
-  for (const b of boundaries) if (root(b.low) !== root(b.high)) place(b);
-  for (const b of boundaries) if (root(b.low) !== root(b.high)) place(b, 1);
-  for (const b of boundaries) if ((lengths.get(b.key) ?? 0) > LONG_CLIFF && (runs.get(b.key) ?? 0) < 2) { if (!place(b)) place(b, 1); }
-
-  const country = countryside(sc, land, xs, ys, course, riverLevel, vertical, sign);
+  const country = countryside(sc, land, river);
 
   // Quantiles keep the requested shares despite the clearing. High ground and cliff edges favour rock and, more mildly,
   // trees. Ramps and the track stay grass; neither counts against a scatter's quota.
@@ -291,15 +120,346 @@ export function generateLand(sc: Scenario, margin: number): Land {
   return land;
 }
 
-function countryside(sc: Scenario, land: Land, xs: number[], ys: number[], course: (a: number) => number, riverLevel: (a: number) => number, vertical: boolean, sign: number) {
+type Surface = Pick<MapData, 'width' | 'height' | 'terrain' | 'level' | 'ramp' | 'depot'>;
+
+/** A tile-scale river; the same functions continue the channel into the drawing margin. */
+interface River {
+  vertical: boolean;
+  sign: number;
+  span: number;
+  falls: number[];
+  course: (a: number) => number;
+  bounds: (a: number) => { lo: number; hi: number };
+  level: (a: number) => number;
+}
+
+function riverCourse(sc: Scenario, depot: Land['depot'], r: () => number): River {
+  const { width: w, height: h, seed, terrain: t } = sc;
+  const vertical = r() < 0.5, sign = vertical || hash2(seed, 1, 77) < 0.5 ? 1 : -1;
+  const span = vertical ? h : w, breadth = vertical ? w : h;
+  const phase = r() * Math.PI * 2, period = RIVER_PERIOD + r() * RIVER_PERIOD_SPREAD;
+  const centre = vertical ? (depot.x + 1 < w / 2 ? w * 0.77 : w * 0.23) : h * 0.27;
+  // Keep short flat approaches at the map edge, then resume the same meander in the country beyond it.
+  const axis = (a: number) => {
+    const end = span - 1 - RIVER_STRAIGHT;
+    if (a < RIVER_STRAIGHT) return RIVER_STRAIGHT + Math.min(0, a + RIVER_STRAIGHT);
+    if (a > end) return end + Math.max(0, a - span + 1 - RIVER_STRAIGHT);
+    return a;
+  };
+  const course = (a: number) => {
+    a = axis(a);
+    return Math.max(RIVER_EDGE, Math.min(breadth - 1 - RIVER_EDGE, centre + RIVER_SWAY * Math.sin(a / period + phase) + RIVER_RIPPLE * Math.sin(a / RIVER_RIPPLE_PERIOD + phase)));
+  };
+  const top = Math.min(MAX_LEVEL, Math.ceil(t.relief * MAX_LEVEL));
+  const falls = top === 0 ? [] : top === 1 ? [Math.round(span * 0.5)] : [Math.round(span * 0.34), Math.round(span * 0.68)];
+  const level = (a: number) => falls.length - falls.filter((f) => sign > 0 ? a >= f : a < f).length;
+  const rawBounds = (a: number) => {
+    const fall = falls.find((f) => Math.abs(a - f) <= RIVER_STRAIGHT);
+    if (fall !== undefined) a = fall;
+    const width = RIVER_WIDTH + RIVER_WIDTH_SWAY * Math.sin(axis(a) / RIVER_WIDTH_PERIOD + phase);
+    return { lo: Math.ceil(course(a) - width / 2), hi: Math.floor(course(a) + width / 2) };
+  };
+  // A median removes one-row notches in either bank while preserving the 2–4-tile channel width.
+  const bounds = (a: number) => {
+    const left = rawBounds(a - 1), middle = rawBounds(a), right = rawBounds(a + 1);
+    const median = (a: number, b: number, c: number) => Math.max(Math.min(a, b), Math.min(Math.max(a, b), c));
+    return { lo: median(left.lo, middle.lo, right.lo), hi: median(left.hi, middle.hi, right.hi) };
+  };
+  return { vertical, sign, span, falls, course, bounds, level };
+}
+
+/** Smooth contours give the steps their outlines; cleanup leaves room for buildings at every bend and shore. */
+function generateRelief(sc: Scenario, depot: Land['depot'], river: River, r: () => number): Surface {
+  const { width: w, height: h, seed, terrain: t } = sc;
+  const terrain = new Array<TerrainKind>(w * h).fill(TERRAIN.grass), level = new Array<number>(w * h).fill(0);
+  const ramp = new Array<number>(w * h).fill(FLAT), surface: Surface = { width: w, height: h, terrain, level, ramp, depot };
+  const idx = (x: number, y: number) => y * w + x;
+  const top = Math.min(MAX_LEVEL, Math.ceil(t.relief * MAX_LEVEL));
+  const fixed = new Uint8Array(w * h), minimum = new Uint8Array(w * h);
+  const home = (x: number, y: number) => Math.hypot((x - depot.x - 1) / HOME_STRETCH, y - depot.y - 1);
+  const desired = new Float64Array(w * h);
+  const slices = Array.from({ length: river.span }, (_, a) => ({ ...river.bounds(a), centre: river.course(a), level: river.level(a) }));
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = idx(x, y), a = river.vertical ? y : x, b = river.vertical ? x : y;
+    const bend = RIDGE_SWAY * Math.sin(x / RIDGE_PERIOD + seed + y / RIDGE_DRIFT)
+      + RIDGE_RIPPLE * Math.sin(x / RIDGE_RIPPLE_PERIOD + seed * 0.3 - y / RIDGE_RIPPLE_DRIFT);
+    let height = top * (1 - (y + 0.5 - bend) / h);
+    if (t.water === 'river') {
+      const slice = slices[a], distance = Math.abs(b - slice.centre);
+      const rise = Math.max(0, distance - VALLEY_FLOOR + 3 * (noise2(a / 10, b / 10, seed + 61) - 0.5)) / (t.relief >= RUGGED ? RUGGED_STEP : TERRACE_STEP);
+      height = rise;
+      for (const fall of river.falls) height += 1 - smoothstep(-FALL_BLEND, FALL_BLEND, river.sign * (a - fall) + Math.max(0, distance - 4) * 0.45 * Math.sin(b / 7 + seed));
+      if (b >= slice.lo && b <= slice.hi) { terrain[i] = TERRAIN.water; fixed[i] = 1; }
+      if (distance < RIVER_BANK) height = river.level(a);
+      height = Math.max(river.level(a), height);
+    }
+    // An oval clearing contains the required square but rounds the home terrace's outline further out.
+    const distance = home(x, y), homeBend = HOME_SWAY * Math.sin(x / HOME_PERIOD + seed) * smoothstep(HOME_OVAL, HOME_OVAL + HOME_BLEND, distance);
+    height = Math.min(height, Math.max(0, (distance - HOME_OVAL + homeBend) / HOME_STEP));
+    desired[i] = height;
+    level[i] = Math.max(0, Math.min(top, Math.round(height)));
+    if (terrain[i] === TERRAIN.water) level[i] = river.level(a);
+    if (Math.max(Math.abs(x - depot.x - 1), Math.abs(y - depot.y - 1)) <= HOME) { fixed[i] = 1; level[i] = 0; }
+  }
+
+  cutBasins(sc, surface, r, home);
+  settleWater(surface, t.water === 'river', fixed, minimum);
+  mergeNarrowTerraces(surface, fixed, minimum);
+  tidyTerraces(surface, fixed, minimum, desired);
+  mergeNarrowTerraces(surface, fixed, minimum);
+  connectTerraces(sc, surface);
+  return surface;
+}
+
+/** Still water is cut from ellipses, with a flat bank and broad terraces around each basin. */
+function cutBasins(sc: Scenario, surface: Surface, r: () => number, home: (x: number, y: number) => number) {
+  const { width: w, height: h, terrain, level } = surface, t = sc.terrain;
+  const top = Math.min(MAX_LEVEL, Math.ceil(t.relief * MAX_LEVEL)), idx = (x: number, y: number) => y * w + x;
+  const basinHeight = (l: number, distance: number, radius: number) => l + Math.round(Math.max(0, distance - radius - BASIN_BANK) / BASIN_STEP);
+  if (t.water !== 'river' && t.water !== 'none') {
+    // Keep one broad summit: several overlapping basin envelopes must not erase the scenario's relief range.
+    const summit: { x: number; y: number }[] = [];
+    for (let y = 0; y <= h - 3 && !summit.length; y++) for (let x = 0; x <= w - 3; x++) {
+      if (level[idx(x, y)] !== top || !landSquare(surface, x, y, 3)) continue;
+      for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 3; dx++) summit.push({ x: x + dx, y: y + dy });
+      break;
+    }
+    const basinAt = (cx: number, cy: number, radius: number) => {
+      let l = top;
+      for (let y = Math.max(0, Math.floor(cy - radius)); y <= Math.min(h - 1, cy + radius); y++) {
+        for (let x = Math.max(0, Math.floor(cx - radius)); x <= Math.min(w - 1, cx + radius); x++) {
+          if (Math.hypot(x - cx, (y - cy) * BASIN_STRETCH) < radius) l = Math.min(l, level[idx(x, y)]);
+        }
+      }
+      return l;
+    };
+    const n = t.water === 'lake' ? 1 : 3 + Math.floor(r() * 3);
+    const ponds: { x: number; y: number; radius: number }[] = [];
+    for (let k = 0; k < n; k++) {
+      const radius = t.water === 'lake' ? 6 + r() * 2 : 2 + r() * 1.3;
+      let cx = 0, cy = 0, basin = 0, fits = false;
+      for (let attempt = 0; attempt < BASIN_ATTEMPTS; attempt++) {
+        cx = radius + BASIN_BANK + r() * (w - 2 * (radius + BASIN_BANK)); cy = radius + BASIN_BANK + r() * (h * 0.7 - 2 * (radius + BASIN_BANK));
+        if (home(cx, cy) <= BASIN_HOME + radius || ponds.some((p) => Math.hypot(cx - p.x, (cy - p.y) * BASIN_STRETCH) <= radius + p.radius + BASIN_GAP)) continue;
+        // Ponds share a valley datum, so nearby shelves can overlap without making thin terraces between their levels.
+        const floor = basinAt(cx, cy, radius + BASIN_BANK);
+        basin = t.water === 'ponds' ? Math.max(0, Math.min(1, top - 1)) : floor;
+        if (floor < basin) continue;
+        const keepsSummit = summit.every((p) => basinHeight(basin, Math.hypot(p.x - cx, (p.y - cy) * BASIN_STRETCH), radius) >= top);
+        if (keepsSummit) { fits = true; break; }
+      }
+      if (!fits) continue;
+      ponds.push({ x: cx, y: cy, radius });
+      const water: number[] = [];
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const distance = Math.hypot(x - cx, (y - cy) * BASIN_STRETCH), i = idx(x, y);
+        level[i] = Math.min(level[i], basinHeight(basin, distance, radius));
+        if (distance < radius) water.push(i);
+      }
+      // A tiny disc can rasterise as a rectangle. Use its actual tile bounds to cut the four corners.
+      const xs = water.map((i) => i % w), ys = water.map((i) => Math.floor(i / w));
+      const west = Math.min(...xs), east = Math.max(...xs), north = Math.min(...ys), south = Math.max(...ys);
+      for (const i of water) {
+        const x = i % w, y = Math.floor(i / w);
+        if ((x === west || x === east) && (y === north || y === south)) continue;
+        terrain[i] = TERRAIN.water; level[i] = basin;
+      }
+    }
+  }
+}
+
+/** Settle each still surface and protect the water and home while limiting every neighbouring step to one level. */
+function settleWater(surface: Surface, river: boolean, fixed: Uint8Array, minimum: Uint8Array) {
+  const { width: w, height: h, terrain, level } = surface;
+  const waterBodies = regions(surface, true).groups;
+  for (const body of waterBodies) {
+    if (!river) {
+      let l = MAX_LEVEL;
+      for (const i of body) { l = Math.min(l, level[i]); neighbours(surface, i, (j) => { l = Math.min(l, level[j]); }); }
+      // Protect the shores too: later corner cleanup must not lift them out of watering reach.
+      for (const i of body) {
+        level[i] = l;
+        neighbours(surface, i, (j) => { if (!fixed[j]) level[j] = l; fixed[j] = 1; });
+      }
+    }
+    for (const i of body) {
+      fixed[i] = 1;
+      neighbours(surface, i, (j) => { if (terrain[j] !== TERRAIN.water) { minimum[j] = Math.max(minimum[j], level[i]); level[j] = Math.max(level[j], minimum[j]); } });
+    }
+  }
+  const queue = Array.from({ length: w * h }, (_, i) => i);
+  for (let k = 0; k < queue.length; k++) neighbours(surface, queue[k], (j) => {
+    if (level[j] > level[queue[k]] + 1 && !fixed[j]) { level[j] = level[queue[k]] + 1; queue.push(j); }
+  });
+}
+
+/** Only map tiles take part in cleanup and ramp placement; the drawing margin cannot change these regions. */
+function neighbours(m: Surface, i: number, visit: (j: number, dir: number) => void) {
+  const x = i % m.width, y = Math.floor(i / m.width);
+  if (y > 0) visit(i - m.width, 0); if (x + 1 < m.width) visit(i + 1, 1);
+  if (y + 1 < m.height) visit(i + m.width, 2); if (x > 0) visit(i - 1, 3);
+}
+
+function regions(m: Surface, water: boolean) {
+  const labels = new Int32Array(m.width * m.height).fill(-1), groups: number[][] = [];
+  for (let i = 0; i < labels.length; i++) {
+    if (labels[i] >= 0 || (m.terrain[i] === TERRAIN.water) !== water) continue;
+    const q = [i], id = groups.length; labels[i] = id;
+    for (let k = 0; k < q.length; k++) neighbours(m, q[k], (j) => {
+      if (labels[j] < 0 && (m.terrain[j] === TERRAIN.water) === water && (water || m.level[j] === m.level[i])) {
+        labels[j] = id; q.push(j);
+      }
+    });
+    groups.push(q);
+  }
+  return { labels, groups };
+}
+
+function landSquare(m: Surface, x: number, y: number, n: number) {
+  if (x < 0 || y < 0 || x + n > m.width || y + n > m.height) return false;
+  const l = m.level[y * m.width + x];
+  for (let dy = 0; dy < n; dy++) for (let dx = 0; dx < n; dx++) {
+    const i = (y + dy) * m.width + x + dx;
+    if (m.terrain[i] === TERRAIN.water || m.ramp[i] !== FLAT || m.level[i] !== l) return false;
+  }
+  return true;
+}
+
+const covered = (m: Surface, x: number, y: number) => {
+  for (let oy = -1; oy <= 0; oy++) for (let ox = -1; ox <= 0; ox++) if (landSquare(m, x + ox, y + oy, 2)) return true;
+  return false;
+};
+
+/** Merge terraces without a 3×3 field site; these narrow pockets cannot spare tiles for a ramp and flat landings. */
+function mergeNarrowTerraces(m: Surface, fixed: Uint8Array, minimum: Uint8Array) {
+  const { width: w, level } = m;
+  for (const body of regions(m, false).groups) {
+    if (body.some((i) => fixed[i] || landSquare(m, i % w, Math.floor(i / w), 3))) continue;
+    const members = new Set(body), heights = new Set<number>();
+    for (const i of body) neighbours(m, i, (j) => { if (level[j] !== level[i]) heights.add(level[j]); });
+    for (const l of heights) {
+      const fits = body.every((i) => {
+        let ok = l >= minimum[i];
+        neighbours(m, i, (j) => { if (!members.has(j) && Math.abs(l - level[j]) > 1) ok = false; });
+        return ok;
+      });
+      if (fits) { for (const i of body) level[i] = l; break; }
+    }
+  }
+}
+
+/** Repair unsupported corners with small squares, preserving water, home and the one-level envelope. */
+function tidyTerraces(surface: Surface, fixed: Uint8Array, minimum: Uint8Array, desired: Float64Array) {
+  const { width: w, height: h, terrain, level } = surface;
+  const idx = (x: number, y: number) => y * w + x;
+  const onMap = (x: number, y: number) => x >= 0 && x < w && y >= 0 && y < h;
+  const bad = (x: number, y: number) => onMap(x, y) && terrain[idx(x, y)] !== TERRAIN.water && !covered(surface, x, y);
+  // First reduce the sliver count strictly. At a stubborn bank corner, raising can move a sliver towards broader land;
+  // this second phase never lowers tiles, so even equal-count repairs terminate as the integer height sum increases.
+  let raising = false;
+  for (;;) {
+    let changes = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (!bad(x, y)) continue;
+      let best: { ids: number[]; height: number; removed: number; cost: number } | undefined;
+      for (const n of [2, 3]) for (let oy = 1 - n; oy <= 0; oy++) for (let ox = 1 - n; ox <= 0; ox++) {
+        const sx = x + ox, sy = y + oy;
+        if (!onMap(sx, sy) || !onMap(sx + n - 1, sy + n - 1)) continue;
+        const ids = Array.from({ length: n * n }, (_, k) => idx(sx + k % n, sy + Math.floor(k / n)));
+        if (ids.some((i) => terrain[i] === TERRAIN.water)) continue;
+        const old = ids.map((i) => level[i]);
+        for (const l of new Set(old)) {
+          if (raising && (old.some((v) => v > l) || old.every((v) => v === l))) continue;
+          if (ids.some((i) => (fixed[i] && level[i] !== l) || minimum[i] > l)) continue;
+          let before = 0, after = 0, valid = true, cost = 0;
+          for (let ty = sy - 1; ty <= sy + n; ty++) for (let tx = sx - 1; tx <= sx + n; tx++) if (bad(tx, ty)) before++;
+          ids.forEach((i) => { level[i] = l; cost += Math.abs(desired[i] - l); });
+          for (let ty = sy - 1; ty <= sy + n; ty++) for (let tx = sx - 1; tx <= sx + n; tx++) if (bad(tx, ty)) after++;
+          for (const i of ids) {
+            const x = i % w, y = Math.floor(i / w);
+            for (const [dx, dy] of SIDES) if (onMap(x + dx, y + dy) && Math.abs(level[idx(x + dx, y + dy)] - l) > 1) valid = false;
+          }
+          ids.forEach((i, k) => { level[i] = old[k]; });
+          // Prefer fewer slivers, then a small edit close to the original height field.
+          const removed = before - after; cost += n;
+          if (valid && (removed > 0 || (raising && removed === 0))
+            && (!best || removed > best.removed || (removed === best.removed && cost < best.cost))) best = { ids, height: l, removed, cost };
+        }
+      }
+      if (best) { for (const i of best.ids) level[i] = best.height; changes++; }
+    }
+    if (!changes) { if (raising) break; raising = true; }
+  }
+}
+
+/** Join the flat terraces without cutting their necks or leaving unsupported tiles beside a ramp. */
+function connectTerraces(sc: Scenario, surface: Surface) {
+  const { seed } = sc, { width: w, height: h, level, ramp, depot } = surface;
+  const { labels, groups } = regions(surface, false);
+  // Join components first; then add a second separated route along each long shared cliff.
+  const parent = groups.map((_, i) => i);
+  const root = (i: number): number => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+  interface Boundary { low: number; high: number; dir: number; key: string }
+  const boundaries: Boundary[] = [], lengths = new Map<string, number>(), runs = new Map<string, number>();
+  for (let i = 0; i < w * h; i++) if (labels[i] >= 0) neighbours(surface, i, (j, d) => {
+    if (labels[j] < 0 || level[j] !== level[i] + 1) return;
+    const key = `${labels[i]}:${labels[j]}`;
+    boundaries.push({ low: i, high: j, dir: d, key }); lengths.set(key, (lengths.get(key) ?? 0) + 1);
+  });
+  boundaries.sort((a, b) => hash2(a.low, a.high, seed + 81) - hash2(b.low, b.high, seed + 81));
+  const placed: number[] = [];
+  const place = (b: Boundary, gap: number, n: number) => {
+    const [dx, dy] = SIDES[b.dir], step = dy * w + dx, cross = b.dir % 2 ? w : 1;
+    for (let offset = 0; offset < n; offset++) {
+      const tiles = Array.from({ length: n }, (_, k) => b.low + (k - offset) * cross);
+      if (tiles.some((i) => {
+        const x = i % w, y = Math.floor(i / w);
+        return x < 0 || x >= w || y < 0 || y >= h || x - dx < 0 || x - dx >= w || x + dx < 0 || x + dx >= w
+          || y - dy < 0 || y - dy >= h || y + dy < 0 || y + dy >= h || (b.dir % 2 ? x !== b.low % w : y !== Math.floor(b.low / w))
+          || labels[i] !== labels[b.low] || labels[i + step] !== labels[b.high] || labels[i - step] !== labels[b.low]
+          || Math.max(Math.abs(x - depot.x - 1), Math.abs(y - depot.y - 1)) <= HOME
+          || [i - step, i, i + step].some((j) => ramp[j] !== FLAT)
+          || placed.some((j) => Math.max(Math.abs(j % w - x), Math.abs(Math.floor(j / w) - y)) < gap);
+      })) continue;
+      tiles.forEach((i) => { ramp[i] = b.dir; });
+      let ok = true;
+      const affected = new Set<number>();
+      for (const i of tiles) {
+        affected.add(i); neighbours(surface, i, (j) => { affected.add(j); neighbours(surface, j, (k) => affected.add(k)); });
+      }
+      for (const i of affected) if (labels[i] >= 0 && ramp[i] === FLAT && !covered(surface, i % w, Math.floor(i / w))) ok = false;
+      // A ramp must not cut a narrow flat neck into disconnected pieces.
+      const remaining = groups[labels[b.low]].filter((i) => ramp[i] === FLAT), visited = new Set<number>(), q = remaining.slice(0, 1);
+      if (q.length) visited.add(q[0]);
+      for (let k = 0; k < q.length; k++) neighbours(surface, q[k], (j) => {
+        if (labels[j] === labels[b.low] && ramp[j] === FLAT && !visited.has(j)) { visited.add(j); q.push(j); }
+      });
+      if (visited.size !== remaining.length) ok = false;
+      if (ok) {
+        placed.push(...tiles); parent[root(labels[b.low])] = root(labels[b.high]); runs.set(b.key, (runs.get(b.key) ?? 0) + 1); return true;
+      }
+      tiles.forEach((i) => { ramp[i] = FLAT; });
+    }
+    return false;
+  };
+  // Try wide runs across all candidates before accepting a narrow one.
+  for (const gap of [RAMP_GAP, 2]) for (const n of [3, 2, 1]) for (const b of boundaries) {
+    if (root(labels[b.low]) !== root(labels[b.high])) place(b, gap, n);
+  }
+  for (const n of [3, 2, 1]) for (const b of boundaries) {
+    if ((lengths.get(b.key) ?? 0) > LONG_CLIFF && (runs.get(b.key) ?? 0) < 2) place(b, 2, n);
+  }
+}
+
+function countryside(sc: Scenario, land: Land, channel: River) {
   const { width: w, height: h, seed, terrain: t } = sc;
   const { margin: M, width: lw, height: lh, terrain, level, ramp, depot, track, flow, drop } = land, size = lw * lh;
-  const nx = xs.length - 1, ny = ys.length - 1;
+  const { vertical, sign, course, bounds, level: riverLevel } = channel;
   const idx = (x: number, y: number) => (y + M) * lw + x + M;
   const onMap = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h;
   const inside = (x: number, y: number) => x >= -M && y >= -M && x < w + M && y < h + M;
   const beyond = (x: number, y: number) => Math.hypot(Math.max(0, -x, x - w + 1), Math.max(0, -y, y - h + 1));
-  // The country continues the map's cells, opening into valleys by the river and the winding track. The track rises on
+  // The country continues the map's edge heights, opening into valleys by the river and the winding track. The track rises on
   // straight sections, with flat ground at each end of a ramp; both valleys disappear beneath the level rim.
   const bendHash = Math.sin(seed * 127.1 + 3 * 311.7) * 43758.5453;
   const bend = bendHash - Math.floor(bendHash) < 0.5 ? -1 : 1;
@@ -315,7 +475,6 @@ function countryside(sc: Scenario, land: Land, xs: number[], ys: number[], cours
   let roadLevel = 0;
   for (let y = h; y < h + M; y++) { roadLevels[y + M] = roadLevel; if (roadRamps.has(y)) roadLevel++; }
   const rim = (x: number, y: number) => Math.min(x + M, y + M, w + M - 1 - x, h + M - 1 - y);
-  const cellAt = (v: number, span: number, n: number) => v < 0 ? Math.floor(v / CELL) : v >= span ? n + Math.floor((v - span) / CELL) : Math.ceil((v + 1) * n / span) - 1;
   const away = new Float32Array(size), gx = Math.floor(-M / CELL), gy = Math.floor(-M / CELL);
   const gw = Math.floor((w + M - 1) / CELL) - gx + 1, gh = Math.floor((h + M - 1) / CELL) - gy + 1;
   const hillNoise = new Float32Array(gw * gh), soilNoise = new Float32Array(gw * gh);
@@ -323,12 +482,11 @@ function countryside(sc: Scenario, land: Land, xs: number[], ys: number[], cours
     hillNoise[y * gw + x] = noise2((x + gx) / 3, (y + gy) / 3, seed + 71);
     soilNoise[y * gw + x] = fbm2((x + gx) * CELL / 9, (y + gy) * CELL / 9, seed + 51, 3);
   }
-  const riverSpan = vertical ? h : w, riverN = vertical ? ny : nx, cross = vertical ? xs : ys;
+  const riverSpan = vertical ? h : w;
   const river = Array.from({ length: riverSpan + M * 2 }, (_, i) => {
-    const a = cellAt(i - M, riverSpan, riverN), b = Math.round(course(a)), prev = Math.round(course(a - 1));
-    const along = (i - M) / (riverSpan / riverN), db = (course(along + 0.1) - course(along - 0.1)) * 5, n = Math.hypot(db, 1);
-    const speed = RIVER_SLOW + (RIVER_FAST - RIVER_SLOW) * noise2(along / 3, 1, seed + 6);
-    return { lo: cross[Math.min(b, prev)], hi: cross[Math.max(b, prev) + 1] - 1, level: riverLevel(a), along: sign * speed / n, across: sign * speed * db / n };
+    const a = i - M, db = (course(a + 0.1) - course(a - 0.1)) * 5, n = Math.hypot(db, 1);
+    const speed = RIVER_SLOW + (RIVER_FAST - RIVER_SLOW) * noise2(a / 12, 1, seed + 6);
+    return { ...bounds(a), level: riverLevel(a), along: sign * speed / n, across: sign * speed * db / n };
   });
   for (let y = -M; y < h + M; y++) for (let x = -M; x < w + M; x++) {
     if (onMap(x, y)) continue;
