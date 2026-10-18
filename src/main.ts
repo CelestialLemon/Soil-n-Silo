@@ -34,6 +34,7 @@ import { RouteView } from './world/routeView.ts';
 import { Camera } from './world/camera.ts';
 import { CURSOR_GRID, TileCursor, type CursorPatch } from './world/tileCursor.ts';
 import { buildWorld, COUNTRY } from './world/terrain.ts';
+import { DETAIL_COLOURS, GroundDetail } from './world/detail.ts';
 import { Lie, LEVEL_HEIGHT, MapGround, standY } from './world/ground.ts';
 import { WorldView, type Overlay } from './world/view.ts';
 import { SOIL } from './world/shapes.ts';
@@ -114,10 +115,11 @@ async function play(initial: GameState) {
   const map = state.map;
   const models = await loadModels();
   const land = generateLand(state.scenario, COUNTRY);
-  const lie = new Lie(state, land), world = buildWorld(map, land, lie, models), ground = new MapGround(state, land, lie, world.halo, SOIL);
+  const lie = new Lie(state, land), world = buildWorld(map, land, lie, models), ground = new MapGround(state, land, lie, world.halo, [...SOIL, ...DETAIL_COLOURS, ...DETAIL_COLOURS.map(world.halo.tone)]);
   quantizePalette([...world.geometries, ...ground.geometries, ...allGeometries(models)], 160);
   const renderer = new PixelRenderer(canvas, world.scene, { shadowMapSize: 2048, warmHighlight: true });
   ground.show(renderer);
+  const detail = new GroundDetail(renderer, state, land, lie, ground, world.halo.tone);
   /** The ground's height (m) at a point of the map, for picking a tile; nothing on the map stands above TOP. */
   const groundAt = (x: number, z: number) => lie.y(x, z), TOP = (MAX_LEVEL + 1) * LEVEL_HEIGHT;
   /** The same for picking: no ground off the map, so a line of sight from beyond meets the map's edge, or its cliff. */
@@ -642,6 +644,7 @@ async function play(initial: GameState) {
     ground.sync();
     // The grid and the contour lines show while building or doing earthworks.
     ground.showLines(tool.kind === 'build' || tool.kind === 'earth');
+    detail.sync();
     view.sync(state);
     toolOverlay = 'none';
     if (input.pointer && frameNo % REPICK_FRAMES === 0) repick = Math.max(repick, 1);
@@ -651,6 +654,8 @@ async function play(initial: GameState) {
     if (toolOverlay === 'none' && tool.kind === 'route') toolOverlay = 'roads';
     const shownOverlay = overlay !== 'none' ? overlay : toolOverlay;
     view.overlay(state, shownOverlay);
+    // The small things in the grass stand aside for the ground's lines and the overlays.
+    detail.show(shownOverlay === 'none' && tool.kind !== 'build' && tool.kind !== 'earth');
     const focus = selected ?? (tool.kind === 'select' ? hoverBuilding : null);
     const shown = shownRoutes(focus, shownOverlay === 'roads');
     view.links(linkedTo(focus));

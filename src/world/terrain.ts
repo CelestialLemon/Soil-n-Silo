@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FLAG, FLUIDS, FluidCollector, GeometryCollector, linearColor as lin, motion, place, type PixelScene } from 'pixel3d-renderer';
+import { FLAG, FLUIDS, FluidCollector, GeometryCollector, linearColor as lin, place, type PixelScene } from 'pixel3d-renderer';
 import { TERRAIN, type Land, type MapData } from '../game/map.ts';
 import { baseLevel, joins, SIDES } from '../game/relief.ts';
 import { cliff, geography, grassOf, isBank, landRelief, LEVEL_HEIGHT, top, Tris, type Halo, type Lie } from './ground.ts';
@@ -39,7 +39,7 @@ type Fluid = typeof RIVER;
 /** The water's surface below the level it lies at (its banks' top), and how deep the water is. */
 const WATER_Y = -0.12, DEPTH = 0.3;
 
-const PLANE = new THREE.PlaneGeometry(1, 1), STONE = new THREE.IcosahedronGeometry(1, 0), STEM = new THREE.BoxGeometry(1, 1, 1);
+const PLANE = new THREE.PlaneGeometry(1, 1), STONE = new THREE.IcosahedronGeometry(1, 0);
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
 const smoothstep = (a: number, b: number, v: number) => { const t = Math.min(1, Math.max(0, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
 const H = LEVEL_HEIGHT;
@@ -178,16 +178,6 @@ export function buildWorld(map: MapData, land: Land, lie: Lie, models: { trees: 
       const n = hash(y, x), ox = (n - 0.5) * 0.4, oz = (hash(x + 9, y) - 0.5) * 0.4;
       s.add(STONE, place(cx + ox, surf - 0.04, cz + oz, n, n * 5, 0, 0.26, 0.17, 0.22), lin(tone(BOULDER)), FLAG.NORMAL, true);
     }
-  }
-
-  // Flowers swaying in the meadow just beyond the edge.
-  for (let k = 0, tries = 0; k < 160 && tries < 4000; tries++) {
-    const x = Math.floor(-10 + hash(tries, 7) * (w + 20)), y = Math.floor(-10 + hash(tries, 9) * (h + 20));
-    if (!onLand(x, y) || lie.withMap(x + M, y + M) || kind(x, y) !== TERRAIN.grass || track(x, y)) continue;
-    const fx = x + hash(x, tries), fz = y + hash(tries, y), fy = gy(fx, fz);
-    d.add(STEM, place(fx, fy + 0.13, fz, 0, 0, 0, 0.04, 0.26, 0.04), lin(dim(0x4a7a2a)), FLAG.NORMAL, false, motion.sway(fx, fz, 0, 0.3));
-    d.add(STEM, place(fx, fy + 0.29, fz, 0, 0, 0, 0.11, 0.08, 0.11), lin(dim([0xe05a7a, 0xf0d050, 0xa070e0, 0xf6f2ea][k % 4])), FLAG.NORMAL, false, motion.sway(fx, fz, 0, 0.3));
-    k++;
   }
 
   const staticGeometry = s.build(), dynamicGeometry = d.build();
