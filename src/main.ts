@@ -650,8 +650,10 @@ async function play(initial: GameState) {
     if (input.pointer && frameNo % REPICK_FRAMES === 0) repick = Math.max(repick, 1);
     if (repick > 0) { repick--; pickHover(); }
     showGhosts();
-    // Editing a route shows the roads.
+    // Editing a route shows the roads; building shows the height under the contour lines, unless the building in hand has
+    // a view of its own.
     if (toolOverlay === 'none' && tool.kind === 'route') toolOverlay = 'roads';
+    if (toolOverlay === 'none' && tool.kind === 'build') toolOverlay = 'height';
     const shownOverlay = overlay !== 'none' ? overlay : toolOverlay;
     view.overlay(state, shownOverlay);
     // The small things in the grass stand aside for the ground's lines and the overlays.

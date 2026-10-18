@@ -90,6 +90,8 @@ The build preview is see-through, green where it fits and red where it doesn't.
 - The placement card shows Earthworks (levelling cost, level and steps), Slope (sloping tiles and soil wear), sprinkler
   watts and lift, the extra wind up high and a wheel's current and fall.
 - The Height view tints land by centre height in blended bands of 3 levels, with steep banks darker. Cliff faces show the breaks.
+  It shows while building and doing earthworks, under the grid and contour lines, unless the building in hand has a view of
+  its own (silos the roads, sprinklers the water, hives the bees, anything that makes, stores or uses power the power).
 - The roads overlay shows the open ground trucks can drive on, and the buildings they can't reach.
 - The inspector keeps each building's history over the last 1, 5 or 10 minutes of play (5 by default, the choice kept from
   building to building), so a problem noticed late can be traced: a ribbon of its statuses in time (problems hatched, so they
