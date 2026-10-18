@@ -220,6 +220,8 @@ const shaded = new Map<number, number>();
 const light = (n: Vec) => SHADE_GAIN * (n[0] * SHADE_LIGHT[0] + n[1] * SHADE_LIGHT[1] + n[2] * SHADE_LIGHT[2] - SHADE_LIGHT[1]) / SHADE_STEP;
 /** A colour lit by the hillshade `k` whole steps (`light`, rounded), at most SHADE_STEPS either way. */
 const hillshade = (hex: number, k: number) => { k = Math.max(-SHADE_STEPS, Math.min(SHADE_STEPS, k)); return k === 0 ? hex : shadeStep(hex, k); };
+/** A tuft of grass on turf `hex` where the hillshade lights it `s` (`light`): a step darker than the turf round it. */
+export const tuftOf = (hex: number, s: number) => hillshade(hex, Math.min(SHADE_STEPS, Math.round(s)) - 1);
 function shadeStep(hex: number, k: number): number {
   const key = hex * 16 + k + SHADE_STEPS;
   let out = shaded.get(key);
@@ -600,7 +602,7 @@ export class MapGround {
     this.s = s; this.land = land; this.lie = lie; this.halo = halo;
     this.across = s.map.width + 2 * HALO; this.down = s.map.height + 2 * HALO; this.cols = Math.ceil(this.across / CHUNK);
     this.dry = geography(land, lie.relief);
-    const country = [...allShades([...new Set(halo.colour.values())]), ...[...EARTH, ...STONE, LIP].map(halo.tone)];
+    const country = [...allShades([...new Set([...halo.colour.values(), ...[...GRASS, BANK].map(halo.tone)])]), ...[...EARTH, ...STONE, LIP].map(halo.tone)];
     this.colours = [...new Set([...PALETTE, ...country, ...extra])];
     const sw = new Tris();
     this.colours.forEach((c, i) => sw.tri([i, -50, 0], [i + 1, -50, 0], [i, -50, 1], c, [0, 1, 0]));
@@ -625,6 +627,9 @@ export class MapGround {
     for (const g of this.first) this.chunks.push(g && this.add(g));
     this.first.length = 0;
   }
+
+  /** How dry each land tile lies by where it lies (`geography`), as the ground is drawn now. */
+  get dryness(): Float32Array { return this.dry; }
 
   /** Shows or hides the grid and contour lines over the map's ground. */
   showLines(on: boolean) {

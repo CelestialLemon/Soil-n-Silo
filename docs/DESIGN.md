@@ -228,6 +228,12 @@ its bands run in clean curves. Steep banks are worn turf. Cliff faces have strat
 low down and stone from level 8. The map's ground and 3 tiles of country round it are drawn as objects in 8 × 8 chunks, so
 earthworks can fit again and redraw the ground round them (`src/world/ground.ts`); the country beyond is static.
 
+Small things stand in the grass for life: tufts, a few wildflowers (cream, lilac in patches) and small stones
+(`src/world/detail.ts`). They are decoration only: no rule counts them, and they never stand on water, buildings, fields,
+worked ground, trees or rock, nor over a cliff's edge. Their places are fixed by the land (one possible spot a metre
+square, kept apart), with fewer flowers and more stones on drier ground and fewer of all on steep ground; they follow
+earthworks, and hide while an overlay or the build and earthworks tools show. They reach 12 tiles into the country.
+
 ## Goods
 
 | Good | From | Used by | Pays |
