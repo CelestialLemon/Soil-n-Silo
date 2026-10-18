@@ -255,13 +255,6 @@ export function bar(hex: number) {
   return k.build();
 }
 
-/** A flat tinted square filling a tile, for overlays. */
-export function tileFill(hex: number) {
-  const k = new Kit(false);
-  k.box(0, 0, 0, 0.84, 0.015, 0.84, hex, { flag: FLAG.DECOR });
-  return k.build();
-}
-
 /** A small electric farm truck facing +z: a rounded ceramic cab with solar glass on its roof, and an open timber bed. */
 export function truck() {
   const k = new Kit(false);
@@ -286,13 +279,7 @@ export function rock(v: number) {
   return k.build();
 }
 
-/** Soil under a field, one tile, by fertility band (pale to dark). */
+/** Soil under a field, by fertility band (pale to dark): view.ts lays it on the ground. */
 export const SOIL_BANDS = 6;
-const SOIL = [0xb89a6a, 0xa08058, 0x8a6a46, 0x735638, 0x5e442c, 0x4a3422];
+export const SOIL = [0xb89a6a, 0xa08058, 0x8a6a46, 0x735638, 0x5e442c, 0x4a3422];
 export const soilBand = (f: number) => Math.min(SOIL_BANDS - 1, Math.floor(f / (100 / SOIL_BANDS)));
-export function soilTile(band: number) {
-  const k = new Kit(false);
-  k.box(0, -0.05, 0, 0.98, 0.08, 0.98, SOIL[band]);
-  for (const z of [-0.3, 0, 0.3]) k.box(0, 0.03, z, 0.9, 0.015, 0.08, SOIL[Math.max(0, band - 1)]);
-  return k.build();
-}

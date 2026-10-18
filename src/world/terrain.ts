@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { FLAG, FLUIDS, FluidCollector, GeometryCollector, linearColor as lin, motion, place, type PixelScene } from 'pixel3d-renderer';
 import { TERRAIN, type Land, type MapData } from '../game/map.ts';
-import { baseLevel, corners, sideOf, SIDES } from '../game/relief.ts';
-import { cliff, cornerNormals, geography, grassOf, groundY, isBank, landRelief, LEVEL_HEIGHT, tileTop, Tris } from './ground.ts';
+import { baseLevel, joins, SIDES } from '../game/relief.ts';
+import { cliff, geography, grassOf, isBank, landRelief, LEVEL_HEIGHT, top, Tris, type Halo, type Lie } from './ground.ts';
 import { box, hash } from './kit.ts';
 import { CANOPY, treeAt, wetAt, type TreeKind } from './trees.ts';
 
@@ -15,6 +15,8 @@ import { CANOPY, treeAt, wetAt, type TreeKind } from './trees.ts';
 export interface World {
   scene: PixelScene;
   geometries: THREE.BufferGeometry[];
+  /** The country drawn with the map's ground (`HALO`): its tiles' colours, how its walls are dulled, its trees and rocks. */
+  halo: Halo;
 }
 
 /** How many tiles of country are drawn past each edge of the map (generate the land with this margin). */
@@ -56,7 +58,7 @@ const country = (g: THREE.BufferGeometry, m: THREE.Matrix4) => {
   return c;
 };
 
-export function buildWorld(map: MapData, land: Land, models: { trees: Record<TreeKind, THREE.BufferGeometry[]>; rocks: THREE.BufferGeometry[] }): World {
+export function buildWorld(map: MapData, land: Land, lie: Lie, models: { trees: Record<TreeKind, THREE.BufferGeometry[]>; rocks: THREE.BufferGeometry[] }): World {
   const s = new GeometryCollector(), d = new GeometryCollector(true), fluids = new FluidCollector();
   const { width: w, height: h } = map, M = land.margin;
   const onMap = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h;
@@ -76,7 +78,7 @@ export function buildWorld(map: MapData, land: Land, models: { trees: Record<Tre
   const lr = landRelief(land);
   /** How dry each land tile lies, for its grass. */
   const dry = geography(land, lr);
-  const gy = (qx: number, qz: number) => groundY(lr, qx + M, qz + M);
+  const gy = (qx: number, qz: number) => lie.y(qx, qz);
   const levelAt = (x: number, y: number) => baseLevel(lr, x + M, y + M);
   /** Whether water is near a tile, and the tree model there (its species by where it stands, trees.ts). */
   const wet = (x: number, y: number) => wetAt((wx, wy) => onLand(wx, wy) && kind(wx, wy) === TERRAIN.water, x, y);
@@ -88,18 +90,23 @@ export function buildWorld(map: MapData, land: Land, models: { trees: Record<Tre
   /** Near the country's edge the river and the track run off under the woods, so their ends are never seen. */
   const hidden = (x: number, y: number) => !onMap(x, y) && (kind(x, y) === TERRAIN.water || track(x, y)) && rim(x + 0.5, y + 0.5) < RIM + 8;
 
-  // The ground beyond the map: each tile's top and its cliffs, coloured like the map's but a little duller. Facing the map, a
-  // cliff goes down to the valley floor, so earthworks on the map's edge never open a gap under it (the map's ground covers
-  // what it doesn't show).
-  const ground = new Tris();
+  // The ground beyond the map: each tile's top and its cliffs, coloured like the map's but a little duller. The ring of it
+  // round the map moves with the map's (`HALO`), so MapGround draws it; its colours are left for it.
+  const ground = new Tris(), halo: Halo = { colour: new Map(), tone: dim, things: [] }, dulled = new Map<THREE.BufferGeometry, THREE.BufferGeometry>();
+  /** A tree or rock on the country: in the scene, or on the halo (the view stands it on the ground as it moves). */
+  const thing = (g: THREE.BufferGeometry, x: number, z: number, yaw: number, scale: number, sink: number) => {
+    if (!lie.withMap(Math.floor(x) + M, Math.floor(z) + M)) { s.pushPrepared(country(g, place(x, gy(x, z) - sink, z, 0, yaw, 0, scale))); return; }
+    let d = dulled.get(g);
+    if (!d) { d = country(g, new THREE.Matrix4()); dulled.set(g, d); }
+    halo.things.push({ g: d, x, z, yaw, scale, sink });
+  };
   const countryTile = (x: number, y: number, hex: number) => {
-    tileTop(ground, x, y, corners(lr, x + M, y + M), hex, cornerNormals(lr, x + M, y + M));
+    if (lie.withMap(x + M, y + M)) { halo.colour.set(li(x, y), hex); return; }
+    top(ground, lie, x + M, y + M, hex);
     for (let side = 0; side < 4; side++) {
       const nx = x + SIDES[side][0], ny = y + SIDES[side][1];
-      if (!onLand(nx, ny)) continue;
-      const own = sideOf(lr, x + M, y + M, side);
-      const below = water(nx, ny) ? [levelAt(nx, ny), levelAt(nx, ny)] : onMap(nx, ny) ? [0, 0] : sideOf(lr, nx + M, ny + M, (side + 2) % 4);
-      cliff(ground, x, y, side, own, below, dim);
+      if (!onLand(nx, ny) || joins(lie.relief, x + M, y + M, side)) continue;
+      cliff(ground, lie, x + M, y + M, side, water(nx, ny) ? levelAt(nx, ny) * H : null, dim);
     }
   };
 
@@ -123,8 +130,8 @@ export function buildWorld(map: MapData, land: Land, models: { trees: Record<Tre
     countryTile(x, y, dim(grassOf(dry[li(x, y)], isBank(lr, x + M, y + M))));
     if (far > NEAR) continue;
     // Trees and rocks the same as on the map (view.ts), only dulled.
-    if (t === TERRAIN.tree) s.pushPrepared(country(treeModel(x, y), place(cx, gy(cx, cz) - 0.02, cz, 0, n * Math.PI * 2, 0, 0.62 + 0.25 * n)));
-    else if (t === TERRAIN.rock) s.pushPrepared(country(models.rocks[Math.floor(n * 3) % 3], place(cx, gy(cx, cz), cz, 0, n * Math.PI * 2, 0)));
+    if (t === TERRAIN.tree) thing(treeModel(x, y), cx, cz, n * Math.PI * 2, 0.62 + 0.25 * n, 0.02);
+    else if (t === TERRAIN.rock) thing(models.rocks[Math.floor(n * 3) % 3], cx, cz, n * Math.PI * 2, 1, 0);
   }
   s.pushPrepared(ground.geometry());
 
@@ -176,7 +183,7 @@ export function buildWorld(map: MapData, land: Land, models: { trees: Record<Tre
   // Flowers swaying in the meadow just beyond the edge.
   for (let k = 0, tries = 0; k < 160 && tries < 4000; tries++) {
     const x = Math.floor(-10 + hash(tries, 7) * (w + 20)), y = Math.floor(-10 + hash(tries, 9) * (h + 20));
-    if (onMap(x, y) || !onLand(x, y) || kind(x, y) !== TERRAIN.grass || track(x, y)) continue;
+    if (!onLand(x, y) || lie.withMap(x + M, y + M) || kind(x, y) !== TERRAIN.grass || track(x, y)) continue;
     const fx = x + hash(x, tries), fz = y + hash(tries, y), fy = gy(fx, fz);
     d.add(STEM, place(fx, fy + 0.13, fz, 0, 0, 0, 0.04, 0.26, 0.04), lin(dim(0x4a7a2a)), FLAG.NORMAL, false, motion.sway(fx, fz, 0, 0.3));
     d.add(STEM, place(fx, fy + 0.29, fz, 0, 0, 0, 0.11, 0.08, 0.11), lin(dim([0xe05a7a, 0xf0d050, 0xa070e0, 0xf6f2ea][k % 4])), FLAG.NORMAL, false, motion.sway(fx, fz, 0, 0.3));
@@ -188,5 +195,5 @@ export function buildWorld(map: MapData, land: Land, models: { trees: Record<Tre
     staticGeometry, dynamicGeometry, fluids: fluids.build(),
     shadow: { center: new THREE.Vector3(w / 2, 0, h / 2), radius: Math.max(w, h) * 0.62 + 8 },
   };
-  return { scene, geometries: [staticGeometry, dynamicGeometry] };
+  return { scene, geometries: [staticGeometry, dynamicGeometry, ...dulled.values()], halo };
 }

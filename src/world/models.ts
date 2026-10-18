@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { collectGltf, GeometryCollector, loadGltf, motion, movingPartMotion, namedMeshRule, type Motion } from 'pixel3d-renderer';
 import { BUILDING_IDS, CROP_IDS, CROPS, ITEM_IDS, type BuildingId, type CropId, type ItemId } from '../game/data.ts';
 import { TREE_SPECIES, type TreeKind } from './trees.ts';
-import { bar, cropStandIn, frame, GHOST_WIRE, itemShape, NET_COLOURS, rock, ROUTE_COLOURS, SOIL_BANDS, soilTile, standIn, tileFill, truck } from './shapes.ts';
+import { bar, cropStandIn, frame, GHOST_WIRE, itemShape, NET_COLOURS, rock, ROUTE_COLOURS, standIn, truck } from './shapes.ts';
 
 // The game's object geometries, in local space (origin on the ground at the footprint centre, front facing +z). They come
 // from the Blender models in public/models/ (assets/<name>/build.py) where those exist, split by the node names the asset
@@ -25,14 +25,11 @@ export interface Models {
   routes: Geo[];
   crops: Record<CropId, Geo[]>;
   items: Record<ItemId, Geo>;
-  soil: Geo[];
   /** Each tree species' three variants (a bush's three are the one model). */
   trees: Record<TreeKind, Geo[]>;
   rocks: Geo[];
   truck: Geo;
   frames: { ok: Geo[]; bad: Geo[] };
-  /** A flat square filling a tile, tinted per overlay. */
-  fill: Geo;
 }
 
 /** Which Blender model draws each building. */
@@ -169,10 +166,8 @@ export async function loadModels(): Promise<Models> {
   return {
     buildings, turbine, battery, crops, items, rocks, trees,
     wires: [...NET_COLOURS, GHOST_WIRE].map(bar), routes: ROUTE_COLOURS.map(bar),
-    soil: Array.from({ length: SOIL_BANDS }, (_, b) => soilTile(b)),
     truck: truckRoot ? collect(truckRoot).build() : truck(),
     frames: { ok: [1, 2, 3].map((n) => frame(n, 0xd8ffb0)), bad: [1, 2, 3].map((n) => frame(n, 0xff5040)) },
-    fill: tileFill(0xf4f0e0),
   };
 }
 
@@ -181,7 +176,7 @@ export function allGeometries(m: Models): Geo[] {
   // Each once: some are shared (a bush's variants, stand-ins), and the palette recolours every geometry it is given.
   return [...new Set([
     ...Object.values(m.buildings).flatMap((l) => [l.idle, l.running]), ...m.turbine, ...m.battery, ...m.wires, ...m.routes, ...Object.values(m.crops).flat(), ...Object.values(m.items),
-    ...m.soil, ...Object.values(m.trees).flat(), ...m.rocks, m.truck, ...m.frames.ok, ...m.frames.bad,
-    m.fill,
+    ...Object.values(m.trees).flat(), ...m.rocks, m.truck, ...m.frames.ok, ...m.frames.bad,
+
   ])];
 }

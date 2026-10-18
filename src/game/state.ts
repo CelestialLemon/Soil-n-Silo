@@ -145,9 +145,14 @@ export interface Stats {
 export const STAT_BUCKET = 10, STAT_BUCKETS = 7;
 
 export interface GameState {
-  version: 7;
+  version: 8;
   scenario: Scenario;
   map: MapData;
+  /**
+   * Each tile whose ground has been worked (1), by earthworks or under a building that needed it level: the view draws it
+   * exactly at its levels, where it draws wild ground as a smooth reading of them. It stays worked once the building goes.
+   */
+  worked: number[];
   /** Each tile's fertility at the start: resting ground recovers up to it. */
   soilBase: number[];
   initialTrees: number;
@@ -178,7 +183,7 @@ export interface GameState {
 export function newGame(sc: Scenario): GameState {
   const map = generateMap(sc);
   const s: GameState = {
-    version: 7, scenario: sc, map, soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
+    version: 8, scenario: sc, map, worked: map.terrain.map(() => 0), soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
     buildings: [], routes: [], trucks: [], nextId: 1, credits: sc.credits, time: 0, carry: 0, delivered: {}, earned: 0,
     stats: { since: 0, made: [{}], delivered: {} }, reached: sc.goals.map(() => false), completedAt: null, made: {}, run: newRunLog(),
     chosen: { crop: 'wheat', recipes: {} },

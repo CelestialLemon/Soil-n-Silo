@@ -4,7 +4,7 @@ import { BUILDINGS, POWER } from '../game/data.ts';
 import { feederOf, networkOf, networks, POWERED, pylonsInLink, wiresOf, type Network } from '../game/power.ts';
 import { pylonReaches, pylonsLink } from '../game/rules.ts';
 import { buildingById, layoutOf, reliefOf, sizeOf, type Building, type GameState } from '../game/state.ts';
-import { groundY, lay, standY } from './ground.ts';
+import { overlayTiles, standY, type Lie } from './ground.ts';
 import { must } from '../game/result.ts';
 import type { Models } from './models.ts';
 import { NET_COLOURS } from './shapes.ts';
@@ -49,12 +49,16 @@ export const inPower = (b: Building) => BUILDINGS[b.type].grid === 'link' || POW
 
 export class PowerView {
   private objs: PixelObject[] = [];
+  /** Geometries made for what is shown (the reach tiles), disposed with it. */
+  private own: THREE.BufferGeometry[] = [];
   private key = '';
   private shownLabels: NetLabel[] = [];
   private readonly r: PixelRenderer;
   private readonly m: Models;
 
-  constructor(r: PixelRenderer, m: Models) { this.r = r; this.m = m; }
+  private readonly lie: Lie;
+
+  constructor(r: PixelRenderer, m: Models, lie: Lie) { this.r = r; this.m = m; this.lie = lie; }
 
   /** The labels to show over the networks drawn, in world space. */
   labels(): NetLabel[] { return this.shownLabels; }
@@ -67,6 +71,8 @@ export class PowerView {
     this.key = key;
     for (const o of this.objs) o.remove();
     this.objs = [];
+    for (const g of this.own) g.dispose();
+    this.own = [];
     this.shownLabels = [];
     const list = networks(s).list;
     const shown = f.all ? list : focusNet ? [focusNet] : [];
@@ -105,11 +111,14 @@ export class PowerView {
         if (x >= 0 && y >= 0 && x < w && y < h && !owner.has(y * w + x)) owner.set(y * w + x, GHOST_TINT);
       }
     }
-    for (const [i, tint] of owner) {
-      const o = this.r.addObject(lay(s.map, i % w, Math.floor(i / w), 0.02, this.m.fill, v));
+    // One object a tint.
+    const byTint = new Map<THREE.Color, number[]>();
+    for (const [i, tint] of owner) { const l = byTint.get(tint); if (l) l.push(i); else byTint.set(tint, [i]); }
+    for (const [tint, list] of byTint) {
+      const g = overlayTiles(this.lie, list, w, 0.02), o = this.r.addObject(g);
       o.tint = tint; o.tintStrength = TILE_STRENGTH; o.castShadow = false;
-      o.setTransform(v, e.set(0, 0, 0));
-      this.objs.push(o);
+      o.setTransform(v.set(0, 0, 0), e.set(0, 0, 0));
+      this.objs.push(o); this.own.push(g);
     }
   }
 
@@ -127,7 +136,7 @@ export class PowerView {
   }
 
   /** The ground's height (m) under a one-tile building on a tile (a pylon). */
-  private at(s: GameState, x: number, y: number) { return standY(s.map, 1, x, y); }
+  private at(s: GameState, x: number, y: number) { return standY(this.lie, s.map, 1, x, y); }
 
   /** A wire between two pylon tops (at heights ta and tb), sagging a little in the middle. */
   private wire(c: number, ax: number, az: number, bx: number, bz: number, ta: number, tb: number) {
@@ -138,7 +147,7 @@ export class PowerView {
 
   /** A feed line from a pylon's top down to the building it powers. */
   private feed(s: GameState, c: number, px: number, pz: number, top: number, b: Building) {
-    const n = sizeOf(b), h = Math.min(this.m.buildings[b.type].height * 0.7, 1.4) + standY(s.map, n, b.x, b.y);
+    const n = sizeOf(b), h = Math.min(this.m.buildings[b.type].height * 0.7, 1.4) + standY(this.lie, s.map, n, b.x, b.y);
     this.bar(c, new THREE.Vector3(px, top, pz), new THREE.Vector3(b.x + n / 2, h, b.y + n / 2), FEED, FEED, FEED_OPACITY);
   }
 
@@ -146,7 +155,7 @@ export class PowerView {
   private ranges(s: GameState, c: number, x: number, y: number) {
     const r = POWER.pylon.reach, lift = 0.05;
     const mark = (ax: number, az: number, bx: number, bz: number) => {
-      const gy = groundY(s.map, (ax + bx) / 2, (az + bz) / 2) + lift;
+      const gy = this.lie.y((ax + bx) / 2, (az + bz) / 2) + lift;
       this.bar(c, new THREE.Vector3(ax, gy, az), new THREE.Vector3(bx, gy, bz), MARK, 0.02);
     };
     const corners = [[x - r, y - r], [x + r + 1, y - r], [x + r + 1, y + r + 1], [x - r, y + r + 1]];

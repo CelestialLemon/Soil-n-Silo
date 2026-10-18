@@ -215,9 +215,18 @@ blocking something that has to be built somewhere.
 For turbine shelter, each tall building counts once. Higher ground counts only by the highest neighbouring corner within
 reach above the turbine tile's highest corner, not per tile.
 
-The ground is shaded smooth across joined tiles. Steep banks are worn turf. Cliff faces have strata every 2 levels under
-a turf lip, earth low down and stone from level 8. The map's ground is drawn as objects in 8 × 8 chunks so earthworks can
-redraw the changed ground and its neighbours (`src/world/ground.ts`); the country beyond is static.
+The rules keep whole levels at tile corners, but the ground is drawn as a smooth surface fitted to them
+(`src/world/surface.ts`): as gently curved as it can be while every corner stays within half a level of its rule height,
+so the rolling ground reads without the Height view. Water, and worked ground (any tile earthworks have touched, or a
+building that needs level ground stands on), is drawn exactly at its corners' levels, so pads and dug ground are flat. The
+picture and the rules may be slightly out of step elsewhere; the build modes, with their grid and contour lines at the rule
+heights, are the authority. Chosen on 2026-10-18. Everything that stands on the ground (buildings, crops, trees, overlays)
+stands on the drawn surface.
+
+A fixed hillshade (light from the west, a little north) lightens or darkens the grass by up to two steps, from a blurred slope, so
+its bands run in clean curves. Steep banks are worn turf. Cliff faces have strata every 2 levels under a turf lip, earth
+low down and stone from level 8. The map's ground and 3 tiles of country round it are drawn as objects in 8 × 8 chunks, so
+earthworks can fit again and redraw the ground round them (`src/world/ground.ts`); the country beyond is static.
 
 ## Goods
 
