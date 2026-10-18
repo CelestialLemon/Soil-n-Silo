@@ -114,7 +114,7 @@ async function play(initial: GameState) {
   const models = await loadModels();
   const land = generateLand(state.scenario, COUNTRY);
   const world = buildWorld(map, land, models), ground = new MapGround(state, land);
-  quantizePalette([...world.geometries, ...ground.geometries, ...allGeometries(models)], 96);
+  quantizePalette([...world.geometries, ...ground.geometries, ...allGeometries(models)], 160);
   const renderer = new PixelRenderer(canvas, world.scene, { shadowMapSize: 2048, warmHighlight: true });
   ground.show(renderer);
   /** The ground's height (m) at a point of the map, for picking a tile; nothing on the map stands above TOP. */
@@ -638,6 +638,8 @@ async function play(initial: GameState) {
     if (!(Math.abs(hour - lookHour) <= 0.02)) { renderer.setLook(lookAt(hour)); lookHour = hour; }
 
     ground.sync();
+    // The grid and the contour lines show while building or doing earthworks.
+    ground.showLines(tool.kind === 'build' || tool.kind === 'earth');
     view.sync(state);
     toolOverlay = 'none';
     if (input.pointer && frameNo % REPICK_FRAMES === 0) repick = Math.max(repick, 1);

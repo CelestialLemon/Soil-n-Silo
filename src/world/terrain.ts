@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { FLAG, FLUIDS, FluidCollector, GeometryCollector, linearColor as lin, motion, place, type PixelScene } from 'pixel3d-renderer';
 import { TERRAIN, type Land, type MapData } from '../game/map.ts';
 import { baseLevel, corners, sideOf, SIDES } from '../game/relief.ts';
-import { cliff, cornerNormals, grassOf, groundY, isBank, landRelief, LEVEL_HEIGHT, tileTop, Tris } from './ground.ts';
+import { cliff, cornerNormals, geography, grassOf, groundY, isBank, landRelief, LEVEL_HEIGHT, tileTop, Tris } from './ground.ts';
 import { box, hash } from './kit.ts';
 import { CANOPY, treeAt, wetAt, type TreeKind } from './trees.ts';
 
@@ -74,6 +74,8 @@ export function buildWorld(map: MapData, land: Land, models: { trees: Record<Tre
 
   // The land's relief, in map coordinates; the country is drawn as the generator made it.
   const lr = landRelief(land);
+  /** How dry each land tile lies, for its grass. */
+  const dry = geography(land, lr);
   const gy = (qx: number, qz: number) => groundY(lr, qx + M, qz + M);
   const levelAt = (x: number, y: number) => baseLevel(lr, x + M, y + M);
   /** Whether water is near a tile, and the tree model there (its species by where it stands, trees.ts). */
@@ -118,7 +120,7 @@ export function buildWorld(map: MapData, land: Land, models: { trees: Record<Tre
     const far = beyond(cx, cz);
     if (canopy(x, y) || hidden(x, y)) { countryTile(x, y, dim(FLOOR)); continue; }
     if (track(x, y)) { countryTile(x, y, dim(track(x - 1, y) && track(x + 1, y) ? RUT : ROAD[n < 0.5 ? 0 : 1])); continue; }
-    countryTile(x, y, dim(grassOf(land.fertility[li(x, y)], x, y, isBank(lr, x + M, y + M))));
+    countryTile(x, y, dim(grassOf(dry[li(x, y)], isBank(lr, x + M, y + M))));
     if (far > NEAR) continue;
     // Trees and rocks the same as on the map (view.ts), only dulled.
     if (t === TERRAIN.tree) s.pushPrepared(country(treeModel(x, y), place(cx, gy(cx, cz) - 0.02, cz, 0, n * Math.PI * 2, 0, 0.62 + 0.25 * n)));
