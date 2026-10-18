@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { splitsNwSe } from '../game/relief.ts';
 import { must } from '../game/result.ts';
 
 /**
@@ -16,10 +15,13 @@ const DOT = 0.2;
 /** A tile's corners in its own coordinates (0 to 1 along each edge): north-west, north-east, south-east, south-west. */
 const UV = [[0, 0], [1, 0], [1, 1], [0, 1]];
 
+/** How many pieces a side a tile's ground is taken as, under its marks. */
+export const CURSOR_GRID = 8;
+
 /**
- * Marks on one tile: `heights` is the ground's height (m) at its corners (north-west, north-east, south-east, south-west),
- * its top the two triangles the ground is drawn as; a frame along the sides in `edges` (a bit each: 1 north, 2 east, 4
- * south, 8 west), and dots at the corners listed in `dots`.
+ * Marks on one tile: `heights` is the ground's height (m) on a CURSOR_GRID × CURSOR_GRID grid across it ((CURSOR_GRID +
+ * 1)² points, row by row along z, each row along x); a frame along the sides in `edges` (a bit each: 1 north, 2 east, 4
+ * south, 8 west), and dots at the corners (north-west, north-east, south-east, south-west) listed in `dots`.
  */
 export interface CursorPatch { x: number; y: number; heights: readonly number[]; edges: number; dots: number[] }
 
@@ -56,7 +58,7 @@ export class TileCursor {
     if (this.drawn) { ctx.clearRect(0, 0, w, h); this.drawn = false; }
     if (!patches.length) return;
 
-    // Each patch's corners in art pixels, and each of its two triangles with the tile coordinates of its corners. The camera
+    // Each patch's grid points in art pixels, and each of its triangles with the tile coordinates of its corners. The camera
     // is orthographic, so a triangle of ground maps to the screen affinely.
     const at = (x: number, z: number, gy: number) => {
       this.corner.set(x, gy + 0.03, z).project(camera);
@@ -66,9 +68,13 @@ export class TileCursor {
     let x0 = w, x1 = 0, y0 = h, y1 = 0;
     for (const patch of patches) {
       if (!patch.edges && !patch.dots.length) continue;
-      const p = UV.map(([u, v], k) => at(patch.x + u, patch.y + v, patch.heights[k]));
+      const G = CURSOR_GRID, uv = Array.from({ length: (G + 1) ** 2 }, (_, i) => [(i % (G + 1)) / G, Math.floor(i / (G + 1)) / G]);
+      const p = uv.map(([u, v], i) => at(patch.x + u, patch.y + v, patch.heights[i]));
       for (const q of p) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); }
-      for (const t of splitsNwSe(patch.heights) ? [[0, 1, 2], [0, 2, 3]] : [[0, 1, 3], [1, 2, 3]]) tris.push({ p: t.map((k) => p[k]), uv: t.map((k) => UV[k]), patch });
+      for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) {
+        const a = j * (G + 1) + i, b = a + 1, c = a + G + 2, d = a + G + 1;
+        for (const t of [[a, b, c], [a, c, d]]) tris.push({ p: t.map((k) => p[k]), uv: t.map((k) => uv[k]), patch });
+      }
     }
     x0 = Math.max(0, Math.floor(x0)); x1 = Math.min(w, Math.ceil(x1)); y0 = Math.max(0, Math.floor(y0)); y1 = Math.min(h, Math.ceil(y1));
     if (x1 <= x0 || y1 <= y0) return;

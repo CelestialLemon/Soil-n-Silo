@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { PixelObject, PixelRenderer } from 'pixel3d-renderer';
 import { legPath } from '../game/roads.ts';
 import { buildingById, layoutOf, sizeOf, type GameState, type Route } from '../game/state.ts';
-import { groundY, standY } from './ground.ts';
+import { standY, type Lie } from './ground.ts';
 import type { Models } from './models.ts';
 import { ROUTE_COLOURS } from './shapes.ts';
 
@@ -25,7 +25,9 @@ export class RouteView {
   private readonly r: PixelRenderer;
   private readonly m: Models;
 
-  constructor(r: PixelRenderer, m: Models) { this.r = r; this.m = m; }
+  private readonly lie: Lie;
+
+  constructor(r: PixelRenderer, m: Models, lie: Lie) { this.r = r; this.m = m; this.lie = lie; }
 
   /** The labels over the stops of the routes drawn, in world space. */
   labels(): StopLabel[] { return this.shownLabels; }
@@ -50,7 +52,7 @@ export class RouteView {
         // Following the ground through each tile's centre and the edge it crosses to the next (where a ramp's slope starts
         // or ends), with each straight, even run as one bar.
         const pts: THREE.Vector3[] = [];
-        const on = (x: number, z: number) => pts.push(new THREE.Vector3(x, y + groundY(s.map, x, z), z));
+        const on = (x: number, z: number) => pts.push(new THREE.Vector3(x, y + this.lie.y(x, z), z));
         p.forEach((i, k) => {
           const x = i % w + 0.5, z = Math.floor(i / w) + 0.5;
           if (k) on((pts[pts.length - 1].x + x) / 2, (pts[pts.length - 1].z + z) / 2);
@@ -70,7 +72,7 @@ export class RouteView {
         const b = buildingById(s, id);
         if (!b) continue;
         const n = sizeOf(b), h = this.m.buildings[b.type].height;
-        this.shownLabels.push({ x: b.x + n / 2, y: standY(s.map, n, b.x, b.y) + (b.type === 'field' ? 0.9 : h) + 0.9, z: b.y + n / 2, colour: ROUTE_COLOURS[c], text: nums.join(' · ') });
+        this.shownLabels.push({ x: b.x + n / 2, y: standY(this.lie, s.map, n, b.x, b.y) + (b.type === 'field' ? 0.9 : h) + 0.9, z: b.y + n / 2, colour: ROUTE_COLOURS[c], text: nums.join(' · ') });
       }
     }
   }

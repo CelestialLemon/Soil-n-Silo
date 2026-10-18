@@ -32,10 +32,11 @@ import { allGeometries, loadModels } from './world/models.ts';
 import { PowerView } from './world/powerView.ts';
 import { RouteView } from './world/routeView.ts';
 import { Camera } from './world/camera.ts';
-import { TileCursor, type CursorPatch } from './world/tileCursor.ts';
+import { CURSOR_GRID, TileCursor, type CursorPatch } from './world/tileCursor.ts';
 import { buildWorld, COUNTRY } from './world/terrain.ts';
-import { groundY, LEVEL_HEIGHT, MapGround, standY } from './world/ground.ts';
+import { Lie, LEVEL_HEIGHT, MapGround, standY } from './world/ground.ts';
 import { WorldView, type Overlay } from './world/view.ts';
+import { SOIL } from './world/shapes.ts';
 import './ui/clearday/tokens.css';
 import './ui/clearday/clearday.css';
 import './ui/clearday/icons.css';
@@ -113,17 +114,17 @@ async function play(initial: GameState) {
   const map = state.map;
   const models = await loadModels();
   const land = generateLand(state.scenario, COUNTRY);
-  const world = buildWorld(map, land, models), ground = new MapGround(state, land);
+  const lie = new Lie(state, land), world = buildWorld(map, land, lie, models), ground = new MapGround(state, land, lie, world.halo, SOIL);
   quantizePalette([...world.geometries, ...ground.geometries, ...allGeometries(models)], 160);
   const renderer = new PixelRenderer(canvas, world.scene, { shadowMapSize: 2048, warmHighlight: true });
   ground.show(renderer);
   /** The ground's height (m) at a point of the map, for picking a tile; nothing on the map stands above TOP. */
-  const groundAt = (x: number, z: number) => groundY(state.map, x, z), TOP = (MAX_LEVEL + 1) * LEVEL_HEIGHT;
+  const groundAt = (x: number, z: number) => lie.y(x, z), TOP = (MAX_LEVEL + 1) * LEVEL_HEIGHT;
   /** The same for picking: no ground off the map, so a line of sight from beyond meets the map's edge, or its cliff. */
   const pickGround = (x: number, z: number) => (x >= 0 && z >= 0 && x < map.width && z < map.height ? groundAt(x, z) : -Infinity);
-  const view = new WorldView(renderer, models);
-  const power = new PowerView(renderer, models);
-  const routeView = new RouteView(renderer, models);
+  const view = new WorldView(renderer, models, lie, ground.paint, world.halo.things);
+  const power = new PowerView(renderer, models, lie);
+  const routeView = new RouteView(renderer, models, lie);
   const cursor = new TileCursor(canvas, 0xfff0c0), refused = new TileCursor(canvas, 0xe8705a);
   /** The marks on the ground the cursor draws: the tile pointed at, the points earthworks would move; those refused in red. */
   let marks: CursorPatch[] = [], refusedMarks: CursorPatch[] = [];
@@ -359,8 +360,8 @@ async function play(initial: GameState) {
       const price = fit.ok ? placePrice(s, type, fit.value) : priceOf(s, type), level = fit.ok ? fit.value.level : null;
       const site = BUILDINGS[type].onBank && fit.ok ? levelledFor(s, fit.value.move, () => wheelSite(s, spot.x, spot.y)) : null;
       // Where it and its tiles would stand: on the level its ground is levelled to, or on the ground as the ones before leave it.
-      const stand = level !== null ? level * LEVEL_HEIGHT : standY(s.map, n, spot.x, spot.y);
-      const tiles = Array.from({ length: n * n }, (_, i) => (level !== null ? level * LEVEL_HEIGHT : groundY(s.map, spot.x + (i % n) + 0.5, spot.y + Math.floor(i / n) + 0.5)));
+      const stand = level !== null ? level * LEVEL_HEIGHT : standY(lie, s.map, n, spot.x, spot.y);
+      const tiles = Array.from({ length: n * n }, (_, i) => (level !== null ? level * LEVEL_HEIGHT : lie.y(spot.x + (i % n) + 0.5, spot.y + Math.floor(i / n) + 0.5)));
       const built = fit.ok && s.credits >= price && (s === state || place(s, type, spot.x, spot.y, spot.rot, set).ok);
       return { spot, fit, price, built, site, stand, tiles };
     });
@@ -369,7 +370,8 @@ async function play(initial: GameState) {
   }
   let placedFor: { key: string; out: Placed[] } | null = null;
   /** The cursor's marks on a tile: a frame along its sides `edges` (CursorPatch), and dots at its corners `dots`. */
-  const patch = (x: number, y: number, edges: number, dots: number[]): CursorPatch => ({ x, y, heights: corners(state.map, x, y).map((c) => c * LEVEL_HEIGHT), edges, dots });
+  const patch = (x: number, y: number, edges: number, dots: number[]): CursorPatch =>
+    ({ x, y, heights: Array.from({ length: (CURSOR_GRID + 1) ** 2 }, (_, i) => lie.tileY(x, y, (i % (CURSOR_GRID + 1)) / CURSOR_GRID, Math.floor(i / (CURSOR_GRID + 1)) / CURSOR_GRID)), edges, dots });
   /** The dig the earthworks in hand would do: over the drag's points, or at the point pointed at. */
   function digHere(): Dig | null {
     if (tool.kind !== 'earth' || !hoverTile) return null;
@@ -606,7 +608,7 @@ async function play(initial: GameState) {
     const spots = input.press?.mode === 'paint' && input.press.from && input.press.to ? plan(type, input.press.from, input.press.to, tool.rot) : [{ ...a, rot: tool.rot }];
     // What they cost with the earthworks each needs, as placing them would charge.
     const price = placed(type, spots).reduce((sum, p) => sum + p.price, 0);
-    return { type, x: a.x, y: a.y, count: spots.length, price, crop: tool.crop, recipe: tool.recipe, ...camera.toScreen(a.x + n / 2, standY(state.map, n, a.x, a.y) + models.buildings[type].height + 0.3, a.y + n / 2) };
+    return { type, x: a.x, y: a.y, count: spots.length, price, crop: tool.crop, recipe: tool.recipe, ...camera.toScreen(a.x + n / 2, standY(lie, state.map, n, a.x, a.y) + models.buildings[type].height + 0.3, a.y + n / 2) };
   }
 
   // ---- Loop ----

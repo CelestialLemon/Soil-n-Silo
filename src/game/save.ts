@@ -28,7 +28,7 @@ export function deserialize(json: string | null): Result<GameState> {
   const parsed = tryParseJson(json);
   if (!parsed.ok) return err(`The save isn't JSON: ${parsed.error}`);
   const s = parsed.value as GameState | null;
-  if (s?.version !== 7) return err('The save is from another version (this game reads version 7).');
+  if (s?.version !== 8) return err('The save is from another version (this game reads version 8).');
   if (!complete(s)) return err('The save is broken: its state is incomplete or out of range.');
   if (!validRun(s.run, s.scenario.goals.length)) return err('The save is broken: its run log is incomplete or out of range.');
   return ok(s);
@@ -80,6 +80,7 @@ function complete(s: GameState): boolean {
     && arr(m.corner) && m.corner.length === m.width * m.height * 4 && m.corner.every((c) => int(c) && c >= 0 && c <= MAX_LEVEL)
     && arr(m.current) && m.current.length === m.width * m.height && m.current.every((c) => num(c) && c >= 0)
     && relief(m)
+    && arr(s.worked) && s.worked.length === m.width * m.height && s.worked.every((w) => w === 0 || w === 1)
     && arr(s.soilBase) && s.soilBase.length === m.fertility.length && s.soilBase.every(num) && !!m.depot && num(m.depot.x) && num(m.depot.y)
     && [s.credits, s.time, s.carry, s.nextId, s.earned, s.initialTrees].every(num) && Math.abs(s.carry) <= TICK
     && (s.completedAt === null || num(s.completedAt))

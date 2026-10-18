@@ -8,12 +8,12 @@ import { windAt } from '../game/sim/clock.ts';
 import { HANDOFF_SECONDS, recentHandoffs } from '../game/sim/goods.ts';
 import { cutOff } from '../game/sim/trucks.ts';
 import { buildingById, inMap, isMachine, layoutOf, reliefOf, sizeOf, terrainAt, type Building, type Dir, type FieldBuilding, type GameState, type Status, type Truck } from '../game/state.ts';
-import { groundY, isBank, lay, standY } from './ground.ts';
-import { baseLevel, centreLevel, corners } from '../game/relief.ts';
+import { isBank, overlayTiles, sheet, standY, Tris, type HaloThing, type Lie } from './ground.ts';
+import { baseLevel, centreLevel } from '../game/relief.ts';
 import { hash } from './kit.ts';
 import { treeAt, wetAt } from './trees.ts';
 import type { Models } from './models.ts';
-import { soilBand, TRUCK_BED } from './shapes.ts';
+import { SOIL, soilBand, TRUCK_BED } from './shapes.ts';
 
 // Shows the game state with renderer objects. Every frame it adds, swaps and removes objects so the world matches the state:
 // buildings (idle or running), fields' soil and crops, trucks (with their cargo in the bed, queuing in line behind the one
@@ -23,7 +23,8 @@ import { soilBand, TRUCK_BED } from './shapes.ts';
 
 const YAW: Record<Dir, number> = { 0: Math.PI, 1: Math.PI / 2, 2: 0, 3: -Math.PI / 2 };
 
-interface Shown { obj: PixelObject; key: string }
+/** An object shown, what it shows, and its geometry if it is its own (made for it, so disposed with it). */
+interface Shown { obj: PixelObject; key: string; own?: THREE.BufferGeometry }
 
 const v = new THREE.Vector3(), e = new THREE.Euler();
 
@@ -35,6 +36,8 @@ export const LINK = 0x7ee060;
 const LINKED = new THREE.Color(LINK), LINK_STRENGTH = 0.55;
 /** How far apart trucks queuing at a building stand, one behind the other. */
 const QUEUE_GAP = 0.8;
+/** How far a field's soil stands over the ground (m). */
+const SOIL_TOP = 0.03;
 
 export type Overlay = 'none' | 'fertility' | 'height' | 'power' | 'roads' | 'water' | 'bees';
 
@@ -61,12 +64,21 @@ export class WorldView {
   /** The map tile of each tree and rock object. */
   private readonly terrainTiles = new Map<PixelObject, { x: number; y: number }>();
   private terrainKey = '';
-  private overlayObjs: PixelObject[] = [];
+  private overlayObjs: { o: PixelObject; g: THREE.BufferGeometry }[] = [];
   private overlayKey = '';
   private readonly r: PixelRenderer;
   private readonly m: Models;
+  private readonly lie: Lie;
+  /** A colour as the palette drew it, for what is drawn on the ground (MapGround's `paint`). */
+  private readonly paint: (hex: number) => [number, number, number];
 
-  constructor(r: PixelRenderer, m: Models) { this.r = r; this.m = m; }
+  /** The trees and rocks on the country drawn with the map (terrain.ts), and the height each stands at. */
+  private readonly halo: { thing: HaloThing; obj: PixelObject | null; y: number }[];
+
+  constructor(r: PixelRenderer, m: Models, lie: Lie, paint: (hex: number) => [number, number, number], halo: readonly HaloThing[]) {
+    this.r = r; this.m = m; this.lie = lie; this.paint = paint;
+    this.halo = halo.map((thing) => ({ thing, obj: null, y: NaN }));
+  }
 
   /** The building or truck an object belongs to (id), or null. */
   buildingOf(o: PixelObject | null): number | null {
@@ -95,12 +107,13 @@ export class WorldView {
 
   private drop(o: PixelObject) { this.targets.delete(o); o.remove(); }
 
-  private show(slot: Shown | undefined, key: string, g: () => THREE.BufferGeometry, id: number | null, place: (o: PixelObject) => void): Shown {
+  /** Shows `key` in a slot, replacing what it showed; `own` when the geometry is made for it (and goes with it). */
+  private show(slot: Shown | undefined, key: string, g: () => THREE.BufferGeometry, id: number | null, place: (o: PixelObject) => void, own = false): Shown {
     if (slot && slot.key === key) return slot;
-    if (slot) this.drop(slot.obj);
-    const obj = this.add(g(), id);
+    if (slot) { this.drop(slot.obj); slot.own?.dispose(); }
+    const geometry = g(), obj = this.add(geometry, id);
     place(obj);
-    return { obj, key };
+    return own ? { obj, key, own: geometry } : { obj, key };
   }
 
   sync(s: GameState) {
@@ -112,7 +125,7 @@ export class WorldView {
       const n = sizeOf(b), cx = b.x + n / 2, cz = b.y + n / 2;
       if (b.type === 'field') { this.syncField(s, b); continue; }
       const running = isRunning(b);
-      const y = standY(s.map, n, b.x, b.y);
+      const y = standY(this.lie, s.map, n, b.x, b.y);
       let key = `${b.type} ${b.x} ${b.y} ${b.rot} ${running} ${y}`;
       let geo = () => this.m.buildings[b.type][running ? 'running' : 'idle'];
       if (b.type === 'turbine') {
@@ -129,7 +142,7 @@ export class WorldView {
       this.shown.set(b.id, this.show(this.shown.get(b.id), key, geo, b.id, (o) => o.setTransform(v.set(cx, y, cz), e.set(0, YAW[b.rot], 0))));
     }
     for (const [id, sh] of this.shown) if (!alive.has(id)) { this.drop(sh.obj); this.shown.delete(id); }
-    for (const [id, ps] of this.parts) if (!alive.has(id)) { for (const p of ps) this.drop(p.obj); this.parts.delete(id); }
+    for (const [id, ps] of this.parts) if (!alive.has(id)) { for (const p of ps) { this.drop(p.obj); p.own?.dispose(); } this.parts.delete(id); }
     this.syncTrucks(s);
   }
 
@@ -139,16 +152,26 @@ export class WorldView {
     // Every tile shows the field's stage; a harvest waiting shows ripe until a truck picks it up.
     const stage = f.stored >= crop.yield ? crop.stages - 1 : Math.min(crop.stages - 1, Math.floor(f.growth * crop.stages));
     let i = 0;
+    // The ground under a field can move when earthworks nearby are fitted in (ground.ts, Lie).
+    const lie = reliefOf(s);
     for (let y = f.y; y < f.y + 3; y++) for (let x = f.x; x < f.x + 3; x++) {
-      const band = soilBand(s.map.fertility[y * s.map.width + x]), lie = corners(s.map, x, y).join(',');
-      list[i] = this.show(list[i], `soil ${x} ${y} ${band} ${lie}`, () => lay(s.map, x, y, 0, this.m.soil[band], v), f.id, (o) => o.setTransform(v, e.set(0, 0, 0)));
+      const band = soilBand(s.map.fertility[y * s.map.width + x]);
+      list[i] = this.show(list[i], `soil ${x} ${y} ${band} ${lie}`, () => this.soil(x, y, band), f.id, (o) => o.setTransform(v.set(0, 0, 0), e.set(0, 0, 0)), true);
       i++;
       const turn = Math.floor(hash(x, y) * 4) * Math.PI / 2;
       list[i] = this.show(list[i], `crop ${x} ${y} ${f.crop} ${stage} ${lie}`, () => this.m.crops[f.crop][stage], f.id,
-        (o) => o.setTransform(v.set(x + 0.5, groundY(s.map, x + 0.5, y + 0.5) + 0.03, y + 0.5), e.set(0, turn, 0)));
+        (o) => o.setTransform(v.set(x + 0.5, this.lie.y(x + 0.5, y + 0.5) + SOIL_TOP, y + 0.5), e.set(0, turn, 0)));
       i++;
     }
     this.parts.set(f.id, list);
+  }
+
+  /** A field's soil on a tile, by fertility band: a raised bed over the ground, with three furrows across it. */
+  private soil(x: number, y: number, band: number) {
+    const t = new Tris(this.paint), furrow = SOIL[Math.max(0, band - 1)];
+    sheet(t, this.lie, x, y, [0.01, 0.01, 0.99, 0.99], SOIL_TOP, SOIL[band], true);
+    for (const z of [0.2, 0.5, 0.8]) sheet(t, this.lie, x, y, [0.05, z - 0.04, 0.95, z + 0.04], SOIL_TOP + 0.015, furrow, true);
+    return t.geometry();
   }
 
   /** Where each building with a problem shows its marker: a point over it, in world space. */
@@ -157,7 +180,7 @@ export class WorldView {
     for (const b of s.buildings) {
       if (!hasMarker(b)) continue;
       const n = sizeOf(b), h = this.m.buildings[b.type].height;
-      out.push({ id: b.id, status: b.status, x: b.x + n / 2, y: standY(s.map, n, b.x, b.y) + (b.type === 'field' ? 0.9 : h) + 0.35, z: b.y + n / 2 });
+      out.push({ id: b.id, status: b.status, x: b.x + n / 2, y: standY(this.lie, s.map, n, b.x, b.y) + (b.type === 'field' ? 0.9 : h) + 0.35, z: b.y + n / 2 });
     }
     return out;
   }
@@ -177,7 +200,7 @@ export class WorldView {
       const back = (place.get(t) ?? 0) * QUEUE_GAP, x = t.x - Math.sin(t.heading) * back, z = t.y - Math.cos(t.heading) * back;
       // On a ramp it leans with the ground: the slope along its heading, from the ground a little ahead of it and behind.
       const fx = Math.sin(t.heading) * 0.3, fz = Math.cos(t.heading) * 0.3;
-      const gy = groundY(s.map, x, z), lean = Math.atan2(groundY(s.map, x + fx, z + fz) - groundY(s.map, x - fx, z - fz), 0.6);
+      const gy = this.lie.y(x, z), lean = Math.atan2(this.lie.y(x + fx, z + fz) - this.lie.y(x - fx, z - fz), 0.6);
       o.setTransform(v.set(x, gy, z), e.set(-lean, t.heading, 0, 'YXZ'));
       t.cargo.forEach((item, i) => {
         const [sx, sz] = TRUCK_BED.slots[i % TRUCK_BED.slots.length], c = Math.cos(t.heading), sn = Math.sin(t.heading);
@@ -198,7 +221,7 @@ export class WorldView {
       const ex = edge(a.x, sizeOf(a), b.x, sizeOf(b)), ez = edge(a.y, sizeOf(a), b.y, sizeOf(b));
       // From half a tile inside the giver to half a tile inside the taker, in an arc (down a cliff when the taker is lower).
       const x = ex.at + ex.dir * (k - 0.5), z = ez.at + ez.dir * (k - 0.5);
-      const ya = standY(s.map, sizeOf(a), a.x, a.y), yb = standY(s.map, sizeOf(b), b.x, b.y);
+      const ya = standY(this.lie, s.map, sizeOf(a), a.x, a.y), yb = standY(this.lie, s.map, sizeOf(b), b.x, b.y);
       this.putGood(hd.item, x, ya + (yb - ya) * k * k + 0.35 + Math.sin(Math.PI * k) * 0.5, z, 0, 0.6, null);
     }
   }
@@ -242,7 +265,7 @@ export class WorldView {
     const { width: w } = s.map;
     s.map.terrain.forEach((t, i) => {
       const x = i % w, y = Math.floor(i / w), n = hash(x, y);
-      const lie = corners(s.map, x, y).join(','), want = t === TERRAIN.tree ? `tree${Math.floor(n * 3)} ${lie}` : t === TERRAIN.rock ? `rock${Math.floor(n * 3)} ${lie}` : null;
+      const gy = this.lie.y(x + 0.5, y + 0.5), lie = gy.toFixed(3), want = t === TERRAIN.tree ? `tree${Math.floor(n * 3)} ${lie}` : t === TERRAIN.rock ? `rock${Math.floor(n * 3)} ${lie}` : null;
       const cur = this.terrain[i];
       if (cur && cur.key === want) return;
       if (cur) { this.terrainTiles.delete(cur.obj); this.drop(cur.obj); this.terrain[i] = null; }
@@ -250,18 +273,28 @@ export class WorldView {
       const tree = t === TERRAIN.tree ? treeAt(x, y, baseLevel(s.map, x, y), wetAt((wx, wy) => inMap(s, wx, wy) && terrainAt(s, wx, wy) === TERRAIN.water, x, y)) : null;
       const g = tree ? this.m.trees[tree.species][tree.variant] : this.m.rocks[Math.floor(n * 3) % 3];
       const obj = this.add(g, null);
-      obj.setTransform(v.set(x + 0.5, groundY(s.map, x + 0.5, y + 0.5), y + 0.5), e.set(0, n * Math.PI * 2, 0), t === TERRAIN.tree ? 0.62 + 0.25 * n : 1);
+      obj.setTransform(v.set(x + 0.5, gy, y + 0.5), e.set(0, n * Math.PI * 2, 0), t === TERRAIN.tree ? 0.62 + 0.25 * n : 1);
       this.terrainTiles.set(obj, { x, y });
       this.terrain[i] = { obj, key: want };
     });
+    // The country's round the map, standing on its ground as earthworks on the map's edge move it.
+    for (const h of this.halo) {
+      const { g, x, z, yaw, scale, sink } = h.thing, y = this.lie.y(x, z) - sink;
+      if (Math.abs(y - h.y) < 1e-3) continue;
+      h.y = y;
+      h.obj ??= this.r.addObject(g);
+      h.obj.setTransform(v.set(x, y, z), e.set(0, yaw, 0), scale);
+    }
   }
 
-  /** An overlay tile in `tint`, laid over map tile (x, y), `lift` above its ground. */
-  private tile(s: GameState, x: number, y: number, lift: number, tint: THREE.Color) {
-    const o = this.r.addObject(lay(s.map, x, y, lift, this.m.fill, v));
-    o.setTransform(v, e.set(0, 0, 0));
-    o.tint = tint; o.tintStrength = 1; o.castShadow = false;
-    return o;
+  /** Overlay tiles in `tint` over the map tiles listed (by index), `lift` above their ground, as one object. */
+  private tiles(s: GameState, list: Iterable<number>, lift: number, tint: THREE.Color, opacity = 1) {
+    const g = overlayTiles(this.lie, list, s.map.width, lift);
+    if (!g.getAttribute('position').count) { g.dispose(); return; }
+    const o = this.r.addObject(g);
+    o.setTransform(v.set(0, 0, 0), e.set(0, 0, 0));
+    o.tint = tint; o.tintStrength = 1; o.castShadow = false; o.opacity = opacity;
+    this.overlayObjs.push({ o, g });
   }
 
   /**
@@ -273,57 +306,54 @@ export class WorldView {
     const key = kind === 'none' ? 'none' : `${kind} ${reliefOf(s)} ${kind === 'fertility' ? s.map.fertility.map((f) => Math.floor(f / 17)).join('') : ''} ${s.buildings.length} ${networks(s).layout} ${layoutOf(s)}${kind === 'roads' ? ` ${s.buildings.filter((b) => cutOff(s, b)).map((b) => b.id).join(',')}` : ''}`;
     if (key === this.overlayKey) return;
     this.overlayKey = key;
-    for (const o of this.overlayObjs) o.remove();
+    for (const { o, g } of this.overlayObjs) { o.remove(); g.dispose(); }
     this.overlayObjs = [];
     if (kind === 'none') return;
     const { width: w, height: h } = s.map;
+    /** Tiles by their tint. */
+    const by = (tint: (i: number) => THREE.Color | null) => {
+      const out = new Map<THREE.Color, number[]>();
+      for (let i = 0; i < w * h; i++) { const c = tint(i); if (!c) continue; const l = out.get(c); if (l) l.push(i); else out.set(c, [i]); }
+      return out;
+    };
+    if (kind === 'height') {
+      // A tint per level band (blended between), steep banks darker: one object per tint.
+      const tints = new Map<string, THREE.Color>();
+      const groups = by((i) => {
+        if (s.map.terrain[i] === TERRAIN.water) return null;
+        const x = i % w, y = Math.floor(i / w), c = heightTint(centreLevel(s.map, x, y), isBank(s.map, x, y)), k = c.getHexString();
+        const known = tints.get(k);
+        if (known) return known;
+        tints.set(k, c);
+        return c;
+      });
+      for (const [tint, list] of groups) this.tiles(s, list, 0.02, tint);
+      return;
+    }
+    if (kind === 'fertility') {
+      for (const [tint, list] of by((i) => (s.map.terrain[i] === TERRAIN.grass ? FERT[Math.min(5, Math.floor(s.map.fertility[i] / 17))] : null))) this.tiles(s, list, 0.02, tint);
+      return;
+    }
+    if (kind === 'roads') {
+      const open: number[] = [], cut: number[] = [];
+      for (let i = 0; i < w * h; i++) if (isOpen(s, i % w, Math.floor(i / w))) open.push(i);
+      for (const b of s.buildings) {
+        if (!cutOff(s, b)) continue;
+        for (let y = b.y; y < b.y + sizeOf(b); y++) for (let x = b.x; x < b.x + sizeOf(b); x++) cut.push(y * w + x);
+      }
+      this.tiles(s, open, 0.02, ROADS, 0.4);
+      this.tiles(s, cut, 0.05, CUT_OFF);
+      return;
+    }
     const mark = new Set<number>();
     const cover = (bx: number, by: number, n: number, r: number) => {
       for (let y = by - r; y < by + n + r; y++) for (let x = bx - r; x < bx + n + r; x++) if (x >= 0 && y >= 0 && x < w && y < h) mark.add(y * w + x);
     };
-    if (kind === 'height') {
-      for (let i = 0; i < w * h; i++) {
-        if (s.map.terrain[i] === TERRAIN.water) continue;
-        const x = i % w, y = Math.floor(i / w);
-        const o = this.tile(s, x, y, 0.02, heightTint(centreLevel(s.map, x, y), isBank(s.map, x, y)));
-        this.overlayObjs.push(o);
-      }
-      return;
-    }
-    if (kind === 'fertility') {
-      for (let i = 0; i < w * h; i++) {
-        if (s.map.terrain[i] !== TERRAIN.grass) continue;
-        const o = this.tile(s, i % w, Math.floor(i / w), 0.02, FERT[Math.min(5, Math.floor(s.map.fertility[i] / 17))]);
-        this.overlayObjs.push(o);
-      }
-      return;
-    }
-    if (kind === 'roads') {
-      for (let i = 0; i < w * h; i++) {
-        const x = i % w, y = Math.floor(i / w);
-        if (!isOpen(s, x, y)) continue;
-        const o = this.tile(s, x, y, 0.02, ROADS);
-        o.opacity = 0.4;
-        this.overlayObjs.push(o);
-      }
-      for (const b of s.buildings) {
-        if (!cutOff(s, b)) continue;
-        for (let y = b.y; y < b.y + sizeOf(b); y++) for (let x = b.x; x < b.x + sizeOf(b); x++) {
-          const o = this.tile(s, x, y, 0.05, CUT_OFF);
-          this.overlayObjs.push(o);
-        }
-      }
-      return;
-    }
     for (const b of s.buildings) {
       if (kind === 'water' && b.type === 'sprinkler') cover(b.x - 1, b.y - 1, 3, POWER.sprinklerReach - 1);
       if (kind === 'bees' && b.type === 'hive') cover(b.x, b.y, 1, HIVE.reach);
     }
-    const tint = kind === 'water' ? WATER : BEES;
-    for (const i of mark) {
-      const o = this.tile(s, i % w, Math.floor(i / w), 0.02, tint);
-      this.overlayObjs.push(o);
-    }
+    this.tiles(s, mark, 0.02, kind === 'water' ? WATER : BEES);
   }
 }
 

@@ -1,91 +1,183 @@
 import * as THREE from 'three';
 import { FLAG, linearColor as lin, thin, type PixelObject, type PixelRenderer } from 'pixel3d-renderer';
+import { BUILDINGS } from '../game/data.ts';
 import { TERRAIN, type Land } from '../game/map.ts';
-import { baseLevel, centreLevel, corners, heightAt, heightOn, inRelief, sheetAt, sideOf, SIDES, splitsNwSe, spanOf, STEEP, type Relief } from '../game/relief.ts';
+import { baseLevel, centreLevel, corners, inRelief, joins, SIDES, spanOf, splitsNwSe, STEEP, type Relief } from '../game/relief.ts';
+import { groundOf } from '../game/rules.ts';
 import { reliefOf, type GameState } from '../game/state.ts';
+import { Surface } from './surface.ts';
 
-// The ground: each land tile's top over its four corners, shaded smooth across the tiles it joins so slopes roll rather than
-// facet, and the cliff faces where it stands above a neighbour, banded like strata under a lip of turf. The country beyond the map is built once into the static scene
-// (terrain.ts); the map's own ground is drawn as objects in chunks (`MapGround`), so earthworks can redraw what they change.
+// The ground: each land tile's top, drawn as the smooth reading of the rules' levels that surface.ts fits (worked ground and
+// water exactly at their levels), lit by a light fixed to the land so its slopes read; and the cliff faces where a tile
+// stands above a neighbour it doesn't join, banded like strata under a lip of turf. The country beyond the map is built once
+// into the static scene (terrain.ts); the map's own ground is drawn as objects in chunks (`MapGround`), so earthworks can
+// redraw what they change. Everything that stands on the ground stands on the ground as drawn (`Lie`).
 
 /** How high one level stands, in metres. */
 export const LEVEL_HEIGHT = 0.25;
+const H = LEVEL_HEIGHT;
 
-/** The ground's height in metres at a point of a relief (tiles). */
-export const groundY = (r: Relief, x: number, z: number) => heightAt(r, x, z) * LEVEL_HEIGHT;
+/** The most a side of a tile is cut into, drawing its patch, and how far (m) the triangles drawn may stray from the patch. */
+const FINEST = 8, TOLERANCE = 0.01;
+/** How finely a tile may be cut: whole, halves, quarters or eighths. */
+const DETAILS = [1, 2, 4, FINEST];
+/**
+ * How many tiles of country round the map are drawn with it, and fitted again with it after earthworks, so the ground
+ * that moves never meets ground drawn once (the country beyond, whose edge stays put).
+ */
+export const HALO = 3;
+/** How far (tiles) round the ground earthworks changed the ground is fitted again (further out it hardly moves). */
+const SPREAD = 8;
+
+/**
+ * The lie of the whole land as it is drawn (the country and the map, with the map's earthworks): its smooth surface, how
+ * finely each tile of it is drawn, and the height of the ground at any point of the world. World x and z are the map's tiles
+ * (the map's north-west corner at 0); the land's tiles start `margin` tiles further out.
+ */
+export class Lie {
+  readonly relief: Relief & { corner: number[] };
+  readonly margin: number;
+  readonly surface: Surface;
+  private readonly s: GameState;
+  private readonly land: Land;
+  /** How many pieces each land tile is cut into a side (DETAILS). */
+  private readonly detail: Uint8Array;
+  /** Each map tile under a building that needed level ground (worked, though earthworks may never have touched it). */
+  private pads: Uint8Array;
+  /** Each map tile's corners and whether it was worked, as last fitted. */
+  private fitted: { corner: number[]; worked: boolean[] };
+
+  constructor(s: GameState, land: Land) {
+    this.s = s; this.land = land; this.margin = land.margin;
+    this.relief = { width: land.width, height: land.height, corner: [...land.corner] };
+    this.copyMap();
+    this.pads = this.padsOf();
+    this.fitted = this.fitting();
+    this.surface = new Surface(this.relief, { water: (x, y) => this.water(x, y), worked: (x, y) => this.worked(x, y) });
+    this.detail = new Uint8Array(land.width * land.height);
+    for (let y = 0; y < land.height; y++) for (let x = 0; x < land.width; x++) this.detail[y * land.width + x] = this.cut(x, y);
+  }
+
+  /** Whether a land tile is on the map. */
+  onMap(lx: number, ly: number) {
+    const x = lx - this.margin, y = ly - this.margin;
+    return x >= 0 && y >= 0 && x < this.s.map.width && y < this.s.map.height;
+  }
+
+  /** Whether a land tile is drawn with the map's ground: on the map, or in the country's HALO round it. */
+  withMap(lx: number, ly: number) {
+    const x = lx - this.margin, y = ly - this.margin;
+    return x >= -HALO && y >= -HALO && x < this.s.map.width + HALO && y < this.s.map.height + HALO;
+  }
+
+  private water(lx: number, ly: number) { return this.land.terrain[ly * this.land.width + lx] === TERRAIN.water; }
+
+  private worked(lx: number, ly: number) {
+    if (!this.onMap(lx, ly)) return false;
+    const i = (ly - this.margin) * this.s.map.width + lx - this.margin;
+    return this.s.worked[i] === 1 || this.pads[i] === 1;
+  }
+
+  private padsOf() {
+    const m = this.s.map, out = new Uint8Array(m.width * m.height);
+    for (const b of this.s.buildings) {
+      if (groundOf(b.type) !== 'flat') continue;
+      const n = BUILDINGS[b.type].size;
+      for (let y = b.y; y < b.y + n; y++) for (let x = b.x; x < b.x + n; x++) out[y * m.width + x] = 1;
+    }
+    return out;
+  }
+
+  /** Copies the map's corners into the land's relief. */
+  private copyMap() {
+    const m = this.s.map, M = this.margin, c = this.relief.corner;
+    for (let i = 0; i < m.width * m.height; i++) {
+      const x = i % m.width, y = Math.floor(i / m.width), j = ((y + M) * this.relief.width + x + M) * 4;
+      for (let k = 0; k < 4; k++) c[j + k] = m.corner[i * 4 + k];
+    }
+  }
+
+  /** What the fit takes from the map: its corners, and which tiles are worked. */
+  private fitting() {
+    const m = this.s.map, M = this.margin;
+    return { corner: [...m.corner], worked: Array.from({ length: m.width * m.height }, (_, i) => this.worked(i % m.width + M, Math.floor(i / m.width) + M)) };
+  }
+
+  /**
+   * Follows earthworks and worked ground on the map: fits the ground drawn with the map again. The land tiles (land
+   * indices) drawn with the map whose drawing may have changed: those whose patch, shade or cut changed, and their
+   * neighbours (whose sides and walls meet them).
+   */
+  update(): number[] {
+    const m = this.s.map, M = this.margin, W = this.relief.width;
+    this.copyMap();
+    this.pads = this.padsOf();
+    // The map tiles whose corners or working changed since the last fit, and the ground round them.
+    const was = this.fitted, now = this.fitting();
+    this.fitted = now;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < m.width * m.height; i++) {
+      if (was.worked[i] === now.worked[i] && [0, 1, 2, 3].every((k) => was.corner[i * 4 + k] === now.corner[i * 4 + k])) continue;
+      const x = i % m.width, y = Math.floor(i / m.width);
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x + 1); y1 = Math.max(y1, y + 1);
+    }
+    if (x0 === Infinity) return [];
+    const changed = this.surface.refit(M + Math.max(-HALO, x0 - SPREAD), M + Math.max(-HALO, y0 - SPREAD),
+      M + Math.min(m.width + HALO, x1 + SPREAD), M + Math.min(m.height + HALO, y1 + SPREAD)), out = new Set<number>();
+    for (const t of changed) {
+      const lx = t % W, ly = (t - lx) / W;
+      this.detail[t] = this.cut(lx, ly);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (this.withMap(lx + dx, ly + dy)) out.add((ly + dy) * W + lx + dx);
+    }
+    return [...out];
+  }
+
+  /** How finely to cut a land tile: the fewest pieces a side whose triangles surely stay within TOLERANCE of its patch. */
+  private cut(lx: number, ly: number) {
+    const bend = this.surface.bend(lx, ly) * H;
+    return DETAILS.find((S) => bend / (S * S) <= TOLERANCE) ?? FINEST;
+  }
+
+  /** How many pieces a land tile is cut into a side. */
+  detailOf(lx: number, ly: number) { return this.detail[ly * this.relief.width + lx]; }
+
+  /**
+   * How many pieces a land tile's side is cut into: as finely as the finer of the two tiles where they join, so their edges
+   * meet point for point; the finest where the map meets the country (the country is drawn once, the map's side changes).
+   */
+  stepsOf(lx: number, ly: number, side: number) {
+    const own = this.detailOf(lx, ly), nx = lx + SIDES[side][0], ny = ly + SIDES[side][1];
+    if (!inRelief(this.relief, nx, ny)) return own;
+    if (this.withMap(lx, ly) !== this.withMap(nx, ny)) return FINEST;
+    return joins(this.relief, lx, ly, side) ? Math.max(own, this.detailOf(nx, ny)) : own;
+  }
+
+  /** The ground's height (m) at a point of the world. */
+  y(x: number, z: number) { return this.surface.at(x + this.margin, z + this.margin) * H; }
+
+  /** The ground's height (m) at (u, v) across map tile (x, y), on its own patch (at a cliff, its own side's). */
+  tileY(x: number, y: number, u: number, v: number) { return this.surface.on(x + this.margin, y + this.margin, u, v) * H; }
+
+
+  /**
+   * A point of a land tile's patch at (u, v) across it: where it is in the world, its upward unit normal, and how the
+   * hillshade lights it (`light`).
+   */
+  point(lx: number, ly: number, u: number, v: number): Point {
+    const [hx, hz] = this.surface.slope(lx, ly, u, v), [sx, sz] = this.surface.shadeAt(lx, ly, u, v);
+    return { p: [lx - this.margin + u, this.surface.on(lx, ly, u, v) * H, ly - this.margin + v], n: unit([-hx * H, 1, -hz * H]), s: light(unit([-sx * H, 1, -sz * H])) };
+  }
+}
 
 /**
  * The height (m) a building `n` tiles a side stands at with its north-west tile at (x, y): the ground under a one-tile
- * building's centre, else the highest of its tiles (they are level, but for a field over a ramp).
+ * building's centre, else the highest of its tiles' levels (worked ground, level, but for a field over a ramp).
  */
-export function standY(r: Relief, n: number, x: number, y: number) {
-  if (n === 1) return groundY(r, x + 0.5, y + 0.5);
+export function standY(lie: Lie, r: Relief, n: number, x: number, y: number) {
+  if (n === 1) return lie.y(x + 0.5, y + 0.5);
   let top = 0;
   for (let ty = y; ty < y + n; ty++) for (let tx = x; tx < x + n; tx++) if (inRelief(r, tx, ty)) top = Math.max(top, centreLevel(r, tx, ty));
   return top * LEVEL_HEIGHT;
-}
-
-/**
- * Lays a tile-sized object (a soil bed, an overlay tile) on a tile of the relief, lifted `lift` above it: returns its
- * geometry draped over the tile (`drape`) and writes where it stands into `pos`, its origin at the tile's centre and the
- * height of its lowest corner.
- */
-export function lay(r: Relief, x: number, y: number, lift: number, g: THREE.BufferGeometry, pos: THREE.Vector3): THREE.BufferGeometry {
-  const c = corners(r, x, y), base = Math.min(...c);
-  pos.set(x + 0.5, base * LEVEL_HEIGHT + lift, y + 0.5);
-  return drape(g, c.map((h) => h - base));
-}
-
-/** Draped geometries, by the geometry and the shape of the tile it was draped over. */
-const draped = new WeakMap<THREE.BufferGeometry, Map<string, THREE.BufferGeometry>>();
-
-/**
- * A tile-sized geometry (x and z within half a tile of its origin, non-indexed) draped over a tile whose corners stand
- * `c` levels above its lowest: each triangle cut along the diagonal the tile's top is split along (relief.ts `splitsNwSe`),
- * so every piece lies over one half of the top, and each vertex lifted by the ground's height under it. A flat tile gives
- * the geometry itself. Cached, so a shape is draped once.
- */
-export function drape(g: THREE.BufferGeometry, c: readonly number[]): THREE.BufferGeometry {
-  if (c.every((h) => h === 0)) return g;
-  let byShape = draped.get(g);
-  if (!byShape) { byShape = new Map(); draped.set(g, byShape); }
-  const key = c.join(','), known = byShape.get(key);
-  if (known) return known;
-  // The diagonal as a signed distance, in the geometry's own coordinates (the tile's centre at the origin).
-  const nwSe = splitsNwSe(c), side = (x: number, z: number) => (nwSe ? x - z : x + z);
-  const names = Object.keys(g.attributes).filter((k) => k !== 'normal'), src = names.map((k) => g.getAttribute(k));
-  const out = names.map(() => [] as number[]), pos = names.indexOf('position');
-  type Vertex = number[][];
-  const vertex = (i: number): Vertex => src.map((a) => Array.from({ length: a.itemSize }, (_, k) => a.array[i * a.itemSize + k]));
-  const mix = (a: Vertex, b: Vertex, t: number): Vertex => a.map((v, n) => v.map((x, k) => x + (b[n][k] - x) * t));
-  const emit = (tri: Vertex[]) => {
-    for (const v of tri) v.forEach((data, n) => {
-      if (n === pos) out[n].push(data[0], data[1] + heightOn(c, data[0] + 0.5, data[2] + 0.5) * LEVEL_HEIGHT, data[2]);
-      else out[n].push(...data);
-    });
-  };
-  for (let t = 0; t + 2 < src[pos].count; t += 3) {
-    const tri = [vertex(t), vertex(t + 1), vertex(t + 2)], d = tri.map((v) => side(v[pos][0], v[pos][2]));
-    // A vertex on the diagonal with the other two either side of it: cut the triangle in two through it.
-    const on = [0, 1, 2].find((i) => d[i] === 0 && d[(i + 1) % 3] * d[(i + 2) % 3] < 0);
-    if (on !== undefined) {
-      const a = tri[on], b = tri[(on + 1) % 3], e = tri[(on + 2) % 3], j = (on + 1) % 3, l = (on + 2) % 3;
-      const be = mix(b, e, d[j] / (d[j] - d[l]));
-      emit([a, b, be]); emit([a, be, e]);
-      continue;
-    }
-    // The lone vertex on one side of the diagonal, if the triangle crosses it: cut off its corner, and the quad left in two.
-    const k = [0, 1, 2].find((i) => d[i] * d[(i + 1) % 3] < 0 && d[i] * d[(i + 2) % 3] < 0);
-    if (k === undefined) { emit(tri); continue; }
-    const a = tri[k], b = tri[(k + 1) % 3], e = tri[(k + 2) % 3];
-    const ab = mix(a, b, d[k] / (d[k] - d[(k + 1) % 3])), ae = mix(a, e, d[k] / (d[k] - d[(k + 2) % 3]));
-    emit([a, ab, ae]); emit([ab, b, e]); emit([ab, e, ae]);
-  }
-  const result = new THREE.BufferGeometry();
-  names.forEach((name, n) => result.setAttribute(name, new THREE.Float32BufferAttribute(out[n], src[n].itemSize)));
-  result.computeVertexNormals();
-  byShape.set(key, result);
-  return result;
 }
 
 /** Cliff faces: earth for the low levels, stone higher up, STRATUM levels a band; the turf lip along the top. */
@@ -122,14 +214,12 @@ const GRASS = [0x66a248, 0x6f9f49, 0x789d4a, 0x819b4b, 0x88984c], BANK = 0x969a5
 /** Where the hillshade's light comes from: the screen's upper left at the home view, a little off the grid, 45° up. */
 const SHADE_LIGHT = (() => { const h = Math.hypot(2, 1); return [-2 / h * Math.SQRT1_2, Math.SQRT1_2, -1 / h * Math.SQRT1_2]; })();
 /** Lightness (OKLab L) per unit of light turned towards or away, the step it is rounded to, and the most steps either way. */
-const SHADE_GAIN = 0.6, SHADE_STEP = 0.04, SHADE_STEPS = 4;
+const SHADE_GAIN = 0.6, SHADE_STEP = 0.04, SHADE_STEPS = 2;
 const shaded = new Map<number, number>();
-/** A colour lit by the hillshade for a face whose upward unit normal is `n`: lighter or darker by whole steps. */
-export function hillshade(hex: number, n: Vec): number {
-  const d = n[0] * SHADE_LIGHT[0] + n[1] * SHADE_LIGHT[1] + n[2] * SHADE_LIGHT[2] - SHADE_LIGHT[1];
-  const k = Math.max(-SHADE_STEPS, Math.min(SHADE_STEPS, Math.round(SHADE_GAIN * d / SHADE_STEP)));
-  return k === 0 ? hex : shadeStep(hex, k);
-}
+/** How the hillshade lights ground whose upward unit normal is `n`, in steps (lighter above 0): rounded, a colour's step. */
+const light = (n: Vec) => SHADE_GAIN * (n[0] * SHADE_LIGHT[0] + n[1] * SHADE_LIGHT[1] + n[2] * SHADE_LIGHT[2] - SHADE_LIGHT[1]) / SHADE_STEP;
+/** A colour lit by the hillshade `k` whole steps (`light`, rounded), at most SHADE_STEPS either way. */
+const hillshade = (hex: number, k: number) => { k = Math.max(-SHADE_STEPS, Math.min(SHADE_STEPS, k)); return k === 0 ? hex : shadeStep(hex, k); };
 function shadeStep(hex: number, k: number): number {
   const key = hex * 16 + k + SHADE_STEPS;
   let out = shaded.get(key);
@@ -189,66 +279,7 @@ const INDEX_EVERY = 4;
 /** Every colour the map's ground can use, so the palette can be chosen with them (MapGround's swatch). */
 const PALETTE = [...new Set([...allShades([...GRASS, BANK]), ...EARTH, ...STONE, LIP, GRID, CONTOUR, INDEX])];
 
-/**
- * A ribbon over the ground from `p` to `q` (world points on one face whose upward unit normal is `n`), `w` wide and lifted
- * a little off it: a line drawn on the ground.
- */
-function ribbon(t: Tris, p: Vec, q: Vec, n: Vec, hex: number, w = LINE_WIDTH) {
-  const d = [q[0] - p[0], q[1] - p[1], q[2] - p[2]];
-  const s = [n[1] * d[2] - n[2] * d[1], n[2] * d[0] - n[0] * d[2], n[0] * d[1] - n[1] * d[0]], len = Math.hypot(s[0], s[1], s[2]);
-  if (len < 1e-9) return;
-  const k = w / 2 / len, o = (v: Vec, sign: number) => [0, 1, 2].map((i) => v[i] + s[i] * k * sign + n[i] * LINE_LIFT);
-  t.quad(o(p, -1), o(p, 1), o(q, 1), o(q, -1), hex, n);
-}
-
-/**
- * The grid (each side of the tile, drawn just inside it, so a cliff's two sides each keep their own) and the contour lines
- * between levels over one tile's top.
- */
-function tileLines(t: Tris, x: number, y: number, c: readonly number[]) {
-  const p = cornerPoints(x, y, c), on = (u: number, v: number): Vec => [x + u, heightOn(c, u, v) * H, y + v];
-  const i = LINE_WIDTH / 2;
-  // Each side, inset by half a line so the two tiles sharing it draw one line between them.
-  const sides: [Vec, Vec, number, number][] = [[[0, i], [1, i], 0, 1], [[1 - i, 0], [1 - i, 1], 1, 2], [[1, 1 - i], [0, 1 - i], 2, 3], [[i, 1], [i, 0], 3, 0]];
-  // The diagonal the top is folded along, as a signed distance across the tile.
-  const fold = splitsNwSe(c) ? (u: number, v: number) => u - v : (u: number, v: number) => u + v - 1;
-  for (const [a, b] of sides) {
-    // Split where it crosses the fold, so each piece lies on one triangle's plane.
-    const da = fold(a[0], a[1]), db = fold(b[0], b[1]), f = da / (da - db);
-    const m = da * db < 0 ? [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f] : b;
-    for (const [u, v] of m === b ? [[a, b]] : [[a, m], [m, b]]) {
-      ribbon(t, on(u[0], u[1]), on(v[0], v[1]), upNormalAt(c, p, (u[0] + v[0]) / 2, (u[1] + v[1]) / 2), GRID);
-    }
-  }
-  for (const tri of halves(c)) {
-    const lv = tri.map((k) => c[k]), lo = Math.min(...lv), hi = Math.max(...lv);
-    if (hi === lo) continue;
-    const n = unit(faceNormal(p[tri[0]], p[tri[1]], p[tri[2]]));
-    for (let k = Math.ceil(lo - 0.5); k + 0.5 < hi; k++) {
-      const v = k + 0.5;
-      if (v <= lo) continue;
-      const cut: Vec[] = [];
-      for (let e = 0; e < 3; e++) {
-        const A = tri[e], B = tri[(e + 1) % 3], ha = c[A], hb = c[B];
-        if ((ha - v) * (hb - v) >= 0) continue;
-        const f = (v - ha) / (hb - ha);
-        cut.push([0, 1, 2].map((j) => p[A][j] + (p[B][j] - p[A][j]) * f));
-      }
-      if (cut.length === 2) ribbon(t, cut[0], cut[1], n, (k + 1) % INDEX_EVERY === 0 ? INDEX : CONTOUR);
-    }
-  }
-}
-const unit = (v: Vec) => { const l = Math.hypot(v[0], v[1], v[2]); return v.map((x) => x / l); };
-/** The upward unit normal of the half of a tile's top under the tile point (u, v). */
-function upNormalAt(c: readonly number[], p: Vec[], u: number, v: number): Vec {
-  const nwSe = splitsNwSe(c), [h0, h1] = halves(c);
-  // NW–SE diagonal: the first half (NW, NE, SE) has u > v; NE–SW: the first half (NW, NE, SW) has u + v < 1.
-  const tri = (nwSe ? u >= v : u + v <= 1) ? h0 : h1;
-  return unit(faceNormal(p[tri[0]], p[tri[1]], p[tri[2]]));
-}
-
 const OUT: readonly (readonly [number, number])[] = SIDES;
-
 type Vec = readonly number[];
 
 /**
@@ -300,66 +331,6 @@ export class Tris {
   }
 }
 
-const H = LEVEL_HEIGHT;
-
-/** Where a tile's corners lie in the world: north-west, north-east, south-east, south-west. */
-const cornerPoints = (x: number, y: number, c: readonly number[]): Vec[] =>
-  [[x, c[0] * H, y], [x + 1, c[1] * H, y], [x + 1, c[2] * H, y + 1], [x, c[3] * H, y + 1]];
-
-/** A tile's top as two triangles of its corners (by index), split along the diagonal relief.ts draws (`splitsNwSe`). */
-const halves = (c: readonly number[]): [number, number, number][] => (splitsNwSe(c) ? [[0, 1, 2], [0, 2, 3]] : [[0, 1, 3], [1, 2, 3]]);
-
-const UP = [0, 1, 0];
-
-/**
- * A tile's top over its corners (levels: north-west, north-east, south-east, south-west), at (x, y) in the world: shaded
- * smooth with a normal at each corner, or flat without; lit by the hillshade.
- */
-export function tileTop(t: Tris, x: number, y: number, c: readonly number[], hex: number, normals?: readonly Vec[]) {
-  const p = cornerPoints(x, y, c);
-  for (const [a, b, d] of halves(c)) {
-    t.tri(p[a], p[b], p[d], hillshade(hex, unit(faceNormal(p[a], p[b], p[d]))), UP, normals && [normals[a], normals[b], normals[d]]);
-  }
-}
-
-/** The upward normal of the triangle a, b, c (unnormalised: twice its area long). */
-function faceNormal(a: Vec, b: Vec, c: Vec): number[] {
-  const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
-  const n = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
-  return n[1] < 0 ? n.map((v) => -v) : n;
-}
-
-/**
- * The normals at a tile's four corners for smooth shading: at each, the mean of the faces of the top that meet there, over
- * every tile whose ground joins this one's at that point (relief.ts, `sheetAt`), so a slope shades as one surface across
- * tiles but a cliff's top edge stays sharp.
- */
-export function cornerNormals(r: Relief, x: number, y: number): Vec[] {
-  return [0, 1, 2, 3].map((k) => {
-    const px = x + (k === 1 || k === 2 ? 1 : 0), py = y + (k >= 2 ? 1 : 0), sum = [0, 0, 0];
-    for (const t of sheetAt(r, px, py, { x, y })) {
-      const c = corners(r, t.x, t.y), p = cornerPoints(t.x, t.y, c);
-      for (const tri of halves(c)) {
-        if (!tri.includes(t.k)) continue;
-        const n = faceNormal(p[tri[0]], p[tri[1]], p[tri[2]]);
-        sum[0] += n[0]; sum[1] += n[1]; sum[2] += n[2];
-      }
-    }
-    const len = Math.hypot(sum[0], sum[1], sum[2]);
-    return len > 1e-9 ? sum.map((v) => v / len) : UP;
-  });
-}
-
-/** The two ends of a tile's side in the world (x, z), in the order relief.ts lists side heights. */
-function sideEnds(x: number, y: number, side: number): [[number, number], [number, number]] {
-  switch (side) {
-    case 0: return [[x, y], [x + 1, y]];
-    case 1: return [[x + 1, y], [x + 1, y + 1]];
-    case 2: return [[x, y + 1], [x + 1, y + 1]];
-    default: return [[x, y], [x, y + 1]];
-  }
-}
-
 type Line = [number, number];
 const at = (f: Line, u: number) => f[0] + (f[1] - f[0]) * u;
 
@@ -385,19 +356,190 @@ function band(t: Tris, a: [number, number], b: [number, number], lows: Line[], h
   }
 }
 
+const unit = (v: Vec) => { const l = Math.hypot(v[0], v[1], v[2]); return v.map((x) => x / l); };
+const UP = [0, 1, 0];
+/** A point of the ground: where it is, its upward unit normal, and how the hillshade lights it (`light`). */
+interface Point { p: number[]; n: number[]; s: number }
+
+/** The point a fraction `f` from a to b, taken the same way round whichever end is given first (so shared edges meet). */
+function between(a: Point, b: Point, f: number): Point {
+  if (a.p[0] > b.p[0] || (a.p[0] === b.p[0] && a.p[2] > b.p[2])) { [a, b] = [b, a]; f = 1 - f; }
+  const mix = (x: number[], y: number[]) => x.map((v, i) => v + (y[i] - v) * f);
+  return { p: mix(a.p, b.p), n: unit(mix(a.n, b.n)), s: a.s + (b.s - a.s) * f };
+}
+
 /**
- * The cliff face along one side of a tile, from its own side heights `own` down to its neighbour's `below` (levels, in the
- * order relief.ts gives them), where it is the higher: a turf lip, then a band of earth or stone a level.
+ * A triangle of the ground's top, shaded smooth, in `hex` lit by the hillshade: cut where its light crosses from one
+ * step to the next (half way between whole steps), each piece one step, so the light's edges run clean across the tiles.
  */
-export function cliff(t: Tris, x: number, y: number, side: number, own: Vec, below: Vec, tone: (hex: number) => number = (c) => c) {
-  if (own[0] <= below[0] + 1e-9 && own[1] <= below[1] + 1e-9) return;
-  const [a, b] = sideEnds(x, y, side), out = [OUT[side][0], 0, OUT[side][1]];
-  const top: Line = [own[0] * H, own[1] * H], bottom: Line = [below[0] * H, below[1] * H], lip: Line = [top[0] - LIP_DEPTH, top[1] - LIP_DEPTH];
-  band(t, a, b, [bottom, lip], [top], tone(LIP), out);
-  const from = Math.floor(Math.min(below[0], below[1]) / STRATUM), to = Math.ceil(Math.max(own[0], own[1]) / STRATUM);
-  for (let k = from; k < to; k++) {
-    const lo = k * STRATUM * H, hi = (k + 1) * STRATUM * H, shades = k * STRATUM >= STONE_FROM ? STONE : EARTH;
-    band(t, a, b, [bottom, [lo, lo]], [lip, [hi, hi]], tone(shades[k & 1]), out);
+function groundTri(t: Tris, a: Point, b: Point, c: Point, hex: number) {
+  const lo = Math.round(Math.min(a.s, b.s, c.s)), hi = Math.round(Math.max(a.s, b.s, c.s));
+  if (lo === hi || hi < -SHADE_STEPS || lo > SHADE_STEPS) { t.tri(a.p, b.p, c.p, hillshade(hex, lo), UP, [a.n, b.n, c.n]); return; }
+  for (let k = Math.max(lo, -SHADE_STEPS); k <= Math.min(hi, SHADE_STEPS); k++) {
+    // The part lit k steps: between k - ½ and k + ½ (all below or above for the outermost steps).
+    let poly = [a, b, c];
+    if (k > -SHADE_STEPS) poly = clip(poly, (q) => q.s - (k - 0.5));
+    if (k < SHADE_STEPS) poly = clip(poly, (q) => k + 0.5 - q.s);
+    for (let i = 1; i + 1 < poly.length; i++) t.tri(poly[0].p, poly[i].p, poly[i + 1].p, hillshade(hex, k), UP, [poly[0].n, poly[i].n, poly[i + 1].n]);
+  }
+}
+
+/** The part of a convex polygon where `side` is at least 0. */
+function clip(poly: Point[], side: (q: Point) => number): Point[] {
+  const out: Point[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length], da = side(a), db = side(b);
+    if (da >= 0) out.push(a);
+    if ((da >= 0) !== (db >= 0)) out.push(between(a, b, da / (da - db)));
+  }
+  return out;
+}
+
+/** A cell of four points (north-west, north-east, south-east, south-west) as two triangles, folded along the diagonal whose ends are closer in height. */
+function cell(t: Tris, q: Point[], hex: number) {
+  if (splitsNwSe(q.map((v) => v.p[1]))) { groundTri(t, q[0], q[1], q[2], hex); groundTri(t, q[0], q[2], q[3], hex); } else { groundTri(t, q[0], q[1], q[3], hex); groundTri(t, q[1], q[2], q[3], hex); }
+}
+
+/**
+ * A land tile's top in `hex`, cut into its detail's cells. Where a side is cut finer (to meet a finer neighbour point for
+ * point), the cells along it are drawn as a fan from their middle, through every point on their sides.
+ */
+export function top(t: Tris, lie: Lie, lx: number, ly: number, hex: number) {
+  const S = lie.detailOf(lx, ly), E = [0, 1, 2, 3].map((side) => lie.stepsOf(lx, ly, side));
+  const grid: Point[] = [];
+  for (let j = 0; j <= S; j++) for (let i = 0; i <= S; i++) grid.push(lie.point(lx, ly, i / S, j / S));
+  const g = (i: number, j: number) => grid[j * (S + 1) + i];
+  for (let cj = 0; cj < S; cj++) for (let ci = 0; ci < S; ci++) {
+    const ring: Point[] = [g(ci, cj)];
+    // The extra points along a side cut finer, in order round the cell (north west to east, east north to south, and so on).
+    const extra = (side: number, from: number, at: (s: number) => [number, number]) => {
+      const m = E[side] / S;
+      for (let k = 1; k < m; k++) { const [u, v] = at((from * m + (side >= 2 ? -k : k)) / E[side]); ring.push(lie.point(lx, ly, u, v)); }
+    };
+    if (cj === 0) extra(0, ci, (s) => [s, 0]);
+    ring.push(g(ci + 1, cj));
+    if (ci === S - 1) extra(1, cj, (s) => [1, s]);
+    ring.push(g(ci + 1, cj + 1));
+    if (cj === S - 1) extra(2, ci + 1, (s) => [s, 1]);
+    ring.push(g(ci, cj + 1));
+    if (ci === 0) extra(3, cj + 1, (s) => [0, s]);
+    if (ring.length === 4) { cell(t, ring, hex); continue; }
+    const mid = lie.point(lx, ly, (ci + 0.5) / S, (cj + 0.5) / S);
+    for (let k = 0; k < ring.length; k++) groundTri(t, mid, ring[k], ring[(k + 1) % ring.length], hex);
+  }
+}
+
+/** Where along a tile's side a point s (0 to 1, in the order relief.ts lists side heights) lies across the tile. */
+const SIDE_AT: ((s: number) => [number, number])[] = [(s) => [s, 0], (s) => [1, s], (s) => [s, 1], (s) => [0, s]];
+
+/** The height (m) along a land tile's side as it is drawn: straight between the points it is cut into. */
+function sideLine(lie: Lie, lx: number, ly: number, side: number): (s: number) => number {
+  const E = lie.stepsOf(lx, ly, side), h = Array.from({ length: E + 1 }, (_, k) => { const [u, v] = SIDE_AT[side](k / E); return lie.surface.on(lx, ly, u, v) * H; });
+  return (s) => { const a = Math.min(E - 1, Math.floor(s * E)), f = s * E - a; return h[a] + (h[a + 1] - h[a]) * f; };
+}
+
+/**
+ * The cliff face along one side of a land tile, from its top down to `below`: the neighbour's top along the side, or a
+ * level (m) when it is water's surface or the map's ground (`floor`): a turf lip, then a band of earth or stone a level.
+ * Drawn between each two points either side is cut into.
+ */
+export function cliff(t: Tris, lie: Lie, lx: number, ly: number, side: number, floor: number | null, tone: (hex: number) => number = (c) => c) {
+  const nx = lx + SIDES[side][0], ny = ly + SIDES[side][1], M = lie.margin;
+  const own = sideLine(lie, lx, ly, side), low = floor === null ? sideLine(lie, nx, ny, (side + 2) % 4) : () => floor;
+  const steps = Math.max(lie.stepsOf(lx, ly, side), floor === null ? lie.stepsOf(nx, ny, (side + 2) % 4) : 1);
+  const [a, b] = sideEnds(lx - M, ly - M, side), out = [SIDES[side][0], 0, SIDES[side][1]];
+  for (let k = 0; k < steps; k++) {
+    const s0 = k / steps, s1 = (k + 1) / steps, top: Line = [own(s0), own(s1)], bottom: Line = [low(s0), low(s1)];
+    if (top[0] <= bottom[0] + 1e-6 && top[1] <= bottom[1] + 1e-6) continue;
+    const pa: [number, number] = [a[0] + (b[0] - a[0]) * s0, a[1] + (b[1] - a[1]) * s0], pb: [number, number] = [a[0] + (b[0] - a[0]) * s1, a[1] + (b[1] - a[1]) * s1];
+    const lip: Line = [top[0] - LIP_DEPTH, top[1] - LIP_DEPTH];
+    band(t, pa, pb, [bottom, lip], [top], tone(LIP), out);
+    const from = Math.floor(Math.min(...bottom) / H / STRATUM), to = Math.ceil(Math.max(...top) / H / STRATUM);
+    for (let n = from; n < to; n++) {
+      const lo = n * STRATUM * H, hi = (n + 1) * STRATUM * H, shades = n * STRATUM >= STONE_FROM ? STONE : EARTH;
+      band(t, pa, pb, [bottom, [lo, lo]], [lip, [hi, hi]], tone(shades[n & 1]), out);
+    }
+  }
+}
+
+/**
+ * A sheet over part of a map tile's ground, [u0, u1] × [v0, v1] across it, `lift` (m) above it and cut as finely as the
+ * tile is: an overlay's tile, a field's soil; with `skirt`, sides down into the ground, so it stands as a raised bed.
+ */
+export function sheet(t: Tris, lie: Lie, x: number, y: number, [u0, v0, u1, v1]: readonly number[], lift: number, hex: number, skirt = false) {
+  const lx = x + lie.margin, ly = y + lie.margin, S = lie.detailOf(lx, ly), pts: Point[] = [];
+  for (let j = 0; j <= S; j++) for (let i = 0; i <= S; i++) {
+    const q = lie.point(lx, ly, u0 + (u1 - u0) * i / S, v0 + (v1 - v0) * j / S);
+    pts.push({ p: [q.p[0], q.p[1] + lift, q.p[2]], n: q.n, s: q.s });
+  }
+  for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+    const q = [pts[j * (S + 1) + i], pts[j * (S + 1) + i + 1], pts[(j + 1) * (S + 1) + i + 1], pts[(j + 1) * (S + 1) + i]];
+    for (const [a, b, c] of splitsNwSe(q.map((v) => v.p[1])) ? [[0, 1, 2], [0, 2, 3]] : [[0, 1, 3], [1, 2, 3]]) t.tri(q[a].p, q[b].p, q[c].p, hex, UP, [q[a].n, q[b].n, q[c].n]);
+  }
+  if (!skirt) return;
+  // Round the border (north, east, south, west), each piece down to just under the ground, facing out.
+  const at = (i: number, j: number) => pts[j * (S + 1) + i].p, down = (p: Vec) => [p[0], p[1] - lift - 0.01, p[2]];
+  for (let k = 0; k < S; k++) for (const [a, b, out] of [[at(k, 0), at(k + 1, 0), [0, 0, -1]], [at(S, k), at(S, k + 1), [1, 0, 0]], [at(k, S), at(k + 1, S), [0, 0, 1]], [at(0, k), at(0, k + 1), [-1, 0, 0]]] as const) {
+    t.quad(a, b, down(b), down(a), hex, out);
+  }
+}
+
+/**
+ * A ribbon over the ground from `p` to `q` (world points on the ground whose upward unit normal is about `n`), `w` wide and
+ * lifted a little off it: a line drawn on the ground.
+ */
+function ribbon(t: Tris, p: Vec, q: Vec, n: Vec, hex: number, w = LINE_WIDTH) {
+  const d = [q[0] - p[0], q[1] - p[1], q[2] - p[2]];
+  const s = [n[1] * d[2] - n[2] * d[1], n[2] * d[0] - n[0] * d[2], n[0] * d[1] - n[1] * d[0]], len = Math.hypot(s[0], s[1], s[2]);
+  if (len < 1e-9) return;
+  const k = w / 2 / len, o = (v: Vec, sign: number) => [0, 1, 2].map((i) => v[i] + s[i] * k * sign + n[i] * LINE_LIFT);
+  t.quad(o(p, -1), o(p, 1), o(q, 1), o(q, -1), hex, n);
+}
+
+/** A line along the ground of a map tile, from (u0, v0) to (u1, v1) across it, in `pieces` pieces that follow the ground. */
+function lineOn(t: Tris, lie: Lie, lx: number, ly: number, u0: number, v0: number, u1: number, v1: number, pieces: number, hex: number) {
+  for (let k = 0; k < pieces; k++) {
+    const a = k / pieces, b = (k + 1) / pieces, m = (a + b) / 2;
+    const p = lie.point(lx, ly, u0 + (u1 - u0) * a, v0 + (v1 - v0) * a), q = lie.point(lx, ly, u0 + (u1 - u0) * b, v0 + (v1 - v0) * b);
+    ribbon(t, p.p, q.p, lie.point(lx, ly, u0 + (u1 - u0) * m, v0 + (v1 - v0) * m).n, hex);
+  }
+}
+
+/**
+ * The grid along a map tile's sides (just inside, so a cliff's two sides each keep their own) and the contour lines between
+ * its levels: where the rules' ground (two triangles over its corners) crosses each half level, laid on the ground as drawn.
+ */
+function tileLines(t: Tris, lie: Lie, x: number, y: number, c: readonly number[]) {
+  const lx = x + lie.margin, ly = y + lie.margin, i = LINE_WIDTH / 2, S = Math.max(2, lie.detailOf(lx, ly));
+  lineOn(t, lie, lx, ly, 0, i, 1, i, S, GRID);
+  lineOn(t, lie, lx, ly, 1 - i, 0, 1 - i, 1, S, GRID);
+  lineOn(t, lie, lx, ly, 1, 1 - i, 0, 1 - i, S, GRID);
+  lineOn(t, lie, lx, ly, i, 1, i, 0, S, GRID);
+  const uv = [[0, 0], [1, 0], [1, 1], [0, 1]];
+  for (const tri of splitsNwSe(c) ? [[0, 1, 2], [0, 2, 3]] : [[0, 1, 3], [1, 2, 3]]) {
+    const lv = tri.map((k) => c[k]), lo = Math.min(...lv), hi = Math.max(...lv);
+    for (let k = Math.ceil(lo - 0.5); k + 0.5 < hi; k++) {
+      const v = k + 0.5;
+      if (v <= lo) continue;
+      const cut: number[][] = [];
+      for (let e = 0; e < 3; e++) {
+        const A = tri[e], B = tri[(e + 1) % 3], ha = c[A], hb = c[B];
+        if ((ha - v) * (hb - v) >= 0) continue;
+        const f = (v - ha) / (hb - ha);
+        cut.push([uv[A][0] + (uv[B][0] - uv[A][0]) * f, uv[A][1] + (uv[B][1] - uv[A][1]) * f]);
+      }
+      if (cut.length === 2) lineOn(t, lie, lx, ly, cut[0][0], cut[0][1], cut[1][0], cut[1][1], S, (k + 1) % INDEX_EVERY === 0 ? INDEX : CONTOUR);
+    }
+  }
+}
+
+/** The two ends of a tile's side in the world (x, z), in the order relief.ts lists side heights. */
+function sideEnds(x: number, y: number, side: number): [[number, number], [number, number]] {
+  switch (side) {
+    case 0: return [[x, y], [x + 1, y]];
+    case 1: return [[x + 1, y], [x + 1, y + 1]];
+    case 2: return [[x, y + 1], [x + 1, y + 1]];
+    default: return [[x, y], [x, y + 1]];
   }
 }
 
@@ -416,38 +558,55 @@ interface Chunk { o: PixelObject; g: THREE.BufferGeometry }
 
 /**
  * The map's own ground (every land tile on the map; water is the static scene's), drawn as objects a chunk at a time and
- * redrawn when earthworks change the levels under it, with the grid and contour lines over it as objects of their own,
+ * redrawn when earthworks change the ground under it, with the grid and contour lines over it as objects of their own,
  * shown while building. Its colours are chosen with the scene's palette: `geometries` (with a swatch of every colour it
- * uses) go to `quantizePalette`, then `show` reads back what each colour became, so chunks drawn later match, and adds the
- * chunks to the renderer.
+ * and `paint` use) go to `quantizePalette`, then `show` reads back what each colour became, so what is drawn later matches,
+ * and adds the chunks to the renderer.
  */
+/**
+ * The country drawn with the map (`HALO`): each of its land tiles' colour (by land index; none for water) and its walls'
+ * dulling, for MapGround; and the trees and rocks on it, for the view to stand on its ground as it moves.
+ */
+export interface Halo { colour: Map<number, number>; tone: (hex: number) => number; things: HaloThing[] }
+/** A tree or rock on the halo: its model (already dulled), where it stands (world x, z), turned and scaled, and how far it sinks (m). */
+export interface HaloThing { g: THREE.BufferGeometry; x: number; z: number; yaw: number; scale: number; sink: number }
+
+/** The map's ground, and the country's `HALO` round it, drawn in chunks redrawn as earthworks change them. */
 export class MapGround {
   /** Each chunk's ground and its lines (the renderer leaves disposing their geometries to us), null where it has no land. */
   private readonly chunks: ({ top: Chunk; lines: Chunk | null } | null)[] = [];
-  /** The land's relief (the country beyond the map and the map), kept up with earthworks on the map: for smooth shading across the map's edge. */
-  private readonly whole: Relief & { corner: number[] };
   private readonly swatch: THREE.BufferGeometry;
-  private painted = new Map<number, [number, number, number]>();
+  private readonly painted = new Map<number, [number, number, number]>();
+  private readonly colours: number[];
   private relief = 0;
   readonly geometries: THREE.BufferGeometry[] = [];
   private r: PixelRenderer | null = null;
   private readonly s: GameState;
   private readonly land: Land;
+  private readonly lie: Lie;
   private readonly first: ({ top: THREE.BufferGeometry; lines: THREE.BufferGeometry | null } | null)[] = [];
   /** How dry each land tile is by where it lies (`geography`). */
   private dry: Float32Array;
   private linesShown = false;
 
-  constructor(s: GameState, land: Land) {
-    this.s = s; this.land = land;
-    this.whole = { width: land.width, height: land.height, corner: [...land.corner] };
-    this.copyMap();
-    this.dry = geography(land, this.whole);
+  private readonly halo: Halo;
+  /** The tiles drawn (the map and its halo), wide and high, in chunks so many a row. */
+  private readonly across: number;
+  private readonly down: number;
+  private readonly cols: number;
+
+  /** `extra` are colours others draw on the ground with `paint` (a field's soil). */
+  constructor(s: GameState, land: Land, lie: Lie, halo: Halo, extra: readonly number[] = []) {
+    this.s = s; this.land = land; this.lie = lie; this.halo = halo;
+    this.across = s.map.width + 2 * HALO; this.down = s.map.height + 2 * HALO; this.cols = Math.ceil(this.across / CHUNK);
+    this.dry = geography(land, lie.relief);
+    const country = [...allShades([...new Set(halo.colour.values())]), ...[...EARTH, ...STONE, LIP].map(halo.tone)];
+    this.colours = [...new Set([...PALETTE, ...country, ...extra])];
     const sw = new Tris();
-    PALETTE.forEach((c, i) => sw.tri([i, -50, 0], [i + 1, -50, 0], [i, -50, 1], c, [0, 1, 0]));
+    this.colours.forEach((c, i) => sw.tri([i, -50, 0], [i + 1, -50, 0], [i, -50, 1], c, [0, 1, 0]));
     this.swatch = sw.geometry();
     this.geometries.push(this.swatch);
-    for (let cy = 0; cy * CHUNK < s.map.height; cy++) for (let cx = 0; cx * CHUNK < s.map.width; cx++) {
+    for (let cy = 0; cy * CHUNK < this.down; cy++) for (let cx = 0; cx < this.cols; cx++) {
       const g = this.build(cx, cy);
       this.first.push(g);
       if (g) this.geometries.push(g.top, ...(g.lines ? [g.lines] : []));
@@ -455,11 +614,14 @@ export class MapGround {
     this.relief = reliefOf(s);
   }
 
+  /** A colour as the palette drew it (for what is drawn on the ground later: `extra` colours). */
+  readonly paint = (hex: number): [number, number, number] => this.painted.get(hex) ?? lin(hex);
+
   /** Once the palette is chosen: reads back the colours it gave the ground, and adds the chunks to the renderer. */
   show(r: PixelRenderer) {
     this.r = r;
     const c = this.swatch.getAttribute('aColor');
-    PALETTE.forEach((hex, i) => this.painted.set(hex, [c.getX(i * 3), c.getY(i * 3), c.getZ(i * 3)]));
+    this.colours.forEach((hex, i) => this.painted.set(hex, [c.getX(i * 3), c.getY(i * 3), c.getZ(i * 3)]));
     for (const g of this.first) this.chunks.push(g && this.add(g));
     this.first.length = 0;
   }
@@ -469,18 +631,6 @@ export class MapGround {
     if (on === this.linesShown) return;
     this.linesShown = on;
     for (const c of this.chunks) if (c?.lines) c.lines.o.visible = on;
-  }
-
-  /** Copies the map's corners into the land's relief; the tiles that changed, by map index. */
-  private copyMap(): number[] {
-    const m = this.s.map, M = this.land.margin, changed: number[] = [];
-    for (let i = 0; i < m.width * m.height; i++) {
-      const x = i % m.width, y = Math.floor(i / m.width), j = ((y + M) * this.whole.width + x + M) * 4;
-      let diff = false;
-      for (let k = 0; k < 4; k++) if (this.whole.corner[j + k] !== m.corner[i * 4 + k]) { this.whole.corner[j + k] = m.corner[i * 4 + k]; diff = true; }
-      if (diff) changed.push(i);
-    }
-    return changed;
   }
 
   private add(g: { top: THREE.BufferGeometry; lines: THREE.BufferGeometry | null }) {
@@ -496,57 +646,64 @@ export class MapGround {
     return { top: object(g.top), lines };
   }
 
-  /** Redraws the chunks whose tiles, or their neighbours, earthworks have changed since the last call. */
+  /**
+   * Follows earthworks: fits the ground again (`Lie.update`) and redraws the chunks whose ground changed, or whose grass
+   * did (how dry the ground lies follows its height, blurred over a few tiles). Call before anything asks the lie.
+   */
   sync() {
     if (!this.r) return;
     const v = reliefOf(this.s);
     if (v === this.relief) return;
     this.relief = v;
-    const m = this.s.map, w = m.width, cols = Math.ceil(w / CHUNK), dirty = new Set<number>();
-    const changed = this.copyMap();
-    if (!changed.length) return;
-    // How dry the ground lies follows its height, blurred over a few tiles: every chunk it changes in is redrawn.
-    const was = this.dry, M = this.land.margin, lw = this.land.width;
-    this.dry = geography(this.land, this.whole);
-    for (let i = 0; i < w * m.height; i++) {
-      const x = i % w, y = Math.floor(i / w), j = (y + M) * lw + x + M;
-      if (grassOf(was[j]) !== grassOf(this.dry[j])) dirty.add(Math.floor(y / CHUNK) * cols + Math.floor(x / CHUNK));
-    }
-    for (const i of changed) {
-      const x = i % w, y = Math.floor(i / w);
-      // Its neighbours' cliffs and their shading (which takes in the tiles round each corner) change with it.
-      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
-        const nx = x + dx, ny = y + dy;
-        if (nx >= 0 && ny >= 0 && nx < w && ny < m.height) dirty.add(Math.floor(ny / CHUNK) * cols + Math.floor(nx / CHUNK));
-      }
+    const m = this.s.map, lw = this.land.width, o = this.land.margin - HALO, dirty = new Set<number>();
+    const chunk = (lx: number, ly: number) => Math.floor((ly - o) / CHUNK) * this.cols + Math.floor((lx - o) / CHUNK);
+    for (const i of this.lie.update()) dirty.add(chunk(i % lw, Math.floor(i / lw)));
+    const was = this.dry, M = this.land.margin;
+    this.dry = geography(this.land, this.lie.relief);
+    for (let y = M; y < M + m.height; y++) for (let x = M; x < M + m.width; x++) {
+      if (grassOf(was[y * lw + x]) !== grassOf(this.dry[y * lw + x])) dirty.add(chunk(x, y));
     }
     for (const k of dirty) {
       const old = this.chunks[k];
       if (old) for (const c of [old.top, old.lines]) if (c) { c.o.remove(); c.g.dispose(); }
-      const g = this.build(k % cols, Math.floor(k / cols));
+      const g = this.build(k % this.cols, Math.floor(k / this.cols));
       this.chunks[k] = g && this.add(g);
     }
   }
 
   private build(cx: number, cy: number): { top: THREE.BufferGeometry; lines: THREE.BufferGeometry | null } | null {
-    const m = this.s.map, land = this.land, M = land.margin, lr = this.whole;
-    const paint = (hex: number) => this.painted.get(hex) ?? lin(hex);
-    const t = new Tris(paint), lines = new Tris(paint);
+    const m = this.s.map, land = this.land, M = land.margin, lie = this.lie, o = M - HALO;
+    const t = new Tris(this.paint), lines = new Tris(this.paint);
     lines.flag = thin(FLAG.DECOR);
-    for (let y = cy * CHUNK; y < Math.min(m.height, (cy + 1) * CHUNK); y++) for (let x = cx * CHUNK; x < Math.min(m.width, (cx + 1) * CHUNK); x++) {
-      const i = y * m.width + x;
-      if (m.terrain[i] === TERRAIN.water) continue;
-      tileTop(t, x, y, corners(m, x, y), grassOf(this.dry[(y + M) * land.width + x + M], isBank(m, x, y)), cornerNormals(lr, x + M, y + M));
-      tileLines(lines, x, y, corners(m, x, y));
+    for (let y = cy * CHUNK; y < Math.min(this.down, (cy + 1) * CHUNK); y++) for (let x = cx * CHUNK; x < Math.min(this.across, (cx + 1) * CHUNK); x++) {
+      const lx = x + o, ly = y + o, mx = lx - M, my = ly - M, onMap = lie.onMap(lx, ly);
+      const hex = onMap ? m.terrain[my * m.width + mx] === TERRAIN.water ? undefined : grassOf(this.dry[ly * land.width + lx], isBank(m, mx, my))
+        : this.halo.colour.get(ly * land.width + lx);
+      if (hex === undefined) continue;
+      top(t, lie, lx, ly, hex);
+      if (onMap) tileLines(lines, lie, mx, my, corners(m, mx, my));
       for (let side = 0; side < 4; side++) {
-        const nx = x + SIDES[side][0], ny = y + SIDES[side][1], own = sideOf(m, x, y, side);
-        const onMap = nx >= 0 && ny >= 0 && nx < m.width && ny < m.height;
-        const water = onMap ? m.terrain[ny * m.width + nx] === TERRAIN.water : land.terrain[(ny + M) * land.width + nx + M] === TERRAIN.water;
-        // Down to water's surface level (the bank below it is the scene's), or to the neighbour's side.
-        const l = baseLevel(lr, nx + M, ny + M), below = water ? [l, l] : sideOf(lr, nx + M, ny + M, (side + 2) % 4);
-        cliff(t, x, y, side, own, below);
+        const nx = lx + SIDES[side][0], ny = ly + SIDES[side][1];
+        if (joins(lie.relief, lx, ly, side)) continue;
+        // Down to water's surface level (the bank below it is the scene's), or to the neighbour's top.
+        const water = land.terrain[ny * land.width + nx] === TERRAIN.water;
+        cliff(t, lie, lx, ly, side, water ? baseLevel(lie.relief, nx, ny) * H : null, onMap ? undefined : this.halo.tone);
       }
     }
     return t.empty ? null : { top: t.geometry(), lines: lines.empty ? null : lines.geometry() };
   }
+}
+
+/** How far an overlay's square stands in from its tile's sides, and how far over its lift its top stands (m). */
+const FILL_INSET = 0.08, FILL_TOP = 0.015;
+
+/**
+ * Overlay tiles: a square over each map tile listed (by index, the map `width` wide), a little in from its sides, on the
+ * ground `lift` (m) above it, all in one geometry (its colour is the object's tint).
+ */
+export function overlayTiles(lie: Lie, tiles: Iterable<number>, width: number, lift: number): THREE.BufferGeometry {
+  const t = new Tris();
+  t.flag = FLAG.DECOR;
+  for (const i of tiles) sheet(t, lie, i % width, Math.floor(i / width), [FILL_INSET, FILL_INSET, 1 - FILL_INSET, 1 - FILL_INSET], lift + FILL_TOP, 0xf4f0e0);
+  return t.geometry();
 }

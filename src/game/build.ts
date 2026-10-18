@@ -85,11 +85,16 @@ export function levelling(s: GameState, { x, y, w, h }: Area, level: number): Ea
   return { set, steps };
 }
 
-/** Does earthworks: sets their corners and marks the ground changed. */
-function dig(s: GameState, move: Earthmove) {
-  if (!move.set.length) return;
-  for (const [k, h] of move.set) s.map.corner[k] = h;
-  touchRelief(s);
+/**
+ * Does earthworks: sets their corners and marks the ground changed. The tiles they move, and those of `area` (levelled, or
+ * under a building that needs it level), are worked ground from then on (GameState, `worked`).
+ */
+function dig(s: GameState, move: Earthmove, area?: Area) {
+  let changed = move.set.length > 0;
+  const work = (i: number) => { if (!s.worked[i]) { s.worked[i] = 1; changed = true; } };
+  for (const [k, h] of move.set) { s.map.corner[k] = h; work(k >> 2); }
+  if (area) for (let y = area.y; y < area.y + area.h; y++) for (let x = area.x; x < area.x + area.w; x++) if (inMap(s, x, y)) work(tileIndex(s, x, y));
+  if (changed) touchRelief(s);
 }
 
 /**
@@ -210,7 +215,8 @@ export function place<K extends BuildingId>(s: GameState, type: K, x: number, y:
   if ((set.crop || set.recipe) && !fits.some((c) => c.crop === set.crop && c.recipe === set.recipe)) throw new Error(`A ${type} can't be placed with ${JSON.stringify(set)}`);
   const gw = check.value;
   s.credits -= placePrice(s, type, gw);
-  dig(s, gw.move);
+  const n = BUILDINGS[type].size;
+  dig(s, gw.move, groundOf(type) === 'flat' ? { x, y, w: n, h: n } : undefined);
   // A water wheel faces the river.
   const site = BUILDINGS[type].onBank ? wheelSite(s, x, y) : null;
   const b = applySetting(makeBuilding(s, type, x, y, site ? site.rot : rot), set) as BuildingOf<K>;
@@ -307,8 +313,9 @@ export function canReshape(s: GameState, d: Dig): Result<{ move: Earthmove; leve
     }
     // Never below water beside it, as under a building.
     level = Math.max(Math.round(sum / (area.w * area.h * 4)), waterFloor(s, area));
-    for (let ty = area.y; ty < area.y + area.h; ty++) for (let tx = area.x; tx < area.x + area.w; tx++) if (corners(m, tx, ty).some((c) => c !== level)) all = false;
+    for (let ty = area.y; ty < area.y + area.h; ty++) for (let tx = area.x; tx < area.x + area.w; tx++) if (corners(m, tx, ty).some((c) => c !== level) || !s.worked[tileIndex(s, tx, ty)]) all = false;
     if (all) return no('');
+    // Ground already level but still wild is settled for nothing: no steps, but worked from then on.
     move = levelling(s, area, level);
   } else {
     const up = d.how === 'raise' ? 1 : -1, next = new Map<number, number[]>();
@@ -357,7 +364,7 @@ export function reshape(s: GameState, d: Dig): Action<{ steps: number }> {
   const c = canReshape(s, d);
   if (!c.ok) return c;
   const { move } = c.value, cost = earthPrice(s, move.steps);
-  dig(s, move);
+  dig(s, move, d.how === 'level' ? digArea(d) : undefined);
   s.credits -= cost;
   return ok({ message: `${d.how === 'raise' ? 'Raised the ground' : d.how === 'lower' ? 'Lowered the ground' : 'Levelled the ground'}${cost ? ` (${cost} credits)` : ''}.`, steps: move.steps });
 }

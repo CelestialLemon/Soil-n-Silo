@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addStop, buyTruck, canPlace, canReshape, earthPrice, levelledFor, levelling, newRoute, place, priceOf, reshape, setCrop, setTruckRoute, type Dig } from '../src/game/build.ts';
+import { addStop, buyTruck, canPlace, canReshape, earthPrice, levelledFor, levelling, newRoute, place, priceOf, remove, reshape, setCrop, setTruckRoute, type Dig } from '../src/game/build.ts';
 import { CROPS, EARTH, FIELD, POWER, TRUCK, type BuildingId } from '../src/game/data.ts';
 import { placement } from '../src/game/forecast.ts';
 import { TERRAIN } from '../src/game/map.ts';
@@ -416,4 +416,31 @@ test('levelling leaves the ground under a tree or rock beside it as it lies: the
   assert.deepEqual(corners(s.map, 4, 6), [0, 0, 0, 0], 'the tree\'s ground stays');
   assert.deepEqual(corners(s.map, 4, 5), [0, 0, 0, 0], 'the rock\'s ground stays');
   assert.ok(!joins(s.map, 4, 6, 1));
+});
+
+test('worked ground: earthworks and buildings that need level ground mark their tiles worked, kept after the building goes', () => {
+  const s = flat(), w = (x: number, y: number) => s.worked[y * s.map.width + x];
+  assert.ok(s.worked.every((v) => v === 0));
+  // A building that needs flat ground works its footprint even where none had to move; one that stands anywhere doesn't.
+  const g = put(s, 'garage', 4, 4);
+  assert.deepEqual([w(4, 4), w(5, 5), w(6, 6)], [1, 1, 0]);
+  put(s, 'sprinkler', 10, 10);
+  assert.equal(w(10, 10), 0);
+  // Nor does a field, which only needs its ground unbroken.
+  put(s, 'field', 24, 4);
+  assert.equal(w(25, 5), 0);
+  assert.ok(remove(s, g).ok);
+  assert.equal(w(4, 4), 1);
+  // Raising a point works the tiles that move.
+  assert.ok(reshape(s, at('raise', 15, 15, 15, 15)).ok);
+  assert.deepEqual([w(14, 14), w(15, 15), w(14, 15), w(15, 14), w(16, 16)], [1, 1, 1, 1, 0]);
+  // Levelling ground already level settles it for nothing, once.
+  const before = s.credits, lv: Dig = { how: 'level', from: { x: 20, y: 20 }, to: { x: 22, y: 22 }, at: { x: 20, y: 20 } };
+  assert.ok(reshape(s, lv).ok);
+  assert.equal(s.credits, before);
+  assert.deepEqual([w(20, 20), w(21, 21), w(22, 22)], [1, 1, 0]);
+  assert.equal(canReshape(s, lv).ok, false);
+  // It is saved.
+  const back = deserialize(serialize(s));
+  assert.ok(back.ok && back.value.worked[4 * s.map.width + 4] === 1);
 });
