@@ -292,12 +292,6 @@ async function play(initial: GameState) {
           tiles.forEach((h, i) => ghost(`crop ${crop}`, g, sp.x + (i % n) + 0.5, h + 0.06, sp.y + Math.floor(i / n) + 0.5, 0, okHere));
         }
       }
-      // The roads, the sprinklers' water and the bees' range; anything that makes, stores or uses power shows the power
-      // networks.
-      if (type === 'silo') overlayFor('roads');
-      else if (type === 'sprinkler') overlayFor('water');
-      else if (type === 'hive') overlayFor('bees');
-      else if (usesPower(type)) overlayFor('power');
     } else if (tool.kind === 'remove' && input.press?.mode === 'paint' && input.press.from && input.press.to) {
       const x0 = Math.min(input.press.from.x, input.press.to.x), x1 = Math.max(input.press.from.x, input.press.to.x), y0 = Math.min(input.press.from.y, input.press.to.y), y1 = Math.max(input.press.from.y, input.press.to.y);
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) ghost('frame false 1', models.frames.bad[0], x + 0.5, groundAt(x + 0.5, y + 0.5) + 0.03, y + 0.5);
@@ -650,10 +644,13 @@ async function play(initial: GameState) {
     if (input.pointer && frameNo % REPICK_FRAMES === 0) repick = Math.max(repick, 1);
     if (repick > 0) { repick--; pickHover(); }
     showGhosts();
-    // Editing a route shows the roads; building shows the height under the contour lines, unless the building in hand has
-    // a view of its own.
+    // Editing a route shows the roads. Building shows the roads, the sprinklers' water or the bees' range; anything that
+    // makes, stores or uses power shows the power networks, and anything else the height under the contour lines.
     if (toolOverlay === 'none' && tool.kind === 'route') toolOverlay = 'roads';
-    if (toolOverlay === 'none' && tool.kind === 'build') toolOverlay = 'height';
+    if (toolOverlay === 'none' && tool.kind === 'build') {
+      const type = tool.type;
+      toolOverlay = type === 'silo' ? 'roads' : type === 'sprinkler' ? 'water' : type === 'hive' ? 'bees' : usesPower(type) ? 'power' : 'height';
+    }
     const shownOverlay = overlay !== 'none' ? overlay : toolOverlay;
     view.overlay(state, shownOverlay);
     // The small things in the grass stand aside for the ground's lines and the overlays.
