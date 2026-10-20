@@ -336,7 +336,7 @@ A stop can do both: drop compost at a field and pick up its wheat. A truck carri
 aboard), 4 goods a second; picking up several goods, it
 takes one of each in turn (in the stop's order, skipping any the building has none of), so a mix comes out even. It is **done** when it carries none of the stop's
 drop goods and is full (or the stop picks up nothing), and then leaves at once. Until it is done it waits for room in the
-building or for more goods, up to the stop's **wait** (5 s unless you set it, 0 to 60 s) after the last good moved; with a
+building or for more goods, up to the stop's **wait** (0 s unless you set it, up to 60 s) after the last good moved; with a
 wait of 0 it moves what it can and leaves. If another truck is queued for the building, a truck with nothing to move right
 now leaves at once, so a truck waiting for a full mill to make room never blocks the truck that would empty it. Goods a truck
 couldn't drop ride on to the next stops. Picking up fills the truck: a route that picks up tomatoes at a field and then oil
@@ -551,7 +551,7 @@ each commission's best medal and time. Saves are version 7. A save from an older
 - [ ] Do gentle routes, steep banks and occasional cliffs shape layouts well, and is the 0.6-tile climb cost right?
 - [ ] Tuning: crop times, machine times, prices and target times are first guesses. A scripted bot run per commission
   (`npm run sim`) should check that each one can be cleared and roughly in its target time.
-- [ ] Truck numbers (6 goods, 3 tiles/s, 300 J, 5 s wait, 4 per garage) and the silo's 30 of each good are first guesses.
+- [ ] Truck numbers (6 goods, 3 tiles/s, 300 J, no wait by default, 4 per garage) and the silo's 30 of each good are first guesses.
 - [ ] Next door: should it reach further (a radius, or through a silo next to both), and should silos or the depot ever take
   from neighbours? Kept to machines and fields for now, so storing and selling stay the trucks' job.
 - [ ] Next door: a producer with two hungry neighbours feeds them in turn, one good a step each; a machine boxed in by fields
