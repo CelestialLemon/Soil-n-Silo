@@ -510,20 +510,25 @@ A commission has goals, a target time and modifiers. It ends when every goal is 
 | --- | --- | --- | --- | --- | --- |
 | 1 | First Light | 120 wheat, 80 flour | 20 min | Gentle | 0.2 |
 | 2 | Morning Bread | 150 bread; soil health ≥ 40 | 35 min | | 0.4 |
-| 3 | Windy Ridge | 90 oil, 80 bread | 40 min | Weak sun, strong wind, rocky | 0.9 |
-| 4 | Linen for the Looms | 50 linen; 5 yarn/min | 50 min | | 0.4 |
-| 5 | Long Nights | 60 honey cake | 45 min | Short days | 0.5 |
-| 6 | Tired Soil | 50 sauce; soil health ≥ 55 | 45 min | Poor soil | 0.6 |
-| 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 55 min | Wet and cramped | 0.3 |
-| 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 60 min | Everything | 0.7 |
+| 3 | Windy Ridge | 90 oil, 80 bread | 45 min | Weak sun, strong wind, rocky | 0.9 |
+| 4 | Linen for the Looms | 50 linen; 5 yarn/min | 35 min | | 0.4 |
+| 5 | Long Nights | 100 honey cake | 40 min | Short days | 0.5 |
+| 6 | Tired Soil | 50 sauce; soil health ≥ 55 | 35 min | Poor soil | 0.6 |
+| 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 50 min | Wet and cramped | 0.3 |
+| 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 50 min | Everything | 0.7 |
 
 The bot (`npm run sim`) deliberately uses a flat, open map with even soil to test the economy, not terrain;
 `test/height.test.ts` covers the height rules. It clears First Light in about 14 minutes, Morning Bread in about 30 and
 Linen for the Looms in about 25 with trucks (with silos and drones it took about 14, 38 and 45), building as credits allow. Its Morning Bread layout built round
 neighbours (`npm run sim -- c2:next`: a mill between two fields, a bakery beside it, a coop under both, a composter beside the
 coop) clears it in about 26 minutes with 3 trucks on 2 routes, where the all-truck layout uses 4 on 3; a person needs a few minutes more to plan and
-place. Trucks made the later commissions much quicker, so their target times may be too generous now. The other targets are guesses
-until they have bot layouts too.
+place. The bot's layouts for the other five, built round neighbours too, clear Windy Ridge in about 32 minutes, Long Nights
+in about 29, Tired Soil in about 25, Riverlands in about 34 and Harvest Festival in about 36 (`npm run sim -- c3` and so on).
+
+Target times are about 1.4 times the bot's best time, rounded to 5 minutes, as First Light's 20 is to its 14: the bot knows
+its layout and plays a flat, open map, so a person needs that much more. (Balanced on 2026-10-20, once every commission had
+a bot layout: trucks and neighbours had made Linen for the Looms, Long Nights, Tired Soil, Riverlands and Harvest Festival
+much quicker than their targets, and Long Nights took the bot 17 minutes, so its order went up from 60 honey cake to 100.)
 
 ![The level select](images/menu.png)
 

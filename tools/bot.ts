@@ -60,7 +60,7 @@ export function playLayout(id: string, minutes = 60, log: (line: string) => void
       return;
     }
     if ('type' in st) {
-      const r = place(s, st.type, st.x, st.y, st.rot ?? 1);
+      const r = place(s, st.type, st.x, st.y, st.rot ?? 1, st.recipe ? { recipe: st.recipe } : {});
       if (!r.ok) { log(`  step ${next} ${st.type} at ${st.x},${st.y}: ${r.error}`); return; }
       if (st.crop) setCrop(s, r.value.building, st.crop);
       if (st.as) named.set(st.as, r.value.building);

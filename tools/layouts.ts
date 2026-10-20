@@ -4,8 +4,8 @@ import type { Dir } from '../src/game/state.ts';
 // The bot's layouts for `npm run sim` and the bot tests (tools/bot.ts), one per commission, relative to the depot's north-west tile and in
 // build order. Also handy for scripted playtests in the browser (the dev server serves this file).
 
-/** A building to place; `as` names it for the routes. */
-export interface Place { type: BuildingId; x: number; y: number; rot?: Dir; crop?: CropId; as?: string }
+/** A building to place, with a field's crop or a machine's recipe (the bakery's); `as` names it for the routes. */
+export interface Place { type: BuildingId; x: number; y: number; rot?: Dir; crop?: CropId; recipe?: string; as?: string }
 /** A stop: a named building (or the depot), with the goods and wait it has unless given. */
 export interface StopStep { at: string; drop?: ItemId[]; pick?: ItemId[]; wait?: number }
 /** A route through named buildings, with `trucks` new trucks from the named garage. */
@@ -45,6 +45,41 @@ const morePower = (dx: number, dy: number): Step[] => [
   { type: 'battery', x: dx + 7, y: dy - 11 }, { type: 'pylon', x: dx + 12, y: dy - 9 },
   { type: 'battery', x: dx + 10, y: dy - 11 }, { type: 'solar', x: dx + 13, y: dy - 11 },
   { type: 'turbine', x: dx + 14, y: dy - 8 }, { type: 'turbine', x: dx + 14, y: dy - 6 },
+];
+
+/**
+ * Sauce: a cannery between two tomato fields (t1, t2), an oil press beside it between two sunflower fields (u1, u2), a coop
+ * under the press (seed cake in) on a bean field (b1, beans in), with sprinklers, power to them and a garage. The coop's eggs
+ * and manure need a route, or it stops and the press with it.
+ */
+const sauce = (dx: number, dy: number): Step[] => [
+  { type: 'field', x: dx - 3, y: dy - 8, crop: 'tomato', as: 't1' }, { type: 'field', x: dx - 2, y: dy - 11, crop: 'tomato', as: 't2' },
+  { type: 'sprinkler', x: dx - 3, y: dy - 9 }, { type: 'pylon', x: dx - 4, y: dy - 10 },
+  { type: 'field', x: dx + 1, y: dy - 11, crop: 'sunflower', as: 'u2' }, { type: 'field', x: dx + 4, y: dy - 9, crop: 'sunflower', as: 'u1' },
+  { type: 'sprinkler', x: dx + 4, y: dy - 11 }, { type: 'pylon', x: dx + 4, y: dy - 10 },
+  { type: 'press', x: dx + 2, y: dy - 8 }, { type: 'cannery', x: dx, y: dy - 8, as: 'cannery' },
+  { type: 'solar', x: dx + 6, y: dy - 14 }, { type: 'garage', x: dx + 6, y: dy - 12, as: 'garage' },
+  { type: 'coop', x: dx + 2, y: dy - 6, as: 'coop' }, { type: 'field', x: dx + 2, y: dy - 3, crop: 'beans', as: 'b1' },
+];
+
+/** Linen, west of the sauce: a spinner between two flax fields (x1, x2), a loom under it, and a hive pollinating the flax. */
+const linen = (dx: number, dy: number): Step[] => [
+  { type: 'field', x: dx - 11, y: dy - 8, crop: 'flax', as: 'x1' }, { type: 'field', x: dx - 8, y: dy - 11, crop: 'flax', as: 'x2' },
+  { type: 'sprinkler', x: dx - 9, y: dy - 9 }, { type: 'pylon', x: dx - 10, y: dy - 10 },
+  { type: 'spinner', x: dx - 8, y: dy - 8 }, { type: 'pylon', x: dx - 5, y: dy - 7 },
+  { type: 'loom', x: dx - 8, y: dy - 6, as: 'loom' },
+  { route: 'linen', garage: 'garage', trucks: 1, stops: [{ at: 'loom', pick: ['linen'] }, { at: 'depot' }] },
+  { type: 'hive', x: dx - 6, y: dy - 6 },
+];
+
+/**
+ * East of the sauce: a bakery beside the coop (eggs; bread unless `recipe` says otherwise), a mill beside the bakery between
+ * two wheat fields (w1, w2), with their power and water.
+ */
+const bakery = (dx: number, dy: number, recipe?: string): Step[] => [
+  { type: 'bakery', x: dx + 5, y: dy - 5, recipe, as: 'bakery' }, { type: 'mill', x: dx + 7, y: dy - 5, as: 'mill' },
+  { type: 'pylon', x: dx + 7, y: dy - 3 }, { type: 'field', x: dx + 9, y: dy - 5, as: 'w1' }, { type: 'field', x: dx + 7, y: dy - 8, as: 'w2' },
+  { type: 'sprinkler', x: dx + 10, y: dy - 7 }, { type: 'pylon', x: dx + 11, y: dy - 9 }, { type: 'sprinkler', x: dx + 5, y: dy - 2 },
 ];
 
 /** Layouts by commission, relative to the depot's north-west tile, in build order. */
@@ -123,5 +158,99 @@ export const LAYOUTS: Record<string, Layout> = {
     { truck: 'flax', garage: 'garage' },
     // Once the yarn rate is reached, all the yarn goes to the loom.
     { move: 'yarn', to: 'weave', goal: 1 },
+  ],
+  // Oil and bread on wind power: a press between two sunflower fields, a mill between two wheat fields, a coop under the mill
+  // eating its bran and the press's seed cake, a bakery beside the mill and on the coop, and a digester under the coop burning
+  // its manure for power. A truck brings a wheat field and two sunflower fields to the mill and the press; others take the
+  // oil and seed cake, and the mill's spare bran and the bread, to the depot.
+  c3: (dx, dy) => [
+    { type: 'field', x: dx + 5, y: dy - 7, crop: 'sunflower', as: 'u1' }, { type: 'field', x: dx + 3, y: dy - 4, crop: 'sunflower', as: 'u2' },
+    { type: 'sprinkler', x: dx + 6, y: dy - 4 }, { type: 'press', x: dx + 3, y: dy - 6, as: 'press' },
+    { type: 'pylon', x: dx + 4, y: dy - 9 }, { type: 'pylon', x: dx + 8, y: dy - 4 }, { type: 'turbine', x: dx + 9, y: dy - 6 },
+    { type: 'garage', x: dx + 5, y: dy - 11, as: 'garage' },
+    { route: 'oil', garage: 'garage', trucks: 1, stops: [{ at: 'press', pick: ['oil', 'seedcake'] }, { at: 'depot' }] },
+    { type: 'turbine', x: dx + 10, y: dy - 4 },
+    { type: 'field', x: dx - 3, y: dy - 8, as: 'w' }, { type: 'field', x: dx - 2, y: dy - 11, as: 'n' },
+    { type: 'sprinkler', x: dx - 3, y: dy - 9 }, { type: 'pylon', x: dx - 3, y: dy - 10 },
+    { type: 'mill', x: dx, y: dy - 8, as: 'mill' }, { type: 'coop', x: dx, y: dy - 6, as: 'coop' },
+    { type: 'bakery', x: dx + 2, y: dy - 8, as: 'bakery' },
+    { route: 'bread', garage: 'garage', trucks: 1, stops: [{ at: 'mill', pick: ['bran'] }, { at: 'bakery', pick: ['bread'] }, { at: 'depot' }] },
+    { type: 'digester', x: dx, y: dy - 3 }, { type: 'pylon', x: dx + 2, y: dy - 1 },
+    { type: 'turbine', x: dx + 9, y: dy - 2 },
+    { type: 'field', x: dx - 4, y: dy - 15, as: 'f1' }, { type: 'field', x: dx - 1, y: dy - 15, crop: 'sunflower', as: 'f2' },
+    { type: 'field', x: dx + 2, y: dy - 15, crop: 'sunflower', as: 'f3' },
+    { type: 'sprinkler', x: dx + 1, y: dy - 12 }, { type: 'sprinkler', x: dx - 3, y: dy - 12 },
+    { route: 'farm', garage: 'garage', trucks: 1, stops: [{ at: 'f1' }, { at: 'f2' }, { at: 'f3' }, { at: 'mill', pick: [] }, { at: 'press', pick: [] }] },
+    { type: 'hive', x: dx + 8, y: dy - 7 }, { type: 'hive', x: dx + 1, y: dy - 16 },
+  ],
+  // Honey cake through the long nights: a mill between two wheat fields, a bakery beside it making honey cake, a coop under
+  // both (bran in, eggs out) and a hive beside the bakery, gathering from three bean fields (they flower; their beans aren't
+  // needed). A digester beside the coop burns its manure for power at night. One truck takes the cake to the depot.
+  c5: (dx, dy) => [
+    { type: 'field', x: dx - 3, y: dy - 8, as: 'w' }, { type: 'field', x: dx - 2, y: dy - 11, as: 'n' },
+    { type: 'sprinkler', x: dx - 3, y: dy - 9 }, { type: 'pylon', x: dx - 4, y: dy - 10 },
+    { type: 'mill', x: dx, y: dy - 8, as: 'mill' }, { type: 'coop', x: dx, y: dy - 6 },
+    { type: 'bakery', x: dx + 2, y: dy - 8, recipe: 'honeycake', as: 'bakery' }, { type: 'hive', x: dx + 4, y: dy - 8 },
+    ...[-11, -7, -4].map((y) => ({ type: 'field' as const, x: dx + 5, y: dy + y, crop: 'beans' as const })),
+    { type: 'pylon', x: dx + 4, y: dy - 10 }, { type: 'turbine', x: dx + 3, y: dy - 13 },
+    { type: 'garage', x: dx + 2, y: dy - 12, as: 'garage' },
+    { route: 'cake', garage: 'garage', trucks: 1, stops: [{ at: 'bakery', pick: ['honeycake'] }, { at: 'depot' }] },
+    { type: 'digester', x: dx - 2, y: dy - 5 }, { type: 'pylon', x: dx - 3, y: dy - 3 },
+    { type: 'battery', x: dx + 5, y: dy - 14 }, { type: 'turbine', x: dx + 7, y: dy - 12 },
+  ],
+  // Sauce on worn-out soil: a cannery between two tomato fields, an oil press beside it between two sunflower fields, a coop
+  // under the press (seed cake in) and a bean field under the coop (beans in, and the soil back), a composter beside the coop
+  // (manure in) feeding a sunflower field next door. Trucks take the sauce and eggs to the depot, and the compost to the other
+  // fields (what they don't take to the depot). Compost and beans lift soil health past the goal without trees.
+  c6: (dx, dy) => [
+    ...sauce(dx, dy),
+    { route: 'sauce', garage: 'garage', trucks: 1, stops: [{ at: 'cannery', pick: ['sauce'] }, { at: 'coop', pick: ['egg'], drop: [] }, { at: 'depot' }] },
+    { type: 'composter', x: dx + 5, y: dy - 6, as: 'composter' },
+    { type: 'sprinkler', x: dx + 5, y: dy - 2 }, { type: 'pylon', x: dx + 7, y: dy - 3 },
+    { type: 'turbine', x: dx + 10, y: dy - 3 }, { type: 'battery', x: dx + 8, y: dy - 1 },
+    {
+      route: 'compost', garage: 'garage', trucks: 1, stops: [
+        { at: 'composter', pick: ['compost'], drop: [] }, ...['t1', 't2', 'u2', 'b1'].map((at) => ({ at, pick: [] })), { at: 'depot', drop: ['compost'] },
+      ],
+    },
+    { type: 'solar', x: dx + 8, y: dy - 5 },
+  ],
+  // Three orders at once, each its own block: sauce (a truck takes the coop's eggs and manure with it), linen to the west,
+  // and bread to the east, the bakery taking the coop's eggs next door. A truck takes the mill's bran to the coop.
+  c7: (dx, dy) => [
+    ...sauce(dx, dy),
+    { route: 'sauce', garage: 'garage', trucks: 1, stops: [{ at: 'cannery', pick: ['sauce'] }, { at: 'coop', pick: ['egg', 'manure'], drop: [] }, { at: 'depot' }] },
+    { type: 'turbine', x: dx + 3, y: dy - 13 },
+    ...linen(dx, dy),
+    { type: 'hive', x: dx + 1, y: dy - 12 },
+    { type: 'battery', x: dx + 8, y: dy - 14 }, { type: 'turbine', x: dx + 5, y: dy - 13 },
+    ...bakery(dx, dy),
+    { route: 'bread', garage: 'garage', trucks: 1, stops: [{ at: 'bakery', pick: ['bread'], drop: [] }, { at: 'depot' }] },
+    { route: 'bran', garage: 'garage', trucks: 1, stops: [{ at: 'mill', pick: ['bran'] }, { at: 'coop', pick: [] }, { at: 'depot' }] },
+    { type: 'solar', x: dx + 12, y: dy - 12 }, { type: 'turbine', x: dx + 10, y: dy - 11 }, { type: 'battery', x: dx + 12, y: dy - 6 },
+  ],
+  // Everything at once: Riverlands' blocks with the bakery making honey cake and a hive beside it. The coop's manure goes to
+  // a composter with the sauce, and one truck takes the mill's bran to it and its compost round the fields (spare bran and
+  // compost to the depot), which keeps soil health above the goal.
+  c8: (dx, dy) => [
+    ...sauce(dx, dy),
+    { type: 'composter', x: dx - 2, y: dy - 4, as: 'composter' },
+    {
+      route: 'sauce', garage: 'garage', trucks: 1,
+      stops: [{ at: 'cannery', pick: ['sauce'] }, { at: 'coop', pick: ['egg', 'manure'], drop: [] }, { at: 'composter', pick: [] }, { at: 'depot' }],
+    },
+    { type: 'turbine', x: dx + 3, y: dy - 13 },
+    ...linen(dx, dy),
+    { type: 'hive', x: dx + 1, y: dy - 12 },
+    { type: 'battery', x: dx + 8, y: dy - 14 }, { type: 'turbine', x: dx + 5, y: dy - 13 },
+    ...bakery(dx, dy, 'honeycake'), { type: 'hive', x: dx + 5, y: dy - 6 },
+    { route: 'cake', garage: 'garage', trucks: 1, stops: [{ at: 'bakery', pick: ['honeycake'], drop: [] }, { at: 'depot' }] },
+    {
+      route: 'compost', garage: 'garage', trucks: 1, stops: [
+        { at: 'mill', pick: ['bran'], drop: [] }, { at: 'composter', pick: ['compost'] },
+        ...['t1', 't2', 'u2', 'u1', 'w2'].map((at) => ({ at, pick: [] })), { at: 'depot', drop: ['compost', 'bran'] },
+      ],
+    },
+    { type: 'solar', x: dx + 12, y: dy - 12 }, { type: 'turbine', x: dx + 10, y: dy - 11 }, { type: 'battery', x: dx + 12, y: dy - 6 },
   ],
 };
