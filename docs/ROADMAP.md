@@ -150,14 +150,14 @@ Six tree species and bushes vary by place, with willows by water and pines up hi
 - From the UI revamp, not built yet: a **sound** volume (with sound), and
   **moving** a building from its inspector (there is no rule for it yet).
 
-- Play every campaign commission and tune: target times, prices, crop and machine times, power numbers. Every commission
-  now has a bot layout (`tools/layouts.ts`), and the bot clears each well inside its target: Windy Ridge in about 32 minutes
-  (target 40), Long Nights in about 17 (45), Tired Soil in about 25 (45), Riverlands in about 34 (55) and Harvest Festival in
-  about 36 (60). The bot plays a flat, open map and knows its layout in advance, so a person is slower, but Long Nights,
-  Tired Soil and Harvest Festival look too generous.
-- Play the trucks and tune them (cargo, speed, battery, waits, one truck at a time per building) and the target times: the
-  bot clears First Light in about 14 minutes (target 20), Morning Bread in about 30 (26 built round neighbours; target 35)
-  and Linen for the Looms in about 25 (target 50). `npm test` plays every layout and fails if one misses its target.
+- Play every campaign commission and tune: prices, crop and machine times, power numbers, and the target times set from the
+  bot (below) against real play. Every commission now has a bot layout (`tools/layouts.ts`); targets are about 1.4 times the
+  bot's best time (`DESIGN.md`, "Commissions"). The bot ends the later commissions with thousands of spare credits, so
+  money stops mattering halfway through; worth a look when playing them.
+- Play the trucks and tune them (cargo, speed, battery, waits, one truck at a time per building). The bot's times against
+  the targets: First Light 14 (20), Morning Bread 30 and 26 built round neighbours (35), Windy Ridge 32 (45), Linen for the
+  Looms 26 (35), Long Nights 29 (40), Tired Soil 25 (35), Riverlands 34 (50), Harvest Festival 36 (50). `npm test` plays
+  every layout and fails if one misses its target.
 - Models for the `truck` and the `garage`, and the silo without its drone pads (`ASSET_BRIEF.md`).
 - Drones as automatic helpers beside the trucks (`DESIGN.md`, Open questions), once trucks have been played.
 - Copy and paste / blueprints for repeated blocks (a row of fields with sprinklers).
