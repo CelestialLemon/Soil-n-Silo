@@ -251,7 +251,7 @@ export const TRUCK = {
   /** Joules its battery holds, joules a tile driven, and the watts it charges at. */
   battery: 300, joulesPerTile: 1, chargeRate: 20,
   /** A stop's wait unless set, and the longest it can be, in seconds. */
-  wait: 5, maxWait: 60,
+  wait: 0, maxWait: 60,
   /** At a garage that gives it no charge for this long, it goes on anyway. */
   giveUp: 5,
   /** Stops a route can have. */

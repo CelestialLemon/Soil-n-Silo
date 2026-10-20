@@ -518,7 +518,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
         h('ul', null,
           h('li', null, 'Make one: open Routes, choose New route, then click buildings on the map, in order. Esc when done.'),
           h('li', null, 'A new stop picks up everything the building makes and drops everything it takes: a field, then a mill, then the ', bLink('depot'), ' is a whole route. A silo stop drops everything; choose what to take from it.'),
-          h('li', null, `At a stop a truck drops first, then picks up into the room left. It leaves when it has nothing more to do, or after waiting ${TRUCK.wait} s (you can change it) for room or goods.`),
+          h('li', null, `At a stop a truck drops first, then picks up into the room left. It leaves once it has moved what it can; give a stop a wait (up to ${TRUCK.maxWait} s) and it waits that long for room or goods.`),
           h('li', null, 'More trucks make a route faster. Two routes picking up the same good share it by how often their trucks come.'),
           h('li', null, `The routes card shows each route's loop time and how often a truck reaches its slowest stop, measured from the last ${FLEET_SECONDS / 60} minutes, and how much of the time each truck waited at stops.`),
           h('li', null, 'A truck stuck with goods no stop takes can dump its cargo: the goods are lost.')),
