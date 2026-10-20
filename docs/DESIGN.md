@@ -522,8 +522,9 @@ The bot (`npm run sim`) deliberately uses a flat, open map with even soil to tes
 Linen for the Looms in about 25 with trucks (with silos and drones it took about 14, 38 and 45), building as credits allow. Its Morning Bread layout built round
 neighbours (`npm run sim -- c2:next`: a mill between two fields, a bakery beside it, a coop under both, a composter beside the
 coop) clears it in about 26 minutes with 3 trucks on 2 routes, where the all-truck layout uses 4 on 3; a person needs a few minutes more to plan and
-place. Trucks made the later commissions much quicker, so their target times may be too generous now. The other targets are guesses
-until they have bot layouts too.
+place. Trucks made the later commissions much quicker, so their target times may be too generous now. The bot's layouts for
+the other five, built round neighbours too, clear Windy Ridge in about 32 minutes, Long Nights in about 17, Tired Soil in about
+25, Riverlands in about 34 and Harvest Festival in about 36 (`npm run sim -- c3` and so on).
 
 ![The level select](images/menu.png)
 

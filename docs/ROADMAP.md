@@ -150,8 +150,11 @@ Six tree species and bushes vary by place, with willows by water and pines up hi
 - From the UI revamp, not built yet: a **sound** volume (with sound), and
   **moving** a building from its inspector (there is no rule for it yet).
 
-- Play every campaign commission and tune: target times, prices, crop and machine times, power numbers. Bot layouts for the
-  other five commissions in `tools/layouts.ts`, so `npm run sim` checks them all.
+- Play every campaign commission and tune: target times, prices, crop and machine times, power numbers. Every commission
+  now has a bot layout (`tools/layouts.ts`), and the bot clears each well inside its target: Windy Ridge in about 32 minutes
+  (target 40), Long Nights in about 17 (45), Tired Soil in about 25 (45), Riverlands in about 34 (55) and Harvest Festival in
+  about 36 (60). The bot plays a flat, open map and knows its layout in advance, so a person is slower, but Long Nights,
+  Tired Soil and Harvest Festival look too generous.
 - Play the trucks and tune them (cargo, speed, battery, waits, one truck at a time per building) and the target times: the
   bot clears First Light in about 14 minutes (target 20), Morning Bread in about 30 (26 built round neighbours; target 35)
   and Linen for the Looms in about 25 (target 50). `npm test` plays every layout and fails if one misses its target.
