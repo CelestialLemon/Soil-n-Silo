@@ -409,6 +409,7 @@ button { font: inherit; }
 .menu .chosen .vsep { background: var(--chalk-3); }
 .menu .chosen .cd-display { margin-top: 12px; font-size: 54px; }
 .menu .chosen .blurb { margin: 14px 0 0; font-size: 16px; color: var(--ink-2); }
+.menu .chosen .tags { margin-top: 12px; }
 .menu .chosen .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
 .menu .chosen .row .cd-small b { color: var(--ink); }
 .menu .goals { display: flex; flex-wrap: wrap; gap: 18px 36px; margin-top: 16px; }

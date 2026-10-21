@@ -114,6 +114,7 @@ export function showMenu(root: HTMLElement, host: MenuHost) {
         h('div', { class: 'cd-label' }, `Commission ${i + 1} · seed ${sc.seed} · ${sc.width} × ${sc.height}`),
         h('h1', { class: 'cd-display' }, sc.name),
         h('p', { class: 'blurb' }, sc.blurb),
+        h('div', { class: 'chips tags' }, ...tagsOf(sc).map((t) => h('span', { class: 'tag cd-small' }, t))),
         h('span', { class: 'fill' }),
         h('div', { class: 'row' }, h('span', { class: 'mchip' }, icon('coin', 28), h('b', null, num(sc.credits)), h('small', null, 'credits to start')),
           h('span', { class: 'cd-small' }, 'Your best: ', h('b', null, best ? `${MEDAL_NAME[best.medal]}, ${playTime(best.time)}` : 'not finished yet')))),
