@@ -38,7 +38,7 @@ const LINKED = new THREE.Color(LINK), LINK_STRENGTH = 0.55;
 const QUEUE_GAP = 0.8;
 /**
  * How a truck was last shown: its place back from the front of its line (as a step back in the world) and its phase, and
- * how far it still stands from where it should (`cx`, `cz`), closing at a truck's speed, so it moves up a line rather than
+ * how far it still stands from where it should (`cx`, `cz`), closing at the speed it drives, so it moves up a line rather than
  * jumping.
  */
 interface TruckShown { obj: PixelObject; bx: number; bz: number; phase: Truck['phase']; jumps: number; cx: number; cz: number; x: number; z: number }
@@ -203,7 +203,7 @@ export class WorldView {
   /**
    * Every truck, facing the way it drives, with its cargo in its bed; trucks queuing stand in line behind the one loading.
    * Each is drawn between where it stood as the last step began and where it stands now, by how far the next step has got,
-   * so it drives smoothly rather than a step at a time; one moving up a line (or onto the bay) drives there at a truck's speed.
+   * so it drives smoothly rather than a step at a time; one moving up a line (or onto the bay) drives there at its driving speed.
    */
   private syncTrucks(s: GameState) {
     for (const p of this.pools.values()) p.used = 0;
@@ -229,7 +229,9 @@ export class WorldView {
       // Moving up its line, or from the line onto the bay, it starts from where it stood. (Joining a line it still steps back
       // into it at once: easing that would drive it back through the trucks already waiting.)
       else if (o.phase === 'queue' && (o.bx !== bx || o.bz !== bz)) { o.cx += o.bx - bx; o.cz += o.bz - bz; }
-      const gap = Math.hypot(o.cx, o.cz), close = gap > 1e-9 ? Math.max(0, gap - TRUCK.speed * since) / gap : 0;
+      // It closes at the speed it drives: a crawl on an empty battery.
+      const gap = Math.hypot(o.cx, o.cz), speed = t.energy > 0 ? TRUCK.speed : TRUCK.crawl;
+      const close = gap > 1e-9 ? Math.max(0, gap - speed * since) / gap : 0;
       o.cx *= close; o.cz *= close;
       Object.assign(o, { bx, bz, phase: t.phase, jumps });
       const x = (p ? p.x + (t.x - p.x) * k : t.x) + bx + o.cx, z = (p ? p.y + (t.y - p.y) * k : t.y) + bz + o.cz;
