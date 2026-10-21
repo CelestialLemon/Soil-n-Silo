@@ -5,7 +5,7 @@ import {
   sellTruck, setCrop, setRecipe,
   setStopGood, setStopWait, setTruckRoute, truckPrice,
 } from '../src/game/build.ts';
-import { BUILDINGS, DAY_SECONDS, ITEMS, POWER, SILO, START_HOUR, TRUCK, type BuildingId, type ItemId } from '../src/game/data.ts';
+import { BUILDINGS, DAY_SECONDS, ITEMS, POWER, SILO, START_HOUR, TICK, TRUCK, type BuildingId, type ItemId } from '../src/game/data.ts';
 import { generateMap, TERRAIN } from '../src/game/map.ts';
 import { feederOf, networkOf, networks, pylonsInLink, wiresOf } from '../src/game/power.ts';
 import { runtimeOf } from '../src/game/runtime.ts';
@@ -19,6 +19,7 @@ import { deliver, linksAt, linksOf, passes, tradesNextDoor } from '../src/game/s
 import { goalDone, medalFor, ratePerMin, routeRate } from '../src/game/sim/stats.ts';
 import { describeLinks, describeStatus, stopProblems, truckProblems } from '../src/game/sim/describe.ts';
 import { advance } from '../src/game/sim/step.ts';
+import { lastPose } from '../src/game/sim/trucks.ts';
 import { fieldPace } from '../src/game/sim/buildings.ts';
 import { buildingAt, newGame, type Building, type BuildingOf, type Dir, type MachineBuilding, type GameState, type Route, type Truck } from '../src/game/state.ts';
 
@@ -177,6 +178,28 @@ test('a truck on a route picks up a field\'s harvest and sells it at the depot',
   assert.equal(s.credits, credits + 6 * ITEMS.wheat.price);
   assert.equal(f.stored, 0);
   assert.ok(routeRate(s, r) > 0);
+});
+
+test('each step notes where every truck stood as it began, for the view to draw it between steps; one put down elsewhere jumps', () => {
+  const s = flat();
+  const { trucks: [t] } = garageAt(s, 2, 24);
+  const f = put(s, 'field', 8, 20);
+  f.stored = 6; f.harvest = 'wheat';
+  route(s, [t], f, depotOf(s));
+  assert.equal(lastPose(s, t), null, 'none before a step');
+  let drove = false;
+  for (let i = 0; i < 100; i++) {
+    const before = { x: t.x, y: t.y, heading: t.heading }, jumps = lastPose(s, t)?.jumps ?? 0;
+    advance(s, TICK);
+    const p = lastPose(s, t);
+    assert.ok(p);
+    // A truck leaving its garage is put down at the side it leaves by, rather than driving there.
+    if (p.jumps > jumps) { assert.deepEqual([p.x, p.y], [t.x, t.y]); continue; }
+    assert.deepEqual({ x: p.x, y: p.y, heading: p.heading }, before);
+    if (Math.hypot(t.x - p.x, t.y - p.y) > 0.1) drove = true;
+  }
+  assert.ok(drove, 'it drove');
+  assert.ok((lastPose(s, t)?.jumps ?? 0) > 0, 'it left its garage');
 });
 
 test('a route takes wheat from a field to a mill, and the mill\'s flour and bran to the depot', () => {

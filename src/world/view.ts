@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import type { PixelObject, PixelRenderer } from 'pixel3d-renderer';
-import { CROPS, HIVE, POWER, type BuildingId, type ItemId } from '../game/data.ts';
+import { CROPS, HIVE, POWER, TICK, TRUCK, type BuildingId, type ItemId } from '../game/data.ts';
 import { TERRAIN } from '../game/map.ts';
 import { networks } from '../game/power.ts';
 import { isOpen } from '../game/roads.ts';
 import { windAt } from '../game/sim/clock.ts';
 import { HANDOFF_SECONDS, recentHandoffs } from '../game/sim/goods.ts';
-import { cutOff } from '../game/sim/trucks.ts';
+import { cutOff, lastPose } from '../game/sim/trucks.ts';
 import { buildingById, inMap, isMachine, layoutOf, reliefOf, sizeOf, terrainAt, type Building, type Dir, type FieldBuilding, type GameState, type Status, type Truck } from '../game/state.ts';
 import { isBank, overlayTiles, sheet, standY, Tris, type HaloThing, type Lie } from './ground.ts';
 import { baseLevel, centreLevel } from '../game/relief.ts';
@@ -36,6 +36,12 @@ export const LINK = 0x7ee060;
 const LINKED = new THREE.Color(LINK), LINK_STRENGTH = 0.55;
 /** How far apart trucks queuing at a building stand, one behind the other. */
 const QUEUE_GAP = 0.8;
+/**
+ * How a truck was last shown: its place back from the front of its line (as a step back in the world) and its phase, and
+ * how far it still stands from where it should (`cx`, `cz`), closing at the speed it drives, so it moves up a line rather than
+ * jumping.
+ */
+interface TruckShown { obj: PixelObject; bx: number; bz: number; phase: Truck['phase']; jumps: number; cx: number; cz: number; x: number; z: number }
 /** How far a field's soil stands over the ground (m). */
 const SOIL_TOP = 0.03;
 
@@ -57,8 +63,11 @@ export class WorldView {
   private linksKey = '';
   private readonly linked = new Set<number>();
   private tinted: PixelObject[] = [];
-  /** Truck objects by truck id. */
-  private readonly trucks = new Map<number, PixelObject>();
+  /** Truck objects by truck id, and how each was last shown. */
+  private readonly trucks = new Map<number, TruckShown>();
+  /** The game the trucks were last shown for, and its time then (with the part of a step since). */
+  private truckGame: GameState | null = null;
+  private truckClock = 0;
   private readonly pools = new Map<ItemId, { objs: PixelObject[]; used: number }>();
   private readonly terrain: (Shown | null)[] = [];
   /** The map tile of each tree and rock object. */
@@ -93,7 +102,7 @@ export class WorldView {
   /** Every visible object of a building or truck, to highlight together. */
   objectsOf(id: number): PixelObject[] {
     const out: PixelObject[] = [];
-    const truck = this.trucks.get(id), main = this.shown.get(id) ?? (truck ? { obj: truck } : undefined);
+    const truck = this.trucks.get(id), main = this.shown.get(id) ?? truck;
     if (main) out.push(main.obj);
     for (const p of this.parts.get(id) ?? []) out.push(p.obj);
     return out;
@@ -185,9 +194,24 @@ export class WorldView {
     return out;
   }
 
-  /** Every truck, facing the way it drives, with its cargo in its bed; trucks queuing stand in line behind the one loading. */
+  /** Where a truck is shown, on the ground (tiles), or null if it isn't. */
+  truckAt(id: number): { x: number; z: number } | null {
+    const t = this.trucks.get(id);
+    return t ? { x: t.x, z: t.z } : null;
+  }
+
+  /**
+   * Every truck, facing the way it drives, with its cargo in its bed; trucks queuing stand in line behind the one loading.
+   * Each is drawn between where it stood as the last step began and where it stands now, by how far the next step has got,
+   * so it drives smoothly rather than a step at a time; one moving up a line (or onto the bay) drives there at its driving speed.
+   */
   private syncTrucks(s: GameState) {
     for (const p of this.pools.values()) p.used = 0;
+    // The game time since the trucks were last shown: none while paused, and none for a game just loaded or begun.
+    const clock = s.time + s.carry, since = this.truckGame === s ? Math.max(0, clock - this.truckClock) : 0;
+    if (this.truckGame !== s) { for (const o of this.trucks.values()) this.drop(o.obj); this.trucks.clear(); }
+    this.truckGame = s; this.truckClock = clock;
+    const k = Math.min(1, Math.max(0, s.carry / TICK));
     // Each queuing truck's place in its line: 1 for the first behind the building's bay.
     const place = new Map<Truck, number>(), lines = new Map<number, Truck[]>();
     for (const t of s.trucks) if (t.phase === 'queue' && t.target !== null) { const l = lines.get(t.target); if (l) l.push(t); else lines.set(t.target, [t]); }
@@ -195,19 +219,33 @@ export class WorldView {
     const alive = new Set<number>();
     for (const t of s.trucks) {
       alive.add(t.id);
+      const p = lastPose(s, t), jumps = p?.jumps ?? 0;
+      // Turned the short way round.
+      const heading = p ? p.heading + (Math.atan2(Math.sin(t.heading - p.heading), Math.cos(t.heading - p.heading))) * k : t.heading;
+      const back = (place.get(t) ?? 0) * QUEUE_GAP, bx = -Math.sin(t.heading) * back, bz = -Math.cos(t.heading) * back;
       let o = this.trucks.get(t.id);
-      if (!o) { o = this.add(this.m.truck, t.id); this.trucks.set(t.id, o); }
-      const back = (place.get(t) ?? 0) * QUEUE_GAP, x = t.x - Math.sin(t.heading) * back, z = t.y - Math.cos(t.heading) * back;
+      if (!o) { o = { obj: this.add(this.m.truck, t.id), bx, bz, phase: t.phase, jumps, cx: 0, cz: 0, x: t.x, z: t.y }; this.trucks.set(t.id, o); }
+      if (o.jumps !== jumps) { o.cx = 0; o.cz = 0; }
+      // Moving up its line, or from the line onto the bay, it starts from where it stood. (Joining a line it still steps back
+      // into it at once: easing that would drive it back through the trucks already waiting.)
+      else if (o.phase === 'queue' && (o.bx !== bx || o.bz !== bz)) { o.cx += o.bx - bx; o.cz += o.bz - bz; }
+      // It closes at the speed it drives: a crawl on an empty battery.
+      const gap = Math.hypot(o.cx, o.cz), speed = t.energy > 0 ? TRUCK.speed : TRUCK.crawl;
+      const close = gap > 1e-9 ? Math.max(0, gap - speed * since) / gap : 0;
+      o.cx *= close; o.cz *= close;
+      Object.assign(o, { bx, bz, phase: t.phase, jumps });
+      const x = (p ? p.x + (t.x - p.x) * k : t.x) + bx + o.cx, z = (p ? p.y + (t.y - p.y) * k : t.y) + bz + o.cz;
+      o.x = x; o.z = z;
       // On a ramp it leans with the ground: the slope along its heading, from the ground a little ahead of it and behind.
-      const fx = Math.sin(t.heading) * 0.3, fz = Math.cos(t.heading) * 0.3;
+      const fx = Math.sin(heading) * 0.3, fz = Math.cos(heading) * 0.3;
       const gy = this.lie.y(x, z), lean = Math.atan2(this.lie.y(x + fx, z + fz) - this.lie.y(x - fx, z - fz), 0.6);
-      o.setTransform(v.set(x, gy, z), e.set(-lean, t.heading, 0, 'YXZ'));
+      o.obj.setTransform(v.set(x, gy, z), e.set(-lean, heading, 0, 'YXZ'));
       t.cargo.forEach((item, i) => {
-        const [sx, sz] = TRUCK_BED.slots[i % TRUCK_BED.slots.length], c = Math.cos(t.heading), sn = Math.sin(t.heading);
-        this.putGood(item, x + sx * c + sz * sn, gy + TRUCK_BED.y + Math.tan(lean) * sz, z - sx * sn + sz * c, t.heading, TRUCK_BED.scale, t.id);
+        const [sx, sz] = TRUCK_BED.slots[i % TRUCK_BED.slots.length], c = Math.cos(heading), sn = Math.sin(heading);
+        this.putGood(item, x + sx * c + sz * sn, gy + TRUCK_BED.y + Math.tan(lean) * sz, z - sx * sn + sz * c, heading, TRUCK_BED.scale, t.id);
       });
     }
-    for (const [id, o] of this.trucks) if (!alive.has(id)) { this.drop(o); this.trucks.delete(id); }
+    for (const [id, o] of this.trucks) if (!alive.has(id)) { this.drop(o.obj); this.trucks.delete(id); }
     this.syncHandoffs(s);
     for (const p of this.pools.values()) for (let i = p.used; i < p.objs.length; i++) p.objs[i].visible = false;
   }

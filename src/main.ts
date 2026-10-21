@@ -631,6 +631,8 @@ async function play(initial: GameState) {
     if (hud.modal) input.keys.clear();
     const kx = (isHeld('panRight', input.keys) ? 1 : 0) - (isHeld('panLeft', input.keys) ? 1 : 0), ky = (isHeld('panDown', input.keys) ? 1 : 0) - (isHeld('panUp', input.keys) ? 1 : 0);
     if (kx || ky) camera.pan(-kx * dt * 600, -ky * dt * 600);
+    // The camera is placed before anything is picked or put on the page from it, so the tags and markers keep up as it moves.
+    camera.update(time, dt);
 
     const hour = hourAt(state.time);
     if (!(Math.abs(hour - lookHour) <= 0.02)) { renderer.setLook(lookAt(hour)); lookHour = hour; }
@@ -664,7 +666,8 @@ async function play(initial: GameState) {
     hud.world.setTruckTags(tagged ? state.trucks.filter((t) => t.route === tagged.id).map((t) => {
       const to = t.target !== null ? buildingById(state, t.target) : null;
       const where = t.phase === 'drive' && to ? `to the ${BUILDINGS[to.type].name.toLowerCase()}` : t.phase === 'dock' || t.phase === 'queue' ? `at the ${to ? BUILDINGS[to.type].name.toLowerCase() : 'stop'}` : t.phase === 'charge' || t.phase === 'parked' ? 'charging' : 'stuck';
-      return { id: t.id, name: truckName(state, t), what: `${where}${t.cargo.length ? ` · ${cargoText(t.cargo)}` : ''}`, ...camera.toScreen(t.x, groundAt(t.x, t.y) + 0.9, t.y) };
+      const at = view.truckAt(t.id) ?? { x: t.x, z: t.y };
+      return { id: t.id, name: truckName(state, t), what: `${where}${t.cargo.length ? ` · ${cargoText(t.cargo)}` : ''}`, ...camera.toScreen(at.x, groundAt(at.x, at.z) + 0.9, at.z) };
     }) : []);
     hud.world.setStopLabels(routeView.labels().map((l) => ({ ...l, ...camera.toScreen(l.x, l.y, l.z) })));
     // Power shows only while you work with it: its overlay, placing something that uses power, selecting a building on a
@@ -685,7 +688,6 @@ async function play(initial: GameState) {
     hud.world.setPlacement(state, placeSpot());
     hud.update();
 
-    camera.update(time, dt);
     renderer.renderGeometry(time);
     renderer.renderStyle(time);
     cursor.draw(marks, renderer.camera, renderer.width, renderer.height);
