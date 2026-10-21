@@ -173,9 +173,9 @@ export function powerSheet(host: PowerHost) {
             }) : [h('p', { class: 'cd-small' }, 'Nothing draws power yet.')]),
             types.length ? h('div', { class: 'cd-small note' }, `${watts(day.avg.used)} on average.`) : null),
           h('div', null,
-            h('div', { class: 'row-head' }, h('span', { class: 'cd-label', style: 'color: var(--ochre)' }, 'Battery health'), h('span', { class: 'cd-small' }, `each night, ${clock(s.scenario.weather.sunset)} to ${clock(s.scenario.weather.sunrise)}`)),
+            h('div', { class: 'row-head' }, h('span', { class: 'cd-label', style: 'color: var(--ochre)' }, 'Battery health'), h('span', { class: 'cd-small' }, `each night, ${clock(s.scenario.climate.sun.set)} to ${clock(s.scenario.climate.sun.rise)}`)),
             ...(nights.length && cap ? nights.map((n) => {
-              const len = (24 - s.scenario.weather.sunset + s.scenario.weather.sunrise) * HOUR_SECONDS, k = n.dryAt === null ? Math.min(1, n.seconds / len) : (n.dryAt - n.from) / len;
+              const len = (24 - s.scenario.climate.sun.set + s.scenario.climate.sun.rise) * HOUR_SECONDS, k = n.dryAt === null ? Math.min(1, n.seconds / len) : (n.dryAt - n.from) / len;
               const after = n.dryAt === null ? 0 : Math.max(0, Math.min(1, n.seconds / len) - k);
               return h('div', { class: 'bh' }, h('span', { class: 'nt' }, n === nights[nights.length - 1] && sunAt(s.scenario, s.time) <= 0 ? 'Tonight' : `Day ${n.day}`),
                 h('span', { class: 'tr' }, h('i', { style: `width: ${k * 100}%` }), h('u', { style: `left: ${k * 100}%; width: ${after * 100}%` })),

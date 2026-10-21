@@ -170,14 +170,14 @@ export class TopRight {
 
   constructor(host: PlayHost) {
     this.host = host;
-    const w = host.state().scenario.weather;
+    const w = host.state().scenario.climate.sun;
     this.credits.el.append(icon('coin'), this.credits.v, this.credits.sub);
     this.power.el.append(icon('bolt'), this.power.v, this.power.sub);
     this.stored.el.append(icon('battery'), this.stored.v, this.stored.sub);
     this.power.el.addEventListener('click', () => host.togglePanel('power'));
     this.stored.el.addEventListener('click', () => host.togglePanel('power'));
     const sky = h('div', { class: 'cd-dial__sky' });
-    sky.style.background = skyFor(w.sunrise, w.sunset);
+    sky.style.background = skyFor(w.rise, w.set);
     this.dial.append(sky, h('div', { class: 'cd-dial__sun' }), h('div', { class: 'cd-dial__face' }, h('div', null, this.time, this.day)));
     const seg = h('div', { class: 'cd-seg' }, ...([[0, icon('pause'), 'Pause', 'pause'], [1, '1×', 'Normal speed', 'speed1'], [2, '2×', 'Double speed', 'speed2'], [4, '4×', 'Fast', 'speed3']] as const).map(([n, label, title, action]) => {
       const b = titledBy(h('button', { 'aria-label': title, onclick: () => host.setSpeed(n) }, label), () => tip(title, ...keyNames(action)));
@@ -208,7 +208,7 @@ export class TopRight {
 
   /** The readouts and the dial, a few times a second. */
   update() {
-    const s = this.host.state(), sc = s.scenario, w = sc.weather;
+    const s = this.host.state(), sc = s.scenario, w = sc.climate.sun;
     set(this.credits.v, sc.sandbox ? '∞' : num(Math.floor(s.credits)));
     const cpm = creditsPerMin(s);
     set(this.credits.sub, sc.sandbox ? 'credits' : cpm > 0 ? `+${num(cpm)} / min` : 'credits');
@@ -223,8 +223,8 @@ export class TopRight {
     set(this.stored.sub, cap ? 'stored' : 'no batteries');
     set(this.sun, pct(sunAt(sc, s.time)));
     set(this.wind, pct(windAt(sc, s.time)));
-    const hour = hourAt(s.time), day = hour > w.sunrise && hour < w.sunset;
-    set(this.next, day ? `dusk ${clock(w.sunset)}` : `dawn ${clock(w.sunrise)}`);
+    const hour = hourAt(s.time), day = hour > w.rise && hour < w.set;
+    set(this.next, day ? `dusk ${clock(w.set)}` : `dawn ${clock(w.rise)}`);
     setVar(this.dial, '--t', (hour / 24).toFixed(4));
     set(this.time, clock(hour));
     set(this.day, `day ${dayAt(s.time)}`);

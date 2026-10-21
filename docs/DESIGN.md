@@ -145,10 +145,46 @@ held down to about 1366 × 768), pixel size, reduce motion, show pace, and the p
 ## Time
 
 The simulation runs in fixed steps of 0.1 s. A day lasts 240 s at 1× (4 minutes); a commission starts at 7 AM, and the sun shines
-from 6 AM to 8 PM (scenarios change this), so night is about 40% of a day. The level timer counts simulated time, so speed controls only change
+for the season's hours (from 5 AM to 9 PM in summer down to 8 AM to 4 PM in winter; see Seasons). The level timer counts simulated time, so speed controls only change
 how long you wait, and pausing to plan is free.
 
-The wind follows a smooth seeded curve between about 0.15 and 1.0 of full strength.
+The wind follows a smooth seeded curve around the season's mean, swinging up to its gust either way, between 0.05 and 1.0 of
+full strength.
+
+## Seasons
+
+A commission happens in one **season**: spring, summer, autumn or winter. It never changes during the commission. The season
+replaces the old per-commission weather settings: the sun's hours and strength and the wind come from the season, and a
+**character** can twist it ("a wet spring", "autumn, gales", "a hard winter"). The table and the characters are in
+`src/game/seasons.ts`: one section per lever, so warmth, rain and the river join it as sections of their own.
+
+| | Spring | Summer | Autumn | Winter |
+| --- | --- | --- | --- | --- |
+| Sun up | 6–19 | 5–21 | 7–18 | 8–16 |
+| Sun strength at noon | 0.9 | 1.1 | 0.75 | 0.55 |
+| Wind (mean ± gust) | 0.5 ± 0.4, gusty | 0.3 ± 0.25, light | 0.7 ± 0.3, strong | 0.7 ± 0.15, strong and steady |
+
+Each season favours a power source: wheels in spring (once the river follows the season), solar in summer, wind in autumn
+and winter. A summer day gives a solar panel about four times a winter day's energy.
+
+**Characters** add to the season's numbers. A character only fits some seasons (no hard summer), and it will also set the
+odds of each weather event once there are events:
+
+| Character | Seasons | Shifts now |
+| --- | --- | --- |
+| Mild | any | sun +0.05, wind −0.05, gust −0.1 |
+| Wet | spring, summer, autumn | nothing yet (more rain, with rain) |
+| Dry | spring, summer, autumn | sun +0.05 (less rain, with rain) |
+| Hot | spring, summer | sun +0.1, wind −0.05 (warmer, with warmth) |
+| Gales | spring, autumn, winter | wind +0.15, gust +0.05 |
+| Stormy | spring, summer, autumn | sun −0.1, wind +0.05, gust +0.15 |
+| Hard | winter | sun −0.1, wind +0.05 (colder, with warmth) |
+| High river | spring | nothing yet (a higher river, with the river) |
+
+A commission's season is named with its character: "A wet spring", "Autumn, gales", or just "Winter" without one. **Tags**
+such as "Short days" or "Strong wind" describe the season on the level card (10 hours of sun or fewer: Short days, 15 or more:
+Long days; strength under 0.8: Weak sun, 1.1 or more: Strong sun; mean wind 0.65 or more: Strong wind, 0.35 or less: Light
+wind; gusts 0.4 or more: Gusty); they aren't modifiers of their own.
 
 ## The map
 
@@ -503,42 +539,48 @@ A commission has goals, a target time and modifiers. It ends when every goal is 
 - **Goals:** deliver *n* of a good; reach a delivery rate of a good (per minute, over the last minute); keep soil health above a
   level at the end.
 - **Medals:** gold within the target time, silver within 1.5×, bronze any time after. There is no failing.
-- **Modifiers:** sun strength and hours, wind strength, soil richness, how much rock, water and forest the map has, relief
-  (0 flat to 1 rugged), starting credits.
+- **Season:** a season and perhaps a character (see Seasons), which set the sun and the wind.
+- **Modifiers:** soil richness, how much rock, water and forest the map has, relief (0 flat to 1 rugged), starting credits.
 
 **Campaign** (seeds fixed, so each plays the same every time; goals, credits and target times in `src/game/scenarios.ts`):
 
-| # | Name | Goals | Target | Modifiers | Relief |
-| --- | --- | --- | --- | --- | --- |
-| 1 | First Light | 120 wheat, 80 flour | 20 min | Gentle | 0.2 |
-| 2 | Morning Bread | 150 bread; soil health ≥ 40 | 35 min | | 0.4 |
-| 3 | Windy Ridge | 90 oil, 80 bread | 45 min | Weak sun, strong wind, rocky | 0.9 |
-| 4 | Linen for the Looms | 50 linen; 5 yarn/min | 35 min | | 0.4 |
-| 5 | Long Nights | 100 honey cake | 40 min | Short days | 0.5 |
-| 6 | Tired Soil | 50 sauce; soil health ≥ 55 | 35 min | Poor soil | 0.6 |
-| 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 50 min | Wet and cramped | 0.3 |
-| 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 50 min | Everything | 0.7 |
+| # | Name | Goals | Target | Season | Modifiers | Relief |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | First Light | 120 wheat, 80 flour | 20 min | A mild spring | Gentle | 0.2 |
+| 2 | Morning Bread | 150 bread; soil health ≥ 40 | 40 min | A wet spring | | 0.4 |
+| 3 | Windy Ridge | 90 oil, 80 bread | 45 min | Autumn, gales | Rocky, hilly | 0.9 |
+| 4 | Linen for the Looms | 50 linen; 5 yarn/min | 35 min | A hot summer | | 0.4 |
+| 5 | Long Nights | 100 honey cake | 40 min | Winter | | 0.5 |
+| 6 | Tired Soil | 50 sauce; soil health ≥ 55 | 35 min | A dry summer | Poor soil | 0.6 |
+| 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 50 min | Spring, high river | Cramped | 0.3 |
+| 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 45 min | A stormy autumn | Everything | 0.7 |
 
 The bot (`npm run sim`) deliberately uses a flat, open map with even soil to test the economy, not terrain;
-`test/height.test.ts` covers the height rules. It clears First Light in about 14 minutes, Morning Bread in about 30 and
+`test/height.test.ts` covers the height rules. It clears First Light in about 15 minutes, Morning Bread in about 28 and
 Linen for the Looms in about 25 with trucks (with silos and drones it took about 14, 38 and 45), building as credits allow. Its Morning Bread layout built round
 neighbours (`npm run sim -- c2:next`: a mill between two fields, a bakery beside it, a coop under both, a composter beside the
-coop) clears it in about 26 minutes with 3 trucks on 2 routes, where the all-truck layout uses 4 on 3; a person needs a few minutes more to plan and
-place. The bot's layouts for the other five, built round neighbours too, clear Windy Ridge in about 32 minutes, Long Nights
-in about 29, Tired Soil in about 25, Riverlands in about 34 and Harvest Festival in about 36 (`npm run sim -- c3` and so on).
+coop) clears it in about 28 minutes with 3 trucks on 2 routes, where the all-truck layout uses 4 on 3; a person needs a few minutes more to plan and
+place. The bot's layouts for the other five, built round neighbours too, clear Windy Ridge in about 31 minutes, Long Nights
+in about 29, Tired Soil in about 26, Riverlands in about 35 and Harvest Festival in about 33 (`npm run sim -- c3` and so on).
 
 Target times are about 1.4 times the bot's best time, rounded to 5 minutes, as First Light's 20 is to its 14: the bot knows
 its layout and plays a flat, open map, so a person needs that much more. (Balanced on 2026-10-20, once every commission had
 a bot layout: trucks and neighbours had made Linen for the Looms, Long Nights, Tired Soil, Riverlands and Harvest Festival
-much quicker than their targets, and Long Nights took the bot 17 minutes, so its order went up from 60 honey cake to 100.)
+much quicker than their targets, and Long Nights took the bot 17 minutes, so its order went up from 60 honey cake to 100.
+When seasons replaced the weather settings on 2026-10-21, a wet spring's weaker sun slowed Morning Bread by about 2 minutes,
+so its target went from 35 to 40 minutes, and a stormy autumn's wind sped Harvest Festival up by about 3, so its target went
+from 50 to 45.)
 
 ![The level select](images/menu.png)
 
-**Random commission:** any seed and a difficulty (1–3) pick the modifiers and 2–4 goals. Relief starts at
+**Random commission:** any seed and a difficulty (1–3) pick a season (any of the four, equally), a character that fits it,
+up to two ground modifiers (poor soil, rocky, wooded, hilly or flat) and 2–4 goals. Any goal can come in any season: a winter
+commission may ask for sauce. The target time doesn't follow the season yet. Relief starts at
 0.25 + 0.15 × difficulty (0.4, 0.55, 0.7); Hilly sets it to 0.9, Flat to 0 (one or the other, never both). Relief
 scales the rolling hills; corner heights stay within 0–16. Flat is all one level.
 
-**Sandbox:** a large calm map (relief 0.5), unlimited credits, no goals: for trying things.
+**Sandbox:** a large map (relief 0.5), unlimited credits, no goals: for trying things. It starts in a mild spring; the level
+select picks any season and any character that fits it.
 
 ## Economy
 
@@ -548,7 +590,7 @@ Early on, raw goods are the way to afford the first machines; products pay far b
 ## Saving
 
 The game saves the commission in progress (one at a time) in the browser every 30 s and when the page is hidden, and remembers
-each commission's best medal and time. Saves are version 7. A save from an older version of the game is refused.
+each commission's best medal and time. Saves are version 9. A save from an older version of the game is refused.
 
 ## Open questions
 

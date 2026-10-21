@@ -133,7 +133,7 @@ test('route timing: arrivals per stop, the loop, gaps between trucks, idle share
 });
 
 test('power over a day: sources by hour, the digester among them, use by building, nights', () => {
-  const s = flat({ weather: { sunrise: 6, sunset: 20, sun: 1, wind: 0.5, gust: 0 } });
+  const s = flat({ climate: { ...SANDBOX.climate, sun: { rise: 6, set: 20, strength: 1 }, wind: { mean: 0.5, gust: 0 } } });
   put(s, 'pylon', 5, 5);
   put(s, 'solar', 6, 6);
   const dig = put(s, 'digester', 3, 6);
@@ -156,7 +156,7 @@ test('power over a day: sources by hour, the digester among them, use by buildin
 });
 
 test('tonight: a battery feeding a steady load runs dry when its charge is spent', () => {
-  const s = flat({ weather: { sunrise: 6, sunset: 20, sun: 1, wind: 0.05, gust: 0 } });
+  const s = flat({ climate: { ...SANDBOX.climate, sun: { rise: 6, set: 20, strength: 1 }, wind: { mean: 0.05, gust: 0 } } });
   put(s, 'pylon', 5, 5);
   const bat = put(s, 'battery', 6, 5);
   const loom = put(s, 'loom', 5, 7);
@@ -179,7 +179,7 @@ test('tonight: a battery feeding a steady load runs dry when its charge is spent
 });
 
 test('tonight: the batteries run dry only once every network\'s are spent', () => {
-  const s = flat({ weather: { sunrise: 6, sunset: 20, sun: 1, wind: 0.05, gust: 0 } });
+  const s = flat({ climate: { ...SANDBOX.climate, sun: { rise: 6, set: 20, strength: 1 }, wind: { mean: 0.05, gust: 0 } } });
   put(s, 'pylon', 5, 5);
   put(s, 'battery', 6, 5).charge = 0;
   put(s, 'loom', 5, 7).inputs = { yarn: 30 };
@@ -193,7 +193,7 @@ test('tonight: the batteries run dry only once every network\'s are spent', () =
 
 /** A load (a 20 W loom, or an 8 W sprinkler) and a battery on one network, `at` the hour with the battery holding `charge` J; `solar` panels. */
 function forecastAt(at: number, charge: number, solar = 0, load: 'loom' | 'sprinkler' = 'loom') {
-  const s = flat({ weather: { sunrise: 6, sunset: 20, sun: 1, wind: 0.05, gust: 0 } });
+  const s = flat({ climate: { ...SANDBOX.climate, sun: { rise: 6, set: 20, strength: 1 }, wind: { mean: 0.05, gust: 0 } } });
   put(s, 'pylon', 5, 5);
   const bat = put(s, 'battery', 6, 5);
   if (load === 'loom') put(s, 'loom', 5, 7).inputs = { yarn: 30 }; else put(s, 'sprinkler', 5, 7);

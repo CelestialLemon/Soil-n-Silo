@@ -439,7 +439,10 @@ button { font: inherit; }
 .menu .replace { min-height: 32px; display: flex; align-items: center; gap: 8px; color: #e8ebe5; font: 600 13px/1 var(--font-ui); text-shadow: 0 1px 6px rgba(20, 30, 25, 0.6); }
 .menu .random, .menu .sandbox { grid-column: auto; padding: 22px 26px; display: grid; gap: 30px; min-height: 202px; }
 .menu .random { grid-template-columns: 280px 1fr 150px; }
-.menu .sandbox { grid-template-columns: 1fr 150px; }
+.menu .sandbox { grid-template-columns: 1fr 1.2fr 150px; }
+.menu .season-pick { align-self: center; }
+.menu .season-pick .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.menu .season-pick .tags { display: flex; gap: 6px; flex-wrap: wrap; }
 .menu .seedrow { display: flex; align-items: center; gap: 8px; margin: 14px 0 12px; }
 .menu .seedbox { flex: 1; height: 40px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; border-radius: 999px; }
 .menu .seed { width: 7em; border: 0; background: transparent; text-align: right; font: 700 16px/1 var(--font-ui); color: var(--ink); }

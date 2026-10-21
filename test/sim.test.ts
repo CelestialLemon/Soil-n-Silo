@@ -10,7 +10,8 @@ import { generateMap, TERRAIN } from '../src/game/map.ts';
 import { feederOf, networkOf, networks, pylonsInLink, wiresOf } from '../src/game/power.ts';
 import { runtimeOf } from '../src/game/runtime.ts';
 import { deserialize, readProgress, recordResult, serialize } from '../src/game/save.ts';
-import { CAMPAIGN, randomScenario, SANDBOX, scenarioById, type Scenario } from '../src/game/scenarios.ts';
+import { CAMPAIGN, randomScenario, SANDBOX, sandboxIn, scenarioById, tagsOf, type Scenario } from '../src/game/scenarios.ts';
+import { CHARACTERS, charactersOf, climateOf, SEASON_IDS, SEASONS, seasonName } from '../src/game/seasons.ts';
 import { accessTiles, distanceTo, isOpen, pathTo } from '../src/game/roads.ts';
 import { hourAt, sunAt, windAt } from '../src/game/sim/clock.ts';
 import { exposureOf } from '../src/game/sim/layout.ts';
@@ -73,6 +74,35 @@ test('scenarios: ids round-trip, random ones are deterministic', () => {
   assert.equal(scenarioById('nope'), null);
   const r = randomScenario(7, 1);
   assert.ok(r.goals.length >= 1);
+});
+
+test('seasons: characters shift their season, names read right, the sandbox takes any season', () => {
+  assert.deepEqual(climateOf('winter'), { season: 'winter', character: null, ...SEASONS.winter.levers });
+  const gales = climateOf('autumn', 'gales');
+  assert.ok(gales.wind.mean > SEASONS.autumn.levers.wind.mean);
+  assert.deepEqual(gales.sun, SEASONS.autumn.levers.sun, 'gales move only the wind');
+  assert.throws(() => climateOf('summer', 'hard'), /no hard summer/);
+  assert.equal(seasonName(climateOf('spring', 'wet')), 'A wet spring');
+  assert.equal(seasonName(climateOf('autumn', 'gales')), 'Autumn, gales');
+  assert.equal(seasonName(climateOf('winter')), 'Winter');
+  assert.deepEqual(tagsOf(CAMPAIGN[4]).slice(0, 3), ['Winter', 'Short days', 'Weak sun']);
+  for (const season of SEASON_IDS) for (const c of [null, ...charactersOf(season)]) {
+    const sb = sandboxIn(season, c);
+    assert.deepEqual(scenarioById(sb.id), sb, sb.id);
+    assert.equal(sb.climate.season, season);
+    assert.equal(sb.climate.character, c);
+  }
+  assert.equal(scenarioById('sandbox-summer-hard'), null);
+  assert.equal(scenarioById('sandbox-monsoon'), null);
+  // Random commissions roll every season, each with a character that fits it, the same every time.
+  const seen = new Set<string>();
+  for (let seed = 1; seed < 200; seed++) {
+    const sc = randomScenario(seed, 2), c = sc.climate;
+    assert.ok(c.character !== null && CHARACTERS[c.character].seasons.includes(c.season), sc.id);
+    assert.deepEqual(randomScenario(seed, 2).climate, c);
+    seen.add(c.season);
+  }
+  assert.equal(seen.size, 4);
 });
 
 test('the sun rises and sets, and wind stays in range', () => {
@@ -482,7 +512,7 @@ test('power shortfall slows machines to the share they get; batteries charge fro
   const t = put(s, 'turbine', 4, 5);
   const loom = put(s, 'loom', 5, 7);
   loom.inputs.yarn = 9;
-  s.scenario = { ...s.scenario, weather: { ...s.scenario.weather, wind: 0.2, gust: 0, sun: 0 } };
+  s.scenario = { ...s.scenario, climate: { ...s.scenario.climate, wind: { mean: 0.2, gust: 0 }, sun: { ...s.scenario.climate.sun, strength: 0 } } };
   advance(s, 1);
   const net = networkOf(s, loom)!;
   assert.ok(net.made < net.wanted);
@@ -719,7 +749,9 @@ test('saves with missing or broken state are refused', () => {
   assert.equal(without((o) => { o.version = 3; }), null, 'saves from an older version are refused');
   assert.equal(without((o) => { delete o.soilBase; }), null);
   assert.equal(without((o) => { delete o.scenario.tags; }), null);
-  assert.equal(without((o) => { delete o.scenario.weather.wind; }), null);
+  assert.equal(without((o) => { delete o.scenario.climate.wind.mean; }), null);
+  assert.equal(without((o) => { o.scenario.climate.season = 'monsoon'; }), null, 'a season there is');
+  assert.equal(without((o) => { o.scenario.climate.character = 'hard'; o.scenario.climate.season = 'summer'; }), null, 'no hard summer');
   const m = flat();
   put(m, 'mill', 10, 10);
   const mj = JSON.parse(serialize(m));
