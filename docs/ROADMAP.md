@@ -144,6 +144,10 @@ Six tree species and bushes vary by place, with willows by water and pines up hi
 
 ## Next
 
+- **Seasons, weather and ground types**, designed on 2026-10-21 in [`CLIMATE.md`](CLIMATE.md): one season per level in
+  place of the weather settings, seeded weather events, a weather station selling the forecast, the greenhouse, and five
+  ground types. Built in that order; each part writes its rules into `DESIGN.md`, and `CLIMATE.md` is deleted once all of
+  it is in.
 - Play the **problems strip** (experimental, off by default, a setting on the pause screen) and decide whether it stays.
   It lists the buildings with a problem now, longest first; the plan was to build it on the history instead (buildings below
   about 70% working over the last few minutes, worst first) and perhaps group it by cause.
@@ -166,17 +170,11 @@ Six tree species and bushes vary by place, with willows by water and pines up hi
 
 ## Later
 
-- A **weather station** building (proposed 1×1, 80 credits, 2 W): owning one unlocks the forecast, sun and wind by hour from
-  the seeded weather curves, in its inspector and in a Weather panel opened from the sun and wind chips by the dial. Without one
-  you see only the weather now.
 - From the UI revamp, set aside: a **difficulty fingerprint** for each commission (an advanced option in the level select);
   a **soil map and soil forecast** in the ledger; a **route loop diagram** with each stop's share of the loop.
 - A mountains-themed commission, with higher, more rugged ground.
 - Slopes facing the sun give solar panels more power; cliffs shade panels in the morning and evening.
-- Weather events (rain waters fields, storms stop turbines), with rain running off high ground and pooling low, flooding low
-  fields in storms.
 - Soil washing down from eroding fields onto the ground below.
-- Seasons as commission modifiers, with frost pockets in valley floors.
 - Pipes for water, so sprinklers need a source.
 - More chains: tomatoes into ketchup, flax into rope, bees into candles; animals (goats for milk and cheese).
 - Commission chains: a short campaign where each commission's map carries on from the last.

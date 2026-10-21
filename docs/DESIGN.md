@@ -571,5 +571,4 @@ each commission's best medal and time. Saves are version 7. A save from an older
 - [ ] Should buildings load on one side only, the one they face (R)? It would make turning a building matter.
 - [ ] Drones, once trucks have been played: automatic helpers from a drone hub that fly straight over water and crowded
   ground, carry little and use more power, and are assigned jobs by the hub as a whole, so none chase the same job.
-- [ ] Weather (rain waters fields, storms stop turbines) as a later modifier.
 - [ ] Blueprints/copy-paste once layouts grow large.
