@@ -6,6 +6,7 @@ import type { Log } from './powerlog.ts';
 import type { Roads } from './roads.ts';
 import type { Handoff } from './sim/goods.ts';
 import type { Derived } from './sim/layout.ts';
+import type { TruckPose } from './sim/trucks.ts';
 import type { Cache, GameState } from './state.ts';
 
 // Runtime: everything a game holds that is not saved. The GameState is plain JSON (what gets saved); what is worked out from
@@ -29,6 +30,8 @@ export interface Runtime {
   handoffs?: Handoff[];
   /** When each building last took a good from next door, so neighbours sharing a giver take turns (sim/goods.ts). */
   lastFed?: Map<number, number>;
+  /** Where each truck stood as the last step began, for the view to draw it between steps (sim/trucks.ts). */
+  truckPoses?: Map<number, TruckPose>;
   /** The layout the trucks last found their ways on (sim/trucks.ts). */
   truckLayout?: number;
   /** Each building's recent history of what it did, by building id (history.ts). */

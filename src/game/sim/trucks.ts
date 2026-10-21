@@ -25,6 +25,33 @@ export const routesAt = (s: GameState, b: Building) => s.routes.filter((r) => r.
 /** The trucks running a route. */
 export const trucksOn = (s: GameState, r: Route) => s.trucks.filter((t) => t.route === r.id);
 
+/**
+ * Where a truck stood as the last step began, for the view to draw it between there and where it stands now, and how many
+ * times it has been put down somewhere rather than driven there (so the view knows to show it there at once).
+ */
+export interface TruckPose { x: number; y: number; heading: number; jumps: number }
+
+const posesOf = (s: GameState) => (runtimeOf(s).truckPoses ??= new Map<number, TruckPose>());
+
+/** Where a truck stood as the last step began; null for one that hasn't run a step yet. */
+export const lastPose = (s: GameState, t: Truck): TruckPose | null => posesOf(s).get(t.id) ?? null;
+
+/** A truck put down somewhere rather than driven there: it stood there all along, as far as the view knows. */
+function jumped(s: GameState, t: Truck) {
+  posesOf(s).set(t.id, { x: t.x, y: t.y, heading: t.heading, jumps: (lastPose(s, t)?.jumps ?? 0) + 1 });
+}
+
+/** Notes where every truck stands as a step begins. */
+function notePoses(s: GameState) {
+  const poses = posesOf(s), alive = new Set<number>();
+  for (const t of s.trucks) {
+    alive.add(t.id);
+    const p = poses.get(t.id);
+    if (p) { p.x = t.x; p.y = t.y; p.heading = t.heading; } else poses.set(t.id, { x: t.x, y: t.y, heading: t.heading, jumps: 0 });
+  }
+  for (const id of poses.keys()) if (!alive.has(id)) poses.delete(id);
+}
+
 /** Sends a truck along the shortest way to a building; false if there is none. */
 function driveTo(s: GameState, t: Truck, b: Building): boolean {
   const p = pathTo(s, b, tileOf(s, t));
@@ -57,6 +84,7 @@ function setOff(s: GameState, t: Truck, from: number) {
       const best = accessTiles(s, g).reduce((m, a) => (distanceTo(s, b, a) < distanceTo(s, b, m) ? a : m), tileOf(s, t));
       if (distanceTo(s, b, best) === Infinity) continue;
       t.x = best % s.map.width + 0.5; t.y = Math.floor(best / s.map.width) + 0.5;
+      jumped(s, t);
       break;
     }
   }
@@ -205,6 +233,7 @@ function charge(s: GameState, t: Truck, dt: number) {
 
 /** Drives, docks and charges every truck, then lets queued trucks dock where a building has room. */
 export function runTrucks(s: GameState, dt: number) {
+  notePoses(s);
   // The layout changed: a truck on a tile that was built on moves to the nearest open one, and driving trucks find their
   // way again (a building may stand across it, or a new way be shorter).
   const layout = layoutOf(s);
@@ -213,7 +242,7 @@ export function runTrucks(s: GameState, dt: number) {
     for (const t of s.trucks) {
       if (!isOpen(s, Math.floor(t.x), Math.floor(t.y))) {
         const i = nearestOpen(s, Math.floor(t.x), Math.floor(t.y));
-        if (i !== null) { t.x = i % s.map.width + 0.5; t.y = Math.floor(i / s.map.width) + 0.5; }
+        if (i !== null) { t.x = i % s.map.width + 0.5; t.y = Math.floor(i / s.map.width) + 0.5; jumped(s, t); }
       }
       const b = t.target !== null ? buildingById(s, t.target) : null, here = tileOf(s, t);
       // At a building or its garage, but no longer beside it (moved off a tile built on, or walled off): it drives back,
