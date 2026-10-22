@@ -3,6 +3,9 @@ import { networks, usedBy } from '../game/power.ts';
 import { CAMPAIGN, SILVER_PAR, type Goal } from '../game/scenarios.ts';
 import { dayAt, hourAt, sunAt, windAt } from '../game/sim/clock.ts';
 import { medalFor } from '../game/sim/stats.ts';
+import { seasonName } from '../game/seasons.ts';
+import { weatherNow } from '../game/sim/weather.ts';
+import { warmthOf } from '../game/warmth.ts';
 import type { GameState } from '../game/state.ts';
 import { must } from '../game/result.ts';
 import type { Overlay } from '../world/view.ts';
@@ -155,12 +158,15 @@ function skyFor(sunrise: number, sunset: number) {
   return `conic-gradient(from 180deg, #2e3d52 0 ${p(sunrise - 0.5)}, #c4a36b ${p(sunrise - 0.5)} ${p(sunrise + 0.7)}, #eadfb8 ${p(sunrise + 2.4)} ${p(sunset - 2.4)}, #c4a36b ${p(sunset - 0.7)} ${p(sunset + 0.5)}, #2e3d52 ${p(sunset + 0.5)})`;
 }
 
+const SKY_NAMES = { clear: 'Clear', cloudy: 'Cloudy', rain: 'Rain', snow: 'Snow' } as const;
+
 export class TopRight {
   readonly el = h('div', { class: 'hud-top' });
   private readonly credits = { el: h('span', { class: 'cd-pill', title: 'Credits, and what deliveries earned over the last minute' }), v: h('span'), sub: h('small') };
   private readonly power = { el: h('button', { class: 'cd-pill is-link', title: 'Power made now, and used (W)' }), v: h('span'), sub: h('small') };
   private readonly stored = { el: h('button', { class: 'cd-pill is-link', title: 'Charge stored in every battery' }), v: h('span'), sub: h('small') };
-  private readonly sun = h('span'); private readonly wind = h('span'); private readonly next = h('span', { class: 'cd-chip', style: 'padding-left: 12px' });
+  private readonly sun = h('span'); private readonly wind = h('span');
+  private readonly season = h('span'); private readonly weather = h('span'); private readonly warmth = h('span'); private readonly next = h('span', { class: 'cd-chip', style: 'padding-left: 12px' });
   private readonly speeds: HTMLButtonElement[] = [];
   private readonly dial = h('div', { class: 'cd-dial' });
   private readonly time = h('div', { class: 'cd-figure cd-num' });
@@ -192,7 +198,12 @@ export class TopRight {
     this.el.append(
       h('div', { class: 'row' }, this.credits.el, this.power.el, this.stored.el),
       h('div', { class: 'clock' },
-        h('div', null, h('div', { class: 'chips cd-small' },
+        h('div', null,
+          h('div', { class: 'chips cd-small' },
+            h('span', { class: 'cd-chip', title: 'The season, and what it is like' }, this.season),
+            h('span', { class: 'cd-chip', title: 'The weather now' }, this.weather),
+            h('span', { class: 'cd-chip', title: 'The warmth now, in degrees Celsius' }, this.warmth)),
+          h('div', { class: 'chips cd-small' },
           h('span', { class: 'cd-chip', title: 'The sun\'s strength now' }, icon('sun'), this.sun),
           h('span', { class: 'cd-chip', title: 'The wind\'s strength now' }, icon('wind'), this.wind), this.next), seg),
         this.dial),
@@ -223,6 +234,9 @@ export class TopRight {
     set(this.stored.sub, cap ? 'stored' : 'no batteries');
     set(this.sun, pct(sunAt(sc, s.time)));
     set(this.wind, pct(windAt(sc, s.time)));
+    set(this.season, seasonName(sc.climate));
+    set(this.weather, SKY_NAMES[weatherNow(s).sky]);
+    set(this.warmth, `${Math.round(warmthOf(s))}°C`);
     const hour = hourAt(s.time), day = hour > w.rise && hour < w.set;
     set(this.next, day ? `dusk ${clock(w.set)}` : `dawn ${clock(w.rise)}`);
     setVar(this.dial, '--t', (hour / 24).toFixed(4));

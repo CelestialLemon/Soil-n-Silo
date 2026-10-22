@@ -1,6 +1,7 @@
 import { ANIMALS, DAY_SECONDS, FIELD, type CropDef } from './data.ts';
 import { noise1 } from './rng.ts';
 import type { Scenario } from './scenarios.ts';
+import type { Climate } from './seasons.ts';
 import type { GameState } from './state.ts';
 import { hourAt } from './sim/clock.ts';
 import { precipAt } from './sim/weather.ts';
@@ -13,16 +14,21 @@ export const FROST = 0;
 /** The hour of the afternoon it is warmest. It is coldest an hour before the sun rises. */
 const WARMEST = 15;
 
+/** A season's warmth at an hour of the day, before the seed's drift: the day's curve from the cold before dawn to the afternoon's warmth. */
+export function warmthByHour(c: Pick<Climate, 'warmth' | 'sun'>, hour: number): number {
+  const w = c.warmth, coldest = c.sun.rise - 1;
+  const up = WARMEST - coldest, u = (hour - coldest + 24) % 24;
+  const frac = u < up ? (1 - Math.cos(Math.PI * u / up)) / 2 : (1 + Math.cos(Math.PI * (u - up) / (24 - up))) / 2;
+  return w.low + (w.high - w.low) * frac;
+}
+
 /**
  * The warmth the season and the seed give at a time, before anything nudges it: a day's curve from the cold before dawn to the
  * afternoon's warmth between the season's low and high, and a smooth seeded drift of the whole day either way.
  */
 export function warmthAt(sc: Scenario, time: number): number {
-  const w = sc.climate.warmth, coldest = sc.climate.sun.rise - 1, h = hourAt(time);
-  const up = WARMEST - coldest, u = (h - coldest + 24) % 24;
-  const frac = u < up ? (1 - Math.cos(Math.PI * u / up)) / 2 : (1 + Math.cos(Math.PI * (u - up) / (24 - up))) / 2;
-  const drift = (noise1(time / DAY_SECONDS, sc.seed + 91) - 0.5) * 2 * w.drift;
-  return w.low + (w.high - w.low) * frac + drift;
+  const drift = (noise1(time / DAY_SECONDS, sc.seed + 91) - 0.5) * 2 * sc.climate.warmth.drift;
+  return warmthByHour(sc.climate, hourAt(time)) + drift;
 }
 
 /**
@@ -35,7 +41,7 @@ export const WARMTH_NUDGES: ((s: GameState, time: number) => number)[] = [
 ];
 
 /** The most, in °C, that precipitation cools the valley. */
-const RAIN_COOLING = 2;
+export const RAIN_COOLING = 2;
 const warmthNudge = (s: GameState, time: number) => WARMTH_NUDGES.reduce((sum, f) => sum + f(s, time), 0);
 
 /** The valley's warmth at a time (default now), in °C. */
