@@ -84,6 +84,7 @@ test('random events: seeded, by difficulty, never on day 1, never overlapping, h
     for (const e of ev) {
       assert.ok(allowed(e.kind, sc.climate) || (e.kind === 'flood' && ev[ev.indexOf(e) - 1]?.kind === 'tropicalStorm'), `${id}: ${e.kind}`);
       assert.ok(dayOf(e.start) >= 2, `${id}: none on day 1`);
+      assert.ok(endOf(e) <= Math.max(sc.par, timeOf(8, 0)) + 1e-9, `${id}: ${e.kind} ends within the level`);
       assert.ok(e.length > 0 && e.start % (HOUR / 2) === 0 && e.length % (HOUR / 2) === 0, 'on the half hour');
       if (e.strength === 'severe') { severe++; assert.equal(d, 3, `${id}: severe only at difficulty 3`); assert.ok(EVENTS[e.kind].severe); }
       if (e.kind === 'tropicalStorm' && e.strength === 'severe') { hurricanes++; assert.equal(sc.climate.character, 'stormy', `${id}: the hurricane is for a stormy character`); }
@@ -266,6 +267,12 @@ test('the sandbox starts any event at either strength, ending what was under way
   const s = sandbox();
   s.time = at(2, 9);
   const sandboxEvents = SANDBOX.events;
+  // It begins at this very moment, even between the half hours and while the game is paused.
+  s.time = at(2, 9) + 3;
+  assert.ok(startEvent(s, 'thunderstorm', 'ordinary').ok);
+  assert.equal(eventNow(s.scenario, s.time)?.kind, 'thunderstorm');
+  assert.equal(s.scenario.events[0].start, s.time);
+  s.time = at(2, 9);
   const r = startEvent(s, 'thunderstorm', 'ordinary');
   assert.ok(r.ok);
   assert.equal(eventNow(s.scenario, s.time)?.kind, 'thunderstorm');

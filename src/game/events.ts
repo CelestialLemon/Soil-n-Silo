@@ -342,19 +342,29 @@ export function rollEvents(seed: number, difficulty: 1 | 2 | 3, climate: Climate
   // Drop what doesn't fit, then spread the free time between and around the blocks.
   const needed = () => blocks.reduce((n, b) => n + span(b), 0) + (blocks.length - 1) * gap;
   while (blocks.length > 1 && needed() > end - from) blocks.pop();
-  const offsets = blocks.map(() => r() * Math.max(0, end - from - needed())).sort((a, b) => a - b);
-  const out: WeatherEvent[] = [];
-  let free = from, used = 0;
-  blocks.forEach((b, i) => {
-    const window = EVENTS[b[0].kind].begins;
-    let start = Math.max(free, from + offsets[i] + used);
-    if (window) start = beginInWindow(start, window, r);
-    const placed = b.map((e) => ({ ...e, start: snap(start + e.start) }));
-    out.push(...placed);
-    free = endOf(placed[placed.length - 1]) + gap;
-    used += span(b) + gap;
-  });
-  return out;
+  // Lay the blocks out in the free time; a window can carry one past the end and crowd the next, so lay them out again (a few
+  // times at most) until all fit, keeping the layout that placed the most.
+  let best: WeatherEvent[] = [], placedMost = -1;
+  for (let attempt = 0; attempt < 12 && placedMost < blocks.length; attempt++) {
+    const offsets = blocks.map(() => r() * Math.max(0, end - from - needed())).sort((a, b) => a - b);
+    const out: WeatherEvent[] = [];
+    let free = from, used = 0, placed = 0;
+    blocks.forEach((b, i) => {
+      const window = EVENTS[b[0].kind].begins;
+      let start = Math.max(free, from + offsets[i] + used);
+      if (window) start = beginInWindow(start, window, r);
+      // Moving into the window can carry it past the end: take the window of the day before, or leave it out if that leaves no room.
+      if (window && start + span(b) > end) start -= DAY_SECONDS;
+      used += span(b) + gap;
+      if (start < free || start + span(b) > end) return;
+      const at = b.map((e) => ({ ...e, start: snap(start + e.start) }));
+      out.push(...at);
+      free = endOf(at[at.length - 1]) + gap;
+      placed++;
+    });
+    if (placed > placedMost) { best = out; placedMost = placed; }
+  }
+  return best;
 }
 
 /** The first time at or after `t` that falls within the hours of a day `window` (which may wrap midnight), at a seeded hour in it. */
@@ -382,7 +392,9 @@ export function startEvent(s: GameState, kind: EventKind, strength: Strength = '
   if (!handMade(s)) return err('Only the sandbox starts weather by hand.');
   if (strength === 'severe' && !EVENTS[kind].severe) return err(`${EVENTS[kind].name} has no severe form.`);
   clearSky(s);
-  const chain = eventChain(kind, strength, s.time);
+  // It begins at exactly this moment (chains keep to the half hour), so it is under way at once even while the game is paused.
+  const chain = eventChain(kind, strength, s.time), shift = s.time - chain[0].start;
+  for (const e of chain) e.start += shift;
   s.scenario.events.push(...chain);
   return ok(chain);
 }
