@@ -29,7 +29,7 @@ export function deserialize(json: string | null): Result<GameState> {
   const parsed = tryParseJson(json);
   if (!parsed.ok) return err(`The save isn't JSON: ${parsed.error}`);
   const s = parsed.value as GameState | null;
-  if (s?.version !== 10) return err('The save is from another version (this game reads version 10).');
+  if (s?.version !== 11) return err('The save is from another version (this game reads version 11).');
   if (!complete(s)) return err('The save is broken: its state is incomplete or out of range.');
   if (!validRun(s.run, s.scenario.goals.length)) return err('The save is broken: its run log is incomplete or out of range.');
   return ok(s);

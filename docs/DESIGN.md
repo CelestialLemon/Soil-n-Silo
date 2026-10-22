@@ -613,7 +613,7 @@ Early on, raw goods are the way to afford the first machines; products pay far b
 ## Saving
 
 The game saves the commission in progress (one at a time) in the browser every 30 s and when the page is hidden, and remembers
-each commission's best medal and time. Saves are version 10. A save from an older version of the game is refused.
+each commission's best medal and time. Saves are version 11. A save from an older version of the game is refused.
 
 ## Open questions
 
