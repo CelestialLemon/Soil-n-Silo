@@ -153,8 +153,8 @@ export function randomScenario(seed: number, difficulty: 1 | 2 | 3): Scenario {
   while (used.size < nMods) used.add(Math.floor(r() * mods.length));
   for (const i of used) mods[i]();
 
-  // Oil and sauce need sunflower and tomato, which can't grow in a winter's open fields (greenhouses come later).
-  const pool = PRODUCTS.filter((p) => p.level <= difficulty && !(season === 'winter' && (p.item === 'oil' || p.item === 'sauce')));
+  // Oil and sauce need sunflower and tomato, which can't grow in a winter's open fields, and honey and honey cake need bees, who stay in below 10°C (greenhouses come later).
+  const pool = PRODUCTS.filter((p) => p.level <= difficulty && !(season === 'winter' && (p.item === 'oil' || p.item === 'sauce' || p.item === 'honey' || p.item === 'honeycake')));
   // Two to four goals in all: easy 2–3, medium 3–4, hard 4; a soil goal, if any, is one of them.
   const total = Math.min(4, 1 + difficulty + (r() < 0.5 ? 1 : 0));
   const soil = r() < 0.4 + 0.2 * difficulty;
