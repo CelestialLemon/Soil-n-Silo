@@ -197,13 +197,13 @@ export function heldSince(h: History): { status: Status; need?: string; from: nu
   return r ? { status: r.status, need: r.need, from: r.from } : null;
 }
 
-/** What a building waited for: an input, power, room for its output, water, flowers or a road. */
-export type WaitKind = 'input' | 'power' | 'output' | 'water' | 'flowers' | 'road';
+/** What a building waited for: an input, power, room for its output, water, flowers, a road or warmth. */
+export type WaitKind = 'input' | 'power' | 'output' | 'water' | 'flowers' | 'road' | 'warmth';
 export interface Wait { kind: WaitKind; need?: string; seconds: number; share: number; statuses: Status[] }
 
 const WAIT_OF: Partial<Record<Status, WaitKind>> = {
   input: 'input', power: 'power', lowpower: 'power', nolink: 'power', blocked: 'output', noroute: 'output', dry: 'water',
-  flowers: 'flowers', noroad: 'road',
+  flowers: 'flowers', noroad: 'road', cold: 'warmth', frost: 'warmth',
 };
 
 /**

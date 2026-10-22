@@ -1,5 +1,6 @@
 import { BUILDINGS, CROPS, FIELD, HIVE, ITEMS, POLLINATION_BONUS } from '../data.ts';
 import { erosionAt, paceOf, touchesWater } from '../rules.ts';
+import { frostKills, warmthOf } from '../warmth.ts';
 import { tileIndex, type FieldBuilding, type GameState, type HiveBuilding, type MachineBuilding } from '../state.ts';
 import { derived, isGuarded, isPollinated, sprinklersOf } from './layout.ts';
 import { changeSoil, fieldFertility } from './soil.ts';
@@ -12,8 +13,9 @@ import { raining } from './weather.ts';
 /** Growth per second of a field as a multiple of its crop's normal pace, and the parts it's made of. */
 export function fieldPace(s: GameState, f: FieldBuilding) {
   const wet = touchesWater(s, f.x, f.y) || raining(s.scenario, s.time) ? 1 : sprinklersOf(s, f).reduce((m, sp) => Math.max(m, shareOf(s, sp)), 0);
-  const p = paceOf(wet, fieldFertility(s, f));
-  return { pace: p.pace, water: wet, soil: p.bySoil };
+  const warmth = warmthOf(s);
+  const p = paceOf(wet, fieldFertility(s, f), CROPS[f.crop], warmth);
+  return { pace: p.pace, water: wet, soil: p.bySoil, warmth, byWarmth: p.byWarmth };
 }
 
 export function runMachine(s: GameState, b: MachineBuilding, dt: number) {
@@ -42,12 +44,14 @@ export function runMachine(s: GameState, b: MachineBuilding, dt: number) {
 export function runField(s: GameState, f: FieldBuilding, dt: number) {
   const crop = CROPS[f.crop];
   const bonus = crop.flowers && isPollinated(s, f) ? POLLINATION_BONUS : 0;
+  // Frost takes a tender crop still growing in the open; the field starts again. What it holds already is untouched.
+  if (frostKills(crop, warmthOf(s))) { f.growth = 0; f.status = 'frost'; f.need = undefined; return; }
   // A harvest of the old crop waits to go before the new one can join it.
   const old = f.stored > 0 && (f.harvest ?? f.crop) !== f.crop;
   if (old || f.stored + crop.yield + bonus > FIELD.store) { f.status = 'blocked'; f.need = CROPS[f.harvest ?? f.crop].name.toLowerCase(); return; }
   const p = fieldPace(s, f);
   f.growth += dt * p.pace / crop.grow;
-  f.status = p.water < 1 ? 'dry' : 'ok';
+  f.status = p.byWarmth <= 0 ? 'cold' : p.water < 1 ? 'dry' : 'ok';
   f.need = undefined;
   if (f.growth >= 1) {
     f.growth = 0;

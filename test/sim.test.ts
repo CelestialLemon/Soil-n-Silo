@@ -26,7 +26,7 @@ import { fieldPace } from '../src/game/sim/buildings.ts';
 import { buildingAt, newGame, type Building, type BuildingOf, type Dir, type MachineBuilding, type GameState, type Route, type Truck } from '../src/game/state.ts';
 
 /** The sandbox's season without everyday conditions: no cloud, rain or calm spells to disturb a count. */
-const CLEAR = { ...SANDBOX.climate, conditions: { cloud: 0, rain: 0, calm: 0 } };
+const CLEAR = { ...SANDBOX.climate, conditions: { cloud: 0, rain: 0, calm: 0 }, warmth: { low: 15, high: 15, drift: 0 } };
 
 /** A flat, empty test map: no water, rock or trees, even soil, clear weather. */
 function flat(extra: Partial<Scenario> = {}): GameState {

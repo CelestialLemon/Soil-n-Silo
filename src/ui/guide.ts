@@ -464,8 +464,8 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
   function extraTables(id: BuildingId): Node[] {
     if (id !== 'field') return [];
     return [h('div', { class: 'cd-label sec' }, 'Crops'), h('table', { class: 'gtable' },
-      h('tr', null, h('th', null, 'Crop'), h('th', null, 'Grows in'), h('th', null, 'Harvest'), h('th', null, 'Soil a harvest'), h('th', null, 'Flowers')),
-      ...CROP_IDS.map((c) => { const k = CROPS[c]; return h('tr', null, h('td', null, h('span', { class: 'gname' }, icon(c, 24), k.name)), h('td', null, `${k.grow} s`), h('td', null, String(k.yield)), h('td', null, `${k.soil > 0 ? '+' : ''}${k.soil}`), h('td', null, k.flowers ? 'yes' : '—')); }))];
+      h('tr', null, h('th', null, 'Crop'), h('th', null, 'Grows in'), h('th', null, 'Harvest'), h('th', null, 'Soil a harvest'), h('th', null, 'Flowers'), h('th', null, 'Comfortable'), h('th', null, 'Frost')),
+      ...CROP_IDS.map((c) => { const k = CROPS[c]; return h('tr', null, h('td', null, h('span', { class: 'gname' }, icon(c, 24), k.name)), h('td', null, `${k.grow} s`), h('td', null, String(k.yield)), h('td', null, `${k.soil > 0 ? '+' : ''}${k.soil}`), h('td', null, k.flowers ? 'yes' : '—'), h('td', null, `${k.comfort.low}–${k.comfort.high}°C`), h('td', null, k.tender ? 'tender: lost in open fields, stops below 10°C' : 'hardy: grows slowly in winter')); }))];
   }
 
   // ---- Goods ----

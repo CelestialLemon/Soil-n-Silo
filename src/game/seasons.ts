@@ -21,6 +21,8 @@ export interface Levers {
   river: { flow: number };
   /** The everyday weather, as the share of time (0–1) each lasts: cloud, showers (snow in winter) and calm spells (sim/weather.ts). */
   conditions: { cloud: number; rain: number; calm: number };
+  /** Warmth in °C: the coldest it gets before dawn, the warmest mid-afternoon, and how far a day strays from that either way. */
+  warmth: { low: number; high: number; drift: number };
 }
 
 /** A commission's climate: its season and character, and the levers they give. */
@@ -45,6 +47,7 @@ export const SEASONS: Record<Season, SeasonInfo> = {
       wind: { mean: 0.5, gust: 0.4 },
       river: { flow: 1.5 },
       conditions: { cloud: 0.25, rain: 0.22, calm: 0.1 },
+      warmth: { low: 4, high: 16, drift: 2 },
     },
   },
   summer: {
@@ -54,6 +57,7 @@ export const SEASONS: Record<Season, SeasonInfo> = {
       wind: { mean: 0.3, gust: 0.25 },
       river: { flow: 0.6 },
       conditions: { cloud: 0.12, rain: 0.05, calm: 0.35 },
+      warmth: { low: 16, high: 30, drift: 2 },
     },
   },
   autumn: {
@@ -63,6 +67,7 @@ export const SEASONS: Record<Season, SeasonInfo> = {
       wind: { mean: 0.7, gust: 0.3 },
       river: { flow: 0.9 },
       conditions: { cloud: 0.25, rain: 0.12, calm: 0.1 },
+      warmth: { low: 6, high: 18, drift: 2 },
     },
   },
   winter: {
@@ -72,6 +77,7 @@ export const SEASONS: Record<Season, SeasonInfo> = {
       wind: { mean: 0.7, gust: 0.15 },
       river: { flow: 0.5 },
       conditions: { cloud: 0.3, rain: 0.15, calm: 0.1 },
+      warmth: { low: -5, high: 6, drift: 2 },
     },
   },
 };
@@ -98,12 +104,14 @@ export const CHARACTERS: Record<Character, CharacterInfo> = {
     shift: {
       sun: { strength: 0.05 },
       wind: { mean: -0.05, gust: -0.1 },
+      warmth: { low: 1, high: -1 },
     },
   },
   wet: {
     word: 'wet', seasons: ['spring', 'summer', 'autumn'],
     shift: {
       conditions: { cloud: 0.1, rain: 0.1, calm: -0.05 },
+      warmth: { high: -1 },
     },
   },
   dry: {
@@ -112,6 +120,7 @@ export const CHARACTERS: Record<Character, CharacterInfo> = {
       sun: { strength: 0.05 },
       river: { flow: -0.1 },
       conditions: { cloud: -0.05, rain: -0.04, calm: 0.1 },
+      warmth: { low: -1, high: 1.5 },
     },
   },
   hot: {
@@ -120,6 +129,7 @@ export const CHARACTERS: Record<Character, CharacterInfo> = {
       sun: { strength: 0.1 },
       wind: { mean: -0.05 },
       conditions: { calm: 0.05 },
+      warmth: { low: 2, high: 3 },
     },
   },
   gales: {
@@ -134,6 +144,7 @@ export const CHARACTERS: Record<Character, CharacterInfo> = {
       sun: { strength: -0.1 },
       wind: { mean: 0.05, gust: 0.15 },
       conditions: { cloud: 0.15, rain: 0.06 },
+      warmth: { high: -1 },
     },
   },
   hard: {
@@ -142,6 +153,7 @@ export const CHARACTERS: Record<Character, CharacterInfo> = {
       sun: { strength: -0.1 },
       wind: { mean: 0.05 },
       conditions: { cloud: 0.1 },
+      warmth: { low: -4, high: -3 },
     },
   },
   highRiver: {
@@ -188,6 +200,8 @@ export function climateTags(c: Levers): string[] {
   if (c.wind.mean >= 0.65) tags.push('Strong wind');
   else if (c.wind.mean <= 0.35) tags.push('Light wind');
   if (c.wind.gust >= 0.4) tags.push('Gusty');
+  if (c.warmth.low < 0) tags.push('Frosts');
+  else if (c.warmth.high >= 30) tags.push('Hot');
   return tags;
 }
 

@@ -3,7 +3,8 @@ import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObjec
 import {
   addStop, canPlace, canReshape, type Groundwork, digArea, levelledFor, type Dig, clearPrice, earthPrice, EARTHWORK_NAMES, EARTHWORKS, messageOf, place, placePrice, priceOf, remember, remove, removeAt, reshape, settingFor, settingName, stepSetting, type Setting,
 } from './game/build.ts';
-import { BUILDINGS, POWER, type BuildingId } from './game/data.ts';
+import { BUILDINGS, CROPS, POWER, type BuildingId } from './game/data.ts';
+import { warmthFact, warmthOf } from './game/warmth.ts';
 import { generateLand, TERRAIN } from './game/map.ts';
 import { aroundPoint, corners, MAX_LEVEL, sheetAt } from './game/relief.ts';
 import { wheelSite } from './game/rules.ts';
@@ -558,7 +559,7 @@ async function play(initial: GameState) {
       return {
         title: BUILDINGS[b.type].name, icon: b.type, status: { status: b.status, label },
         text: removing ? (b.type === 'depot' ? 'The depot stays.' : `Click to remove it (refund ${priceOf(state, b.type)}).`)
-          : [line === label ? '' : line, b.type === 'field' ? `soil ${Math.round(fieldFertility(state, b))}` : ''].filter(Boolean).join(' · ') || undefined,
+          : [line === label ? '' : line, b.type === 'field' ? `soil ${Math.round(fieldFertility(state, b))}` : '', b.type === 'field' && !removing ? warmthFact(CROPS[b.crop], warmthOf(state)).text : ''].filter(Boolean).join(' · ') || undefined,
       };
     }
     if (!hoverTile) return null;

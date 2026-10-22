@@ -64,14 +64,20 @@ export interface CropDef {
   flowers: boolean;
   /** Growth stages drawn. */
   stages: number;
+  /** The warmth (°C) it grows at full speed in; it slows smoothly outside. */
+  comfort: { low: number; high: number };
+  /** Frost-tender: frost (below 0°C) in an open field loses its growing crop, and it stops growing below FIELD.tenderStops. */
+  tender: boolean;
+  /** How much of the growth lost to a lack of water it suffers (1 normally; less for one that copes when dry). */
+  thirst: number;
 }
 
 export const CROPS: Record<CropId, CropDef> = {
-  wheat: { name: 'Wheat', grow: 40, yield: 3, soil: -1, flowers: false, stages: 4 },
-  beans: { name: 'Beans', grow: 50, yield: 2, soil: 2.5, flowers: true, stages: 4 },
-  tomato: { name: 'Tomato', grow: 60, yield: 4, soil: -1.5, flowers: true, stages: 4 },
-  sunflower: { name: 'Sunflower', grow: 70, yield: 3, soil: -2, flowers: true, stages: 4 },
-  flax: { name: 'Flax', grow: 55, yield: 3, soil: -1.5, flowers: true, stages: 4 },
+  wheat: { name: 'Wheat', grow: 40, yield: 3, soil: -1, flowers: false, stages: 4, comfort: { low: 10, high: 24 }, tender: false, thirst: 1 },
+  beans: { name: 'Beans', grow: 50, yield: 2, soil: 2.5, flowers: true, stages: 4, comfort: { low: 8, high: 24 }, tender: false, thirst: 1 },
+  tomato: { name: 'Tomato', grow: 60, yield: 4, soil: -1.5, flowers: true, stages: 4, comfort: { low: 18, high: 30 }, tender: true, thirst: 1 },
+  sunflower: { name: 'Sunflower', grow: 70, yield: 3, soil: -2, flowers: true, stages: 4, comfort: { low: 18, high: 32 }, tender: true, thirst: 0.5 },
+  flax: { name: 'Flax', grow: 55, yield: 3, soil: -1.5, flowers: true, stages: 4, comfort: { low: 10, high: 22 }, tender: false, thirst: 1 },
 };
 
 /** Goods a pollinated field of a flowering crop yields on top of its usual yield, every harvest. */
@@ -83,6 +89,12 @@ export const FIELD = {
   /** A field takes compost, and spreads it at once, only while its average fertility is below this. */
   compostBelow: 85,
   compostGain: 12,
+  /** Degrees outside a crop's comfortable range at which it grows at half speed (a smooth fall-off: 1 / (1 + (d / this)²)). */
+  warmthWidth: 6,
+  /** Below this warmth (°C) frost-tender crops stop growing. */
+  tenderStops: 10,
+  /** Above this warmth (°C) an unwatered field nearly stops: the growth multiplier without water falls to heatDry by heatFull. */
+  heat: 30, heatFull: 34, heatDry: 0.1,
   /** Growth multiplier without water. */
   dry: 0.4,
   /** Growth multiplier at fertility 0 and 100 (linear between). */

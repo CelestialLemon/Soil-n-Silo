@@ -46,6 +46,7 @@ export function statusLook(status: Status): { cls: string; outline?: boolean; co
     case 'noroute': return { cls: 'is-unreachable' };
     case 'noroad': return { cls: 'is-unreachable', outline: true };
     case 'dry': return { cls: 'is-dry' };
+    case 'cold': case 'frost': return { cls: 'is-dry' };
   }
 }
 
@@ -71,6 +72,8 @@ export function statusLabel(b: { type: Building['type'] }, status: Status, need?
     case 'flowers': return 'No flowers near';
     case 'dry': return 'Dry';
     case 'rain': return 'Resting in rain';
+    case 'cold': return 'Too cold';
+    case 'frost': return 'Frost';
   }
 }
 

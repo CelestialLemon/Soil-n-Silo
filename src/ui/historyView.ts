@@ -1,4 +1,4 @@
-import { GROUP_NAMES, GROUPS, ITEMS, POWER, type GroupId, type ItemId } from '../game/data.ts';
+import { FIELD, GROUP_NAMES, GROUPS, ITEMS, POWER, type GroupId, type ItemId } from '../game/data.ts';
 import { flowRate, RECENT_WINDOW } from '../game/flows.ts';
 import { tonight } from '../game/forecast.ts';
 import { historyOf, summarize, waitsOf, type Summary, type Wait } from '../game/history.ts';
@@ -9,9 +9,11 @@ import { recipeOf } from '../game/sim/goods.ts';
 import { routesAt, trucksOn } from '../game/sim/trucks.ts';
 import { isMachine, type Building, type GameState, type Status } from '../game/state.ts';
 import { must } from '../game/result.ts';
+import { warmthOf } from '../game/warmth.ts';
 import { fill, h, icon, set, svg } from './dom.ts';
 import { clockAt, dec, itemByName, itemName, lcBuilding, num, pct, playTime, plural, watts } from './format.ts';
 import { isProblem, statusLabel, statusPill } from './widgets.ts';
+
 
 // The inspector's History tab: what a building did over the last 1, 5 or 10 minutes of play. A ribbon of its statuses in
 // the order they came (problems hatched, so they stand apart without colour), the share of time in each as a ring, its
@@ -26,11 +28,11 @@ export type HistoryWindow = (typeof HISTORY_WINDOWS)[number];
 const STATUS_COL: Record<Status, string> = {
   ok: 'var(--pine)', idle: 'var(--chalk-3)', input: 'var(--status-wait)', flowers: 'var(--status-wait)', blocked: 'var(--status-blocked)',
   lowpower: 'var(--status-blocked)', power: 'var(--status-nopower)', nolink: 'var(--status-nopower)', noroute: 'var(--status-unreachable)',
-  noroad: 'var(--status-unreachable)', dry: 'var(--status-dry)', rain: 'var(--chalk-3)',
+  noroad: 'var(--status-unreachable)', dry: 'var(--status-dry)', rain: 'var(--chalk-3)', cold: 'var(--status-dry)', frost: 'var(--status-dry)',
 };
 const RAW_COL: Record<Status, string> = {
   ok: '#2f6b55', idle: '#d8d4c7', input: '#b8961f', flowers: '#b8961f', blocked: '#c4702f', lowpower: '#c4702f', power: '#b4523a',
-  nolink: '#b4523a', noroute: '#76608f', noroad: '#76608f', dry: '#3d7a91', rain: '#d8d4c7',
+  nolink: '#b4523a', noroute: '#76608f', noroad: '#76608f', dry: '#3d7a91', rain: '#d8d4c7', cold: '#3d7a91', frost: '#3d7a91',
 };
 
 /** Generators and batteries chart a reading; everything else with a history shows its statuses. */
@@ -88,10 +90,11 @@ export function waitFact(s: GameState, b: Building, w: Wait): string {
     case 'water': { const n = sprinklersOf(s, b).length; return n ? `${plural(n, 'sprinkler')} reach${n === 1 ? 'es' : ''} it, short of power.` : 'No sprinkler reaches it.'; }
     case 'flowers': return 'No flowering field within reach.';
     case 'road': return 'Trucks can\'t reach it from their garage.';
+    case 'warmth': return `${Math.round(warmthOf(s))}°C now: a tender crop stops below ${FIELD.tenderStops}°C, and frost (below 0°C) loses it.`;
   }
 }
 
-const WAIT_ICON: Record<Wait['kind'], string> = { input: 'clock', power: 'bolt', output: 'truck', water: 'water', flowers: 'bee', road: 'road' };
+const WAIT_ICON: Record<Wait['kind'], string> = { input: 'clock', power: 'bolt', output: 'truck', water: 'water', flowers: 'bee', road: 'road', warmth: 'sun' };
 
 /**
  * The history tab of a building's inspector. `win` and `setWin` keep the chosen window across buildings. `update` is cheap
@@ -188,7 +191,7 @@ export function historyView(s: GameState, b: Building, win: () => HistoryWindow,
       ...list.slice(0, 4).map((x, i) => {
         const item = x.kind === 'input' || x.kind === 'output' ? itemByName(x.need) : null, itemGroup = groupByName(x.need);
         const name = x.kind === 'input' ? (item ? ITEMS[item].name : (x.need ?? 'Goods').split(' (')[0].replace(/^./, (c) => c.toUpperCase()))
-          : x.kind === 'output' ? `Room for ${x.need ?? 'its goods'}` : x.kind === 'power' ? 'Power' : x.kind === 'water' ? 'Water' : x.kind === 'flowers' ? 'Flowers' : 'A road';
+          : x.kind === 'output' ? `Room for ${x.need ?? 'its goods'}` : x.kind === 'power' ? 'Power' : x.kind === 'water' ? 'Water' : x.kind === 'flowers' ? 'Flowers' : x.kind === 'warmth' ? 'Warmth' : 'A road';
         return h('div', { class: 'wait' }, h('span', { class: 'rank' }, String(i + 1)),
           h('div', null, h('b', null, h('span', { class: 'disc' }, icon(item ?? (x.kind === 'input' && itemGroup ? GROUPS[itemGroup][0] : WAIT_ICON[x.kind]), 22)), name), h('div', { class: 'cd-small' }, waitFact(s, b, x))),
           h('span', { class: `pc${i === 0 && x.share >= 0.2 ? ' cd-bad' : ''}` }, pct(x.share)));

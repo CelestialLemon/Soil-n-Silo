@@ -74,7 +74,7 @@ export const CAMPAIGN: Scenario[] = [
     ],
   },
   {
-    id: 'c3', name: 'Windy Ridge', seed: 3303, width: 48, height: 40, credits: 1100, par: 45 * MIN,
+    id: 'c3', name: 'Windy Ridge', seed: 3303, width: 48, height: 40, credits: 1100, par: 85 * MIN,
     blurb: 'The ridge co-op cooks with sunflower oil, but the sun is weak up here. The wind never stops, though.',
     terrain: { ...LOAM, water: 'ponds', rock: 0.12, forest: 0.06, relief: 0.9 }, climate: climateOf('autumn', 'gales'),
     tags: ['Rocky', 'Hilly'],
@@ -82,13 +82,13 @@ export const CAMPAIGN: Scenario[] = [
     tips: ['Up on the hills a turbine catches more wind. Every level a truck climbs costs it time and battery, so keep the busy routes low.'],
   },
   {
-    id: 'c4', name: 'Linen for the Looms', seed: 4404, width: 50, height: 40, credits: 1300, par: 35 * MIN,
+    id: 'c4', name: 'Linen for the Looms', seed: 4404, width: 50, height: 40, credits: 1300, par: 50 * MIN,
     blurb: 'The weavers of Hollin want linen, and a steady supply of yarn for their own looms.',
     terrain: LOAM, climate: climateOf('summer', 'hot'), tags: [],
     goals: [{ kind: 'deliver', item: 'linen', n: 50 }, { kind: 'rate', item: 'yarn', perMin: 5 }],
   },
   {
-    id: 'c5', name: 'Long Nights', seed: 5505, width: 48, height: 40, credits: 1400, par: 40 * MIN,
+    id: 'c5', name: 'Long Nights', seed: 5505, width: 48, height: 40, credits: 1400, par: 115 * MIN,
     blurb: 'Winter: short days and long nights. The midwinter fair wants honey cake.',
     terrain: { ...LOAM, water: 'lake', relief: 0.5 }, climate: climateOf('winter'), tags: [],
     goals: [{ kind: 'deliver', item: 'honeycake', n: 100 }],
