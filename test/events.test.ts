@@ -244,7 +244,7 @@ test('an event\'s push reaches the water wheel and the trucks', () => {
 
 test('the sky shows an event without changing the rules: rain is drawn but no field counts as watered', () => {
   const sc = { ...SANDBOX, climate: { ...SANDBOX.climate, conditions: { cloud: 0, rain: 0, calm: 0 } } };
-  const [e] = eventOn(3, 8, 'thunderstorm');
+  const [e] = eventOn(3, 8, 'tropicalStorm'); // its effects come with 2.4
   const mid = e.start + 5 * HOUR, storm = with1(sc, e);
   assert.equal(weatherAt(sc, mid).sky, 'clear');
   const w = weatherAt(storm, mid);

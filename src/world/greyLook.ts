@@ -11,16 +11,19 @@ const RAIN_SUN = 0.2, RAIN_EXPOSURE = 0.08, RAIN_CHROMA = 0.3;
 /** How far the sky is pulled to its own grey by cloud and by rain, and how much darker it goes. */
 const SKY_GREY = 0.65, RAIN_SKY_GREY = 0.3, SKY_DARK = 0.12;
 
+/** A heat wave warms the light: the OKLab (a, b) tint it adds to the lit and shadow bands, and how far the sky's colours are pulled toward a hazy gold. */
+const HEAT_TINT: [number, number] = [0.02, 0.04], HEAT_SKY = 0.3, HEAT_GOLD = new THREE.Color(0xe8b86a);
+
 /** A colour pulled `t` of the way to the grey of its own lightness, and darkened by `dark`. */
 function greyed(c: THREE.Color, t: number, dark: number) {
   const grey = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
   return new THREE.Color(c.r + (grey - c.r) * t, c.g + (grey - c.g) * t, c.b + (grey - c.b) * t).multiplyScalar(1 - dark);
 }
 
-/** `look` on a day with this `weather`: cloudier and rainier is dimmer, greyer and flatter. Clear sky leaves it as it is. */
-export function greyLook(look: Look, { cloud, precip }: Pick<Weather, 'cloud' | 'precip'>): Look {
-  if (cloud <= 0 && precip <= 0) return look;
-  const c = Math.min(1, cloud), p = Math.min(1, precip);
+/** `look` on a day with this `weather`: cloudier and rainier is dimmer, greyer and flatter, and a heat wave warms the light. Clear sky leaves it as it is. */
+export function greyLook(look: Look, { cloud, precip, heat = 0 }: Pick<Weather, 'cloud' | 'precip'> & { heat?: number }): Look {
+  if (cloud <= 0 && precip <= 0 && heat <= 0) return look;
+  const c = Math.min(1, cloud), p = Math.min(1, precip), h = Math.min(1, heat);
   const sun = 1 - SUN * c - RAIN_SUN * p, exp = 1 - EXPOSURE * c - RAIN_EXPOSURE * p, chroma = 1 - CHROMA * c - RAIN_CHROMA * p, tint = 1 - TINT * c;
   const sky = Math.min(1, SKY_GREY * c + RAIN_SKY_GREY * p);
   return {
@@ -30,10 +33,10 @@ export function greyLook(look: Look, { cloud, precip }: Pick<Weather, 'cloud' | 
     ambient: look.ambient * (1 + 0.25 * c),
     expo: look.expo * exp,
     chroma: look.chroma * chroma,
-    litTint: [look.litTint[0] * tint, look.litTint[1] * tint],
-    shadeTint: [look.shadeTint[0] * tint, look.shadeTint[1] * tint],
-    skyTop: greyed(look.skyTop, sky, SKY_DARK * c),
-    skyBot: greyed(look.skyBot, sky, SKY_DARK * c * 0.5),
+    litTint: [look.litTint[0] * tint + HEAT_TINT[0] * h, look.litTint[1] * tint + HEAT_TINT[1] * h],
+    shadeTint: [look.shadeTint[0] * tint + HEAT_TINT[0] * h * 0.5, look.shadeTint[1] * tint + HEAT_TINT[1] * h * 0.5],
+    skyTop: greyed(look.skyTop, sky, SKY_DARK * c).lerp(HEAT_GOLD, HEAT_SKY * h * 0.5),
+    skyBot: greyed(look.skyBot, sky, SKY_DARK * c * 0.5).lerp(HEAT_GOLD, HEAT_SKY * h),
   };
 }
 

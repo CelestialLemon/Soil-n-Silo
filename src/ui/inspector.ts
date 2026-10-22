@@ -11,12 +11,12 @@ import { hasHistory, heldSince, historyOf, summarize } from '../game/history.ts'
 import { networkOf, networks, usedBy } from '../game/power.ts';
 import { sunAt, windAt } from '../game/sim/clock.ts';
 import { exposureOf, isPollinated } from '../game/sim/layout.ts';
-import { SPRINKLER_MOST, TURBINE_MOST, riverSeason, wheelSite } from '../game/rules.ts';
+import { SPRINKLER_MOST, TURBINE_MOST, coopShade, coopTrees, riverSeason, wheelSite } from '../game/rules.ts';
 import { fieldFertility } from '../game/sim/soil.ts';
 import { givesGoods, linksOf, recipeOf, takesGoods, wantsCompost } from '../game/sim/goods.ts';
 import { makes, shareOf, wants } from '../game/sim/energy.ts';
 import { fieldPace, flowersNear } from '../game/sim/buildings.ts';
-import { beesFact, beesFly, henFact, warmthFact, warmthOf } from '../game/warmth.ts';
+import { beesFact, beesFly, henFact, shadeFact, warmthFact, warmthOf } from '../game/warmth.ts';
 import { runtimeOf } from '../game/runtime.ts';
 import { isStop, routeOf, routesAt } from '../game/sim/trucks.ts';
 import { describeLinks, describeStatus, describeTruck, truckProblems } from '../game/sim/describe.ts';
@@ -227,7 +227,10 @@ export class Inspector {
       if (rs.length > 1) out.push(h('div', { class: 'cd-seg wide' }, ...rs.map((x) => h('button', { class: b.recipe === x.id ? 'is-on' : '', onclick: () => this.host.did(setRecipe(b, x.id)) }, icon(x.outputs[0].item, 18), itemNameCap(x.outputs[0].item)))));
       out.push(row('Recipe', `${r.inputs.map(ingWords).join(' + ')} → ${r.outputs.length ? r.outputs.map((o) => `${o.n} ${itemName(o.item)}`).join(' + ') : `${POWER.digester} W`} · ${r.time} s`));
     }
-    if (b.type === 'coop') stat('Hens', () => henFact(s.scenario, warmthOf(s)).text.replace(/^Hens, /, ''));
+    if (b.type === 'coop') {
+      stat('Hens', () => henFact(s.scenario, warmthOf(s), coopShade(s, b.x, b.y)).text.replace(/^Hens, /, ''));
+      stat('Shade', () => shadeFact(coopTrees(s, b.x, b.y)));
+    }
     if (BUILDINGS[b.type].power) stat('Power', () => { const net = networkOf(s, b), w = wants(s, b); return !net ? 'not connected' : w ? `using ${watts(w)} · getting ${pct(shareOf(s, b))}` : 'none right now'; });
     if (BUILDINGS[b.type].power || BUILDINGS[b.type].grid) {
       const dot = h('i', { class: 'dot' }), v = h('span');
