@@ -686,13 +686,21 @@ Warmth tuning (2026-10-22), after the warmth numbers had pushed Windy Ridge to 6
 18–30), so a cool spring or autumn day costs less. The fall-off width (6°C), the tender stop (10°C), frost and the daily curve stand. The bot now takes First
 Light 15.5 minutes, Morning Bread 32.6, Windy Ridge 39.1, Linen for the Looms 28.2, Tired Soil 28.8, Riverlands 36.8 and Harvest Festival 35.0, so the targets
 are 20, 45, 55, 40, 40, 50 and 50 minutes. Long Nights (about 50 minutes in the study, before bees stayed in) still can't be cleared, so its test stays skipped and
-its target 70 stands until #86 gives a real time.)
+its target 70 stands until #86 gives a real time. After phase 1 (2026-10-22) every campaign target is again about 1.4 times the bot's time: First Light 15.5 (20), Morning Bread 32.6 (45), Windy Ridge 39.1 (55), Linen for the Looms 28.2 (40), Tired Soil 28.8 (40), Riverlands 36.8 (50) and Harvest Festival 35.0 (50), so none changed.)
 
 ![The level select](images/menu.png)
 
 **Random commission:** any seed and a difficulty (1–3) pick a season (any of the four, equally), a character that fits it,
-up to two ground modifiers (poor soil, rocky, wooded, hilly or flat) and 2–4 goals. Any goal can come in any season: a winter
-commission may ask for sauce. The target time doesn't follow the season yet. Relief starts at
+up to two ground modifiers (poor soil, rocky, wooded, hilly or flat) and 2–4 goals. A winter commission never asks for oil,
+sauce, honey or honey cake (no sunflower or tomato grows in a winter field, and bees stay in), which the bot can't clear before
+the greenhouse (#86); the other goals come in any season. **Target time:** (15 + 12 × difficulty + 6 × goals) minutes, the
+time of a mild spring, times a **season-and-character factor** (`PAR_FACTOR` in `src/game/scenarios.ts`), rounded to 5 minutes, so
+every season and character can earn gold. The factors come from `node tools/seasonfactor.ts`: it plays every bot layout in every
+climate on three seeds and compares each with the same layout in a mild spring; the factor is halfway between the mean ratio and
+the worst, rounded up to 0.05 (a commission's goals decide which layout it is like: autumn is quicker for oil and honey cake and
+slower for linen and bread). Spring 1 to 1.1, summer 1.1 to 1.35 (hot summer 1.35: heat is hard on wheat, flax and beans, and
+calm days starve solar and wind), autumn 1.1 to 1.35 (stormy 1.35), winter 2.6 (mild), 2.65 (gales) and 3.85 (hard): the bot
+needs 1.7 to 2.6 times as long for flour, 2.3 to 2.8 for bread and 2.9 to 4.4 for linen. Relief starts at
 0.25 + 0.15 × difficulty (0.4, 0.55, 0.7); Hilly sets it to 0.9, Flat to 0 (one or the other, never both). Relief
 scales the rolling hills; corner heights stay within 0–16. Flat is all one level.
 

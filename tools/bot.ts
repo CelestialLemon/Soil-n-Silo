@@ -10,23 +10,25 @@ import { BUILDINGS, ITEMS } from '../src/game/data.ts';
 import { must } from '../src/game/result.ts';
 import { TERRAIN } from '../src/game/map.ts';
 import { networks } from '../src/game/power.ts';
-import { scenarioById } from '../src/game/scenarios.ts';
+import { scenarioById, type Scenario } from '../src/game/scenarios.ts';
 import { soilHealth } from '../src/game/sim/soil.ts';
 import { goalDone, medalFor } from '../src/game/sim/stats.ts';
 import { advance } from '../src/game/sim/step.ts';
 import { newGame, type Building, type GameState, type Route } from '../src/game/state.ts';
 
 /** How a bot run went: when the commission completed (null if it didn't in the time given), and its target time. */
-export interface BotRun { completedAt: number | null; par: number }
+export interface BotRun { completedAt: number | null; par: number; /** The game as the run left it. */ state: GameState }
 
 /**
  * Plays the layout `id` (a commission id, or id:variant such as c2:next) for up to `minutes` of game time, or until the
  * commission completes, passing each line of its report to `log`.
  */
-export function playLayout(id: string, minutes = 60, log: (line: string) => void = () => {}): BotRun {
-  // A layout may be one of several for a commission: `c2:next` plays c2.
-  const sc = scenarioById(id.split(':')[0]);
-  if (!sc) throw new Error(`no commission ${id}`);
+export function playLayout(id: string, minutes = 60, log: (line: string) => void = () => {}, over: Partial<Pick<Scenario, 'climate' | 'seed'>> = {}, each?: (s: GameState) => void): BotRun {
+  // A layout may be one of several for a commission: `c2:next` plays c2. `over` plays it in another climate or on another
+  // seed (the weather's rolls follow the seed), as tools/seasonfactor.ts does.
+  const base = scenarioById(id.split(':')[0]);
+  if (!base) throw new Error(`no commission ${id}`);
+  const sc: Scenario = { ...base, ...over };
 
   const layout = LAYOUTS[id];
   if (!layout) throw new Error(`no bot layout for ${id} yet (have: ${Object.keys(LAYOUTS).join(', ')})`);
@@ -97,6 +99,7 @@ export function playLayout(id: string, minutes = 60, log: (line: string) => void
     }
     advance(s, 1);
     if (Math.round(s.time) % 60 === 0) {
+      each?.(s);
       const nets = networks(s).list, made = nets.reduce((n, x) => n + x.made, 0), wanted = nets.reduce((n, x) => n + x.wanted, 0);
       const goals = sc.goals.map((g, i) => (g.kind === 'deliver' ? `${ITEMS[g.item].name} ${s.delivered[g.item] ?? 0}/${g.n}` : g.kind === 'soil' ? `soil ${Math.round(soilHealth(s))}/${g.min}` : `${g.item}/min ${goalDone(s, i) ? 'done' : '…'}`));
       const phases = new Map<string, number>();
@@ -111,5 +114,5 @@ export function playLayout(id: string, minutes = 60, log: (line: string) => void
   if (s.completedAt === null) log(`\nNot complete after ${minutes} minutes.`);
   const stalled = s.buildings.filter((b) => ['blocked', 'input', 'power', 'noroad', 'noroute'].includes(b.status)).map((b) => `${b.type}@${b.x},${b.y}: ${b.status}${b.need ? ` (${b.need})` : ''}`);
   if (stalled.length) log(`Not working at the end: ${stalled.slice(0, 12).join('; ')}`);
-  return { completedAt: s.completedAt, par: sc.par };
+  return { completedAt: s.completedAt, par: sc.par, state: s };
 }

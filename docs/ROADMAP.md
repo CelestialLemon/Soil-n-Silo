@@ -148,6 +148,13 @@ Six tree species and bushes vary by place, with willows by water and pines up hi
   place of the weather settings, seeded weather events, a weather station selling the forecast, the greenhouse, and five
   ground types. Built in that order; each part writes its rules into `DESIGN.md`, and `CLIMATE.md` is deleted once all of
   it is in.
+- **Climate phase 1, left open after the playtest (2026-10-22):** random winter commissions take 2.6 to 3.85 times as long
+  (the bot needs about 80 minutes for bread and 125 for linen in a hard winter, flax growing at a fifth of its pace), so the
+  greenhouse (#86) should bring winter back toward the others. Long Nights (c5) cannot be cleared until then (its target 70 is a
+  placeholder, its bot test skipped). Hot summers are hard on wheat (pace about 0.5) and beans (0.6): worth a look whether
+  summer wants a cooler wheat range or a summer-crop push. `tools/seasonfactor.ts` should be rerun whenever a season,
+  warmth or crop range changes, and `PAR_FACTOR` updated. Not played by hand: only headless runs (loading, conditions, rain
+  and snow, no NaNs).
 - Play the **problems strip** (experimental, off by default, a setting on the pause screen) and decide whether it stays.
   It lists the buildings with a problem now, longest first; the plan was to build it on the history instead (buildings below
   about 70% working over the last few minutes, worst first) and perhaps group it by cause.
