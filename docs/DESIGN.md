@@ -166,6 +166,7 @@ replaces the old per-commission weather settings: the sun's hours and strength a
 | Cloud (share of the time) | 0.25 | 0.12 | 0.25 | 0.30 |
 | Showers (share of the time, before they build and fade) | 0.22 | 0.05 | 0.12 | 0.15, as snow |
 | Calm spells (share of the time) | 0.10 | 0.35 | 0.10 | 0.10 |
+| Warmth (dawn low – afternoon high, ± 2 a day) | 4–16°C | 16–30°C | 6–18°C | −5–6°C, frosts |
 
 Each season favours a power source: wheels in spring, solar in summer, wind in autumn
 and winter. A summer day gives a solar panel about four times a winter day's energy.
@@ -175,19 +176,49 @@ odds of each weather event once there are events:
 
 | Character | Seasons | Shifts now |
 | --- | --- | --- |
-| Mild | any | sun +0.05, wind −0.05, gust −0.1 |
-| Wet | spring, summer, autumn | cloud +0.1, rain +0.1, calm −0.05 |
-| Dry | spring, summer, autumn | sun +0.05, cloud −0.05, rain −0.04, calm +0.1 |
-| Hot | spring, summer | sun +0.1, wind −0.05, calm +0.05 (warmer, with warmth) |
+| Mild | any | sun +0.05, wind −0.05, gust −0.1, warmth low +1, high −1 |
+| Wet | spring, summer, autumn | cloud +0.1, rain +0.1, calm −0.05, warmth high −1 |
+| Dry | spring, summer, autumn | sun +0.05, cloud −0.05, rain −0.04, calm +0.1, warmth low −1, high +1.5 |
+| Hot | spring, summer | sun +0.1, wind −0.05, calm +0.05, warmth low +2, high +3 |
 | Gales | spring, autumn, winter | wind +0.15, gust +0.05 |
-| Stormy | spring, summer, autumn | sun −0.1, wind +0.05, gust +0.15, cloud +0.15, rain +0.06 |
-| Hard | winter | sun −0.1, wind +0.05, cloud +0.1 (colder, with warmth) |
+| Stormy | spring, summer, autumn | sun −0.1, wind +0.05, gust +0.15, cloud +0.15, rain +0.06, warmth high −1 |
+| Hard | winter | sun −0.1, wind +0.05, cloud +0.1, warmth low −4, high −3 |
 | High river | spring | a faster river (flow +0.3) |
 
 A commission's season is named with its character: "A wet spring", "Autumn, gales", or just "Winter" without one. **Tags**
 such as "Short days" or "Strong wind" describe the season on the level card (10 hours of sun or fewer: Short days, 15 or more:
 Long days; strength under 0.8: Weak sun, 1.1 or more: Strong sun; mean wind 0.65 or more: Strong wind, 0.35 or less: Light
-wind; gusts 0.4 or more: Gusty); they aren't modifiers of their own.
+wind; gusts 0.4 or more: Gusty; a dawn low under 0°C: Frosts, otherwise an afternoon high of 30°C or more: Hot); they aren't
+modifiers of their own.
+
+### Warmth
+
+**Warmth** is the valley's temperature in °C, one number for the whole valley (`src/game/warmth.ts`). It follows the day: coldest
+an hour before the sun rises, warmest at 3 PM, a smooth curve between the season's low and high, plus a smooth seeded drift of
+the whole day up to ±2°C (the same every time the commission is played). Conditions (rain, 1.3) and events (phase 2) nudge it
+through `WARMTH_NUDGES`, a list of functions each adding its degrees. Rain is the first: while it rains or snows, warmth is nudged down by up to 2°C (by the precipitation's intensity). Thresholds the rules key off:
+
+- **Below 0°C, frost.** A frost-tender crop (tomato, sunflower) in an open field loses its growing crop each moment it is
+  frozen, so the field starts again; what it already holds is untouched. A frozen field's status is Frost.
+- **Below 10°C**, tender crops stop growing (status Too cold). Bees and hens come with 1.5.
+- **Above 30°C, heat.** An unwatered field's growth multiplier (×0.4 normally) falls to ×0.1 by 34°C, linearly. Hens come with 1.5.
+
+Each crop has a **comfortable range**: full speed inside it, and outside it a smooth fall-off of 1 / (1 + (d / 6)²), where d is
+the degrees outside the range: half speed 6°C out, a quarter 10°C out. This is one more factor in a field's pace, with water and
+fertility. The placement card, the hover card and the field inspector say where now falls for the crop ("Tomato, 12°C: cool for
+it, grows at about 50% speed"), and the guide's crop table shows each range and whether it is frost-tender.
+
+| Crop | Comfortable | Frost | Winter outdoors |
+| --- | --- | --- | --- |
+| Wheat | 10–24°C | hardy | slowly |
+| Beans | 8–24°C | hardy | slowly |
+| Flax | 10–22°C | hardy | slowly |
+| Tomato | 18–30°C | tender | no |
+| Sunflower | 18–32°C | tender; copes when dry | no |
+
+Sunflower "copes when dry": it loses half as much growth to a lack of water. The flax's liking for wet waits for rain (1.3).
+So wheat and flax are slow in a summer's heat, tomato and sunflower are slow in spring and autumn and stopped in winter (oil
+and sauce need greenhouses then, phase 4).
 
 **Conditions** are the everyday weather inside a season: small, constant and unannounced, seeded like the wind curve
 (`src/game/sim/weather.ts`). The day is cut into spells (4 hours of cloud, 2.5 of showers, 5 of calm); each spell is on with the
@@ -484,7 +515,7 @@ playing trucks: every level needed many trucks, and routes doing a field-to-mill
   the next pickup starts on it; a level starts on wheat and bread. Changing a placed building in its inspector doesn't change
   what is remembered. (Chosen on 2026-10-16: players forgot to switch after placing, and found a field grew the wrong crop
   much later.)
-- Grow times are with water at fertility 60. Growth speed is ×0.4 without water (a field sharing an edge with a river or pond
+- Grow times are with water at fertility 60 and a comfortable warmth (see Warmth). Growth speed is ×0.4 without water (a field sharing an edge with a river or pond
   at its own ground level counts as watered), and from ×0.4 (fertility 0) to ×1.4 (fertility 100) by average fertility.
 - On sloping tiles, each harvest loses 1 + 0.5 × span / 2 times the crop's normal soil loss (span is the difference
   between highest and lowest corners). A tree or sapling within one tile of the field (diagonals count), or a bean field
@@ -568,14 +599,14 @@ A commission has goals, a target time and modifiers. It ends when every goal is 
 
 | # | Name | Goals | Target | Season | Modifiers | Relief |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | First Light | 120 wheat, 80 flour | 20 min | A mild spring | Gentle | 0.2 |
-| 2 | Morning Bread | 150 bread; soil health ≥ 40 | 40 min | A wet spring | | 0.4 |
-| 3 | Windy Ridge | 90 oil, 80 bread | 45 min | Autumn, gales | Rocky, hilly | 0.9 |
-| 4 | Linen for the Looms | 50 linen; 5 yarn/min | 35 min | A hot summer | | 0.4 |
-| 5 | Long Nights | 100 honey cake | 40 min | Winter | | 0.5 |
-| 6 | Tired Soil | 50 sauce; soil health ≥ 55 | 35 min | A dry summer | Poor soil | 0.6 |
-| 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 45 min | Spring, high river | Cramped | 0.3 |
-| 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 45 min | A stormy autumn | Everything | 0.7 |
+| 1 | First Light | 120 wheat, 80 flour | 25 min | A mild spring | Gentle | 0.2 |
+| 2 | Morning Bread | 150 bread; soil health ≥ 40 | 50 min | A wet spring | | 0.4 |
+| 3 | Windy Ridge | 90 oil, 80 bread | 85 min | Autumn, gales | Rocky, hilly | 0.9 |
+| 4 | Linen for the Looms | 50 linen; 5 yarn/min | 50 min | A hot summer | | 0.4 |
+| 5 | Long Nights | 100 honey cake | 115 min | Winter | | 0.5 |
+| 6 | Tired Soil | 50 sauce; soil health ≥ 55 | 40 min | A dry summer | Poor soil | 0.6 |
+| 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 65 min | Spring, high river | Cramped | 0.3 |
+| 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 50 min | A stormy autumn | Everything | 0.7 |
 
 The bot (`npm run sim`) deliberately uses a flat, open map with even soil to test the economy, not terrain;
 `test/height.test.ts` covers the height rules. It clears First Light in about 15 minutes, Morning Bread in about 28 and
@@ -592,7 +623,11 @@ much quicker than their targets, and Long Nights took the bot 17 minutes, so its
 When seasons replaced the weather settings on 2026-10-21, a wet spring's weaker sun slowed Morning Bread by about 2 minutes,
 so its target went from 35 to 40 minutes, and a stormy autumn's wind sped Harvest Festival up by about 3, so its target went
 from 50 to 45. Conditions then (2026-10-22): rain waters the fields and cloud dims the sun, which slowed First Light to about 15 and
-Morning Bread to about 30 and sped Riverlands up to about 32, so its target went from 50 to 45; the other targets stand.)
+Morning Bread to about 30 and sped Riverlands up to about 32, so its target went from 50 to 45; the other targets stood then.
+Warmth (2026-10-22) slowed the bot on First Light from 15 to 17, Morning Bread from 30 to 36, Riverlands from 32 to 45 (cold spring days slow every crop, and tomato and sunflower stop below 10°C), Tired Soil to 29 and Harvest Festival to 36, and on Windy Ridge from 31 to 62 minutes (sunflowers for the oil stall below 10°C and
+barely grow in an autumn that tops out at 18°C), on Linen for the Looms from about 25 to 35 (a hot summer's heat is hard on
+flax) and on Long Nights from 29 to 80 (hardy crops in a winter between −5 and 6°C), so the targets went to 25, 50, 85, 50, 115, 40, 65 and 50
+minutes (commissions 1 to 8); Windy Ridge and Long Nights want their goals or seasons rethought.)
 
 ![The level select](images/menu.png)
 

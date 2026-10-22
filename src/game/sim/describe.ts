@@ -145,6 +145,8 @@ export function describeStatus(s: GameState, b: Building): string {
       return 'Idle';
     case 'rain': return 'Resting in rain: the rain waters the fields, so it draws no power';
     case 'dry': return b.type === 'field' ? `Growing ${CROPS[b.crop].name.toLowerCase()} slowly: no water` : def.name;
+    case 'cold': return b.type === 'field' ? `Not growing ${CROPS[b.crop].name.toLowerCase()}: too cold for it` : def.name;
+    case 'frost': return b.type === 'field' ? `Frost: the growing ${CROPS[b.crop].name.toLowerCase()} is lost, the field starts again` : def.name;
     case 'ok':
       if (b.type === 'field') return `Growing ${CROPS[b.crop].name.toLowerCase()}`;
       if (b.type === 'garage') {

@@ -30,6 +30,7 @@ const MARKERS: [Status, string, string][] = [
   ['nolink', 'Not connected', 'no pylon reaches it'], ['noroute', 'No route takes its goods', 'full, and no truck picks it up'],
   ['noroad', 'No road', 'trucks can\'t reach it'], ['dry', 'Dry', 'a field no sprinkler waters'],
   ['rain', 'Resting in rain', 'a sprinkler, the rain waters the fields'],
+  ['cold', 'Too cold', 'a tender crop stops below 10°C'], ['frost', 'Frost', 'a tender crop is lost below 0°C'],
 ];
 
 /** What the markers mean: each status as its shape, word and tint. */

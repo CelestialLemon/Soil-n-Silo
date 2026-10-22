@@ -9,7 +9,7 @@ import { newGame, type BuildingOf, type GameState } from '../src/game/state.ts';
 
 function flat(): GameState {
   const sc: Scenario = {
-    ...SANDBOX, id: 'test', sandbox: false, credits: 100_000, width: 30, height: 30, goals: [], par: 600,
+    ...SANDBOX, climate: { ...SANDBOX.climate, warmth: { low: 15, high: 15, drift: 0 } }, id: 'test', sandbox: false, credits: 100_000, width: 30, height: 30, goals: [], par: 600,
     terrain: { soil: 60, soilSpread: 0, water: 'none', forest: 0, rock: 0, relief: 0 },
   };
   const s = newGame(sc);

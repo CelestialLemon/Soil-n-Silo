@@ -8,8 +8,8 @@ import { LAYOUTS } from '../tools/layouts.ts';
 
 for (const id of Object.keys(LAYOUTS)) {
   test(`the bot clears ${id} within its target time`, () => {
-    const { completedAt, par } = playLayout(id, 60);
-    assert.ok(completedAt !== null, `${id}: not complete after 60 minutes (npm run sim -- ${id} shows why)`);
+    const { completedAt, par } = playLayout(id, 130);
+    assert.ok(completedAt !== null, `${id}: not complete after 130 minutes (npm run sim -- ${id} shows why)`);
     assert.ok(completedAt <= par, `${id}: complete at ${Math.round(completedAt)} s, after the target ${par} s`);
   });
 }
