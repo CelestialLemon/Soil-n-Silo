@@ -73,11 +73,11 @@ export interface CropDef {
 }
 
 export const CROPS: Record<CropId, CropDef> = {
-  wheat: { name: 'Wheat', grow: 40, yield: 3, soil: -1, flowers: false, stages: 4, comfort: { low: 10, high: 24 }, tender: false, thirst: 1 },
-  beans: { name: 'Beans', grow: 50, yield: 2, soil: 2.5, flowers: true, stages: 4, comfort: { low: 8, high: 24 }, tender: false, thirst: 1 },
+  wheat: { name: 'Wheat', grow: 40, yield: 3, soil: -1, flowers: false, stages: 4, comfort: { low: 6, high: 24 }, tender: false, thirst: 1 },
+  beans: { name: 'Beans', grow: 50, yield: 2, soil: 2.5, flowers: true, stages: 4, comfort: { low: 6, high: 24 }, tender: false, thirst: 1 },
   tomato: { name: 'Tomato', grow: 60, yield: 4, soil: -1.5, flowers: true, stages: 4, comfort: { low: 18, high: 30 }, tender: true, thirst: 1 },
-  sunflower: { name: 'Sunflower', grow: 70, yield: 3, soil: -2, flowers: true, stages: 4, comfort: { low: 18, high: 32 }, tender: true, thirst: 0.5 },
-  flax: { name: 'Flax', grow: 55, yield: 3, soil: -1.5, flowers: true, stages: 4, comfort: { low: 10, high: 22 }, tender: false, thirst: 1 },
+  sunflower: { name: 'Sunflower', grow: 70, yield: 3, soil: -2, flowers: true, stages: 4, comfort: { low: 14, high: 32 }, tender: true, thirst: 0.5 },
+  flax: { name: 'Flax', grow: 55, yield: 3, soil: -1.5, flowers: true, stages: 4, comfort: { low: 6, high: 26 }, tender: false, thirst: 1 },
 };
 
 /** Goods a pollinated field of a flowering crop yields on top of its usual yield, every harvest. */

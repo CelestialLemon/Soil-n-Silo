@@ -37,9 +37,12 @@ test('warmth follows the day and the season: coldest before dawn, warmest mid-af
 test('a crop grows at full speed in its comfortable range, slower outside it, and a tender one stops below 10°C', () => {
   assert.equal(warmthPace(CROPS.wheat, 17), 1);
   assert.equal(warmthPace(CROPS.tomato, 18), 1);
+  assert.equal(warmthPace(CROPS.wheat, 6), 1);
+  assert.equal(warmthPace(CROPS.sunflower, 14), 1);
+  assert.equal(warmthPace(CROPS.flax, 26), 1);
   assert.ok(Math.abs(warmthPace(CROPS.tomato, 12) - 0.5) < 1e-9);
   assert.equal(warmthPace(CROPS.tomato, 9), 0);
-  assert.ok(warmthPace(CROPS.wheat, -3) > 0 && warmthPace(CROPS.wheat, -3) < 0.3);
+  assert.ok(warmthPace(CROPS.wheat, -6) > 0 && warmthPace(CROPS.wheat, -6) < 0.3);
   assert.ok(warmthPace(CROPS.wheat, 30) < warmthPace(CROPS.wheat, 26));
   assert.ok(waterPace(0, 1, 34) < waterPace(0, 1, 20));
   assert.ok(waterPace(0, CROPS.sunflower.thirst) > waterPace(0));

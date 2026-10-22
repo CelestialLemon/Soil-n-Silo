@@ -166,7 +166,7 @@ replaces the old per-commission weather settings: the sun's hours and strength a
 | Cloud (share of the time) | 0.25 | 0.12 | 0.25 | 0.30 |
 | Showers (share of the time, before they build and fade) | 0.22 | 0.05 | 0.12 | 0.15, as snow |
 | Calm spells (share of the time) | 0.10 | 0.35 | 0.10 | 0.10 |
-| Warmth (dawn low – afternoon high, ± 2 a day) | 4–16°C | 16–30°C | 6–18°C | −5–6°C, frosts |
+| Warmth (dawn low – afternoon high, ± 2 a day) | 7–19°C | 16–30°C | 9–21°C | −5–6°C, frosts |
 
 Each season favours a power source: wheels in spring, solar in summer, wind in autumn
 and winter. A summer day gives a solar panel about four times a winter day's energy.
@@ -218,11 +218,11 @@ it, grows at about 50% speed"), and the guide's crop table shows each range and 
 
 | Crop | Comfortable | Frost | Winter outdoors |
 | --- | --- | --- | --- |
-| Wheat | 10–24°C | hardy | slowly |
-| Beans | 8–24°C | hardy | slowly |
-| Flax | 10–22°C | hardy | slowly |
+| Wheat | 6–24°C | hardy | slowly |
+| Beans | 6–24°C | hardy | slowly |
+| Flax | 6–26°C | hardy | slowly |
 | Tomato | 18–30°C | tender | no |
-| Sunflower | 18–32°C | tender; copes when dry | no |
+| Sunflower | 14–32°C | tender; copes when dry | no |
 
 Sunflower "copes when dry": it loses half as much growth to a lack of water. The flax's liking for wet waits for rain (1.3).
 So wheat and flax are slow in a summer's heat, tomato and sunflower are slow in spring and autumn and stopped in winter (oil
@@ -637,22 +637,22 @@ A commission has goals, a target time and modifiers. It ends when every goal is 
 
 | # | Name | Goals | Target | Season | Modifiers | Relief |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | First Light | 120 wheat, 80 flour | 25 min | A mild spring | Gentle | 0.2 |
-| 2 | Morning Bread | 150 bread; soil health ≥ 40 | 50 min | A wet spring | | 0.4 |
-| 3 | Windy Ridge | 90 oil, 80 bread | 85 min | Autumn, gales | Rocky, hilly | 0.9 |
-| 4 | Linen for the Looms | 50 linen; 5 yarn/min | 50 min | A hot summer | | 0.4 |
-| 5 | Long Nights | 100 honey cake | 115 min | Winter | | 0.5 |
+| 1 | First Light | 120 wheat, 80 flour | 20 min | A mild spring | Gentle | 0.2 |
+| 2 | Morning Bread | 150 bread; soil health ≥ 40 | 45 min | A wet spring | | 0.4 |
+| 3 | Windy Ridge | 90 oil, 80 bread | 55 min | Autumn, gales | Rocky, hilly | 0.9 |
+| 4 | Linen for the Looms | 50 linen; 5 yarn/min | 40 min | A hot summer | | 0.4 |
+| 5 | Long Nights | 100 honey cake | 70 min | Winter | | 0.5 |
 | 6 | Tired Soil | 50 sauce; soil health ≥ 55 | 40 min | A dry summer | Poor soil | 0.6 |
-| 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 65 min | Spring, high river | Cramped | 0.3 |
+| 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 50 min | Spring, high river | Cramped | 0.3 |
 | 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 50 min | A stormy autumn | Everything | 0.7 |
 
 The bot (`npm run sim`) deliberately uses a flat, open map with even soil to test the economy, not terrain;
-`test/height.test.ts` covers the height rules. It clears First Light in about 15 minutes, Morning Bread in about 28 and
-Linen for the Looms in about 25 with trucks (with silos and drones it took about 14, 38 and 45), building as credits allow. Its Morning Bread layout built round
+`test/height.test.ts` covers the height rules. It clears First Light in about 15.5 minutes, Morning Bread in about 33 and
+Linen for the Looms in about 28 with trucks (with silos and drones it took about 14, 38 and 45), building as credits allow. Its Morning Bread layout built round
 neighbours (`npm run sim -- c2:next`: a mill between two fields, a bakery beside it, a coop under both, a composter beside the
-coop) clears it in about 28 minutes with 3 trucks on 2 routes, where the all-truck layout uses 4 on 3; a person needs a few minutes more to plan and
-place. The bot's layouts for the other five, built round neighbours too, clear Windy Ridge in about 31 minutes, Long Nights
-in about 29, Tired Soil in about 26, Riverlands in about 32 and Harvest Festival in about 33 (`npm run sim -- c3` and so on).
+coop) clears it in about 30 minutes with 3 trucks on 2 routes, where the all-truck layout uses 4 on 3; a person needs a few minutes more to plan and
+place. The bot's layouts for the other five, built round neighbours too, clear Windy Ridge in about 39 minutes, Long Nights
+in about 50 (before bees stayed in all winter), Tired Soil in about 29, Riverlands in about 37 and Harvest Festival in about 35 (`npm run sim -- c3` and so on).
 
 Target times are about 1.4 times the bot's best time, rounded to 5 minutes, as First Light's 20 is to its 14: the bot knows
 its layout and plays a flat, open map, so a person needs that much more. (Balanced on 2026-10-20, once every commission had
@@ -666,7 +666,13 @@ Hens and bees by season (2026-10-22) changed little: the bot's eggs are rarely t
 Warmth (2026-10-22) slowed the bot on First Light from 15 to 17, Morning Bread from 30 to 36, Riverlands from 32 to 45 (cold spring days slow every crop, and tomato and sunflower stop below 10°C), Tired Soil to 29 and Harvest Festival to 36, and on Windy Ridge from 31 to 62 minutes (sunflowers for the oil stall below 10°C and
 barely grow in an autumn that tops out at 18°C), on Linen for the Looms from about 25 to 35 (a hot summer's heat is hard on
 flax) and on Long Nights from 29 to 80 (hardy crops in a winter between −5 and 6°C), so the targets went to 25, 50, 85, 50, 115, 40, 65 and 50
-minutes (commissions 1 to 8); Windy Ridge and Long Nights want their goals or seasons rethought.)
+minutes (commissions 1 to 8); Windy Ridge and Long Nights want their goals or seasons rethought.
+Warmth tuning (2026-10-22), after the warmth numbers had pushed Windy Ridge to 62 minutes, Riverlands to 45 and Linen for the Looms to 34: spring now runs 7–19°C
+(was 4–16) and autumn 9–21°C (was 6–18), and the crops' comfortable ranges widened (wheat 6–24, beans 6–24, flax 6–26, sunflower 14–32; tomato stays
+18–30), so a cool spring or autumn day costs less. The fall-off width (6°C), the tender stop (10°C), frost and the daily curve stand. The bot now takes First
+Light 15.5 minutes, Morning Bread 32.6, Windy Ridge 39.1, Linen for the Looms 28.2, Tired Soil 28.8, Riverlands 36.8 and Harvest Festival 35.0, so the targets
+are 20, 45, 55, 40, 40, 50 and 50 minutes. Long Nights (about 50 minutes in the study, before bees stayed in) still can't be cleared, so its test stays skipped and
+its target 70 stands until #86 gives a real time.)
 
 ![The level select](images/menu.png)
 
