@@ -1,4 +1,5 @@
 import { DAY_SECONDS, START_HOUR } from '../data.ts';
+import { lookAt, pushesAt } from '../events.ts';
 import { hash2 } from '../rng.ts';
 import { type Scenario } from '../scenarios.ts';
 import { type GameState } from '../state.ts';
@@ -40,14 +41,14 @@ function spellAt(time: number, len: number, share: number, seed: number) {
   return a + (b - a) * smooth(c - i);
 }
 
-const rainAt = (sc: Scenario, time: number) => spellAt(time, SPELL.rain, sc.climate.conditions.rain, sc.seed + 91);
+const rainAt = (sc: Scenario, time: number) => Math.max(spellAt(time, SPELL.rain, sc.climate.conditions.rain, sc.seed + 91), pushesAt(sc, time).rain);
 
-/** How hard it rains or snows at a time, 0–1. */
+/** How hard it rains or snows at a time, 0–1: the showers, and a weather event's rain. */
 export const precipAt = (sc: Scenario, time: number) => { const p = rainAt(sc, time); return p >= RAIN_FROM ? p : 0; };
 
-/** How much of the sky is covered, 0–1: the cloudy spells, and the cloud a shower brings. */
+/** How much of the sky is covered, 0–1: the cloudy spells, the cloud a shower brings and a weather event's. */
 export function cloudAt(sc: Scenario, time: number) {
-  return Math.max(spellAt(time, SPELL.cloud, sc.climate.conditions.cloud, sc.seed + 92), Math.min(1, precipAt(sc, time) * 1.5));
+  return Math.max(spellAt(time, SPELL.cloud, sc.climate.conditions.cloud, sc.seed + 92), Math.min(1, precipAt(sc, time) * 1.5), pushesAt(sc, time).cloud);
 }
 
 /** How still the air is, 0–1: a calm spell lowers the wind. */
@@ -58,9 +59,12 @@ export const clearShare = (sc: Scenario, time: number) => 1 - CLOUD_DIM * cloudA
 /** The wind's share left by a calm spell, 0.4–1. */
 export const windShare = (sc: Scenario, time: number) => 1 - CALM_DROP * calmAt(sc, time);
 
-/** The weather at a time: clear, cloudy, rain or snow, how hard it falls and how cloudy it is. */
+/**
+ * The weather at a time: clear, cloudy, rain or snow, how hard it falls and how cloudy it is. Weather events darken the sky and
+ * bring rain or snow of their own to the look (`lookAt`), over what the rules give (`precipAt`, `cloudAt`).
+ */
 export function weatherAt(sc: Scenario, time: number): Weather {
-  const precip = precipAt(sc, time), cloud = cloudAt(sc, time);
+  const look = lookAt(sc, time), precip = Math.max(precipAt(sc, time), look.precip >= RAIN_FROM ? look.precip : 0), cloud = Math.max(cloudAt(sc, time), look.cloud, Math.min(1, precip * 1.5));
   const sky: Sky = precip > 0 ? (sc.climate.season === 'winter' ? 'snow' : 'rain') : cloud >= CLOUDY_FROM ? 'cloudy' : 'clear';
   return { sky, precip, cloud };
 }

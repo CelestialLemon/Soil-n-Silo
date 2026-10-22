@@ -49,6 +49,8 @@ button { font: inherit; }
 .hud-top .chips { display: flex; gap: 8px; }
 .hud-top .chips .cd-chip { background: var(--chalk); box-shadow: var(--float); }
 .hud-top .chips .cd-chip .cd-i { --s: 20px; }
+.hud-top .chips .cd-chip.is-event { background: var(--rust); color: var(--chalk); }
+.hud-top .chips .cd-chip.is-event.is-good { background: var(--pine); }
 .hud-top .cd-seg { box-shadow: var(--float); }
 .hud-top .cd-seg .cd-i { --s: 16px; }
 .hud-top .cd-dial { --d: 132px; }
@@ -606,6 +608,15 @@ button { font: inherit; }
 .gname { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); }
 .guide-page .markers, .guide-page .keys { box-shadow: none; background: var(--chalk-2); margin: 18px 0; }
 .guide-page .keys .cols { grid-template-columns: repeat(2, 1fr); }
+
+/* ---- The sandbox's weather control ---- */
+.cd-sheet.weather { inset: 56px calc(50% - 360px); padding: 32px 40px 28px; }
+.weather .wx-now { margin-bottom: 8px; }
+.weather .wx-group { margin: 22px 0 6px; }
+.weather .wx-row { display: flex; align-items: center; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--chalk-2); }
+.weather .wx-name { display: grid; gap: 4px; flex: 1; }
+.weather .wx-name b { font: 700 16px/1.2 var(--font-ui); }
+.weather .wx-go { display: flex; gap: 8px; }
 
 /* ---- The ledger ---- */
 .cd-sheet.ledger { padding: 40px 56px 36px; }

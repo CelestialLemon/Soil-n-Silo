@@ -1,6 +1,7 @@
 import { flowRate, creditsPerMin, RECENT_WINDOW } from '../game/flows.ts';
 import { networks, usedBy } from '../game/power.ts';
 import { CAMPAIGN, SILVER_PAR, type Goal } from '../game/scenarios.ts';
+import { EVENTS, eventName, eventNow } from '../game/events.ts';
 import { dayAt, hourAt, sunAt, windAt } from '../game/sim/clock.ts';
 import { medalFor } from '../game/sim/stats.ts';
 import { seasonName } from '../game/seasons.ts';
@@ -19,7 +20,7 @@ import { gauge, goalIcon, goalNow, goalOrder } from './widgets.ts';
 // The play HUD's fixed pieces: the commission strip (top left; a pill while a side card is open), the readouts, the dial and
 // the panel buttons (top right), the view bar (bottom left) and the view controls (bottom right). Keys are in tooltips only.
 
-export type Panel = 'ledger' | 'routes' | 'power' | 'guide';
+export type Panel = 'ledger' | 'routes' | 'power' | 'guide' | 'weather';
 
 export interface PlayHost {
   state(): GameState;
@@ -166,7 +167,7 @@ export class TopRight {
   private readonly power = { el: h('button', { class: 'cd-pill is-link', title: 'Power made now, and used (W)' }), v: h('span'), sub: h('small') };
   private readonly stored = { el: h('button', { class: 'cd-pill is-link', title: 'Charge stored in every battery' }), v: h('span'), sub: h('small') };
   private readonly sun = h('span'); private readonly wind = h('span');
-  private readonly season = h('span'); private readonly weather = h('span'); private readonly warmth = h('span'); private readonly next = h('span', { class: 'cd-chip', style: 'padding-left: 12px' });
+  private readonly season = h('span'); private readonly weather = h('span'); private readonly weatherChip = h('span', { class: 'cd-chip', title: 'The weather now' }, this.weather); private readonly warmth = h('span'); private readonly next = h('span', { class: 'cd-chip', style: 'padding-left: 12px' });
   private readonly speeds: HTMLButtonElement[] = [];
   private readonly dial = h('div', { class: 'cd-dial' });
   private readonly time = h('div', { class: 'cd-figure cd-num' });
@@ -190,8 +191,8 @@ export class TopRight {
       this.speeds.push(b);
       return b;
     }));
-    const panelBtn = (p: Panel, name: string, ic: string, action: ActionId) => {
-      const b = titledBy(h('button', { class: 'cd-panelbtn', onclick: () => host.togglePanel(p) }, icon(ic), name), () => tip(name, ...keyNames(action)));
+    const panelBtn = (p: Panel, name: string, ic: string, action?: ActionId) => {
+      const b = titledBy(h('button', { class: 'cd-panelbtn', onclick: () => host.togglePanel(p) }, icon(ic), name), () => tip(name, ...(action ? keyNames(action) : [])));
       this.panels.set(p, b);
       return b;
     };
@@ -201,13 +202,15 @@ export class TopRight {
         h('div', null,
           h('div', { class: 'chips cd-small' },
             h('span', { class: 'cd-chip', title: 'The season, and what it is like' }, this.season),
-            h('span', { class: 'cd-chip', title: 'The weather now' }, this.weather),
+            this.weatherChip,
             h('span', { class: 'cd-chip', title: 'The warmth now, in degrees Celsius' }, this.warmth)),
           h('div', { class: 'chips cd-small' },
           h('span', { class: 'cd-chip', title: 'The sun\'s strength now' }, icon('sun'), this.sun),
           h('span', { class: 'cd-chip', title: 'The wind\'s strength now' }, icon('wind'), this.wind), this.next), seg),
         this.dial),
-      h('div', { class: 'panels' }, panelBtn('ledger', 'Ledger', 'chart', 'ledger'), panelBtn('routes', 'Routes', 'route', 'routes'), panelBtn('power', 'Power', 'bolt', 'power'), panelBtn('guide', 'Guide', 'book', 'guide')));
+      h('div', { class: 'panels' }, panelBtn('ledger', 'Ledger', 'chart', 'ledger'), panelBtn('routes', 'Routes', 'route', 'routes'), panelBtn('power', 'Power', 'bolt', 'power'), panelBtn('guide', 'Guide', 'book', 'guide'),
+        // The sandbox starts weather by hand (weatherPanel.ts).
+        ...(host.state().scenario.sandbox ? [panelBtn('weather', 'Weather', 'wind')] : [])));
   }
 
   /** The speed and panel buttons, every frame. */
@@ -235,7 +238,12 @@ export class TopRight {
     set(this.sun, pct(sunAt(sc, s.time)));
     set(this.wind, pct(windAt(sc, s.time)));
     set(this.season, seasonName(sc.climate));
-    set(this.weather, SKY_NAMES[weatherNow(s).sky]);
+    // A weather event, once it starts, takes the sky's place: its name, no warning and no length (the forecast comes with the station).
+    const ev = eventNow(sc, s.time);
+    set(this.weather, ev ? eventName(ev.kind, ev.strength) : SKY_NAMES[weatherNow(s).sky]);
+    this.weatherChip.classList.toggle('is-event', !!ev);
+    this.weatherChip.classList.toggle('is-good', !!ev && !!EVENTS[ev.kind].good);
+    this.weatherChip.title = ev ? `A ${ev.strength === 'severe' ? 'severe ' : ''}weather event, ${EVENTS[ev.kind].good ? 'a good one' : 'a bad one'}` : 'The weather now';
     set(this.warmth, `${Math.round(warmthOf(s))}°C`);
     const hour = hourAt(s.time), day = hour > w.rise && hour < w.set;
     set(this.next, day ? `dusk ${clock(w.set)}` : `dawn ${clock(w.rise)}`);

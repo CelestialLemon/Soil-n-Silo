@@ -4,6 +4,7 @@ import { bays, BUILDINGS, CROPS, ITEMS, recipesFor, TICK, TRUCK, type BuildingId
 import { err, ok, tryParseJson, type Result } from './result.ts';
 import type { Mark, RunLog } from './runlog.ts';
 import type { Scenario } from './scenarios.ts';
+import { endOf, EVENT_KINDS, EVENTS, STRENGTHS, type WeatherEvent } from './events.ts';
 import { CHARACTERS, SEASONS, type Climate } from './seasons.ts';
 import { MAX_LEVEL, spanOf, STEEP } from './relief.ts';
 import { TERRAIN } from './map.ts';
@@ -29,7 +30,7 @@ export function deserialize(json: string | null): Result<GameState> {
   const parsed = tryParseJson(json);
   if (!parsed.ok) return err(`The save isn't JSON: ${parsed.error}`);
   const s = parsed.value as GameState | null;
-  if (s?.version !== 13) return err('The save is from another version (this game reads version 13).');
+  if (s?.version !== 14) return err('The save is from another version (this game reads version 14).');
   if (!complete(s)) return err('The save is broken: its state is incomplete or out of range.');
   if (!validRun(s.run, s.scenario.goals.length)) return err('The save is broken: its run log is incomplete or out of range.');
   return ok(s);
@@ -64,13 +65,17 @@ function climate(c: Climate): boolean {
     && !!c.hens && num(c.hens.lay) && c.hens.lay >= 0 && c.hens.lay <= 1;
 }
 
+/** A weather event: a known kind and strength (severe only where the kind has one), starting at or after the start and lasting a while. */
+const event = (e: WeatherEvent) => !!e && EVENT_KINDS.includes(e.kind) && STRENGTHS.includes(e.strength) && (e.strength === 'ordinary' || !!EVENTS[e.kind].severe)
+  && num(e.start) && num(e.length) && e.start >= 0 && e.length > 0 && num(endOf(e));
+
 /** The scenario's fields the simulation and the HUD read. */
 function scenario(sc: Scenario): boolean {
   const t = sc?.terrain;
   return !!sc && str(sc.id) && str(sc.name) && str(sc.blurb) && [sc.seed, sc.width, sc.height, sc.credits, sc.par].every(num)
     && arr(sc.tags) && sc.tags.every(str) && (sc.tips === undefined || (arr(sc.tips) && sc.tips.every(str)))
     && arr(sc.goals) && sc.goals.every(goal)
-    && climate(sc.climate)
+    && climate(sc.climate) && arr(sc.events) && sc.events.every(event)
     && !!t && [t.soil, t.soilSpread, t.forest, t.rock, t.relief].every(num) && t.relief >= 0 && t.relief <= 1 && ['river', 'ponds', 'lake', 'none'].includes(t.water);
 }
 

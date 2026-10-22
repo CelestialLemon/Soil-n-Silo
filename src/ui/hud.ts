@@ -11,6 +11,8 @@ import { Inspector } from './inspector.ts';
 import { ledgerSheet } from './ledger.ts';
 import { pauseScreen } from './pause.ts';
 import { settingsPanel } from './settingsPanel.ts';
+import { weatherSheet } from './weatherPanel.ts';
+import { clearWeather, eventName, startEvent } from '../game/events.ts';
 import { CommissionCard, TopRight, ViewBar, viewControls, type Panel, type PlayHost } from './playhud.ts';
 import { powerSheet } from './powerpanel.ts';
 import { ProblemsStrip } from './problems.ts';
@@ -200,13 +202,14 @@ export class Hud {
   panelOpen(p: Panel) {
     if (p === 'ledger' || p === 'power') return this.modals.some((m) => m.name === p);
     if (p === 'routes') return this.routesShown;
-    if (p === 'guide') return this.modals.some((m) => m.name === 'guide');
+    if (p === 'guide' || p === 'weather') return this.modals.some((m) => m.name === p);
     return false;
   }
   togglePanel(p: Panel) {
     if (p === 'ledger' || p === 'power') this.toggleSheet(p);
     else if (p === 'routes') this.toggleRoutes();
     else if (p === 'guide') this.openGuide();
+    else if (p === 'weather') this.toggleWeather();
   }
 
   // ---- Side cards ----
@@ -233,6 +236,21 @@ export class Hud {
       ? ledgerSheet({ state: () => this.host.state(), openPower: () => this.toggleSheet('power'), close: () => this.close('ledger') })
       : powerSheet({ state: () => this.host.state(), close: () => this.close('power') });
     this.openModal(p, sheet.el, false, sheet.update);
+  }
+
+  // ---- The sandbox's weather ----
+
+  /** Opens the sandbox's weather control, or closes it. Choosing an event closes it, to show the sky. */
+  toggleWeather() {
+    if (this.modals.some((m) => m.name === 'weather')) { this.close('weather'); return; }
+    const s = () => this.host.state(), done = () => { this.close('weather'); this.host.changed(); };
+    const sheet = weatherSheet({
+      state: s,
+      start: (kind, strength) => { const r = startEvent(s(), kind, strength); this.toast(r.ok ? `${eventName(kind, strength)} begins` : r.error, r.ok, 'wind'); if (r.ok) done(); },
+      clear: () => { const r = clearWeather(s()); this.toast(r.ok ? 'The weather clears' : r.error, r.ok, 'sun'); if (r.ok) done(); },
+      close: () => this.close('weather'),
+    });
+    this.openModal('weather', sheet.el, false, sheet.update);
   }
 
   // ---- The routes card ----
