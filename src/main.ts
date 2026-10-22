@@ -29,13 +29,16 @@ import { SettingsStore } from './ui/settings.ts';
 import { truckName } from './ui/routing.ts';
 import { statusLabel } from './ui/widgets.ts';
 import type { Hover, MarkerSpot } from './ui/world.ts';
+import { windAt } from './game/sim/clock.ts';
+import { weatherNow } from './game/sim/weather.ts';
 import { allGeometries, loadModels } from './world/models.ts';
 import { PowerView } from './world/powerView.ts';
 import { RouteView } from './world/routeView.ts';
 import { Camera } from './world/camera.ts';
 import { CURSOR_GRID, TileCursor, type CursorPatch } from './world/tileCursor.ts';
 import { buildWorld, COUNTRY } from './world/terrain.ts';
-import { DETAIL_COLOURS, GroundDetail } from './world/detail.ts';
+import { greyLook } from './world/greyLook.ts';
+import { detailColours, GroundDetail } from './world/detail.ts';
 import { Lie, LEVEL_HEIGHT, MapGround, standY } from './world/ground.ts';
 import { WorldView, type Overlay } from './world/view.ts';
 import { SOIL } from './world/shapes.ts';
@@ -117,7 +120,7 @@ async function play(initial: GameState) {
   const { season } = state.scenario.climate;
   const models = await loadModels(season);
   const land = generateLand(state.scenario, COUNTRY);
-  const lie = new Lie(state, land), world = buildWorld(map, land, lie, models, season), ground = new MapGround(state, land, lie, world.halo, [...SOIL, ...DETAIL_COLOURS, ...DETAIL_COLOURS.map(world.halo.tone)]);
+  const lie = new Lie(state, land), world = buildWorld(map, land, lie, models, season), ground = new MapGround(state, land, lie, world.halo, [...SOIL, ...detailColours(season), ...detailColours(season).map(world.halo.tone)]);
   quantizePalette([...world.geometries, ...ground.geometries, ...allGeometries(models)], 160);
   const renderer = new PixelRenderer(canvas, world.scene, { shadowMapSize: 2048, warmHighlight: true });
   ground.show(renderer);
@@ -610,8 +613,11 @@ async function play(initial: GameState) {
   }
 
   // ---- Loop ----
-  let last = performance.now(), time = 0, frameNo = 0, lookHour = Number.NaN, sinceSave = 0;
+  let last = performance.now(), time = 0, frameNo = 0, lookHour = Number.NaN, lookCloud = 0, lookPrecip = 0, sinceSave = 0;
   let wasComplete = state.completedAt !== null;
+  let skyEased: { cloud: number; wind: number } | null = null;
+  /** Seconds the drawn cloud and wind take to follow the game's; the lean the game's full wind gives the trees (renderer 0 to 3); the gusts in still air and what the wind adds. */
+  const EASE_SECONDS = 3, WIND_LEAN = 2, GUSTS_CALM = 0.5, GUSTS_PER_WIND = 1;
 
   function frame(now: number) {
     hud.perf.frame(now);
@@ -637,7 +643,20 @@ async function play(initial: GameState) {
     camera.update(time, dt);
 
     const hour = hourAt(state.time);
-    if (!(Math.abs(hour - lookHour) <= 0.02)) { renderer.setLook(lookAt(hour)); lookHour = hour; }
+    // The sky's cloud cover and the wind in the trees follow the weather now, eased over a few seconds (a wind change applies
+    // at once in the renderer). Drawn rain and snow are left to the precipitation work, so `precipitation` stays 'none'.
+    const sky = weatherNow(state), windNow = windAt(state.scenario, state.time), ease = 1 - Math.exp(-dt / EASE_SECONDS);
+    if (!skyEased) { skyEased = { cloud: sky.cloud, wind: windNow }; } else { skyEased.cloud += (sky.cloud - skyEased.cloud) * ease; skyEased.wind += (windNow - skyEased.wind) * ease; }
+    renderer.setWeather({
+      cloudCover: Math.min(1, Math.max(0, skyEased.cloud)),
+      wind: Math.min(3, Math.max(0, skyEased.wind * WIND_LEAN)),
+      gusts: Math.min(3, Math.max(0, GUSTS_CALM + skyEased.wind * GUSTS_PER_WIND)),
+    });
+    // The hour's look, greyed by the weather now; set again when the hour or the weather has moved enough to show.
+    const weather = sky;
+    if (!(Math.abs(hour - lookHour) <= 0.02) || Math.abs(weather.cloud - lookCloud) > 0.01 || Math.abs(weather.precip - lookPrecip) > 0.01) {
+      renderer.setLook(greyLook(lookAt(hour), weather)); lookHour = hour; lookCloud = weather.cloud; lookPrecip = weather.precip;
+    }
 
     ground.sync();
     // The grid and the contour lines show while building or doing earthworks.
