@@ -291,6 +291,15 @@ test('the sandbox starts any event at either strength, ending what was under way
   assert.equal(activeEvents(s.scenario, s.time).some((a) => a.event.kind === 'thunderstorm'), false);
   assert.ok(!startEvent(s, 'softRain', 'severe').ok);
   for (const kind of EVENT_KINDS) for (const strength of STRENGTHS) assert.equal(startEvent(s, kind, strength).ok, strength === 'ordinary' || !!EVENTS[kind].severe, `${kind} ${strength}`);
+  // One cleared while still building in only fades: it never gets stronger.
+  assert.ok(startEvent(s, 'fog', 'ordinary').ok);
+  advance(s, 5);
+  const felt = (t: number) => activeEvents(s.scenario, t).filter((x) => x.event.kind === 'fog').reduce((m, x) => Math.max(m, x.intensity), 0);
+  const peak = felt(s.time);
+  assert.ok(peak > 0 && peak < 1);
+  assert.ok(clearWeather(s).ok);
+  for (let t = s.time; t < s.time + 20; t += 0.5) assert.ok(felt(t) <= peak + 1e-9, `at ${t}`);
+  assert.equal(felt(s.time + 20), 0);
   const c = clearWeather(s);
   assert.ok(c.ok);
   advance(s, 100);

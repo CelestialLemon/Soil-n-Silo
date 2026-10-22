@@ -384,7 +384,10 @@ const handMade = (s: GameState) => !!s.scenario.sandbox;
 /** Ends what is under way (it fades out over the ramp) and drops what hasn't begun: the sandbox's weather starts from a clean sky. */
 function clearSky(s: GameState) {
   const now = s.time;
-  s.scenario.events = s.scenario.events.filter((e) => e.start < now).map((e) => (endOf(e) > now + RAMP ? { ...e, length: now + RAMP - e.start } : e));
+  // One still building in fades from where it has got to (the ramp out as long as the ramp in has run), so it never strengthens first.
+  const fade = (e: WeatherEvent) => Math.min(RAMP, now - e.start);
+  s.scenario.events = s.scenario.events.filter((e) => e.start < now)
+    .map((e) => (endOf(e) > now + fade(e) ? { ...e, length: now + fade(e) - e.start } : e)).filter((e) => e.length > 0);
 }
 
 /** Sandbox: starts an event now, ending what is under way and dropping what was ahead. A flood still follows its storm. */
