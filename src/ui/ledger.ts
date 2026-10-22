@@ -3,6 +3,7 @@ import { RECENT_WINDOW, flowRate, flowSeries, goodsHeld, soilTrend } from '../ga
 import { networks, usedBy } from '../game/power.ts';
 import { dayAt, hourAt } from '../game/sim/clock.ts';
 import { isPollinated } from '../game/sim/layout.ts';
+import { beesFact, beesFly, warmthOf } from '../game/warmth.ts';
 import { fieldFertility, soilHealth } from '../game/sim/soil.ts';
 import { countTrees, type GameState } from '../game/state.ts';
 import { fill, h, icon, svg } from './dom.ts';
@@ -35,7 +36,7 @@ function health(s: GameState) {
   const trees = countTrees(s), change = trees - s.initialTrees, nudge = Math.max(-TREE_HEALTH.cap, Math.min(TREE_HEALTH.cap, change * TREE_HEALTH.perTree));
   const goal = s.scenario.goals.find((g) => g.kind === 'soil');
   const saplings = s.buildings.filter((b) => b.type === 'sapling').length;
-  const flowering = fields.filter((f) => CROPS[f.crop].flowers), reached = flowering.filter((f) => isPollinated(s, f)).length, hives = s.buildings.filter((b) => b.type === 'hive').length;
+  const flowering = fields.filter((f) => CROPS[f.crop].flowers), out = beesFly(warmthOf(s)), reached = out ? flowering.filter((f) => isPollinated(s, f)).length : 0, hives = s.buildings.filter((b) => b.type === 'hive').length;
   const block = (r: Node, label: string, big: (Node | string)[], lines: (Node | string)[], foot: Node | null) => h('div', { class: 'vr' }, r,
     h('div', { class: 'vr-txt' }, h('div', { class: 'cd-label' }, label), h('div', { class: 'vr-big' }, ...big), h('div', { class: 'cd-small' }, ...lines), foot));
   return h('div', { class: 'health' },
@@ -49,7 +50,7 @@ function health(s: GameState) {
       h('div', { class: `cd-small trend ${change > 0 ? 'cd-good' : change < 0 ? 'cd-bad' : ''}` }, change ? `${change > 0 ? '↑' : '↓'} ${Math.abs(change)} since the start` : 'as many as at the start')),
     block(ring({ v: flowering.length ? reached / flowering.length : 0, d: 132, w: 10, col: 'var(--ochre)' }, icon('bee', 48)), 'Pollination',
       [String(reached), h('small', null, ` of ${flowering.length}`)],
-      [`flowering fields reached by ${plural(hives, 'hive')}`, h('br'), 'flowering crops there give one more a harvest'], null));
+      [`flowering fields reached by ${plural(hives, 'hive')}`, h('br'), out ? 'flowering crops there give one more a harvest' : beesFact(warmthOf(s)).text + ': no pollination now'], null));
 }
 
 export function ledgerSheet(host: LedgerHost) {
