@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { lookAt } from 'pixel3d-renderer';
 import { SEASON_IDS } from '../src/game/seasons.ts';
-import { greyLook } from '../src/world/greyLook.ts';
+import { fallIntensity, greyLook } from '../src/world/greyLook.ts';
 import { grassOf } from '../src/world/ground.ts';
 
 test('a clear sky leaves the look as it is, and cloud and rain dim and grey it step by step', () => {
@@ -20,4 +20,10 @@ test('each season has its own grass, from lush to dry', () => {
     assert.notEqual(grassOf(s, 0), grassOf(s, 1), s);
     for (const dry of [0, 0.5, 1]) { const c = grassOf(s, dry); assert.ok(!seen.has(c), `${s} ${dry}`); seen.add(c); }
   }
+});
+
+test('everyday precipitation falls light to moderate, and nothing falls without it', () => {
+  assert.equal(fallIntensity(0), 0);
+  assert.ok(fallIntensity(0.12) >= 0.15 && fallIntensity(0.12) < fallIntensity(1));
+  assert.ok(fallIntensity(1) <= 0.5);
 });

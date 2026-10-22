@@ -37,7 +37,7 @@ import { RouteView } from './world/routeView.ts';
 import { Camera } from './world/camera.ts';
 import { CURSOR_GRID, TileCursor, type CursorPatch } from './world/tileCursor.ts';
 import { buildWorld, COUNTRY } from './world/terrain.ts';
-import { greyLook } from './world/greyLook.ts';
+import { fallIntensity, greyLook } from './world/greyLook.ts';
 import { detailColours, GroundDetail } from './world/detail.ts';
 import { Lie, LEVEL_HEIGHT, MapGround, standY } from './world/ground.ts';
 import { WorldView, type Overlay } from './world/view.ts';
@@ -615,7 +615,9 @@ async function play(initial: GameState) {
   // ---- Loop ----
   let last = performance.now(), time = 0, frameNo = 0, lookHour = Number.NaN, lookCloud = 0, lookPrecip = 0, sinceSave = 0;
   let wasComplete = state.completedAt !== null;
-  let skyEased: { cloud: number; wind: number } | null = null;
+  let skyEased: { cloud: number; wind: number; precip: number } | null = null;
+  /** What fell last, so a fading shower keeps its kind while it thins out. */
+  let fallKind: 'rain' | 'snow' = 'rain';
   /** Seconds the drawn cloud and wind take to follow the game's; the lean the game's full wind gives the trees (renderer 0 to 3); the gusts in still air and what the wind adds. */
   const EASE_SECONDS = 3, WIND_LEAN = 2, GUSTS_CALM = 0.5, GUSTS_PER_WIND = 1;
 
@@ -644,10 +646,14 @@ async function play(initial: GameState) {
 
     const hour = hourAt(state.time);
     // The sky's cloud cover and the wind in the trees follow the weather now, eased over a few seconds (a wind change applies
-    // at once in the renderer). Drawn rain and snow are left to the precipitation work, so `precipitation` stays 'none'.
+    // at once in the renderer). Rain and snow fall on the same easing, thickening and thinning with the spell.
     const sky = weatherNow(state), windNow = windAt(state.scenario, state.time), ease = 1 - Math.exp(-dt / EASE_SECONDS);
-    if (!skyEased) { skyEased = { cloud: sky.cloud, wind: windNow }; } else { skyEased.cloud += (sky.cloud - skyEased.cloud) * ease; skyEased.wind += (windNow - skyEased.wind) * ease; }
+    if (!skyEased) { skyEased = { cloud: sky.cloud, wind: windNow, precip: sky.precip }; } else { skyEased.precip += (sky.precip - skyEased.precip) * ease; skyEased.cloud += (sky.cloud - skyEased.cloud) * ease; skyEased.wind += (windNow - skyEased.wind) * ease; }
+    if (sky.sky === 'rain' || sky.sky === 'snow') fallKind = sky.sky;
+    const fall = fallIntensity(skyEased.precip);
     renderer.setWeather({
+      precipitation: fall > 0 ? fallKind : 'none',
+      intensity: fall,
       cloudCover: Math.min(1, Math.max(0, skyEased.cloud)),
       wind: Math.min(3, Math.max(0, skyEased.wind * WIND_LEAN)),
       gusts: Math.min(3, Math.max(0, GUSTS_CALM + skyEased.wind * GUSTS_PER_WIND)),

@@ -233,6 +233,10 @@ the gliding (a spring day is rainy about 30% of the time, a summer day about 7%,
 - **The weather now** is clear, cloudy, rain or snow with a precipitation intensity 0–1 and the cloud cover
   (`weatherNow(state)`, for the HUD chip and the look). The battery forecast ("tonight") uses the seeded sun and wind, cloud and
   calm included, and counts the sprinklers as resting during the rain it expects.
+- **Falling rain and snow are drawn** (renderer 0.3.4): rain in the open seasons, snow in winter, on the same 3 s easing as the
+  cloud cover. The renderer's intensity is `0.15 + 0.35 × precipitation`, so everyday showers read light to moderate (0.15–0.5)
+  and the heavy end (up to 1) is left for phase 2's storms and blizzards. Cloud already thickens with a shower (`cloud` is at
+  least 1.5 × precipitation). The rain keeps falling while the game is paused (it runs on the frame clock, not the game's).
 
 ### The valley's look by season
 
@@ -258,7 +262,7 @@ the warm and cool tints by 70% and pulls the sky 65% to its own grey and a littl
 
 The renderer's weather (v0.3.4) is driven too, eased over 3 seconds so nothing jumps: the **cloud cover** of the drifting
 shadows follows the cloud now, and the **wind** leans the trees and sways them (lean = the game's wind × 2, gusts 0.5 + the
-wind), so a gale bends them and a calm spell stills them. Drawn rain and snow are not yet drawn (precipitation stays off).
+wind), so a gale bends them and a calm spell stills them. Rain and snow fall on the same easing (see "Falling rain and snow are drawn" above).
 
 ## The map
 
