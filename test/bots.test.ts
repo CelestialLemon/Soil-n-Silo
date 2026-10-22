@@ -12,8 +12,8 @@ const WAITING_FOR_GREENHOUSE = new Set(['c5']);
 
 for (const id of Object.keys(LAYOUTS)) {
   test(`the bot clears ${id} within its target time`, { skip: WAITING_FOR_GREENHOUSE.has(id) && 'needs the greenhouse (#86)' }, () => {
-    const { completedAt, par } = playLayout(id, 130);
-    assert.ok(completedAt !== null, `${id}: not complete after 130 minutes (npm run sim -- ${id} shows why)`);
+    const { completedAt, par } = playLayout(id, 80);
+    assert.ok(completedAt !== null, `${id}: not complete after 80 minutes (npm run sim -- ${id} shows why)`);
     assert.ok(completedAt <= par, `${id}: complete at ${Math.round(completedAt)} s, after the target ${par} s`);
   });
 }
