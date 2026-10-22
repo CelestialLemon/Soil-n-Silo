@@ -262,7 +262,7 @@ the warm and cool tints by 70% and pulls the sky 65% to its own grey and a littl
 
 The renderer's weather (v0.3.4) is driven too, eased over 3 seconds so nothing jumps: the **cloud cover** of the drifting
 shadows follows the cloud now, and the **wind** leans the trees and sways them (lean = the game's wind × 2, gusts 0.5 + the
-wind), so a gale bends them and a calm spell stills them. Drawn rain and snow are not yet drawn (precipitation stays off).
+wind), so a gale bends them and a calm spell stills them. Rain and snow fall on the same easing (see "Falling rain and snow are drawn" above).
 
 ## The map
 
