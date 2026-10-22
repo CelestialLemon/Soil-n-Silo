@@ -7,7 +7,8 @@ import { shareOf } from './energy.ts';
 import { handsTo } from './layout.ts';
 import { tileOf, garageOf, routeOf, trucksOn } from './trucks.ts';
 import { must } from '../result.ts';
-import { beesFact, henFact, henPace, warmthOf } from '../warmth.ts';
+import { beesFact, henFact, warmthOf } from '../warmth.ts';
+import { coopPace, coopShade } from '../rules.ts';
 
 // Player-facing text: what a building or truck is doing, and what is wrong with it.
 
@@ -160,7 +161,7 @@ export function describeStatus(s: GameState, b: Building): string {
         const net = must(networks(s).of.get(b.id), 'network'), k = net.pylons.length - 1, n = net.members.length;
         return `${k ? `Linked to ${k} other pylon${k > 1 ? 's' : ''}` : 'Linked to no other pylon'} · its network powers ${n} building${n === 1 ? '' : 's'}`;
       }
-      if (b.type === 'coop' && henPace(s.scenario, warmthOf(s)) < 0.97) return henFact(s.scenario, warmthOf(s)).text;
+      if (b.type === 'coop' && coopPace(s, b.x, b.y) < 0.97) return henFact(s.scenario, warmthOf(s), coopShade(s, b.x, b.y)).text;
       return isMachine(b) ? 'Working' : def.name;
   }
 }

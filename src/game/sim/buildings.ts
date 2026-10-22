@@ -1,6 +1,6 @@
 import { BUILDINGS, CROPS, FIELD, HIVE, ITEMS, POLLINATION_BONUS } from '../data.ts';
-import { erosionAt, paceOf, touchesWater } from '../rules.ts';
-import { beesFly, frostKills, henPace, warmthOf } from '../warmth.ts';
+import { coopPace, erosionAt, paceOf, touchesWater } from '../rules.ts';
+import { beesFly, frostKills, warmthOf } from '../warmth.ts';
 import { tileIndex, type FieldBuilding, type GameState, type HiveBuilding, type MachineBuilding } from '../state.ts';
 import { derived, isGuarded, isPollinated, sprinklersOf } from './layout.ts';
 import { changeSoil, fieldFertility } from './soil.ts';
@@ -31,7 +31,7 @@ export function runMachine(s: GameState, b: MachineBuilding, dt: number) {
     b.progress = 0;
   }
   // The digester is a generator: it burns at its own pace.
-  const pace = (def.power ? share : 1) * (b.type === 'coop' ? henPace(s.scenario, warmthOf(s)) : 1);
+  const pace = (def.power ? share : 1) * (b.type === 'coop' ? coopPace(s, b.x, b.y) : 1);
   b.progress += dt * pace;
   b.status = def.power && share <= 0 ? 'power' : def.power && share < 1 ? 'lowpower' : 'ok';
   b.need = undefined;

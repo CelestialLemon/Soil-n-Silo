@@ -1,7 +1,7 @@
 import { BUILDINGS, CROPS, DAY_SECONDS, FIELD, HIVE, ITEMS, POLLINATION_BONUS, POWER, recipesFor, SAPLING_SECONDS, TREE_HEALTH, type BuildingId } from './data.ts';
 import { networks, POWERED, pylonsInLink } from './power.ts';
 import { HOUR_SECONDS } from './powerlog.ts';
-import { erosionAt, guardedAt, hiveReaches, paceOf, pylonReaches, riverSeason, sprinklerWaters, sprinklerWatts, touchesWater, waterLevelNear, waterPace, wheelSite, windExposure } from './rules.ts';
+import { coopPace, coopTrees, erosionAt, guardedAt, hiveReaches, paceOf, pylonReaches, riverSeason, sprinklerWaters, sprinklerWatts, touchesWater, waterLevelNear, waterPace, wheelSite, windExposure } from './rules.ts';
 import { earthPrice, groundworkFor, levelledFor } from './build.ts';
 import { hourAt, sunAt, windAt } from './sim/clock.ts';
 import { raining } from './sim/weather.ts';
@@ -10,7 +10,7 @@ import { makes, shareOf, wants } from './sim/energy.ts';
 import { wattsOf } from './sim/layout.ts';
 import { describeLinks } from './sim/describe.ts';
 import { centreLevel } from './relief.ts';
-import { beesFact, beesFly, henPace, warmthFact, warmthOf } from './warmth.ts';
+import { beesFact, beesFly, shadeFact, warmthFact, warmthOf } from './warmth.ts';
 import { inMap, type Building, type FieldBuilding, type GameState, type Setting } from './state.ts';
 
 // Forecasts from what the game already knows: what a building in hand would do on a tile (facts about the tile, no advice),
@@ -38,11 +38,13 @@ function soilUnder(s: GameState, x: number, y: number, n: number) {
   return k ? sum / k : 0;
 }
 
-/** The sprinklers that would water a field at (x, y), and the most water any gives (the share of power it gets). */
+/** The sprinklers that would water a field at (x, y), and the most water any gives (the share of power it gets); rain waters every field. */
 function waterAt(s: GameState, x: number, y: number) {
   const sp = s.buildings.filter((b) => b.type === 'sprinkler' && sprinklerWaters(b.x, b.y, { type: 'field', x, y }));
-  const shore = touchesWater(s, x, y);
-  return { sprinklers: sp.length, shore, water: shore ? 1 : sp.reduce((m, b) => Math.max(m, shareOf(s, b)), 0) };
+  const shore = touchesWater(s, x, y), share = sp.reduce((m, b) => Math.max(m, shareOf(s, b)), 0);
+  /** The water at a time: rain waters every field while it lasts (a sprinkler's share is its power now). */
+  const at = (time: number) => (shore || raining(s.scenario, time) ? 1 : share);
+  return { sprinklers: sp.length, shore, rain: !shore && raining(s.scenario, s.time), water: at(s.time), at };
 }
 
 /** Whether a pylon would reach a footprint at (x, y). */
@@ -58,7 +60,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
   const there = (): Placement => {
     switch (type) {
       case 'field': {
-        const crop = CROPS[set.crop ?? 'wheat'], soil = soilUnder(s, x, y, 3), { sprinklers, shore, water } = waterAt(s, x, y);
+        const crop = CROPS[set.crop ?? 'wheat'], soil = soilUnder(s, x, y, 3), { sprinklers, shore, rain, water, at: waterAtTime } = waterAt(s, x, y);
         // A hive within reach of a flowering crop adds a good to every harvest.
         const pollinated = crop.flowers && beesFly(warmthOf(s)) && s.buildings.some((b) => b.type === 'hive' && hiveReaches({ type: 'field', x, y }, b.x, b.y));
         const perMin = (crop.yield + (pollinated ? POLLINATION_BONUS : 0)) * 60 * paceOf(water, soil, crop, warmthOf(s)).pace / crop.grow;
@@ -69,14 +71,16 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
           const k = inMap(s, tx, ty) ? erosionAt(s, tx, ty, guarded) : 1;
           wear += k / 9; if (k > 1) slopes++;
         }
-        // The harvests over the next SOIL_AHEAD seconds, each wearing the soil and slowing the next.
-        // The pace over a whole day's warmth, as ten minutes span days.
-        const dayPace = (fert: number) => { let sum = 0; for (let k = 0; k < 24; k++) sum += paceOf(water, fert, crop, warmthOf(s, s.time + k * DAY_SECONDS / 24)).pace; return sum / 24; };
-        let t = 0, later = soil;
-        for (;;) { const pace = dayPace(later); if (!(pace > 0)) break; t += crop.grow / pace; if (t > SOIL_AHEAD) break; later = Math.max(0, Math.min(100, later + crop.soil * (crop.soil < 0 ? wear : 1))); }
+        // Growth over the next SOIL_AHEAD seconds an hour of play at a time, with the warmth and rain of each hour; each harvest wears the soil and slows the next.
+        const HOUR = DAY_SECONDS / 24;
+        let growth = 0, later = soil;
+        for (let t = 0; t < SOIL_AHEAD; t += HOUR) {
+          growth += Math.min(HOUR, SOIL_AHEAD - t) * paceOf(waterAtTime(s.time + t), later, crop, warmthOf(s, s.time + t)).pace / crop.grow;
+          while (growth >= 1) { growth -= 1; later = Math.max(0, Math.min(100, later + crop.soil * (crop.soil < 0 ? wear : 1))); }
+        }
         facts.push({ label: crop.name, value: `+${fmt1(perMin)}`, sub: 'a minute, at this warmth' });
         facts.push({ label: 'Soil', value: String(Math.round(soil)), then: String(Math.round(later)), sub: `in ${SOIL_AHEAD / 60} min if harvests are carried off` });
-        facts.push(shore ? { label: 'Water', value: 'beside water', sub: 'grows at 100%' } : sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round(waterPace(water, crop.thirst, warmthOf(s)) * 100)}%` }
+        facts.push(shore ? { label: 'Water', value: 'beside water', sub: 'grows at 100%' } : rain ? { label: 'Water', value: 'rain', sub: 'grows at 100% while it rains', tone: 'good' } : sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round(waterPace(water, crop.thirst, warmthOf(s)) * 100)}%` }
           : { label: 'Water', value: 'none', sub: `grows at ${Math.round(waterPace(0, crop.thirst, warmthOf(s)) * 100)}%`, tone: 'bad' });
         const warm = warmthFact(crop, warmthOf(s));
         facts.push({ label: 'Warmth', value: `${Math.round(warmthOf(s))}°C`, sub: warm.text.slice(warm.text.indexOf(': ') + 2), tone: warm.tone === 'bad' ? 'bad' : undefined });
@@ -140,7 +144,11 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
       default: {
         const r = recipesFor(type).find((x) => x.id === set.recipe) ?? recipesFor(type)[0];
         if (r && r.outputs.length) facts.push({ label: 'Full speed', value: fmt1(r.outputs[0].n * 60 / r.time), sub: `${ITEMS[r.outputs[0].item].name.toLowerCase()} a minute` });
-        if (type === 'coop') { const pace = henPace(s.scenario, warmthOf(s)); facts.push({ label: 'Hens', value: `${Math.round(pace * 100)}%`, sub: `laying speed at ${Math.round(warmthOf(s))}°C`, tone: pace < 0.6 ? 'bad' : undefined }); }
+        if (type === 'coop') {
+          const pace = coopPace(s, x, y), trees = coopTrees(s, x, y);
+          facts.push({ label: 'Hens', value: `${Math.round(pace * 100)}%`, sub: `laying speed at ${Math.round(warmthOf(s))}°C`, tone: pace < 0.6 ? 'bad' : undefined });
+          facts.push({ label: 'Shade', value: `${trees} tree${trees === 1 ? '' : 's'}`, sub: shadeFact(trees), tone: trees ? 'good' : undefined });
+        }
         if (type === 'digester') facts.push({ label: 'Makes', value: watts(POWER.digester), sub: 'while burning' });
         if (type === 'battery') facts.push({ label: 'Stores', value: `${POWER.battery.capacity} J`, sub: `${POWER.battery.rate} W in and out` });
         if (def.power || POWERED({ type } as Building)) facts.push(pylonFact());

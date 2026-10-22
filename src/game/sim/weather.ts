@@ -17,6 +17,8 @@ export interface Weather {
   precip: number;
   /** How much of the sky is covered, 0–1. */
   cloud: number;
+  /** How warm the light is, 0–1 (a heat wave). For the look only. */
+  heat: number;
 }
 
 /** The lengths, in game hours, of the spells each condition comes in. */
@@ -66,7 +68,7 @@ export const windShare = (sc: Scenario, time: number) => 1 - CALM_DROP * calmAt(
 export function weatherAt(sc: Scenario, time: number): Weather {
   const look = lookAt(sc, time), precip = Math.max(precipAt(sc, time), look.precip >= RAIN_FROM ? look.precip : 0), cloud = Math.max(cloudAt(sc, time), look.cloud, Math.min(1, precip * 1.5));
   const sky: Sky = precip > 0 ? (sc.climate.season === 'winter' ? 'snow' : 'rain') : cloud >= CLOUDY_FROM ? 'cloudy' : 'clear';
-  return { sky, precip, cloud };
+  return { sky, precip, cloud, heat: look.heat };
 }
 
 /** The weather now in a game (for the HUD chip and the look). */

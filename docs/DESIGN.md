@@ -89,6 +89,8 @@ The build preview is see-through, green where it fits and red where it doesn't.
   building in hand tints the ones it would trade with, and its placement card says so.
 - The placement card shows Earthworks (levelling cost, level and steps), Slope (sloping tiles and soil wear), sprinkler
   watts and lift, the extra wind up high and a wheel's current and fall.
+  A field's card counts rain as water while it rains ("Water: rain"), and its ten-minute soil forecast walks the next ten minutes an
+  hour of play at a time with each hour's warmth and rain (so a rain or warm spell that begins, or ends, within them counts).
 - The Height view tints land by centre height in blended bands of 3 levels, with steep banks darker. Cliff faces show the breaks.
   It shows while building and doing earthworks, under the grid and contour lines, unless the building in hand has a view of
   its own (silos the roads, sprinklers the water, hives the bees, anything that makes, stores or uses power the power).
@@ -221,11 +223,13 @@ through `WARMTH_NUDGES`, a list of functions each adding its degrees. Rain is th
 
 **Hens and bees by season** (`warmth.ts`; machines are indoors and don't care). The coop lays at the season's rate (the `hens.lay` lever: ×1 in
 spring and summer, ×0.75 in autumn, ×0.5 in winter), further slowed above 30°C by the crop-style fall-off 1 / (1 + (d / 6)²), d the degrees above 30:
-half speed at 36°C. The coop stays 'Working'; its inspector, hover and placement card say "Hens, 3°C: cool season, laying at about 50% speed".
+half speed at 36°C. **Trees by the coop shade it:** each tree within 2 tiles of the coop's footprint takes 2°C off the heat the hens feel
+(`ANIMALS.shadePerTree`; up to 6°C, three trees), so they slow at 30°C plus the shade instead of at 30°C (`coopShade`; the coop's inspector shows
+"Shade: 2 trees within 2 tiles", its placement card the same for the spot). The coop stays 'Working'; its inspector, hover and placement card say "Hens, 3°C: cool season, laying at about 50% speed".
 Bees stay in below 10°C: a hive makes no honey (status Too cold, "Bees: staying in, 7°C") and a flowering field harvested then gets no
 pollination bonus. Warmth swings over a day, so a hive works in the afternoon of a cool spring day. Winter days top out at 6°C, so in winter
 the bees stay in all day; Long Nights (winter, honey cake) can't be cleared until the greenhouse (#86), and its bot test is skipped.
-Hives in a gale, warm spells and bees in a greenhouse come later (phases 2 and 4).
+Hives in a gale and bees in a greenhouse come later (phases 2 and 4); a warm spell (see Weather events) lets them fly in winter.
 
 Each crop has a **comfortable range**: full speed inside it, and outside it a smooth fall-off of 1 / (1 + (d / 6)²), where d is
 the degrees outside the range: half speed 6°C out, a quarter 10°C out. This is one more factor in a field's pace, with water and
@@ -277,7 +281,7 @@ that it is limited to, whether it can be severe, its look and its `push`:
 | Event | Seasons (odds) | Characters | Length | Severe |
 | --- | --- | --- | --- | --- |
 | Thunderstorm | spring, summer | stormy ×2.5, wet ×1.5, hot ×1.2, mild ×0.7, dry ×0.4 | 10–14 h | yes |
-| Heat wave | summer | hot ×2.5, dry ×2, stormy ×0.6, wet ×0.5, mild ×0.4 | 24–48 h | yes |
+| Heat wave | summer | hot ×2.5, dry ×2, stormy ×0.6, wet ×0.5, mild ×0.4 | 24–40 h (severe 40–64 h) | yes |
 | Fog | autumn, from 03:00–07:00 | wet ×1.5, mild ×1.2, stormy ×0.5, gales ×0.3 | 4–7 h | yes |
 | Soft rain (good) | spring, autumn | wet ×1.8, mild ×1.2, dry ×0.4 | 20–28 h | no |
 | Warm spell (good) | autumn, winter | mild ×1.5, hot ×1.5, hard ×0.3 | 24–48 h | no |
@@ -294,11 +298,32 @@ The odds and lengths are first sketches. A tropical storm brings its **flood** t
 hurricane's flood is the severe one): the one case where events touch, and the flood is part of its storm, not one of the
 level's events.
 
-**Most events do nothing yet.** The whole catalogue is rolled and shown now, so random commissions have real events, but each
-kind's `push` is empty until its own issue lands (2.3 thunderstorm, heat wave, fog and the good events; 2.4 gale, tropical storm,
-hurricane; 2.5 flood; 2.6 late frost; 2.7 cold snap and blizzard; 2.8 dust storm). Until then an event changes the **look** of the
-sky (cloud and drawn rain or snow, eased in with the event's ramp; the rules do not see it, so a thunderstorm's rain waters no
-fields yet), the HUD chip and the list the forecast will read.
+**Events land one issue at a time.** The whole catalogue is rolled and shown, but a kind's `push` is filled in by its own issue:
+2.3 (below) the thunderstorm, heat wave, fog and the three good events; 2.4 gale, tropical storm, hurricane; 2.5 flood; 2.6 late
+frost; 2.7 cold snap and blizzard; 2.8 dust storm. Until its issue lands an event changes only the **look** of the sky (cloud and
+drawn rain or snow, eased in with the event's ramp; the rules do not see it), the HUD chip and the list the forecast will read.
+
+**The sky events (2.3).** Strengths are what the push is at full strength; each is blended in and out by the ramp.
+
+| Event | Ordinary | Severe |
+| --- | --- | --- |
+| Thunderstorm | `rain` 0.9 (every field counts as watered, sprinklers rest), `sun` ×0.6 on top of the full cloud, `wind` +0.45 | `rain` 1, `sun` ×0.4, `wind` +0.7: stronger gusts, almost no sun |
+| Heat wave | `warmth` +5°C: a summer afternoon passes 34°C (unwatered fields at ×0.1, hens at about 60%) | `warmth` +9°C, and 40–64 h instead of 24–40 |
+| Fog | `sun` ×0.4, `trucks` ×0.5 | `sun` ×0.25, `trucks` ×0.35 |
+| Soft rain | `rain` 0.35: gentle rain waters every field; not heavy rain | — |
+| Warm spell | `mild` 1: the day is lifted to a mild day, 12–24°C (`MILD_DAY`), if it is colder; a warmer day is left alone | — |
+| Steady breeze | `wind` +0.4: after the calm spells, so the calm season blows | — |
+
+- The `mild` lever (the highest wins, 0–1) is read in `WARMTH_NUDGES`: `mild × max(0, MILD_DAY curve − the day's warmth)`. In winter that
+  takes −5…6°C to 12…24°C: crops that grow at a mild season's pace, bees that fly, no frost; in autumn (9…21°C) it adds a little.
+- A heat wave's rules are all the warmth: crops past their comfortable range slow (watered ones too), an unwatered field falls
+  to ×0.1 above 34°C, and hens slow (less with trees by the coop). A warm tint lifts the light (the game-side `Look`, `greyLook`:
+  `Look.heat` in the catalogue, `lookAt(...).heat`, `Weather.heat`): a warmer lit and shadow tint and a golden sky.
+- **Heavy rain.** An event may carry `heavyRain` in the catalogue (the thunderstorm), and `heavyRainEvents(scenario, time)` lists
+  those under way. This is the hook for the spring flood (2.5): a spring thunderstorm counts as heavy rain. Soft rain and the
+  everyday showers do not.
+- Fog's look (haze) comes with 2.9: for now it is only a greyer sky; its rules are in.
+- A severe form's length can differ from the ordinary one (`severeHours`): only the heat wave has one so far.
 
 **Levers.** An event's `push` (per strength) gives some of these levers the value they reach at full strength; the rules
 read them through `pushesAt(scenario, time)`, so an effect that is a lever is one line in the event's entry:
@@ -312,6 +337,7 @@ read them through `pushesAt(scenario, time)`, so an effect that is a lever is on
 | `warmth` | adding | `WARMTH_NUDGES`: °C added to the valley's warmth |
 | `river` | multiplying | `makes`: a multiple of the current, so of what water wheels make |
 | `trucks` | multiplying | `drive`: a multiple of the trucks' speed |
+| `mild` | the highest | `WARMTH_NUDGES`: how far the day's warmth is lifted to a mild day's curve (0–1), never cooled |
 
 An event builds in over 1.5 game hours (15 s of play) and fades out over the last 1.5, so each push is blended from neutral by
 the event's `intensityAt`, 0 to 1 (events under way together combine their pushes). An effect that is more than a lever (the
@@ -778,9 +804,12 @@ time of a mild spring, times a **season-and-character factor** (`PAR_FACTOR` in 
 every season and character can earn gold. The factors come from `node tools/seasonfactor.ts`: it plays every bot layout in every
 climate on three seeds and compares each with the same layout in a mild spring; the factor is halfway between the mean ratio and
 the worst, rounded up to 0.05 (a commission's goals decide which layout it is like: autumn is quicker for oil and honey cake and
-slower for linen and bread). Spring 1 to 1.1, summer 1.1 to 1.35 (hot summer 1.35: heat is hard on wheat, flax and beans, and
-calm days starve solar and wind), autumn 1.1 to 1.35 (stormy 1.35), winter 2.6 (mild), 2.65 (gales) and 3.85 (hard): the bot
-needs 1.7 to 2.6 times as long for flour, 2.3 to 2.8 for bread and 2.9 to 4.4 for linen. Relief starts at
+slower for linen and bread). Spring 1 to 1.2 (stormy 1.2: its thunderstorms), summer 1.1 to 1.4 (hot summer 1.4: heat is hard on wheat, flax and beans, calm days starve
+solar and wind, and a heat wave comes), autumn 1.1 to 1.35 (stormy 1.35), winter 2.6 (mild), 2.65 (gales) and 3.85 (hard): the bot
+needs 1.7 to 2.6 times as long for flour, 2.3 to 2.8 for bread and 2.9 to 4.4 for linen. The seasonfactor tool plays no events, so
+the sky events' share (2.3) was measured separately: the layouts played with each climate's rolled events (difficulty 3) against none were
+2% slower on average, 16% at the worst (a severe spring thunderstorm in a stormy spring took one run 39% longer), and the two factors above
+took a little of it; the events still to come (2.4–2.8) are retuned in 2.10. Relief starts at
 0.25 + 0.15 × difficulty (0.4, 0.55, 0.7); Hilly sets it to 0.9, Flat to 0 (one or the other, never both). Relief
 scales the rolling hills; corner heights stay within 0–16. Flat is all one level.
 

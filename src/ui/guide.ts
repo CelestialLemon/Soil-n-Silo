@@ -8,7 +8,8 @@ import { SOIL_AHEAD } from '../game/forecast.ts';
 import { RECENT_WINDOW } from '../game/flows.ts';
 import { paceOf, riverSeason, SPRINKLER_MOST, TURBINE_MOST, waterPace } from '../game/rules.ts';
 import { CHARACTERS, charactersOf, climateOf, SEASON_IDS, SEASONS, seasonName, type Season, type Shift } from '../game/seasons.ts';
-import { FROST, RAIN_COOLING, warmthByHour } from '../game/warmth.ts';
+import { FROST, MILD_DAY, RAIN_COOLING, warmthByHour } from '../game/warmth.ts';
+import { EVENTS, hoursOf, type EventKind } from '../game/events.ts';
 import { isPollinated } from '../game/sim/layout.ts';
 import { fieldFertility } from '../game/sim/soil.ts';
 import { recipeOf } from '../game/sim/goods.ts';
@@ -28,7 +29,7 @@ import { keyNames, tip } from './keyhints.ts';
 // goods, and a few pages on the basics (trucks and routes, power, soil, the markers). The words are written here; every number comes
 // from data.ts, so the guide stays right when the game is tuned.
 
-export type GuidePage = { kind: 'building'; id: BuildingId } | { kind: 'topic'; id: TopicId } | { kind: 'season'; id: Season } | { kind: 'goods' };
+export type GuidePage = { kind: 'building'; id: BuildingId } | { kind: 'topic'; id: TopicId } | { kind: 'season'; id: Season } | { kind: 'event'; id: EventKind } | { kind: 'goods' };
 
 export interface GuideHost {
   /** The commission in progress, for "in your valley now". */
@@ -207,6 +208,9 @@ const TOPICS: { id: TopicId; name: string; chip: string }[] = [
   { id: 'soil', name: 'Soil and water', chip: 'Soil' }, { id: 'weather', name: 'Seasons and weather', chip: 'Weather' }, { id: 'land', name: 'Height and earthworks', chip: 'Height' }, { id: 'markers', name: 'Statuses and markers', chip: 'Statuses' }, { id: 'keys', name: 'Keys', chip: 'Keys' },
 ];
 
+/** The weather events that have a page, in the order of the index: their rules are in. */
+const GUIDED_EVENTS: readonly EventKind[] = ['thunderstorm', 'heatWave', 'fog', 'softRain', 'warmSpell', 'steadyBreeze'];
+
 const lc = (id: ItemId) => ITEMS[id].name.toLowerCase();
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
@@ -227,6 +231,58 @@ function worthReading(s: GameState): TopicId[] {
   if (sc.terrain.relief >= 0.6) out.push('land');
   return out;
 }
+
+const NODES = (...c: (Node | string)[]) => c;
+/** The words of each weather event's page (the six whose rules are in); the numbers come from the catalogue and data.ts. */
+type EventText = { lead: string; does: (Node | string)[][]; severe?: (Node | string)[][] };
+const eventText = (linkOf: (label: string, p: GuidePage) => Node, bLinkOf: (id: BuildingId) => Node): Partial<Record<EventKind, EventText>> => {
+  const push = (k: EventKind, st: 'ordinary' | 'severe' = 'ordinary') => EVENTS[k].push[st] ?? {};
+  const pc = (n: number) => `${Math.round(n * 100)}%`;
+  return {
+    thunderstorm: {
+      lead: 'Heavy rain, a dark sky and gusts of wind, for about half a day.',
+      does: [
+        NODES('Heavy rain waters every open field, so the sprinklers rest. Rain cools the valley by up to ', String(RAIN_COOLING), '°C.'),
+        NODES(`The sky is thick with cloud and the sun gives ${pc(push('thunderstorm').sun ?? 1)} of what the cloud leaves, so solar panels make very little.`),
+        NODES(`The wind gains ${pc(push('thunderstorm').wind ?? 0)} of its full strength on top of the day's wind, so turbines make more.`),
+        NODES('In spring it counts as heavy rain, which is what a flood follows.')],
+      severe: [NODES(`Harder: the wind gains ${pc(push('thunderstorm', 'severe').wind ?? 0)}, the sun gives ${pc(push('thunderstorm', 'severe').sun ?? 1)} of what the cloud leaves.`)],
+    },
+    heatWave: {
+      lead: 'Days of heat in the summer, hotter than the season usually gets.',
+      does: [
+        NODES(`The whole day's warmth is lifted by ${push('heatWave').warmth}°C, past ${FIELD.heat}°C in the afternoon.`),
+        NODES(`An unwatered field grows at ${FIELD.dry} of its pace, falling to ${FIELD.heatDry} by ${FIELD.heatFull}°C. A field on the water or watered by a `, bLinkOf('sprinkler'), ' is not slowed by the lack of water.'),
+        NODES(`Crops slow outside their comfortable range, watered or not (see `, linkOf('Seasons and weather', { kind: 'topic', id: 'weather' }), ').'),
+        NODES(`Hens slow above ${ANIMALS.henHeat}°C. Each tree within ${ANIMALS.shadeReach} tiles of a `, bLinkOf('coop'), ` takes ${ANIMALS.shadePerTree}°C off the heat the hens feel, up to ${ANIMALS.shadeMost}°C (${ANIMALS.shadeMost / ANIMALS.shadePerTree} trees).`),
+        NODES('The light turns warm and golden.')],
+      severe: [NODES(`Hotter: ${push('heatWave', 'severe').warmth}°C above the season, and it lasts ${hoursOf('heatWave', 'severe')[0]}–${hoursOf('heatWave', 'severe')[1]} hours.`)],
+    },
+    fog: {
+      lead: 'A grey morning in the autumn.',
+      does: [
+        NODES(`The sun gives ${pc(push('fog').sun ?? 1)} of its light, so solar panels make less.`),
+        NODES(`The trucks drive at ${pc(push('fog').trucks ?? 1)} of their speed.`)],
+      severe: [NODES(`Thicker: the sun gives ${pc(push('fog', 'severe').sun ?? 1)} of its light and the trucks drive at ${pc(push('fog', 'severe').trucks ?? 1)} of their speed.`)],
+    },
+    softRain: {
+      lead: 'A day of gentle rain, in spring or autumn.',
+      does: [
+        NODES('The rain waters every open field and the sprinklers rest. Rain cools the valley by up to ', String(RAIN_COOLING), '°C.'),
+        NODES('It is too light to flood anything.')],
+    },
+    warmSpell: {
+      lead: 'A mild stretch in autumn or winter.',
+      does: [
+        NODES(`The day is lifted to a mild one, ${MILD_DAY.low} to ${MILD_DAY.high}°C, if it would have been colder. A day already warmer is left as it is.`),
+        NODES(`Crops grow at the pace of a mild season, and bees fly (they need ${ANIMALS.beesFly}°C).`)],
+    },
+    steadyBreeze: {
+      lead: 'A day of wind in the summer, when the air is usually calm.',
+      does: [NODES(`The wind gains ${pc(push('steadyBreeze').wind ?? 0)} of its full strength, after the calm spells, so turbines make more.`)],
+    },
+  };
+};
 
 const TILE_NAMES: Partial<Record<BuildingId, string>> = { solar: 'Solar', turbine: 'Turbine', depot: 'Depot', hive: 'Beehive', press: 'Oil press' };
 
@@ -253,7 +309,8 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
   function drawIndex() {
     const topics = h('div', { class: 'topics' }, ...TOPICS.map((t) => h('button', { class: `topic${page.kind === 'topic' && page.id === t.id ? ' is-on' : ''}`, onclick: () => go({ kind: 'topic', id: t.id }) }, t.chip)),
       h('button', { class: `topic${page.kind === 'goods' ? ' is-on' : ''}`, onclick: () => go({ kind: 'goods' }) }, 'Goods'),
-      ...SEASON_IDS.map((x) => h('button', { class: `topic${page.kind === 'season' && page.id === x ? ' is-on' : ''}`, onclick: () => go({ kind: 'season', id: x }) }, SEASONS[x].name)));
+      ...SEASON_IDS.map((x) => h('button', { class: `topic${page.kind === 'season' && page.id === x ? ' is-on' : ''}`, onclick: () => go({ kind: 'season', id: x }) }, SEASONS[x].name)),
+      ...GUIDED_EVENTS.map((x) => h('button', { class: `topic${page.kind === 'event' && page.id === x ? ' is-on' : ''}`, onclick: () => go({ kind: 'event', id: x }) }, EVENTS[x].name)));
     const tile = (id: BuildingId) => h('button', { class: `gtile${page.kind === 'building' && page.id === id ? ' is-on' : ''}${have.has(id) ? ' is-here' : ''}`, onclick: () => go({ kind: 'building', id }) },
       icon(id, 40), TILE_NAMES[id] ?? BUILDINGS[id].name);
     let list: (Node | null)[];
@@ -264,6 +321,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
       for (const i of ITEM_IDS) if (`${ITEMS[i].name} ${ITEMS[i].hint}`.toLowerCase().includes(query)) hits.push(h('button', { class: 'hit', onclick: () => go({ kind: 'goods' }) }, icon(i, 28), h('b', null, ITEMS[i].name), h('span', { class: 'cd-small' }, ITEMS[i].hint)));
       for (const t of TOPICS) if (t.name.toLowerCase().includes(query)) hits.push(h('button', { class: 'hit', onclick: () => go({ kind: 'topic', id: t.id }) }, icon('book', 28), h('b', null, t.name), h('span', { class: 'cd-small' }, 'Topic')));
       for (const x of SEASON_IDS) if (`${SEASONS[x].name} season weather`.toLowerCase().includes(query)) hits.push(h('button', { class: 'hit', onclick: () => go({ kind: 'season', id: x }) }, icon('sun', 28), h('b', null, SEASONS[x].name), h('span', { class: 'cd-small' }, 'Season')));
+      for (const x of GUIDED_EVENTS) if (`${EVENTS[x].name} weather event`.toLowerCase().includes(query)) hits.push(h('button', { class: 'hit', onclick: () => go({ kind: 'event', id: x }) }, icon('sun', 28), h('b', null, EVENTS[x].name), h('span', { class: 'cd-small' }, 'Weather event')));
       for (const [what, keys] of keyList()) if (`${what} ${keys}`.toLowerCase().includes(query)) hits.push(h('button', { class: 'hit', onclick: () => go({ kind: 'topic', id: 'keys' }) }, h('span', { class: 'cd-key' }, keys), h('b', null, what), h('span', { class: 'cd-small' }, 'Key')));
       list = [h('div', { class: 'hits' }, ...(hits.length ? hits : [h('p', { class: 'cd-small' }, 'Nothing matches.')]))];
     } else {
@@ -283,7 +341,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
   function draw() {
     drawIndex();
     fill(body, h('button', { class: 'cd-btn is-icon close', title: tip('Close', ...keyNames('guide'), 'Esc'), 'aria-label': 'Close', onclick: close }, icon('close', 16)),
-      ...(page.kind === 'building' ? buildingPage(page.id) : page.kind === 'goods' ? goodsPage() : page.kind === 'season' ? seasonPage(page.id) : topicPage(page.id)));
+      ...(page.kind === 'building' ? buildingPage(page.id) : page.kind === 'goods' ? goodsPage() : page.kind === 'season' ? seasonPage(page.id) : page.kind === 'event' ? eventPage(page.id) : topicPage(page.id)));
   }
 
   // ---- Buildings ----
@@ -555,6 +613,29 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
     ];
   }
 
+  // ---- Weather events ----
+
+  /** A weather event's page: when it comes, how long it lasts and what it does, as facts. */
+  function eventPage(kind: EventKind): Node[] {
+    const e = EVENTS[kind], row = (k: string, v: string) => h('div', { class: 'cd-row' }, h('span', null, k), h('i'), h('b', null, v));
+    const hrs = (r: readonly [number, number]) => `${r[0]}–${r[1]} hours`;
+    const seasons = SEASON_IDS.filter((x) => (e.seasons[x] ?? 0) > 0).map((x) => SEASONS[x].name.toLowerCase()).join(' and ');
+    const d = must(eventText(link, bLink)[kind], `a guide page for ${kind}`);
+    return [
+      h('div', { class: 'cd-small cd-faint' }, `Weather events · ${e.good ? 'a good one' : 'a bad one'}`), h('h1', { class: 'cd-display' }, e.name), h('p', { class: 'lead' }, d.lead),
+      h('div', { class: 'cd-label sec' }, 'When'),
+      h('div', { class: 'num-rows' },
+        row('Comes in', seasons),
+        row('Lasts', e.severeHours ? `${hrs(e.hours)}; severe ${hrs(e.severeHours)}` : hrs(e.hours)),
+        e.begins ? row('Begins', `between ${clock(e.begins[0])} and ${clock(e.begins[1])}`) : null,
+        row('Severe form', e.severe ? 'yes' : 'none: it only helps'),
+        row('Builds in', 'over the first hour and a half, and fades out over the last')),
+      h('div', { class: 'cd-label sec' }, 'What it does'),
+      h('ul', null, ...d.does.map((x) => h('li', null, ...x))),
+      ...(d.severe ? [h('div', { class: 'cd-label sec' }, 'Severe'), h('ul', null, ...d.severe.map((x) => h('li', null, ...x)))] : []),
+    ];
+  }
+
   // ---- Topics ----
 
   function topicPage(id: TopicId): Node[] {
@@ -636,6 +717,9 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
           h('li', null, B('River:'), ' the season sets the current, so what a ', bLink('wheel'), ' makes.')),
         h('div', { class: 'cd-label sec' }, 'The seasons'),
         h('div', { class: 'chips' }, ...SEASON_IDS.map((x) => h('button', { class: 'cd-chip', onclick: () => go({ kind: 'season', id: x }) }, `${SEASONS[x].name} · ${Math.round(SEASONS[x].levers.warmth.low)} to ${Math.round(SEASONS[x].levers.warmth.high)}°C`))),
+        h('div', { class: 'cd-label sec' }, 'Weather events'),
+        P('Now and then an event passes through a valley: it lasts half a day to two days, builds in and fades out. Each has its own page.'),
+        h('div', { class: 'chips' }, ...GUIDED_EVENTS.map((x) => h('button', { class: 'cd-chip', onclick: () => go({ kind: 'event', id: x }) }, EVENTS[x].name))),
       ];
       case 'markers': return [...head('Statuses and markers', 'A marker floats over any building that isn\'t working. Each has a shape as well as a colour; click the building for the details.'),
         markersCard(),

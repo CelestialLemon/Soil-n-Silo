@@ -1,5 +1,5 @@
-import { BUILDINGS, FIELD, HIVE, POWER, type BuildingId, type CropDef } from './data.ts';
-import { dryPace, warmthPace } from './warmth.ts';
+import { ANIMALS, BUILDINGS, FIELD, HIVE, POWER, type BuildingId, type CropDef } from './data.ts';
+import { dryPace, henPace, warmthOf, warmthPace } from './warmth.ts';
 import { TERRAIN } from './map.ts';
 import { baseLevel, centreLevel, corners, joins, MAX_LEVEL, SIDES, sideOf, spanOf, STEEP } from './relief.ts';
 import { buildingAt, centre, inMap, reachTo, terrainAt, tileIndex, type Building, type Dir, type Footprint, type GameState } from './state.ts';
@@ -98,6 +98,22 @@ export function windExposure(s: GameState, x: number, y: number) {
   const height = 1 + POWER.windPerLevel * centreLevel(s.map, x, y);
   return { shelter, height, exposure: shelter * height };
 }
+
+/** The trees within ANIMALS.shadeReach tiles of a coop at (x, y) (counting up to the most that shades it). */
+export function coopTrees(s: GameState, x: number, y: number): number {
+  const r = ANIMALS.shadeReach, n = BUILDINGS.coop.size, most = Math.ceil(ANIMALS.shadeMost / ANIMALS.shadePerTree);
+  let trees = 0;
+  for (let ty = y - r; ty < y + n + r; ty++) for (let tx = x - r; tx < x + n + r; tx++) {
+    if (inMap(s, tx, ty) && terrainAt(s, tx, ty) === TERRAIN.tree) trees++;
+  }
+  return Math.min(trees, most);
+}
+
+/** The heat, in °C, the trees by a coop at (x, y) take off what the hens feel. */
+export const coopShade = (s: GameState, x: number, y: number) => coopTrees(s, x, y) * ANIMALS.shadePerTree;
+
+/** How fast the hens of a coop (or one about to stand) at (x, y) lay in a warmth (default now), with its trees' shade. */
+export const coopPace = (s: GameState, x: number, y: number, w = warmthOf(s)) => henPace(s.scenario, w, coopShade(s, x, y));
 
 /** The highest corner of a tile (levels). */
 const top = (s: GameState, x: number, y: number) => Math.max(...corners(s.map, x, y));

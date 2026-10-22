@@ -39,9 +39,17 @@ export function warmthAt(sc: Scenario, time: number): number {
 export const WARMTH_NUDGES: ((s: GameState, time: number) => number)[] = [
   // Rain or snow cools the valley, by up to RAIN_COOLING at its heaviest.
   (s, time) => -RAIN_COOLING * precipAt(s.scenario, time),
-  // A weather event lifts or drops the whole curve (a heat wave, a cold snap), its `warmth` push.
-  (s, time) => pushesAt(s.scenario, time).warmth,
+  // A weather event lifts or drops the whole curve (a heat wave, a cold snap), its `warmth` push; a warm spell lifts a cold day up to a mild one.
+  (s, time) => {
+    const p = pushesAt(s.scenario, time);
+    if (!p.mild) return p.warmth;
+    const mild = warmthByHour({ warmth: MILD_DAY, sun: s.scenario.climate.sun }, hourAt(time));
+    return p.warmth + p.mild * Math.max(0, mild - warmthAt(s.scenario, time));
+  },
 ];
+
+/** The day a warm spell lifts a colder one to: a mild day's coldest and warmest, in °C. Crops grow at nearly full speed in it and the bees fly. */
+export const MILD_DAY = { low: 12, high: 24, drift: 0 };
 
 /** The most, in °C, that precipitation cools the valley. */
 export const RAIN_COOLING = 2;
@@ -77,9 +85,9 @@ export function warmthFact(crop: CropDef, w: number): { text: string; tone?: 'ba
   return { text: `${head}: ${word} for it, ${how}`, tone: f < 0.6 ? 'bad' : undefined };
 }
 
-/** How fast the hens lay in a warmth, 0–1: the season's rate, slowed smoothly above ANIMALS.henHeat. */
-export function henPace(sc: Scenario, w: number): number {
-  const d = Math.max(0, w - ANIMALS.henHeat);
+/** How fast the hens lay in a warmth, 0–1: the season's rate, slowed smoothly above ANIMALS.henHeat, less so where trees shade the coop (`shade`, in °C). */
+export function henPace(sc: Scenario, w: number, shade = 0): number {
+  const d = Math.max(0, w - shade - ANIMALS.henHeat);
   return sc.climate.hens.lay / (1 + (d / ANIMALS.henHeatWidth) ** 2);
 }
 
@@ -87,10 +95,17 @@ export function henPace(sc: Scenario, w: number): number {
 export const beesFly = (w: number) => w >= ANIMALS.beesFly;
 
 /** The coop's laying as a fact: "Hens: laying at half speed, 3°C". */
-export function henFact(sc: Scenario, w: number): { text: string; tone?: 'bad' | 'good' } {
-  const f = henPace(sc, w), head = `Hens, ${Math.round(w)}°C`;
+export function henFact(sc: Scenario, w: number, shade = 0): { text: string; tone?: 'bad' | 'good' } {
+  const f = henPace(sc, w, shade), head = `Hens, ${Math.round(w)}°C`;
   if (f >= 0.97) return { text: `${head}: laying at full speed`, tone: 'good' };
-  return { text: `${head}: ${w > ANIMALS.henHeat ? 'too warm' : 'cool season'}, laying at about ${Math.round(f * 20) * 5}% speed`, tone: f < 0.6 ? 'bad' : undefined };
+  const hot = w > ANIMALS.henHeat, shaded = hot && shade > 0 ? `, the trees shade them ${shade}°C` : '';
+  return { text: `${head}: ${hot ? 'too warm' : 'cool season'}, laying at about ${Math.round(f * 20) * 5}% speed${shaded}`, tone: f < 0.6 ? 'bad' : undefined };
+}
+
+/** The trees by a coop as a fact, for its card: "2 trees within 2 tiles: the hens feel 4°C less of a heat wave". */
+export function shadeFact(trees: number): string {
+  if (!trees) return `no trees within ${ANIMALS.shadeReach} tiles to shade the hens in a heat wave`;
+  return `within ${ANIMALS.shadeReach} tiles: the hens feel ${trees * ANIMALS.shadePerTree}°C less of a heat wave${trees * ANIMALS.shadePerTree >= ANIMALS.shadeMost ? ' (the most trees can take off)' : ''}`;
 }
 
 /** The bees as a fact: "Bees: staying in, 7°C". */

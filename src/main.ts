@@ -613,7 +613,7 @@ async function play(initial: GameState) {
   }
 
   // ---- Loop ----
-  let last = performance.now(), time = 0, frameNo = 0, lookHour = Number.NaN, lookCloud = 0, lookPrecip = 0, sinceSave = 0;
+  let last = performance.now(), time = 0, frameNo = 0, lookHour = Number.NaN, lookCloud = 0, lookPrecip = 0, lookHeat = 0, sinceSave = 0;
   let wasComplete = state.completedAt !== null;
   let skyEased: { cloud: number; wind: number; precip: number } | null = null;
   /** What fell last, so a fading shower keeps its kind while it thins out. */
@@ -660,8 +660,8 @@ async function play(initial: GameState) {
     });
     // The hour's look, greyed by the weather now; set again when the hour or the weather has moved enough to show.
     const weather = sky;
-    if (!(Math.abs(hour - lookHour) <= 0.02) || Math.abs(weather.cloud - lookCloud) > 0.01 || Math.abs(weather.precip - lookPrecip) > 0.01) {
-      renderer.setLook(greyLook(lookAt(hour), weather)); lookHour = hour; lookCloud = weather.cloud; lookPrecip = weather.precip;
+    if (!(Math.abs(hour - lookHour) <= 0.02) || Math.abs(weather.cloud - lookCloud) > 0.01 || Math.abs(weather.precip - lookPrecip) > 0.01 || Math.abs(weather.heat - lookHeat) > 0.01) {
+      renderer.setLook(greyLook(lookAt(hour), weather)); lookHour = hour; lookCloud = weather.cloud; lookPrecip = weather.precip; lookHeat = weather.heat;
     }
 
     ground.sync();

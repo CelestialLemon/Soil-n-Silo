@@ -137,11 +137,11 @@ const PRODUCTS: { item: ItemId; n: number; level: number }[] = [
  * How much longer than a mild spring a random commission's target is, by season and character (the table is measured by
  * tools/seasonfactor.ts: the bot's times in each climate against a mild spring's, halfway between the mean over its layouts and
  * the worst). Summer is a little slower (its heat is hard on wheat and flax, and calm days hold the solar and wind output
- * down), autumn about the same, and winter 2.5 to 4 times longer: little grows below 6°C and the hens lay at half rate.
+ * down; a hot summer's heat wave, 2.3), autumn about the same, and winter 2.5 to 4 times longer: little grows below 6°C and the hens lay at half rate.
  */
 export const PAR_FACTOR: Record<Season, Partial<Record<Character, number>>> = {
-  spring: { mild: 1, wet: 1.1, dry: 1.05, hot: 1, gales: 1.05, stormy: 1.1, highRiver: 1.05 },
-  summer: { mild: 1.2, wet: 1.1, dry: 1.25, hot: 1.35, stormy: 1.1 },
+  spring: { mild: 1, wet: 1.1, dry: 1.05, hot: 1, gales: 1.05, stormy: 1.2, highRiver: 1.05 },
+  summer: { mild: 1.2, wet: 1.1, dry: 1.25, hot: 1.4, stormy: 1.1 },
   autumn: { mild: 1.1, wet: 1.25, dry: 1.15, gales: 1.15, stormy: 1.35 },
   winter: { mild: 2.6, gales: 2.65, hard: 3.85 },
 };

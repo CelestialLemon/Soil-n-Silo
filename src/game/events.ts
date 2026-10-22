@@ -13,7 +13,7 @@ import type { GameState } from './state.ts';
 // lasts, how it looks and what it pushes. An event's effects are its `push`: amounts for a few levers (sun, wind, cloud, rain,
 // warmth, the river, truck speed) that the rules already read through `pushesAt`, so a new effect is one line in its entry,
 // and an effect that needs more than a lever (a flood's water, a frost's spots) reads the event itself (`activeEvents`).
-// Most entries push nothing yet: each of 2.3–2.8 fills in its events.
+// Each of 2.3–2.8 fills in its events' pushes; those still empty change the sky and the HUD chip but not the rules.
 
 export const EVENT_KINDS = [
   'thunderstorm', 'heatWave', 'fog', 'softRain', 'warmSpell', 'steadyBreeze',
@@ -57,6 +57,8 @@ const LEVERS = {
   river: { neutral: 1, mix: 'mul' },
   /** A multiple of the trucks' speed. */
   trucks: { neutral: 1, mix: 'mul' },
+  /** How far the day's warmth is lifted to a mild day's curve (0–1; never cooled: a day already warmer stays as it is). */
+  mild: { neutral: 0, mix: 'max' },
 } as const satisfies Record<string, { neutral: number; mix: 'mul' | 'add' | 'max' }>;
 
 export type Lever = keyof typeof LEVERS;
@@ -69,8 +71,8 @@ export const NEUTRAL: Readonly<Pushes> = Object.freeze(Object.fromEntries(LEVER_
 
 // ---- The catalogue ----
 
-/** How an event looks in the sky, apart from its effects: the cover and the rain or snow drawn (0–1). */
-export interface Look { cloud?: number; precip?: number }
+/** How an event looks in the sky, apart from its effects: the cover and the rain or snow drawn, and how warm the light is (0–1). */
+export interface Look { cloud?: number; precip?: number; heat?: number }
 
 export interface EventInfo {
   name: string;
@@ -80,6 +82,10 @@ export interface EventInfo {
   good?: boolean;
   /** How long it lasts, in game hours (a random one rolls between the two). */
   hours: readonly [number, number];
+  /** The severe form's hours, where it lasts longer than the ordinary one. */
+  severeHours?: readonly [number, number];
+  /** It rains hard enough to count as heavy rain, for what heavy rain brings (a spring flood, 2.5): see `heavyRainEvents`. */
+  heavyRain?: boolean;
   /** The hours of the day it can begin in, where it is tied to one (fog at dawn, a frost at night); the window may wrap midnight. */
   begins?: readonly [number, number];
   /** How often each season brings it (1: usual); a season missing from the table never does. */
@@ -100,33 +106,45 @@ export interface EventInfo {
 
 /**
  * Every weather event. Seasons and characters follow `docs/CLIMATE.md` (the table in #84); the odds are first sketches.
- * `push` is where an event's effects go (2.3–2.8); it is empty for all of them for now, so an event so far changes the sky, the
- * HUD chip and the forecast's list but not the rules.
+ * `push` is where an event's effects go (2.3–2.8); an event with it empty so far changes the sky, the HUD chip and the forecast's
+ * list but not the rules.
  */
 export const EVENTS: Record<EventKind, EventInfo> = {
   thunderstorm: {
     name: 'Thunderstorm', hours: [10, 14], seasons: { spring: 1, summer: 1 }, severe: true,
-    odds: { stormy: 2.5, wet: 1.5, hot: 1.2, mild: 0.7, dry: 0.4 }, push: {}, look: { cloud: 1, precip: 0.9 },
+    odds: { stormy: 2.5, wet: 1.5, hot: 1.2, mild: 0.7, dry: 0.4 }, heavyRain: true, look: { cloud: 1, precip: 0.9 },
+    // Heavy rain waters every field and the sprinklers rest; little sun; gusts, stronger in a severe one.
+    push: { ordinary: { rain: 0.9, sun: 0.6, wind: 0.45 }, severe: { rain: 1, sun: 0.4, wind: 0.7 } },
   },
   heatWave: {
-    name: 'Heat wave', hours: [24, 48], seasons: { summer: 1 }, severe: true,
-    odds: { hot: 2.5, dry: 2, wet: 0.5, mild: 0.4, stormy: 0.6 }, push: {}, look: {},
+    name: 'Heat wave', hours: [24, 40], severeHours: [40, 64], seasons: { summer: 1 }, severe: true,
+    odds: { hot: 2.5, dry: 2, wet: 0.5, mild: 0.4, stormy: 0.6 }, look: { heat: 1 },
+    // The whole warmth curve lifts past 30°C: unwatered fields nearly stop and hens slow (warmth.ts). A severe one is hotter and longer.
+    push: { ordinary: { warmth: 5 }, severe: { warmth: 9 } },
   },
   fog: {
     name: 'Fog', hours: [4, 7], begins: [3, 7], seasons: { autumn: 1 }, severe: true,
-    odds: { wet: 1.5, mild: 1.2, gales: 0.3, stormy: 0.5 }, push: {}, look: { cloud: 0.6 },
+    odds: { wet: 1.5, mild: 1.2, gales: 0.3, stormy: 0.5 }, look: { cloud: 0.6 },
+    // Solar is weak and the trucks crawl; a severe fog is thicker.
+    push: { ordinary: { sun: 0.4, trucks: 0.5 }, severe: { sun: 0.25, trucks: 0.35 } },
   },
   softRain: {
     name: 'Soft rain', good: true, hours: [20, 28], seasons: { spring: 1, autumn: 1 },
-    odds: { wet: 1.8, mild: 1.2, dry: 0.4 }, push: {}, look: { cloud: 0.7, precip: 0.35 },
+    odds: { wet: 1.8, mild: 1.2, dry: 0.4 }, look: { cloud: 0.7, precip: 0.35 },
+    // Gentle rain waters every field (and rests the sprinklers); it is too light to count as heavy rain.
+    push: { ordinary: { rain: 0.35 } },
   },
   warmSpell: {
     name: 'Warm spell', good: true, hours: [24, 48], seasons: { autumn: 1, winter: 1 },
-    odds: { mild: 1.5, hot: 1.5, hard: 0.3 }, push: {}, look: {},
+    odds: { mild: 1.5, hot: 1.5, hard: 0.3 }, look: {},
+    // The day is lifted to a mild day's warmth (MILD_DAY): crops grow at a mild season's pace and the bees fly.
+    push: { ordinary: { mild: 1 } },
   },
   steadyBreeze: {
     name: 'Steady breeze', good: true, hours: [20, 28], seasons: { summer: 1 },
-    odds: { dry: 1.2, hot: 1.2, stormy: 0.5 }, push: {}, look: {},
+    odds: { dry: 1.2, hot: 1.2, stormy: 0.5 }, look: {},
+    // A wind in the calm season, on top of the calm spells.
+    push: { ordinary: { wind: 0.4 } },
   },
   gale: {
     name: 'Gale', hours: [20, 28], seasons: { autumn: 1 }, severe: true,
@@ -225,6 +243,13 @@ export function eventNow(sc: Pick<Scenario, 'events'>, time: number): WeatherEve
 export const eventsIn = (sc: Pick<Scenario, 'events'>, from: number, to: number): WeatherEvent[] =>
   sc.events.filter((e) => e.start < to && endOf(e) > from).sort((a, b) => a.start - b.start);
 
+/**
+ * The events under way that bring heavy rain: a thunderstorm (and, later, a tropical storm). A spring flood (2.5) builds on these;
+ * a soft rain and the everyday showers are not heavy rain.
+ */
+export const heavyRainEvents = (sc: Pick<Scenario, 'events'>, time: number): WeatherEvent[] =>
+  activeEvents(sc, time).filter((a) => EVENTS[a.event.kind].heavyRain).map((a) => a.event);
+
 /** What the events under way push the levers to, combined (see LEVERS). */
 export function pushesOf(active: readonly Active[]): Pushes {
   if (!active.length) return NEUTRAL;
@@ -245,28 +270,33 @@ export function pushesOf(active: readonly Active[]): Pushes {
 /** The levers at a time. The rules read the sun, wind, rain, warmth, river and trucks through this. */
 export const pushesAt = (sc: Pick<Scenario, 'events'>, time: number): Pushes => pushesOf(activeEvents(sc, time));
 
-/** How the sky looks because of the events under way: the most cloud and the hardest rain any of them gives, felt as strongly as they are. */
-export function lookAt(sc: Pick<Scenario, 'events'>, time: number): { cloud: number; precip: number } {
-  let cloud = 0, precip = 0;
+/** How the sky looks because of the events under way: the most cloud, the hardest rain and the warmest light any of them gives, felt as strongly as they are. */
+export function lookAt(sc: Pick<Scenario, 'events'>, time: number): { cloud: number; precip: number; heat: number } {
+  let cloud = 0, precip = 0, heat = 0;
   for (const { event, intensity } of activeEvents(sc, time)) {
     const look = EVENTS[event.kind].look, k = intensity * (event.strength === 'severe' ? 1.15 : 1);
     cloud = Math.max(cloud, Math.min(1, (look.cloud ?? 0) * k));
     precip = Math.max(precip, Math.min(1, (look.precip ?? 0) * k));
+    heat = Math.max(heat, Math.min(1, (look.heat ?? 0) * k));
   }
-  return { cloud, precip };
+  return { cloud, precip, heat };
 }
 
 // ---- Building events ----
 
+/** The range of hours an event of a kind lasts at a strength (the severe form's own, where it has one). */
+export const hoursOf = (kind: EventKind, strength: Strength = 'ordinary'): readonly [number, number] =>
+  (strength === 'severe' && EVENTS[kind].severeHours) || EVENTS[kind].hours;
+
 /** The hours an event of a kind lasts when nothing says: the middle of its range. */
-const usualHours = (kind: EventKind) => (EVENTS[kind].hours[0] + EVENTS[kind].hours[1]) / 2;
+const usualHours = (kind: EventKind, strength: Strength) => { const h = hoursOf(kind, strength); return (h[0] + h[1]) / 2; };
 
 /** An event and what follows it (a flood after a tropical storm) starting at `start`, each lasting `hours` (default: the kind's usual). */
 export function eventChain(kind: EventKind, strength: Strength, start: number, hours?: number): WeatherEvent[] {
   const out: WeatherEvent[] = [];
   let at = snap(start);
   for (let k: EventKind | undefined = kind; k; k = EVENTS[k].then) {
-    const length = snap((out.length ? usualHours(k) : hours ?? usualHours(k)) * HOUR);
+    const length = snap((out.length ? usualHours(k, strength) : hours ?? usualHours(k, strength)) * HOUR);
     out.push({ kind: k, strength, start: at, length });
     at += length;
   }
@@ -334,7 +364,7 @@ export function rollEvents(seed: number, difficulty: 1 | 2 | 3, climate: Climate
     if (options.length && r() < (climate.character && HARSH.includes(climate.character) ? HARSH_SEVERE_CHANCE : SEVERE_CHANCE)) strengths[options[Math.floor(r() * options.length)]] = 'severe';
   }
   // Each event with what follows it is one block, laid out in a random order.
-  const kinds = [...bad, ...good].map((kind, i) => ({ kind, strength: strengths[i], hours: EVENTS[kind].hours }));
+  const kinds = [...bad, ...good].map((kind, i) => ({ kind, strength: strengths[i], hours: hoursOf(kind, strengths[i]) }));
   for (let i = kinds.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [kinds[i], kinds[j]] = [kinds[j], kinds[i]]; }
   const blocks = kinds.map((k) => eventChain(k.kind, k.strength, 0, Math.round((k.hours[0] + r() * (k.hours[1] - k.hours[0])) * 2) / 2));
   const span = (b: WeatherEvent[]) => b.reduce((n, e) => n + e.length, 0);

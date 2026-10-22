@@ -1,4 +1,4 @@
-import { EVENT_KINDS, EVENTS, eventName, eventNow, type EventKind, type Strength } from '../game/events.ts';
+import { EVENT_KINDS, EVENTS, eventName, eventNow, hoursOf, type EventKind, type Strength } from '../game/events.ts';
 import { SEASON_IDS, SEASONS } from '../game/seasons.ts';
 import type { GameState } from '../game/state.ts';
 import { h, icon } from './dom.ts';
@@ -23,7 +23,8 @@ const onlyIn = (kind: EventKind) => (EVENTS[kind].only ? ` · ${EVENTS[kind].onl
 
 export function weatherSheet(host: WeatherHost) {
   const row = (kind: EventKind) => {
-    const e = EVENTS[kind], hours = e.hours[0] === e.hours[1] ? `${e.hours[0]}` : `${e.hours[0]}–${e.hours[1]}`;
+    const e = EVENTS[kind], range = (r: readonly [number, number]) => (r[0] === r[1] ? `${r[0]}` : `${r[0]}–${r[1]}`);
+    const hours = e.severeHours ? `${range(e.hours)} (severe ${range(hoursOf(kind, 'severe'))})` : range(e.hours);
     const btn = (strength: Strength) => h('button', { class: `cd-btn${strength === 'severe' ? ' is-danger' : ''}`, onclick: () => host.start(kind, strength) },
       strength === 'severe' ? eventName(kind, 'severe') : 'Start');
     return h('div', { class: 'wx-row' },

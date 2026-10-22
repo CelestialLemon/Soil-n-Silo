@@ -243,8 +243,11 @@ export const POWER = {
   sprinklerReach: 3,
 };
 
-/** Warmth (°C) the animals mind: hens slow above henHeat (the same smooth fall-off as a crop, over henHeatWidth degrees), bees stay in below beesFly. */
-export const ANIMALS = { henHeat: 30, henHeatWidth: 6, beesFly: 10 };
+/**
+ * Warmth (°C) the animals mind: hens slow above henHeat (the same smooth fall-off as a crop, over henHeatWidth degrees), bees stay in
+ * below beesFly. Each tree within shadeReach tiles of a coop shades it, so the hens feel shadePerTree°C less of the heat, up to shadeMost.
+ */
+export const ANIMALS = { henHeat: 30, henHeatWidth: 6, beesFly: 10, shadeReach: 2, shadePerTree: 2, shadeMost: 6 };
 
 export const HIVE = { reach: 4, maxFlowers: 3, honeySeconds: 45, store: 6 };
 export const SAPLING_SECONDS = 60;
