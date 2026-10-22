@@ -234,6 +234,32 @@ the gliding (a spring day is rainy about 30% of the time, a summer day about 7%,
   (`weatherNow(state)`, for the HUD chip and the look). The battery forecast ("tonight") uses the seeded sun and wind, cloud and
   calm included, and counts the sprinklers as resting during the rain it expects.
 
+### The valley's look by season
+
+The season is fixed per level, so its colours are set when the map is built and quantised with the rest (`TURF` in
+`src/world/ground.ts`, the forest floor in `terrain.ts`). The grass runs from lush (low, by water) to dry (high, far from it)
+in every season, held to one lightness along it (each season's colours are levelled to their mean lightness) so the hillshade still shows the lie of the land:
+
+| Season | Lush grass | Dry grass | Bank, cliff lip |
+| --- | --- | --- | --- |
+| Spring | fresh green `66b14d` | yellow-green `97a34b` | `a0a060`, `5f8a3a` |
+| Summer | green `7aaa50` | golden `b59541` | `b0a064`, `7a8a3a` |
+| Autumn | olive `7a8846` | brown `a27644` | `8e7c58`, `6a7438` |
+| Winter | frost-pale `b2c1a4` | pale `bbbbb2` | `a8a698`, `8a9a7c` |
+
+The trees are the seasonal models (not tinted), the far woods' crowns and floor follow the season too. **Wildflowers** are the
+ambient life drawn on the grass: spring has half as many again as summer (cream and lilac), summer's turn gold, autumn keeps
+a few late amber ones (0.3 of summer's), winter has none. The game draws no butterflies or birds yet.
+
+**Grey days**: the look for the hour (`lookAt`) is blended by the weather now (`greyLook`, `src/world/greyLook.ts`), so the
+change glides with the spells. Full cloud takes 60% off the sun's light, 12% off the exposure and 40% off the colour, fades
+the warm and cool tints by 70% and pulls the sky 65% to its own grey and a little darker; rain takes a further 20% of the sun,
+8% of the exposure, 30% of the colour and pulls the sky another 30% to grey. Snow greys the same way as rain.
+
+The renderer's weather (v0.3.4) is driven too, eased over 3 seconds so nothing jumps: the **cloud cover** of the drifting
+shadows follows the cloud now, and the **wind** leans the trees and sways them (lean = the game's wind × 2, gusts 0.5 + the
+wind), so a gale bends them and a calm spell stills them. Drawn rain and snow are not yet drawn (precipitation stays off).
+
 ## The map
 
 Each level is generated from a seed: a grid of about 48 × 40 one-metre tiles.

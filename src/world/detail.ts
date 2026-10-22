@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { FLAG, type PixelObject, type PixelRenderer } from 'pixel3d-renderer';
+import type { Season } from '../game/seasons.ts';
 import { TERRAIN, type Land } from '../game/map.ts';
 import { joins } from '../game/relief.ts';
 import { BUILDINGS } from '../game/data.ts';
@@ -9,12 +10,19 @@ import { grassOf, HALO, isBank, LEVEL_HEIGHT as H, Tris, tuftOf, type Lie, type 
 // Small things in the grass: tufts, a few wildflowers, small stones. Only decoration: they never count for farming,
 // clearing or routes, and they leave the ground's lines and overlays clear (hidden while those show).
 
-/** Wildflowers (cream mostly, lilac in patches) and small stones. */
-const FLOWERS = [0xe4d99b, 0xc6b8d8], PEBBLE = 0xa19c80;
+/**
+ * Wildflowers by season (cream mostly, a second colour in patches) and how many there are against summer's (spring has most,
+ * autumn a few late ones, winter none), and small stones.
+ */
+const FLOWERS: Record<Season, number[]> = {
+  spring: [0xeee6b0, 0xc6b8d8], summer: [0xe4d99b, 0xe8b86a], autumn: [0xd8a64e, 0xb89aa8], winter: [0xe4d99b, 0xc6b8d8],
+};
+const FLOWER_SHARE: Record<Season, number> = { spring: 1.5, summer: 1, autumn: 0.3, winter: 0 };
+const PEBBLE = 0xa19c80;
 /** Where the flower patches' field (`patch`) is cream below: 70% of the land (the field's 70th percentile). */
 const CREAM = 0.63;
 /** Every colour drawn besides the grass's own tufts (for the palette). */
-export const DETAIL_COLOURS = [...FLOWERS, PEBBLE];
+export const detailColours = (season: Season) => [...FLOWERS[season], PEBBLE];
 
 /** How many tiles of country past the map have them (further out they would hardly be seen), thinning out over the last FADE. */
 const REACH = 12, FADE = 3;
@@ -94,10 +102,11 @@ export class GroundDetail {
   private readonly cols: number;
   private key = '';
   private shown = true;
+  private readonly season: Season;
 
   /** `tone` dulls the country's colours. Make it once the ground's palette is chosen (`MapGround.show`). */
   constructor(r: PixelRenderer, s: GameState, land: Land, lie: Lie, ground: MapGround, tone: (hex: number) => number) {
-    this.r = r; this.s = s; this.land = land; this.lie = lie; this.ground = ground; this.tone = tone;
+    this.r = r; this.s = s; this.season = s.scenario.climate.season; this.land = land; this.lie = lie; this.ground = ground; this.tone = tone;
     this.cols = Math.ceil((s.map.width + 2 * HALO) / CHUNK);
     const { width: w, height: h } = s.map, out: Thing[] = [];
     for (let y = -REACH; y < h + REACH; y++) for (let x = -REACH; x < w + REACH; x++) {
@@ -172,7 +181,7 @@ export class GroundDetail {
     const [hx, hz] = this.lie.surface.slope(lx, ly, u, v), slope = Math.hypot(hx, hz) * H, bank = isBank(this.lie.relief, lx, ly);
     const steep = slope < 0.25 ? 1 : slope < 0.5 ? 1 - 3 * (slope - 0.25) : 0.25;
     const d = Math.min(1, Math.max(0, this.ground.dryness[ly * this.land.width + lx])), lush = 0.35 + 1.3 * patch(x, z, 6, 4);
-    const tuft = 0.34 * (1 - 0.45 * d), flower = slope < 0.5 && !bank ? 0.06 * (1 - d) ** 2 : 0, pebble = 0.02 + 0.05 * d;
+    const tuft = 0.34 * (1 - 0.45 * d), flower = slope < 0.5 && !bank ? 0.06 * FLOWER_SHARE[this.season] * (1 - d) ** 2 : 0, pebble = 0.02 + 0.05 * d;
     const all = (tuft + flower + pebble) * lush * steep * fade;
     if (rand(cx, cy, 5) >= all) return null;
     const pick = rand(cx, cy, 6) * (tuft + flower + pebble), kind: Kind = pick < tuft ? 'tuft' : pick < tuft + flower ? 'flower' : 'pebble';
@@ -181,8 +190,8 @@ export class GroundDetail {
     const pair = rand(cx, cy, 10) < 0.5 && (kind !== 'tuft' || this.fits(lx, ly, x + Math.cos(yaw) * PAIR, z + Math.sin(yaw) * PAIR, REACHES.tuft * size * 0.8, busy));
     const feet = parts(kind, yaw, size, pair).map(([dx, dz]) => this.lie.y(x + dx, z + dz) - SINK);
     const p = this.lie.point(lx, ly, u, v), dull = this.lie.onMap(lx, ly) ? (c: number) => c : this.tone;
-    const green = tuftOf(dull(grassOf(d, bank)), p.s);
-    const hex = kind === 'tuft' ? green : kind === 'pebble' ? dull(PEBBLE) : dull(FLOWERS[patch(x, z, 4, 7) < CREAM ? 0 : 1]);
+    const green = tuftOf(dull(grassOf(this.season, d, bank)), p.s);
+    const hex = kind === 'tuft' ? green : kind === 'pebble' ? dull(PEBBLE) : dull(FLOWERS[this.season][patch(x, z, 4, 7) < CREAM ? 0 : 1]);
     return { x, z, kind, y: p.p[1] - SINK, hex, green, yaw, size, pair, feet };
   }
 

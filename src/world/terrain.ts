@@ -3,7 +3,7 @@ import type { Season } from '../game/seasons.ts';
 import { FLAG, FLUIDS, FluidCollector, GeometryCollector, linearColor as lin, place, type PixelScene } from 'pixel3d-renderer';
 import { TERRAIN, type Land, type MapData } from '../game/map.ts';
 import { baseLevel, joins, SIDES } from '../game/relief.ts';
-import { cliff, geography, grassOf, isBank, landRelief, LEVEL_HEIGHT, top, Tris, type Halo, type Lie } from './ground.ts';
+import { cliff, geography, grassOf, isBank, landRelief, LEVEL_HEIGHT, top, Tris, TURF, type Halo, type Lie } from './ground.ts';
 import { box, hash } from './kit.ts';
 import { canopyColour, treeAt, wetAt, woodsColours, type TreeKind } from './trees.ts';
 
@@ -30,7 +30,7 @@ const RIM = 10;
 const NEAR = 12;
 
 /** The forest floor under the far woods. Their crowns take the season's colours (trees.ts). */
-const FLOOR = 0x4a6a34;
+const FLOOR: Record<Season, number> = { spring: 0x4e6e36, summer: 0x4a6a34, autumn: 0x5e5c36, winter: 0x777d6a };
 const ROAD = [0xa48c62, 0x9a845c], RUT = 0x8a7652;
 const BED = 0x8a7a5a, BANK = 0x6a5a3e, LEDGE = 0x8a8478, BOULDER = 0x8c8a80, DECK = 0x8a6440;
 
@@ -108,7 +108,7 @@ export function buildWorld(map: MapData, land: Land, lie: Lie, models: { trees: 
     for (let side = 0; side < 4; side++) {
       const nx = x + SIDES[side][0], ny = y + SIDES[side][1];
       if (!onLand(nx, ny) || joins(lie.relief, x + M, y + M, side)) continue;
-      cliff(ground, lie, x + M, y + M, side, water(nx, ny) ? levelAt(nx, ny) * H : null, dim);
+      cliff(ground, lie, x + M, y + M, side, water(nx, ny) ? levelAt(nx, ny) * H : null, TURF[season].lip, dim);
     }
   };
 
@@ -127,9 +127,9 @@ export function buildWorld(map: MapData, land: Land, lie: Lie, models: { trees: 
     }
     if (onMap(x, y)) continue;   // the map's ground is MapGround's
     const far = beyond(cx, cz);
-    if (canopy(x, y) || hidden(x, y)) { countryTile(x, y, dim(FLOOR)); continue; }
+    if (canopy(x, y) || hidden(x, y)) { countryTile(x, y, dim(FLOOR[season])); continue; }
     if (track(x, y)) { countryTile(x, y, dim(track(x - 1, y) && track(x + 1, y) ? RUT : ROAD[n < 0.5 ? 0 : 1])); continue; }
-    countryTile(x, y, dim(grassOf(dry[li(x, y)], isBank(lr, x + M, y + M))));
+    countryTile(x, y, dim(grassOf(season, dry[li(x, y)], isBank(lr, x + M, y + M))));
     if (far > NEAR) continue;
     // Trees and rocks the same as on the map (view.ts), only dulled.
     if (t === TERRAIN.tree) thing(treeModel(x, y), cx, cz, n * Math.PI * 2, 0.62 + 0.25 * n, 0.02);

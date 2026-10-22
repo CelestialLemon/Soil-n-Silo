@@ -5,6 +5,7 @@ import { TERRAIN, type Land } from '../game/map.ts';
 import { baseLevel, centreLevel, corners, inRelief, joins, SIDES, spanOf, splitsNwSe, STEEP, type Relief } from '../game/relief.ts';
 import { groundOf } from '../game/rules.ts';
 import { reliefOf, type GameState } from '../game/state.ts';
+import { type Season } from '../game/seasons.ts';
 import { Surface } from './surface.ts';
 
 // The ground: each land tile's top, drawn as the smooth reading of the rules' levels that surface.ts fits (worked ground and
@@ -181,7 +182,7 @@ export function standY(lie: Lie, r: Relief, n: number, x: number, y: number) {
 }
 
 /** Cliff faces: earth for the low levels, stone higher up, STRATUM levels a band; the turf lip along the top. */
-const EARTH = [0x9c7e5a, 0x8c714f], STONE = [0x8e877a, 0x807a6e], LIP = 0x5d7d3a;
+const EARTH = [0x9c7e5a, 0x8c714f], STONE = [0x8e877a, 0x807a6e];
 /** How deep the turf lip over a cliff is (m). */
 const LIP_DEPTH = 0.09;
 /** Levels a band of a cliff's strata, and the level from which cliffs are stone. */
@@ -205,10 +206,25 @@ function labToHex([L, a, b]: Lab): number {
   return (toByte(r) << 16) | (toByte(g) << 8) | toByte(bl);
 }
 /**
- * Grass from lush (low, by water) to dry (high, far from it), all at one lightness so only the light shows the shape; a
- * steep bank's top is worn turf, ground trucks can't drive, that you can pick out at a glance.
+ * A season's turf: grass from lush (low, by water) to dry (high, far from it), all at one lightness so only the light shows the
+ * shape; a steep bank's top is worn turf, ground trucks can't drive, that you can pick out at a glance; and the lip of turf
+ * over a cliff. Spring is fresh green, summer goes golden on dry ground, autumn is duller and browner, winter frost-pale.
  */
-const GRASS = [0x66a248, 0x6f9f49, 0x789d4a, 0x819b4b, 0x88984c], BANK = 0x969a5f;
+interface Turf { grass: number[]; bank: number; lip: number }
+/** Colours at their mean lightness, hue and chroma kept: a season's grass is one lightness from lush to dry. */
+function level(hexes: number[]): number[] {
+  const labs = hexes.map(hexToLab), L = labs.reduce((a, l) => a + l[0], 0) / labs.length;
+  return labs.map(([, a, b]) => labToHex([L, a, b]));
+}
+const SEASON_TURF: Record<Season, Turf> = {
+  spring: { grass: [0x62ac48, 0x70ae48, 0x7eac4a, 0x8caa4c, 0x9aa64e], bank: 0xa0a060, lip: 0x5f8a3a },
+  summer: { grass: [0x6f9e44, 0x859f45, 0x9ba048, 0xb0a04a, 0xc2a24e], bank: 0xb0a064, lip: 0x7a8a3a },
+  autumn: { grass: [0x7c8a48, 0x888646, 0x918044, 0x987a42, 0x9d7240], bank: 0x8e7c58, lip: 0x6a7438 },
+  winter: { grass: [0xa6b498, 0xafb9a2, 0xb8bdac, 0xc0c3b6, 0xc8c8be], bank: 0xa8a698, lip: 0x8a9a7c },
+};
+export const TURF: Record<Season, Turf> = Object.fromEntries(
+  Object.entries(SEASON_TURF).map(([k, t]) => [k, { ...t, grass: level(t.grass) }]),
+) as Record<Season, Turf>;
 // The hillshade: a light fixed to the land, baked into the ground's colours, so gentle slopes read in any weather and at
 // night, where the sun's few bands of light would show them all alike.
 /** Where the hillshade's light comes from: the screen's upper left at the home view, a little off the grid, 45° up. */
@@ -231,8 +247,11 @@ function shadeStep(hex: number, k: number): number {
 /** Every shade the hillshade can give a colour. */
 const allShades = (hexes: number[]) => hexes.flatMap((h) => Array.from({ length: 2 * SHADE_STEPS + 1 }, (_, k) => k === SHADE_STEPS ? h : shadeStep(h, k - SHADE_STEPS)));
 
-/** A grass colour by how dry the ground lies (`geography`, 0 lush to 1 dry); a steep bank is worn turf. */
-export const grassOf = (dry: number, steep = false) => steep ? BANK : GRASS[Math.round(Math.min(1, Math.max(0, dry)) * (GRASS.length - 1))];
+/** A season's grass colour by how dry the ground lies (`geography`, 0 lush to 1 dry); a steep bank is worn turf. */
+export const grassOf = (season: Season, dry: number, steep = false) => {
+  const { grass, bank } = TURF[season];
+  return steep ? bank : grass[Math.round(Math.min(1, Math.max(0, dry)) * (grass.length - 1))];
+};
 
 /**
  * How dry each tile of the land is by where it lies (0 lush to 1 dry), indexed like the land: high ground and ground far from
@@ -279,7 +298,7 @@ const LINE_LIFT = 0.04;
 /** Every fourth level's contour is drawn darker. */
 const INDEX_EVERY = 4;
 /** Every colour the map's ground can use, so the palette can be chosen with them (MapGround's swatch). */
-const PALETTE = [...new Set([...allShades([...GRASS, BANK]), ...EARTH, ...STONE, LIP, GRID, CONTOUR, INDEX])];
+const paletteOf = (season: Season) => [...new Set([...allShades([...TURF[season].grass, TURF[season].bank]), ...EARTH, ...STONE, TURF[season].lip, GRID, CONTOUR, INDEX])];
 
 const OUT: readonly (readonly [number, number])[] = SIDES;
 type Vec = readonly number[];
@@ -445,7 +464,7 @@ function sideLine(lie: Lie, lx: number, ly: number, side: number): (s: number) =
  * level (m) when it is water's surface or the map's ground (`floor`): a turf lip, then a band of earth or stone a level.
  * Drawn between each two points either side is cut into.
  */
-export function cliff(t: Tris, lie: Lie, lx: number, ly: number, side: number, floor: number | null, tone: (hex: number) => number = (c) => c) {
+export function cliff(t: Tris, lie: Lie, lx: number, ly: number, side: number, floor: number | null, lip: number, tone: (hex: number) => number = (c) => c) {
   const nx = lx + SIDES[side][0], ny = ly + SIDES[side][1], M = lie.margin;
   const own = sideLine(lie, lx, ly, side), low = floor === null ? sideLine(lie, nx, ny, (side + 2) % 4) : () => floor;
   const steps = Math.max(lie.stepsOf(lx, ly, side), floor === null ? lie.stepsOf(nx, ny, (side + 2) % 4) : 1);
@@ -454,12 +473,12 @@ export function cliff(t: Tris, lie: Lie, lx: number, ly: number, side: number, f
     const s0 = k / steps, s1 = (k + 1) / steps, top: Line = [own(s0), own(s1)], bottom: Line = [low(s0), low(s1)];
     if (top[0] <= bottom[0] + 1e-6 && top[1] <= bottom[1] + 1e-6) continue;
     const pa: [number, number] = [a[0] + (b[0] - a[0]) * s0, a[1] + (b[1] - a[1]) * s0], pb: [number, number] = [a[0] + (b[0] - a[0]) * s1, a[1] + (b[1] - a[1]) * s1];
-    const lip: Line = [top[0] - LIP_DEPTH, top[1] - LIP_DEPTH];
-    band(t, pa, pb, [bottom, lip], [top], tone(LIP), out);
+    const under: Line = [top[0] - LIP_DEPTH, top[1] - LIP_DEPTH];
+    band(t, pa, pb, [bottom, under], [top], tone(lip), out);
     const from = Math.floor(Math.min(...bottom) / H / STRATUM), to = Math.ceil(Math.max(...top) / H / STRATUM);
     for (let n = from; n < to; n++) {
       const lo = n * STRATUM * H, hi = (n + 1) * STRATUM * H, shades = n * STRATUM >= STONE_FROM ? STONE : EARTH;
-      band(t, pa, pb, [bottom, [lo, lo]], [lip, [hi, hi]], tone(shades[n & 1]), out);
+      band(t, pa, pb, [bottom, [lo, lo]], [under, [hi, hi]], tone(shades[n & 1]), out);
     }
   }
 }
@@ -592,6 +611,7 @@ export class MapGround {
   private linesShown = false;
 
   private readonly halo: Halo;
+  private readonly season: Season;
   /** The tiles drawn (the map and its halo), wide and high, in chunks so many a row. */
   private readonly across: number;
   private readonly down: number;
@@ -599,11 +619,11 @@ export class MapGround {
 
   /** `extra` are colours others draw on the ground with `paint` (a field's soil). */
   constructor(s: GameState, land: Land, lie: Lie, halo: Halo, extra: readonly number[] = []) {
-    this.s = s; this.land = land; this.lie = lie; this.halo = halo;
+    this.s = s; this.land = land; this.lie = lie; this.halo = halo; this.season = s.scenario.climate.season;
     this.across = s.map.width + 2 * HALO; this.down = s.map.height + 2 * HALO; this.cols = Math.ceil(this.across / CHUNK);
     this.dry = geography(land, lie.relief);
-    const country = [...allShades([...new Set([...halo.colour.values(), ...[...GRASS, BANK].map(halo.tone)])]), ...[...EARTH, ...STONE, LIP].map(halo.tone)];
-    this.colours = [...new Set([...PALETTE, ...country, ...extra])];
+    const country = [...allShades([...new Set([...halo.colour.values(), ...[...TURF[this.season].grass, TURF[this.season].bank].map(halo.tone)])]), ...[...EARTH, ...STONE, TURF[this.season].lip].map(halo.tone)];
+    this.colours = [...new Set([...paletteOf(this.season), ...country, ...extra])];
     const sw = new Tris();
     this.colours.forEach((c, i) => sw.tri([i, -50, 0], [i + 1, -50, 0], [i, -50, 1], c, [0, 1, 0]));
     this.swatch = sw.geometry();
@@ -666,7 +686,7 @@ export class MapGround {
     const was = this.dry, M = this.land.margin;
     this.dry = geography(this.land, this.lie.relief);
     for (let y = M; y < M + m.height; y++) for (let x = M; x < M + m.width; x++) {
-      if (grassOf(was[y * lw + x]) !== grassOf(this.dry[y * lw + x])) dirty.add(chunk(x, y));
+      if (grassOf(this.season, was[y * lw + x]) !== grassOf(this.season, this.dry[y * lw + x])) dirty.add(chunk(x, y));
     }
     for (const k of dirty) {
       const old = this.chunks[k];
@@ -682,7 +702,7 @@ export class MapGround {
     lines.flag = thin(FLAG.DECOR);
     for (let y = cy * CHUNK; y < Math.min(this.down, (cy + 1) * CHUNK); y++) for (let x = cx * CHUNK; x < Math.min(this.across, (cx + 1) * CHUNK); x++) {
       const lx = x + o, ly = y + o, mx = lx - M, my = ly - M, onMap = lie.onMap(lx, ly);
-      const hex = onMap ? m.terrain[my * m.width + mx] === TERRAIN.water ? undefined : grassOf(this.dry[ly * land.width + lx], isBank(m, mx, my))
+      const hex = onMap ? m.terrain[my * m.width + mx] === TERRAIN.water ? undefined : grassOf(this.season, this.dry[ly * land.width + lx], isBank(m, mx, my))
         : this.halo.colour.get(ly * land.width + lx);
       if (hex === undefined) continue;
       top(t, lie, lx, ly, hex);
@@ -692,7 +712,7 @@ export class MapGround {
         if (joins(lie.relief, lx, ly, side)) continue;
         // Down to water's surface level (the bank below it is the scene's), or to the neighbour's top.
         const water = land.terrain[ny * land.width + nx] === TERRAIN.water;
-        cliff(t, lie, lx, ly, side, water ? baseLevel(lie.relief, nx, ny) * H : null, onMap ? undefined : this.halo.tone);
+        cliff(t, lie, lx, ly, side, water ? baseLevel(lie.relief, nx, ny) * H : null, TURF[this.season].lip, onMap ? undefined : this.halo.tone);
       }
     }
     return t.empty ? null : { top: t.geometry(), lines: lines.empty ? null : lines.geometry() };
