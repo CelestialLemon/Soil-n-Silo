@@ -43,9 +43,10 @@ export function tick(s: GameState) {
       case 'field': runField(s, b, dt); break;
       case 'hive': runHive(s, b, dt); break;
       case 'sprinkler': case 'battery': case 'pylon': case 'solar': case 'turbine': case 'wheel': {
+        if (b.type === 'sprinkler' && raining(s.scenario, s.time)) { b.status = 'rain'; break; } // the rain waters the fields, connected or not
         const net = BUILDINGS[b.type].grid === 'link' ? null : networkOf(s, b);
         if (BUILDINGS[b.type].grid !== 'link' && !net) { b.status = 'nolink'; break; }
-        if (b.type === 'sprinkler') { const sh = shareOf(s, b); b.status = raining(s.scenario, s.time) ? 'rain' : sh <= 0 ? 'power' : sh < 1 ? 'lowpower' : 'ok'; }
+        if (b.type === 'sprinkler') { const sh = shareOf(s, b); b.status = sh <= 0 ? 'power' : sh < 1 ? 'lowpower' : 'ok'; }
         else if (b.type === 'solar') b.status = sun > 0 ? 'ok' : 'idle';
         else if (b.type === 'wheel') b.status = wattsOf(s, b) > 0 ? 'ok' : 'idle';
         else b.status = 'ok';

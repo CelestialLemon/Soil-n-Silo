@@ -6,7 +6,7 @@ import { earthPrice, groundworkFor, levelledFor } from './build.ts';
 import { hourAt, sunAt, windAt } from './sim/clock.ts';
 import { raining } from './sim/weather.ts';
 import { linksAt } from './sim/goods.ts';
-import { makes, shareOf } from './sim/energy.ts';
+import { makes, shareOf, wants } from './sim/energy.ts';
 import { wattsOf } from './sim/layout.ts';
 import { describeLinks } from './sim/describe.ts';
 import { centreLevel } from './relief.ts';
@@ -177,9 +177,9 @@ export function tonight(s: GameState): Tonight | null {
   const sunrise = nextHour(sunset ?? now, w.rise), end = sunrise + HOUR_SECONDS;
   const nets = networks(s).list.map((net) => {
     const bats = net.members.filter((b) => b.type === 'battery').map((b) => b.charge);
-    // What the sprinklers want when they run: they rest in rain, so `net.wanted` holds them out while it rains now.
+    // What the sprinklers want when they run (they rest in rain) and what everything else wants now.
     const sprinklers = net.members.filter((b) => b.type === 'sprinkler').reduce((n, b) => n + wattsOf(s, b), 0);
-    return { net, bats, sprinklers, other: net.wanted - (raining(sc, now) ? 0 : sprinklers), solar: net.members.filter((b) => b.type === 'solar').length, turbines: net.members.filter((b) => b.type === 'turbine'),
+    return { net, bats, sprinklers, other: net.members.reduce((n, b) => n + (b.type === 'sprinkler' ? 0 : wants(s, b)), 0), solar: net.members.filter((b) => b.type === 'solar').length, turbines: net.members.filter((b) => b.type === 'turbine'),
       digesters: net.members.filter((b) => b.type === 'digester' || b.type === 'wheel').reduce((n, b) => n + makes(s, b, 0, 0), 0) };
   });
   const capacity = nets.reduce((n, x) => n + x.bats.length, 0) * POWER.battery.capacity;

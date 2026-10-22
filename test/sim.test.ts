@@ -1118,6 +1118,9 @@ test('rain waters every field and sprinklers rest; snow does neither', () => {
   assert.equal(weatherAt(s.scenario, s.time).sky, 'rain');
   assert.equal(fieldPace(s, f).water, 1);
   assert.equal(sp.status, 'rain');
+  assert.equal(put(s, 'sprinkler', 20, 20).status, 'idle');
+  advance(s, 1);
+  assert.equal(s.buildings.find((b) => b.x === 20 && b.y === 20)!.status, 'rain', 'even unconnected');
   assert.equal(runtimeOf(s).shares?.get(sp.id) ?? 1, 1);
   const w = flat({ climate: { ...climateOf('winter'), conditions: rainy.conditions } }), g = put(w, 'field', 4, 4);
   advance(w, 30);
