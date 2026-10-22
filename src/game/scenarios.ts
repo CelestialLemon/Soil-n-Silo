@@ -1,6 +1,6 @@
 import { FIELD, ITEMS, POWER, type ItemId } from './data.ts';
 import { mulberry32 } from './rng.ts';
-import { charactersOf, climateOf, climateTags, SEASON_IDS, seasonName, type Character, type Climate, type Season } from './seasons.ts';
+import { charactersOf, climateOf, climateTags, riverTag, SEASON_IDS, seasonName, type Character, type Climate, type Season } from './seasons.ts';
 
 // Commissions: the campaign's fixed ones, random ones from any seed, and the sandbox. A commission is all a level needs to
 // be generated and judged: its map recipe (seed, size, terrain), its season, its goals and its target time.
@@ -182,7 +182,7 @@ export function sandboxIn(season: Season, character: Character | null = null): S
 }
 
 /** Labels for the level card: the season, what it's like (short days, strong wind) and the commission's own. */
-export const tagsOf = (sc: Scenario) => [seasonName(sc.climate), ...climateTags(sc.climate), ...sc.tags];
+export const tagsOf = (sc: Scenario) => [seasonName(sc.climate), ...climateTags(sc.climate), ...(sc.terrain.water === 'river' ? riverTag(sc.climate) : []), ...sc.tags];
 
 export function scenarioById(id: string): Scenario | null {
   if (id === SANDBOX.id) return SANDBOX;

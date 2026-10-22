@@ -2,7 +2,7 @@ import { generateMap, TERRAIN } from '../game/map.ts';
 import { seedOf } from '../game/rng.ts';
 import type { Progress } from '../game/save.ts';
 import { CAMPAIGN, randomScenario, SANDBOX, sandboxIn, SILVER_PAR, tagsOf, type Scenario } from '../game/scenarios.ts';
-import { CHARACTERS, charactersOf, climateOf, climateTags, SEASON_IDS, SEASONS, seasonName, type Character, type Season } from '../game/seasons.ts';
+import { CHARACTERS, charactersOf, climateOf, climateTags, riverTag, SEASON_IDS, SEASONS, seasonName, type Character, type Season } from '../game/seasons.ts';
 import type { GameState } from '../game/state.ts';
 import { fill, h, icon, svg } from './dom.ts';
 import { itemName, num, pct, playTime } from './format.ts';
@@ -169,7 +169,7 @@ export function showMenu(root: HTMLElement, host: MenuHost) {
     const sel = h('select', { class: 'cd-select', 'aria-label': 'Character', onchange: () => { character = (sel.value || null) as Character | null; drawSandbox(); } },
       h('option', { value: '', selected: character === null }, 'Ordinary'),
       ...charactersOf(season).map((c) => h('option', { value: c, selected: c === character }, CHARACTERS[c].word[0].toUpperCase() + CHARACTERS[c].word.slice(1))));
-    fill(sandboxChoice, seasons, h('div', { class: 'row' }, sel, h('span', { class: 'chips tags' }, ...((c) => [seasonName(c), ...climateTags(c)])(climateOf(season, character)).map((t) => h('span', { class: 'tag cd-small' }, t)))));
+    fill(sandboxChoice, seasons, h('div', { class: 'row' }, sel, h('span', { class: 'chips tags' }, ...((c) => [seasonName(c), ...climateTags(c), ...riverTag(c)])(climateOf(season, character)).map((t) => h('span', { class: 'tag cd-small' }, t)))));
   }
   drawSandbox();
   draw();

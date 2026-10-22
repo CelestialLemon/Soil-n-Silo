@@ -176,7 +176,10 @@ export function climateTags(c: Levers): string[] {
   if (c.wind.mean >= 0.65) tags.push('Strong wind');
   else if (c.wind.mean <= 0.35) tags.push('Light wind');
   if (c.wind.gust >= 0.4) tags.push('Gusty');
-  if (c.river.flow >= 1.5) tags.push('Fast river');
-  else if (c.river.flow <= 0.6) tags.push('Slow river');
   return tags;
+}
+
+/** A label for the river's season ("Fast river"), for a map that has a river; the other levers' tags are in `climateTags`. */
+export function riverTag(c: Levers): string[] {
+  return c.river.flow >= 1.5 ? ['Fast river'] : c.river.flow <= 0.6 ? ['Slow river'] : [];
 }
