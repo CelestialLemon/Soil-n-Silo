@@ -8,6 +8,7 @@ import { centreLevel, corners, heightAt, isFlat, isGentle, isUnbroken, joins, MA
 import { accessTiles, distanceTo, isOpen, legLength } from '../src/game/roads.ts';
 import { deserialize, serialize } from '../src/game/save.ts';
 import { touchesWater, wheelSite } from '../src/game/rules.ts';
+import { climateOf, type Character, type Season } from '../src/game/seasons.ts';
 import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
 import { exposureOf, handsTo, isGuarded, wattsOf } from '../src/game/sim/layout.ts';
 import { advance } from '../src/game/sim/step.ts';
@@ -231,6 +232,7 @@ test('erosion: a harvest wears a field\'s sloping tiles more the steeper they ar
 
 test('a water wheel stands on a river bank at the water\'s level, faces it, and makes more beside a fall', () => {
   const s = flat();
+  s.scenario.climate.river.flow = 1;
   for (let y = 0; y < 30; y++) for (const x of [14, 15]) { const i = y * 30 + x; s.map.terrain[i] = TERRAIN.water; s.map.current[i] = 1; }
   touchRelief(s);
   assert.equal(wheelSite(s, 4, 4), null, 'nowhere near the river');
@@ -245,6 +247,9 @@ test('a water wheel stands on a river bank at the water\'s level, faces it, and 
   const fall = wheelSite(s, 12, 10);
   assert.ok(fall && fall.fall && Math.abs(fall.watts - POWER.wheel * POWER.wheelFall) < 1e-9, JSON.stringify(fall));
   assert.equal(wheelSite(s, 16, 10)?.rot, 3);
+  // The season scales the current, and so the watts.
+  s.scenario.climate.river.flow = 0.5;
+  assert.ok(Math.abs((wheelSite(s, 12, 10)?.watts ?? 0) - 0.5 * POWER.wheel * POWER.wheelFall) < 1e-9);
   // Still water turns nothing.
   for (let y = 0; y < 30; y++) for (const x of [14, 15]) s.map.current[y * 30 + x] = 0;
   assert.equal(wheelSite(s, 12, 4), null);
@@ -443,4 +448,22 @@ test('worked ground: earthworks and buildings that need level ground mark their 
   // It is saved.
   const back = deserialize(serialize(s));
   assert.ok(back.ok && back.value.worked[4 * s.map.width + 4] === 1);
+});
+
+test('the season scales a water wheel\'s current: spring beats summer, a high river adds, a dry spell takes away', () => {
+  const s = flat();
+  for (let y = 0; y < 30; y++) for (const x of [14, 15]) { const i = y * 30 + x; s.map.terrain[i] = TERRAIN.water; s.map.current[i] = 1; }
+  touchRelief(s);
+  const at = (season: Season, character: Character | null = null) => { s.scenario.climate = climateOf(season, character); return wheelSite(s, 12, 4)!.watts; };
+  const spring = at('spring'), summer = at('summer'), autumn = at('autumn'), winter = at('winter');
+  assert.ok(spring > autumn && autumn > summer && summer > winter, `${spring} ${autumn} ${summer} ${winter}`);
+  assert.ok(at('spring', 'highRiver') > spring);
+  assert.ok(at('summer', 'dry') < summer);
+  assert.ok(Math.abs(spring - POWER.wheel * climateOf('spring').river.flow) < 1e-9);
+});
+
+test('the river runs fastest in spring and slowest in winter, high river raises it and a dry season lowers it', () => {
+  const flow = (season: Season, ch: Character | null = null) => climateOf(season, ch).river.flow;
+  assert.ok(flow('spring') > flow('autumn') && flow('autumn') > flow('summer') && flow('summer') > flow('winter'));
+  assert.ok(flow('spring', 'highRiver') > flow('spring') && flow('summer', 'dry') < flow('summer'));
 });
