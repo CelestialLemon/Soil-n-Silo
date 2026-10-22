@@ -30,6 +30,8 @@ PALETTE = {
     'willow_leaf': '#83b390', 'willow_shade': '#659478',
     'poplar_leaf': '#2e633d', 'poplar_light': '#3f7746',
     'apple_leaf': '#567843', 'apple_red': '#e76a65', 'blossom': '#f3bbbf',
+    'amber_leaf': '#d98a32', 'gold_leaf': '#e3b43c', 'russet_leaf': '#a8502f',
+    'twig': '#8a7d6e', 'birch_twig': '#8c6c66',
 }
 MATERIAL_NAMES = {
     'feather': 'Hen ivory feathers', 'chalk': 'Eggshell warm white', 'cream': 'Cream linen and trim',
@@ -55,6 +57,8 @@ MATERIAL_NAMES = {
     'poplar_leaf': 'Poplar deep green', 'poplar_light': 'Poplar sunlit green',
     'apple_leaf': 'Orchard apple green', 'apple_red': 'Orchard coral red apples',
     'blossom': 'Orchard pale pink blossom',
+    'amber_leaf': 'Autumn amber leaves', 'gold_leaf': 'Autumn gold leaves', 'russet_leaf': 'Autumn russet leaves',
+    'twig': 'Bare winter twigs', 'birch_twig': 'Birch purple brown twigs',
 }
 _MATERIALS = {}
 
@@ -312,7 +316,7 @@ def _canonical_glb(path):
 
 
 def export_and_preview(name, budget, stages=False, states=False, root_prefix='stage_',
-                       bounds=None, bounds_overrides=None):
+                       bounds=None, bounds_overrides=None, preview=None):
     """Validate geometry, export ALL states, then render cardinal contact sheets.
 
     Static sheets: front/back/left/right in a 2x2 grid. Crop sheets: stages
@@ -322,7 +326,8 @@ def export_and_preview(name, budget, stages=False, states=False, root_prefix='st
     ((min_x,min_y,min_z),(max_x,max_y,max_z)) in world metres, for assets whose
     origin anchors a trunk or bank rather than the geometry's bounding centre.
     Named bounds_overrides are checked per mesh; all other meshes remain
-    grounded and inside bounds. The default checks are unchanged.
+    grounded and inside bounds. The default checks are unchanged. `preview`
+    overrides the sheet's path (default assets/<name>/preview.png).
     """
     bpy.context.view_layer.update()
     meshes = [o for o in bpy.context.scene.objects if o.type=='MESH']
@@ -422,7 +427,7 @@ def export_and_preview(name, budget, stages=False, states=False, root_prefix='st
             temp.unlink()
     sheet = bpy.data.images.new(name+' four views',width=sheet_width,height=sheet_height,alpha=True)
     sheet.pixels.foreach_set(pixels)
-    sheet.filepath_raw = str(ROOT/'assets'/name/'preview.png')
+    sheet.filepath_raw = str(preview or ROOT/'assets'/name/'preview.png')
     sheet.file_format = 'PNG'
     sheet.save()
     for obj in meshes:

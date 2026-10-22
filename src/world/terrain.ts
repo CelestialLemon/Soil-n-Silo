@@ -4,7 +4,7 @@ import { TERRAIN, type Land, type MapData } from '../game/map.ts';
 import { baseLevel, joins, SIDES } from '../game/relief.ts';
 import { cliff, geography, grassOf, isBank, landRelief, LEVEL_HEIGHT, top, Tris, type Halo, type Lie } from './ground.ts';
 import { box, hash } from './kit.ts';
-import { CANOPY, treeAt, wetAt, type TreeKind } from './trees.ts';
+import { canopyColour, treeAt, wetAt, woodsColours, type TreeKind, type TreeSeason } from './trees.ts';
 
 // The static world of a commission, built once from its map: river and pond basins with water over them, and the country
 // around the map so the camera never looks past the world. The river runs with its current, over falls where it drops a
@@ -28,8 +28,8 @@ const RIM = 10;
 /** How far past the edge trees and rocks are models; further out the woods are rounded crowns over the hills. */
 const NEAR = 12;
 
-/** The distant apron's woods, a few greens; nearer woods take their trees' own colours (trees.ts). */
-const WOODS = [0x4a7a38, 0x52823c, 0x5a8a40, 0x447034], FLOOR = 0x4a6a34;
+/** The forest floor under the far woods. Their crowns take the season's colours (trees.ts). */
+const FLOOR = 0x4a6a34;
 const ROAD = [0xa48c62, 0x9a845c], RUT = 0x8a7652;
 const BED = 0x8a7a5a, BANK = 0x6a5a3e, LEDGE = 0x8a8478, BOULDER = 0x8c8a80, DECK = 0x8a6440;
 
@@ -58,7 +58,8 @@ const country = (g: THREE.BufferGeometry, m: THREE.Matrix4) => {
   return c;
 };
 
-export function buildWorld(map: MapData, land: Land, lie: Lie, models: { trees: Record<TreeKind, THREE.BufferGeometry[]>; rocks: THREE.BufferGeometry[] }): World {
+/** The world beyond the map, in `season` (the trees' models, from `models`, are already the season's). */
+export function buildWorld(map: MapData, land: Land, lie: Lie, models: { trees: Record<TreeKind, THREE.BufferGeometry[]>; rocks: THREE.BufferGeometry[] }, season: TreeSeason): World {
   const s = new GeometryCollector(), d = new GeometryCollector(true), fluids = new FluidCollector();
   const { width: w, height: h } = map, M = land.margin;
   const onMap = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h;
@@ -115,7 +116,7 @@ export function buildWorld(map: MapData, land: Land, lie: Lie, models: { trees: 
     // A crown for each 2 × 2 block of far woods.
     if ((canopy(x, y) || hidden(x, y)) && (x & 1) === 0 && (y & 1) === 0) {
       const r = 1.1 + 0.4 * n, ox = hash(x + 3, y) - 0.5, oz = hash(x, y + 3) - 0.5;
-      const crown = CANOPY[treeAt(x, y, levelAt(x, y), wet(x, y)).species];
+      const crown = canopyColour(treeAt(x, y, levelAt(x, y), wet(x, y)).species, season);
       s.add(STONE, place(x + 1 + ox, gy(x + 1 + ox, y + 1 + oz) + 0.5 + r * 0.6, y + 1 + oz, 0, n * 6, 0, r, r * 0.85, r), lin(dim(crown)), FLAG.NORMAL, true);
     }
     if (water(x, y)) {
@@ -143,11 +144,11 @@ export function buildWorld(map: MapData, land: Land, lie: Lie, models: { trees: 
   const lines = (from: number, to: number, edges: number[]) =>
     [...new Set([...Array.from({ length: Math.floor((to - from) / 4) + 1 }, (_, k) => from + 4 * k), ...edges, to])].sort((a, b) => a - b);
   const xs = lines(-M - APRON, w + M + APRON, [-M, w + M]), ys = lines(-M - APRON, h + M + APRON, [-M, h + M]);
-  const apron = new Tris();
+  const apron = new Tris(), woods = woodsColours(season);
   for (let j = 0; j + 1 < ys.length; j++) for (let i = 0; i + 1 < xs.length; i++) {
     const x = xs[i], y = ys[j], xe = xs[i + 1], ye = ys[j + 1];
     if (x >= -M && xe <= w + M && y >= -M && ye <= h + M) continue;   // the country itself
-    apron.quad([x, apronY(x, y), y], [x, apronY(x, ye), ye], [xe, apronY(xe, ye), ye], [xe, apronY(xe, y), y], dim(dim(WOODS[Math.floor(hash(x, y) * 4)])), [0, 1, 0]);
+    apron.quad([x, apronY(x, y), y], [x, apronY(x, ye), ye], [xe, apronY(xe, ye), ye], [xe, apronY(xe, y), y], dim(dim(woods[Math.floor(hash(x, y) * 4)])), [0, 1, 0]);
   }
   s.pushPrepared(apron.geometry());
 

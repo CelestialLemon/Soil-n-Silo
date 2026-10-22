@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { collectGltf, GeometryCollector, loadGltf, motion, movingPartMotion, namedMeshRule, type Motion } from 'pixel3d-renderer';
 import { BUILDING_IDS, CROP_IDS, CROPS, ITEM_IDS, type BuildingId, type CropId, type ItemId } from '../game/data.ts';
-import { TREE_SPECIES, type TreeKind } from './trees.ts';
+import { TREE_SPECIES, treeModel, type TreeKind, type TreeSeason } from './trees.ts';
 import { bar, cropStandIn, frame, GHOST_WIRE, itemShape, NET_COLOURS, rock, ROUTE_COLOURS, standIn, truck } from './shapes.ts';
 
 // The game's object geometries, in local space (origin on the ground at the footprint centre, front facing +z). They come
@@ -25,7 +25,7 @@ export interface Models {
   routes: Geo[];
   crops: Record<CropId, Geo[]>;
   items: Record<ItemId, Geo>;
-  /** Each tree species' three variants (a bush's three are the one model). */
+  /** Each tree species' three variants in the level's season (a bush's three are the one model). */
   trees: Record<TreeKind, Geo[]>;
   rocks: Geo[];
   truck: Geo;
@@ -106,8 +106,9 @@ function lookFrom(root: THREE.Group, seed: number): { idle: Geo; running: Geo } 
 
 const heightOf = (g: Geo) => { g.computeBoundingBox(); return g.boundingBox ? g.boundingBox.max.y : 1; };
 
-export async function loadModels(): Promise<Models> {
-  const names = new Set<string>(['wheat', 'tomato', 'beans', 'sunflower', 'flax', 'rock', 'truck', 'bush', ...TREE_SPECIES.map((t) => `tree_${t}`)]);
+/** The game's models, with the trees and bushes of `season` (fixed for the level). */
+export async function loadModels(season: TreeSeason): Promise<Models> {
+  const names = new Set<string>(['wheat', 'tomato', 'beans', 'sunflower', 'flax', 'rock', 'truck', treeModel('bush', season), ...TREE_SPECIES.map((t) => treeModel(t, season))]);
   for (const n of Object.values(FILES)) names.add(n);
   const roots = new Map<string, THREE.Group | null>(await Promise.all([...names].map(async (n) => [n, await load(n)] as const)));
   const missing = [...roots].filter(([, r]) => !r).map(([n]) => n);
@@ -153,10 +154,10 @@ export async function loadModels(): Promise<Models> {
   });
   const trees = {} as Record<TreeKind, Geo[]>;
   for (const t of TREE_SPECIES) {
-    const root = roots.get(`tree_${t}`);
+    const root = roots.get(treeModel(t, season));
     trees[t] = [0, 1, 2].map((v) => { const r = root?.getObjectByName(`variant_${v}`); return r ? collect(r).build() : standIn('sapling').idle; });
   }
-  const bushRoot = roots.get('bush'), bush = bushRoot ? collect(bushRoot).build() : standIn('sapling').idle;
+  const bushRoot = roots.get(treeModel('bush', season)), bush = bushRoot ? collect(bushRoot).build() : standIn('sapling').idle;
   trees.bush = [bush, bush, bush];
   const truckRoot = roots.get('truck');
 
