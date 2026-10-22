@@ -10,7 +10,7 @@ import { makes, shareOf, wants } from './sim/energy.ts';
 import { wattsOf } from './sim/layout.ts';
 import { describeLinks } from './sim/describe.ts';
 import { centreLevel } from './relief.ts';
-import { warmthFact, warmthOf } from './warmth.ts';
+import { beesFact, henFact, warmthFact, warmthOf } from './warmth.ts';
 import { inMap, type Building, type FieldBuilding, type GameState, type Setting } from './state.ts';
 
 // Forecasts from what the game already knows: what a building in hand would do on a tile (facts about the tile, no advice),
@@ -96,6 +96,8 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         const flowers = Math.min(HIVE.maxFlowers, near.filter((f) => CROPS[f.crop].flowers).length);
         facts.push({ label: 'Honey', value: `+${fmt1(flowers * 60 / HIVE.honeySeconds)}`, sub: 'a minute', tone: flowers ? undefined : 'bad' });
         facts.push({ label: 'Flowers', value: `${flowers} field${flowers === 1 ? '' : 's'}`, sub: `flowering within ${HIVE.reach} tiles` });
+        const bees = beesFact(warmthOf(s));
+        facts.push({ label: 'Bees', value: bees.text.includes('staying') ? 'staying in' : 'flying', sub: `${Math.round(warmthOf(s))}°C`, tone: bees.tone === 'bad' ? 'bad' : undefined });
         facts.push({ label: 'Pollinates', value: `${near.filter((f) => CROPS[f.crop].flowers).length}`, sub: 'flowering fields' });
         break;
       }
@@ -138,6 +140,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
       default: {
         const r = recipesFor(type).find((x) => x.id === set.recipe) ?? recipesFor(type)[0];
         if (r && r.outputs.length) facts.push({ label: 'Full speed', value: fmt1(r.outputs[0].n * 60 / r.time), sub: `${ITEMS[r.outputs[0].item].name.toLowerCase()} a minute` });
+        if (type === 'coop') { const hens = henFact(s.scenario, warmthOf(s)); facts.push({ label: 'Hens', value: hens.text.replace(/^Hens, \d+°C: /, ''), sub: `${Math.round(warmthOf(s))}°C`, tone: hens.tone === 'bad' ? 'bad' : undefined }); }
         if (type === 'digester') facts.push({ label: 'Makes', value: watts(POWER.digester), sub: 'while burning' });
         if (type === 'battery') facts.push({ label: 'Stores', value: `${POWER.battery.capacity} J`, sub: `${POWER.battery.rate} W in and out` });
         if (def.power || POWERED({ type } as Building)) facts.push(pylonFact());

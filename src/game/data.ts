@@ -243,6 +243,9 @@ export const POWER = {
   sprinklerReach: 3,
 };
 
+/** Warmth (°C) the animals mind: hens slow above henHeat (the same smooth fall-off as a crop, over henHeatWidth degrees), bees stay in below beesFly. */
+export const ANIMALS = { henHeat: 30, henHeatWidth: 6, beesFly: 10 };
+
 export const HIVE = { reach: 4, maxFlowers: 3, honeySeconds: 45, store: 6 };
 export const SAPLING_SECONDS = 60;
 

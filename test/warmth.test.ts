@@ -7,7 +7,7 @@ import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
 import { climateOf } from '../src/game/seasons.ts';
 import { advance } from '../src/game/sim/step.ts';
 import { newGame, type FieldBuilding, type GameState } from '../src/game/state.ts';
-import { FROST, warmthAt, warmthPace } from '../src/game/warmth.ts';
+import { FROST, beesFly, henPace, warmthAt, warmthPace } from '../src/game/warmth.ts';
 
 function flat(warmth: { low: number; high: number; drift: number }): GameState {
   const sc: Scenario = {
@@ -55,4 +55,38 @@ test('frost takes a tender crop growing in an open field, and leaves a hardy one
   assert.equal(t.status, 'frost');
   assert.equal(t.stored, 2);
   assert.ok(w.growth > 0.5);
+});
+
+test('hens lay at the season\'s rate and slow above 30°C; bees fly from 10°C', () => {
+  const rate = (season: 'spring' | 'summer' | 'autumn' | 'winter', w: number) => henPace({ ...SANDBOX, climate: climateOf(season) }, w);
+  assert.equal(rate('spring', 15), 1);
+  assert.equal(rate('summer', 25), 1);
+  assert.equal(rate('autumn', 15), 0.75);
+  assert.equal(rate('winter', 0), 0.5);
+  assert.ok(rate('summer', 36) < 0.6 && rate('summer', 36) > 0);
+  assert.ok(!beesFly(9.9) && beesFly(10));
+});
+
+test('a cold hive makes no honey and pollinates nothing, and a coop in winter lays at half speed', () => {
+  const cold = flat({ low: 5, high: 5, drift: 0 }), warm = flat({ low: 15, high: 15, drift: 0 });
+  for (const s of [cold, warm]) {
+    const f = field(s, 4, 4); f.crop = 'sunflower';
+    const h = place(s, 'hive', 8, 4, 0);
+    if (!h.ok) assert.fail(h.error);
+    advance(s, 60);
+    const hive = h.value.building;
+    if (s === cold) { assert.equal(hive.type === 'hive' && hive.stored, 0); assert.equal(hive.status, 'cold'); } else { assert.ok(hive.type === 'hive' && hive.stored > 0); assert.equal(hive.status, 'ok'); }
+  }
+  const winter = flat({ low: 5, high: 5, drift: 0 }), spring = flat({ low: 5, high: 5, drift: 0 });
+  winter.scenario = { ...winter.scenario, climate: { ...winter.scenario.climate, hens: { lay: 0.5 } } };
+  const progress = (s: GameState) => {
+    const c = place(s, 'coop', 4, 4, 0);
+    if (!c.ok) assert.fail(c.error);
+    const b = c.value.building;
+    if (!('progress' in b)) assert.fail('coop is a machine');
+    b.inputs = { wheat: 2, beans: 2 }; advance(s, 4);
+    return b.progress ?? 0;
+  };
+  const w = progress(winter), p = progress(spring);
+  assert.ok(w > 0 && Math.abs(p - 2 * w) < 0.5, `winter ${w}, spring ${p}`);
 });

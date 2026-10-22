@@ -1,4 +1,4 @@
-import { DAY_SECONDS, FIELD, type CropDef } from './data.ts';
+import { ANIMALS, DAY_SECONDS, FIELD, type CropDef } from './data.ts';
 import { noise1 } from './rng.ts';
 import type { Scenario } from './scenarios.ts';
 import type { GameState } from './state.ts';
@@ -66,4 +66,25 @@ export function warmthFact(crop: CropDef, w: number): { text: string; tone?: 'ba
   const word = w < crop.comfort.low ? 'cool' : 'warm';
   const how = f === 0 ? `it stops growing below ${FIELD.tenderStops}°C` : f >= 0.97 ? 'grows at nearly full speed' : `grows at about ${Math.round(f * 20) * 5}% speed`;
   return { text: `${head}: ${word} for it, ${how}`, tone: f < 0.6 ? 'bad' : undefined };
+}
+
+/** How fast the hens lay in a warmth, 0–1: the season's rate, slowed smoothly above ANIMALS.henHeat. */
+export function henPace(sc: Scenario, w: number): number {
+  const d = Math.max(0, w - ANIMALS.henHeat);
+  return sc.climate.hens.lay / (1 + (d / ANIMALS.henHeatWidth) ** 2);
+}
+
+/** Whether the bees leave the hive in a warmth: not below ANIMALS.beesFly. */
+export const beesFly = (w: number) => w >= ANIMALS.beesFly;
+
+/** The coop's laying as a fact: "Hens: laying at half speed, 3°C". */
+export function henFact(sc: Scenario, w: number): { text: string; tone?: 'bad' | 'good' } {
+  const f = henPace(sc, w), head = `Hens, ${Math.round(w)}°C`;
+  if (f >= 0.97) return { text: `${head}: laying at full speed`, tone: 'good' };
+  return { text: `${head}: ${w > ANIMALS.henHeat ? 'too warm' : 'cool season'}, laying at about ${Math.round(f * 20) * 5}% speed`, tone: f < 0.6 ? 'bad' : undefined };
+}
+
+/** The bees as a fact: "Bees: staying in, 7°C". */
+export function beesFact(w: number): { text: string; tone?: 'bad' | 'good' } {
+  return beesFly(w) ? { text: `Bees: flying, ${Math.round(w)}°C`, tone: 'good' } : { text: `Bees: staying in, ${Math.round(w)}°C (below ${ANIMALS.beesFly}°C)`, tone: 'bad' };
 }

@@ -107,7 +107,7 @@ export const CAMPAIGN: Scenario[] = [
     goals: [{ kind: 'deliver', item: 'linen', n: 30 }, { kind: 'deliver', item: 'sauce', n: 30 }, { kind: 'deliver', item: 'bread', n: 80 }],
   },
   {
-    id: 'c8', name: 'Harvest Festival', seed: 8808, width: 56, height: 44, credits: 1800, par: 50 * MIN,
+    id: 'c8', name: 'Harvest Festival', seed: 8808, width: 56, height: 44, credits: 1800, par: 55 * MIN,
     blurb: 'The whole valley comes together for the festival. Everything, at once, on healthy soil.',
     terrain: { ...LOAM, soil: 50, rock: 0.07, forest: 0.14, relief: 0.7 }, climate: climateOf('autumn', 'stormy'), tags: ['Everything'],
     goals: [{ kind: 'deliver', item: 'honeycake', n: 40 }, { kind: 'deliver', item: 'sauce', n: 30 }, { kind: 'deliver', item: 'linen', n: 30 }, { kind: 'soil', min: 60 }],

@@ -29,7 +29,7 @@ export function deserialize(json: string | null): Result<GameState> {
   const parsed = tryParseJson(json);
   if (!parsed.ok) return err(`The save isn't JSON: ${parsed.error}`);
   const s = parsed.value as GameState | null;
-  if (s?.version !== 12) return err('The save is from another version (this game reads version 12).');
+  if (s?.version !== 13) return err('The save is from another version (this game reads version 13).');
   if (!complete(s)) return err('The save is broken: its state is incomplete or out of range.');
   if (!validRun(s.run, s.scenario.goals.length)) return err('The save is broken: its run log is incomplete or out of range.');
   return ok(s);
@@ -60,7 +60,8 @@ function climate(c: Climate): boolean {
     && !!c.wind && [c.wind.mean, c.wind.gust].every(num)
     && !!c.river && num(c.river.flow) && c.river.flow >= 0
     && !!c.conditions && [c.conditions.cloud, c.conditions.rain, c.conditions.calm].every((v) => num(v) && v >= 0 && v <= 1)
-    && !!c.warmth && [c.warmth.low, c.warmth.high, c.warmth.drift].every((v) => num(v) && Math.abs(v) <= 100) && c.warmth.low <= c.warmth.high && c.warmth.drift >= 0;
+    && !!c.warmth && [c.warmth.low, c.warmth.high, c.warmth.drift].every((v) => num(v) && Math.abs(v) <= 100) && c.warmth.low <= c.warmth.high && c.warmth.drift >= 0
+    && !!c.hens && num(c.hens.lay) && c.hens.lay >= 0 && c.hens.lay <= 1;
 }
 
 /** The scenario's fields the simulation and the HUD read. */
