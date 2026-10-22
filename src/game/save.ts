@@ -29,7 +29,7 @@ export function deserialize(json: string | null): Result<GameState> {
   const parsed = tryParseJson(json);
   if (!parsed.ok) return err(`The save isn't JSON: ${parsed.error}`);
   const s = parsed.value as GameState | null;
-  if (s?.version !== 9) return err('The save is from another version (this game reads version 9).');
+  if (s?.version !== 10) return err('The save is from another version (this game reads version 10).');
   if (!complete(s)) return err('The save is broken: its state is incomplete or out of range.');
   if (!validRun(s.run, s.scenario.goals.length)) return err('The save is broken: its run log is incomplete or out of range.');
   return ok(s);
@@ -57,7 +57,8 @@ const str = (v: unknown) => typeof v === 'string';
 function climate(c: Climate): boolean {
   return !!c && known(SEASONS, c.season) && (c.character === null || (known(CHARACTERS, c.character) && CHARACTERS[c.character].seasons.includes(c.season)))
     && !!c.sun && [c.sun.rise, c.sun.set, c.sun.strength].every(num) && c.sun.rise < c.sun.set
-    && !!c.wind && [c.wind.mean, c.wind.gust].every(num);
+    && !!c.wind && [c.wind.mean, c.wind.gust].every(num)
+    && !!c.river && num(c.river.flow) && c.river.flow >= 0;
 }
 
 /** The scenario's fields the simulation and the HUD read. */

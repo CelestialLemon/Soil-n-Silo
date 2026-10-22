@@ -104,12 +104,15 @@ const top = (s: GameState, x: number, y: number) => Math.max(...corners(s.map, x
 /** The share of the wind a turbine at (x, y) gets (above 1 up high): its shelter times its height. */
 export const exposureAt = (s: GameState, x: number, y: number) => windExposure(s, x, y).exposure;
 
+/** The season's river in words, from its flow: "a high, fast river". */
+export const riverSeason = (flow: number) => (flow >= 1.2 ? 'a high, fast river' : flow <= 0.7 ? 'a low, slow river' : 'a moderate river');
+
 /**
  * Where a water wheel with its north-west tile at (x, y) would stand: facing the river it shares an edge with at its own level
- * (the side with the most river), the current there (m/s) and whether a fall is beside it, and the watts it makes; null where
+ * (the side with the most river), the current there (m/s, the map's river times the season's flow) and whether a fall is beside it, and the watts it makes; null where
  * there is no river at the bank's level.
  */
-export function wheelSite(s: GameState, x: number, y: number): { rot: Dir; current: number; fall: boolean; watts: number } | null {
+export function wheelSite(s: GameState, x: number, y: number): { rot: Dir; current: number; flow: number; fall: boolean; watts: number } | null {
   const sides = [0, 0, 0, 0];
   let current = 0, fall = false;
   for (const t of rim(x, y, 2)) {
@@ -124,8 +127,10 @@ export function wheelSite(s: GameState, x: number, y: number): { rot: Dir; curre
     }
   }
   if (!current) return null;
+  const flow = s.scenario.climate.river.flow;
+  current *= flow;
   const rot = sides.indexOf(Math.max(...sides)) as Dir;
-  return { rot, current, fall, watts: POWER.wheel * current * (fall ? POWER.wheelFall : 1) };
+  return { rot, current, flow, fall, watts: POWER.wheel * current * (fall ? POWER.wheelFall : 1) };
 }
 
 /** Whether goods can pass between buildings `a` and `b` next door: somewhere along the edge they share, the ground joins (not across a cliff). */

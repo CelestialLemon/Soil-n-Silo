@@ -164,7 +164,7 @@ replaces the old per-commission weather settings: the sun's hours and strength a
 | Sun strength at noon | 0.9 | 1.1 | 0.75 | 0.55 |
 | Wind (mean ± gust) | 0.5 ± 0.4, gusty | 0.3 ± 0.25, light | 0.7 ± 0.3, strong | 0.7 ± 0.15, strong and steady |
 
-Each season favours a power source: wheels in spring (once the river follows the season), solar in summer, wind in autumn
+Each season favours a power source: wheels in spring, solar in summer, wind in autumn
 and winter. A summer day gives a solar panel about four times a winter day's energy.
 
 **Characters** add to the season's numbers. A character only fits some seasons (no hard summer), and it will also set the
@@ -179,7 +179,7 @@ odds of each weather event once there are events:
 | Gales | spring, autumn, winter | wind +0.15, gust +0.05 |
 | Stormy | spring, summer, autumn | sun −0.1, wind +0.05, gust +0.15 |
 | Hard | winter | sun −0.1, wind +0.05 (colder, with warmth) |
-| High river | spring | nothing yet (a higher river, with the river) |
+| High river | spring | a faster river (flow +0.3) |
 
 A commission's season is named with its character: "A wet spring", "Autumn, gales", or just "Winter" without one. **Tags**
 such as "Short days" or "Strong wind" describe the season on the level card (10 hours of sun or fewer: Short days, 15 or more:
@@ -515,7 +515,12 @@ digester.
 | Digester | 2 × 2 | 180 | Burns one manure, bran or seed cake every 10 s for a steady 30 W |
 | Pylon | 1 × 1 | 10 | Powers buildings with any tile within 3 tiles; links to pylons within 8 tiles |
 
-A wheel uses the strongest current touching its bank at the same level. A fall counts if any of those river tiles shares
+A wheel uses the strongest current touching its bank at the same level, times the season's **flow** (the `river` section of
+`seasons.ts`): spring 1.5, summer 0.6, autumn 0.9, winter 0.5; a high river adds 0.3, a dry season takes off 0.1. So a spring
+wheel makes 30 W per m/s and a summer one 12. The placement card and the inspector state the season's effect. The drawn water
+level does not change with the season (the same river in every season; only the current, and so the watts, follow it). The
+river never freezes and never floods in the season itself: those are events (cold snap, flood, phase 2). Ponds and lakes have
+no current and are unchanged. The bot's layouts have no wheel, so no target time moved. A fall counts if any of those river tiles shares
 an edge with water at a different level. Still ponds and lakes cannot turn it; falls are a bonus, not a requirement.
 
 Pylons that link form a network. Each network adds up what its generators make and what its machines want; surplus charges its
@@ -590,7 +595,7 @@ Early on, raw goods are the way to afford the first machines; products pay far b
 ## Saving
 
 The game saves the commission in progress (one at a time) in the browser every 30 s and when the page is hidden, and remembers
-each commission's best medal and time. Saves are version 9. A save from an older version of the game is refused.
+each commission's best medal and time. Saves are version 10. A save from an older version of the game is refused.
 
 ## Open questions
 

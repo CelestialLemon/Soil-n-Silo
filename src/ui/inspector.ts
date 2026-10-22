@@ -11,7 +11,7 @@ import { hasHistory, heldSince, historyOf, summarize } from '../game/history.ts'
 import { networkOf, networks, usedBy } from '../game/power.ts';
 import { sunAt, windAt } from '../game/sim/clock.ts';
 import { exposureOf, isPollinated } from '../game/sim/layout.ts';
-import { SPRINKLER_MOST, TURBINE_MOST, wheelSite } from '../game/rules.ts';
+import { SPRINKLER_MOST, TURBINE_MOST, riverSeason, wheelSite } from '../game/rules.ts';
 import { fieldFertility } from '../game/sim/soil.ts';
 import { givesGoods, linksOf, recipeOf, takesGoods, wantsCompost } from '../game/sim/goods.ts';
 import { makes, shareOf, wants } from '../game/sim/energy.ts';
@@ -204,7 +204,8 @@ export class Inspector {
       case 'solar': case 'turbine': case 'wheel':
         stat('Making', () => watts(networkOf(s, b) ? makes(s, b, sunAt(s.scenario, s.time), windAt(s.scenario, s.time)) : 0));
         if (b.type === 'turbine') stat('Wind', () => `${pct(exposureOf(s, b))} of the wind${exposureOf(s, b) > 1 ? ', up high' : ' reaches it'}`);
-        if (b.type === 'wheel') { const site = wheelSite(s, b.x, b.y); stat('River', () => (site ? `${site.current.toFixed(1)} m/s${site.fall ? ', beside a fall' : ''}` : 'no current')); }
+        if (b.type === 'wheel') { const site = wheelSite(s, b.x, b.y); stat('River', () => (site ? `${site.current.toFixed(1)} m/s${site.fall ? ', beside a fall' : ''}` : 'no current'));
+          if (site) { const flow = s.scenario.climate.river.flow; stat('Season', () => `${riverSeason(flow)}, ×${flow.toFixed(1)} current`); } }
         break;
       case 'depot': {
         const list = h('div', { class: 'chips' });

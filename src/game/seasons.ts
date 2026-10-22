@@ -17,6 +17,8 @@ export interface Levers {
   sun: { rise: number; set: number; strength: number };
   /** Mean wind and how far it swings either way (both 0–1 of full strength). */
   wind: { mean: number; gust: number };
+  /** The river's current as a multiple of the map's own (1 = as drawn): it sets what a water wheel makes. */
+  river: { flow: number };
 }
 
 /** A commission's climate: its season and character, and the levers they give. */
@@ -39,6 +41,7 @@ export const SEASONS: Record<Season, SeasonInfo> = {
     levers: {
       sun: { rise: 6, set: 19, strength: 0.9 },
       wind: { mean: 0.5, gust: 0.4 },
+      river: { flow: 1.5 },
     },
   },
   summer: {
@@ -46,6 +49,7 @@ export const SEASONS: Record<Season, SeasonInfo> = {
     levers: {
       sun: { rise: 5, set: 21, strength: 1.1 },
       wind: { mean: 0.3, gust: 0.25 },
+      river: { flow: 0.6 },
     },
   },
   autumn: {
@@ -53,6 +57,7 @@ export const SEASONS: Record<Season, SeasonInfo> = {
     levers: {
       sun: { rise: 7, set: 18, strength: 0.75 },
       wind: { mean: 0.7, gust: 0.3 },
+      river: { flow: 0.9 },
     },
   },
   winter: {
@@ -60,6 +65,7 @@ export const SEASONS: Record<Season, SeasonInfo> = {
     levers: {
       sun: { rise: 8, set: 16, strength: 0.55 },
       wind: { mean: 0.7, gust: 0.15 },
+      river: { flow: 0.5 },
     },
   },
 };
@@ -78,7 +84,7 @@ export interface CharacterInfo {
 }
 
 /**
- * The characters. Wet and high river shift nothing yet: they gain their effect with rain and the river.
+ * The characters. Wet shifts nothing yet: it gains its effect with rain.
  */
 export const CHARACTERS: Record<Character, CharacterInfo> = {
   mild: {
@@ -96,6 +102,7 @@ export const CHARACTERS: Record<Character, CharacterInfo> = {
     word: 'dry', seasons: ['spring', 'summer', 'autumn'],
     shift: {
       sun: { strength: 0.05 },
+      river: { flow: -0.1 },
     },
   },
   hot: {
@@ -127,7 +134,9 @@ export const CHARACTERS: Record<Character, CharacterInfo> = {
   },
   highRiver: {
     word: 'high river', noun: true, seasons: ['spring'],
-    shift: {},
+    shift: {
+      river: { flow: 0.3 },
+    },
   },
 };
 
@@ -167,5 +176,7 @@ export function climateTags(c: Levers): string[] {
   if (c.wind.mean >= 0.65) tags.push('Strong wind');
   else if (c.wind.mean <= 0.35) tags.push('Light wind');
   if (c.wind.gust >= 0.4) tags.push('Gusty');
+  if (c.river.flow >= 1.5) tags.push('Fast river');
+  else if (c.river.flow <= 0.6) tags.push('Slow river');
   return tags;
 }

@@ -1,7 +1,7 @@
 import { BUILDINGS, CROPS, DAY_SECONDS, FIELD, HIVE, ITEMS, POLLINATION_BONUS, POWER, recipesFor, SAPLING_SECONDS, TREE_HEALTH, type BuildingId } from './data.ts';
 import { networks, POWERED, pylonsInLink } from './power.ts';
 import { HOUR_SECONDS } from './powerlog.ts';
-import { erosionAt, guardedAt, hiveReaches, paceOf, pylonReaches, sprinklerWaters, sprinklerWatts, touchesWater, waterLevelNear, waterPace, wheelSite, windExposure } from './rules.ts';
+import { erosionAt, guardedAt, hiveReaches, paceOf, pylonReaches, riverSeason, sprinklerWaters, sprinklerWatts, touchesWater, waterLevelNear, waterPace, wheelSite, windExposure } from './rules.ts';
 import { earthPrice, groundworkFor, levelledFor } from './build.ts';
 import { hourAt, sunAt, windAt } from './sim/clock.ts';
 import { linksAt } from './sim/goods.ts';
@@ -119,6 +119,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         if (site) {
           facts.push({ label: 'Makes', value: watts(site.watts), sub: 'day and night' });
           facts.push({ label: 'Current', value: `${site.current.toFixed(1)} m/s`, sub: site.fall ? 'beside a fall' : 'no fall beside it', tone: site.fall ? 'good' : undefined });
+          facts.push({ label: 'Season', value: `×${site.flow.toFixed(1)}`, sub: riverSeason(site.flow), tone: site.flow >= 1.2 ? 'good' : site.flow <= 0.7 ? 'bad' : undefined });
         } else facts.push({ label: 'River', value: 'none', sub: 'it needs a river at its bank', tone: 'bad' });
         facts.push(pylonFact());
         break;

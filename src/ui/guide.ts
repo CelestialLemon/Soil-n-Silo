@@ -161,6 +161,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
     how: [
       'Place it on a river bank, at the river\'s level, sharing an edge with the running water: it faces the river by itself. Still ponds and lakes don\'t turn it.',
       `It makes ${POWER.wheel} W in a current of 1 m/s, more in a faster one, and ${POWER.wheelFall} times as much beside a fall, where the river drops a level.`,
+      'The season sets the river: high and fast in spring, low and slow in summer and winter, in between in autumn. The wheel states the season\'s effect.',
     ],
     tips: ['There are only a few good places for it. A wheel beside a fall can carry a small farm through the night.'],
   },
