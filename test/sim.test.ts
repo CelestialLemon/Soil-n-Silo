@@ -754,6 +754,10 @@ test('saves with missing or broken state are refused', () => {
   assert.equal(without((o) => { delete o.soilBase; }), null);
   assert.equal(without((o) => { delete o.scenario.tags; }), null);
   assert.equal(without((o) => { delete o.scenario.climate.wind.mean; }), null);
+  assert.equal(without((o) => { delete o.scenario.climate.conditions; }), null);
+  assert.equal(without((o) => { o.scenario.climate.conditions.rain = 1.5; }), null);
+  assert.equal(without((o) => { o.scenario.climate.conditions.cloud = -0.1; }), null);
+  assert.equal(without((o) => { o.scenario.climate.conditions.calm = 'x'; }), null);
   assert.equal(without((o) => { o.scenario.climate.season = 'monsoon'; }), null, 'a season there is');
   assert.equal(without((o) => { o.scenario.climate.character = 'hard'; o.scenario.climate.season = 'summer'; }), null, 'no hard summer');
   const m = flat();

@@ -58,7 +58,8 @@ function climate(c: Climate): boolean {
   return !!c && known(SEASONS, c.season) && (c.character === null || (known(CHARACTERS, c.character) && CHARACTERS[c.character].seasons.includes(c.season)))
     && !!c.sun && [c.sun.rise, c.sun.set, c.sun.strength].every(num) && c.sun.rise < c.sun.set
     && !!c.wind && [c.wind.mean, c.wind.gust].every(num)
-    && !!c.river && num(c.river.flow) && c.river.flow >= 0;
+    && !!c.river && num(c.river.flow) && c.river.flow >= 0
+    && !!c.conditions && [c.conditions.cloud, c.conditions.rain, c.conditions.calm].every((v) => num(v) && v >= 0 && v <= 1);
 }
 
 /** The scenario's fields the simulation and the HUD read. */

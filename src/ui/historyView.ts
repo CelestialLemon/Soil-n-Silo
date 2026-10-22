@@ -11,7 +11,7 @@ import { isMachine, type Building, type GameState, type Status } from '../game/s
 import { must } from '../game/result.ts';
 import { fill, h, icon, set, svg } from './dom.ts';
 import { clockAt, dec, itemByName, itemName, lcBuilding, num, pct, playTime, plural, watts } from './format.ts';
-import { statusLabel, statusPill } from './widgets.ts';
+import { isProblem, statusLabel, statusPill } from './widgets.ts';
 
 // The inspector's History tab: what a building did over the last 1, 5 or 10 minutes of play. A ribbon of its statuses in
 // the order they came (problems hatched, so they stand apart without colour), the share of time in each as a ring, its
@@ -146,7 +146,7 @@ export function historyView(s: GameState, b: Building, win: () => HistoryWindow,
   function drawStatuses(sum: Summary) {
     // The ribbon: a piece for each status held, from when it began to when it ended.
     plot.replaceChildren(...sum.spans.map((sp) => {
-      const seg = h('i', { class: sp.status === 'ok' || sp.status === 'idle' ? '' : 'is-problem' });
+      const seg = h('i', { class: isProblem(sp.status) ? 'is-problem' : '' });
       seg.style.left = `${xOf(sum, sp.from)}%`; seg.style.width = `${xOf(sum, sp.to) - xOf(sum, sp.from)}%`;
       seg.style.setProperty('--c', STATUS_COL[sp.status]);
       return seg;
