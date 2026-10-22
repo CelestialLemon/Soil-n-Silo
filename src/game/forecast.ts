@@ -10,7 +10,7 @@ import { makes, shareOf, wants } from './sim/energy.ts';
 import { wattsOf } from './sim/layout.ts';
 import { describeLinks } from './sim/describe.ts';
 import { centreLevel } from './relief.ts';
-import { beesFact, beesFly, henFact, warmthFact, warmthOf } from './warmth.ts';
+import { beesFact, beesFly, henPace, warmthFact, warmthOf } from './warmth.ts';
 import { inMap, type Building, type FieldBuilding, type GameState, type Setting } from './state.ts';
 
 // Forecasts from what the game already knows: what a building in hand would do on a tile (facts about the tile, no advice),
@@ -140,7 +140,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
       default: {
         const r = recipesFor(type).find((x) => x.id === set.recipe) ?? recipesFor(type)[0];
         if (r && r.outputs.length) facts.push({ label: 'Full speed', value: fmt1(r.outputs[0].n * 60 / r.time), sub: `${ITEMS[r.outputs[0].item].name.toLowerCase()} a minute` });
-        if (type === 'coop') { const hens = henFact(s.scenario, warmthOf(s)); facts.push({ label: 'Hens', value: hens.text.replace(/^Hens, \d+°C: /, ''), sub: `${Math.round(warmthOf(s))}°C`, tone: hens.tone === 'bad' ? 'bad' : undefined }); }
+        if (type === 'coop') { const pace = henPace(s.scenario, warmthOf(s)); facts.push({ label: 'Hens', value: `${Math.round(pace * 100)}%`, sub: `laying speed at ${Math.round(warmthOf(s))}°C`, tone: pace < 0.6 ? 'bad' : undefined }); }
         if (type === 'digester') facts.push({ label: 'Makes', value: watts(POWER.digester), sub: 'while burning' });
         if (type === 'battery') facts.push({ label: 'Stores', value: `${POWER.battery.capacity} J`, sub: `${POWER.battery.rate} W in and out` });
         if (def.power || POWERED({ type } as Building)) facts.push(pylonFact());
