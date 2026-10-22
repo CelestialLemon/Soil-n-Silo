@@ -113,9 +113,10 @@ watchScrollHints();
 async function play(initial: GameState) {
   let state = initial;
   const map = state.map;
-  const models = await loadModels();
+  const { season } = state.scenario.climate;
+  const models = await loadModels(season);
   const land = generateLand(state.scenario, COUNTRY);
-  const lie = new Lie(state, land), world = buildWorld(map, land, lie, models), ground = new MapGround(state, land, lie, world.halo, [...SOIL, ...DETAIL_COLOURS, ...DETAIL_COLOURS.map(world.halo.tone)]);
+  const lie = new Lie(state, land), world = buildWorld(map, land, lie, models, season), ground = new MapGround(state, land, lie, world.halo, [...SOIL, ...DETAIL_COLOURS, ...DETAIL_COLOURS.map(world.halo.tone)]);
   quantizePalette([...world.geometries, ...ground.geometries, ...allGeometries(models)], 160);
   const renderer = new PixelRenderer(canvas, world.scene, { shadowMapSize: 2048, warmHighlight: true });
   ground.show(renderer);

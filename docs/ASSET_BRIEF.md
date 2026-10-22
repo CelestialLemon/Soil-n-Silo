@@ -97,6 +97,29 @@ world X/Y extent of foliage, excluding fruit.
 | Poplar | 278 / 278 / 278 | 4.200 / 3.696 / 4.452 | 1.392 / 1.422 / 1.335 |
 | Apple | 482 / 482 / 482 | 2.120 / 2.035 / 2.247 | 1.760 / 1.487 / 1.793 |
 
+### Seasonal trees (climate phase 1, #95)
+
+A commission has one season for its whole run (`Scenario.climate.season`), so the game loads the set for that season once.
+Summer is the model above. `tree_<species>_spring`, `_autumn` and `_winter` (and `bush_<season>`) are the other seasons, built
+by the same `assets/tree_<species>/build.py` (a `seasonal` loop in `assets/trees.py`, previews as `preview_<season>.png`). Same
+three variants, same trunks, same limits (700 triangles, trunk inside the tile, crown free to overhang); a bare winter crown's
+boughs (`_bough`) may overhang like a crown. The pine keeps its one model all year (pines stay green among the bare trees).
+`treeModel` in `src/world/trees.ts` picks the file.
+
+| Species | Spring | Autumn | Winter |
+| --- | --- | --- | --- |
+| Oak | fresh green `#76a84e` | amber and russet `#d98a32` | bare boughs, grey-brown twig masses `#7a6758` |
+| Birch | sprout green `#91bc61` | thinning gold `#e3b43c`, pale boughs showing | bare pale boughs, purple-brown twigs `#8c6c66` |
+| Willow | sprout green `#91bc61` | yellow `#cdb04a` | bare arching boughs, thin golden-ochre curtains `#b48d42` |
+| Poplar | fresh green `#588650` | thinning gold column `#e3b43c` | bare upswept boughs, narrow twig spires `#7a6758` |
+| Apple | blossom, pale pink and white over fresh green `#e9c3c0` | amber and gold, ripe fruit `#c0782e` | bare boughs, twig masses `#7a6758` |
+| Bush | fresh green with white flowers `#76a84e` | russet and amber with berries `#a8502f` | bare twiggy mound, red berries kept `#6d5644` |
+| Pine | summer model | summer model | summer model |
+
+The colours are the distant canopy of each season (`CANOPY` in `src/world/trees.ts`); the far woods' crowns and apron use them
+and the season's mix in `WOODS`, with pines in the mix staying green. Winter has no snow cover on the models: it is a bare
+look, and any frosting is the ground's job.
+
 The water wheel's exception is checked by name (`front_water_parts` in
 `assets/solarpunk.py`): `move_spin_wheel`, `Waterwheel_axle`,
 `Waterwheel_bank_bearings`, `Waterwheel_dynamo_and_conduit`. They remain within
