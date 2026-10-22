@@ -36,3 +36,8 @@ export function greyLook(look: Look, { cloud, precip }: Pick<Weather, 'cloud' | 
     skyBot: greyed(look.skyBot, sky, SKY_DARK * c * 0.5),
   };
 }
+
+/** The drawn fall for a precipitation of 0–1: none below a trace, else light to moderate (renderer 0.15 to 0.5), leaving the heavy end (up to 1) for storms and blizzards. */
+export function fallIntensity(precip: number) {
+  return precip < 0.02 ? 0 : 0.15 + 0.35 * Math.min(1, precip);
+}
