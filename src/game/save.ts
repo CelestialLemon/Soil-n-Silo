@@ -60,7 +60,7 @@ function climate(c: Climate): boolean {
     && !!c.wind && [c.wind.mean, c.wind.gust].every(num)
     && !!c.river && num(c.river.flow) && c.river.flow >= 0
     && !!c.conditions && [c.conditions.cloud, c.conditions.rain, c.conditions.calm].every((v) => num(v) && v >= 0 && v <= 1)
-    && !!c.warmth && [c.warmth.low, c.warmth.high, c.warmth.drift].every(num) && c.warmth.low <= c.warmth.high;
+    && !!c.warmth && [c.warmth.low, c.warmth.high, c.warmth.drift].every((v) => num(v) && Math.abs(v) <= 100) && c.warmth.low <= c.warmth.high && c.warmth.drift >= 0;
 }
 
 /** The scenario's fields the simulation and the HUD read. */

@@ -70,8 +70,10 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
           wear += k / 9; if (k > 1) slopes++;
         }
         // The harvests over the next SOIL_AHEAD seconds, each wearing the soil and slowing the next.
+        // The pace over a whole day's warmth, as ten minutes span days.
+        const dayPace = (fert: number) => { let sum = 0; for (let k = 0; k < 24; k++) sum += paceOf(water, fert, crop, warmthOf(s, s.time + k * DAY_SECONDS / 24)).pace; return sum / 24; };
         let t = 0, later = soil;
-        for (;;) { t += crop.grow / paceOf(water, later, crop, warmthOf(s)).pace; if (t > SOIL_AHEAD) break; later = Math.max(0, Math.min(100, later + crop.soil * (crop.soil < 0 ? wear : 1))); }
+        for (;;) { const pace = dayPace(later); if (!(pace > 0)) break; t += crop.grow / pace; if (t > SOIL_AHEAD) break; later = Math.max(0, Math.min(100, later + crop.soil * (crop.soil < 0 ? wear : 1))); }
         facts.push({ label: crop.name, value: `+${fmt1(perMin)}`, sub: 'a minute, at this warmth' });
         facts.push({ label: 'Soil', value: String(Math.round(soil)), then: String(Math.round(later)), sub: `in ${SOIL_AHEAD / 60} min if harvests are carried off` });
         facts.push(shore ? { label: 'Water', value: 'beside water', sub: 'grows at 100%' } : sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round(waterPace(water, crop.thirst, warmthOf(s)) * 100)}%` }
