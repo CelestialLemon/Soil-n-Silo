@@ -143,6 +143,7 @@ export function describeStatus(s: GameState, b: Building): string {
       }
       if (b.type === 'garage') { const n = s.trucks.filter((t) => t.garage === b.id).length; return n ? `${n} truck${n > 1 ? 's' : ''}, none charging` : 'No trucks yet: buy one'; }
       return 'Idle';
+    case 'rain': return 'Resting in rain: the rain waters the fields, so it draws no power';
     case 'dry': return b.type === 'field' ? `Growing ${CROPS[b.crop].name.toLowerCase()} slowly: no water` : def.name;
     case 'ok':
       if (b.type === 'field') return `Growing ${CROPS[b.crop].name.toLowerCase()}`;

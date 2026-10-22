@@ -100,7 +100,7 @@ export const CAMPAIGN: Scenario[] = [
     goals: [{ kind: 'deliver', item: 'sauce', n: 50 }, { kind: 'soil', min: 55 }],
   },
   {
-    id: 'c7', name: 'Riverlands', seed: 7707, width: 52, height: 42, credits: 1600, par: 50 * MIN,
+    id: 'c7', name: 'Riverlands', seed: 7707, width: 52, height: 42, credits: 1600, par: 45 * MIN,
     blurb: 'Three villages along the river put in orders at once. Space is short between the water and the woods.',
     terrain: { ...LOAM, water: 'river', forest: 0.22, rock: 0.06, relief: 0.3 }, climate: climateOf('spring', 'highRiver'), tags: ['Cramped'],
     tips: ['The river turns a water wheel built on its bank: steady power day and night, the most beside a fall.'],

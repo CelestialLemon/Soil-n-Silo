@@ -11,7 +11,7 @@ import { isMachine, type Building, type GameState, type Status } from '../game/s
 import { must } from '../game/result.ts';
 import { fill, h, icon, set, svg } from './dom.ts';
 import { clockAt, dec, itemByName, itemName, lcBuilding, num, pct, playTime, plural, watts } from './format.ts';
-import { statusLabel, statusPill } from './widgets.ts';
+import { isProblem, statusLabel, statusPill } from './widgets.ts';
 
 // The inspector's History tab: what a building did over the last 1, 5 or 10 minutes of play. A ribbon of its statuses in
 // the order they came (problems hatched, so they stand apart without colour), the share of time in each as a ring, its
@@ -26,11 +26,11 @@ export type HistoryWindow = (typeof HISTORY_WINDOWS)[number];
 const STATUS_COL: Record<Status, string> = {
   ok: 'var(--pine)', idle: 'var(--chalk-3)', input: 'var(--status-wait)', flowers: 'var(--status-wait)', blocked: 'var(--status-blocked)',
   lowpower: 'var(--status-blocked)', power: 'var(--status-nopower)', nolink: 'var(--status-nopower)', noroute: 'var(--status-unreachable)',
-  noroad: 'var(--status-unreachable)', dry: 'var(--status-dry)',
+  noroad: 'var(--status-unreachable)', dry: 'var(--status-dry)', rain: 'var(--chalk-3)',
 };
 const RAW_COL: Record<Status, string> = {
   ok: '#2f6b55', idle: '#d8d4c7', input: '#b8961f', flowers: '#b8961f', blocked: '#c4702f', lowpower: '#c4702f', power: '#b4523a',
-  nolink: '#b4523a', noroute: '#76608f', noroad: '#76608f', dry: '#3d7a91',
+  nolink: '#b4523a', noroute: '#76608f', noroad: '#76608f', dry: '#3d7a91', rain: '#d8d4c7',
 };
 
 /** Generators and batteries chart a reading; everything else with a history shows its statuses. */
@@ -146,7 +146,7 @@ export function historyView(s: GameState, b: Building, win: () => HistoryWindow,
   function drawStatuses(sum: Summary) {
     // The ribbon: a piece for each status held, from when it began to when it ended.
     plot.replaceChildren(...sum.spans.map((sp) => {
-      const seg = h('i', { class: sp.status === 'ok' || sp.status === 'idle' ? '' : 'is-problem' });
+      const seg = h('i', { class: isProblem(sp.status) ? 'is-problem' : '' });
       seg.style.left = `${xOf(sum, sp.from)}%`; seg.style.width = `${xOf(sum, sp.to) - xOf(sum, sp.from)}%`;
       seg.style.setProperty('--c', STATUS_COL[sp.status]);
       return seg;
