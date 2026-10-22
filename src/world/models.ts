@@ -1,7 +1,8 @@
 import * as THREE from 'three';
+import type { Season } from '../game/seasons.ts';
 import { collectGltf, GeometryCollector, loadGltf, motion, movingPartMotion, namedMeshRule, type Motion } from 'pixel3d-renderer';
 import { BUILDING_IDS, CROP_IDS, CROPS, ITEM_IDS, type BuildingId, type CropId, type ItemId } from '../game/data.ts';
-import { TREE_SPECIES, treeModel, type TreeKind, type TreeSeason } from './trees.ts';
+import { TREE_SPECIES, treeModel, type TreeKind } from './trees.ts';
 import { bar, cropStandIn, frame, GHOST_WIRE, itemShape, NET_COLOURS, rock, ROUTE_COLOURS, standIn, truck } from './shapes.ts';
 
 // The game's object geometries, in local space (origin on the ground at the footprint centre, front facing +z). They come
@@ -107,7 +108,7 @@ function lookFrom(root: THREE.Group, seed: number): { idle: Geo; running: Geo } 
 const heightOf = (g: Geo) => { g.computeBoundingBox(); return g.boundingBox ? g.boundingBox.max.y : 1; };
 
 /** The game's models, with the trees and bushes of `season` (fixed for the level). */
-export async function loadModels(season: TreeSeason): Promise<Models> {
+export async function loadModels(season: Season): Promise<Models> {
   const names = new Set<string>(['wheat', 'tomato', 'beans', 'sunflower', 'flax', 'rock', 'truck', treeModel('bush', season), ...TREE_SPECIES.map((t) => treeModel(t, season))]);
   for (const n of Object.values(FILES)) names.add(n);
   const roots = new Map<string, THREE.Group | null>(await Promise.all([...names].map(async (n) => [n, await load(n)] as const)));

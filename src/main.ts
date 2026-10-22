@@ -29,7 +29,6 @@ import { truckName } from './ui/routing.ts';
 import { statusLabel } from './ui/widgets.ts';
 import type { Hover, MarkerSpot } from './ui/world.ts';
 import { allGeometries, loadModels } from './world/models.ts';
-import type { TreeSeason } from './world/trees.ts';
 import { PowerView } from './world/powerView.ts';
 import { RouteView } from './world/routeView.ts';
 import { Camera } from './world/camera.ts';
@@ -114,7 +113,7 @@ watchScrollHints();
 async function play(initial: GameState) {
   let state = initial;
   const map = state.map;
-  const season = (params.get('season') ?? 'summer') as TreeSeason; // SCRATCH until #88
+  const { season } = state.scenario.climate;
   const models = await loadModels(season);
   const land = generateLand(state.scenario, COUNTRY);
   const lie = new Lie(state, land), world = buildWorld(map, land, lie, models, season), ground = new MapGround(state, land, lie, world.halo, [...SOIL, ...DETAIL_COLOURS, ...DETAIL_COLOURS.map(world.halo.tone)]);

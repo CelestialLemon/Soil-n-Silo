@@ -1,10 +1,11 @@
 import * as THREE from 'three';
+import type { Season } from '../game/seasons.ts';
 import { FLAG, FLUIDS, FluidCollector, GeometryCollector, linearColor as lin, place, type PixelScene } from 'pixel3d-renderer';
 import { TERRAIN, type Land, type MapData } from '../game/map.ts';
 import { baseLevel, joins, SIDES } from '../game/relief.ts';
 import { cliff, geography, grassOf, isBank, landRelief, LEVEL_HEIGHT, top, Tris, type Halo, type Lie } from './ground.ts';
 import { box, hash } from './kit.ts';
-import { canopyColour, treeAt, wetAt, woodsColours, type TreeKind, type TreeSeason } from './trees.ts';
+import { canopyColour, treeAt, wetAt, woodsColours, type TreeKind } from './trees.ts';
 
 // The static world of a commission, built once from its map: river and pond basins with water over them, and the country
 // around the map so the camera never looks past the world. The river runs with its current, over falls where it drops a
@@ -59,7 +60,7 @@ const country = (g: THREE.BufferGeometry, m: THREE.Matrix4) => {
 };
 
 /** The world beyond the map, in `season` (the trees' models, from `models`, are already the season's). */
-export function buildWorld(map: MapData, land: Land, lie: Lie, models: { trees: Record<TreeKind, THREE.BufferGeometry[]>; rocks: THREE.BufferGeometry[] }, season: TreeSeason): World {
+export function buildWorld(map: MapData, land: Land, lie: Lie, models: { trees: Record<TreeKind, THREE.BufferGeometry[]>; rocks: THREE.BufferGeometry[] }, season: Season): World {
   const s = new GeometryCollector(), d = new GeometryCollector(true), fluids = new FluidCollector();
   const { width: w, height: h } = map, M = land.margin;
   const onMap = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h;
