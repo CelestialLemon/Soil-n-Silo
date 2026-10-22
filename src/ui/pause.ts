@@ -29,6 +29,7 @@ const MARKERS: [Status, string, string][] = [
   ['lowpower', 'Low power', 'gets a share of what it needs'], ['power', 'No power', 'its network has none'],
   ['nolink', 'Not connected', 'no pylon reaches it'], ['noroute', 'No route takes its goods', 'full, and no truck picks it up'],
   ['noroad', 'No road', 'trucks can\'t reach it'], ['dry', 'Dry', 'a field no sprinkler waters'],
+  ['rain', 'Resting in rain', 'a sprinkler, the rain waters the fields'],
 ];
 
 /** What the markers mean: each status as its shape, word and tint. */

@@ -37,7 +37,7 @@ export function ring(o: { v: number; d?: number; w?: number; col?: string }, ...
 export function statusLook(status: Status): { cls: string; outline?: boolean; col?: string } {
   switch (status) {
     case 'ok': return { cls: '' };
-    case 'idle': return { cls: '', col: 'var(--ink-3)' };
+    case 'idle': case 'rain': return { cls: '', col: 'var(--ink-3)' };
     case 'input': case 'flowers': return { cls: 'is-wait' };
     case 'blocked': return { cls: 'is-blocked' };
     case 'lowpower': return { cls: 'is-nopower', col: 'var(--status-blocked)' };
@@ -50,7 +50,7 @@ export function statusLook(status: Status): { cls: string; outline?: boolean; co
 }
 
 /** Whether a status is a problem (it shows a marker). */
-export const isProblem = (status: Status) => status !== 'ok' && status !== 'idle';
+export const isProblem = (status: Status) => status !== 'ok' && status !== 'idle' && status !== 'rain';
 
 /** What a building was doing, in a few words. */
 export function statusLabel(b: { type: Building['type'] }, status: Status, need?: string, share?: number): string {
@@ -70,6 +70,7 @@ export function statusLabel(b: { type: Building['type'] }, status: Status, need?
     case 'nolink': return 'Not connected';
     case 'flowers': return 'No flowers near';
     case 'dry': return 'Dry';
+    case 'rain': return 'Resting in rain';
   }
 }
 

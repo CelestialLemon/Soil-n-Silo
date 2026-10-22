@@ -4,8 +4,10 @@ import { HOUR_SECONDS } from './powerlog.ts';
 import { erosionAt, guardedAt, hiveReaches, paceOf, pylonReaches, riverSeason, sprinklerWaters, sprinklerWatts, touchesWater, waterLevelNear, waterPace, wheelSite, windExposure } from './rules.ts';
 import { earthPrice, groundworkFor, levelledFor } from './build.ts';
 import { hourAt, sunAt, windAt } from './sim/clock.ts';
+import { raining } from './sim/weather.ts';
 import { linksAt } from './sim/goods.ts';
 import { makes, shareOf } from './sim/energy.ts';
+import { wattsOf } from './sim/layout.ts';
 import { describeLinks } from './sim/describe.ts';
 import { centreLevel } from './relief.ts';
 import { inMap, type Building, type FieldBuilding, type GameState, type Setting } from './state.ts';
@@ -175,7 +177,9 @@ export function tonight(s: GameState): Tonight | null {
   const sunrise = nextHour(sunset ?? now, w.rise), end = sunrise + HOUR_SECONDS;
   const nets = networks(s).list.map((net) => {
     const bats = net.members.filter((b) => b.type === 'battery').map((b) => b.charge);
-    return { net, bats, solar: net.members.filter((b) => b.type === 'solar').length, turbines: net.members.filter((b) => b.type === 'turbine'),
+    // What the sprinklers want when they run: they rest in rain, so `net.wanted` holds them out while it rains now.
+    const sprinklers = net.members.filter((b) => b.type === 'sprinkler').reduce((n, b) => n + wattsOf(s, b), 0);
+    return { net, bats, sprinklers, other: net.wanted - (raining(sc, now) ? 0 : sprinklers), solar: net.members.filter((b) => b.type === 'solar').length, turbines: net.members.filter((b) => b.type === 'turbine'),
       digesters: net.members.filter((b) => b.type === 'digester' || b.type === 'wheel').reduce((n, b) => n + makes(s, b, 0, 0), 0) };
   });
   const capacity = nets.reduce((n, x) => n + x.bats.length, 0) * POWER.battery.capacity;
@@ -193,7 +197,7 @@ export function tonight(s: GameState): Tonight | null {
     let short = 0;
     for (const x of nets) {
       const made = POWER.solar * sun * x.solar + x.turbines.reduce((n, b) => n + makes(s, b, 0, wind), 0) + x.digesters;
-      let spare = (made - x.net.wanted) * dt;
+      let spare = (made - x.other - (raining(sc, t + dt / 2) ? 0 : x.sprinklers)) * dt;
       for (let i = 0; i < x.bats.length; i++) {
         const move = spare > 0 ? Math.min(spare, POWER.battery.rate * dt, POWER.battery.capacity - x.bats[i]) : Math.max(spare, -POWER.battery.rate * dt, -x.bats[i]);
         x.bats[i] += move; spare -= move;

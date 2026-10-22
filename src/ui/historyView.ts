@@ -26,11 +26,11 @@ export type HistoryWindow = (typeof HISTORY_WINDOWS)[number];
 const STATUS_COL: Record<Status, string> = {
   ok: 'var(--pine)', idle: 'var(--chalk-3)', input: 'var(--status-wait)', flowers: 'var(--status-wait)', blocked: 'var(--status-blocked)',
   lowpower: 'var(--status-blocked)', power: 'var(--status-nopower)', nolink: 'var(--status-nopower)', noroute: 'var(--status-unreachable)',
-  noroad: 'var(--status-unreachable)', dry: 'var(--status-dry)',
+  noroad: 'var(--status-unreachable)', dry: 'var(--status-dry)', rain: 'var(--chalk-3)',
 };
 const RAW_COL: Record<Status, string> = {
   ok: '#2f6b55', idle: '#d8d4c7', input: '#b8961f', flowers: '#b8961f', blocked: '#c4702f', lowpower: '#c4702f', power: '#b4523a',
-  nolink: '#b4523a', noroute: '#76608f', noroad: '#76608f', dry: '#3d7a91',
+  nolink: '#b4523a', noroute: '#76608f', noroad: '#76608f', dry: '#3d7a91', rain: '#d8d4c7',
 };
 
 /** Generators and batteries chart a reading; everything else with a history shows its statuses. */

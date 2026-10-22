@@ -61,7 +61,7 @@ export interface Truck {
   charged: boolean;
 }
 
-export type Status = 'ok' | 'idle' | 'input' | 'blocked' | 'power' | 'lowpower' | 'nolink' | 'noroad' | 'noroute' | 'flowers' | 'dry';
+export type Status = 'ok' | 'idle' | 'input' | 'blocked' | 'power' | 'lowpower' | 'nolink' | 'noroad' | 'noroute' | 'flowers' | 'dry' | 'rain';
 
 interface BuildingBase {
   id: number;

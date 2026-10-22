@@ -163,6 +163,9 @@ replaces the old per-commission weather settings: the sun's hours and strength a
 | Sun up | 6–19 | 5–21 | 7–18 | 8–16 |
 | Sun strength at noon | 0.9 | 1.1 | 0.75 | 0.55 |
 | Wind (mean ± gust) | 0.5 ± 0.4, gusty | 0.3 ± 0.25, light | 0.7 ± 0.3, strong | 0.7 ± 0.15, strong and steady |
+| Cloud (share of the time) | 0.25 | 0.12 | 0.25 | 0.30 |
+| Showers (share of the time, before they build and fade) | 0.22 | 0.05 | 0.12 | 0.15, as snow |
+| Calm spells (share of the time) | 0.10 | 0.35 | 0.10 | 0.10 |
 
 Each season favours a power source: wheels in spring, solar in summer, wind in autumn
 and winter. A summer day gives a solar panel about four times a winter day's energy.
@@ -173,18 +176,32 @@ odds of each weather event once there are events:
 | Character | Seasons | Shifts now |
 | --- | --- | --- |
 | Mild | any | sun +0.05, wind −0.05, gust −0.1 |
-| Wet | spring, summer, autumn | nothing yet (more rain, with rain) |
-| Dry | spring, summer, autumn | sun +0.05 (less rain, with rain) |
-| Hot | spring, summer | sun +0.1, wind −0.05 (warmer, with warmth) |
+| Wet | spring, summer, autumn | cloud +0.1, rain +0.1, calm −0.05 |
+| Dry | spring, summer, autumn | sun +0.05, cloud −0.05, rain −0.04, calm +0.1 |
+| Hot | spring, summer | sun +0.1, wind −0.05, calm +0.05 (warmer, with warmth) |
 | Gales | spring, autumn, winter | wind +0.15, gust +0.05 |
-| Stormy | spring, summer, autumn | sun −0.1, wind +0.05, gust +0.15 |
-| Hard | winter | sun −0.1, wind +0.05 (colder, with warmth) |
+| Stormy | spring, summer, autumn | sun −0.1, wind +0.05, gust +0.15, cloud +0.15, rain +0.06 |
+| Hard | winter | sun −0.1, wind +0.05, cloud +0.1 (colder, with warmth) |
 | High river | spring | a faster river (flow +0.3) |
 
 A commission's season is named with its character: "A wet spring", "Autumn, gales", or just "Winter" without one. **Tags**
 such as "Short days" or "Strong wind" describe the season on the level card (10 hours of sun or fewer: Short days, 15 or more:
 Long days; strength under 0.8: Weak sun, 1.1 or more: Strong sun; mean wind 0.65 or more: Strong wind, 0.35 or less: Light
 wind; gusts 0.4 or more: Gusty); they aren't modifiers of their own.
+
+**Conditions** are the everyday weather inside a season: small, constant and unannounced, seeded like the wind curve
+(`src/game/sim/weather.ts`). The day is cut into spells (4 hours of cloud, 2.5 of showers, 5 of calm); each spell is on with the
+season's chance at a seeded strength, and the strength glides from one spell to the next, so a condition builds and fades. The
+three numbers above are the chance of a spell being on; showers come out about a third more of the time than their number, from
+the gliding (a spring day is rainy about 30% of the time, a summer day about 7%, a wet spring about 43%, a dry summer about 1%).
+- **Cloud** takes up to 65% off the sun (solar output). A shower brings cloud with it.
+- **Calm spells** take up to 60% off the wind (turbines).
+- **Rain waters fields**: while it rains, every open field counts as watered, and **sprinklers rest** (status "Resting in rain"):
+  they draw no power. A wet spring frees power; a dry summer needs every watt for water.
+- **Snow doesn't**: winter's precipitation is snow, which waters nothing and leaves sprinklers running.
+- **The weather now** is clear, cloudy, rain or snow with a precipitation intensity 0–1 and the cloud cover
+  (`weatherNow(state)`, for the HUD chip and the look). The battery forecast ("tonight") uses the seeded sun and wind, cloud and
+  calm included, and counts the sprinklers as resting during the rain it expects.
 
 ## The map
 
@@ -557,7 +574,7 @@ A commission has goals, a target time and modifiers. It ends when every goal is 
 | 4 | Linen for the Looms | 50 linen; 5 yarn/min | 35 min | A hot summer | | 0.4 |
 | 5 | Long Nights | 100 honey cake | 40 min | Winter | | 0.5 |
 | 6 | Tired Soil | 50 sauce; soil health ≥ 55 | 35 min | A dry summer | Poor soil | 0.6 |
-| 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 50 min | Spring, high river | Cramped | 0.3 |
+| 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 45 min | Spring, high river | Cramped | 0.3 |
 | 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 45 min | A stormy autumn | Everything | 0.7 |
 
 The bot (`npm run sim`) deliberately uses a flat, open map with even soil to test the economy, not terrain;
@@ -566,7 +583,7 @@ Linen for the Looms in about 25 with trucks (with silos and drones it took about
 neighbours (`npm run sim -- c2:next`: a mill between two fields, a bakery beside it, a coop under both, a composter beside the
 coop) clears it in about 28 minutes with 3 trucks on 2 routes, where the all-truck layout uses 4 on 3; a person needs a few minutes more to plan and
 place. The bot's layouts for the other five, built round neighbours too, clear Windy Ridge in about 31 minutes, Long Nights
-in about 29, Tired Soil in about 26, Riverlands in about 35 and Harvest Festival in about 33 (`npm run sim -- c3` and so on).
+in about 29, Tired Soil in about 26, Riverlands in about 32 and Harvest Festival in about 33 (`npm run sim -- c3` and so on).
 
 Target times are about 1.4 times the bot's best time, rounded to 5 minutes, as First Light's 20 is to its 14: the bot knows
 its layout and plays a flat, open map, so a person needs that much more. (Balanced on 2026-10-20, once every commission had
@@ -574,7 +591,8 @@ a bot layout: trucks and neighbours had made Linen for the Looms, Long Nights, T
 much quicker than their targets, and Long Nights took the bot 17 minutes, so its order went up from 60 honey cake to 100.
 When seasons replaced the weather settings on 2026-10-21, a wet spring's weaker sun slowed Morning Bread by about 2 minutes,
 so its target went from 35 to 40 minutes, and a stormy autumn's wind sped Harvest Festival up by about 3, so its target went
-from 50 to 45.)
+from 50 to 45. Conditions then (2026-10-22): rain waters the fields and cloud dims the sun, which slowed First Light to about 15 and
+Morning Bread to about 30 and sped Riverlands up to about 32, so its target went from 50 to 45; the other targets stand.)
 
 ![The level select](images/menu.png)
 

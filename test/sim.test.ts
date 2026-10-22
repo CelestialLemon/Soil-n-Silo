@@ -19,16 +19,20 @@ import { fieldFertility, soilHealth } from '../src/game/sim/soil.ts';
 import { deliver, linksAt, linksOf, passes, tradesNextDoor } from '../src/game/sim/goods.ts';
 import { goalDone, medalFor, ratePerMin, routeRate } from '../src/game/sim/stats.ts';
 import { describeLinks, describeStatus, stopProblems, truckProblems } from '../src/game/sim/describe.ts';
+import { precipAt, raining, weatherAt } from '../src/game/sim/weather.ts';
 import { advance } from '../src/game/sim/step.ts';
 import { lastPose } from '../src/game/sim/trucks.ts';
 import { fieldPace } from '../src/game/sim/buildings.ts';
 import { buildingAt, newGame, type Building, type BuildingOf, type Dir, type MachineBuilding, type GameState, type Route, type Truck } from '../src/game/state.ts';
 
-/** A flat, empty test map: no water, rock or trees, even soil. */
+/** The sandbox's season without everyday conditions: no cloud, rain or calm spells to disturb a count. */
+const CLEAR = { ...SANDBOX.climate, conditions: { cloud: 0, rain: 0, calm: 0 } };
+
+/** A flat, empty test map: no water, rock or trees, even soil, clear weather. */
 function flat(extra: Partial<Scenario> = {}): GameState {
   const sc: Scenario = {
     ...SANDBOX, id: 'test', sandbox: false, credits: 100_000, width: 30, height: 30, goals: [], par: 600,
-    terrain: { soil: 60, soilSpread: 0, water: 'none', forest: 0, rock: 0, relief: 0 }, ...extra,
+    terrain: { soil: 60, soilSpread: 0, water: 'none', forest: 0, rock: 0, relief: 0 }, climate: CLEAR, ...extra,
   };
   const s = newGame(sc);
   s.map.fertility.fill(60);
@@ -106,7 +110,7 @@ test('seasons: characters shift their season, names read right, the sandbox take
 });
 
 test('the sun rises and sets, and wind stays in range', () => {
-  const sc = CAMPAIGN[0];
+  const sc = { ...CAMPAIGN[0], climate: { ...CAMPAIGN[0].climate, conditions: CLEAR.conditions } };
   assert.equal(hourAt(0), START_HOUR);
   const noon = (12 - START_HOUR) / 24 * DAY_SECONDS;
   assert.ok(sunAt(sc, noon) > 0.9);
@@ -1083,4 +1087,40 @@ test('a loaded game starts with a fresh runtime, and routesVersion changes when 
   assert.notEqual(runtimeOf(copy), runtimeOf(s));
   assert.equal(runtimeOf(copy).networks, undefined, 'nothing derived is carried over');
   assert.notEqual(runtimeOf(copy).routesVersion, runtimeOf(s).routesVersion, 'a version is never reused by another game');
+});
+
+test('conditions: seeded, small, by season; cloud dims the sun and calm spells lower the wind', () => {
+  const share = (sc: Scenario, f: (t: number) => boolean) => { let n = 0, k = 0; for (let t = 0; t < DAY_SECONDS * 200; t += 3, k++) if (f(t)) n++; return n / k; };
+  const at = (season: 'spring' | 'summer' | 'winter', character: 'wet' | 'dry' | null = null) => ({ ...SANDBOX, seed: 321, climate: climateOf(season, character) });
+  const rainy = (sc: Scenario) => share(sc, (t) => precipAt(sc, t) > 0);
+  assert.deepEqual(weatherAt(at('spring'), 500), weatherAt(at('spring'), 500), 'seeded');
+  assert.ok(rainy(at('spring')) > rainy(at('summer')) * 2, 'spring is wetter than summer');
+  assert.ok(rainy(at('spring', 'wet')) > rainy(at('spring')) && rainy(at('summer', 'dry')) < rainy(at('summer')));
+  assert.ok(rainy(at('spring')) < 0.4, 'showers stay small');
+  const winter = at('winter');
+  assert.ok(share(winter, (t) => weatherAt(winter, t).sky === 'snow') > 0.05);
+  assert.equal(share(winter, (t) => raining(winter, t)), 0, 'snow is not rain');
+  const sp = at('spring');
+  const rainT = [...Array(20000).keys()].map((i) => i * 3).find((t) => weatherAt(sp, t).sky === 'rain')!;
+  assert.ok(weatherAt(sp, rainT).precip > 0 && weatherAt(sp, rainT).cloud > 0);
+  const clear = { ...sp, climate: { ...sp.climate, conditions: CLEAR.conditions } };
+  const noon = (12 - START_HOUR) / 24 * DAY_SECONDS + DAY_SECONDS * 3;
+  assert.ok(sunAt(sp, rainT) <= sunAt(clear, rainT));
+  assert.equal(windAt(clear, noon) >= windAt({ ...clear, climate: { ...clear.climate, conditions: { cloud: 0, rain: 0, calm: 1 } } }, noon), true);
+});
+
+test('rain waters every field and sprinklers rest; snow does neither', () => {
+  const rainy = { ...CLEAR, conditions: { cloud: 0, rain: 1, calm: 0 } };
+  const s = flat({ climate: rainy }), f = put(s, 'field', 4, 4);
+  const sp = put(s, 'sprinkler', 3, 3);
+  powerAt(s, 3, 1);
+  advance(s, 30);
+  assert.equal(weatherAt(s.scenario, s.time).sky, 'rain');
+  assert.equal(fieldPace(s, f).water, 1);
+  assert.equal(sp.status, 'rain');
+  assert.equal(runtimeOf(s).shares?.get(sp.id) ?? 1, 1);
+  const w = flat({ climate: { ...climateOf('winter'), conditions: rainy.conditions } }), g = put(w, 'field', 4, 4);
+  advance(w, 30);
+  assert.equal(weatherAt(w.scenario, w.time).sky, 'snow');
+  assert.equal(fieldPace(w, g).water, 0);
 });

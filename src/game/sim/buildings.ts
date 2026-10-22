@@ -5,12 +5,13 @@ import { derived, isGuarded, isPollinated, sprinklersOf } from './layout.ts';
 import { changeSoil, fieldFertility } from './soil.ts';
 import { ingName, recipeOf, missing, outputsFit, consume, made } from './goods.ts';
 import { shareOf } from './energy.ts';
+import { raining } from './weather.ts';
 
 // Buildings: one step of each machine, field and hive.
 
 /** Growth per second of a field as a multiple of its crop's normal pace, and the parts it's made of. */
 export function fieldPace(s: GameState, f: FieldBuilding) {
-  const wet = touchesWater(s, f.x, f.y) ? 1 : sprinklersOf(s, f).reduce((m, sp) => Math.max(m, shareOf(s, sp)), 0);
+  const wet = touchesWater(s, f.x, f.y) || raining(s.scenario, s.time) ? 1 : sprinklersOf(s, f).reduce((m, sp) => Math.max(m, shareOf(s, sp)), 0);
   const p = paceOf(wet, fieldFertility(s, f));
   return { pace: p.pace, water: wet, soil: p.bySoil };
 }

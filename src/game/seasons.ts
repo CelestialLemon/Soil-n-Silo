@@ -19,6 +19,8 @@ export interface Levers {
   wind: { mean: number; gust: number };
   /** The river's current as a multiple of the map's own (1 = as drawn): it sets what a water wheel makes. */
   river: { flow: number };
+  /** The everyday weather, as the share of time (0–1) each lasts: cloud, showers (snow in winter) and calm spells (sim/weather.ts). */
+  conditions: { cloud: number; rain: number; calm: number };
 }
 
 /** A commission's climate: its season and character, and the levers they give. */
@@ -42,6 +44,7 @@ export const SEASONS: Record<Season, SeasonInfo> = {
       sun: { rise: 6, set: 19, strength: 0.9 },
       wind: { mean: 0.5, gust: 0.4 },
       river: { flow: 1.5 },
+      conditions: { cloud: 0.25, rain: 0.22, calm: 0.1 },
     },
   },
   summer: {
@@ -50,6 +53,7 @@ export const SEASONS: Record<Season, SeasonInfo> = {
       sun: { rise: 5, set: 21, strength: 1.1 },
       wind: { mean: 0.3, gust: 0.25 },
       river: { flow: 0.6 },
+      conditions: { cloud: 0.12, rain: 0.05, calm: 0.35 },
     },
   },
   autumn: {
@@ -58,6 +62,7 @@ export const SEASONS: Record<Season, SeasonInfo> = {
       sun: { rise: 7, set: 18, strength: 0.75 },
       wind: { mean: 0.7, gust: 0.3 },
       river: { flow: 0.9 },
+      conditions: { cloud: 0.25, rain: 0.12, calm: 0.1 },
     },
   },
   winter: {
@@ -66,6 +71,7 @@ export const SEASONS: Record<Season, SeasonInfo> = {
       sun: { rise: 8, set: 16, strength: 0.55 },
       wind: { mean: 0.7, gust: 0.15 },
       river: { flow: 0.5 },
+      conditions: { cloud: 0.3, rain: 0.15, calm: 0.1 },
     },
   },
 };
@@ -84,7 +90,7 @@ export interface CharacterInfo {
 }
 
 /**
- * The characters. Wet shifts nothing yet: it gains its effect with rain.
+ * The characters.
  */
 export const CHARACTERS: Record<Character, CharacterInfo> = {
   mild: {
@@ -96,13 +102,16 @@ export const CHARACTERS: Record<Character, CharacterInfo> = {
   },
   wet: {
     word: 'wet', seasons: ['spring', 'summer', 'autumn'],
-    shift: {},
+    shift: {
+      conditions: { cloud: 0.1, rain: 0.1, calm: -0.05 },
+    },
   },
   dry: {
     word: 'dry', seasons: ['spring', 'summer', 'autumn'],
     shift: {
       sun: { strength: 0.05 },
       river: { flow: -0.1 },
+      conditions: { cloud: -0.05, rain: -0.04, calm: 0.1 },
     },
   },
   hot: {
@@ -110,6 +119,7 @@ export const CHARACTERS: Record<Character, CharacterInfo> = {
     shift: {
       sun: { strength: 0.1 },
       wind: { mean: -0.05 },
+      conditions: { calm: 0.05 },
     },
   },
   gales: {
@@ -123,6 +133,7 @@ export const CHARACTERS: Record<Character, CharacterInfo> = {
     shift: {
       sun: { strength: -0.1 },
       wind: { mean: 0.05, gust: 0.15 },
+      conditions: { cloud: 0.15, rain: 0.06 },
     },
   },
   hard: {
@@ -130,6 +141,7 @@ export const CHARACTERS: Record<Character, CharacterInfo> = {
     shift: {
       sun: { strength: -0.1 },
       wind: { mean: 0.05 },
+      conditions: { cloud: 0.1 },
     },
   },
   highRiver: {
