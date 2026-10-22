@@ -545,7 +545,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
       h('table', { class: 'gtable' },
         h('tr', null, h('th', null, 'Crop'), h('th', null, 'Comfortable'), h('th', null, 'Hours a day in range, before drift and rain'), h('th', null, 'Frost')),
         ...CROP_IDS.map((x) => { const k = CROPS[x]; return h('tr', null, h('td', null, h('span', { class: 'gname' }, icon(x, 24), k.name)), h('td', null, `${k.comfort.low}–${k.comfort.high}°C`),
-          h('td', null, `about ${Math.round(hoursIn(k.comfort.low, k.comfort.high))} of 24`), h('td', null, c.warmth.low < 0 ? (k.tender ? 'lost in open fields' : 'hardy') : '—')); })),
+          h('td', null, (n => (n ? `about ${n} of 24` : 'none'))(Math.round(hoursIn(k.comfort.low, k.comfort.high)))), h('td', null, c.warmth.low < 0 ? (k.tender ? 'lost in open fields' : 'hardy') : '—')); })),
       h('div', { class: 'cd-label sec' }, 'Hens and bees'),
       h('div', { class: 'num-rows' },
         row('Hens', `lay at ${pct(c.hens.lay)} of their full rate${c.warmth.high > ANIMALS.henHeat ? `, slower above ${ANIMALS.henHeat}°C` : ''}`),
