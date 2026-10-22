@@ -171,8 +171,8 @@ replaces the old per-commission weather settings: the sun's hours and strength a
 Each season favours a power source: wheels in spring, solar in summer, wind in autumn
 and winter. A summer day gives a solar panel about four times a winter day's energy.
 
-**Characters** add to the season's numbers. A character only fits some seasons (no hard summer), and it will also set the
-odds of each weather event once there are events:
+**Characters** add to the season's numbers. A character only fits some seasons (no hard summer), and it also sets the
+odds of each weather event (see Weather events):
 
 | Character | Seasons | Shifts now |
 | --- | --- | --- |
@@ -195,12 +195,14 @@ modifiers of their own.
 written into the text):
 
 - **The HUD chip** by the dial: the season with its character ("A wet spring"), the weather now (Clear, Cloudy, Rain, Snow;
-  `weatherNow`) and the warmth now in °C, above the sun and wind chips. Later phases add the event now.
+  `weatherNow`) and the warmth now in °C, above the sun and wind chips. Once a weather event starts, its name replaces the
+  sky's word on the weather chip (red for a hard turn, green for a kind one), with no warning and no length.
 - **Level cards** (campaign, random, sandbox): the season and character is the first tag, filled; the campaign card's
   conditions column adds the season's warmth range and rain share (with the character's shifts applied).
 - **The briefing letter** carries a paragraph on the season in the writer's voice (each campaign letter has its own; random
-  commissions and the sandbox get a neutral line per season and character, `letters.ts`), then a place for the events a
-  season can bring (empty until phase 2).
+  commissions and the sandbox get a neutral line per season and character, `letters.ts`), then the weather events the season
+  and character can bring ("Weather to watch for this season: a thunderstorm, a flood or a late frost. Kinder turns it can take:
+  a soft rain."), never when they come.
 - **The guide** has a page for each season (sun, wind, warmth, rain, cloud, calm, the river, hours a day each crop is
   comfortable, hens, bees, and what each character shifts) and "Seasons and weather" in the basics. The field page's crop
   table gives each crop's comfortable range.
@@ -259,6 +261,83 @@ the gliding (a spring day is rainy about 30% of the time, a summer day about 7%,
   cloud cover. The renderer's intensity is `0.15 + 0.35 × precipitation`, so everyday showers read light to moderate (0.15–0.5)
   and the heavy end (up to 1) is left for phase 2's storms and blizzards. Cloud already thickens with a shower (`cloud` is at
   least 1.5 × precipitation). The rain keeps falling while the game is paused (it runs on the frame clock, not the game's).
+
+### Weather events
+
+A **weather event** happens during a commission, lasts half a day to two days (about 2–8 minutes of play; a morning's fog and a
+night's frost are shorter) and passes. The system is `src/game/events.ts`: pure data and rules, no drawing. An event has a
+**kind**, a **strength** (ordinary or severe; the severe tropical storm is the hurricane), a **start** and a **length** (seconds
+of play), and a commission's events are a list on the commission (`Scenario.events`, by start), so they are the same every
+time it is played, the bot can play them and the forecast can read them.
+
+**The catalogue** is one table, `EVENTS`: for each kind its name, whether it is a good one, its length, the hours of the day it
+can begin in (fog at dawn, a frost at night), the seasons that bring it and how often, the characters that change its odds or
+that it is limited to, whether it can be severe, its look and its `push`:
+
+| Event | Seasons (odds) | Characters | Length | Severe |
+| --- | --- | --- | --- | --- |
+| Thunderstorm | spring, summer | stormy ×2.5, wet ×1.5, hot ×1.2, mild ×0.7, dry ×0.4 | 10–14 h | yes |
+| Heat wave | summer | hot ×2.5, dry ×2, stormy ×0.6, wet ×0.5, mild ×0.4 | 24–48 h | yes |
+| Fog | autumn, from 03:00–07:00 | wet ×1.5, mild ×1.2, stormy ×0.5, gales ×0.3 | 4–7 h | yes |
+| Soft rain (good) | spring, autumn | wet ×1.8, mild ×1.2, dry ×0.4 | 20–28 h | no |
+| Warm spell (good) | autumn, winter | mild ×1.5, hot ×1.5, hard ×0.3 | 24–48 h | no |
+| Steady breeze (good) | summer | dry ×1.2, hot ×1.2, stormy ×0.5 | 20–28 h | no |
+| Gale | autumn | gales ×3, stormy ×2, mild ×0.4 | 20–28 h | yes |
+| Tropical storm | summer (×0.25, late), autumn (×0.5) | stormy ×3, wet ×1.5, gales ×1.2, hot ×0.5, mild ×0.3, dry ×0.1 | 24–48 h | yes: the hurricane |
+| Flood | spring; also after a tropical storm | high river ×3, wet ×2, stormy ×1.5, mild ×0.6, dry ×0.2 | 24–48 h | yes |
+| Late frost | spring, from 20:00–23:00 | dry ×1.5, wet ×0.8, gales ×0.5, mild ×0.4, hot ×0.2 | 8–10 h | yes |
+| Cold snap | winter | hard ×2.5, gales ×1, mild ×0.3 | 24–48 h | yes |
+| Blizzard | winter, hard character only | | 24–48 h | yes |
+| Dust storm | summer, dry character only | | 12–24 h | yes |
+
+The odds and lengths are first sketches. A tropical storm brings its **flood** the moment it ends, at the same strength (a
+hurricane's flood is the severe one): the one case where events touch, and the flood is part of its storm, not one of the
+level's events.
+
+**Most events do nothing yet.** The whole catalogue is rolled and shown now, so random commissions have real events, but each
+kind's `push` is empty until its own issue lands (2.3 thunderstorm, heat wave, fog and the good events; 2.4 gale, tropical storm,
+hurricane; 2.5 flood; 2.6 late frost; 2.7 cold snap and blizzard; 2.8 dust storm). Until then an event changes the **look** of the
+sky (cloud and drawn rain or snow, eased in with the event's ramp; the rules do not see it, so a thunderstorm's rain waters no
+fields yet), the HUD chip and the list the forecast will read.
+
+**Levers.** An event's `push` (per strength) gives some of these levers the value they reach at full strength; the rules
+read them through `pushesAt(scenario, time)`, so an effect that is a lever is one line in the event's entry:
+
+| Lever | Combines by | Read by |
+| --- | --- | --- |
+| `sun` | multiplying | `sunAt`: the share of the sun's light left, on top of cloud |
+| `wind` | adding | `windAt`: added to the wind (0–1) after calm spells, before the 0.05–1 clamp |
+| `cloud` | the highest | `cloudAt`: the sky is at least this covered (dims the sun like cloud, thickens the look) |
+| `rain` | the highest | `precipAt`: it rains (snows, in winter) at least this hard, so fields count as watered and sprinklers rest |
+| `warmth` | adding | `WARMTH_NUDGES`: °C added to the valley's warmth |
+| `river` | multiplying | `makes`: a multiple of the current, so of what water wheels make |
+| `trucks` | multiplying | `drive`: a multiple of the trucks' speed |
+
+An event builds in over 1.5 game hours (15 s of play) and fades out over the last 1.5, so each push is blended from neutral by
+the event's `intensityAt`, 0 to 1 (events under way together combine their pushes). An effect that is more than a lever (the
+flood's water, where a frost settles) reads the events itself: `activeEvents`, `eventNow`. A new lever is a line in `LEVERS`, a
+line in the catalogue where an event pushes it and the place the rules read it.
+
+**Random commissions roll their events** (`rollEvents`, from the seed, difficulty and climate; a stream of its own, so nothing
+else about a seed changes): difficulty 1 has one bad event and one good one, all ordinary; 2 has two bad and one good; 3 has two
+bad (one may be severe, 50% of the time, 75% in a hard or stormy character) and none or one good. A kind is drawn by its odds
+(season × character; a kind already drawn is a fifth as likely again), only from those the season and character allow: the
+blizzard needs a hard winter and the dust storm a dry summer. Only a stormy character can grow a tropical storm into a hurricane,
+at most one severe event a level, and only at difficulty 3. None comes on day 1; none overlap; at least half a day (12 game hours)
+is clear between events. They are laid out in a random order across the days from day 2 to the commission's target time
+(or the end of day 7, if that comes later), at a random hour within the kind's window. A level too short for all of them drops the
+last ones.
+
+**Campaign events are authored**, not rolled: `eventOn(day, hour, kind, strength?, hours?)` places "a gale on day 4, from 10:00"
+(and what follows it) in a campaign commission's `events`. None of the campaign has events yet (2.10 places them).
+
+**The sandbox** has a Weather button among the panel buttons (no key) that opens a sheet listing every event with a Start button
+for each strength it has. Starting one ends the one under way (it fades out over the ramp), drops what had not begun and starts the
+new one now; Clear the weather does the first two. A game gets its own copy of the commission's events, so manual events are saved with
+the game and the sandbox commission itself is untouched.
+
+**Showing events.** Without a weather station (phase 3) the player sees the events the season can bring in the briefing, and an
+event only once it starts: in the sky and as its name on the weather chip.
 
 ### The valley's look by season
 
@@ -645,6 +724,7 @@ A commission has goals, a target time and modifiers. It ends when every goal is 
   level at the end.
 - **Medals:** gold within the target time, silver within 1.5×, bronze any time after. There is no failing.
 - **Season:** a season and perhaps a character (see Seasons), which set the sun and the wind.
+- **Weather events:** a list of events (see Weather events): rolled from the seed for a random commission, placed by hand for a campaign one (none yet).
 - **Modifiers:** soil richness, how much rock, water and forest the map has, relief (0 flat to 1 rugged), starting credits.
 
 **Campaign** (seeds fixed, so each plays the same every time; goals, credits and target times in `src/game/scenarios.ts`):
@@ -691,7 +771,7 @@ its target 70 stands until #86 gives a real time. After phase 1 (2026-10-22) eve
 ![The level select](images/menu.png)
 
 **Random commission:** any seed and a difficulty (1–3) pick a season (any of the four, equally), a character that fits it,
-up to two ground modifiers (poor soil, rocky, wooded, hilly or flat) and 2–4 goals. A winter commission never asks for oil,
+up to two ground modifiers (poor soil, rocky, wooded, hilly or flat), 2–4 goals and its weather events (see Weather events). A winter commission never asks for oil,
 sauce, honey or honey cake (no sunflower or tomato grows in a winter field, and bees stay in), which the bot can't clear before
 the greenhouse (#86); the other goals come in any season. **Target time:** (15 + 12 × difficulty + 6 × goals) minutes, the
 time of a mild spring, times a **season-and-character factor** (`PAR_FACTOR` in `src/game/scenarios.ts`), rounded to 5 minutes, so
@@ -705,7 +785,7 @@ needs 1.7 to 2.6 times as long for flour, 2.3 to 2.8 for bread and 2.9 to 4.4 fo
 scales the rolling hills; corner heights stay within 0–16. Flat is all one level.
 
 **Sandbox:** a large map (relief 0.5), unlimited credits, no goals: for trying things. It starts in a mild spring; the level
-select picks any season and any character that fits it.
+select picks any season and any character that fits it. It has no events of its own: the Weather panel starts them.
 
 ## Economy
 
@@ -715,7 +795,7 @@ Early on, raw goods are the way to afford the first machines; products pay far b
 ## Saving
 
 The game saves the commission in progress (one at a time) in the browser every 30 s and when the page is hidden, and remembers
-each commission's best medal and time. Saves are version 11. A save from an older version of the game is refused.
+each commission's best medal and time. Saves are version 14 (the commission's events are saved with it). A save from an older version of the game is refused.
 
 ## Open questions
 

@@ -1,4 +1,5 @@
 import { BUILDINGS, POWER, TICK, TRUCK, type BuildingId } from '../data.ts';
+import { pushesAt } from '../events.ts';
 import { networkOf, networks } from '../power.ts';
 import { notePower, type PowerStep } from '../powerlog.ts';
 import { isMachine, type BatteryBuilding, type Building, type GameState } from '../state.ts';
@@ -32,7 +33,7 @@ export function makes(s: GameState, b: Building, sun: number, wind: number): num
   switch (b.type) {
     case 'solar': return POWER.solar * sun;
     case 'turbine': return POWER.turbine * wind * exposureOf(s, b);
-    case 'wheel': return wattsOf(s, b);
+    case 'wheel': return wattsOf(s, b) * pushesAt(s.scenario, s.time).river; // a weather event can raise or drop the river
     case 'digester': return b.progress !== null ? POWER.digester : 0;
     default: return 0;
   }

@@ -1,4 +1,5 @@
 import { bays, BUILDINGS, TRUCK, type ItemId } from '../data.ts';
+import { pushesAt } from '../events.ts';
 import { noteArrival } from '../fleet.ts';
 import { networkOf } from '../power.ts';
 import { accessTiles, distanceTo, isOpen, legLength, nearestOpen, pathTo } from '../roads.ts';
@@ -173,7 +174,7 @@ function atStop(s: GameState, t: Truck, dt: number, queued: boolean) {
 function drive(s: GameState, t: Truck, dt: number) {
   const w = s.map.width;
   // `left` is effort (tiles of flat road): climbing a level uses TRUCK.climb more, in time and in battery.
-  let left = (t.energy > 0 ? TRUCK.speed : TRUCK.crawl) * dt;
+  let left = (t.energy > 0 ? TRUCK.speed : TRUCK.crawl) * pushesAt(s.scenario, s.time).trucks * dt; // weather events can slow the trucks
   while (left > 1e-9 && t.path.length) {
     const i = t.path[0], tx = i % w + 0.5, ty = Math.floor(i / w) + 0.5;
     const dx = tx - t.x, dy = ty - t.y, d = Math.hypot(dx, dy);

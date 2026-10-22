@@ -1,3 +1,4 @@
+import { pushesAt } from './events.ts';
 import { ANIMALS, DAY_SECONDS, FIELD, type CropDef } from './data.ts';
 import { noise1 } from './rng.ts';
 import type { Scenario } from './scenarios.ts';
@@ -38,6 +39,8 @@ export function warmthAt(sc: Scenario, time: number): number {
 export const WARMTH_NUDGES: ((s: GameState, time: number) => number)[] = [
   // Rain or snow cools the valley, by up to RAIN_COOLING at its heaviest.
   (s, time) => -RAIN_COOLING * precipAt(s.scenario, time),
+  // A weather event lifts or drops the whole curve (a heat wave, a cold snap), its `warmth` push.
+  (s, time) => pushesAt(s.scenario, time).warmth,
 ];
 
 /** The most, in °C, that precipitation cools the valley. */
