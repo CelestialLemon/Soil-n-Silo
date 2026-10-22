@@ -6,7 +6,9 @@ import {
 import { FLEET_SECONDS } from '../game/fleet.ts';
 import { SOIL_AHEAD } from '../game/forecast.ts';
 import { RECENT_WINDOW } from '../game/flows.ts';
-import { paceOf, SPRINKLER_MOST, TURBINE_MOST, waterPace } from '../game/rules.ts';
+import { paceOf, riverSeason, SPRINKLER_MOST, TURBINE_MOST, waterPace } from '../game/rules.ts';
+import { CHARACTERS, charactersOf, climateOf, SEASON_IDS, SEASONS, seasonName, type Season, type Shift } from '../game/seasons.ts';
+import { RAIN_COOLING, warmthByHour } from '../game/warmth.ts';
 import { isPollinated } from '../game/sim/layout.ts';
 import { fieldFertility } from '../game/sim/soil.ts';
 import { recipeOf } from '../game/sim/goods.ts';
@@ -14,7 +16,7 @@ import { historyOf, summarize } from '../game/history.ts';
 import { dayAt } from '../game/sim/clock.ts';
 import type { GameState } from '../game/state.ts';
 import { fill, h, icon, svg } from './dom.ts';
-import { clockAt, plural } from './format.ts';
+import { clock, clockAt, pct, plural } from './format.ts';
 import { HISTORY_WINDOWS } from './historyView.ts';
 import { ACTIONS } from '../keybindings.ts';
 import { keysCard, markersCard } from './pause.ts';
@@ -26,7 +28,7 @@ import { keyNames, tip } from './keyhints.ts';
 // goods, and a few pages on the basics (trucks and routes, power, soil, the markers). The words are written here; every number comes
 // from data.ts, so the guide stays right when the game is tuned.
 
-export type GuidePage = { kind: 'building'; id: BuildingId } | { kind: 'topic'; id: TopicId } | { kind: 'goods' };
+export type GuidePage = { kind: 'building'; id: BuildingId } | { kind: 'topic'; id: TopicId } | { kind: 'season'; id: Season } | { kind: 'goods' };
 
 export interface GuideHost {
   /** The commission in progress, for "in your valley now". */
@@ -97,7 +99,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
       'Build it beside a mill (bran) or a bean field, and it takes its feed from them; or bring feed on a route.',
       'A bakery or composter beside it takes its eggs or manure; trucks pick up the rest. Give the manure somewhere to go: a composter, a digester, or the depot.',
     ],
-    tips: ['Its manure must go somewhere. A coop whose manure piles up stops laying.', `The hens lay at full rate in spring and summer, at three quarters in autumn and half in winter, and slow above ${ANIMALS.henHeat}°C.`],
+    tips: ['Its manure must go somewhere. A coop whose manure piles up stops laying.', `The hens lay at ${SEASON_IDS.map((x) => `${pct(SEASONS[x].levers.hens.lay)} in ${x}`).join(', ')} of their full rate, and slow above ${ANIMALS.henHeat}°C.`],
   },
   hive: {
     what: 'Bees make honey from flowering fields nearby (anything but wheat), and pollinate them for a bigger harvest.',
@@ -199,10 +201,10 @@ const ENTRIES: Record<BuildingId, Entry> = {
   },
 };
 
-export type TopicId = 'start' | 'trucks' | 'power' | 'soil' | 'land' | 'markers' | 'keys';
+export type TopicId = 'start' | 'trucks' | 'power' | 'soil' | 'weather' | 'land' | 'markers' | 'keys';
 const TOPICS: { id: TopicId; name: string; chip: string }[] = [
   { id: 'start', name: 'First steps', chip: 'First steps' }, { id: 'trucks', name: 'Trucks and routes', chip: 'Routes' }, { id: 'power', name: 'Power', chip: 'Power' },
-  { id: 'soil', name: 'Soil and water', chip: 'Soil' }, { id: 'land', name: 'Height and earthworks', chip: 'Height' }, { id: 'markers', name: 'Statuses and markers', chip: 'Statuses' }, { id: 'keys', name: 'Keys', chip: 'Keys' },
+  { id: 'soil', name: 'Soil and water', chip: 'Soil' }, { id: 'weather', name: 'Seasons and weather', chip: 'Weather' }, { id: 'land', name: 'Height and earthworks', chip: 'Height' }, { id: 'markers', name: 'Statuses and markers', chip: 'Statuses' }, { id: 'keys', name: 'Keys', chip: 'Keys' },
 ];
 
 const lc = (id: ItemId) => ITEMS[id].name.toLowerCase();
@@ -217,7 +219,7 @@ function chainItemOf(id: BuildingId): ItemId | null {
 
 /** Topics worth reading for a commission, from what it asks and its conditions. */
 function worthReading(s: GameState): TopicId[] {
-  const sc = s.scenario, out: TopicId[] = ['start'];
+  const sc = s.scenario, out: TopicId[] = ['start', 'weather'];
   if (sc.goals.some((g) => g.kind === 'soil') || sc.terrain.soil < 50) out.push('soil');
   const { sun, wind } = sc.climate;
   if (sun.strength < 1 || sun.set - sun.rise < 12 || wind.mean < 0.4) out.push('power');
@@ -250,7 +252,8 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
 
   function drawIndex() {
     const topics = h('div', { class: 'topics' }, ...TOPICS.map((t) => h('button', { class: `topic${page.kind === 'topic' && page.id === t.id ? ' is-on' : ''}`, onclick: () => go({ kind: 'topic', id: t.id }) }, t.chip)),
-      h('button', { class: `topic${page.kind === 'goods' ? ' is-on' : ''}`, onclick: () => go({ kind: 'goods' }) }, 'Goods'));
+      h('button', { class: `topic${page.kind === 'goods' ? ' is-on' : ''}`, onclick: () => go({ kind: 'goods' }) }, 'Goods'),
+      ...SEASON_IDS.map((x) => h('button', { class: `topic${page.kind === 'season' && page.id === x ? ' is-on' : ''}`, onclick: () => go({ kind: 'season', id: x }) }, SEASONS[x].name)));
     const tile = (id: BuildingId) => h('button', { class: `gtile${page.kind === 'building' && page.id === id ? ' is-on' : ''}${have.has(id) ? ' is-here' : ''}`, onclick: () => go({ kind: 'building', id }) },
       icon(id, 40), TILE_NAMES[id] ?? BUILDINGS[id].name);
     let list: (Node | null)[];
@@ -260,6 +263,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
       for (const id of Object.keys(BUILDINGS) as BuildingId[]) if (`${BUILDINGS[id].name} ${ENTRIES[id].what}`.toLowerCase().includes(query)) hits.push(h('button', { class: 'hit', onclick: () => go({ kind: 'building', id }) }, icon(id, 28), h('b', null, BUILDINGS[id].name), h('span', { class: 'cd-small' }, BUILDINGS[id].hint)));
       for (const i of ITEM_IDS) if (`${ITEMS[i].name} ${ITEMS[i].hint}`.toLowerCase().includes(query)) hits.push(h('button', { class: 'hit', onclick: () => go({ kind: 'goods' }) }, icon(i, 28), h('b', null, ITEMS[i].name), h('span', { class: 'cd-small' }, ITEMS[i].hint)));
       for (const t of TOPICS) if (t.name.toLowerCase().includes(query)) hits.push(h('button', { class: 'hit', onclick: () => go({ kind: 'topic', id: t.id }) }, icon('book', 28), h('b', null, t.name), h('span', { class: 'cd-small' }, 'Topic')));
+      for (const x of SEASON_IDS) if (`${SEASONS[x].name} season weather`.toLowerCase().includes(query)) hits.push(h('button', { class: 'hit', onclick: () => go({ kind: 'season', id: x }) }, icon('sun', 28), h('b', null, SEASONS[x].name), h('span', { class: 'cd-small' }, 'Season')));
       for (const [what, keys] of keyList()) if (`${what} ${keys}`.toLowerCase().includes(query)) hits.push(h('button', { class: 'hit', onclick: () => go({ kind: 'topic', id: 'keys' }) }, h('span', { class: 'cd-key' }, keys), h('b', null, what), h('span', { class: 'cd-small' }, 'Key')));
       list = [h('div', { class: 'hits' }, ...(hits.length ? hits : [h('p', { class: 'cd-small' }, 'Nothing matches.')]))];
     } else {
@@ -279,7 +283,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
   function draw() {
     drawIndex();
     fill(body, h('button', { class: 'cd-btn is-icon close', title: tip('Close', ...keyNames('guide'), 'Esc'), 'aria-label': 'Close', onclick: close }, icon('close', 16)),
-      ...(page.kind === 'building' ? buildingPage(page.id) : page.kind === 'goods' ? goodsPage() : topicPage(page.id)));
+      ...(page.kind === 'building' ? buildingPage(page.id) : page.kind === 'goods' ? goodsPage() : page.kind === 'season' ? seasonPage(page.id) : topicPage(page.id)));
   }
 
   // ---- Buildings ----
@@ -466,7 +470,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
     if (id !== 'field') return [];
     return [h('div', { class: 'cd-label sec' }, 'Crops'), h('table', { class: 'gtable' },
       h('tr', null, h('th', null, 'Crop'), h('th', null, 'Grows in'), h('th', null, 'Harvest'), h('th', null, 'Soil a harvest'), h('th', null, 'Flowers'), h('th', null, 'Comfortable'), h('th', null, 'Frost')),
-      ...CROP_IDS.map((c) => { const k = CROPS[c]; return h('tr', null, h('td', null, h('span', { class: 'gname' }, icon(c, 24), k.name)), h('td', null, `${k.grow} s`), h('td', null, String(k.yield)), h('td', null, `${k.soil > 0 ? '+' : ''}${k.soil}`), h('td', null, k.flowers ? 'yes' : '—'), h('td', null, `${k.comfort.low}–${k.comfort.high}°C`), h('td', null, k.tender ? 'tender: lost in open fields, stops below 10°C' : 'hardy: grows slowly in winter')); }))];
+      ...CROP_IDS.map((c) => { const k = CROPS[c]; return h('tr', null, h('td', null, h('span', { class: 'gname' }, icon(c, 24), k.name)), h('td', null, `${k.grow} s`), h('td', null, String(k.yield)), h('td', null, `${k.soil > 0 ? '+' : ''}${k.soil}`), h('td', null, k.flowers ? 'yes' : '—'), h('td', null, `${k.comfort.low}–${k.comfort.high}°C`), h('td', null, k.tender ? `tender: lost in open fields, stops below ${FIELD.tenderStops}°C` : 'hardy: grows slowly in winter')); }))];
   }
 
   // ---- Goods ----
@@ -494,6 +498,60 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
         ...ITEM_IDS.map((i) => h('tr', null,
           h('td', null, h('span', { class: 'gname' }, icon(i, 30), h('span', null, h('b', null, ITEMS[i].name), h('div', { class: 'cd-small' }, ITEMS[i].hint)))),
           h('td', null, ...joined(makers(i))), h('td', null, ...joined(users(i))), h('td', { class: 'n' }, String(ITEMS[i].price))))),
+    ];
+  }
+
+  // ---- Seasons ----
+
+  const SEASON_LEAD: Record<Season, string> = {
+    spring: 'Showers and a full river, with the days lengthening.',
+    summer: 'Long bright days and strong sun, with little rain and a low river.',
+    autumn: 'The days shorten and the wind picks up.',
+    winter: 'Short cold days with frost, snow instead of rain, and a slow river.',
+  };
+
+  /** What a character moves, as words: "high +3°C, rain −4 points". */
+  function shiftWords(shift: Shift): string {
+    const out: string[] = [];
+    const add = (label: string, d: number | undefined, unit: 'points' | '°C' | 'h' | '×') => {
+      if (d === undefined || d === 0) return;
+      const n = unit === 'points' ? Math.round(d * 100) : d, sign = d > 0 ? '+' : '−';
+      out.push(`${label} ${sign}${Math.abs(n)}${unit === 'points' ? ' points' : unit}`);
+    };
+    add('sun', shift.sun?.strength, 'points'); add('wind', shift.wind?.mean, 'points'); add('gusts', shift.wind?.gust, 'points');
+    add('river', shift.river?.flow, '×'); add('cloud', shift.conditions?.cloud, 'points'); add('rain', shift.conditions?.rain, 'points'); add('calm', shift.conditions?.calm, 'points');
+    add('low', shift.warmth?.low, '°C'); add('high', shift.warmth?.high, '°C'); add('hens', shift.hens?.lay, 'points');
+    return out.join(', ');
+  }
+
+  function seasonPage(id: Season): Node[] {
+    const c = climateOf(id), info = SEASONS[id];
+    const hours = Array.from({ length: 24 }, (_, k) => warmthByHour(c, k));
+    const within = (lo: number, hi: number) => hours.filter((t) => t >= lo && t <= hi).length;
+    const row = (k: string, v: string) => h('div', { class: 'cd-row' }, h('span', null, k), h('i'), h('b', null, v));
+    const flying = hours.filter((t) => t >= ANIMALS.beesFly).length;
+    return [
+      h('div', { class: 'cd-small cd-faint' }, 'Seasons'), h('h1', { class: 'cd-display' }, info.name), h('p', { class: 'lead' }, SEASON_LEAD[id]),
+      h('div', { class: 'cd-label sec' }, `${info.name} in an ordinary year`),
+      h('div', { class: 'num-rows' },
+        row('Sun', `${clock(c.sun.rise)} to ${clock(c.sun.set)}, ${pct(c.sun.strength)} at noon`),
+        row('Wind', `${pct(c.wind.mean)}, swinging ${pct(c.wind.gust)} either way`),
+        row('Warmth', `${Math.round(c.warmth.low)} to ${Math.round(c.warmth.high)}°C in a day, a day straying up to ${c.warmth.drift}°C either way`),
+        row(id === 'winter' ? 'Snow' : 'Rain', `${pct(c.conditions.rain)} of the time`),
+        row('Cloud', `${pct(c.conditions.cloud)} of the time`),
+        row('Calm spells', `${pct(c.conditions.calm)} of the time`),
+        row('River', `${riverSeason(c.river.flow)}, ×${c.river.flow.toFixed(1)} the map's current`)),
+      h('div', { class: 'cd-label sec' }, 'Crops'),
+      h('table', { class: 'gtable' },
+        h('tr', null, h('th', null, 'Crop'), h('th', null, 'Comfortable'), h('th', null, 'Hours a day in range'), h('th', null, 'Frost')),
+        ...CROP_IDS.map((x) => { const k = CROPS[x]; return h('tr', null, h('td', null, h('span', { class: 'gname' }, icon(x, 24), k.name)), h('td', null, `${k.comfort.low}–${k.comfort.high}°C`),
+          h('td', null, `${within(k.comfort.low, k.comfort.high)} of 24`), h('td', null, c.warmth.low < 0 ? (k.tender ? 'lost in open fields' : 'hardy') : '—')); })),
+      h('div', { class: 'cd-label sec' }, 'Hens and bees'),
+      h('div', { class: 'num-rows' },
+        row('Hens', `lay at ${pct(c.hens.lay)} of their full rate${c.warmth.high > ANIMALS.henHeat ? `, slower above ${ANIMALS.henHeat}°C` : ''}`),
+        row('Bees', flying === 24 ? 'fly all day' : flying === 0 ? `stay in: below ${ANIMALS.beesFly}°C all day` : `fly ${flying} hours of 24 (from ${ANIMALS.beesFly}°C)`)),
+      h('div', { class: 'cd-label sec' }, 'Characters'),
+      h('div', { class: 'num-rows' }, ...charactersOf(id).map((x) => row(seasonName({ season: id, character: x }), shiftWords(CHARACTERS[x].shift)))),
     ];
   }
 
@@ -567,6 +625,17 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
           h('li', null, B('Resting:'), ` ground without a field slowly recovers (${FIELD.rest * 60} a minute), up to what it started at.`),
           h('li', null, B('Soil health'), ` is the fields' average fertility, nudged up or down (at most ${TREE_HEALTH.cap}) by trees planted or cleared. A soil goal checks it at the end.`),
           h('li', null, B('Clearing:'), ` a tree costs ${CLEAR_COST.tree} credits to remove and a rock ${CLEAR_COST.rock}. `, bLink('sapling'), 's plant new trees.')),
+      ];
+      case 'weather': return [
+        ...head('Seasons and weather', 'A commission happens in one season, which does not change while you play. The season sets the days, the wind, the warmth, the rain and the river; a character such as wet, hot or hard shifts them.'),
+        h('ul', null,
+          h('li', null, B('Weather:'), ' inside a season the sky changes: clear, cloudy, rain (snow in winter). The chip beside the dial shows the weather now and the warmth in °C. Cloud dims solar panels, calm spells slow the wind, and rain or snow cools the valley by up to ', String(RAIN_COOLING), '°C.'),
+          h('li', null, B('Rain'), ' waters every open field and the ', bLink('sprinkler'), 's rest. Snow does not water fields.'),
+          h('li', null, B('Warmth:'), ' a crop grows at full speed inside its comfortable range and slower the further outside it, falling to half speed ', String(FIELD.warmthWidth), '°C beyond it. Tender crops are lost to frost (below 0°C) in an open field and stop growing below ', String(FIELD.tenderStops), '°C. The crop table is on the ', bLink('field'), ' page.'),
+          h('li', null, B('Animals:'), ' hens lay at the season\'s share of their full rate and slow above ', String(ANIMALS.henHeat), '°C. Bees stay in below ', String(ANIMALS.beesFly), '°C: no honey and no pollination.'),
+          h('li', null, B('River:'), ' the season sets the current, so what a ', bLink('wheel'), ' makes.')),
+        h('div', { class: 'cd-label sec' }, 'The seasons'),
+        h('div', { class: 'chips' }, ...SEASON_IDS.map((x) => h('button', { class: 'cd-chip', onclick: () => go({ kind: 'season', id: x }) }, `${SEASONS[x].name} · ${Math.round(SEASONS[x].levers.warmth.low)} to ${Math.round(SEASONS[x].levers.warmth.high)}°C`))),
       ];
       case 'markers': return [...head('Statuses and markers', 'A marker floats over any building that isn\'t working. Each has a shape as well as a colour; click the building for the details.'),
         markersCard(),

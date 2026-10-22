@@ -456,6 +456,7 @@ button { font: inherit; }
 .menu .preview .chips, .menu .sandbox .chips { margin-top: 14px; }
 .briefing .tags { margin-top: 14px; }
 .menu .tag, .briefing .tag { padding: 4px 10px; border-radius: 99px; box-shadow: inset 0 0 0 1.5px var(--chalk-3); }
+.menu .tag.is-season, .briefing .tag.is-season { background: var(--ink); color: var(--chalk); box-shadow: none; font-weight: 700; }
 .menu .random .act, .menu .sandbox .act { justify-content: flex-end; }
 .menu .random .act .cd-btn, .menu .sandbox .act .cd-btn { width: 100%; }
 

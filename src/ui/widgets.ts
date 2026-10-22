@@ -1,4 +1,4 @@
-import { SILVER_PAR, type Goal } from '../game/scenarios.ts';
+import { SILVER_PAR, tagsOf, type Goal, type Scenario } from '../game/scenarios.ts';
 import { soilHealth } from '../game/sim/soil.ts';
 import { goalDone, ratePerMin, type Medal } from '../game/sim/stats.ts';
 import type { Building, GameState, Status } from '../game/state.ts';
@@ -124,3 +124,6 @@ export const medalTimes = (par: number) => [
   h('span', null, h('i', { class: 'dot', style: 'background: var(--medal-silver)' }), `silver ${playTime(par * SILVER_PAR)}`),
 ];
 
+
+/** A commission's tags as chips: its season first, filled, then what the season is like and the commission's own. */
+export const tagChips = (sc: Scenario) => tagsOf(sc).map((t, i) => h('span', { class: `tag cd-small${i === 0 ? ' is-season' : ''}` }, t));

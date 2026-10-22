@@ -191,6 +191,20 @@ Long days; strength under 0.8: Weak sun, 1.1 or more: Strong sun; mean wind 0.65
 wind; gusts 0.4 or more: Gusty; a dawn low under 0°C: Frosts, otherwise an afternoon high of 30°C or more: Hot); they aren't
 modifiers of their own.
 
+**Where the season shows** (Clearday, facts only; every number is read from the tables in `seasons.ts` and `data.ts`, never
+written into the text):
+
+- **The HUD chip** by the dial: the season with its character ("A wet spring"), the weather now (Clear, Cloudy, Rain, Snow;
+  `weatherNow`) and the warmth now in °C, above the sun and wind chips. Later phases add the event now.
+- **Level cards** (campaign, random, sandbox): the season and character is the first tag, filled; the campaign card's
+  conditions column adds the season's warmth range and rain share (with the character's shifts applied).
+- **The briefing letter** carries a paragraph on the season in the writer's voice (each campaign letter has its own; random
+  commissions and the sandbox get a neutral line per season and character, `letters.ts`), then a place for the events a
+  season can bring (empty until phase 2).
+- **The guide** has a page for each season (sun, wind, warmth, rain, cloud, calm, the river, hours a day each crop is
+  comfortable, hens, bees, and what each character shifts) and "Seasons and weather" in the basics. The field page's crop
+  table gives each crop's comfortable range.
+
 ### Warmth
 
 **Warmth** is the valley's temperature in °C, one number for the whole valley (`src/game/warmth.ts`). It follows the day: coldest
