@@ -8,7 +8,7 @@ import { SOIL_AHEAD } from '../game/forecast.ts';
 import { RECENT_WINDOW } from '../game/flows.ts';
 import { paceOf, riverSeason, SPRINKLER_MOST, TURBINE_MOST, waterPace } from '../game/rules.ts';
 import { CHARACTERS, charactersOf, climateOf, SEASON_IDS, SEASONS, seasonName, type Season, type Shift } from '../game/seasons.ts';
-import { RAIN_COOLING, warmthByHour } from '../game/warmth.ts';
+import { FROST, RAIN_COOLING, warmthByHour } from '../game/warmth.ts';
 import { isPollinated } from '../game/sim/layout.ts';
 import { fieldFertility } from '../game/sim/soil.ts';
 import { recipeOf } from '../game/sim/goods.ts';
@@ -526,10 +526,10 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
 
   function seasonPage(id: Season): Node[] {
     const c = climateOf(id), info = SEASONS[id];
-    const hours = Array.from({ length: 24 }, (_, k) => warmthByHour(c, k));
-    const within = (lo: number, hi: number) => hours.filter((t) => t >= lo && t <= hi).length;
+    const STEP = 12, samples = Array.from({ length: 24 * STEP }, (_, k) => warmthByHour(c, k / STEP));
+    const hoursIn = (lo: number, hi: number) => samples.filter((t) => t >= lo && t <= hi).length / STEP;
     const row = (k: string, v: string) => h('div', { class: 'cd-row' }, h('span', null, k), h('i'), h('b', null, v));
-    const flying = hours.filter((t) => t >= ANIMALS.beesFly).length;
+    const flying = Math.round(hoursIn(ANIMALS.beesFly, Infinity));
     return [
       h('div', { class: 'cd-small cd-faint' }, 'Seasons'), h('h1', { class: 'cd-display' }, info.name), h('p', { class: 'lead' }, SEASON_LEAD[id]),
       h('div', { class: 'cd-label sec' }, `${info.name} in an ordinary year`),
@@ -543,13 +543,13 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
         row('River', `${riverSeason(c.river.flow)}, ×${c.river.flow.toFixed(1)} the map's current`)),
       h('div', { class: 'cd-label sec' }, 'Crops'),
       h('table', { class: 'gtable' },
-        h('tr', null, h('th', null, 'Crop'), h('th', null, 'Comfortable'), h('th', null, 'Hours a day in range'), h('th', null, 'Frost')),
+        h('tr', null, h('th', null, 'Crop'), h('th', null, 'Comfortable'), h('th', null, 'Hours a day in range, before drift and rain'), h('th', null, 'Frost')),
         ...CROP_IDS.map((x) => { const k = CROPS[x]; return h('tr', null, h('td', null, h('span', { class: 'gname' }, icon(x, 24), k.name)), h('td', null, `${k.comfort.low}–${k.comfort.high}°C`),
-          h('td', null, `${within(k.comfort.low, k.comfort.high)} of 24`), h('td', null, c.warmth.low < 0 ? (k.tender ? 'lost in open fields' : 'hardy') : '—')); })),
+          h('td', null, `about ${Math.round(hoursIn(k.comfort.low, k.comfort.high))} of 24`), h('td', null, c.warmth.low < 0 ? (k.tender ? 'lost in open fields' : 'hardy') : '—')); })),
       h('div', { class: 'cd-label sec' }, 'Hens and bees'),
       h('div', { class: 'num-rows' },
         row('Hens', `lay at ${pct(c.hens.lay)} of their full rate${c.warmth.high > ANIMALS.henHeat ? `, slower above ${ANIMALS.henHeat}°C` : ''}`),
-        row('Bees', flying === 24 ? 'fly all day' : flying === 0 ? `stay in: below ${ANIMALS.beesFly}°C all day` : `fly ${flying} hours of 24 (from ${ANIMALS.beesFly}°C)`)),
+        row('Bees', flying === 24 ? 'fly all day' : flying === 0 ? `stay in: below ${ANIMALS.beesFly}°C all day` : `fly about ${flying} hours of 24 (from ${ANIMALS.beesFly}°C)`)),
       h('div', { class: 'cd-label sec' }, 'Characters'),
       h('div', { class: 'num-rows' }, ...charactersOf(id).map((x) => row(seasonName({ season: id, character: x }), shiftWords(CHARACTERS[x].shift)))),
     ];
@@ -631,7 +631,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
         h('ul', null,
           h('li', null, B('Weather:'), ' inside a season the sky changes: clear, cloudy, rain (snow in winter). The chip beside the dial shows the weather now and the warmth in °C. Cloud dims solar panels, calm spells slow the wind, and rain or snow cools the valley by up to ', String(RAIN_COOLING), '°C.'),
           h('li', null, B('Rain'), ' waters every open field and the ', bLink('sprinkler'), 's rest. Snow does not water fields.'),
-          h('li', null, B('Warmth:'), ' a crop grows at full speed inside its comfortable range and slower the further outside it, falling to half speed ', String(FIELD.warmthWidth), '°C beyond it. Tender crops are lost to frost (below 0°C) in an open field and stop growing below ', String(FIELD.tenderStops), '°C. The crop table is on the ', bLink('field'), ' page.'),
+          h('li', null, B('Warmth:'), ' a crop grows at full speed inside its comfortable range and slower the further outside it, falling to half speed ', String(FIELD.warmthWidth), '°C beyond it. Tender crops are lost to frost (below ', String(FROST), '°C) in an open field and stop growing below ', String(FIELD.tenderStops), '°C. The crop table is on the ', bLink('field'), ' page.'),
           h('li', null, B('Animals:'), ' hens lay at the season\'s share of their full rate and slow above ', String(ANIMALS.henHeat), '°C. Bees stay in below ', String(ANIMALS.beesFly), '°C: no honey and no pollination.'),
           h('li', null, B('River:'), ' the season sets the current, so what a ', bLink('wheel'), ' makes.')),
         h('div', { class: 'cd-label sec' }, 'The seasons'),

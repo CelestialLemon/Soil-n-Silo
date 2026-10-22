@@ -170,7 +170,7 @@ export function showMenu(root: HTMLElement, host: MenuHost) {
     const sel = h('select', { class: 'cd-select', 'aria-label': 'Character', onchange: () => { character = (sel.value || null) as Character | null; drawSandbox(); } },
       h('option', { value: '', selected: character === null }, 'Ordinary'),
       ...charactersOf(season).map((c) => h('option', { value: c, selected: c === character }, CHARACTERS[c].word[0].toUpperCase() + CHARACTERS[c].word.slice(1))));
-    fill(sandboxChoice, seasons, h('div', { class: 'row' }, sel, h('span', { class: 'chips tags' }, ...((c) => [seasonName(c), ...climateTags(c), ...riverTag(c)])(climateOf(season, character)).map((t) => h('span', { class: 'tag cd-small' }, t)))));
+    fill(sandboxChoice, seasons, h('div', { class: 'row' }, sel, h('span', { class: 'chips tags' }, ...((c) => [seasonName(c), ...climateTags(c), ...riverTag(c)])(climateOf(season, character)).map((t, i) => h('span', { class: `tag cd-small${i === 0 ? ' is-season' : ''}` }, t)))));
   }
   drawSandbox();
   draw();
