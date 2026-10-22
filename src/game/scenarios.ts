@@ -107,7 +107,7 @@ export const CAMPAIGN: Scenario[] = [
     goals: [{ kind: 'deliver', item: 'linen', n: 30 }, { kind: 'deliver', item: 'sauce', n: 30 }, { kind: 'deliver', item: 'bread', n: 80 }],
   },
   {
-    id: 'c8', name: 'Harvest Festival', seed: 8808, width: 56, height: 44, credits: 1800, par: 50 * MIN,
+    id: 'c8', name: 'Harvest Festival', seed: 8808, width: 56, height: 44, credits: 1800, par: 55 * MIN,
     blurb: 'The whole valley comes together for the festival. Everything, at once, on healthy soil.',
     terrain: { ...LOAM, soil: 50, rock: 0.07, forest: 0.14, relief: 0.7 }, climate: climateOf('autumn', 'stormy'), tags: ['Everything'],
     goals: [{ kind: 'deliver', item: 'honeycake', n: 40 }, { kind: 'deliver', item: 'sauce', n: 30 }, { kind: 'deliver', item: 'linen', n: 30 }, { kind: 'soil', min: 60 }],
@@ -153,8 +153,8 @@ export function randomScenario(seed: number, difficulty: 1 | 2 | 3): Scenario {
   while (used.size < nMods) used.add(Math.floor(r() * mods.length));
   for (const i of used) mods[i]();
 
-  // Oil and sauce need sunflower and tomato, which can't grow in a winter's open fields (greenhouses come later).
-  const pool = PRODUCTS.filter((p) => p.level <= difficulty && !(season === 'winter' && (p.item === 'oil' || p.item === 'sauce')));
+  // Oil and sauce need sunflower and tomato, which can't grow in a winter's open fields, and honey and honey cake need bees, who stay in below 10°C (greenhouses come later).
+  const pool = PRODUCTS.filter((p) => p.level <= difficulty && !(season === 'winter' && (p.item === 'oil' || p.item === 'sauce' || p.item === 'honey' || p.item === 'honeycake')));
   // Two to four goals in all: easy 2–3, medium 3–4, hard 4; a soil goal, if any, is one of them.
   const total = Math.min(4, 1 + difficulty + (r() < 0.5 ? 1 : 0));
   const soil = r() < 0.4 + 0.2 * difficulty;

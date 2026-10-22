@@ -1,6 +1,6 @@
 import { chainOf, type Step } from '../game/chain.ts';
 import {
-  bays, BUILDINGS, CATEGORIES, CLEAR_COST, CROP_IDS, CROPS, EARTH, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, ITEMS, OUTPUT_BATCHES,
+  ANIMALS, bays, BUILDINGS, CATEGORIES, CLEAR_COST, CROP_IDS, CROPS, EARTH, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, ITEMS, OUTPUT_BATCHES,
   POLLINATION_BONUS, POWER, RECIPES, recipesFor, SAPLING_SECONDS, SILO, TREE_HEALTH, TRUCK, type BuildingId, type Ingredient, type ItemId, type Recipe,
 } from '../game/data.ts';
 import { FLEET_SECONDS } from '../game/fleet.ts';
@@ -97,13 +97,14 @@ const ENTRIES: Record<BuildingId, Entry> = {
       'Build it beside a mill (bran) or a bean field, and it takes its feed from them; or bring feed on a route.',
       'A bakery or composter beside it takes its eggs or manure; trucks pick up the rest. Give the manure somewhere to go: a composter, a digester, or the depot.',
     ],
-    tips: ['Its manure must go somewhere. A coop whose manure piles up stops laying.'],
+    tips: ['Its manure must go somewhere. A coop whose manure piles up stops laying.', `The hens lay at full rate in spring and summer, at three quarters in autumn and half in winter, and slow above ${ANIMALS.henHeat}°C.`],
   },
   hive: {
     what: 'Bees make honey from flowering fields nearby (anything but wheat), and pollinate them for a bigger harvest.',
     how: [
       `Place it within ${HIVE.reach} tiles of flowering fields: up to ${HIVE.maxFlowers} of them count. The Bees overlay shows its range.`,
       'Build it beside a bakery making honey cake, or make it a stop on a route, so trucks pick up the honey.',
+      `The bees stay in below ${ANIMALS.beesFly}°C: no honey and no pollination, so not in winter or on a cold spring morning.`,
     ],
   },
   composter: {

@@ -23,6 +23,8 @@ export interface Levers {
   conditions: { cloud: number; rain: number; calm: number };
   /** Warmth in °C: the coldest it gets before dawn, the warmest mid-afternoon, and how far a day strays from that either way. */
   warmth: { low: number; high: number; drift: number };
+  /** Hens: the share of their full laying rate the season allows (1 = full). Heat slows them further (warmth.ts). */
+  hens: { lay: number };
 }
 
 /** A commission's climate: its season and character, and the levers they give. */
@@ -48,6 +50,7 @@ export const SEASONS: Record<Season, SeasonInfo> = {
       river: { flow: 1.5 },
       conditions: { cloud: 0.25, rain: 0.22, calm: 0.1 },
       warmth: { low: 4, high: 16, drift: 2 },
+      hens: { lay: 1 },
     },
   },
   summer: {
@@ -58,6 +61,7 @@ export const SEASONS: Record<Season, SeasonInfo> = {
       river: { flow: 0.6 },
       conditions: { cloud: 0.12, rain: 0.05, calm: 0.35 },
       warmth: { low: 16, high: 30, drift: 2 },
+      hens: { lay: 1 },
     },
   },
   autumn: {
@@ -68,6 +72,7 @@ export const SEASONS: Record<Season, SeasonInfo> = {
       river: { flow: 0.9 },
       conditions: { cloud: 0.25, rain: 0.12, calm: 0.1 },
       warmth: { low: 6, high: 18, drift: 2 },
+      hens: { lay: 0.75 },
     },
   },
   winter: {
@@ -78,6 +83,7 @@ export const SEASONS: Record<Season, SeasonInfo> = {
       river: { flow: 0.5 },
       conditions: { cloud: 0.3, rain: 0.15, calm: 0.1 },
       warmth: { low: -5, high: 6, drift: 2 },
+      hens: { lay: 0.5 },
     },
   },
 };

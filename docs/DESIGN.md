@@ -200,8 +200,16 @@ through `WARMTH_NUDGES`, a list of functions each adding its degrees. Rain is th
 
 - **Below 0°C, frost.** A frost-tender crop (tomato, sunflower) in an open field loses its growing crop each moment it is
   frozen, so the field starts again; what it already holds is untouched. A frozen field's status is Frost.
-- **Below 10°C**, tender crops stop growing (status Too cold). Bees and hens come with 1.5.
-- **Above 30°C, heat.** An unwatered field's growth multiplier (×0.4 normally) falls to ×0.1 by 34°C, linearly. Hens come with 1.5.
+- **Below 10°C**, tender crops stop growing (status Too cold). **Below 10°C, bees stay in** (see Hens and bees below).
+- **Above 30°C, heat.** An unwatered field's growth multiplier (×0.4 normally) falls to ×0.1 by 34°C, linearly. Heat also slows hens (see below).
+
+**Hens and bees by season** (`warmth.ts`; machines are indoors and don't care). The coop lays at the season's rate (the `hens.lay` lever: ×1 in
+spring and summer, ×0.75 in autumn, ×0.5 in winter), further slowed above 30°C by the crop-style fall-off 1 / (1 + (d / 6)²), d the degrees above 30:
+half speed at 36°C. The coop stays 'Working'; its inspector, hover and placement card say "Hens, 3°C: cool season, laying at about 50% speed".
+Bees stay in below 10°C: a hive makes no honey (status Too cold, "Bees: staying in, 7°C") and a flowering field harvested then gets no
+pollination bonus. Warmth swings over a day, so a hive works in the afternoon of a cool spring day. Winter days top out at 6°C, so in winter
+the bees stay in all day; Long Nights (winter, honey cake) can't be cleared until the greenhouse (#86), and its bot test is skipped.
+Hives in a gale, warm spells and bees in a greenhouse come later (phases 2 and 4).
 
 Each crop has a **comfortable range**: full speed inside it, and outside it a smooth fall-off of 1 / (1 + (d / 6)²), where d is
 the degrees outside the range: half speed 6°C out, a quarter 10°C out. This is one more factor in a field's pace, with water and
@@ -654,6 +662,7 @@ When seasons replaced the weather settings on 2026-10-21, a wet spring's weaker 
 so its target went from 35 to 40 minutes, and a stormy autumn's wind sped Harvest Festival up by about 3, so its target went
 from 50 to 45. Conditions then (2026-10-22): rain waters the fields and cloud dims the sun, which slowed First Light to about 15 and
 Morning Bread to about 30 and sped Riverlands up to about 32, so its target went from 50 to 45; the other targets stood then.
+Hens and bees by season (2026-10-22) changed little: the bot's eggs are rarely the limit, so Harvest Festival (autumn) went from 36 to 39 minutes (its target 50 to 55) and Riverlands from 45.0 to 45.1; the rest stood. Long Nights can no longer be cleared (bees stay in all winter), so its test is skipped until #86.
 Warmth (2026-10-22) slowed the bot on First Light from 15 to 17, Morning Bread from 30 to 36, Riverlands from 32 to 45 (cold spring days slow every crop, and tomato and sunflower stop below 10°C), Tired Soil to 29 and Harvest Festival to 36, and on Windy Ridge from 31 to 62 minutes (sunflowers for the oil stall below 10°C and
 barely grow in an autumn that tops out at 18°C), on Linen for the Looms from about 25 to 35 (a hot summer's heat is hard on
 flax) and on Long Nights from 29 to 80 (hardy crops in a winter between −5 and 6°C), so the targets went to 25, 50, 85, 50, 115, 40, 65 and 50

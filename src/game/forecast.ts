@@ -10,7 +10,7 @@ import { makes, shareOf, wants } from './sim/energy.ts';
 import { wattsOf } from './sim/layout.ts';
 import { describeLinks } from './sim/describe.ts';
 import { centreLevel } from './relief.ts';
-import { warmthFact, warmthOf } from './warmth.ts';
+import { beesFact, beesFly, henPace, warmthFact, warmthOf } from './warmth.ts';
 import { inMap, type Building, type FieldBuilding, type GameState, type Setting } from './state.ts';
 
 // Forecasts from what the game already knows: what a building in hand would do on a tile (facts about the tile, no advice),
@@ -60,7 +60,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
       case 'field': {
         const crop = CROPS[set.crop ?? 'wheat'], soil = soilUnder(s, x, y, 3), { sprinklers, shore, water } = waterAt(s, x, y);
         // A hive within reach of a flowering crop adds a good to every harvest.
-        const pollinated = crop.flowers && s.buildings.some((b) => b.type === 'hive' && hiveReaches({ type: 'field', x, y }, b.x, b.y));
+        const pollinated = crop.flowers && beesFly(warmthOf(s)) && s.buildings.some((b) => b.type === 'hive' && hiveReaches({ type: 'field', x, y }, b.x, b.y));
         const perMin = (crop.yield + (pollinated ? POLLINATION_BONUS : 0)) * 60 * paceOf(water, soil, crop, warmthOf(s)).pace / crop.grow;
         // Sloping tiles under it wear faster (erosion).
         const guarded = guardedAt(s, x, y);
@@ -93,10 +93,12 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
       }
       case 'hive': {
         const near = s.buildings.filter((b): b is FieldBuilding => b.type === 'field' && hiveReaches(b, x, y));
-        const flowers = Math.min(HIVE.maxFlowers, near.filter((f) => CROPS[f.crop].flowers).length);
-        facts.push({ label: 'Honey', value: `+${fmt1(flowers * 60 / HIVE.honeySeconds)}`, sub: 'a minute', tone: flowers ? undefined : 'bad' });
+        const flowers = Math.min(HIVE.maxFlowers, near.filter((f) => CROPS[f.crop].flowers).length), out = beesFly(warmthOf(s));
+        facts.push({ label: 'Honey', value: `+${fmt1((out ? flowers : 0) * 60 / HIVE.honeySeconds)}`, sub: 'a minute', tone: flowers && out ? undefined : 'bad' });
         facts.push({ label: 'Flowers', value: `${flowers} field${flowers === 1 ? '' : 's'}`, sub: `flowering within ${HIVE.reach} tiles` });
-        facts.push({ label: 'Pollinates', value: `${near.filter((f) => CROPS[f.crop].flowers).length}`, sub: 'flowering fields' });
+        const bees = beesFact(warmthOf(s));
+        facts.push({ label: 'Bees', value: bees.text.includes('staying') ? 'staying in' : 'flying', sub: `${Math.round(warmthOf(s))}°C`, tone: bees.tone === 'bad' ? 'bad' : undefined });
+        facts.push({ label: 'Pollinates', value: `${out ? near.filter((f) => CROPS[f.crop].flowers).length : 0}`, sub: 'flowering fields' });
         break;
       }
       case 'solar': {
@@ -138,6 +140,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
       default: {
         const r = recipesFor(type).find((x) => x.id === set.recipe) ?? recipesFor(type)[0];
         if (r && r.outputs.length) facts.push({ label: 'Full speed', value: fmt1(r.outputs[0].n * 60 / r.time), sub: `${ITEMS[r.outputs[0].item].name.toLowerCase()} a minute` });
+        if (type === 'coop') { const pace = henPace(s.scenario, warmthOf(s)); facts.push({ label: 'Hens', value: `${Math.round(pace * 100)}%`, sub: `laying speed at ${Math.round(warmthOf(s))}°C`, tone: pace < 0.6 ? 'bad' : undefined }); }
         if (type === 'digester') facts.push({ label: 'Makes', value: watts(POWER.digester), sub: 'while burning' });
         if (type === 'battery') facts.push({ label: 'Stores', value: `${POWER.battery.capacity} J`, sub: `${POWER.battery.rate} W in and out` });
         if (def.power || POWERED({ type } as Building)) facts.push(pylonFact());

@@ -1131,3 +1131,14 @@ test('rain waters every field and sprinklers rest; snow does neither', () => {
   assert.equal(weatherAt(w.scenario, w.time).sky, 'snow');
   assert.equal(fieldPace(w, g).water, 0);
 });
+
+test('a random winter commission asks for nothing the cold stops: no oil, sauce, honey or honey cake', () => {
+  let winters = 0;
+  for (let i = 0; i < 300; i++) {
+    const sc = randomScenario(i, (i % 3 + 1) as 1 | 2 | 3);
+    if (sc.climate.season !== 'winter') continue;
+    winters++;
+    for (const g of sc.goals) if (g.kind === 'deliver') assert.ok(!['oil', 'sauce', 'honey', 'honeycake'].includes(g.item), `seed ${i}: ${g.item}`);
+  }
+  assert.ok(winters > 20);
+});
