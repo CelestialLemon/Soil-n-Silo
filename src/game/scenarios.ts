@@ -48,7 +48,7 @@ const MIN = 60;
 
 export const CAMPAIGN: Scenario[] = [
   {
-    id: 'c1', name: 'First Light', seed: 1101, width: 44, height: 36, credits: 1200, par: 20 * MIN,
+    id: 'c1', name: 'First Light', seed: 1101, width: 44, height: 36, credits: 1200, par: 25 * MIN,
     blurb: 'Brightwater needs grain and flour to get through the season. Lay your first fields, a powered mill, and trucks to carry it all.',
     terrain: { ...LOAM, forest: 0.08, rock: 0.02, relief: 0.2 }, climate: climateOf('spring', 'mild'), tags: ['Gentle'],
     goals: [{ kind: 'deliver', item: 'wheat', n: 120 }, { kind: 'deliver', item: 'flour', n: 80 }],
@@ -62,7 +62,7 @@ export const CAMPAIGN: Scenario[] = [
     ],
   },
   {
-    id: 'c2', name: 'Morning Bread', seed: 2202, width: 48, height: 40, credits: 1600, par: 40 * MIN,
+    id: 'c2', name: 'Morning Bread', seed: 2202, width: 48, height: 40, credits: 1600, par: 50 * MIN,
     blurb: 'Fresh bread for the schoolhouse. Chickens need feed, the mill makes bran: close the loop, and keep the soil alive.',
     terrain: LOAM, climate: climateOf('spring', 'wet'), tags: [],
     goals: [{ kind: 'deliver', item: 'bread', n: 150 }, { kind: 'soil', min: 40 }],
@@ -94,20 +94,20 @@ export const CAMPAIGN: Scenario[] = [
     goals: [{ kind: 'deliver', item: 'honeycake', n: 100 }],
   },
   {
-    id: 'c6', name: 'Tired Soil', seed: 6606, width: 48, height: 40, credits: 1400, par: 35 * MIN,
+    id: 'c6', name: 'Tired Soil', seed: 6606, width: 48, height: 40, credits: 1400, par: 40 * MIN,
     blurb: 'Years of monoculture left this valley worn out. Make sauce for the cannery town, and leave the soil better than you found it.',
     terrain: { ...LOAM, soil: 28, soilSpread: 15, forest: 0.05, relief: 0.6 }, climate: climateOf('summer', 'dry'), tags: ['Poor soil'],
     goals: [{ kind: 'deliver', item: 'sauce', n: 50 }, { kind: 'soil', min: 55 }],
   },
   {
-    id: 'c7', name: 'Riverlands', seed: 7707, width: 52, height: 42, credits: 1600, par: 45 * MIN,
+    id: 'c7', name: 'Riverlands', seed: 7707, width: 52, height: 42, credits: 1600, par: 65 * MIN,
     blurb: 'Three villages along the river put in orders at once. Space is short between the water and the woods.',
     terrain: { ...LOAM, water: 'river', forest: 0.22, rock: 0.06, relief: 0.3 }, climate: climateOf('spring', 'highRiver'), tags: ['Cramped'],
     tips: ['The river turns a water wheel built on its bank: steady power day and night, the most beside a fall.'],
     goals: [{ kind: 'deliver', item: 'linen', n: 30 }, { kind: 'deliver', item: 'sauce', n: 30 }, { kind: 'deliver', item: 'bread', n: 80 }],
   },
   {
-    id: 'c8', name: 'Harvest Festival', seed: 8808, width: 56, height: 44, credits: 1800, par: 45 * MIN,
+    id: 'c8', name: 'Harvest Festival', seed: 8808, width: 56, height: 44, credits: 1800, par: 50 * MIN,
     blurb: 'The whole valley comes together for the festival. Everything, at once, on healthy soil.',
     terrain: { ...LOAM, soil: 50, rock: 0.07, forest: 0.14, relief: 0.7 }, climate: climateOf('autumn', 'stormy'), tags: ['Everything'],
     goals: [{ kind: 'deliver', item: 'honeycake', n: 40 }, { kind: 'deliver', item: 'sauce', n: 30 }, { kind: 'deliver', item: 'linen', n: 30 }, { kind: 'soil', min: 60 }],
@@ -153,7 +153,8 @@ export function randomScenario(seed: number, difficulty: 1 | 2 | 3): Scenario {
   while (used.size < nMods) used.add(Math.floor(r() * mods.length));
   for (const i of used) mods[i]();
 
-  const pool = PRODUCTS.filter((p) => p.level <= difficulty);
+  // Oil and sauce need sunflower and tomato, which can't grow in a winter's open fields (greenhouses come later).
+  const pool = PRODUCTS.filter((p) => p.level <= difficulty && !(season === 'winter' && (p.item === 'oil' || p.item === 'sauce')));
   // Two to four goals in all: easy 2–3, medium 3–4, hard 4; a soil goal, if any, is one of them.
   const total = Math.min(4, 1 + difficulty + (r() < 0.5 ? 1 : 0));
   const soil = r() < 0.4 + 0.2 * difficulty;

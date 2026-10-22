@@ -599,14 +599,14 @@ A commission has goals, a target time and modifiers. It ends when every goal is 
 
 | # | Name | Goals | Target | Season | Modifiers | Relief |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | First Light | 120 wheat, 80 flour | 20 min | A mild spring | Gentle | 0.2 |
-| 2 | Morning Bread | 150 bread; soil health ≥ 40 | 40 min | A wet spring | | 0.4 |
+| 1 | First Light | 120 wheat, 80 flour | 25 min | A mild spring | Gentle | 0.2 |
+| 2 | Morning Bread | 150 bread; soil health ≥ 40 | 50 min | A wet spring | | 0.4 |
 | 3 | Windy Ridge | 90 oil, 80 bread | 85 min | Autumn, gales | Rocky, hilly | 0.9 |
 | 4 | Linen for the Looms | 50 linen; 5 yarn/min | 50 min | A hot summer | | 0.4 |
 | 5 | Long Nights | 100 honey cake | 115 min | Winter | | 0.5 |
-| 6 | Tired Soil | 50 sauce; soil health ≥ 55 | 35 min | A dry summer | Poor soil | 0.6 |
-| 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 45 min | Spring, high river | Cramped | 0.3 |
-| 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 45 min | A stormy autumn | Everything | 0.7 |
+| 6 | Tired Soil | 50 sauce; soil health ≥ 55 | 40 min | A dry summer | Poor soil | 0.6 |
+| 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 65 min | Spring, high river | Cramped | 0.3 |
+| 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 50 min | A stormy autumn | Everything | 0.7 |
 
 The bot (`npm run sim`) deliberately uses a flat, open map with even soil to test the economy, not terrain;
 `test/height.test.ts` covers the height rules. It clears First Light in about 15 minutes, Morning Bread in about 28 and
@@ -624,10 +624,10 @@ When seasons replaced the weather settings on 2026-10-21, a wet spring's weaker 
 so its target went from 35 to 40 minutes, and a stormy autumn's wind sped Harvest Festival up by about 3, so its target went
 from 50 to 45. Conditions then (2026-10-22): rain waters the fields and cloud dims the sun, which slowed First Light to about 15 and
 Morning Bread to about 30 and sped Riverlands up to about 32, so its target went from 50 to 45; the other targets stood then.
-Warmth (2026-10-22) slowed the bot on Windy Ridge from 31 to 62 minutes (sunflowers for the oil stall below 10°C and
+Warmth (2026-10-22) slowed the bot on First Light from 15 to 17, Morning Bread from 30 to 36, Riverlands from 32 to 45 (cold spring days slow every crop, and tomato and sunflower stop below 10°C), Tired Soil to 29 and Harvest Festival to 36, and on Windy Ridge from 31 to 62 minutes (sunflowers for the oil stall below 10°C and
 barely grow in an autumn that tops out at 18°C), on Linen for the Looms from about 25 to 35 (a hot summer's heat is hard on
-flax) and on Long Nights from 29 to 80 (hardy crops in a winter between −5 and 6°C), so their targets went to 85, 50 and 115
-minutes; Windy Ridge and Long Nights want their goals or seasons rethought.)
+flax) and on Long Nights from 29 to 80 (hardy crops in a winter between −5 and 6°C), so the targets went to 25, 50, 85, 50, 115, 40, 65 and 50
+minutes (commissions 1 to 8); Windy Ridge and Long Nights want their goals or seasons rethought.)
 
 ![The level select](images/menu.png)
 
