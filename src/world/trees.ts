@@ -22,7 +22,7 @@ export function treeModel(kind: TreeKind, season: Season): string {
 
 /** Each species' colour from afar in each season, for the crowns of the distant woods (from docs/ASSET_BRIEF.md). */
 const CANOPY: Record<Season, Record<TreeKind, number>> = {
-  spring: { oak: 0x76a84e, birch: 0xb5ce76, pine: 0x28564f, willow: 0x91bc61, poplar: 0x588650, apple: 0xe9c3c0, bush: 0x76a84e },
+  spring: { oak: 0x76a84e, birch: 0x91bc61, pine: 0x28564f, willow: 0x91bc61, poplar: 0x588650, apple: 0xe9c3c0, bush: 0x76a84e },
   summer: { oak: 0x467348, birch: 0xb5ce76, pine: 0x28564f, willow: 0x83b390, poplar: 0x2e633d, apple: 0x567843, bush: 0x52823c },
   autumn: { oak: 0xd98a32, birch: 0xe3b43c, pine: 0x28564f, willow: 0xcdb04a, poplar: 0xe3b43c, apple: 0xc0782e, bush: 0xa8502f },
   winter: { oak: 0x7a6758, birch: 0x8c6c66, pine: 0x28564f, willow: 0xb48d42, poplar: 0x7a6758, apple: 0x7a6758, bush: 0x6d5644 },
