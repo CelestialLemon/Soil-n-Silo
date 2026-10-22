@@ -10,7 +10,7 @@ import { generateMap, TERRAIN } from '../src/game/map.ts';
 import { feederOf, networkOf, networks, pylonsInLink, wiresOf } from '../src/game/power.ts';
 import { runtimeOf } from '../src/game/runtime.ts';
 import { deserialize, readProgress, recordResult, serialize } from '../src/game/save.ts';
-import { CAMPAIGN, randomScenario, SANDBOX, sandboxIn, scenarioById, tagsOf, type Scenario } from '../src/game/scenarios.ts';
+import { CAMPAIGN, PAR_FACTOR, randomPar, randomScenario, SANDBOX, sandboxIn, scenarioById, tagsOf, type Scenario } from '../src/game/scenarios.ts';
 import { CHARACTERS, charactersOf, climateOf, SEASON_IDS, SEASONS, seasonName } from '../src/game/seasons.ts';
 import { accessTiles, distanceTo, isOpen, pathTo } from '../src/game/roads.ts';
 import { hourAt, sunAt, windAt } from '../src/game/sim/clock.ts';
@@ -1141,4 +1141,16 @@ test('a random winter commission asks for nothing the cold stops: no oil, sauce,
     for (const g of sc.goals) if (g.kind === 'deliver') assert.ok(!['oil', 'sauce', 'honey', 'honeycake'].includes(g.item), `seed ${i}: ${g.item}`);
   }
   assert.ok(winters > 20);
+});
+
+test('a random commission\'s target time follows its season and character: every one has a factor, and winter is the longest', () => {
+  for (const season of SEASON_IDS) for (const c of charactersOf(season)) assert.ok((PAR_FACTOR[season][c] ?? 0) >= 1, `${season} ${c} has a factor`);
+  const par = (season: 'spring' | 'winter') => randomPar(2, 3, climateOf(season, 'mild'));
+  assert.equal(par('spring'), 55 * 60);
+  assert.ok(par('winter') > 2 * par('spring'));
+  for (let i = 0; i < 60; i++) {
+    const d = (i % 3 + 1) as 1 | 2 | 3, sc = randomScenario(i, d);
+    assert.equal(sc.par, randomPar(d, sc.goals.length, sc.climate));
+    assert.equal(sc.par % 300, 0);
+  }
 });

@@ -127,6 +127,25 @@ const PRODUCTS: { item: ItemId; n: number; level: number }[] = [
   { item: 'sauce', n: 25, level: 3 }, { item: 'honeycake', n: 25, level: 3 },
 ];
 
+/**
+ * How much longer than a mild spring a random commission's target is, by season and character (the table is measured by
+ * tools/seasonfactor.ts: the bot's times in each climate against a mild spring's, halfway between the mean over its layouts and
+ * the worst). Summer is a little slower (its heat is hard on wheat and flax, and calm days hold the solar and wind output
+ * down), autumn about the same, and winter 2.5 to 4 times longer: little grows below 6°C and the hens lay at half rate.
+ */
+export const PAR_FACTOR: Record<Season, Partial<Record<Character, number>>> = {
+  spring: { mild: 1, wet: 1.1, dry: 1.05, hot: 1, gales: 1.05, stormy: 1.1, highRiver: 1.05 },
+  summer: { mild: 1.2, wet: 1.1, dry: 1.25, hot: 1.35, stormy: 1.1 },
+  autumn: { mild: 1.1, wet: 1.25, dry: 1.15, gales: 1.15, stormy: 1.35 },
+  winter: { mild: 2.6, gales: 2.65, hard: 3.85 },
+};
+
+/** The target time (s) of a random commission with `goals` and `difficulty` in `climate`: the base time for a mild spring, times the climate's factor, to 5 minutes. */
+export function randomPar(difficulty: number, goals: number, climate: Pick<Climate, 'season' | 'character'>): number {
+  const factor = (climate.character ? PAR_FACTOR[climate.season][climate.character] : undefined) ?? 1;
+  return Math.max(5, Math.round((15 + 12 * difficulty + 6 * goals) * factor / 5) * 5) * MIN;
+}
+
 const NAMES_A = ['Brook', 'Fern', 'Sun', 'Willow', 'Clover', 'Amber', 'Moss', 'Hazel', 'Reed', 'Linden', 'Bramble', 'Heather'];
 const NAMES_B = ['hollow', 'field', 'stead', 'mere', 'vale', 'ridge', 'ford', 'wick', 'down', 'combe'];
 
@@ -168,7 +187,7 @@ export function randomScenario(seed: number, difficulty: 1 | 2 | 3): Scenario {
     goals.push({ kind: 'deliver', item: p.item, n: Math.round(p.n * (0.8 + 0.2 * difficulty) / 5) * 5 });
   }
   if (soil) goals.push({ kind: 'soil', min: 40 + 5 * difficulty });
-  const par = (15 + 12 * difficulty + 6 * goals.length) * MIN;
+  const par = randomPar(difficulty, goals.length, climate);
   return {
     id: `r${seed}-${difficulty}`, name, seed, width: 44 + 4 * difficulty, height: 36 + 3 * difficulty,
     blurb: `A commission from ${name}: ${goals.filter((g) => g.kind === 'deliver').map((g) => ITEMS[(g as { item: ItemId }).item].name.toLowerCase()).join(', ')}.`,
