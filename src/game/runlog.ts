@@ -115,7 +115,7 @@ export function noteRun(s: GameState, dt: number, night: boolean, short: boolean
 
 /** The entry for the night going on now; null once RUN_MAX_NIGHTS are kept and this is a new one. */
 function nightEntry(s: GameState) {
-  const day = nightOf(s.time, s.scenario.weather.sunset);
+  const day = nightOf(s.time, s.scenario.climate.sun.set);
   let n = s.run.nights[s.run.nights.length - 1];
   if (!n || n.day !== day) {
     if (s.run.nights.length >= RUN_MAX_NIGHTS) return null;

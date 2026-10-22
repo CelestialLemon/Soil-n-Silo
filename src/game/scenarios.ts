@@ -1,8 +1,9 @@
 import { FIELD, ITEMS, POWER, type ItemId } from './data.ts';
 import { mulberry32 } from './rng.ts';
+import { charactersOf, climateOf, climateTags, SEASON_IDS, seasonName, type Character, type Climate, type Season } from './seasons.ts';
 
 // Commissions: the campaign's fixed ones, random ones from any seed, and the sandbox. A commission is all a level needs to
-// be generated and judged: its map recipe (seed, size, terrain), its weather, its goals and its target time.
+// be generated and judged: its map recipe (seed, size, terrain), its season, its goals and its target time.
 
 export type Goal =
   | { kind: 'deliver'; item: ItemId; n: number }
@@ -22,13 +23,6 @@ export interface Terrain {
   relief: number;
 }
 
-export interface Weather {
-  /** Hours the sun is up, and its strength at noon (1 = normal). */
-  sunrise: number; sunset: number; sun: number;
-  /** Mean wind and how much it swings (both 0–1 of full strength). */
-  wind: number; gust: number;
-}
-
 export interface Scenario {
   id: string;
   name: string;
@@ -36,7 +30,8 @@ export interface Scenario {
   seed: number;
   width: number; height: number;
   terrain: Terrain;
-  weather: Weather;
+  /** Its season and character, and the sun and wind they give (seasons.ts). */
+  climate: Climate;
   credits: number;
   goals: Goal[];
   /** Target time in seconds of play: gold within it, silver within SILVER_PAR times it. */
@@ -44,11 +39,10 @@ export interface Scenario {
   sandbox?: boolean;
   /** First steps, shown when the commission starts. */
   tips?: string[];
-  /** Labels shown on the level card. */
+  /** Labels shown on the level card besides the season's own (tagsOf). */
   tags: string[];
 }
 
-const CALM: Weather = { sunrise: 6, sunset: 20, sun: 1, wind: 0.5, gust: 0.35 };
 const LOAM: Terrain = { soil: 60, soilSpread: 25, water: 'river', forest: 0.12, rock: 0.04, relief: 0.4 };
 const MIN = 60;
 
@@ -56,7 +50,7 @@ export const CAMPAIGN: Scenario[] = [
   {
     id: 'c1', name: 'First Light', seed: 1101, width: 44, height: 36, credits: 1200, par: 20 * MIN,
     blurb: 'Brightwater needs grain and flour to get through the season. Lay your first fields, a powered mill, and trucks to carry it all.',
-    terrain: { ...LOAM, forest: 0.08, rock: 0.02, relief: 0.2 }, weather: CALM, tags: ['Gentle'],
+    terrain: { ...LOAM, forest: 0.08, rock: 0.02, relief: 0.2 }, climate: climateOf('spring', 'mild'), tags: ['Gentle'],
     goals: [{ kind: 'deliver', item: 'wheat', n: 120 }, { kind: 'deliver', item: 'flour', n: 80 }],
     tips: [
       'Place a few fields (F) on rich soil (V shows it). Leave open ground between buildings: trucks drive on it.',
@@ -68,9 +62,9 @@ export const CAMPAIGN: Scenario[] = [
     ],
   },
   {
-    id: 'c2', name: 'Morning Bread', seed: 2202, width: 48, height: 40, credits: 1600, par: 35 * MIN,
+    id: 'c2', name: 'Morning Bread', seed: 2202, width: 48, height: 40, credits: 1600, par: 40 * MIN,
     blurb: 'Fresh bread for the schoolhouse. Chickens need feed, the mill makes bran: close the loop, and keep the soil alive.',
-    terrain: LOAM, weather: CALM, tags: [],
+    terrain: LOAM, climate: climateOf('spring', 'wet'), tags: [],
     goals: [{ kind: 'deliver', item: 'bread', n: 150 }, { kind: 'soil', min: 40 }],
     tips: [
       'Bread is flour and an egg. Chickens lay eggs from feed: beans, bran or seed cake, and leave manure.',
@@ -82,48 +76,48 @@ export const CAMPAIGN: Scenario[] = [
   {
     id: 'c3', name: 'Windy Ridge', seed: 3303, width: 48, height: 40, credits: 1100, par: 45 * MIN,
     blurb: 'The ridge co-op cooks with sunflower oil, but the sun is weak up here. The wind never stops, though.',
-    terrain: { ...LOAM, water: 'ponds', rock: 0.12, forest: 0.06, relief: 0.9 }, weather: { ...CALM, sun: 0.6, wind: 0.75, gust: 0.25 },
-    tags: ['Weak sun', 'Strong wind', 'Rocky', 'Hilly'],
+    terrain: { ...LOAM, water: 'ponds', rock: 0.12, forest: 0.06, relief: 0.9 }, climate: climateOf('autumn', 'gales'),
+    tags: ['Rocky', 'Hilly'],
     goals: [{ kind: 'deliver', item: 'oil', n: 90 }, { kind: 'deliver', item: 'bread', n: 80 }],
     tips: ['Up on the hills a turbine catches more wind. Every level a truck climbs costs it time and battery, so keep the busy routes low.'],
   },
   {
     id: 'c4', name: 'Linen for the Looms', seed: 4404, width: 50, height: 40, credits: 1300, par: 35 * MIN,
     blurb: 'The weavers of Hollin want linen, and a steady supply of yarn for their own looms.',
-    terrain: LOAM, weather: CALM, tags: [],
+    terrain: LOAM, climate: climateOf('summer', 'hot'), tags: [],
     goals: [{ kind: 'deliver', item: 'linen', n: 50 }, { kind: 'rate', item: 'yarn', perMin: 5 }],
   },
   {
     id: 'c5', name: 'Long Nights', seed: 5505, width: 48, height: 40, credits: 1400, par: 40 * MIN,
-    blurb: 'Late autumn: short days and long nights. The midwinter fair wants honey cake.',
-    terrain: { ...LOAM, water: 'lake', relief: 0.5 }, weather: { ...CALM, sunrise: 8, sunset: 17, wind: 0.45 }, tags: ['Short days'],
+    blurb: 'Winter: short days and long nights. The midwinter fair wants honey cake.',
+    terrain: { ...LOAM, water: 'lake', relief: 0.5 }, climate: climateOf('winter'), tags: [],
     goals: [{ kind: 'deliver', item: 'honeycake', n: 100 }],
   },
   {
     id: 'c6', name: 'Tired Soil', seed: 6606, width: 48, height: 40, credits: 1400, par: 35 * MIN,
     blurb: 'Years of monoculture left this valley worn out. Make sauce for the cannery town, and leave the soil better than you found it.',
-    terrain: { ...LOAM, soil: 28, soilSpread: 15, forest: 0.05, relief: 0.6 }, weather: CALM, tags: ['Poor soil'],
+    terrain: { ...LOAM, soil: 28, soilSpread: 15, forest: 0.05, relief: 0.6 }, climate: climateOf('summer', 'dry'), tags: ['Poor soil'],
     goals: [{ kind: 'deliver', item: 'sauce', n: 50 }, { kind: 'soil', min: 55 }],
   },
   {
     id: 'c7', name: 'Riverlands', seed: 7707, width: 52, height: 42, credits: 1600, par: 50 * MIN,
     blurb: 'Three villages along the river put in orders at once. Space is short between the water and the woods.',
-    terrain: { ...LOAM, water: 'river', forest: 0.22, rock: 0.06, relief: 0.3 }, weather: CALM, tags: ['Cramped', 'Wet'],
+    terrain: { ...LOAM, water: 'river', forest: 0.22, rock: 0.06, relief: 0.3 }, climate: climateOf('spring', 'highRiver'), tags: ['Cramped'],
     tips: ['The river turns a water wheel built on its bank: steady power day and night, the most beside a fall.'],
     goals: [{ kind: 'deliver', item: 'linen', n: 30 }, { kind: 'deliver', item: 'sauce', n: 30 }, { kind: 'deliver', item: 'bread', n: 80 }],
   },
   {
-    id: 'c8', name: 'Harvest Festival', seed: 8808, width: 56, height: 44, credits: 1800, par: 50 * MIN,
+    id: 'c8', name: 'Harvest Festival', seed: 8808, width: 56, height: 44, credits: 1800, par: 45 * MIN,
     blurb: 'The whole valley comes together for the festival. Everything, at once, on healthy soil.',
-    terrain: { ...LOAM, soil: 50, rock: 0.07, forest: 0.14, relief: 0.7 }, weather: { ...CALM, sunset: 19, wind: 0.55 }, tags: ['Everything'],
+    terrain: { ...LOAM, soil: 50, rock: 0.07, forest: 0.14, relief: 0.7 }, climate: climateOf('autumn', 'stormy'), tags: ['Everything'],
     goals: [{ kind: 'deliver', item: 'honeycake', n: 40 }, { kind: 'deliver', item: 'sauce', n: 30 }, { kind: 'deliver', item: 'linen', n: 30 }, { kind: 'soil', min: 60 }],
   },
 ];
 
 export const SANDBOX: Scenario = {
   id: 'sandbox', name: 'Sandbox', seed: 4242, width: 64, height: 52, credits: 1_000_000, par: 0, sandbox: true,
-  blurb: 'A big calm valley with unlimited credits and no goals, for trying things out.',
-  terrain: { ...LOAM, forest: 0.08, rock: 0.03, relief: 0.5 }, weather: CALM, tags: ['No goals', 'Unlimited credits'], goals: [],
+  blurb: 'A big valley with unlimited credits and no goals, for trying things out.',
+  terrain: { ...LOAM, forest: 0.08, rock: 0.03, relief: 0.5 }, climate: climateOf('spring', 'mild'), tags: ['No goals', 'Unlimited credits'], goals: [],
 };
 
 /** Products a random commission can ask for, by difficulty, with a count per difficulty step. */
@@ -142,16 +136,16 @@ export function randomScenario(seed: number, difficulty: 1 | 2 | 3): Scenario {
   const pick = <T>(xs: readonly T[]) => xs[Math.floor(r() * xs.length)];
   const name = `${pick(NAMES_A)}${pick(NAMES_B)}`;
   const tags: string[] = [];
-  const weather: Weather = { ...CALM };
+  // The season and its character, from a stream of their own so the rest of the commission doesn't depend on them.
+  const rs = mulberry32(seed ^ (difficulty * 0x85ebca6b) ^ 0x5ea5);
+  const season = SEASON_IDS[Math.floor(rs() * SEASON_IDS.length)], characters = charactersOf(season);
+  const climate = climateOf(season, characters[Math.floor(rs() * characters.length)]);
   const terrain: Terrain = { ...LOAM, water: pick(['river', 'ponds', 'lake', 'river'] as const), relief: 0.25 + 0.15 * difficulty };
-  // Up to two modifiers.
+  // Up to two ground modifiers.
   const mods = [
-    () => { weather.sun = 0.6; weather.wind = 0.75; tags.push('Weak sun', 'Strong wind'); },
-    () => { weather.sunrise = 8; weather.sunset = 17; tags.push('Short days'); },
     () => { terrain.soil = 30; terrain.soilSpread = 15; tags.push('Poor soil'); },
     () => { terrain.rock = 0.12; tags.push('Rocky'); },
     () => { terrain.forest = 0.24; tags.push('Wooded'); },
-    () => { weather.wind = 0.25; weather.gust = 0.2; tags.push('Still air'); },
     () => { const hilly = r() < 0.5; terrain.relief = hilly ? 0.9 : 0; tags.push(hilly ? 'Hilly' : 'Flat'); },
   ];
   const nMods = Math.min(difficulty, 2) - (r() < 0.4 ? 1 : 0);
@@ -177,12 +171,26 @@ export function randomScenario(seed: number, difficulty: 1 | 2 | 3): Scenario {
   return {
     id: `r${seed}-${difficulty}`, name, seed, width: 44 + 4 * difficulty, height: 36 + 3 * difficulty,
     blurb: `A commission from ${name}: ${goals.filter((g) => g.kind === 'deliver').map((g) => ITEMS[(g as { item: ItemId }).item].name.toLowerCase()).join(', ')}.`,
-    terrain, weather, credits: 1000 + 200 * difficulty, goals, par, tags: [`Difficulty ${difficulty}`, ...tags],
+    terrain, climate, credits: 1000 + 200 * difficulty, goals, par, tags: [`Difficulty ${difficulty}`, ...tags],
   };
 }
 
+/** The sandbox in a season, with a character or none: `sandbox`, `sandbox-winter`, `sandbox-winter-hard`. */
+export function sandboxIn(season: Season, character: Character | null = null): Scenario {
+  if (season === SANDBOX.climate.season && character === SANDBOX.climate.character) return SANDBOX;
+  return { ...SANDBOX, id: `${SANDBOX.id}-${season}${character ? `-${character}` : ''}`, climate: climateOf(season, character) };
+}
+
+/** Labels for the level card: the season, what it's like (short days, strong wind) and the commission's own. */
+export const tagsOf = (sc: Scenario) => [seasonName(sc.climate), ...climateTags(sc.climate), ...sc.tags];
+
 export function scenarioById(id: string): Scenario | null {
   if (id === SANDBOX.id) return SANDBOX;
+  const sb = /^sandbox-([a-z]+)(?:-([a-zA-Z]+))?$/.exec(id);
+  if (sb) {
+    const season = SEASON_IDS.find((x) => x === sb[1]), character = sb[2] === undefined ? null : charactersOf(season ?? 'spring').find((x) => x === sb[2]);
+    return season && character !== undefined ? sandboxIn(season, character) : null;
+  }
   const c = CAMPAIGN.find((s) => s.id === id);
   if (c) return c;
   const m = /^r(\d+)-([123])$/.exec(id);

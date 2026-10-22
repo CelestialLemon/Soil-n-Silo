@@ -4,6 +4,7 @@ import { bays, BUILDINGS, CROPS, ITEMS, recipesFor, TICK, TRUCK, type BuildingId
 import { err, ok, tryParseJson, type Result } from './result.ts';
 import type { Mark, RunLog } from './runlog.ts';
 import type { Scenario } from './scenarios.ts';
+import { CHARACTERS, SEASONS, type Climate } from './seasons.ts';
 import { MAX_LEVEL, spanOf, STEEP } from './relief.ts';
 import { TERRAIN } from './map.ts';
 import { isMachine, type Building, type GameState, type Route, type Truck } from './state.ts';
@@ -28,7 +29,7 @@ export function deserialize(json: string | null): Result<GameState> {
   const parsed = tryParseJson(json);
   if (!parsed.ok) return err(`The save isn't JSON: ${parsed.error}`);
   const s = parsed.value as GameState | null;
-  if (s?.version !== 8) return err('The save is from another version (this game reads version 8).');
+  if (s?.version !== 9) return err('The save is from another version (this game reads version 9).');
   if (!complete(s)) return err('The save is broken: its state is incomplete or out of range.');
   if (!validRun(s.run, s.scenario.goals.length)) return err('The save is broken: its run log is incomplete or out of range.');
   return ok(s);
@@ -52,13 +53,20 @@ const goal = (g: { kind?: string; item?: unknown; n?: unknown; perMin?: unknown;
 
 const str = (v: unknown) => typeof v === 'string';
 
+/** A climate: a known season and character, and every lever's numbers. */
+function climate(c: Climate): boolean {
+  return !!c && known(SEASONS, c.season) && (c.character === null || (known(CHARACTERS, c.character) && CHARACTERS[c.character].seasons.includes(c.season)))
+    && !!c.sun && [c.sun.rise, c.sun.set, c.sun.strength].every(num) && c.sun.rise < c.sun.set
+    && !!c.wind && [c.wind.mean, c.wind.gust].every(num);
+}
+
 /** The scenario's fields the simulation and the HUD read. */
 function scenario(sc: Scenario): boolean {
-  const w = sc?.weather, t = sc?.terrain;
+  const t = sc?.terrain;
   return !!sc && str(sc.id) && str(sc.name) && str(sc.blurb) && [sc.seed, sc.width, sc.height, sc.credits, sc.par].every(num)
     && arr(sc.tags) && sc.tags.every(str) && (sc.tips === undefined || (arr(sc.tips) && sc.tips.every(str)))
     && arr(sc.goals) && sc.goals.every(goal)
-    && !!w && [w.sunrise, w.sunset, w.sun, w.wind, w.gust].every(num)
+    && climate(sc.climate)
     && !!t && [t.soil, t.soilSpread, t.forest, t.rock, t.relief].every(num) && t.relief >= 0 && t.relief <= 1 && ['river', 'ponds', 'lake', 'none'].includes(t.water);
 }
 

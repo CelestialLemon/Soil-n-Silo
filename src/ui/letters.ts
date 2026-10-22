@@ -66,7 +66,7 @@ const LETTERS: Record<string, Letter> = {
     signoff: 'Yours, in rare agreement,', asks: 'What they ask',
   },
   c8: {
-    from: 'Wren Ashdown', role: 'For the festival committee', place: 'The festival field', day: 'midsummer eve', greeting: 'Dear co-op,',
+    from: 'Wren Ashdown', role: 'For the festival committee', place: 'The festival field', day: 'harvest eve', greeting: 'Dear co-op,',
     body: [
       'Every village in the valley is coming to the harvest festival, and every one of them is bringing an appetite. We need forty honey cakes, thirty jars of sauce and thirty bolts of linen for the prize tables.',
       'And this year the committee has voted that the festival should stand on healthy ground. Soil at sixty or better when the lanterns go up.',
@@ -82,7 +82,7 @@ export function letterFor(sc: Scenario): Letter {
   if (known) return known;
   if (sc.sandbox) {
     return {
-      from: 'The valley', role: '', place: 'A big calm valley', day: 'any day', greeting: 'Welcome,',
+      from: 'The valley', role: '', place: 'A big valley', day: 'any day', greeting: 'Welcome,',
       body: ['No one is waiting on an order here. The credits do not run out and nothing is asked of you. Build what you like, and see how it runs.'],
       signoff: '', asks: 'What it asks',
     };

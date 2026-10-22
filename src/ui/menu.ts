@@ -1,7 +1,8 @@
 import { generateMap, TERRAIN } from '../game/map.ts';
 import { seedOf } from '../game/rng.ts';
 import type { Progress } from '../game/save.ts';
-import { CAMPAIGN, randomScenario, SANDBOX, SILVER_PAR, type Scenario } from '../game/scenarios.ts';
+import { CAMPAIGN, randomScenario, SANDBOX, sandboxIn, SILVER_PAR, tagsOf, type Scenario } from '../game/scenarios.ts';
+import { CHARACTERS, charactersOf, climateOf, climateTags, SEASON_IDS, SEASONS, seasonName, type Character, type Season } from '../game/seasons.ts';
 import type { GameState } from '../game/state.ts';
 import { fill, h, icon, svg } from './dom.ts';
 import { itemName, num, pct, playTime } from './format.ts';
@@ -12,7 +13,8 @@ import { goalIcon, goalNow, MEDAL_NAME, medal, ring } from './widgets.ts';
 
 // The level select, shown before any world is built: the commission in progress to continue, the eight commissions as a
 // path of rings down the valley (best medal, progress, par), the chosen one's card (what they ask, the medal times, its sun,
-// wind and soil against a normal valley, a preview of its map), a random commission from a seed, and the sandbox.
+// season, sun, wind and soil against a normal valley, a preview of its map), a random commission from a seed, and the sandbox
+// in a season of your choice.
 
 export interface MenuHost {
   saved: GameState | null;
@@ -29,7 +31,7 @@ const progressOf = (s: GameState) => (s.scenario.goals.length ? s.scenario.goals
 const NORMAL = { daylight: 14, wind: 0.5, soil: 60 };
 
 function conditions(sc: Scenario) {
-  const w = sc.weather, t = sc.terrain, day = (w.sunset - w.sunrise) * w.sun;
+  const { sun, wind } = sc.climate, t = sc.terrain, day = (sun.set - sun.rise) * sun.strength;
   const word = (k: number, low: string, high: string) => (k < 0.85 ? low : k > 1.15 ? high : 'Normal');
   const cond = (ic: string, label: string, k: number, col: string, value: string, sub: string) => h('div', { class: 'cond' },
     icon(ic, 26), h('span', { class: 'cd-label' }, label),
@@ -38,9 +40,9 @@ function conditions(sc: Scenario) {
   const water = { river: 'A river crosses the valley.', ponds: 'Ponds dot the valley.', lake: 'A lake lies in the valley.', none: 'There is no water.' }[t.water];
   const woods = t.forest >= 0.2 ? 'Woods cover about a quarter.' : t.forest >= 0.1 ? 'Woods cover about an eighth.' : t.forest > 0 ? 'A few woods.' : '';
   return [
-    cond('sun', 'Sun', day / NORMAL.daylight, 'var(--ochre)', w.sun < 0.9 ? 'Weak' : word(day / NORMAL.daylight, 'Short days', 'Long days'),
-      `${String(w.sunrise).padStart(2, '0')}:00 to ${w.sunset}:00${w.sun !== 1 ? ` · ${pct(w.sun)}` : ''}`),
-    cond('wind', 'Wind', w.wind / NORMAL.wind, 'var(--tide)', word(w.wind / NORMAL.wind, 'Still', 'Strong'), `gusts ${pct(w.gust)}`),
+    cond('sun', 'Sun', day / NORMAL.daylight, 'var(--ochre)', sun.strength < 0.9 ? 'Weak' : word(day / NORMAL.daylight, 'Short days', 'Long days'),
+      `${String(sun.rise).padStart(2, '0')}:00 to ${sun.set}:00${sun.strength !== 1 ? ` · ${pct(sun.strength)}` : ''}`),
+    cond('wind', 'Wind', wind.mean / NORMAL.wind, 'var(--tide)', word(wind.mean / NORMAL.wind, 'Still', 'Strong'), `gusts ${pct(wind.gust)}`),
     cond('soil', 'Soil', t.soil / NORMAL.soil, 'var(--pine)', word(t.soil / NORMAL.soil, 'Poor', 'Rich'), `${t.soil} ± ${t.soilSpread}`),
     h('div', { class: 'cd-small cd-faint about' }, [water, woods, t.rock >= 0.1 ? 'Rocky.' : ''].filter(Boolean).join(' ')),
   ];
@@ -112,6 +114,7 @@ export function showMenu(root: HTMLElement, host: MenuHost) {
         h('div', { class: 'cd-label' }, `Commission ${i + 1} · seed ${sc.seed} · ${sc.width} × ${sc.height}`),
         h('h1', { class: 'cd-display' }, sc.name),
         h('p', { class: 'blurb' }, sc.blurb),
+        h('div', { class: 'chips tags' }, ...tagsOf(sc).map((t) => h('span', { class: 'tag cd-small' }, t))),
         h('span', { class: 'fill' }),
         h('div', { class: 'row' }, h('span', { class: 'mchip' }, icon('coin', 28), h('b', null, num(sc.credits)), h('small', null, 'credits to start')),
           h('span', { class: 'cd-small' }, 'Your best: ', h('b', null, best ? `${MEDAL_NAME[best.medal]}, ${playTime(best.time)}` : 'not finished yet')))),
@@ -127,7 +130,7 @@ export function showMenu(root: HTMLElement, host: MenuHost) {
           h('span', { class: 'mchip' }, medal('bronze', 30), h('small', null, 'after')))),
       h('div', { class: 'vsep' }),
       h('div', { class: 'col' },
-        h('div', { class: 'row-head' }, h('span', { class: 'cd-label' }, 'Conditions'), h('span', { class: 'cd-small cd-faint' }, h('i', { class: 'norm-key' }), 'a normal valley')),
+        h('div', { class: 'row-head' }, h('span', { class: 'cd-label' }, `Conditions · ${seasonName(sc.climate)}`), h('span', { class: 'cd-small cd-faint' }, h('i', { class: 'norm-key' }), 'a normal valley')),
         h('div', { class: 'conds' }, ...conditions(sc))),
       h('div', { class: 'col act' },
         mapPreview(sc),
@@ -153,10 +156,22 @@ export function showMenu(root: HTMLElement, host: MenuHost) {
     fill(preview,
       h('div', { class: 'head' }, h('span', { class: 'rname' }, sc.name), h('span', { class: 'cd-small' }, `${sc.width} × ${sc.height} · par ${playTime(sc.par)} · ${num(sc.credits)} credits`)),
       h('div', { class: 'chips' }, ...sc.goals.map((g) => h('span', { class: 'cd-chip' }, icon(goalIcon(g), 22), g.kind === 'deliver' ? `${g.n} ${itemName(g.item)}` : g.kind === 'rate' ? `${g.perMin} ${itemName(g.item)} / min` : `soil ${g.min}+`))),
-      h('div', { class: 'chips tags' }, ...sc.tags.map((t) => h('span', { class: 'tag cd-small' }, t)), h('span', { class: 'tag cd-small' }, { river: 'River', ponds: 'Ponds', lake: 'Lake', none: 'Dry' }[sc.terrain.water])));
+      h('div', { class: 'chips tags' }, ...tagsOf(sc).map((t) => h('span', { class: 'tag cd-small' }, t)), h('span', { class: 'tag cd-small' }, { river: 'River', ponds: 'Ponds', lake: 'Lake', none: 'Dry' }[sc.terrain.water])));
   }
   seed.addEventListener('input', drawRandom);
   drawRandom();
+
+  // The sandbox's season and character.
+  let season: Season = SANDBOX.climate.season, character: Character | null = SANDBOX.climate.character;
+  const seasons = h('div', { class: 'cd-seg wide' }), sandboxChoice = h('div', { class: 'season-pick' });
+  function drawSandbox() {
+    fill(seasons, ...SEASON_IDS.map((x) => h('button', { class: x === season ? 'is-on' : '', onclick: () => { season = x; if (character && !charactersOf(x).includes(character)) character = null; drawSandbox(); } }, SEASONS[x].name)));
+    const sel = h('select', { class: 'cd-select', 'aria-label': 'Character', onchange: () => { character = (sel.value || null) as Character | null; drawSandbox(); } },
+      h('option', { value: '', selected: character === null }, 'Ordinary'),
+      ...charactersOf(season).map((c) => h('option', { value: c, selected: c === character }, CHARACTERS[c].word[0].toUpperCase() + CHARACTERS[c].word.slice(1))));
+    fill(sandboxChoice, seasons, h('div', { class: 'row' }, sel, h('span', { class: 'chips tags' }, ...((c) => [seasonName(c), ...climateTags(c)])(climateOf(season, character)).map((t) => h('span', { class: 'tag cd-small' }, t)))));
+  }
+  drawSandbox();
   draw();
 
   ui.append(
@@ -181,10 +196,10 @@ export function showMenu(root: HTMLElement, host: MenuHost) {
         preview,
         h('div', { class: 'act' }, h('button', { class: 'cd-btn is-ghost', onclick: () => host.start(random().id) }, icon('play', 14), 'Start'))),
       h('div', { class: 'cd-card sandbox' },
-        h('div', null, h('div', { class: 'cd-label' }, 'Sandbox'), h('div', { class: 'rname' }, 'A big calm valley'),
-          h('div', { class: 'cd-small' }, `${SANDBOX.blurb.replace(/^A big calm valley with u/, 'U')} ${SANDBOX.width} × ${SANDBOX.height}, gentle weather.`),
-          h('div', { class: 'chips' }, h('span', { class: 'cd-chip' }, icon('coin', 22), '∞ credits'), h('span', { class: 'cd-chip', style: 'padding-left: 12px' }, 'No goals'))),
-        h('div', { class: 'act' }, h('button', { class: 'cd-btn is-ghost', onclick: () => host.start(SANDBOX.id) }, 'Open')))),
+        h('div', null, h('div', { class: 'cd-label' }, 'Sandbox'), h('div', { class: 'rname' }, 'A big valley'),
+          h('div', { class: 'cd-small' }, `${SANDBOX.blurb.replace(/^A big valley with u/, 'U')} ${SANDBOX.width} × ${SANDBOX.height}, in the season you choose.`)),
+        sandboxChoice,
+        h('div', { class: 'act' }, h('button', { class: 'cd-btn is-ghost', onclick: () => host.start(sandboxIn(season, character).id) }, 'Open')))),
     sheets);
   root.append(ui);
   addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });

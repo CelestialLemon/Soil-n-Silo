@@ -59,15 +59,15 @@ function runChart(s: GameState, end: number) {
   const x = (t: number) => left + (t / xMax) * W, y = (v: number) => top + H - (v / most) * H;
   const parts: SVGElement[] = [];
   // Nights shaded.
-  const w = s.scenario.weather;
-  for (let d = 0; timeOf(d, w.sunset) < xMax; d++) {
-    const a = Math.max(0, timeOf(d, w.sunset)), b = Math.min(xMax, timeOf(d + 1, w.sunrise));
+  const w = s.scenario.climate.sun;
+  for (let d = 0; timeOf(d, w.set) < xMax; d++) {
+    const a = Math.max(0, timeOf(d, w.set)), b = Math.min(xMax, timeOf(d + 1, w.rise));
     if (b > a) parts.push(svg('rect', { x: x(a), y: top, width: x(b) - x(a), height: H, class: 'night' }));
   }
   // Nights short of power, as bars under the axis.
   for (const n of run.nights) {
     if (n.short <= 0) continue;
-    const a = Math.max(0, timeOf(n.day, w.sunset)), b = Math.min(end, timeOf(n.day + 1, w.sunrise));
+    const a = Math.max(0, timeOf(n.day, w.set)), b = Math.min(end, timeOf(n.day + 1, w.rise));
     if (b > a) parts.push(svg('rect', { x: x(a), y: top + H + 6, width: Math.max(4, x(b) - x(a)), height: 6, rx: 3, class: 'short' }));
   }
   // The curve.
@@ -127,7 +127,7 @@ function differences(s: GameState, end: number) {
       : top.status === 'blocked' || top.status === 'noroute' ? `taking ${top.need} away from the ${lcBuilding(top.type)} sooner would have kept it working.`
         : `more power for the ${lcBuilding(top.type)} would have kept it working.`;
   }
-  const nights = run.nights.filter((n) => timeOf(n.day, s.scenario.weather.sunset) < end), short = nights.filter((n) => n.short > 0);
+  const nights = run.nights.filter((n) => timeOf(n.day, s.scenario.climate.sun.set) < end), short = nights.filter((n) => n.short > 0);
   if (nights.length) {
     const types = [...new Set(short.flatMap((n) => n.types))].map((t, k) => (k ? lcBuilding(t) : BUILDINGS[t].name));
     out.push(h('div', { class: 'fac' }, h('b', null, icon('moon', 24), 'Nights short of power'), h('span', { class: 'big' }, String(short.length), h('small', null, ` of ${nights.length}`)),

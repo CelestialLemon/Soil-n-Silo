@@ -217,7 +217,8 @@ function chainItemOf(id: BuildingId): ItemId | null {
 function worthReading(s: GameState): TopicId[] {
   const sc = s.scenario, out: TopicId[] = ['start'];
   if (sc.goals.some((g) => g.kind === 'soil') || sc.terrain.soil < 50) out.push('soil');
-  if (sc.weather.sun < 1 || sc.weather.sunset - sc.weather.sunrise < 12 || sc.weather.wind < 0.4) out.push('power');
+  const { sun, wind } = sc.climate;
+  if (sun.strength < 1 || sun.set - sun.rise < 12 || wind.mean < 0.4) out.push('power');
   if (sc.goals.some((g) => g.kind !== 'soil' && chainOf(g.item).from?.inputs.length)) out.push('trucks');
   if (sc.terrain.relief >= 0.6) out.push('land');
   return out;

@@ -95,7 +95,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
       case 'solar': {
         const sc = s.scenario;
         facts.push({ label: 'Now', value: watts(POWER.solar * sunAt(sc, s.time)), sub: 'in this sun' });
-        facts.push({ label: 'Midday', value: watts(POWER.solar * sc.weather.sun), sub: `sun ${String(sc.weather.sunrise).padStart(2, '0')}:00–${sc.weather.sunset}:00` });
+        facts.push({ label: 'Midday', value: watts(POWER.solar * sc.climate.sun.strength), sub: `sun ${String(sc.climate.sun.rise).padStart(2, '0')}:00–${sc.climate.sun.set}:00` });
         facts.push(pylonFact());
         break;
       }
@@ -168,10 +168,10 @@ export interface Tonight {
  * now keep burning): the sun and wind follow the commission's seeded weather. Null without batteries.
  */
 export function tonight(s: GameState): Tonight | null {
-  const sc = s.scenario, w = sc.weather, now = s.time, h = hourAt(now);
-  const night = h < w.sunrise || h >= w.sunset;
-  const sunset = night ? null : nextHour(now, w.sunset);
-  const sunrise = nextHour(sunset ?? now, w.sunrise), end = sunrise + HOUR_SECONDS;
+  const sc = s.scenario, w = sc.climate.sun, now = s.time, h = hourAt(now);
+  const night = h < w.rise || h >= w.set;
+  const sunset = night ? null : nextHour(now, w.set);
+  const sunrise = nextHour(sunset ?? now, w.rise), end = sunrise + HOUR_SECONDS;
   const nets = networks(s).list.map((net) => {
     const bats = net.members.filter((b) => b.type === 'battery').map((b) => b.charge);
     return { net, bats, solar: net.members.filter((b) => b.type === 'solar').length, turbines: net.members.filter((b) => b.type === 'turbine'),
