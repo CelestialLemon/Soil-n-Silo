@@ -44,7 +44,7 @@ function conditions(sc: Scenario) {
       `${String(sun.rise).padStart(2, '0')}:00 to ${sun.set}:00${sun.strength !== 1 ? ` · ${pct(sun.strength)}` : ''}`),
     cond('wind', 'Wind', wind.mean / NORMAL.wind, 'var(--tide)', word(wind.mean / NORMAL.wind, 'Still', 'Strong'), `gusts ${pct(wind.gust)}`),
     cond('soil', 'Soil', t.soil / NORMAL.soil, 'var(--pine)', word(t.soil / NORMAL.soil, 'Poor', 'Rich'), `${t.soil} ± ${t.soilSpread}`),
-    h('div', { class: 'cd-small cd-faint about' }, `Warmth ${Math.round(warmth.low)} to ${Math.round(warmth.high)}°C. Showers about ${pct(rain)} of the time${sc.climate.season === 'winter' ? ' (snow)' : ''}.`),
+    h('div', { class: 'cd-small cd-faint about' }, `Warmth ${Math.round(warmth.low)} to ${Math.round(warmth.high)}°C. A ${pct(rain)} chance of showers in each spell${sc.climate.season === 'winter' ? ' (snow)' : ''}.`),
     h('div', { class: 'cd-small cd-faint about' }, [water, woods, t.rock >= 0.1 ? 'Rocky.' : ''].filter(Boolean).join(' ')),
   ];
 }
