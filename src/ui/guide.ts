@@ -6,7 +6,7 @@ import {
 import { FLEET_SECONDS } from '../game/fleet.ts';
 import { SOIL_AHEAD } from '../game/forecast.ts';
 import { RECENT_WINDOW } from '../game/flows.ts';
-import { paceOf, SPRINKLER_MOST, TURBINE_MOST } from '../game/rules.ts';
+import { paceOf, SPRINKLER_MOST, TURBINE_MOST, waterPace } from '../game/rules.ts';
 import { isPollinated } from '../game/sim/layout.ts';
 import { fieldFertility } from '../game/sim/soil.ts';
 import { recipeOf } from '../game/sim/goods.ts';
@@ -74,7 +74,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
       `Build it on good soil: its placement card shows the soil under it now and in ${SOIL_AHEAD / 60} minutes, and the Soil overlay shows the whole map.`,
       'Select it and choose the crop. Wheat is the default.',
       'Build it beside the machine that uses its crop (a mill for wheat), and the machine takes the harvest itself. Or make it a stop on a route: trucks pick up the harvest. A full field stops growing.',
-      `Put it beside water at its own level, or a sprinkler within ${POWER.sprinklerReach} tiles of its centre: dry fields grow at ×${FIELD.dry} speed.`,
+      `Put it beside water at its own level, or a sprinkler within ${POWER.sprinklerReach} tiles of its centre: dry fields grow at ×${FIELD.dry} speed (sunflower copes better: ×${waterPace(0, CROPS.sunflower.thirst)}), and in heat above ${FIELD.heat}°C nearly stop.`,
     ],
     tips: [
       `It can lie on a slope, but not across a cliff (placing it there levels the ground). Its sloping tiles wear faster, up to ${1 + FIELD.erosion} times on a steep bank; a tree or sapling beside it, or a bean field next door, holds the soil (up to ${1 + FIELD.erosionGuarded} times).`,
@@ -439,7 +439,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
           ['Battery', `${TRUCK.battery} J, ${TRUCK.joulesPerTile} J a tile driven`], ['Charging', `${TRUCK.chargeRate} W a truck`]);
         break;
       case 'field':
-        rows.push(['Grow times are for', 'a watered field at soil 60'], ['Without water', `×${FIELD.dry} speed`],
+        rows.push(['Grow times are for', 'a watered field at soil 60'], ['Without water', `×${FIELD.dry} speed (sunflower ×${waterPace(0, CROPS.sunflower.thirst)})`],
           ['Soil 0 → 100', `×${FIELD.poorSoil} → ×${FIELD.richSoil} speed`], ['Holds', `${FIELD.store} harvested goods`],
           ['Compost', `taken only below soil ${FIELD.compostBelow}: +${FIELD.compostGain} on every tile at once`]);
         break;
@@ -559,7 +559,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
       case 'soil': return [
         ...head('Soil and water', 'Fields are where every chain starts, and how fast they grow depends on water and soil.'),
         h('ul', null,
-          h('li', null, B('Water:'), ` a dry field grows at ×${FIELD.dry} speed. A `, bLink('sprinkler'), ' waters fields whose centre is within ', String(POWER.sprinklerReach), ' tiles.'),
+          h('li', null, B('Water:'), ` a dry field grows at ×${FIELD.dry} speed (sunflower ×${waterPace(0, CROPS.sunflower.thirst)}; all but stopped in heat above ${FIELD.heat}°C). A `, bLink('sprinkler'), ' waters fields whose centre is within ', String(POWER.sprinklerReach), ' tiles.'),
           h('li', null, B('Soil:'), ` growth goes from ×${FIELD.poorSoil} on soil 0 to ×${FIELD.richSoil} on soil 100. The Soil view shows fertility everywhere.`),
           h('li', null, B('Wearing out:'), ' every harvest takes some soil (see the crops on the ', bLink('field'), ' page). Beans give some back.'),
           h('li', null, B('Compost:'), ` a field takes compost only while its soil is under ${FIELD.compostBelow}, and spreads each one at once for +${FIELD.compostGain} on every tile; above that, trucks carry it on to the next field. Make it in a `, bLink('composter'), '.'),
