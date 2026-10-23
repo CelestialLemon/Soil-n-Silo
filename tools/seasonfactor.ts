@@ -35,12 +35,12 @@ function riverFor(id: string): number {
 }
 
 /** How long the bot takes in a mild spring with no events (seconds), kept per layout and seed: the length of run the events are spread over. */
-const reference = new Map<string, number>();
-function referenceTime(id: string, seed: number, cap: number, river: number): number {
+const reference = new Map<string, number | null>();
+function referenceTime(id: string, seed: number, cap: number, river: number): number | null {
   const key = `${id}|${seed}`;
   let t = reference.get(key);
   if (t === undefined) {
-    t = playLayout(id, cap, undefined, { climate: climateOf('spring', 'mild'), seed, events: [], river }).completedAt ?? cap * 60;
+    t = playLayout(id, cap, undefined, { climate: climateOf('spring', 'mild'), seed, events: [], river }).completedAt;
     reference.set(key, t);
   }
   return t;
@@ -55,7 +55,7 @@ function play(j: Job): number | null {
   const climate = climateOf(j.season, j.character);
   // The events are spread over as long as the bot takes in a mild spring, so it meets every one of them, as a player taking the target time of a
   // random commission (spread over that) would meet its own: events that fall after the bot has finished would not be measured.
-  const events = rollEvents(seed, j.difficulty, climate, referenceTime(j.id, seed, j.cap, river));
+  const events = rollEvents(seed, j.difficulty, climate, referenceTime(j.id, seed, j.cap, river) ?? j.cap * 60);
   return fin(playLayout(j.id, j.cap, undefined, { climate, seed, events, river }).completedAt);
 }
 const fin = (t: number | null) => (t === null ? null : t / 60);
