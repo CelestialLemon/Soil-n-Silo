@@ -40,12 +40,12 @@ export class ProblemsStrip {
   update(s: GameState, show: boolean) {
     this.el.hidden = !show;
     if (!show) { this.pop.hidden = true; this.key = ''; return; }
-    const list = problemsOf(s), key = list.slice(0, SHOWN).map((p) => `${p.b.id}:${p.b.status}`).join(' ') + `|${list.length}`;
+    const list = problemsOf(s), key = list.slice(0, SHOWN).map((p) => `${p.b.id}:${p.b.status}:${p.b.need ?? ''}`).join(' ') + `|${list.length}`;
     if (key !== this.key) {
       this.key = key;
       fill(this.el, h('span', { class: 'cd-pstrip__n', title: `${list.length} building${list.length === 1 ? '' : 's'} with a problem` }, String(list.length)),
         ...list.slice(0, SHOWN).map((p) => {
-          const look = statusLook(p.b.status);
+          const look = statusLook(p.b.status, p.b.need);
           const it = h('button', {
             class: `cd-pstrip__it ${look.cls}`, 'aria-label': `${BUILDINGS[p.b.type].name}: ${statusLabel(p.b, p.b.status, p.b.need)}`,
             onpointerenter: () => { this.hovered = p.b.id; this.showPop(s, it); }, onclick: () => this.focus(p.b.id),
@@ -68,7 +68,7 @@ export class ProblemsStrip {
     this.pop.hidden = false;
     this.pop.style.top = `${this.el.offsetTop + it.offsetTop - 8}px`;
     fill(this.pop,
-      h('div', { class: 'row' }, statusPill(p.b.status, statusLabel(p.b, p.b.status, p.b.need)), h('b', null, BUILDINGS[p.b.type].name), h('span', { class: 'fill' }),
+      h('div', { class: 'row' }, statusPill(p.b.status, statusLabel(p.b, p.b.status, p.b.need), '', p.b.need), h('b', null, BUILDINGS[p.b.type].name), h('span', { class: 'fill' }),
         h('span', { class: 'cd-small' }, 'for ', h('span', { class: 'since' }, playTime(s.time - p.since)))),
       h('div', { class: 'cd-small' }, describeStatus(s, p.b)),
       h('div', { class: 'cd-small cd-faint' }, 'Click to go there'));

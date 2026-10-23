@@ -4,6 +4,7 @@ import {
   addStop, canPlace, canReshape, type Groundwork, digArea, levelledFor, type Dig, clearPrice, earthPrice, EARTHWORK_NAMES, EARTHWORKS, messageOf, place, placePrice, priceOf, remember, remove, removeAt, reshape, settingFor, settingName, stepSetting, type Setting,
 } from './game/build.ts';
 import { BUILDINGS, CROPS, POWER, type BuildingId } from './game/data.ts';
+import { holdNeed, truckHold } from './game/hold.ts';
 import { warmthFact, warmthOf } from './game/warmth.ts';
 import { generateLand, TERRAIN } from './game/map.ts';
 import { aroundPoint, corners, MAX_LEVEL, sheetAt } from './game/relief.ts';
@@ -560,7 +561,7 @@ async function play(initial: GameState) {
     if (b) {
       const removing = tool.kind === 'remove', label = statusLabel(b, b.status, b.need), line = describeStatus(state, b);
       return {
-        title: BUILDINGS[b.type].name, icon: b.type, status: { status: b.status, label },
+        title: BUILDINGS[b.type].name, icon: b.type, status: { status: b.status, label, need: b.need },
         text: removing ? (b.type === 'depot' ? 'The depot stays.' : `Click to remove it (refund ${priceOf(state, b.type)}).`)
           : [line === label ? '' : line, b.type === 'field' ? `soil ${Math.round(fieldFertility(state, b))}` : '', b.type === 'field' && !removing ? warmthFact(CROPS[b.crop], warmthOf(state)).text : ''].filter(Boolean).join(' · ') || undefined,
       };
@@ -705,7 +706,9 @@ async function play(initial: GameState) {
       focus: selected ?? (hovered && BUILDINGS[hovered.type].grid ? hovered.id : null), ghosts: pylonGhosts,
     });
     hud.world.setNetLabels(power.labels().map((l) => ({ ...l, ...camera.toScreen(l.x, l.y, l.z) })));
-    hud.world.setMarkers(view.markerSpots(state).map((m): MarkerSpot => ({ id: m.id, status: m.status, ...camera.toScreen(m.x, m.y, m.z) })));
+    // Trucks slowed by weather carry a marker too.
+    const slowed = state.trucks.flatMap((t) => { const hold = truckHold(state, t), at = hold ? view.truckAt(t.id) : null; return hold && at ? [{ id: t.id, status: 'weather' as const, need: holdNeed(hold), x: at.x, y: groundAt(at.x, at.z) + 1.3, z: at.z }] : []; });
+    hud.world.setMarkers([...view.markerSpots(state), ...slowed].map((m): MarkerSpot => ({ id: m.id, status: m.status, need: m.need, ...camera.toScreen(m.x, m.y, m.z) })));
     const hi: number[] = [];
     if (selected !== null) hi.push(selected);
     if (hoverBuilding !== null && hoverBuilding !== selected && (tool.kind === 'select' || tool.kind === 'remove')) hi.push(hoverBuilding);

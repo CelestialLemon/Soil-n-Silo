@@ -84,6 +84,11 @@ The build preview is see-through, green where it fits and red where it doesn't.
   lists the routes that stop there. The inspector says what each truck is doing ("taking 6 wheat to the mill", "waiting at the
   field for wheat", "2nd in the queue at the mill", "charging at the garage").
 - A building trucks can't reach, or whose outputs are full with no route or building next door taking them, shows a purple marker.
+- A building or truck that **weather** stops or slows shows a slate marker with the shape of the event that holds it (a bolt for a
+  thunderstorm, a sun for a heat wave, three bars for fog), never one of the layout's shapes, so a layout's problem and the
+  weather's are told apart at a glance. Its card says why ("Slowed · fog", and a line with the figures), and its history keeps
+  the weather as a status of its own (see Weather events, "Weather's marks"). It marks only what is held, not every building
+  the weather touches.
 - Goods handed to a building next door hop over the edge the two share. Selecting or pointing at a building tints the
   neighbours it trades with, and its inspector lists them ("Takes wheat from 2 fields", "Gives bran to the coop"); a
   building in hand tints the ones it would trade with, and its placement card says so.
@@ -99,8 +104,9 @@ The build preview is see-through, green where it fits and red where it doesn't.
   building to building), so a problem noticed late can be traced: a ribbon of its statuses in time (problems hatched, so they
   don't rely on colour), pointing at it says what happened then and for how long, and below it the share of the time in each
   status as a ring, the goods it made a minute against full speed, and what it waited for, ranked, with a fact for each.
-  Solar panels and turbines chart the watts they made and batteries their charge instead. Pylons, silos, the depot and
-  saplings have none. The history lives in memory, not in the save: after a reload it fills again.
+  Solar panels and turbines chart the watts they made and batteries their charge instead (a stretch held by the weather is
+  shaded behind the bars, and named below them). Pylons, silos, the depot and saplings have none. The history lives in
+  memory, not in the save: after a reload it fills again.
 - The guide (G) has a page for every building, with where its good comes from and, during a commission, every building of
   its kind in the valley now; G with a building in hand or selected, or the book in the inspector, leads to it. The basics
   include "Height and earthworks".
@@ -361,6 +367,46 @@ last ones.
 for each strength it has. Starting one ends the one under way (it fades out over the ramp), drops what had not begun and starts the
 new one now; Clear the weather does the first two. A game gets its own copy of the commission's events, so manual events are saved with
 the game and the sandbox commission itself is untouched.
+
+**Weather's marks (2.2).** The weather's doing is told apart from the layout's in four places, all from one mechanism
+(`src/game/hold.ts`). A **hold** is a building (or driving truck) that weather stops or slows; its cause is a kind, a strength and
+what it does (**stopped**, **slowed**, **weak** for a generator, **lost** for a crop the weather took). A held building has the
+status `weather`, and its `need` carries the cause (`fog:ordinary:slowed`: `holdNeed`, read back with `readHold`). Everything
+else reads that:
+
+- **The marker**: a slate tint (one for all weather) and the event's own shape, `shape` in its catalogue entry (`SHAPES`, drawn in
+  `game.css`; one for each bad event: bolt, sun, bars, chevron, swirl, wave, diamond, flake, slash, dots). Trucks have no
+  status, so a driving truck slowed by an event carries the same marker (`truckHold`). The pause screen's list of markers and the
+  guide's Statuses page list each event that marks things, with `holds` (what it does, in a few words).
+- **The card**: the pill reads "Slowed · fog" (what, then the event, as "Stopped · gale", "Weak · thunderstorm"), with a line under it that
+  says how much (a panel "making about 40% of its power: the fog dims the sun"; hens' laying with the °C the heat wave adds; a truck
+  "driving to the mill, slowed by the fog").
+- **The history**: `weather` is its own status, and each cause is its own run, so the ribbon shows "Slowed · fog" apart from "no input" or
+  "no power", and "What it waits for" lists "Held by the fog" (a wait of its own, `weather`) with its share of the window. A
+  generator's power chart shades the stretch the weather held it behind the bars.
+- **The results** say what each event that held something cost, in time, as a line under "What made the difference": "The heat wave
+  on day 3 held back fields and cost about 3½ minutes", or "… cost the run very little", or, when the run can't measure it, just what it held.
+
+The holds there are now: a solar panel under an event that takes the sun to 80% or less (thunderstorm, fog); hens and fields
+under an event that heats the valley, when the heat takes their pace to 85% or less of what it would have been without it (so the
+season's own heat isn't marked: only the part an event adds, `feltPush` of the `warmth` lever); a driving truck when an event takes
+the trucks' speed to 80% or less (fog). A building's layout problem comes first (a panel with no pylon is "Not connected", not held), and only
+a building that would otherwise be running is held. A later event (2.4–2.8) declares its cause the same way: a `shape` and `holds` in
+its catalogue entry, and its rule setting `status = 'weather'` and `need = holdNeed({ kind, strength, effect })` where it stops or slows
+something (a gale stopping an exposed turbine, a flood stopping a building, a frozen wheel); the marker, card, history and results
+follow with no more code.
+
+**What an event cost, estimated.** The run log (`src/game/runlog.ts`, saved with the game) keeps, for each event, the seconds the weather held anything, by
+kind of building (`held`, keyed by the event's index in the commission), and, sampled every 10 s with the goal curve, the value of
+everything the valley has made (`output`, at the depot's prices). An event that held nothing is not told. For one that did,
+`weathercost.ts` takes the valley's rate of output before the event began (over up to 4 minutes of play) and after it was over (the
+same, if the run went on), averages them for what it would have made left alone, and finds how much less it made over the event and
+the half minute after it (`LAG`: goods held up arrive late); the cost is that shortfall at that rate, as a length of play, to the half
+minute. It is not told if it is under a minute (`NOTICEABLE`: below that it is no more than chance: "cost the run very little"), or if
+there was less than half a minute of play before the event to measure by (an event on the first day) or no output record. Output
+is measured, not the goal good delivered, because deliveries come in truckloads: against the same bot runs replayed without the
+event it is closer (an RMS error of 68 s over 42 runs, against 104 s). It is an estimate, stated as "about", and it can be a
+minute out.
 
 **Showing events.** Without a weather station (phase 3) the player sees the events the season can bring in the briefing, and an
 event only once it starts: in the sky and as its name on the weather chip.
@@ -824,7 +870,7 @@ Early on, raw goods are the way to afford the first machines; products pay far b
 ## Saving
 
 The game saves the commission in progress (one at a time) in the browser every 30 s and when the page is hidden, and remembers
-each commission's best medal and time. Saves are version 14 (the commission's events are saved with it). A save from an older version of the game is refused.
+each commission's best medal and time. Saves are version 15 (the commission's events are saved with it; the run log keeps what the weather held and the valley's output). A save from an older version of the game is refused.
 
 ## Open questions
 

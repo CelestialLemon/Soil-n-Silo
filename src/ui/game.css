@@ -122,6 +122,23 @@ button { font: inherit; }
 .mk.is-dry { --col: var(--status-dry); } .mk.is-dry i { border-radius: 50% 0 50% 50%; transform: rotate(-45deg); }
 .mk.is-unreachable { --col: var(--status-unreachable); } .mk.is-unreachable i { background: transparent; box-shadow: inset 0 0 0 2.5px var(--col); }
 .mk.is-outline { background: var(--chalk); }
+/* ---- Weather markers: a building or truck that weather stops or slows. The tint is one for all weather; the shape is the event's own (SHAPES in events.ts). ---- */
+:root { --status-weather: #4f6275; }
+.w-bolt { --shape: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M14%201%204%2014h6l-2%209%2012-15h-6z'/%3E%3C/svg%3E"); }
+.w-sun { --shape: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Ccircle%20cx='12'%20cy='12'%20r='5'/%3E%3Cpath%20d='M12%201.5v4M12%2018.5v4M1.5%2012h4M18.5%2012h4M4.6%204.6l2.8%202.8M16.6%2016.6l2.8%202.8M4.6%2019.4l2.8-2.8M16.6%207.4l2.8-2.8'%20fill='none'%20stroke='black'%20stroke-width='2.4'%20stroke-linecap='round'/%3E%3C/svg%3E"); }
+.w-bars { --shape: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Crect%20x='1'%20y='3'%20width='22'%20height='4.5'%20rx='2.2'/%3E%3Crect%20x='4'%20y='9.8'%20width='19'%20height='4.5'%20rx='2.2'/%3E%3Crect%20x='1'%20y='16.6'%20width='22'%20height='4.5'%20rx='2.2'/%3E%3C/svg%3E"); }
+.w-chevron { --shape: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%203.5l8.5%208.5-8.5%208.5M12.5%203.5%2021%2012l-8.5%208.5'%20fill='none'%20stroke='black'%20stroke-width='3'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.w-swirl { --shape: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M12%2012.4a1%201%200%201%201%201.2-1%202.6%202.6%200%200%201-3.6%202.4%204.6%204.6%200%200%201%201.2-8.4%206.8%206.8%200%200%201%208.6%206.6%208.8%208.8%200%200%201-11%208'%20fill='none'%20stroke='black'%20stroke-width='2.3'%20stroke-linecap='round'/%3E%3C/svg%3E"); }
+.w-wave { --shape: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M1%208q2.9-5%205.8%200t5.8%200%205.8%200%204.6%200M1%2017q2.9-5%205.8%200t5.8%200%205.8%200%204.6%200'%20fill='none'%20stroke='black'%20stroke-width='2.6'%20stroke-linecap='round'/%3E%3C/svg%3E"); }
+.w-diamond { --shape: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M12%201%2022%2012%2012%2023%202%2012z'/%3E%3C/svg%3E"); }
+.w-flake { --shape: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M12%202v20M3.3%207l17.4%2010M3.3%2017%2020.7%207'%20fill='none'%20stroke='black'%20stroke-width='2.6'%20stroke-linecap='round'/%3E%3C/svg%3E"); }
+.w-slash { --shape: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M5%2021%2010%203M12%2021%2017%203M19%2021%2022%2011'%20fill='none'%20stroke='black'%20stroke-width='3'%20stroke-linecap='round'/%3E%3C/svg%3E"); }
+.w-dots { --shape: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Ccircle%20cx='6'%20cy='6'%20r='3'/%3E%3Ccircle%20cx='17'%20cy='7'%20r='3'/%3E%3Ccircle%20cx='11'%20cy='13'%20r='3'/%3E%3Ccircle%20cx='5'%20cy='19'%20r='2.6'/%3E%3Ccircle%20cx='18'%20cy='19'%20r='2.8'/%3E%3C/svg%3E"); }
+.mk.is-weather { --col: var(--status-weather); }
+.mk.is-weather i, .cd-status.is-weather::before, .cd-pstrip__it.is-weather i { border-radius: 0; background: var(--col); -webkit-mask: var(--shape) center / contain no-repeat; mask: var(--shape) center / contain no-repeat; }
+.mk.is-weather i { width: 17px; height: 17px; }
+.cd-status.is-weather { --col: var(--status-weather); } .cd-status.is-weather::before { width: 15px; height: 15px; }
+.cd-pstrip__it.is-weather { --col: var(--status-weather); }
 .stop-disc { min-width: 28px; height: 28px; margin: -28px 0 0 -14px; padding: 0 8px; border-radius: 99px; display: grid; place-items: center; font: 800 13px/1 var(--font-ui); color: var(--ink);
   box-shadow: 0 0 0 3px var(--chalk), 0 4px 10px rgba(20, 30, 25, 0.35); white-space: nowrap; }
 .net-tag { --lead: 18px; transform: translate(-50%, calc(-100% - var(--lead))); }
@@ -206,6 +223,7 @@ button { font: inherit; }
 .ribbon i.is-problem { background: repeating-linear-gradient(135deg, var(--c) 0 4px, color-mix(in srgb, var(--c) 45%, var(--chalk)) 4px 7px); }
 .hist-bars { position: relative; height: 56px; border-radius: 10px; background: var(--chalk-2); overflow: hidden; }
 .hist-bars i { position: absolute; bottom: 0; background: var(--ochre); border-radius: 3px 3px 0 0; box-shadow: inset -1px 0 var(--chalk-2); }
+.hist-bars b { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--status-weather) 30%, var(--chalk-2)) 0 4px, color-mix(in srgb, var(--status-weather) 14%, var(--chalk-2)) 4px 8px); }
 .hist-cursor { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 2px solid var(--ink); pointer-events: none; }
 .hist-axis { display: flex; justify-content: space-between; margin-top: 6px; font: 600 11px/1 var(--font-ui); color: var(--ink-3); }
 .hist-readout { min-height: 18px; margin-top: 6px; }
@@ -346,6 +364,7 @@ button { font: inherit; }
 .markers .list { display: grid; gap: 9px; margin-top: 16px; }
 .markers .list > div { display: flex; align-items: center; gap: 10px; }
 .markers .list .cd-small { margin-left: auto; text-align: right; }
+.markers .list + .row-head { margin-top: 24px; }
 .keys { padding: 24px 32px 18px; }
 .keys .cols { display: grid; grid-template-columns: repeat(4, 1fr); gap: 40px; margin-top: 14px; }
 .keys .group { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; color: var(--ink-2); }

@@ -422,7 +422,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
         h('div', null, h('div', { class: 'what' }, `${mine.length} ${name(mine.length)}${item ? ` · ${together} a minute together` : ''}`),
           full ? h('div', { class: 'cd-small' }, `at full speed they would make ${fmt(full)}`) : null)) : h('p', { class: 'cd-small' }, `No ${name(2)} yet.`),
       ...mine.slice(0, 6).map((b, i) => h('div', { class: 'vrow' },
-        h('div', null, h('div', { class: 'vname' }, `${BUILDINGS[id].name} ${i + 1}`), statusPill(b.status, statusLabel(b, b.status, b.need))),
+        h('div', null, h('div', { class: 'vname' }, `${BUILDINGS[id].name} ${i + 1}`), statusPill(b.status, statusLabel(b, b.status, b.need), '', b.need)),
         goods[i] ? h('span', null, h('span', { class: 'big' }, fmt(Math.round(rates[i] * 10) / 10)), h('span', { class: 'cd-small' }, ' / min')) : h('span'),
         host ? h('button', { class: 'cd-btn is-sm', onclick: () => { host.focus(b.id); close(); } }, 'Show ›') : null)),
       mine.length > 6 ? h('div', { class: 'cd-small' }, `and ${mine.length - 6} more`) : null);
@@ -723,6 +723,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
       ];
       case 'markers': return [...head('Statuses and markers', 'A marker floats over any building that isn\'t working. Each has a shape as well as a colour; click the building for the details.'),
         markersCard(),
+        P('A slate marker with a shape of its own means the weather is holding the building (or a truck) back, not the layout: a storm or fog dimming a panel, a heat wave slowing the hens. The inspector names the event, and the results say what each event cost.'),
         P(`A building's inspector has its history: a ribbon of what it was doing over the last ${HISTORY_WINDOWS.slice(0, -1).map((w) => w / 60).join(', ')} or ${HISTORY_WINDOWS[HISTORY_WINDOWS.length - 1] / 60} minutes, the share of time in each status, its output against full speed, and what it waited for most. Solar panels, turbines and batteries chart their power or charge instead.`)];
       case 'keys': return [...head('Keys', 'Every key, and the mouse. Change the keys in Settings, on the level select and the pause screen.'), keysCard()];
     }

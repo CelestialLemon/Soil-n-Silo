@@ -3,12 +3,13 @@ import { BUILDINGS, ITEMS, START_HOUR, type ItemId } from '../game/data.ts';
 import { must } from '../game/result.ts';
 import { HOUR_SECONDS } from '../game/powerlog.ts';
 import { goalGood, runWaits, type Mark } from '../game/runlog.ts';
+import { eventCosts, eventTitle } from '../game/weathercost.ts';
 import { CAMPAIGN, SILVER_PAR } from '../game/scenarios.ts';
 import { soilHealth } from '../game/sim/soil.ts';
 import { type Medal } from '../game/sim/stats.ts';
 import { countTrees, type GameState } from '../game/state.ts';
 import { h, icon, svg } from './dom.ts';
-import { dec, itemName, lcBuilding, num, pct, playTime } from './format.ts';
+import { aboutTime, dec, itemName, lcBuilding, num, pct, playTime } from './format.ts';
 import { gauge, MEDAL_NAME } from './widgets.ts';
 
 // The results, when the commission is complete: the medal and time against the medal lines; the depot's receipt; the run as
@@ -110,6 +111,19 @@ function runChart(s: GameState, end: number) {
     ...discs);
 }
 
+/** What each weather event that held something cost the run, as one fact; null if none did. */
+function weatherFact(s: GameState, end: number): HTMLElement | null {
+  const costs = eventCosts(s.scenario, s.run, end);
+  if (!costs.length) return null;
+  const total = costs.reduce((n, c) => n + (c.seconds ?? 0), 0), unknown = costs.every((c) => c.seconds === null);
+  const things = (c: (typeof costs)[number]) => (Object.keys(c.held) as (keyof typeof BUILDINGS | 'truck')[])
+    .map((k) => (k === 'truck' ? 'trucks' : `${lcBuilding(k)}${lcBuilding(k).endsWith('s') ? 'es' : 's'}`));
+  const list = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : xs[0]);
+  return h('div', { class: 'fac' }, h('b', null, icon('wind', 24), 'Weather'), h('span', { class: `big${total ? ' cd-bad' : ''}` }, unknown ? '–' : total ? `~${dec(Math.round(total / 30) / 2)} min` : 'little'),
+    h('div', { class: 'full' }, ...costs.slice(0, 4).map((c) => h('div', { class: 'cd-small' },
+      `${eventTitle(c)} held back ${list(things(c))}${c.seconds === null ? '.' : c.seconds ? ` and cost about ${aboutTime(c.seconds)}.` : ' and cost the run very little.'}`))));
+}
+
 /** What held the run back, from its log, with a fact each; and one "next time" line. */
 function differences(s: GameState, end: number) {
   const run = s.run, out: HTMLElement[] = [];
@@ -135,6 +149,8 @@ function differences(s: GameState, end: number) {
         h('div', { class: 'cd-small' }, short.length ? `${types.length ? `${types.length > 1 ? `${types.slice(0, -1).join(', ')} and ${types[types.length - 1]}` : types[0]} went short` : 'Networks went short'} for ${playTime(short.reduce((a, n) => a + n.short, 0))} of play in all, at night.` : 'No night was short of power.'))));
     if (!next && short.length > nights.length / 2) next = 'more power stored for the night would have kept the machines running.';
   }
+  const weather = weatherFact(s, end);
+  if (weather) out.push(weather);
   if (run.trucks.total > 0) {
     const idle = run.trucks.wait / run.trucks.total, at = Object.entries(run.trucks.at).sort((a, b) => b[1] - a[1])[0];
     out.push(h('div', { class: 'fac' }, h('b', null, icon('truck', 24), 'Trucks idle'), h('span', { class: 'big' }, pct(idle)),

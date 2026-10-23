@@ -9,6 +9,9 @@ import { tileOf, garageOf, routeOf, trucksOn } from './trucks.ts';
 import { must } from '../result.ts';
 import { beesFact, henFact, warmthOf } from '../warmth.ts';
 import { coopPace, coopShade } from '../rules.ts';
+import { pushesAt } from '../events.ts';
+import { fieldPace } from './buildings.ts';
+import { causeName, readHold, truckHold } from '../hold.ts';
 
 // Player-facing text: what a building or truck is doing, and what is wrong with it.
 
@@ -92,8 +95,13 @@ export function cargoText(cargo: ItemId[]) {
   return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0] ?? 'nothing';
 }
 
-/** What a truck is doing, in a few words, for the inspector. */
+/** What a truck is doing, in a few words, for the inspector; slowed by weather, it says so. */
 export function describeTruck(s: GameState, t: Truck): string {
+  const hold = truckHold(s, t), what = doingOf(s, t);
+  return hold ? `${what}, slowed by the ${causeName(hold)}` : what;
+}
+
+function doingOf(s: GameState, t: Truck): string {
   const b = t.target !== null ? buildingById(s, t.target) : null, name = b ? BUILDINGS[b.type].name.toLowerCase() : '';
   const full = Math.round(t.energy / TRUCK.battery * 100);
   switch (t.phase) {
@@ -115,6 +123,19 @@ export function describeTruck(s: GameState, t: Truck): string {
       }
       return `Loading and unloading at the ${name}`;
     }
+  }
+}
+
+/** A building held by weather, what it does to it, and by how much. */
+function describeHold(s: GameState, b: Building): string {
+  const hold = readHold(b.need);
+  if (!hold) return 'Held by the weather';
+  const cause = `the ${causeName(hold)}`, p = pushesAt(s.scenario, s.time);
+  switch (b.type) {
+    case 'solar': return `Making about ${Math.round(p.sun * 100)}% of its power: ${cause} dims the sun`;
+    case 'coop': return `${henFact(s.scenario, warmthOf(s), coopShade(s, b.x, b.y)).text} · ${cause} adds ${Math.round(p.warmth)}°C`;
+    case 'field': return `Growing ${CROPS[b.crop].name.toLowerCase()} slowly: ${cause} adds ${Math.round(p.warmth)}°C${fieldPace(s, b).water < 1 ? ', and it has no water' : ''}`;
+    default: return `${hold.effect[0].toUpperCase()}${hold.effect.slice(1)} by ${cause}`;
   }
 }
 
@@ -151,6 +172,7 @@ export function describeStatus(s: GameState, b: Building): string {
       if (b.type === 'hive') return beesFact(warmthOf(s)).text;
       return b.type === 'field' ? `Not growing ${CROPS[b.crop].name.toLowerCase()}: too cold for it` : def.name;
     case 'frost': return b.type === 'field' ? `Frost: the growing ${CROPS[b.crop].name.toLowerCase()} is lost, the field starts again` : def.name;
+    case 'weather': return describeHold(s, b);
     case 'ok':
       if (b.type === 'field') return `Growing ${CROPS[b.crop].name.toLowerCase()}`;
       if (b.type === 'garage') {

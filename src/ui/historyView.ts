@@ -2,6 +2,7 @@ import { FIELD, GROUP_NAMES, GROUPS, ITEMS, POWER, type GroupId, type ItemId } f
 import { flowRate, RECENT_WINDOW } from '../game/flows.ts';
 import { tonight } from '../game/forecast.ts';
 import { historyOf, summarize, waitsOf, type Summary, type Wait } from '../game/history.ts';
+import { causeName, holdLabel, readHold } from '../game/hold.ts';
 import { networkOf, usedBy } from '../game/power.ts';
 import { sprinklersOf } from '../game/sim/layout.ts';
 import { MAX_LEVEL } from '../game/relief.ts';
@@ -29,10 +30,11 @@ const STATUS_COL: Record<Status, string> = {
   ok: 'var(--pine)', idle: 'var(--chalk-3)', input: 'var(--status-wait)', flowers: 'var(--status-wait)', blocked: 'var(--status-blocked)',
   lowpower: 'var(--status-blocked)', power: 'var(--status-nopower)', nolink: 'var(--status-nopower)', noroute: 'var(--status-unreachable)',
   noroad: 'var(--status-unreachable)', dry: 'var(--status-dry)', rain: 'var(--chalk-3)', cold: 'var(--status-dry)', frost: 'var(--status-dry)',
+  weather: 'var(--status-weather)',
 };
 const RAW_COL: Record<Status, string> = {
   ok: '#2f6b55', idle: '#d8d4c7', input: '#b8961f', flowers: '#b8961f', blocked: '#c4702f', lowpower: '#c4702f', power: '#b4523a',
-  nolink: '#b4523a', noroute: '#76608f', noroad: '#76608f', dry: '#3d7a91', rain: '#d8d4c7', cold: '#3d7a91', frost: '#3d7a91',
+  nolink: '#b4523a', noroute: '#76608f', noroad: '#76608f', dry: '#3d7a91', rain: '#d8d4c7', cold: '#3d7a91', frost: '#3d7a91', weather: '#4f6275',
 };
 
 /** Generators and batteries chart a reading; everything else with a history shows its statuses. */
@@ -91,10 +93,14 @@ export function waitFact(s: GameState, b: Building, w: Wait): string {
     case 'flowers': return 'No flowering field within reach.';
     case 'road': return 'Trucks can\'t reach it from their garage.';
     case 'warmth': return `${Math.round(warmthOf(s))}°C now: a tender crop stops below ${FIELD.tenderStops}°C, and frost (below 0°C) loses it.`;
+    case 'weather': { const hold = readHold(w.need); return hold ? `${holdLabel(hold)}: the weather's doing, not the layout's. It lasts as long as the ${causeName(hold)}.` : ''; }
   }
 }
 
-const WAIT_ICON: Record<Wait['kind'], string> = { input: 'clock', power: 'bolt', output: 'truck', water: 'water', flowers: 'bee', road: 'road', warmth: 'sun' };
+/** What a building was held by, as a wait's name: "Held by the fog". */
+const weatherName = (need: string | undefined) => { const hold = readHold(need); return hold ? `Held by the ${causeName(hold)}` : 'Held by weather'; };
+
+const WAIT_ICON: Record<Wait['kind'], string> = { input: 'clock', power: 'bolt', output: 'truck', water: 'water', flowers: 'bee', road: 'road', warmth: 'sun', weather: 'wind' };
 
 /**
  * The history tab of a building's inspector. `win` and `setWin` keep the chosen window across buildings. `update` is cheap
@@ -171,7 +177,7 @@ export function historyView(s: GameState, b: Building, win: () => HistoryWindow,
         svg('text', { x: 56, y: 58, 'text-anchor': 'middle', class: 'ring-figure' }, total ? pct(working / total) : '–'),
         svg('text', { x: 56, y: 76, 'text-anchor': 'middle', class: 'ring-word' }, statusLabel(b, 'ok').toLowerCase())),
       h('div', { class: 'share-rows' }, ...sum.shares.slice(0, 5).map((x) => h('div', null,
-        statusPill(x.status, statusLabel(b, x.status, x.need, x.share)), h('span', { class: 'fill' }), h('b', { class: 'cd-num' }, total ? pct(x.seconds / total) : '–')))));
+        statusPill(x.status, statusLabel(b, x.status, x.need, x.share), '', x.need), h('span', { class: 'fill' }), h('b', { class: 'cd-num' }, total ? pct(x.seconds / total) : '–')))));
     // Output against full speed, and what was made and taken.
     const m = makesOf(b), items = [...m.items, ...(Object.keys(sum.perMin) as ItemId[]).filter((i) => !m.items.includes(i))];
     if (items.length) {
@@ -191,7 +197,7 @@ export function historyView(s: GameState, b: Building, win: () => HistoryWindow,
       ...list.slice(0, 4).map((x, i) => {
         const item = x.kind === 'input' || x.kind === 'output' ? itemByName(x.need) : null, itemGroup = groupByName(x.need);
         const name = x.kind === 'input' ? (item ? ITEMS[item].name : (x.need ?? 'Goods').split(' (')[0].replace(/^./, (c) => c.toUpperCase()))
-          : x.kind === 'output' ? `Room for ${x.need ?? 'its goods'}` : x.kind === 'power' ? 'Power' : x.kind === 'water' ? 'Water' : x.kind === 'flowers' ? 'Flowers' : x.kind === 'warmth' ? 'Warmth' : 'A road';
+          : x.kind === 'output' ? `Room for ${x.need ?? 'its goods'}` : x.kind === 'power' ? 'Power' : x.kind === 'water' ? 'Water' : x.kind === 'flowers' ? 'Flowers' : x.kind === 'warmth' ? 'Warmth' : x.kind === 'weather' ? weatherName(x.need) : 'A road';
         return h('div', { class: 'wait' }, h('span', { class: 'rank' }, String(i + 1)),
           h('div', null, h('b', null, h('span', { class: 'disc' }, icon(item ?? (x.kind === 'input' && itemGroup ? GROUPS[itemGroup][0] : WAIT_ICON[x.kind]), 22)), name), h('div', { class: 'cd-small' }, waitFact(s, b, x))),
           h('span', { class: `pc${i === 0 && x.share >= 0.2 ? ' cd-bad' : ''}` }, pct(x.share)));
@@ -200,7 +206,13 @@ export function historyView(s: GameState, b: Building, win: () => HistoryWindow,
 
   function drawReading(sum: Summary, r: Reading) {
     const top = Math.max(r.max, sum.reading?.max ?? 0);
-    plot.replaceChildren(...sum.bars.map((x) => {
+    // Where the weather held it (a panel under a storm's cloud) is shaded behind the bars.
+    const held = sum.spans.filter((sp) => sp.status === 'weather');
+    plot.replaceChildren(...held.map((sp) => {
+      const band = h('b', { title: statusLabel(b, sp.status, sp.need) });
+      band.style.left = `${xOf(sum, sp.from)}%`; band.style.width = `${xOf(sum, sp.to) - xOf(sum, sp.from)}%`;
+      return band;
+    }), ...sum.bars.map((x) => {
       const bar = h('i');
       bar.style.left = `${xOf(sum, x.from)}%`; bar.style.width = `${xOf(sum, x.to) - xOf(sum, x.from)}%`;
       bar.style.height = x.value === null ? '0' : `${Math.max(2, (x.value / top) * 100)}%`;
@@ -210,7 +222,9 @@ export function historyView(s: GameState, b: Building, win: () => HistoryWindow,
     const v = sum.reading;
     fill(output, v ? h('div', { class: 'cd-inset hist-output' }, h('div', { class: 'row-head' }, h('span', { class: 'cd-label' }, r.what),
       h('span', null, h('span', { class: 'big' }, r.fmt(v.avg)), h('span', { class: 'cd-small' }, ' on average'))),
-    h('div', { class: 'cd-small', style: 'margin-top: 8px' }, `From ${r.fmt(v.min)} to ${r.fmt(v.max)} over the window.`)) : null);
+    h('div', { class: 'cd-small', style: 'margin-top: 8px' }, `From ${r.fmt(v.min)} to ${r.fmt(v.max)} over the window.`),
+    ...[...new Set(held.map((sp) => sp.need))].map((need) => h('div', { class: 'cd-small' }, statusPill('weather', statusLabel(b, 'weather', need), '', need),
+      ` for ${playTime(held.filter((sp) => sp.need === need).reduce((n, sp) => n + sp.to - sp.from, 0))} of the window, shaded`))) : null);
   }
 
   /** What was going on at time `t`, for the pointer. */
@@ -218,8 +232,8 @@ export function historyView(s: GameState, b: Building, win: () => HistoryWindow,
     const ago = `${playTime(Math.max(0, sum.now - t))} ago`;
     if (t < sum.since) return `${ago}: not built yet (or before recording began)`;
     if (reading) {
-      const bar = sum.bars.find((x) => t >= x.from && t < x.to);
-      return bar?.value != null ? `${ago}: ${reading.fmt(bar.value)}` : `${ago}: no reading`;
+      const bar = sum.bars.find((x) => t >= x.from && t < x.to), sp = sum.spans.find((x) => t >= x.from && t < x.to && x.status === 'weather');
+      return bar?.value != null ? `${ago}: ${reading.fmt(bar.value)}${sp ? ` (${statusLabel(b, sp.status, sp.need).toLowerCase()})` : ''}` : `${ago}: no reading`;
     }
     const sp = sum.spans.find((x) => t >= x.from && t < x.to) ?? sum.spans[sum.spans.length - 1];
     return sp ? `${ago}: ${statusLabel(b, sp.status, sp.need, sp.share)}, for ${playTime(sp.to - sp.began)}${sp.to >= sum.now - 1e-6 ? ' so far' : ''}` : ago;

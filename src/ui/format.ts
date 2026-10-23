@@ -10,6 +10,12 @@ export function playTime(t: number) {
   return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${Math.floor(s / 60)}:${String(sec).padStart(2, '0')}`;
 }
 
+/** A length of play, roughly, in words: "a minute", "1½ minutes", "3 minutes" (to the half minute). */
+export function aboutTime(seconds: number) {
+  const m = Math.round(Math.max(0, seconds) / 30) / 2, whole = Math.floor(m), half = m - whole > 0;
+  return m === 0.5 ? 'half a minute' : m === 1 ? 'a minute' : `${whole}${half ? '½' : ''} minutes`;
+}
+
 /** An hour of day (0–24) as hh:mm, to the 10 minutes. */
 export function clock(hour: number) {
   const m = Math.floor((((hour % 24) + 24) % 24) * 6 + 1e-6) * 10;

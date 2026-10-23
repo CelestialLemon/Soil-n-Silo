@@ -71,6 +71,13 @@ export const NEUTRAL: Readonly<Pushes> = Object.freeze(Object.fromEntries(LEVER_
 
 // ---- The catalogue ----
 
+/**
+ * The shapes a weather marker can take (the Clearday status shapes are taken by circle, half circle, square, triangle, drop and
+ * ring): one for each bad event, drawn in `game.css`. An event with a `shape` marks the buildings and trucks it holds.
+ */
+export const SHAPES = ['bolt', 'sun', 'bars', 'chevron', 'swirl', 'wave', 'diamond', 'flake', 'slash', 'dots'] as const;
+export type Shape = typeof SHAPES[number];
+
 /** How an event looks in the sky, apart from its effects: the cover and the rain or snow drawn, and how warm the light is (0–1). */
 export interface Look { cloud?: number; precip?: number; heat?: number }
 
@@ -100,6 +107,13 @@ export interface EventInfo {
   push: Partial<Record<Strength, Partial<Pushes>>>;
   /** How the sky looks while it lasts. */
   look: Look;
+  /**
+   * The shape of the marker over what the event stops or slows, once the event holds anything (the shape is the event's own, so
+   * the layout's problems and the weather's can be told apart at a glance); with `holds`, what it does, in a few words, for the
+   * list of markers. A good event holds nothing.
+   */
+  shape?: Shape;
+  holds?: string;
   /** What it brings next: a flood follows its storm, at the same strength. */
   then?: EventKind;
 }
@@ -113,18 +127,21 @@ export const EVENTS: Record<EventKind, EventInfo> = {
   thunderstorm: {
     name: 'Thunderstorm', hours: [10, 14], seasons: { spring: 1, summer: 1 }, severe: true,
     odds: { stormy: 2.5, wet: 1.5, hot: 1.2, mild: 0.7, dry: 0.4 }, heavyRain: true, look: { cloud: 1, precip: 0.9 },
+    shape: 'bolt', holds: 'solar panels weak under the cloud',
     // Heavy rain waters every field and the sprinklers rest; little sun; gusts, stronger in a severe one.
     push: { ordinary: { rain: 0.9, sun: 0.6, wind: 0.45 }, severe: { rain: 1, sun: 0.4, wind: 0.7 } },
   },
   heatWave: {
     name: 'Heat wave', hours: [24, 40], severeHours: [40, 64], seasons: { summer: 1 }, severe: true,
     odds: { hot: 2.5, dry: 2, wet: 0.5, mild: 0.4, stormy: 0.6 }, look: { heat: 1 },
+    shape: 'sun', holds: 'hens laying slowly, dry fields nearly stopped',
     // The whole warmth curve lifts past 30°C: unwatered fields nearly stop and hens slow (warmth.ts). A severe one is hotter and longer.
     push: { ordinary: { warmth: 5 }, severe: { warmth: 9 } },
   },
   fog: {
     name: 'Fog', hours: [4, 7], begins: [3, 7], seasons: { autumn: 1 }, severe: true,
     odds: { wet: 1.5, mild: 1.2, gales: 0.3, stormy: 0.5 }, look: { cloud: 0.6 },
+    shape: 'bars', holds: 'trucks crawling, solar panels weak',
     // Solar is weak and the trucks crawl; a severe fog is thicker.
     push: { ordinary: { sun: 0.4, trucks: 0.5 }, severe: { sun: 0.25, trucks: 0.35 } },
   },
@@ -250,17 +267,21 @@ export const eventsIn = (sc: Pick<Scenario, 'events'>, from: number, to: number)
 export const heavyRainEvents = (sc: Pick<Scenario, 'events'>, time: number): WeatherEvent[] =>
   activeEvents(sc, time).filter((a) => EVENTS[a.event.kind].heavyRain).map((a) => a.event);
 
+/** Where one event has a lever now: the value it pushes it to, felt as strongly as the event is; undefined where it doesn't push it. */
+export function feltPush({ event, intensity }: Active, lever: Lever): number | undefined {
+  const v = EVENTS[event.kind].push[event.strength]?.[lever];
+  return v === undefined ? undefined : LEVERS[lever].neutral + (v - LEVERS[lever].neutral) * intensity;
+}
+
 /** What the events under way push the levers to, combined (see LEVERS). */
 export function pushesOf(active: readonly Active[]): Pushes {
   if (!active.length) return NEUTRAL;
   const out = { ...NEUTRAL };
-  for (const { event, intensity } of active) {
-    const push = EVENTS[event.kind].push[event.strength];
-    if (!push) continue;
+  for (const a of active) {
     for (const l of LEVER_IDS) {
-      const v = push[l];
-      if (v === undefined) continue;
-      const { neutral, mix } = LEVERS[l], felt = neutral + (v - neutral) * intensity;
+      const felt = feltPush(a, l);
+      if (felt === undefined) continue;
+      const { mix } = LEVERS[l];
       out[l] = mix === 'mul' ? out[l] * felt : mix === 'add' ? out[l] + felt : Math.max(out[l], felt);
     }
   }
