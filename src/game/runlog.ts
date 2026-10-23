@@ -90,11 +90,10 @@ export function noteRun(s: GameState, dt: number, night: boolean, short: boolean
     run.problems[key] = (run.problems[key] ?? 0) + dt;
     if (n && short && (b.status === 'power' || b.status === 'lowpower') && !n.types.includes(b.type)) n.types.push(b.type);
   }
+  // What weather holds, even after the event is over (snow lies on the panels after a blizzard).
   const active = activeEvents(s.scenario, s.time);
-  if (active.length) {
-    for (const b of s.buildings) { const h = b.status === 'weather' ? readHold(b.need) : null; if (h) noteHeld(s, h, b.type, dt); }
-    for (const t of s.trucks) { const h = t.route !== null ? truckHold(s, t, active) : null; if (h) noteHeld(s, h, 'truck', dt); }
-  }
+  for (const b of s.buildings) { const h = b.status === 'weather' ? readHold(b.need) : null; if (h) noteHeld(s, h, b.type, dt); }
+  if (active.length) for (const t of s.trucks) { const h = t.route !== null ? truckHold(s, t, active) : null; if (h) noteHeld(s, h, 'truck', dt); }
   for (const t of s.trucks) {
     if (t.route === null) continue;
     run.trucks.total += dt;

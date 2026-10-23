@@ -215,12 +215,12 @@ test('an event\'s push reaches the water wheel and the trucks', () => {
   const placed = place(s, 'wheel', 12, 4, site.rot);
   assert.ok(placed.ok);
   const wheel = placed.value.building;
-  const [e] = eventOn(1, 12, 'coldSnap');
+  const [e] = eventOn(1, 12, 'gale');
   s.scenario.events = [e];
   s.time = e.start + 6 * HOUR;
   const full = makes(s, wheel, 0, 0);
   assert.ok(Math.abs(full - POWER.wheel) < 1e-9);
-  pushing('coldSnap', 'ordinary', { river: 0.25 }, () => assert.ok(Math.abs(makes(s, wheel, 0, 0) - POWER.wheel * 0.25) < 1e-9));
+  pushing('gale', 'ordinary', { river: 0.25 }, () => assert.ok(Math.abs(makes(s, wheel, 0, 0) - POWER.wheel * 0.25) < 1e-9));
   // Trucks: the same trip takes twice as long at half speed.
   const trip = (slow: boolean) => {
     const g = sandbox();
@@ -233,13 +233,13 @@ test('an event\'s push reaches the water wheel and the trucks', () => {
     const r = newRoute(g);
     assert.ok(field.ok && addStop(g, r, field.value.building).ok && addStop(g, r, depot).ok);
     setTruckRoute(g, bought.value.truck, r);
-    if (slow) g.scenario.events = [{ kind: 'coldSnap', strength: 'ordinary', start: -100 * HOUR, length: 1000 * HOUR }];
+    if (slow) g.scenario.events = [{ kind: 'gale', strength: 'ordinary', start: -100 * HOUR, length: 1000 * HOUR }];
     let t = 0;
     while ((g.delivered.wheat ?? 0) < 6) { advance(g, 0.1); t += 0.1; assert.ok(t < 600, 'delivered'); }
     return t;
   };
   const normal = trip(false);
-  const slowed = pushing('coldSnap', 'ordinary', { trucks: 0.5 }, () => trip(true));
+  const slowed = pushing('gale', 'ordinary', { trucks: 0.5 }, () => trip(true));
   assert.ok(slowed > normal * 1.4, `${slowed} against ${normal}`);
   assert.equal(ITEMS.wheat.price > 0, true);
 });

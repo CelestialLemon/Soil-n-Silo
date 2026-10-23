@@ -35,8 +35,10 @@ import { windAt } from './game/sim/clock.ts';
 import { weatherNow } from './game/sim/weather.ts';
 import { allGeometries, loadModels } from './world/models.ts';
 import { FloodView } from './world/floodView.ts';
+import { IceView } from './world/iceView.ts';
 import { PowerView } from './world/powerView.ts';
 import { Rime } from './world/rime.ts';
+import { SnowView } from './world/snowView.ts';
 import { RouteView } from './world/routeView.ts';
 import { Camera } from './world/camera.ts';
 import { CURSOR_GRID, TileCursor, type CursorPatch } from './world/tileCursor.ts';
@@ -137,6 +139,7 @@ async function play(initial: GameState) {
   const floodView = new FloodView(renderer, lie);
   const power = new PowerView(renderer, models, lie);
   const rime = new Rime(renderer, lie);
+  const ice = new IceView(renderer, land), snow = new SnowView(renderer, lie, land);
   const routeView = new RouteView(renderer, models, lie);
   const cursor = new TileCursor(canvas, 0xfff0c0), refused = new TileCursor(canvas, 0xe8705a);
   /** The marks on the ground the cursor draws: the tile pointed at, the points earthworks would move; those refused in red. */
@@ -690,11 +693,14 @@ async function play(initial: GameState) {
     const shownOverlay = overlay !== 'none' ? overlay : toolOverlay;
     view.overlay(state, shownOverlay);
     rime.sync(state, shownOverlay !== 'none');
+    ice.sync(state);
+    snow.sync(state, shownOverlay !== 'none');
     // The small things in the grass stand aside for the ground's lines and the overlays.
     detail.show(shownOverlay === 'none' && tool.kind !== 'build' && tool.kind !== 'earth');
     const focus = selected ?? (tool.kind === 'select' ? hoverBuilding : null);
     const shown = shownRoutes(focus, shownOverlay === 'roads');
     view.links(linkedTo(focus));
+    view.snow(state, snow.cover(state));
     routeView.sync(state, shown.routes, shown.numbers);
     // Tags over the trucks of the one route being edited or pointed at.
     const tagged = shown.numbers && (tool.kind === 'route' || previewRoute !== null) ? shown.routes[0] : null;

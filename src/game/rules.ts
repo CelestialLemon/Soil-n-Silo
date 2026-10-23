@@ -1,6 +1,8 @@
 import { pushesAt } from './events.ts';
 import { ANIMALS, BUILDINGS, FIELD, HIVE, POWER, type BuildingId, type CropDef } from './data.ts';
 import { dryPace, henPace, warmthOf, warmthPace } from './warmth.ts';
+import { pushesAt } from './events.ts';
+import { mapIce } from './ice.ts';
 import { TERRAIN } from './map.ts';
 import { baseLevel, centreLevel, corners, joins, MAX_LEVEL, SIDES, sideOf, spanOf, STEEP } from './relief.ts';
 import { buildingAt, centre, inMap, reachTo, terrainAt, tileIndex, type Building, type Dir, type Footprint, type GameState } from './state.ts';
@@ -113,7 +115,7 @@ export function coopTrees(s: GameState, x: number, y: number): number {
 /** The heat, in °C, the trees by a coop at (x, y) take off what the hens feel. */
 export const coopShade = (s: GameState, x: number, y: number) => coopTrees(s, x, y) * ANIMALS.shadePerTree;
 
-/** How fast the hens of a coop (or one about to stand) at (x, y) lay in a warmth (default now), with its trees' shade, and what a storm leaves of it. */
+/** How fast the hens of a coop (or one about to stand) at (x, y) lay in a warmth (default now), with its trees' shade and what a weather event does to them (a storm or a cold snap slows them). */
 export const coopPace = (s: GameState, x: number, y: number, w = warmthOf(s)) => henPace(s.scenario, w, coopShade(s, x, y)) * pushesAt(s.scenario, s.time).hens;
 
 /** The highest corner of a tile (levels). */
@@ -128,17 +130,19 @@ export const riverSeason = (flow: number) => (flow >= 1.2 ? 'a high, fast river'
 /**
  * Where a water wheel with its north-west tile at (x, y) would stand: facing the river it shares an edge with at its own level
  * (the side with the most river), the current there (m/s, the map's river times the season's flow) and whether a fall is beside it, and the watts it makes; null where
- * there is no river at the bank's level.
+ * there is no river at the bank's level. `runs`: whether the water it stands on keeps running in a cold snap (a fall, or just
+ * below one) rather than freezing over (ice.ts).
  */
-export function wheelSite(s: GameState, x: number, y: number): { rot: Dir; current: number; flow: number; fall: boolean; watts: number } | null {
-  const sides = [0, 0, 0, 0];
-  let current = 0, fall = false;
+export function wheelSite(s: GameState, x: number, y: number): { rot: Dir; current: number; flow: number; fall: boolean; runs: boolean; watts: number } | null {
+  const sides = [0, 0, 0, 0], open = mapIce(s.map).open;
+  let current = 0, fall = false, runs = false;
   for (const t of rim(x, y, 2)) {
     if (!inMap(s, t.ix, t.iy) || !waterAtSide(s, t.ix, t.iy, t.side)) continue;
     const c = s.map.current[tileIndex(s, t.x, t.y)];
     if (c <= 0) continue;
     sides[t.side]++;
     current = Math.max(current, c);
+    if (open[tileIndex(s, t.x, t.y)]) runs = true;
     for (const [dx, dy] of SIDES) {
       const nx = t.x + dx, ny = t.y + dy;
       if (inMap(s, nx, ny) && terrainAt(s, nx, ny) === TERRAIN.water && baseLevel(s.map, nx, ny) !== baseLevel(s.map, t.x, t.y)) fall = true;
@@ -148,7 +152,7 @@ export function wheelSite(s: GameState, x: number, y: number): { rot: Dir; curre
   const flow = s.scenario.climate.river.flow;
   current *= flow;
   const rot = sides.indexOf(Math.max(...sides)) as Dir;
-  return { rot, current, flow, fall, watts: POWER.wheel * current * (fall ? POWER.wheelFall : 1) };
+  return { rot, current, flow, fall, runs, watts: POWER.wheel * current * (fall ? POWER.wheelFall : 1) };
 }
 
 /** Whether goods can pass between buildings `a` and `b` next door: somewhere along the edge they share, the ground joins (not across a cliff). */

@@ -63,8 +63,12 @@ const LEVERS = {
   gale: { neutral: 0, mix: 'max' },
   /** A multiple of how far the bees fly: below half they stay in. */
   bees: { neutral: 1, mix: 'mul' },
+  /** How far the river's quiet stretches are frozen over (0–1; ice.ts): a wheel on one makes that much less, and none when it is frozen shut. A fall keeps running. */
+  ice: { neutral: 0, mix: 'max' },
   /** A multiple of the hens' laying. */
   hens: { neutral: 1, mix: 'mul' },
+  /** A multiple of the heat a greenhouse needs: the hook for the greenhouse (phase 4), which doubles its heating in a cold snap. Nothing reads it yet. */
+  heating: { neutral: 1, mix: 'mul' },
 } as const satisfies Record<string, { neutral: number; mix: 'mul' | 'add' | 'max' }>;
 
 export type Lever = keyof typeof LEVERS;
@@ -128,6 +132,8 @@ export interface EventInfo {
   flood?: Partial<Record<Strength, number>>;
   /** The share of the event, around its middle (its worst hours), that the trucks stay in their garages, by strength (wind.ts). */
   garages?: Partial<Record<Strength, number>>;
+  /** The game hours its effects outlast it (snow on the panels after a blizzard, until it melts); the results count what it cost over them too. */
+  lingers?: number;
 }
 
 /**
@@ -214,11 +220,17 @@ export const EVENTS: Record<EventKind, EventInfo> = {
   },
   coldSnap: {
     name: 'Cold snap', hours: [24, 48], seasons: { winter: 1 }, severe: true,
-    odds: { hard: 2.5, gales: 1, mild: 0.3 }, push: {}, look: { cloud: 0.3 },
+    odds: { hard: 2.5, gales: 1, mild: 0.3 }, look: { cloud: 0.3 },
+    shape: 'flake', holds: 'water wheels on frozen river, hens laying slowly',
+    // The whole warmth curve drops and the hens slow; the river freezes over at its quiet stretches (ice.ts), though not at a fall;
+    // a greenhouse (phase 4) needs twice the heat. A severe snap is colder and the hens all but stop.
+    push: { ordinary: { warmth: -8, ice: 1, hens: 0.6, heating: 2 }, severe: { warmth: -13, ice: 1, hens: 0.35, heating: 3 } },
   },
   blizzard: {
-    name: 'Blizzard', hours: [24, 48], seasons: { winter: 1 }, only: ['hard'], severe: true,
-    push: {}, look: { cloud: 1, precip: 1 },
+    name: 'Blizzard', hours: [24, 48], seasons: { winter: 1 }, only: ['hard'], severe: true, lingers: 16,
+    look: { cloud: 1, precip: 1 }, shape: 'slash', holds: 'solar panels dark and under snow, trucks slowed by snow',
+    // No sun and trucks slowed by the snow; the snow it leaves on the panels melts off slowly afterwards (snow.ts). A severe one is deeper.
+    push: { ordinary: { sun: 0, trucks: 0.5 }, severe: { sun: 0, trucks: 0.3 } },
   },
   dustStorm: {
     name: 'Dust storm', hours: [12, 24], seasons: { summer: 1 }, only: ['dry'], severe: true,

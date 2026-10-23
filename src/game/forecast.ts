@@ -6,6 +6,7 @@ import { coopPace, coopTrees, erosionAt, guardedAt, hiveReaches, paceOf, pylonRe
 import { earthPrice, groundworkFor, levelledFor } from './build.ts';
 import { hourAt, sunAt, windAt } from './sim/clock.ts';
 import { raining } from './sim/weather.ts';
+import { panelShare, panelSnow } from './snow.ts';
 import { linksAt } from './sim/goods.ts';
 import { makes, shareOf, wants } from './sim/energy.ts';
 import { wattsOf } from './sim/layout.ts';
@@ -115,7 +116,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
       }
       case 'solar': {
         const sc = s.scenario;
-        facts.push({ label: 'Now', value: watts(POWER.solar * sunAt(sc, s.time)), sub: 'in this sun' });
+        facts.push({ label: 'Now', value: watts(POWER.solar * sunAt(sc, s.time) * panelShare(sc, s.time)), sub: panelSnow(sc, s.time) ? 'in this sun, snow on the panels' : 'in this sun' });
         facts.push({ label: 'Midday', value: watts(POWER.solar * sc.climate.sun.strength), sub: `sun ${String(sc.climate.sun.rise).padStart(2, '0')}:00–${sc.climate.sun.set}:00` });
         facts.push(pylonFact());
         break;
@@ -144,6 +145,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         if (site) {
           facts.push({ label: 'Makes', value: watts(site.watts), sub: 'day and night' });
           facts.push({ label: 'Current', value: `${site.current.toFixed(1)} m/s`, sub: site.fall ? 'beside a fall' : 'no fall beside it', tone: site.fall ? 'good' : undefined });
+          if (s.scenario.climate.season === 'winter') facts.push({ label: 'Cold snap', value: site.runs ? 'turns on' : 'freezes', sub: site.runs ? 'a fall keeps the water running' : 'quiet water freezes over and stops it', tone: site.runs ? 'good' : 'bad' });
           facts.push({ label: 'Season', value: `×${site.flow.toFixed(1)}`, sub: riverSeason(site.flow), tone: site.flow >= 1.2 ? 'good' : site.flow <= 0.7 ? 'bad' : undefined });
         } else facts.push({ label: 'River', value: 'none', sub: 'it needs a river at its bank', tone: 'bad' });
         facts.push(pylonFact());
@@ -214,7 +216,7 @@ export function tonight(s: GameState): Tonight | null {
     // What the sprinklers want when they run (they rest in rain) and what everything else wants now.
     const sprinklers = net.members.filter((b) => b.type === 'sprinkler').reduce((n, b) => n + wattsOf(s, b), 0);
     return { net, bats, sprinklers, other: net.members.reduce((n, b) => n + (b.type === 'sprinkler' ? 0 : wants(s, b)), 0), solar: net.members.filter((b) => b.type === 'solar').length, turbines: net.members.filter((b) => b.type === 'turbine'),
-      digesters: net.members.filter((b) => b.type === 'digester' || b.type === 'wheel').reduce((n, b) => n + makes(s, b, 0, 0), 0) };
+      digesters: net.members.filter((b) => b.type === 'digester').reduce((n, b) => n + makes(s, b, 0, 0), 0), wheels: net.members.filter((b) => b.type === 'wheel') };
   });
   const capacity = nets.reduce((n, x) => n + x.bats.length, 0) * POWER.battery.capacity;
   if (!capacity) return null;
@@ -230,7 +232,8 @@ export function tonight(s: GameState): Tonight | null {
     const sun = sunAt(sc, t + dt / 2), wind = windAt(sc, t + dt / 2);
     let short = 0;
     for (const x of nets) {
-      const made = POWER.solar * sun * x.solar + x.turbines.reduce((n, b) => n + makes(s, b, 0, wind, t + dt / 2), 0) + x.digesters;
+      const made = POWER.solar * sun * panelShare(sc, t + dt / 2) * x.solar + x.turbines.reduce((n, b) => n + makes(s, b, 0, wind, t + dt / 2), 0) + x.digesters
+        + x.wheels.reduce((n, b) => n + makes(s, b, 0, 0, t + dt / 2), 0); // the river may freeze or thaw before morning
       let spare = (made - x.other - (raining(sc, t + dt / 2) ? 0 : x.sprinklers)) * dt;
       for (let i = 0; i < x.bats.length; i++) {
         const move = spare > 0 ? Math.min(spare, POWER.battery.rate * dt, POWER.battery.capacity - x.bats[i]) : Math.max(spare, -POWER.battery.rate * dt, -x.bats[i]);

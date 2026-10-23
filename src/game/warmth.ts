@@ -104,12 +104,12 @@ export function beesNow(s: GameState): { text: string; tone?: 'bad' | 'good' } {
   return beesFact(warmthOf(s), a ? `the ${eventName(a.event.kind, a.event.strength).toLowerCase()} keeps them in` : undefined);
 }
 
-/** The coop's laying as a fact: "Hens: laying at half speed, 3°C". */
-export function henFact(sc: Scenario, w: number, shade = 0): { text: string; tone?: 'bad' | 'good' } {
-  const f = henPace(sc, w, shade), head = `Hens, ${Math.round(w)}°C`;
+/** The coop's laying as a fact (`slow`: what a weather event multiplies the hens' pace by, a storm's or a cold snap's): "Hens: laying at half speed, 3°C". */
+export function henFact(sc: Scenario, w: number, shade = 0, slow = 1): { text: string; tone?: 'bad' | 'good' } {
+  const f = henPace(sc, w, shade) * slow, head = `Hens, ${Math.round(w)}°C`;
   if (f >= 0.97) return { text: `${head}: laying at full speed`, tone: 'good' };
   const hot = w > ANIMALS.henHeat, shaded = hot && shade > 0 ? `, the trees shade them ${shade}°C` : '';
-  return { text: `${head}: ${hot ? 'too warm' : 'cool season'}, laying at about ${Math.round(f * 20) * 5}% speed${shaded}`, tone: f < 0.6 ? 'bad' : undefined };
+  return { text: `${head}: ${hot ? 'too warm' : slow < 1 ? 'the weather slows them' : 'cool season'}, laying at about ${Math.round(f * 20) * 5}% speed${shaded}`, tone: f < 0.6 ? 'bad' : undefined };
 }
 
 /** The trees by a coop as a fact, for its card: "2 trees within 2 tiles: the hens feel 4°C less of a heat wave". */

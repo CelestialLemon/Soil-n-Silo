@@ -11,6 +11,9 @@ import { clearShare, windShare } from './weather.ts';
 export const hourAt = (time: number) => (START_HOUR + (time / DAY_SECONDS) * 24) % 24;
 export const dayAt = (time: number) => 1 + Math.floor((time / DAY_SECONDS * 24 + START_HOUR) / 24);
 
+/** Whether the sun is up at a time (even when cloud or a blizzard hides it). */
+export const daylight = (sc: Scenario, time: number) => { const h = hourAt(time), sun = sc.climate.sun; return h > sun.rise && h < sun.set; };
+
 /** Solar strength at a time: 0 at night, up to the season's strength at noon, less in cloud and as weather events dim it. */
 export function sunAt(sc: Scenario, time: number) {
   const h = hourAt(time), sun = sc.climate.sun;

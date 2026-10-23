@@ -476,7 +476,9 @@ read them through `pushesAt(scenario, time)`, so an effect that is a lever is on
 | `mild` | the highest | `WARMTH_NUDGES`: how far the day's warmth is lifted to a mild day's curve (0–1), never cooled |
 | `gale` | the highest | `turbineInGale` (`wind.ts`): gale-force wind, in multiples of a full wind (0: none); a turbine stops while this times its exposure is over `TURBINE_LIMIT` (1) |
 | `bees` | multiplying | `keepingBeesIn`: a multiple of how far the bees fly; below half they stay in |
+| `ice` | the highest | `makes`: how far the river's quiet stretches are frozen over (0–1); a wheel not at a fall makes `1 − ice` of what it would |
 | `hens` | multiplying | `coopPace`: a multiple of the hens' laying |
+| `heating` | multiplying | nothing yet: a greenhouse's heat demand, doubled by a cold snap (phase 4's hook) |
 
 An event builds in over 1.5 game hours (15 s of play) and fades out over the last 1.5, so each push is blended from neutral by
 the event's `intensityAt`, 0 to 1 (events under way together combine their pushes). An effect that is more than a lever (the
@@ -543,6 +545,39 @@ minute out.
 
 **Showing events.** Without a weather station (phase 3) the player sees the events the season can bring in the briefing, and an
 event only once it starts: in the sky and as its name on the weather chip.
+
+**The winter events (2.7).**
+
+| Event | Ordinary | Severe |
+| --- | --- | --- |
+| Cold snap | `warmth` −8°C, `ice` 1, `hens` ×0.6, `heating` ×2 | `warmth` −13°C, `hens` ×0.35, `heating` ×3 |
+| Blizzard (hard winters only) | `sun` ×0 (none), `trucks` ×0.5; snow on the panels after | `trucks` ×0.3 |
+
+- **The frozen river** (`src/game/ice.ts`). The cold snap freezes the river at its **quiet stretches**; the grid is worked out once from the
+  map: a river tile (current > 0; ponds and lakes are left alone) is **open** if it is beside a river tile at another level (the
+  lip of a fall) or within one tile (Chebyshev) of one, and every other river tile can freeze. A wheel beside any open tile keeps turning
+  (`wheelSite().runs`, kept in `derived().runs`, so it is worked out per layout), and one that touches only frozen water makes
+  `1 − ice` of its watts: the ice builds in over the event's ramp (1½ game hours), so the wheel slows as the river freezes and runs again as it thaws. A wheel
+  beside a fall keeps its full watts (and its ×`POWER.wheelFall`). Marked "Slowed · cold snap" while the ice forms and "Stopped · cold snap" once it reaches 95%.
+  Sprinklers still draw from the water under the ice (nothing in the rules reads whether the water is frozen).
+- **Hens** lay at ×0.6 of the season's pace (×0.35 in a severe snap): `hens` lever, read in `coopPace`, marked "Slowed · cold snap".
+  The coop's card says how much. The −8°C also slows crops further (they are already past their range in winter) and bees stay in.
+- **Hook for the greenhouse (phase 4).** The `heating` lever is ×2 in a cold snap (×3 severe) and nothing reads it yet: the greenhouse's
+  heat demand will multiply by `pushesAt(...).heating`.
+- **The blizzard** leaves the wind as the season has it, gives no sun, slows the trucks to half (a third in a severe one) and marks
+  them "Slowed · blizzard". Panels are "Stopped · blizzard" in daylight while it lasts.
+- **Snow on the panels** (`src/game/snow.ts`, `panelSnow`): a rule. It builds over the first 3 hours of a blizzard (smooth) and, once it is
+  over, melts off linearly over the **16 game hours** the blizzard `lingers` (catalogue field). A panel makes `1 − 0.92 × snow` of its power
+  (`panelShare`, so 8% under the deepest snow), and is marked "Weak · blizzard" while snow is at least 20% deep; the hold is
+  attributed to the blizzard after it is over (`eventIndex`), and the results count a blizzard's cost over its lingering hours
+  (`weathercost.ts`). Two winter nights and one winter day later the panels are clear.
+- **Lying snow** (`lyingSnow`, a look only): a function of the weather so far in winter (everyday snow showers and events): a full fall buries
+  the ground in 3 hours, the cover halves every 9 hours once it stops. A light shower dusts the ground; a blizzard buries it for a day or more.
+  Drawn as a white dithered sheet over the grass of the map and the ring of country drawn with it (`world/snowView.ts`), under a field's raised
+  soil so fields stay dark, and roofs go white by tint (`WorldView.snow`: ×0.55 of the cover on every building, ×0.9 of the panel snow on a panel).
+- **The frozen river** is drawn with a renderer fluid layer (`world/iceView.ts`, `FLUIDS.ice` a hair over the baked water), grown inward
+  from the banks as the ice forms and melted back, over the whole river on the land.
+- **The guide** has a page for each, and the wheel's placement card says whether it freezes in a winter's cold snap.
 
 ### The valley's look by season
 
@@ -903,7 +938,7 @@ A wheel uses the strongest current touching its bank at the same level, times th
 `seasons.ts`): spring 1.5, summer 0.6, autumn 0.9, winter 0.5; a high river adds 0.3, a dry season takes off 0.1. So a spring
 wheel makes 30 W per m/s and a summer one 12. The placement card and the inspector state the season's effect. The drawn water
 level does not change with the season (the same river in every season; only the current, and so the watts, follow it). The
-river never freezes and never floods in the season itself: those are events (cold snap, flood, phase 2). Ponds and lakes have
+river never freezes and never floods in the season itself: those are events (cold snap, flood, phase 2; the cold snap freezes it except at a fall, see the winter events). Ponds and lakes have
 no current and are unchanged. The bot's layouts have no wheel, so no target time moved. A fall counts if any of those river tiles shares
 an edge with water at a different level. Still ponds and lakes cannot turn it; falls are a bonus, not a requirement.
 

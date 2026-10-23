@@ -6,7 +6,7 @@ import { TERRAIN } from '../map.ts';
 import { networkOf, networks } from '../power.ts';
 import { noteRun } from '../runlog.ts';
 import { isMachine, removeBuilding, tileIndex, touchLayout, type Building, type GameState } from '../state.ts';
-import { sunAt, windAt } from './clock.ts';
+import { daylight, sunAt, windAt } from './clock.ts';
 import { soilHealth } from './soil.ts';
 import { wattsOf } from './layout.ts';
 import { raining } from './weather.ts';
@@ -98,6 +98,6 @@ export function tick(s: GameState) {
   updateGoals(s);
   noteTrucks(s, dt);
   tickFlows(s, () => soilHealth(s));
-  noteRun(s, dt, sun <= 0, networks(s).list.some((n) => n.share < 1 && n.wanted > 0), () => s.scenario.goals.map((_, i) => goalDone(s, i)));
+  noteRun(s, dt, !daylight(s.scenario, s.time), networks(s).list.some((n) => n.share < 1 && n.wanted > 0), () => s.scenario.goals.map((_, i) => goalDone(s, i)));
 }
 

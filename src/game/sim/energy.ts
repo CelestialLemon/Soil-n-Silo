@@ -1,14 +1,16 @@
 import { BUILDINGS, POWER, TICK, TRUCK, type BuildingId } from '../data.ts';
 import { pushesAt } from '../events.ts';
 import { floodHolds } from '../flood.ts';
+import { panelShare } from '../snow.ts';
 import { networkOf, networks } from '../power.ts';
 import { notePower, type PowerStep } from '../powerlog.ts';
 import { isMachine, type BatteryBuilding, type Building, type GameState } from '../state.ts';
-import { exposureOf, wattsOf } from './layout.ts';
+import { exposureOf, runsInFrost, wattsOf } from './layout.ts';
 import { recipeOf, missing, outputsFit } from './goods.ts';
 import { runtimeOf } from '../runtime.ts';
 import { raining } from './weather.ts';
 import { turbineShare } from '../wind.ts';
+import { daylight } from './clock.ts';
 
 // Power: what each building wants and makes, how each network balances, and the watts garages want for charging.
 
@@ -33,9 +35,12 @@ export function wants(s: GameState, b: Building): number {
 /** Watts a generator makes this step (or at `time`, for a forecast: the sun and wind are those of that time). */
 export function makes(s: GameState, b: Building, sun: number, wind: number, time = s.time): number {
   switch (b.type) {
-    case 'solar': return POWER.solar * sun;
+    case 'solar': return POWER.solar * sun * panelShare(s.scenario, time); // snow lies on the panels after a blizzard
     case 'turbine': { const e = exposureOf(s, b); return POWER.turbine * wind * e * turbineShare(s, b.id, e, time); } // a gale can stop it or make it furl
-    case 'wheel': return wattsOf(s, b) * pushesAt(s.scenario, s.time).river; // a weather event can raise or drop the river
+    case 'wheel': { // a weather event can raise or drop the river, and a cold snap freezes it over, but not at a fall
+      const p = pushesAt(s.scenario, time);
+      return wattsOf(s, b) * p.river * (runsInFrost(s, b) ? 1 : 1 - p.ice);
+    }
     case 'digester': return b.progress !== null ? POWER.digester : 0;
     default: return 0;
   }
@@ -43,7 +48,7 @@ export function makes(s: GameState, b: Building, sun: number, wind: number, time
 
 export function balancePower(s: GameState, sun: number, wind: number, dt: number) {
   const map = new Map<number, number>();
-  const step: PowerStep = { solar: 0, wind: 0, water: 0, digester: 0, given: 0, taken: 0, wanted: 0, used: 0, short: 0, stored: 0, capacity: 0, night: sun <= 0 };
+  const step: PowerStep = { solar: 0, wind: 0, water: 0, digester: 0, given: 0, taken: 0, wanted: 0, used: 0, short: 0, stored: 0, capacity: 0, night: !daylight(s.scenario, s.time) }; // not `sun <= 0`: a blizzard darkens the day, it isn't night
   const use: Partial<Record<BuildingId, number>> = {};
   for (const net of networks(s).list) {
     let made = 0, wanted = 0, capacity = 0;
