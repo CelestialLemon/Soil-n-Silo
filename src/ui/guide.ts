@@ -10,6 +10,7 @@ import { paceOf, riverSeason, SPRINKLER_MOST, TURBINE_MOST, waterPace } from '..
 import { CHARACTERS, charactersOf, climateOf, SEASON_IDS, SEASONS, seasonName, type Season, type Shift } from '../game/seasons.ts';
 import { FROST, MILD_DAY, RAIN_COOLING, warmthByHour } from '../game/warmth.ts';
 import { EVENTS, hoursOf, type EventKind } from '../game/events.ts';
+import { FALL, SILT } from '../game/flood.ts';
 import { isPollinated } from '../game/sim/layout.ts';
 import { fieldFertility } from '../game/sim/soil.ts';
 import { recipeOf } from '../game/sim/goods.ts';
@@ -209,7 +210,7 @@ const TOPICS: { id: TopicId; name: string; chip: string }[] = [
 ];
 
 /** The weather events that have a page, in the order of the index: their rules are in. */
-const GUIDED_EVENTS: readonly EventKind[] = ['thunderstorm', 'heatWave', 'fog', 'softRain', 'warmSpell', 'steadyBreeze'];
+const GUIDED_EVENTS: readonly EventKind[] = ['thunderstorm', 'flood', 'heatWave', 'fog', 'softRain', 'warmSpell', 'steadyBreeze'];
 
 const lc = (id: ItemId) => ITEMS[id].name.toLowerCase();
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
@@ -247,6 +248,18 @@ const eventText = (linkOf: (label: string, p: GuidePage) => Node, bLinkOf: (id: 
         NODES(`The wind gains ${pc(push('thunderstorm').wind ?? 0)} of its full strength on top of the day's wind, so turbines make more.`),
         NODES('In spring it counts as heavy rain, which is what a flood follows.')],
       severe: [NODES(`Harder: the wind gains ${pc(push('thunderstorm', 'severe').wind ?? 0)}, the sun gives ${pc(push('thunderstorm', 'severe').sun ?? 1)} of what the cloud leaves.`)],
+    },
+    flood: {
+      lead: 'The river spreads over the low ground beside it for a day or two, then drains. It follows heavy rain in spring.',
+      does: [
+        NODES(`The river rises ${EVENTS.flood.flood?.ordinary ?? 0} level above its surface and spreads over the ground lower than the water, as far as it can get over ground at or below its own height. A hillside or a bank stops it; the water thins by ${FALL} of a level for every tile it runs, so it doesn't drown a wide plain.`),
+        NODES('A ', bLinkOf('field'), ' under water loses its growing crop and starts again once the water drains. What it already holds is kept.'),
+        NODES('Any other building with a tile under water stops until it drains: nothing is destroyed and its goods are untouched. A flooded ', bLinkOf('pylon'), ', ', bLinkOf('solar'), ' panel or ', bLinkOf('wheel'), ' is out of the network until then.'),
+        NODES('Trucks can\'t drive through water: they go round it, or wait until it drains.'),
+        NODES(`Ground the water leaves gains ${SILT} fertility in silt, less than a flood costs a field: the floodplain is good land because it floods.`),
+        NODES('The card over a building in hand says "Floods" on ground a flood reaches, and which. Build higher, or raise a bank with ', linkOf('earthworks', { kind: 'topic', id: 'land' }), ' that the water can\'t get over.'),
+        NODES('A spring thunderstorm brings its flood the moment it ends, and a tropical storm its own.')],
+      severe: [NODES(`The river rises ${EVENTS.flood.flood?.severe ?? 0} levels, so the water reaches much further across low ground.`)],
     },
     heatWave: {
       lead: 'Days of heat in the summer, hotter than the season usually gets.',

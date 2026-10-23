@@ -1,4 +1,5 @@
 import { activeEvents, EVENT_KINDS, EVENTS, eventName, feltPush, STRENGTHS, type Active, type EventKind, type Lever, type Shape, type Strength } from './events.ts';
+import { floodHolds, floodUnder } from './flood.ts';
 import { coopPace } from './rules.ts';
 import type { Scenario } from './scenarios.ts';
 import type { Building, GameState, Truck } from './state.ts';
@@ -74,6 +75,8 @@ const SLOW_BELOW = 0.85;
  * Only a building that would otherwise be running is held: a layout's problem comes first.
  */
 export function buildingHold(s: GameState, b: Building, active: readonly Active[]): Hold | null {
+  // Flood water stops whatever stands in it, and takes the crop a field was growing.
+  if (floodHolds(s, b)) return holdOfEvent(floodUnder(s.scenario, s.time), b.type === 'field' ? 'lost' : 'stopped');
   switch (b.type) {
     // A panel makes less in the cloud and dark of a storm or a fog.
     case 'solar': return b.status === 'ok' ? holdOfEvent(cutting(active, 'sun'), 'weak') : null;

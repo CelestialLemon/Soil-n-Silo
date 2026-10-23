@@ -1,4 +1,5 @@
 import { BUILDINGS, CROPS, DAY_SECONDS, FIELD, HIVE, ITEMS, POLLINATION_BONUS, POWER, recipesFor, SAPLING_SECONDS, TREE_HEALTH, type BuildingId } from './data.ts';
+import { EVENTS } from './events.ts';
 import { networks, POWERED, pylonsInLink } from './power.ts';
 import { HOUR_SECONDS } from './powerlog.ts';
 import { coopPace, coopTrees, erosionAt, guardedAt, hiveReaches, paceOf, pylonReaches, riverSeason, sprinklerWaters, sprinklerWatts, touchesWater, waterLevelNear, waterPace, wheelSite, windExposure } from './rules.ts';
@@ -9,6 +10,7 @@ import { linksAt } from './sim/goods.ts';
 import { makes, shareOf, wants } from './sim/energy.ts';
 import { wattsOf } from './sim/layout.ts';
 import { describeLinks } from './sim/describe.ts';
+import { canFlood, floodsAt, isFlooded } from './flood.ts';
 import { centreLevel } from './relief.ts';
 import { beesFact, beesFly, shadeFact, warmthFact, warmthOf } from './warmth.ts';
 import { inMap, type Building, type FieldBuilding, type GameState, type Setting } from './state.ts';
@@ -40,15 +42,15 @@ function soilUnder(s: GameState, x: number, y: number, n: number) {
 
 /** The sprinklers that would water a field at (x, y), and the most water any gives (the share of power it gets); rain waters every field. */
 function waterAt(s: GameState, x: number, y: number) {
-  const sp = s.buildings.filter((b) => b.type === 'sprinkler' && sprinklerWaters(b.x, b.y, { type: 'field', x, y }));
+  const sp = s.buildings.filter((b) => b.type === 'sprinkler' && !isFlooded(s, b) && sprinklerWaters(b.x, b.y, { type: 'field', x, y }));
   const shore = touchesWater(s, x, y), share = sp.reduce((m, b) => Math.max(m, shareOf(s, b)), 0);
   /** The water at a time: rain waters every field while it lasts (a sprinkler's share is its power now). */
   const at = (time: number) => (shore || raining(s.scenario, time) ? 1 : share);
   return { sprinklers: sp.length, shore, rain: !shore && raining(s.scenario, s.time), water: at(s.time), at };
 }
 
-/** Whether a pylon would reach a footprint at (x, y). */
-const powered = (s: GameState, type: BuildingId, x: number, y: number) => s.buildings.some((p) => BUILDINGS[p.type].grid === 'link' && pylonReaches({ type, x, y }, p.x, p.y));
+/** Whether a pylon (one not under flood water) would reach a footprint at (x, y). */
+const powered = (s: GameState, type: BuildingId, x: number, y: number) => s.buildings.some((p) => BUILDINGS[p.type].grid === 'link' && !isFlooded(s, p) && pylonReaches({ type, x, y }, p.x, p.y));
 
 /** What a building of `type` placed with its north-west tile at (x, y) would do there. */
 export function placement(s: GameState, type: BuildingId, x: number, y: number, set: Setting = {}): Placement {
@@ -62,7 +64,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
       case 'field': {
         const crop = CROPS[set.crop ?? 'wheat'], soil = soilUnder(s, x, y, 3), { sprinklers, shore, rain, water, at: waterAtTime } = waterAt(s, x, y);
         // A hive within reach of a flowering crop adds a good to every harvest.
-        const pollinated = crop.flowers && beesFly(warmthOf(s)) && s.buildings.some((b) => b.type === 'hive' && hiveReaches({ type: 'field', x, y }, b.x, b.y));
+        const pollinated = crop.flowers && beesFly(warmthOf(s)) && s.buildings.some((b) => b.type === 'hive' && !isFlooded(s, b) && hiveReaches({ type: 'field', x, y }, b.x, b.y));
         const perMin = (crop.yield + (pollinated ? POLLINATION_BONUS : 0)) * 60 * paceOf(water, soil, crop, warmthOf(s)).pace / crop.grow;
         // Sloping tiles under it wear faster (erosion).
         const guarded = guardedAt(s, x, y);
@@ -96,7 +98,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         break;
       }
       case 'hive': {
-        const near = s.buildings.filter((b): b is FieldBuilding => b.type === 'field' && hiveReaches(b, x, y));
+        const near = s.buildings.filter((b): b is FieldBuilding => b.type === 'field' && !isFlooded(s, b) && hiveReaches(b, x, y));
         const flowers = Math.min(HIVE.maxFlowers, near.filter((f) => CROPS[f.crop].flowers).length), out = beesFly(warmthOf(s));
         facts.push({ label: 'Honey', value: `+${fmt1((out ? flowers : 0) * 60 / HIVE.honeySeconds)}`, sub: 'a minute', tone: flowers && out ? undefined : 'bad' });
         facts.push({ label: 'Flowers', value: `${flowers} field${flowers === 1 ? '' : 's'}`, sub: `flowering within ${HIVE.reach} tiles` });
@@ -121,7 +123,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
       }
       case 'pylon': {
         const links = pylonsInLink(s, x, y).length;
-        const reached = s.buildings.filter((b) => POWERED(b) && pylonReaches(b, x, y));
+        const reached = s.buildings.filter((b) => POWERED(b) && !isFlooded(s, b) && pylonReaches(b, x, y));
         const fresh = reached.filter((b) => !networks(s).of.get(b.id)).length;
         facts.push({ label: 'Links', value: `${links} pylon${links === 1 ? '' : 's'}`, sub: links ? `within ${POWER.pylon.link} tiles` : 'a new network' });
         facts.push({ label: 'Reaches', value: `${reached.length}`, sub: `building${reached.length === 1 ? '' : 's'}${fresh ? `, ${fresh} not yet powered` : ''}` });
@@ -154,7 +156,13 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         if (def.power || POWERED({ type } as Building)) facts.push(pylonFact());
       }
     }
-  return { facts, next: describeLinks(linksAt(s, type, x, y, set)) };
+    // Low ground beside the water floods: which flood reaches it (only where the season or the sandbox can bring one).
+    const flood = (s.scenario.sandbox || canFlood(s.scenario.climate)) && inMap(s, x, y) ? floodsAt(s, { type, x, y }) : null;
+    if (flood !== null) {
+      const ordinary = flood <= (EVENTS.flood.flood?.ordinary ?? 0);
+      facts.push({ label: 'Floods', value: `level ${flood}`, sub: ordinary ? 'an ordinary flood reaches it; a bank would keep it out' : 'only a severe flood reaches it', tone: 'bad' });
+    }
+    return { facts, next: describeLinks(linksAt(s, type, x, y, set)) };
   };
   return levelledFor(s, gw.ok ? gw.value.move : null, there);
 }

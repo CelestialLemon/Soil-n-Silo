@@ -1,5 +1,6 @@
 import { BUILDINGS, ITEMS, SAPLING_SECONDS, TICK } from '../data.ts';
 import { noteTrucks } from '../fleet.ts';
+import { floodHolds, syncFlood } from '../flood.ts';
 import { tickFlows } from '../flows.ts';
 import { TERRAIN } from '../map.ts';
 import { networkOf, networks } from '../power.ts';
@@ -33,11 +34,18 @@ export function advance(s: GameState, seconds: number, maxSteps = Infinity) {
 export function tick(s: GameState) {
   const dt = TICK;
   s.time += dt;
+  syncFlood(s, dt);
   const sun = sunAt(s.scenario, s.time), wind = windAt(s.scenario, s.time);
   countCharging(s);
   balancePower(s, sun, wind, dt);
   const grown: Building[] = [];
   for (const b of s.buildings) {
+    // Water on its ground stops a building until it drains (the weather's hold, applyHolds, says so): a field loses its growing crop.
+    if (floodHolds(s, b)) {
+      b.status = 'idle'; b.need = undefined;
+      if (b.type === 'field') b.growth = 0;
+      continue;
+    }
     switch (b.type) {
       case 'depot': break;
       case 'silo': b.status = 'idle'; break;

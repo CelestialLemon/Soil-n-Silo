@@ -99,18 +99,18 @@ function dig(s: GameState, move: Earthmove, area?: Area) {
 
 /**
  * Runs `f` with earthworks done (to ask what a building would find on levelled ground), then puts the ground back; with
- * `move` null, on the ground as it lies. What is worked out from the ground (the roads, the per-layout facts) is worked out
+ * `move` null, on the ground as it lies. What is worked out from the ground (the roads, the per-layout facts, the flood's reach) is worked out
  * afresh for `f` and dropped after, so nothing found on the moved ground outlives it.
  */
 export function levelledFor<T>(s: GameState, move: Earthmove | null, f: () => T): T {
   if (!move || !move.set.length) return f();
   const saved = move.set.map(([k]) => [k, s.map.corner[k]] as const);
   for (const [k, h] of move.set) s.map.corner[k] = h;
-  const rt = runtimeOf(s), { roads, derived } = rt;
-  rt.roads = undefined; rt.derived = undefined;
+  const rt = runtimeOf(s), { roads, derived, flooded, floodSteps } = rt;
+  rt.roads = undefined; rt.derived = undefined; rt.flooded = undefined; rt.floodSteps = undefined;
   try { return f(); } finally {
     for (const [k, h] of saved) s.map.corner[k] = h;
-    rt.roads = roads; rt.derived = derived;
+    rt.roads = roads; rt.derived = derived; rt.flooded = flooded; rt.floodSteps = floodSteps;
   }
 }
 

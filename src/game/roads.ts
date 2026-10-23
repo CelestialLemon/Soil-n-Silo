@@ -1,4 +1,5 @@
 import { TRUCK } from './data.ts';
+import { flooded, isFlooded } from './flood.ts';
 import { TERRAIN } from './map.ts';
 import { centreLevel, isGentle, joins } from './relief.ts';
 import { buildingAt, inMap, layoutOf, sizeOf, terrainAt, type Building, type GameState } from './state.ts';
@@ -6,7 +7,7 @@ import { runtimeOf } from './runtime.ts';
 import { must } from './result.ts';
 
 // The roads: trucks drive on any open tile (gentle grass with nothing built on it), from tile centre to tile centre in 8
-// directions, never over a cliff (relief.ts: the ground must join), a diagonal only when both tiles beside it are open and
+// directions (never through flood water), never over a cliff (relief.ts: the ground must join), a diagonal only when both tiles beside it are open and
 // joined to both ends. Climbing costs: each level up counts as TRUCK.climb more tiles, in time and in battery, so a "distance"
 // here is the effort of the way. A truck loads at an open tile next to a building (sharing an edge with it). Each building
 // that trucks drive to has a distance field: the effort from every tile to the nearest open tile next to it, by the easiest
@@ -26,8 +27,8 @@ function roads(s: GameState): Roads {
   let r = rt.roads;
   if (r && r.layout === layout) return r;
   const { width: w, height: h } = s.map;
-  const open = new Uint8Array(w * h);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) open[y * w + x] = terrainAt(s, x, y) === TERRAIN.grass && !buildingAt(s, x, y) && isGentle(s.map, x, y) ? 1 : 0;
+  const open = new Uint8Array(w * h), water = flooded(s).tiles;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) open[y * w + x] = terrainAt(s, x, y) === TERRAIN.grass && !buildingAt(s, x, y) && isGentle(s.map, x, y) && !water[y * w + x] ? 1 : 0;
   const steps = new Float64Array(w * h * 8), m = s.map;
   /** Whether a truck can go from (x, y) one tile along a side (0 north … 3 west) to an open tile. */
   const side = (x: number, y: number, k: number) => joins(m, x, y, k) && open[(y + [-1, 0, 1, 0][k]) * w + x + [0, 1, 0, -1][k]] === 1;
@@ -56,10 +57,12 @@ export const isOpen = (s: GameState, x: number, y: number) => inMap(s, x, y) && 
 
 /**
  * The open tiles next to a building where a truck can load (sharing an edge with it, the ground joined across it: not
- * below or above a cliff), by index: north side west to east, then east, south, west.
+ * below or above a cliff), by index: north side west to east, then east, south, west. None for a building under flood water
+ * (the depot excepted: it loads on its dry sides).
  */
 export function accessTiles(s: GameState, b: Building): number[] {
   const n = sizeOf(b), w = s.map.width, out: number[] = [];
+  if (b.type !== 'depot' && isFlooded(s, b)) return out;
   const at = (x: number, y: number, ix: number, iy: number, side: number) => { if (isOpen(s, x, y) && joins(s.map, ix, iy, side)) out.push(y * w + x); };
   for (let x = b.x; x < b.x + n; x++) at(x, b.y - 1, x, b.y, 0);
   for (let y = b.y; y < b.y + n; y++) at(b.x + n, y, b.x + n - 1, y, 1);

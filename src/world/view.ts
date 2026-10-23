@@ -408,9 +408,10 @@ function edge(a0: number, na: number, b0: number, nb: number): { at: number; dir
 
 /** Is it doing its thing (to show its running look)? */
 function isRunning(b: Building) {
+  // Weather that only slows or weakens it leaves it running; stopped (a machine keeps its progress for later), it rests.
+  if (b.status === 'weather' && readHold(b.need)?.effect === 'stopped') return false;
   if (isMachine(b)) return b.progress !== null;
-  // Weather that only slows or weakens it leaves it running; stopped, it rests.
-  return b.status === 'ok' || (b.status === 'weather' && readHold(b.need)?.effect !== 'stopped');
+  return b.status === 'ok' || b.status === 'weather';
 }
 
 const QUIET = new Set<BuildingId>(['depot', 'sapling']);

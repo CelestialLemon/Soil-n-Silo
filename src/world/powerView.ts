@@ -5,7 +5,6 @@ import { feederOf, networkOf, networks, POWERED, pylonsInLink, wiresOf, type Net
 import { pylonReaches, pylonsLink } from '../game/rules.ts';
 import { buildingById, layoutOf, reliefOf, sizeOf, type Building, type GameState } from '../game/state.ts';
 import { overlayTiles, standY, type Lie } from './ground.ts';
-import { must } from '../game/result.ts';
 import type { Models } from './models.ts';
 import { NET_COLOURS } from './shapes.ts';
 
@@ -100,7 +99,9 @@ export class PowerView {
     const of = networks(s).of;
     for (const p of s.buildings) {
       if (BUILDINGS[p.type].grid !== 'link') continue;
-      const tint = TILE_TINTS[netColour(s, must(of.get(p.id), 'network'))];
+      const net = of.get(p.id);
+      if (!net) continue; // a pylon under flood water is on no network
+      const tint = TILE_TINTS[netColour(s, net)];
       for (let y = p.y - r; y <= p.y + r; y++) for (let x = p.x - r; x <= p.x + r; x++) {
         if (x >= 0 && y >= 0 && x < w && y < h && !owner.has(y * w + x)) owner.set(y * w + x, tint);
       }

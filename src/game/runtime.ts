@@ -1,4 +1,5 @@
 import type { Fleet } from './fleet.ts';
+import type { Flooded } from './flood.ts';
 import type { Flows } from './flows.ts';
 import type { History } from './history.ts';
 import type { Networks } from './power.ts';
@@ -44,6 +45,10 @@ export interface Runtime {
   flows?: Flows;
   /** The hours and nights of the power log (powerlog.ts). */
   powerLog?: Log;
+  /** The first step of a rising flood at which each tile floods, for the relief of this version (flood.ts). */
+  floodSteps?: { relief: number; first: Uint8Array };
+  /** The tiles under flood water now, for the relief of this version and the flood's step (flood.ts). */
+  flooded?: { relief: number; value: Flooded };
   /** Bumped whenever earthworks change the ground's levels, so the view redraws it (state.ts, `touchRelief`). */
   relief?: number;
   /** Bumped whenever a route, a stop or a truck's assignment changes, so the interface knows to redraw its panels. Numbered across games (see nextVersion). */

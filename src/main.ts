@@ -33,6 +33,7 @@ import type { Hover, MarkerSpot } from './ui/world.ts';
 import { windAt } from './game/sim/clock.ts';
 import { weatherNow } from './game/sim/weather.ts';
 import { allGeometries, loadModels } from './world/models.ts';
+import { FloodView } from './world/floodView.ts';
 import { PowerView } from './world/powerView.ts';
 import { RouteView } from './world/routeView.ts';
 import { Camera } from './world/camera.ts';
@@ -131,6 +132,7 @@ async function play(initial: GameState) {
   /** The same for picking: no ground off the map, so a line of sight from beyond meets the map's edge, or its cliff. */
   const pickGround = (x: number, z: number) => (x >= 0 && z >= 0 && x < map.width && z < map.height ? groundAt(x, z) : -Infinity);
   const view = new WorldView(renderer, models, lie, ground.paint, world.halo.things);
+  const floodView = new FloodView(renderer, lie);
   const power = new PowerView(renderer, models, lie);
   const routeView = new RouteView(renderer, models, lie);
   const cursor = new TileCursor(canvas, 0xfff0c0), refused = new TileCursor(canvas, 0xe8705a);
@@ -670,6 +672,7 @@ async function play(initial: GameState) {
     ground.showLines(tool.kind === 'build' || tool.kind === 'earth');
     detail.sync();
     view.sync(state);
+    floodView.sync(state);
     toolOverlay = 'none';
     if (input.pointer && frameNo % REPICK_FRAMES === 0) repick = Math.max(repick, 1);
     if (repick > 0) { repick--; pickHover(); }
