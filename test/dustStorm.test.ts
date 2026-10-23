@@ -176,9 +176,10 @@ test('the cards say whether a field is guarded where a dust storm can come, and 
   const f = put(dry, 'field', 4, 4);
   assert.match(dustNote(dry, f)!, /^guarded: a tree/);
   assert.equal(dustNote(hot, put(hot, 'field', 4, 4)), null);
-  // The campaign has none until it places one (2.10); the sandbox always shows it.
+  // A campaign commission shows it only if it places one (Tired Soil does, not First Light); the sandbox always shows it.
   const campaign = newGame(CAMPAIGN[0]);
   assert.equal(dustComes(campaign), false);
+  assert.equal(dustComes(newGame(CAMPAIGN[5])), true);
   assert.equal(dustComes(newGame(SANDBOX)), true);
   const placed = game('summer', [], 0, null);
   assert.equal(dustComes(placed), false);

@@ -14,7 +14,9 @@ export interface RouteStep { route: string; garage: string; trucks: number; stop
 export interface TruckStep { truck: string; garage: string }
 /** Once the commission's goal `goal` is met, a route's trucks move to another route. */
 export interface MoveStep { move: string; to: string; goal: number }
-export type Step = Place | RouteStep | TruckStep | MoveStep;
+/** Earthworks: raise the points of a column `bank` tiles east of the depot, from `from` to `to` tiles south of the depot's y, `times` levels: a bank against a flood. */
+export interface BankStep { bank: number; from: number; to: number; times: number }
+export type Step = Place | RouteStep | TruckStep | MoveStep | BankStep;
 export type Layout = (dx: number, dy: number) => Step[];
 
 /**
@@ -81,6 +83,12 @@ const bakery = (dx: number, dy: number, recipe?: string): Step[] => [
   { type: 'pylon', x: dx + 7, y: dy - 3 }, { type: 'field', x: dx + 9, y: dy - 5, as: 'w1' }, { type: 'field', x: dx + 7, y: dy - 8, as: 'w2' },
   { type: 'sprinkler', x: dx + 10, y: dy - 7 }, { type: 'pylon', x: dx + 11, y: dy - 9 }, { type: 'sprinkler', x: dx + 5, y: dy - 2 },
 ];
+
+/**
+ * The river a commission's bot plays beside (tiles east of the depot, west if negative), for the commissions whose weather is a flood: the bot's
+ * map is flat with no water, so a flood would never reach it. Riverlands' farm stands west of the river.
+ */
+export const RIVER_AT: Record<string, number> = { c7: 16 };
 
 /** Layouts by commission, relative to the depot's north-west tile, in build order. */
 export const LAYOUTS: Record<string, Layout> = {
@@ -166,17 +174,17 @@ export const LAYOUTS: Record<string, Layout> = {
   c3: (dx, dy) => [
     { type: 'field', x: dx + 5, y: dy - 7, crop: 'sunflower', as: 'u1' }, { type: 'field', x: dx + 3, y: dy - 4, crop: 'sunflower', as: 'u2' },
     { type: 'sprinkler', x: dx + 6, y: dy - 4 }, { type: 'press', x: dx + 3, y: dy - 6, as: 'press' },
-    { type: 'pylon', x: dx + 4, y: dy - 9 }, { type: 'pylon', x: dx + 8, y: dy - 4 }, { type: 'turbine', x: dx + 9, y: dy - 6 },
+    { type: 'pylon', x: dx + 4, y: dy - 9 }, { type: 'pylon', x: dx + 8, y: dy - 4 }, { type: 'turbine', x: dx + 9, y: dy - 5 },
     { type: 'garage', x: dx + 5, y: dy - 11, as: 'garage' },
     { route: 'oil', garage: 'garage', trucks: 1, stops: [{ at: 'press', pick: ['oil', 'seedcake'] }, { at: 'depot' }] },
-    { type: 'turbine', x: dx + 10, y: dy - 4 },
+    { type: 'turbine', x: dx + 10, y: dy - 5 },
     { type: 'field', x: dx - 3, y: dy - 8, as: 'w' }, { type: 'field', x: dx - 2, y: dy - 11, as: 'n' },
     { type: 'sprinkler', x: dx - 3, y: dy - 9 }, { type: 'pylon', x: dx - 3, y: dy - 10 },
     { type: 'mill', x: dx, y: dy - 8, as: 'mill' }, { type: 'coop', x: dx, y: dy - 6, as: 'coop' },
     { type: 'bakery', x: dx + 2, y: dy - 8, as: 'bakery' },
     { route: 'bread', garage: 'garage', trucks: 1, stops: [{ at: 'mill', pick: ['bran'] }, { at: 'bakery', pick: ['bread'] }, { at: 'depot' }] },
     { type: 'digester', x: dx, y: dy - 3 }, { type: 'pylon', x: dx + 2, y: dy - 1 },
-    { type: 'turbine', x: dx + 9, y: dy - 2 },
+    { type: 'turbine', x: dx + 9, y: dy - 4 }, { type: 'turbine', x: dx + 10, y: dy - 4 },
     { type: 'field', x: dx - 4, y: dy - 15, as: 'f1' }, { type: 'field', x: dx - 1, y: dy - 15, crop: 'sunflower', as: 'f2' },
     { type: 'field', x: dx + 2, y: dy - 15, crop: 'sunflower', as: 'f3' },
     { type: 'sprinkler', x: dx + 1, y: dy - 12 }, { type: 'sprinkler', x: dx - 3, y: dy - 12 },
@@ -204,6 +212,8 @@ export const LAYOUTS: Record<string, Layout> = {
   // fields (what they don't take to the depot). Compost and beans lift soil health past the goal without trees.
   c6: (dx, dy) => [
     ...sauce(dx, dy),
+    // A sapling beside every field, against the dry summer's dust storm (it guards a field from the wind at once).
+    ...[[-3, -11], [-4, -8], [4, -12], [7, -9], [1, -3]].map(([x, y]) => ({ type: 'sapling' as const, x: dx + x, y: dy + y })),
     { route: 'sauce', garage: 'garage', trucks: 1, stops: [{ at: 'cannery', pick: ['sauce'] }, { at: 'coop', pick: ['egg'], drop: [] }, { at: 'depot' }] },
     { type: 'composter', x: dx + 5, y: dy - 6, as: 'composter' },
     { type: 'sprinkler', x: dx + 5, y: dy - 2 }, { type: 'pylon', x: dx + 7, y: dy - 3 },
@@ -225,6 +235,7 @@ export const LAYOUTS: Record<string, Layout> = {
     { type: 'hive', x: dx + 1, y: dy - 12 },
     { type: 'battery', x: dx + 8, y: dy - 14 }, { type: 'turbine', x: dx + 5, y: dy - 13 },
     ...bakery(dx, dy),
+    { bank: 15, from: -19, to: 2, times: 2 },
     { route: 'bread', garage: 'garage', trucks: 1, stops: [{ at: 'bakery', pick: ['bread'], drop: [] }, { at: 'depot' }] },
     { route: 'bran', garage: 'garage', trucks: 1, stops: [{ at: 'mill', pick: ['bran'] }, { at: 'coop', pick: [] }, { at: 'depot' }] },
     { type: 'solar', x: dx + 12, y: dy - 12 }, { type: 'turbine', x: dx + 10, y: dy - 11 }, { type: 'battery', x: dx + 12, y: dy - 6 },

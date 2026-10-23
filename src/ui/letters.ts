@@ -1,4 +1,4 @@
-import { EVENTS, eventsOf, type EventKind } from '../game/events.ts';
+import { eventWords } from '../game/eventwords.ts';
 import type { Scenario } from '../game/scenarios.ts';
 import type { Character, Season } from '../game/seasons.ts';
 import { goalWords } from './widgets.ts';
@@ -114,16 +114,6 @@ const CHARACTER_WORDS: Record<Character, string> = {
   hard: 'It has been a hard one, colder than anyone remembers.',
   highRiver: 'The river is higher than it has been for years.',
 };
-
-/** An event in a sentence: "a thunderstorm", "fog". */
-const anEvent = (k: EventKind) => (k === 'fog' ? 'fog' : `a ${EVENTS[k].name.toLowerCase()}`);
-const listOf = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} or ${xs[xs.length - 1]}` : xs[0]);
-
-/** What the season can bring, as sentences: the hard turns, then the kind ones. Empty if it can bring none. */
-export function eventWords(sc: Scenario): string[] {
-  const kinds = eventsOf(sc.climate), bad = kinds.filter((k) => !EVENTS[k].good).map(anEvent), good = kinds.filter((k) => EVENTS[k].good).map(anEvent);
-  return [...(bad.length ? [`Weather to watch for this season: ${listOf(bad)}.`] : []), ...(good.length ? [`Kinder turns it can take: ${listOf(good)}.`] : [])];
-}
 
 /** The letter a commission arrives with: what is written, with the season and the events it can bring. */
 export function letterFor(sc: Scenario): Letter {

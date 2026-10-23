@@ -45,7 +45,7 @@ export function blowDust(s: GameState, dt: number) {
 /** Whether a climate can bring a dust storm (the sandbox starts any by hand). */
 export const canDust = (c: Pick<Scenario['climate'], 'season' | 'character'>) => allowed('dustStorm', c);
 
-/** Whether this commission can have a dust storm (so the cards say whether a field is guarded from it): the sandbox, a dry summer's random commission, or any that has one placed; the campaign has none until it places one. */
+/** Whether this commission can have a dust storm (so the cards say whether a field is guarded from it): the sandbox, a dry summer's random commission, or any that has one placed (Tired Soil's); the rest of the campaign has none. */
 export const dustComes = (s: GameState) => {
   const sc = s.scenario;
   return sc.events.some((e) => e.kind === 'dustStorm') || !!sc.sandbox || (canDust(sc.climate) && !CAMPAIGN.some((c) => c.id === sc.id));

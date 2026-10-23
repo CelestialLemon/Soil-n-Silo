@@ -4,8 +4,8 @@
 // water, rock or trees, even soil at the scenario's mean), since the layout is the bot's, not the map's. Run by
 // `npm run sim` (tools/sim.ts), and by the tests for every layout (test/bots.test.ts).
 
-import { addStop, buyTruck, newRoute, place, setCrop, setTruckRoute, truckPrice } from '../src/game/build.ts';
-import { LAYOUTS, type Step } from './layouts.ts';
+import { addStop, buyTruck, newRoute, place, reshape, setCrop, setTruckRoute, truckPrice } from '../src/game/build.ts';
+import { LAYOUTS, RIVER_AT, type Step } from './layouts.ts';
 import { BUILDINGS, ITEMS } from '../src/game/data.ts';
 import { must } from '../src/game/result.ts';
 import { TERRAIN } from '../src/game/map.ts';
@@ -28,7 +28,7 @@ export function playLayout(id: string, minutes = 60, log: (line: string) => void
   // seed (the weather's rolls follow the seed), as tools/seasonfactor.ts does.
   const base = scenarioById(id.split(':')[0]);
   if (!base) throw new Error(`no commission ${id}`);
-  const { river, ...rest } = over;
+  const { river = RIVER_AT[id.split(':')[0]], ...rest } = over;
   const sc: Scenario = { ...base, ...rest };
 
   const layout = LAYOUTS[id];
@@ -53,11 +53,20 @@ export function playLayout(id: string, minutes = 60, log: (line: string) => void
   const routes = new Map<string, Route>();
 
   /** What a step costs; a move costs nothing, but waits for its goal. */
-  const cost = (st: Step) => ('type' in st ? BUILDINGS[st.type].cost : 'route' in st ? st.trucks * truckPrice(s) : 'truck' in st ? truckPrice(s) : 0);
+  const cost = (st: Step) => ('bank' in st ? (st.to - st.from + 1) * st.times * 6 : 'type' in st ? BUILDINGS[st.type].cost : 'route' in st ? st.trucks * truckPrice(s) : 'truck' in st ? truckPrice(s) : 0);
   const ready = (st: Step) => s.credits >= cost(st) && (!('move' in st) || goalDone(s, st.goal));
 
   /** Takes a step: places a building, makes a route and buys its trucks, or adds a truck to a route. */
   function take(st: Step) {
+    if ('bank' in st) {
+      const x = s.map.depot.x + st.bank;
+      for (let k = 0; k < st.times; k++) {
+        const y0 = s.map.depot.y + st.from, y1 = s.map.depot.y + st.to, r = reshape(s, { how: 'raise', from: { x, y: y0 }, to: { x, y: y1 }, at: { x, y: y0 } });
+        if (!r.ok) { log(`  step ${next} bank at ${x}: ${r.error}`); return; }
+      }
+      log(`${fmt(s.time)}  bank raised at x ${x}`);
+      return;
+    }
     if ('move' in st) {
       const from = must(routes.get(st.move), `route ${st.move}`), to = must(routes.get(st.to), `route ${st.to}`);
       for (const tr of s.trucks) if (tr.route === from.id) setTruckRoute(s, tr, to);
