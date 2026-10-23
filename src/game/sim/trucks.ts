@@ -259,9 +259,10 @@ export function runTrucks(s: GameState, dt: number) {
   const queued = new Set<number>();
   for (const t of s.trucks) if (t.phase === 'queue' && t.target !== null) queued.add(t.target);
   // In a hurricane's worst hours the trucks on the road drive home and those at their garage stay: they charge, but don't set off.
-  const home = garaging(s.scenario, s.time) !== null;
+  const home = garaging(s.scenario, s.time) !== null, second = Math.floor(s.time + 1e-6) !== Math.floor(s.time - dt + 1e-6);
   for (const t of s.trucks) {
-    if (home && (t.phase === 'drive' || t.phase === 'dock' || t.phase === 'queue') && t.target !== t.garage) goHome(s, t);
+    // One that is stuck (no way to its stop) looks for the way home once a second.
+    if (home && (t.phase === 'drive' || t.phase === 'dock' || t.phase === 'queue' || (t.phase === 'stuck' && second)) && t.target !== t.garage) goHome(s, t);
     switch (t.phase) {
       case 'parked': {
         charge(s, t, dt);

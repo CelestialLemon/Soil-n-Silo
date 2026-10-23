@@ -181,9 +181,9 @@ export const EVENTS: Record<EventKind, EventInfo> = {
     name: 'Gale', hours: [20, 28], seasons: { autumn: 1 }, severe: true,
     odds: { gales: 3, stormy: 2, mild: 0.4 }, look: { cloud: 0.5 },
     shape: 'chevron', holds: 'turbines too exposed stopped, sheltered ones turning slowly, bees kept in',
-    // A strong wind (turbines at full power) and the bees stay in. In a severe one the wind is past what an exposed turbine stands
+    // A strong wind (the wind push is a full wind's worth, so no calm spell dims it and turbines make all they can) and the bees stay in. In a severe one the wind is past what an exposed turbine stands
     // (`gale`, over the limit once exposure is above about three quarters): sheltered turbines furl and keep turning, unsteadily.
-    push: { ordinary: { wind: 0.7, bees: 0 }, severe: { wind: 0.7, bees: 0, gale: 1.3 } },
+    push: { ordinary: { wind: 1, bees: 0 }, severe: { wind: 1, bees: 0, gale: 1.3 } },
   },
   tropicalStorm: {
     name: 'Tropical storm', severeName: 'Hurricane', hours: [24, 48], seasons: { summer: 0.15, autumn: 0.3 }, severe: true, then: 'flood',

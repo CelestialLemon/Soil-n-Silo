@@ -6,6 +6,8 @@ import { networks } from '../game/power.ts';
 import { isOpen } from '../game/roads.ts';
 import { readHold } from '../game/hold.ts';
 import { windAt } from '../game/sim/clock.ts';
+import { exposureOf } from '../game/sim/layout.ts';
+import { TURBINE_WEAK, turbineShare } from '../game/wind.ts';
 import { HANDOFF_SECONDS, recentHandoffs } from '../game/sim/goods.ts';
 import { cutOff, lastPose } from '../game/sim/trucks.ts';
 import { buildingById, inMap, isMachine, layoutOf, reliefOf, sizeOf, terrainAt, type Building, type Dir, type FieldBuilding, type GameState, type Status, type Truck } from '../game/state.ts';
@@ -139,9 +141,9 @@ export class WorldView {
       let key = `${b.type} ${b.x} ${b.y} ${b.rot} ${running} ${y}`;
       let geo = () => this.m.buildings[b.type][running ? 'running' : 'idle'];
       if (b.type === 'turbine') {
-        // Index 0 is the rotor standing still: stopped by the weather, or furled to a crawl in a gale it shelters from.
-        const held = b.status === 'weather' ? readHold(b.need)?.effect : null;
-        const speed = held === 'stopped' ? 0 : held === 'weak' ? 1 : wind < 0.35 ? 1 : wind < 0.7 ? 2 : 3;
+        // Index 0 is the rotor standing still: stopped by a gale, whatever the turbine's own status; furled to a crawl in one it shelters from.
+        const share = turbineShare(s, b.id, exposureOf(s, b));
+        const speed = share <= 0 ? 0 : share <= TURBINE_WEAK ? 1 : wind < 0.35 ? 1 : wind < 0.7 ? 2 : 3;
         key += ` ${speed}`;
         geo = () => this.m.turbine[speed];
       }

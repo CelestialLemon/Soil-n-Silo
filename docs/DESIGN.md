@@ -410,7 +410,7 @@ campaign) when frost settles on the lowest ground (`src/game/frost.ts`: pure rul
 
 | Event | Ordinary | Severe |
 | --- | --- | --- |
-| Gale (autumn, 20–28 h) | `wind` +0.7 (a strong wind: turbines at full power), `bees` 0 | the same, and `gale` 1.3: exposed turbines stop |
+| Gale (autumn, 20–28 h) | `wind` +1 (a full wind's worth, so no calm spell dims it: turbines at full power), `bees` 0 | the same, and `gale` 1.3: exposed turbines stop |
 | Tropical storm (autumn, summer; 24–48 h) | `rain` 1 (heavy rain), `sun` ×0.4, `wind` +0.6, `bees` 0; **a flood follows** (ordinary) | the hurricane: `rain` 1, `sun` ×0.05, `wind` +0.8, `bees` 0, `hens` 0, `gale` 3; **a severe flood follows**; trucks stay in |
 
 - **Turbines and shelter.** A turbine stops while the gale it feels, the event's `gale` times the turbine's exposure to the wind

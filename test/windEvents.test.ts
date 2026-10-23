@@ -276,3 +276,31 @@ test('wind events are marked: each has a shape of its own and says what it holds
   for (const k of ['gale', 'tropicalStorm'] as const) assert.ok(EVENTS[k].shape && EVENTS[k].holds, k);
   assert.notEqual(EVENTS.gale.shape, EVENTS.tropicalStorm.shape);
 });
+
+test('a gale blows at full strength through the calm spells and gusts of its season', () => {
+  const gale = event('gale', 'ordinary', 3, 8, 24);
+  for (const seed of [1, 192, 4242]) {
+    const s = game('autumn', [gale], gale.start, 'stormy');
+    s.scenario.seed = seed;
+    s.scenario.climate.conditions = climateOf('autumn', 'stormy').conditions;
+    for (let h = 2; h <= 22; h += 0.25) assert.equal(windAt(s.scenario, gale.start + h * HOUR), 1, `seed ${seed}, ${h} h in`);
+  }
+});
+
+test('a stuck truck outside when the worst hours begin finds its way home; a turbine out of the network is still stopped', () => {
+  const hurricane = event('tropicalStorm', 'severe', 3, 0, 36);
+  const s = game('autumn', [hurricane], timeOf(3, 8), 'stormy');
+  const { truck, garage } = haul(s);
+  advance(s, 8);
+  assert.notEqual(truck.target, garage.id);
+  truck.phase = 'stuck'; truck.target = null; truck.path = [];
+  s.time = timeOf(3, 9.5);
+  advance(s, 3);
+  assert.equal(truck.target, garage.id, 'it looks for the way home');
+  advance(s, 120);
+  assert.ok(['charge', 'parked'].includes(truck.phase), String(truck.phase));
+  // A turbine no pylon reaches shows no weather hold, but the storm still stops it (what the view draws).
+  const t = put(s, 'turbine', 20, 20);
+  assert.equal(t.status === 'ok', false);
+  assert.equal(turbineShare(s, t.id, exposureOf(s, t)), 0);
+});
