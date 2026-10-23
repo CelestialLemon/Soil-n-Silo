@@ -170,17 +170,25 @@ export function legLength(s: GameState, a: Building, b: Building): number {
   return d;
 }
 
-/** The open tile nearest to (x, y) (itself if open), by rings, or null on a map with none. */
-export function nearestOpen(s: GameState, x: number, y: number): number | null {
+/**
+ * The open tile nearest to (x, y) (itself if open), by rings, or null on a map with none. With `home`, the nearest from which
+ * trucks can drive to that building, so a truck put down off a tile that was built on or flooded is not left in a walled pocket
+ * with no way out; when no tile has a way there, the nearest open tile.
+ */
+export function nearestOpen(s: GameState, x: number, y: number, home?: Building): number | null {
   const { width: w, height: h } = s.map;
-  for (let r = 0; r < Math.max(w, h); r++) {
-    let best: number | null = null, bestD = Infinity;
-    for (let ty = y - r; ty <= y + r; ty++) for (let tx = x - r; tx <= x + r; tx++) {
-      if (Math.max(Math.abs(tx - x), Math.abs(ty - y)) !== r || !isOpen(s, tx, ty)) continue;
-      const d = Math.hypot(tx - x, ty - y);
-      if (d < bestD) { bestD = d; best = ty * w + tx; }
+  const field = home ? distanceField(s, home) : null;
+  const near = (reaching: boolean) => {
+    for (let r = 0; r < Math.max(w, h); r++) {
+      let best: number | null = null, bestD = Infinity;
+      for (let ty = y - r; ty <= y + r; ty++) for (let tx = x - r; tx <= x + r; tx++) {
+        if (Math.max(Math.abs(tx - x), Math.abs(ty - y)) !== r || !isOpen(s, tx, ty) || (reaching && field && field[ty * w + tx] === Infinity)) continue;
+        const d = Math.hypot(tx - x, ty - y);
+        if (d < bestD) { bestD = d; best = ty * w + tx; }
+      }
+      if (best !== null) return best;
     }
-    if (best !== null) return best;
-  }
-  return null;
+    return null;
+  };
+  return near(true) ?? (field ? near(false) : null);
 }
