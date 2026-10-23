@@ -59,6 +59,12 @@ const LEVERS = {
   trucks: { neutral: 1, mix: 'mul' },
   /** How far the day's warmth is lifted to a mild day's curve (0–1; never cooled: a day already warmer stays as it is). */
   mild: { neutral: 0, mix: 'max' },
+  /** Gale-force wind, in multiples of a full wind (0: none): a turbine stops while this times its exposure is over the limit (wind.ts). */
+  gale: { neutral: 0, mix: 'max' },
+  /** A multiple of how far the bees fly: below half they stay in. */
+  bees: { neutral: 1, mix: 'mul' },
+  /** A multiple of the hens' laying. */
+  hens: { neutral: 1, mix: 'mul' },
 } as const satisfies Record<string, { neutral: number; mix: 'mul' | 'add' | 'max' }>;
 
 export type Lever = keyof typeof LEVERS;
@@ -120,6 +126,8 @@ export interface EventInfo {
   thenIn?: readonly Season[];
   /** For a flood: how many levels above its normal surface the water stands at the peak, by strength (flood.ts). */
   flood?: Partial<Record<Strength, number>>;
+  /** The share of the event, around its middle (its worst hours), that the trucks stay in their garages, by strength (wind.ts). */
+  garages?: Partial<Record<Strength, number>>;
 }
 
 /**
@@ -171,11 +179,24 @@ export const EVENTS: Record<EventKind, EventInfo> = {
   },
   gale: {
     name: 'Gale', hours: [20, 28], seasons: { autumn: 1 }, severe: true,
-    odds: { gales: 3, stormy: 2, mild: 0.4 }, push: {}, look: { cloud: 0.5 },
+    odds: { gales: 3, stormy: 2, mild: 0.4 }, look: { cloud: 0.5 },
+    shape: 'chevron', holds: 'turbines too exposed stopped, sheltered ones turning slowly, bees kept in',
+    // A strong wind (turbines at full power) and the bees stay in. In a severe one the wind is past what an exposed turbine stands
+    // (`gale`, over the limit once exposure is above about three quarters): sheltered turbines furl and keep turning, unsteadily.
+    push: { ordinary: { wind: 0.7, bees: 0 }, severe: { wind: 0.7, bees: 0, gale: 1.3 } },
   },
   tropicalStorm: {
     name: 'Tropical storm', severeName: 'Hurricane', hours: [24, 48], seasons: { summer: 0.25, autumn: 0.5 }, severe: true, then: 'flood',
-    odds: { stormy: 3, wet: 1.5, gales: 1.2, mild: 0.3, dry: 0.1, hot: 0.5 }, push: {}, look: { cloud: 1, precip: 0.8 },
+    odds: { stormy: 3, wet: 1.5, gales: 1.2, mild: 0.3, dry: 0.1, hot: 0.5 }, heavyRain: true, look: { cloud: 1, precip: 0.8 },
+    shape: 'swirl', holds: 'solar panels weak; in a hurricane every turbine, hen and bee stopped and the trucks kept in their garages',
+    // Days of heavy rain and wind, and the flood after it. The bees stay in. A hurricane (the severe one) is wind no turbine stands (`gale`
+    // over the limit even for a turbine in deep shelter), almost no sun, hens that stop laying, trucks that stay home through its worst
+    // hours, and a flood a level higher (flood.ts, from its strength).
+    push: {
+      ordinary: { rain: 1, sun: 0.4, wind: 0.6, bees: 0 },
+      severe: { rain: 1, sun: 0.05, wind: 0.8, gale: 3, bees: 0, hens: 0 },
+    },
+    garages: { severe: 0.5 },
   },
   flood: {
     name: 'Flood', hours: [24, 48], seasons: { spring: 1 }, severe: true,
@@ -273,7 +294,7 @@ export const eventsIn = (sc: Pick<Scenario, 'events'>, from: number, to: number)
   sc.events.filter((e) => e.start < to && endOf(e) > from).sort((a, b) => a.start - b.start);
 
 /**
- * The events under way that bring heavy rain: a thunderstorm (and, later, a tropical storm). A spring flood (2.5) builds on these;
+ * The events under way that bring heavy rain: a thunderstorm and a tropical storm. A spring flood (2.5) builds on these;
  * a soft rain and the everyday showers are not heavy rain.
  */
 export const heavyRainEvents = (sc: Pick<Scenario, 'events'>, time: number): WeatherEvent[] =>

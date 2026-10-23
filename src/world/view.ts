@@ -139,7 +139,9 @@ export class WorldView {
       let key = `${b.type} ${b.x} ${b.y} ${b.rot} ${running} ${y}`;
       let geo = () => this.m.buildings[b.type][running ? 'running' : 'idle'];
       if (b.type === 'turbine') {
-        const speed = wind < 0.35 ? 0 : wind < 0.7 ? 1 : 2;
+        // Index 0 is the rotor standing still: stopped by the weather, or furled to a crawl in a gale it shelters from.
+        const held = b.status === 'weather' ? readHold(b.need)?.effect : null;
+        const speed = held === 'stopped' ? 0 : held === 'weak' ? 1 : wind < 0.35 ? 1 : wind < 0.7 ? 2 : 3;
         key += ` ${speed}`;
         geo = () => this.m.turbine[speed];
       }

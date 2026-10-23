@@ -8,6 +8,7 @@ import { exposureOf, wattsOf } from './layout.ts';
 import { recipeOf, missing, outputsFit } from './goods.ts';
 import { runtimeOf } from '../runtime.ts';
 import { raining } from './weather.ts';
+import { turbineShare } from '../wind.ts';
 
 // Power: what each building wants and makes, how each network balances, and the watts garages want for charging.
 
@@ -33,7 +34,7 @@ export function wants(s: GameState, b: Building): number {
 export function makes(s: GameState, b: Building, sun: number, wind: number): number {
   switch (b.type) {
     case 'solar': return POWER.solar * sun;
-    case 'turbine': return POWER.turbine * wind * exposureOf(s, b);
+    case 'turbine': { const e = exposureOf(s, b); return POWER.turbine * wind * e * turbineShare(s, b.id, e); } // a gale can stop it or make it furl
     case 'wheel': return wattsOf(s, b) * pushesAt(s.scenario, s.time).river; // a weather event can raise or drop the river
     case 'digester': return b.progress !== null ? POWER.digester : 0;
     default: return 0;

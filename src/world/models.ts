@@ -16,7 +16,7 @@ export interface Look { idle: Geo; running: Geo; height: number }
 
 export interface Models {
   buildings: Record<BuildingId, Look>;
-  /** Turbine rotors at three wind speeds. */
+  /** Turbine rotors: standing still, then at three wind speeds. */
   turbine: Geo[];
   /** Batteries with 0 to 4 charge rings lit. */
   battery: Geo[];
@@ -121,11 +121,12 @@ export async function loadModels(season: Season): Promise<Models> {
     const look = root ? lookFrom(root, i * 0.13) : standIn(id);
     buildings[id] = { ...look, height: heightOf(look.idle) };
   });
-  // Turbines always turn, faster in stronger wind: three rotor speeds.
+  // Turbines turn, faster in stronger wind: three rotor speeds; a fourth look has the rotor standing still (stopped by a gale).
   const turbineRoot = roots.get('wind_turbine');
-  const turbine = [0.45, 1, 1.7].map((speed) => {
-    if (turbineRoot) return collect(turbineRoot, () => true, (m) => { const mo = movingPartMotion(m); return mo && mo.anim ? { ...mo, anim: [...(mo.anim as number[]).slice(0, 3), speed] as [number, number, number, number] } : mo; }, true).build();
-    return standIn('turbine').running;
+  const turbine = [null, 0.45, 1, 1.7].map((speed) => {
+    if (!turbineRoot) return speed === null ? standIn('turbine').idle : standIn('turbine').running;
+    if (speed === null) return collect(turbineRoot, () => true).build();
+    return collect(turbineRoot, () => true, (m) => { const mo = movingPartMotion(m); return mo && mo.anim ? { ...mo, anim: [...(mo.anim as number[]).slice(0, 3), speed] as [number, number, number, number] } : mo; }, true).build();
   });
 
   // A battery's charge rings (`charge_<n>`) light from the bottom up: level k shows rings 0..k-1.

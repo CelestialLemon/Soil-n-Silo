@@ -13,7 +13,8 @@ import { describeLinks } from './sim/describe.ts';
 import { canFlood, floodsAt, isFlooded } from './flood.ts';
 import { frostComes, frostHits, inHollow } from './frost.ts';
 import { centreLevel } from './relief.ts';
-import { beesFact, beesFly, shadeFact, warmthFact, warmthOf } from './warmth.ts';
+import { beesNow, beesOut, shadeFact, warmthFact, warmthOf } from './warmth.ts';
+import { canGale, SEVERE_GALE, standsGale, turbineShare } from './wind.ts';
 import { inMap, type Building, type FieldBuilding, type GameState, type Setting } from './state.ts';
 
 // Forecasts from what the game already knows: what a building in hand would do on a tile (facts about the tile, no advice),
@@ -65,7 +66,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
       case 'field': {
         const crop = CROPS[set.crop ?? 'wheat'], soil = soilUnder(s, x, y, 3), { sprinklers, shore, rain, water, at: waterAtTime } = waterAt(s, x, y);
         // A hive within reach of a flowering crop adds a good to every harvest.
-        const pollinated = crop.flowers && beesFly(warmthOf(s)) && s.buildings.some((b) => b.type === 'hive' && !isFlooded(s, b) && hiveReaches({ type: 'field', x, y }, b.x, b.y));
+        const pollinated = crop.flowers && beesOut(s) && s.buildings.some((b) => b.type === 'hive' && !isFlooded(s, b) && hiveReaches({ type: 'field', x, y }, b.x, b.y));
         // Nothing, while a late frost that lies there takes it.
         const perMin = frostHits(s, set.crop ?? 'wheat', x, y) ? 0 : (crop.yield + (pollinated ? POLLINATION_BONUS : 0)) * 60 * paceOf(water, soil, crop, warmthOf(s)).pace / crop.grow;
         // Sloping tiles under it wear faster (erosion).
@@ -104,10 +105,10 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
       }
       case 'hive': {
         const near = s.buildings.filter((b): b is FieldBuilding => b.type === 'field' && !isFlooded(s, b) && hiveReaches(b, x, y));
-        const flowers = Math.min(HIVE.maxFlowers, near.filter((f) => CROPS[f.crop].flowers).length), out = beesFly(warmthOf(s));
+        const flowers = Math.min(HIVE.maxFlowers, near.filter((f) => CROPS[f.crop].flowers).length), out = beesOut(s);
         facts.push({ label: 'Honey', value: `+${fmt1((out ? flowers : 0) * 60 / HIVE.honeySeconds)}`, sub: 'a minute', tone: flowers && out ? undefined : 'bad' });
         facts.push({ label: 'Flowers', value: `${flowers} field${flowers === 1 ? '' : 's'}`, sub: `flowering within ${HIVE.reach} tiles` });
-        const bees = beesFact(warmthOf(s));
+        const bees = beesNow(s);
         facts.push({ label: 'Bees', value: bees.text.includes('staying') ? 'staying in' : 'flying', sub: `${Math.round(warmthOf(s))}°C`, tone: bees.tone === 'bad' ? 'bad' : undefined });
         facts.push({ label: 'Pollinates', value: `${out ? near.filter((f) => CROPS[f.crop].flowers).length : 0}`, sub: 'flowering fields' });
         break;
@@ -122,7 +123,11 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
       case 'turbine': {
         const w = inMap(s, x, y) ? windExposure(s, x, y) : { shelter: 1, height: 1, exposure: 1 }, exp = w.exposure;
         facts.push({ label: 'Wind', value: `${Math.round(exp * 100)}%`, sub: w.height > 1 ? `reaches it here, ${Math.round((w.height - 1) * 100)}% more up high` : 'reaches it here', tone: w.shelter < 1 ? 'bad' : w.height > 1 ? 'good' : undefined });
-        facts.push({ label: 'Now', value: watts(POWER.turbine * windAt(s.scenario, s.time) * exp), sub: 'in this wind' });
+        facts.push({ label: 'Now', value: watts(POWER.turbine * windAt(s.scenario, s.time) * exp * turbineShare(s, 0, exp)), sub: 'in this wind' });
+        if (s.scenario.sandbox || canGale(s.scenario.climate)) {
+          const stands = standsGale(SEVERE_GALE, exp);
+          facts.push({ label: 'Severe gale', value: stands ? 'keeps turning' : 'stops', sub: stands ? 'sheltered enough to ride it out, at reduced output' : 'too exposed: only trees, tall buildings or higher ground beside it would keep it turning', tone: stands ? 'good' : 'bad' });
+        }
         facts.push(pylonFact());
         break;
       }

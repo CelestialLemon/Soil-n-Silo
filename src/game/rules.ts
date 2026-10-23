@@ -1,3 +1,4 @@
+import { pushesAt } from './events.ts';
 import { ANIMALS, BUILDINGS, FIELD, HIVE, POWER, type BuildingId, type CropDef } from './data.ts';
 import { dryPace, henPace, warmthOf, warmthPace } from './warmth.ts';
 import { TERRAIN } from './map.ts';
@@ -112,8 +113,8 @@ export function coopTrees(s: GameState, x: number, y: number): number {
 /** The heat, in °C, the trees by a coop at (x, y) take off what the hens feel. */
 export const coopShade = (s: GameState, x: number, y: number) => coopTrees(s, x, y) * ANIMALS.shadePerTree;
 
-/** How fast the hens of a coop (or one about to stand) at (x, y) lay in a warmth (default now), with its trees' shade. */
-export const coopPace = (s: GameState, x: number, y: number, w = warmthOf(s)) => henPace(s.scenario, w, coopShade(s, x, y));
+/** How fast the hens of a coop (or one about to stand) at (x, y) lay in a warmth (default now), with its trees' shade, and what a storm leaves of it. */
+export const coopPace = (s: GameState, x: number, y: number, w = warmthOf(s)) => henPace(s.scenario, w, coopShade(s, x, y)) * pushesAt(s.scenario, s.time).hens;
 
 /** The highest corner of a tile (levels). */
 const top = (s: GameState, x: number, y: number) => Math.max(...corners(s.map, x, y));

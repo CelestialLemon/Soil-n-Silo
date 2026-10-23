@@ -1,7 +1,8 @@
 import { BUILDINGS, CROPS, FIELD, HIVE, ITEMS, POLLINATION_BONUS } from '../data.ts';
 import { coopPace, erosionAt, paceOf, touchesWater } from '../rules.ts';
 import { frostTakes } from '../frost.ts';
-import { beesFly, frostKills, warmthOf } from '../warmth.ts';
+import { beesFly, beesOut, frostKills, warmthOf } from '../warmth.ts';
+import { keepingBeesIn } from '../wind.ts';
 import { tileIndex, type FieldBuilding, type GameState, type HiveBuilding, type MachineBuilding } from '../state.ts';
 import { derived, isGuarded, isPollinated, sprinklersOf } from './layout.ts';
 import { changeSoil, fieldFertility } from './soil.ts';
@@ -44,7 +45,7 @@ export function runMachine(s: GameState, b: MachineBuilding, dt: number) {
 
 export function runField(s: GameState, f: FieldBuilding, dt: number) {
   const crop = CROPS[f.crop];
-  const bonus = crop.flowers && isPollinated(s, f) && beesFly(warmthOf(s)) ? POLLINATION_BONUS : 0;
+  const bonus = crop.flowers && isPollinated(s, f) && beesOut(s) ? POLLINATION_BONUS : 0;
   // Frost takes a tender crop still growing in the open; the field starts again. What it holds already is untouched.
   // A late frost does the same to the fields it lies on (the status is then set to the weather's, see hold.ts).
   if (frostKills(crop, warmthOf(s)) || frostTakes(s, f)) { f.growth = 0; f.status = 'frost'; f.need = undefined; return; }
@@ -84,6 +85,8 @@ export function runHive(s: GameState, h: HiveBuilding, dt: number) {
   if (!flowers) { h.status = 'flowers'; return; }
   if (!beesFly(warmthOf(s))) { h.status = 'cold'; h.need = undefined; return; }
   if (h.stored >= HIVE.store) { h.status = 'blocked'; h.need = 'honey'; return; }
+  // The weather keeps them in (the weather's hold, applyHolds, says so): they gather nothing.
+  if (keepingBeesIn(s.scenario, s.time)) { h.status = 'ok'; h.need = undefined; return; }
   h.growth += dt * flowers / HIVE.honeySeconds;
   h.status = 'ok';
   if (h.growth >= 1) { h.growth = 0; h.stored++; made(s, h, 'honey', 1); }

@@ -4,15 +4,16 @@ import { accessTiles, distanceTo, legLength } from '../roads.ts';
 import { buildingById, isMachine, type Building, type GameState, type Route, type Truck } from '../state.ts';
 import { members, recipeOf, missing, outputsFit, wantsCompost, takesGoods, takesNow, givesNow, passes, neighboursOf, type Link } from './goods.ts';
 import { shareOf } from './energy.ts';
-import { handsTo } from './layout.ts';
+import { exposureOf, handsTo } from './layout.ts';
 import { tileOf, garageOf, routeOf, trucksOn } from './trucks.ts';
 import { must } from '../result.ts';
 import { beesFact, henFact, warmthOf } from '../warmth.ts';
 import { coopPace, coopShade } from '../rules.ts';
-import { pushesAt } from '../events.ts';
+import { EVENTS, pushesAt } from '../events.ts';
 import { fieldPace } from './buildings.ts';
 import { causeName, readHold, truckHold } from '../hold.ts';
 import { floodHolds } from '../flood.ts';
+import { turbineInGale } from '../wind.ts';
 
 // Player-facing text: what a building or truck is doing, and what is wrong with it.
 
@@ -99,7 +100,8 @@ export function cargoText(cargo: ItemId[]) {
 /** What a truck is doing, in a few words, for the inspector; slowed by weather, it says so. */
 export function describeTruck(s: GameState, t: Truck): string {
   const hold = truckHold(s, t), what = doingOf(s, t);
-  return hold ? `${what}, slowed by the ${causeName(hold)}` : what;
+  if (!hold) return what;
+  return hold.effect === 'stopped' ? `Kept in its garage by the ${causeName(hold)} until it eases (${what.charAt(0).toLowerCase()}${what.slice(1)})` : `${what}, slowed by the ${causeName(hold)}`;
 }
 
 function doingOf(s: GameState, t: Truck): string {
@@ -134,7 +136,15 @@ function describeHold(s: GameState, b: Building): string {
   const cause = `the ${causeName(hold)}`, p = pushesAt(s.scenario, s.time);
   switch (b.type) {
     case 'solar': return `Making about ${Math.round(p.sun * 100)}% of its power: ${cause} dims the sun`;
-    case 'coop': return `${henFact(s.scenario, warmthOf(s), coopShade(s, b.x, b.y)).text} · ${cause} adds ${Math.round(p.warmth)}°C`;
+    case 'turbine': {
+      const share = turbineInGale(s, b.id, exposureOf(s, b))?.share ?? 1;
+      if (share > 0) return `Turning slowly, in gusts, making about ${Math.round(share * 100)}% of its power: what stands round it shelters it from ${cause}`;
+      return hold.kind === 'gale' ? `Stopped: ${cause} is stronger than a turbine this exposed can stand. Trees, tall buildings or higher ground beside it would keep it turning` : `Stopped: no turbine, sheltered or not, stands ${cause}`;
+    }
+    case 'hive': return `The bees stay in: ${cause} is too wild to fly in`;
+    case 'coop':
+      if (EVENTS[hold.kind].push[hold.strength]?.hens !== undefined) return hold.effect === 'stopped' ? `The hens have stopped laying: they stay in out of ${cause}` : `Laying at about ${Math.round(coopPace(s, b.x, b.y) * 100)}% of the pace: ${cause} unsettles the hens`;
+      return `${henFact(s.scenario, warmthOf(s), coopShade(s, b.x, b.y)).text} · ${cause} adds ${Math.round(p.warmth)}°C`;
     case 'field':
       if (hold.effect === 'lost') return `The growing ${CROPS[b.crop].name.toLowerCase()} is lost to ${cause}: the field starts again when it has passed`;
       return `Growing ${CROPS[b.crop].name.toLowerCase()} slowly: ${cause} adds ${Math.round(p.warmth)}°C${fieldPace(s, b).water < 1 ? ', and it has no water' : ''}`;

@@ -17,7 +17,7 @@ import { givesGoods, linksOf, recipeOf, takesGoods, wantsCompost } from '../game
 import { makes, shareOf, wants } from '../game/sim/energy.ts';
 import { fieldPace, flowersNear } from '../game/sim/buildings.ts';
 import { hollowNote } from '../game/frost.ts';
-import { beesFact, beesFly, henFact, shadeFact, warmthFact, warmthOf } from '../game/warmth.ts';
+import { beesNow, beesOut, henFact, shadeFact, warmthFact, warmthOf } from '../game/warmth.ts';
 import { runtimeOf } from '../game/runtime.ts';
 import { isStop, routeOf, routesAt } from '../game/sim/trucks.ts';
 import { describeLinks, describeStatus, describeTruck, truckProblems } from '../game/sim/describe.ts';
@@ -184,7 +184,7 @@ export class Inspector {
         stat('Growth pace', () => { const p = fieldPace(s, b); return `${pct(p.pace)} · water ${pct(p.water)}, soil ×${p.soil.toFixed(2)}, warmth ${pct(p.byWarmth)}`; });
         stat('Warmth', () => `${Math.round(warmthOf(s))}°C: ${warmthFact(CROPS[b.crop], warmthOf(s)).text.replace(/^[^:]*: /, '')} (comfortable ${CROPS[b.crop].comfort.low}–${CROPS[b.crop].comfort.high}°C)`);
         if (hollowNote(s, b)) stat('Frost hollow', () => hollowNote(s, b) ?? '');
-        stat('Harvest', () => `${CROPS[b.crop].yield}${CROPS[b.crop].flowers && isPollinated(s, b) && beesFly(warmthOf(s)) ? ` + ${POLLINATION_BONUS} (bees)` : ''} ${fieldPace(s, b).pace <= 0 ? ', not growing now' : ` every ${Math.round(CROPS[b.crop].grow / fieldPace(s, b).pace)} s`}`);
+        stat('Harvest', () => `${CROPS[b.crop].yield}${CROPS[b.crop].flowers && isPollinated(s, b) && beesOut(s) ? ` + ${POLLINATION_BONUS} (bees)` : ''} ${fieldPace(s, b).pace <= 0 ? ', not growing now' : ` every ${Math.round(CROPS[b.crop].grow / fieldPace(s, b).pace)} s`}`);
         stat('Waiting to go', () => `${b.stored} of ${FIELD.store}`);
         stat('Compost', () => `${wantsCompost(s, b) ? 'takes it now' : 'none needed'} · below soil ${FIELD.compostBelow}`);
         break;
@@ -192,7 +192,7 @@ export class Inspector {
       case 'hive':
         stat('Flowering fields', () => `${flowersNear(s, b)} (up to ${HIVE.maxFlowers})`);
         stat('Next honey', () => pct(b.growth)); bar(() => b.growth);
-        stat('Bees', () => beesFact(warmthOf(s)).text.replace(/^Bees: /, ''));
+        stat('Bees', () => beesNow(s).text.replace(/^Bees: /, ''));
         stat('Honey waiting', () => `${b.stored} of ${HIVE.store}`);
         break;
       case 'silo': {
