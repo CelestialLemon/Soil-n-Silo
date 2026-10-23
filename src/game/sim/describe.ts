@@ -150,8 +150,8 @@ function describeHold(s: GameState, b: Building): string {
     case 'coop':
       if (EVENTS[hold.kind].push[hold.strength]?.hens !== undefined) {
         if (hold.effect === 'stopped') return `The hens have stopped laying: they stay in out of ${cause}`;
-        const pace = `Laying at about ${Math.round(coopPace(s, b.x, b.y) * 100)}% of the pace`;
-        return p.warmth < 0 ? `${pace}: ${cause} (${Math.round(warmthOf(s))}°C)` : `${pace}: ${cause} unsettles the hens`;
+        const pace = Math.round(coopPace(s, b.x, b.y) * 100);
+        return p.warmth < 0 ? `Hens laying at about ${pace}% speed: ${cause} (${Math.round(warmthOf(s))}°C)` : `Laying at about ${pace}% of the pace: ${cause} unsettles the hens`;
       }
       return `${henFact(s.scenario, warmthOf(s), coopShade(s, b.x, b.y), p.hens).text} · ${cause} adds ${Math.round(p.warmth)}°C`;
     case 'field':

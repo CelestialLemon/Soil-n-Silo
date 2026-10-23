@@ -5,9 +5,9 @@ import { DAY_SECONDS, POWER, type BuildingId } from '../src/game/data.ts';
 import { allowed, EVENTS, endOf, eventsOf, pushesAt, timeOf, type EventKind, type Strength, type WeatherEvent } from '../src/game/events.ts';
 import { eventIndex, readHold, truckHold } from '../src/game/hold.ts';
 import { iceOf, mapIce, OPEN_REACH, runsAt, frozenBank } from '../src/game/ice.ts';
-import { TERRAIN } from '../src/game/map.ts';
+import { generateLand, TERRAIN } from '../src/game/map.ts';
 import { coopPace, wheelSite } from '../src/game/rules.ts';
-import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
+import { SANDBOX, scenarioById, type Scenario } from '../src/game/scenarios.ts';
 import { climateOf, type Season } from '../src/game/seasons.ts';
 import { sunAt, windAt } from '../src/game/sim/clock.ts';
 import { describeStatus } from '../src/game/sim/describe.ts';
@@ -127,6 +127,24 @@ test('hens in a cold snap are marked as slowed by it', () => {
   assert.equal(coop.status, 'weather');
   assert.deepEqual(readHold(coop.need), { kind: 'coldSnap', strength: 'ordinary', effect: 'slowed' });
   assert.match(describeStatus(s, coop), /^Hens laying at about \d+% speed: the cold snap/);
+});
+
+test('the drawn ice is where the rules freeze: the land the view reads (with its country) agrees with the map\'s river, falls open', () => {
+  const sc = scenarioById('r3-3');
+  assert.ok(sc);
+  const margin = 12, land = generateLand(sc, margin), map = newGame(sc).map;
+  const river = new Uint8Array(land.width * land.height);
+  for (let i = 0; i < river.length; i++) river[i] = land.flow[i * 2] !== 0 || land.flow[i * 2 + 1] !== 0 ? 1 : 0;
+  const seen = iceOf({ width: land.width, height: land.height, river, level: (i) => land.corner[i * 4] }), rules = mapIce(map);
+  let rivers = 0, open = 0;
+  for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
+    const at = (y + margin) * land.width + x + margin, i = y * map.width + x;
+    if (!rules.bank[i]) { assert.equal(seen.bank[at], 0, `land at ${x},${y}`); continue; }
+    rivers++; open += rules.open[i];
+    assert.equal(seen.open[at], rules.open[i], `open at ${x},${y}`);
+    assert.equal(seen.bank[at], rules.bank[i], `bank at ${x},${y}`);
+  }
+  assert.ok(rivers > 0 && open > 0 && open < rivers, `${open} of ${rivers} river tiles are open`);
 });
 
 test('the river\'s ice: open at a fall and one tile round it, in from the banks elsewhere', () => {
@@ -332,5 +350,5 @@ test('the coop\'s card and its line tell the hens\' real pace in a cold snap', (
   const pace = Math.round(coopPace(s, 4, 4) * 100);
   assert.ok(pace < 50, `${pace}`);
   assert.match(describeStatus(s, coop), new RegExp(`about ${pace}% speed`));
-  assert.ok(henFact(s.scenario, warmthOf(s), 0, pushesAt(s.scenario, s.time).hens).text.includes('cold snap'));
+  assert.ok(henFact(s.scenario, warmthOf(s), 0, pushesAt(s.scenario, s.time).hens).text.includes('the weather slows them'));
 });

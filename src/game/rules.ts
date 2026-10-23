@@ -1,7 +1,6 @@
 import { pushesAt } from './events.ts';
 import { ANIMALS, BUILDINGS, FIELD, HIVE, POWER, type BuildingId, type CropDef } from './data.ts';
 import { dryPace, henPace, warmthOf, warmthPace } from './warmth.ts';
-import { pushesAt } from './events.ts';
 import { mapIce } from './ice.ts';
 import { TERRAIN } from './map.ts';
 import { baseLevel, centreLevel, corners, joins, MAX_LEVEL, SIDES, sideOf, spanOf, STEEP } from './relief.ts';

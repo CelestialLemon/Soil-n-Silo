@@ -8,7 +8,7 @@ import { WATER_Y } from './terrain.ts';
 // The frozen river: one renderer fluid layer of ice (a second water surface a hair above the baked river) over the river's quiet
 // stretches, grown inward from the banks as a cold snap sets in and melted back as it passes. The cells change only when the ice
 // moves a tile, a few times as it forms and melts; a fall and the water just below it stay open (ice.ts: the same grid the rules read, so
-// the wheels beside open water are the ones that turn). The river is drawn on the whole land, the country round the map too.
+// the wheels beside open water are the ones that turn). It is drawn on the whole land (the country round the map too), but only where the rules freeze the river: never over a fall.
 
 /** The ice stands this much (m) above the water's own surface (a level's height plus WATER_Y), so the two never fight over a pixel (the renderer's least is 2 cm). */
 const LIFT = 0.03;

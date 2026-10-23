@@ -576,7 +576,8 @@ event only once it starts: in the sky and as its name on the weather chip.
   Drawn as a white dithered sheet over the grass of the map and the ring of country drawn with it (`world/snowView.ts`), under a field's raised
   soil so fields stay dark, and roofs go white by tint (`WorldView.snow`: ×0.55 of the cover on every building, ×0.9 of the panel snow on a panel).
 - **The frozen river** is drawn with a renderer fluid layer (`world/iceView.ts`, `FLUIDS.ice` a hair over the baked water), grown inward
-  from the banks as the ice forms and melted back, over the whole river on the land.
+  from the banks as the ice forms and melted back. It covers only what the rules freeze: the river's quiet stretches, on the land too
+  (the country round the map). A fall and the water one tile round it stay open, so the wheels that keep turning stand by open water.
 - **The guide** has a page for each, and the wheel's placement card says whether it freezes in a winter's cold snap.
 
 ### The valley's look by season
