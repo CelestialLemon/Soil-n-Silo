@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { place } from '../src/game/build.ts';
+import { isFlooded } from '../src/game/flood.ts';
+import { TERRAIN } from '../src/game/map.ts';
 import { DAY_SECONDS, START_HOUR, type CropId } from '../src/game/data.ts';
 import { clearWeather, EVENTS, rollEvents, startEvent, timeOf, type Strength, type WeatherEvent } from '../src/game/events.ts';
 import { placement } from '../src/game/forecast.ts';
@@ -237,3 +239,23 @@ test('late frost is for random commissions: spring only, at night, and not in th
 });
 
 function endOf(e: WeatherEvent) { return e.start + e.length; }
+
+test('a field the river floods on a night of frost is lost to the flood, and the cards tell of both', () => {
+  const flood: WeatherEvent = { kind: 'flood', strength: 'ordinary', start: timeOf(3, 20), length: 30 * HOUR };
+  const s = game('spring', [frost('severe', 3, 21, 9), flood], timeOf(4, 1));
+  // A river down the column x = 8, with the plane running down to it from the east.
+  for (let y = 0; y < 40; y++) s.map.terrain[y * 40 + 8] = TERRAIN.water;
+  touchRelief(s);
+  const f = field(s, 2, 6, 'tomato');
+  assert.ok(isFlooded(s, f) && frostTakes(s, f), 'the water and the frost both lie on it');
+  advance(s, 10);
+  assert.equal(f.growth, 0);
+  assert.equal(f.status, 'weather');
+  assert.equal(readHold(f.need)?.kind, 'flood', 'the flood, which stops the whole field, is the one it names');
+  assert.match(describeStatus(s, f), /Under water/);
+  // After the flood has drained, the frost still holds the crop.
+  s.time = endOf(flood) + HOUR;
+  assert.ok(!isFlooded(s, f));
+  const card = placement(s, 'field', 2, 12, { crop: 'tomato' }).facts.map((x) => x.label);
+  assert.ok(card.includes('Floods') && card.includes('Frost hollow'), `both facts on the card: ${card.join(', ')}`);
+});
