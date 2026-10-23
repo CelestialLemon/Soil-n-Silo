@@ -1,5 +1,5 @@
 import { DAY_SECONDS, START_HOUR } from '../data.ts';
-import { lookAt, pushesAt } from '../events.ts';
+import { lookAt, pushesAt, type Haze } from '../events.ts';
 import { hash2 } from '../rng.ts';
 import { type Scenario } from '../scenarios.ts';
 import { type GameState } from '../state.ts';
@@ -19,6 +19,8 @@ export interface Weather {
   cloud: number;
   /** How warm the light is, 0–1 (a heat wave). For the look only. */
   heat: number;
+  /** The haze on the ground (a fog, a dust storm), thickest first; null when there is none. For the look only. */
+  haze: Haze | null;
 }
 
 /** The lengths, in game hours, of the spells each condition comes in. */
@@ -68,7 +70,7 @@ export const windShare = (sc: Scenario, time: number) => 1 - CALM_DROP * calmAt(
 export function weatherAt(sc: Scenario, time: number): Weather {
   const look = lookAt(sc, time), precip = Math.max(precipAt(sc, time), look.precip >= RAIN_FROM ? look.precip : 0), cloud = Math.max(cloudAt(sc, time), look.cloud, Math.min(1, precip * 1.5));
   const sky: Sky = precip > 0 ? (sc.climate.season === 'winter' ? 'snow' : 'rain') : cloud >= CLOUDY_FROM ? 'cloudy' : 'clear';
-  return { sky, precip, cloud, heat: look.heat };
+  return { sky, precip, cloud, heat: look.heat, haze: look.haze };
 }
 
 /** The weather now in a game (for the HUD chip and the look). */

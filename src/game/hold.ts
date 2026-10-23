@@ -1,4 +1,5 @@
 import { activeEvents, EVENT_KINDS, EVENTS, eventName, feltPush, STRENGTHS, type Active, type EventKind, type Lever, type Shape, type Strength } from './events.ts';
+import { dustTakes } from './dust.ts';
 import { floodHolds, floodUnder } from './flood.ts';
 import { frostTakes } from './frost.ts';
 import { coopPace } from './rules.ts';
@@ -19,8 +20,8 @@ import { garaging, keepingBeesIn, TURBINE_WEAK, turbineInGale } from './wind.ts'
 // status with `holdNeed`, and everything else reads it back with `readHold`. The holds that exist now are found here
 // (`buildingHold`, `truckHold`); each event in 2.4–2.8 adds its own.
 
-/** What weather does to a building or truck: stops it, slows it, makes it give less (a generator), or takes what it grows. */
-export const EFFECTS = ['stopped', 'slowed', 'weak', 'lost'] as const;
+/** What weather does to a building or truck: stops it, slows it, makes it give less (a generator), takes what it grows, or wears its soil away. */
+export const EFFECTS = ['stopped', 'slowed', 'weak', 'lost', 'eroded'] as const;
 export type Effect = typeof EFFECTS[number];
 
 /** The cause of a hold. */
@@ -42,7 +43,7 @@ export const causeName = (h: Pick<Hold, 'kind' | 'strength'>) => eventName(h.kin
 /** The shape of the marker for a hold's `need`: its event's own (a diamond where the cause is unknown). */
 export const holdShape = (need: string | undefined): Shape => EVENTS[readHold(need)?.kind ?? 'fog'].shape ?? 'diamond';
 
-const WORD: Record<Effect, string> = { stopped: 'Stopped', slowed: 'Slowed', weak: 'Weak', lost: 'Lost' };
+const WORD: Record<Effect, string> = { stopped: 'Stopped', slowed: 'Slowed', weak: 'Weak', lost: 'Lost', eroded: 'Losing soil' };
 
 /** A hold as a pill's words: "Stopped · gale". */
 export const holdLabel = (h: Hold) => `${WORD[h.effect]} · ${causeName(h)}`;
@@ -129,11 +130,15 @@ export function buildingHold(s: GameState, b: Building, active: readonly Active[
       const w = warmthOf(s), calm = w - (feltPush(heat, 'warmth') ?? 0);
       return coopPace(s, b.x, b.y, w) <= coopPace(s, b.x, b.y, calm) * SLOW_BELOW ? holdOfEvent(heat, 'slowed') : null;
     }
-    // A late frost takes the tender crop a field lies in the frost with (it starts again); a field grows slower in a heat wave's heat, a good deal slower without water.
+    // A late frost takes the tender crop a field lies in the frost with (it starts again); a dust storm strips the soil of one with no windbreak; a field grows slower in a heat wave's heat, a good deal slower without water.
     case 'field': {
       const frost = frostTakes(s, b);
       if (frost) return holdOfEvent(frost, 'lost');
-      const heat = b.status === 'ok' || b.status === 'dry' ? warming(active) : null;
+      const running = b.status === 'ok' || b.status === 'dry';
+      // A dust storm lifts the soil off a field with no windbreak (dust.ts).
+      const dust = running ? dustTakes(s, b) : null;
+      if (dust) return holdOfEvent(dust, 'eroded');
+      const heat = running ? warming(active) : null;
       if (!heat) return null;
       const w = warmthOf(s);
       return fieldPace(s, b, w).pace <= fieldPace(s, b, w - (feltPush(heat, 'warmth') ?? 0)).pace * SLOW_BELOW ? holdOfEvent(heat, 'slowed') : null;

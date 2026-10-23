@@ -12,6 +12,7 @@ import { makes, shareOf, wants } from './sim/energy.ts';
 import { wattsOf } from './sim/layout.ts';
 import { describeLinks } from './sim/describe.ts';
 import { canFlood, floodsAt, isFlooded } from './flood.ts';
+import { dustComes, dustFor } from './dust.ts';
 import { frostComes, frostHits, inHollow } from './frost.ts';
 import { centreLevel } from './relief.ts';
 import { beesNow, beesOut, shadeFact, warmthFact, warmthOf } from './warmth.ts';
@@ -81,6 +82,8 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         const HOUR = DAY_SECONDS / 24;
         let growth = 0, later = soil;
         for (let t = 0; t < SOIL_AHEAD; t += HOUR) {
+          // A dust storm blowing over an unguarded field takes its soil (the hour's wind, at the hour's middle).
+          if (!guarded) later = Math.max(0, later - (dustFor(s.scenario, s.time + t + HOUR / 2)?.rate ?? 0) * Math.min(1, (SOIL_AHEAD - t) / HOUR));
           // A late frost on the field takes what has grown (the field starts again) and nothing grows while it bites.
           if (frostHits(s, set.crop ?? 'wheat', x, y, s.time + t)) { growth = 0; continue; }
           growth += Math.min(HOUR, SOIL_AHEAD - t) * paceOf(waterAtTime(s.time + t), later, crop, warmthOf(s, s.time + t)).pace / crop.grow;
@@ -93,6 +96,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         const warm = warmthFact(crop, warmthOf(s));
         facts.push({ label: 'Warmth', value: `${Math.round(warmthOf(s))}°C`, sub: warm.text.slice(warm.text.indexOf(': ') + 2), tone: warm.tone === 'bad' ? 'bad' : undefined });
         if (frostComes(s) && inHollow(s, x, y)) facts.push({ label: 'Frost hollow', value: 'yes', sub: crop.tender ? 'late frost settles here and takes a tender crop' : 'late frost settles here; a hardy crop is unharmed', tone: crop.tender ? 'bad' : undefined });
+        if (dustComes(s)) facts.push({ label: 'Dust storm', value: guarded ? 'guarded' : 'exposed', sub: guarded ? 'trees or beans beside it break the wind' : 'a dust storm lifts its soil; a tree, sapling or bean field beside it would guard it', tone: guarded ? 'good' : 'bad' });
         if (slopes) facts.push({ label: 'Slope', value: `${slopes} of 9 tiles`, sub: `wear up to ${fmt1(1 + (guarded ? FIELD.erosionGuarded : FIELD.erosion))}× as fast${guarded ? '; trees or beans beside it help' : ''}`, tone: guarded ? undefined : 'bad' });
         break;
       }

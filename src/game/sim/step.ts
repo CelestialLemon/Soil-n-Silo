@@ -1,5 +1,6 @@
 import { BUILDINGS, ITEMS, SAPLING_SECONDS, TICK } from '../data.ts';
 import { noteTrucks } from '../fleet.ts';
+import { blowDust } from '../dust.ts';
 import { floodHolds, syncFlood } from '../flood.ts';
 import { tickFlows } from '../flows.ts';
 import { TERRAIN } from '../map.ts';
@@ -35,6 +36,7 @@ export function tick(s: GameState) {
   const dt = TICK;
   s.time += dt;
   syncFlood(s, dt);
+  blowDust(s, dt);
   const sun = sunAt(s.scenario, s.time), wind = windAt(s.scenario, s.time);
   countCharging(s);
   balancePower(s, sun, wind, dt);

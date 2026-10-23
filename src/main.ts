@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObject } from 'pixel3d-renderer';
+import { DEFAULT_WEATHER, lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PixelObject } from 'pixel3d-renderer';
 import {
   addStop, canPlace, canReshape, type Groundwork, digArea, levelledFor, type Dig, clearPrice, earthPrice, EARTHWORK_NAMES, EARTHWORKS, messageOf, place, placePrice, priceOf, remember, remove, removeAt, reshape, settingFor, settingName, stepSetting, type Setting,
 } from './game/build.ts';
@@ -624,7 +624,9 @@ async function play(initial: GameState) {
   // ---- Loop ----
   let last = performance.now(), time = 0, frameNo = 0, lookHour = Number.NaN, lookCloud = 0, lookPrecip = 0, lookHeat = 0, sinceSave = 0;
   let wasComplete = state.completedAt !== null;
-  let skyEased: { cloud: number; wind: number; precip: number } | null = null;
+  let skyEased: { cloud: number; wind: number; precip: number; haze: number; hazeTop: number } | null = null;
+  /** The colour of the haze last drawn, kept while it thins out. */
+  let hazeColor = DEFAULT_WEATHER.hazeColor;
   /** What fell last, so a fading shower keeps its kind while it thins out. */
   let fallKind: 'rain' | 'snow' = 'rain';
   /** Seconds the drawn cloud and wind take to follow the game's; the lean the game's full wind gives the trees (renderer 0 to 3); the gusts in still air and what the wind adds. */
@@ -657,7 +659,12 @@ async function play(initial: GameState) {
     // The sky's cloud cover and the wind in the trees follow the weather now, eased over a few seconds (a wind change applies
     // at once in the renderer). Rain and snow fall on the same easing, thickening and thinning with the spell.
     const sky = weatherNow(state), windNow = windAt(state.scenario, state.time), ease = 1 - Math.exp(-dt / EASE_SECONDS);
-    if (!skyEased) { skyEased = { cloud: sky.cloud, wind: windNow, precip: sky.precip }; } else { skyEased.precip += (sky.precip - skyEased.precip) * ease; skyEased.cloud += (sky.cloud - skyEased.cloud) * ease; skyEased.wind += (windNow - skyEased.wind) * ease; }
+    const hazeNow = sky.haze, hazeAmount = hazeNow?.amount ?? 0, hazeTopNow = hazeNow?.top ?? skyEased?.hazeTop ?? DEFAULT_WEATHER.hazeTop;
+    if (!skyEased) { skyEased = { cloud: sky.cloud, wind: windNow, precip: sky.precip, haze: hazeAmount, hazeTop: hazeTopNow }; } else {
+      skyEased.precip += (sky.precip - skyEased.precip) * ease; skyEased.cloud += (sky.cloud - skyEased.cloud) * ease; skyEased.wind += (windNow - skyEased.wind) * ease;
+      skyEased.haze += (hazeAmount - skyEased.haze) * ease; skyEased.hazeTop += (hazeTopNow - skyEased.hazeTop) * ease;
+    }
+    if (hazeNow) hazeColor = hazeNow.color;
     if (sky.sky === 'rain' || sky.sky === 'snow') fallKind = sky.sky;
     const fall = fallIntensity(skyEased.precip);
     renderer.setWeather({
@@ -666,6 +673,8 @@ async function play(initial: GameState) {
       cloudCover: Math.min(1, Math.max(0, skyEased.cloud)),
       wind: Math.min(3, Math.max(0, skyEased.wind * WIND_LEAN)),
       gusts: Math.min(3, Math.max(0, GUSTS_CALM + skyEased.wind * GUSTS_PER_WIND)),
+      // A fog or a dust storm lies on the ground (the thickness eases with the event's ramp; a fog thins as the morning lifts it, events.ts).
+      haze: Math.min(1, Math.max(0, skyEased.haze)), hazeColor, hazeTop: skyEased.hazeTop,
     });
     // The hour's look, greyed by the weather now; set again when the hour or the weather has moved enough to show.
     const weather = sky;

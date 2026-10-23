@@ -12,6 +12,7 @@ import { coopPace, coopShade } from '../rules.ts';
 import { EVENTS, pushesAt } from '../events.ts';
 import { fieldPace } from './buildings.ts';
 import { panelShare } from '../snow.ts';
+import { fieldFertility } from './soil.ts';
 import { causeName, readHold, truckHold } from '../hold.ts';
 import { floodHolds } from '../flood.ts';
 import { turbineInGale } from '../wind.ts';
@@ -155,6 +156,7 @@ function describeHold(s: GameState, b: Building): string {
       }
       return `${henFact(s.scenario, warmthOf(s), coopShade(s, b.x, b.y), p.hens).text} · ${cause} adds ${Math.round(p.warmth)}°C`;
     case 'field':
+      if (hold.effect === 'eroded') return `Losing soil to ${cause}: no tree, sapling or bean field beside it breaks the wind. Fertility ${Math.round(fieldFertility(s, b))}`;
       if (hold.effect === 'lost') return `The growing ${CROPS[b.crop].name.toLowerCase()} is lost to ${cause}: the field starts again when it has passed`;
       return `Growing ${CROPS[b.crop].name.toLowerCase()} slowly: ${cause} adds ${Math.round(p.warmth)}°C${fieldPace(s, b).water < 1 ? ', and it has no water' : ''}`;
     default: return `${hold.effect[0].toUpperCase()}${hold.effect.slice(1)} by ${cause}`;
