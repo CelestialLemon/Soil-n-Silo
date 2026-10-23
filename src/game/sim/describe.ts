@@ -12,6 +12,7 @@ import { coopPace, coopShade } from '../rules.ts';
 import { pushesAt } from '../events.ts';
 import { fieldPace } from './buildings.ts';
 import { causeName, readHold, truckHold } from '../hold.ts';
+import { floodHolds } from '../flood.ts';
 
 // Player-facing text: what a building or truck is doing, and what is wrong with it.
 
@@ -142,6 +143,8 @@ function describeHold(s: GameState, b: Building): string {
 /** One line on what a building is doing, for the hover and the inspector. */
 export function describeStatus(s: GameState, b: Building): string {
   const def = BUILDINGS[b.type];
+  // Water on its ground (said at once, though its status is the last step's: the water may have just come, or a bank gone).
+  if (floodHolds(s, b)) return b.type === 'field' ? `Under water: the growing ${CROPS[b.crop].name.toLowerCase()} is lost, the field starts again once it drains` : 'Under water: stopped until it drains. Nothing is lost';
   switch (b.status) {
     case 'input': {
       const lack = isMachine(b) ? missing(b, recipeOf(b)) : null;

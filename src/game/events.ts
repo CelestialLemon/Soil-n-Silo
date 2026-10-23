@@ -116,6 +116,10 @@ export interface EventInfo {
   holds?: string;
   /** What it brings next: a flood follows its storm, at the same strength. */
   then?: EventKind;
+  /** The seasons `then` follows in (default: every one). Needs the season to be known (`eventChain`), else nothing follows. */
+  thenIn?: readonly Season[];
+  /** For a flood: how many levels above its normal surface the water stands at the peak, by strength (flood.ts). */
+  flood?: Partial<Record<Strength, number>>;
 }
 
 /**
@@ -128,6 +132,8 @@ export const EVENTS: Record<EventKind, EventInfo> = {
     name: 'Thunderstorm', hours: [10, 14], seasons: { spring: 1, summer: 1 }, severe: true,
     odds: { stormy: 2.5, wet: 1.5, hot: 1.2, mild: 0.7, dry: 0.4 }, heavyRain: true, look: { cloud: 1, precip: 0.9 },
     shape: 'bolt', holds: 'solar panels weak under the cloud',
+    // In spring heavy rain swells the river: a flood follows the storm (at its strength). In summer the ground drinks it.
+    then: 'flood', thenIn: ['spring'],
     // Heavy rain waters every field and the sprinklers rest; little sun; gusts, stronger in a severe one.
     push: { ordinary: { rain: 0.9, sun: 0.6, wind: 0.45 }, severe: { rain: 1, sun: 0.4, wind: 0.7 } },
   },
@@ -174,6 +180,9 @@ export const EVENTS: Record<EventKind, EventInfo> = {
   flood: {
     name: 'Flood', hours: [24, 48], seasons: { spring: 1 }, severe: true,
     odds: { highRiver: 3, wet: 2, stormy: 1.5, mild: 0.6, dry: 0.2 }, push: {}, look: { cloud: 0.5, precip: 0.2 },
+    shape: 'wave', holds: 'buildings under the water stopped, fields losing their crop',
+    // The river stands 1 level above its surface at the peak, 2 in a severe one (a hurricane's flood is the severe one): see flood.ts.
+    flood: { ordinary: 1, severe: 2 },
   },
   lateFrost: {
     name: 'Late frost', hours: [8, 10], begins: [20, 23], seasons: { spring: 1 }, severe: true,
@@ -312,11 +321,20 @@ export const hoursOf = (kind: EventKind, strength: Strength = 'ordinary'): reado
 /** The hours an event of a kind lasts when nothing says: the middle of its range. */
 const usualHours = (kind: EventKind, strength: Strength) => { const h = hoursOf(kind, strength); return (h[0] + h[1]) / 2; };
 
-/** An event and what follows it (a flood after a tropical storm) starting at `start`, each lasting `hours` (default: the kind's usual). */
-export function eventChain(kind: EventKind, strength: Strength, start: number, hours?: number): WeatherEvent[] {
+/** What follows an event of a kind: its `then`, in the seasons it follows in (nothing in a season not known, if it is limited to some). */
+const followingOf = (kind: EventKind, season?: Season): EventKind | undefined => {
+  const e = EVENTS[kind];
+  return !e.thenIn || (season !== undefined && e.thenIn.includes(season)) ? e.then : undefined;
+};
+
+/**
+ * An event and what follows it (a flood after a tropical storm, or after a spring thunderstorm) starting at `start`, each lasting
+ * `hours` (default: the kind's usual). `season` is the commission's, for what follows only in some seasons.
+ */
+export function eventChain(kind: EventKind, strength: Strength, start: number, hours?: number, season?: Season): WeatherEvent[] {
   const out: WeatherEvent[] = [];
   let at = snap(start);
-  for (let k: EventKind | undefined = kind; k; k = EVENTS[k].then) {
+  for (let k: EventKind | undefined = kind; k; k = followingOf(k, season)) {
     const length = snap((out.length ? usualHours(k, strength) : hours ?? usualHours(k, strength)) * HOUR);
     out.push({ kind: k, strength, start: at, length });
     at += length;
@@ -326,11 +344,12 @@ export function eventChain(kind: EventKind, strength: Strength, start: number, h
 
 /**
  * An event placed by hand, for a campaign commission: "a gale on day 4, from 10:00" is `eventOn(4, 10, 'gale')`. It lasts the
- * kind's usual hours unless `hours` says. What follows it comes too (a tropical storm's flood), so the result is a list.
+ * kind's usual hours unless `hours` says. What follows it comes too (a tropical storm's flood), so the result is a list. Give the
+ * commission's `season` for an event whose follower comes only in some seasons (a thunderstorm's flood, in spring).
  */
-export function eventOn(day: number, hour: number, kind: EventKind, strength: Strength = 'ordinary', hours?: number): WeatherEvent[] {
+export function eventOn(day: number, hour: number, kind: EventKind, strength: Strength = 'ordinary', hours?: number, season?: Season): WeatherEvent[] {
   if (strength === 'severe' && !EVENTS[kind].severe) throw new Error(`${EVENTS[kind].name} has no severe form`);
-  return eventChain(kind, strength, timeOf(day, hour), hours);
+  return eventChain(kind, strength, timeOf(day, hour), hours, season);
 }
 
 // ---- Random commissions ----
@@ -387,7 +406,7 @@ export function rollEvents(seed: number, difficulty: 1 | 2 | 3, climate: Climate
   // Each event with what follows it is one block, laid out in a random order.
   const kinds = [...bad, ...good].map((kind, i) => ({ kind, strength: strengths[i], hours: hoursOf(kind, strengths[i]) }));
   for (let i = kinds.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [kinds[i], kinds[j]] = [kinds[j], kinds[i]]; }
-  const blocks = kinds.map((k) => eventChain(k.kind, k.strength, 0, Math.round((k.hours[0] + r() * (k.hours[1] - k.hours[0])) * 2) / 2));
+  const blocks = kinds.map((k) => eventChain(k.kind, k.strength, 0, Math.round((k.hours[0] + r() * (k.hours[1] - k.hours[0])) * 2) / 2, climate.season));
   const span = (b: WeatherEvent[]) => b.reduce((n, e) => n + e.length, 0);
   const from = timeOf(FIRST_DAY, 0), end = Math.max(horizon, timeOf(FIRST_DAY + MIN_HORIZON_DAYS, 0)), gap = GAP_HOURS * HOUR;
   // Drop what doesn't fit, then spread the free time between and around the blocks.
@@ -447,7 +466,7 @@ export function startEvent(s: GameState, kind: EventKind, strength: Strength = '
   if (strength === 'severe' && !EVENTS[kind].severe) return err(`${EVENTS[kind].name} has no severe form.`);
   clearSky(s);
   // It begins at exactly this moment (chains keep to the half hour), so it is under way at once even while the game is paused.
-  const chain = eventChain(kind, strength, s.time), shift = s.time - chain[0].start;
+  const chain = eventChain(kind, strength, s.time, undefined, s.scenario.climate.season), shift = s.time - chain[0].start;
   for (const e of chain) e.start += shift;
   s.scenario.events.push(...chain);
   return ok(chain);

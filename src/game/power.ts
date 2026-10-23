@@ -1,4 +1,5 @@
 import { BUILDINGS } from './data.ts';
+import { isFlooded } from './flood.ts';
 import { pylonReaches, pylonsLink } from './rules.ts';
 import { layoutOf, sizeOf, type Building, type GameState } from './state.ts';
 import { runtimeOf } from './runtime.ts';
@@ -34,7 +35,8 @@ export function networks(s: GameState): Networks {
   const rt = runtimeOf(s);
   let n = rt.networks;
   if (n && n.layout === layout) return n;
-  const pylons = s.buildings.filter((b) => BUILDINGS[b.type].grid === 'link');
+  // A building under flood water is out of the grid: a flooded pylon links nothing.
+  const pylons = s.buildings.filter((b) => BUILDINGS[b.type].grid === 'link' && !isFlooded(s, b));
   const parent = pylons.map((_, i) => i);
   const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
   for (let i = 0; i < pylons.length; i++) for (let j = i + 1; j < pylons.length; j++) {
@@ -51,7 +53,7 @@ export function networks(s: GameState): Networks {
   const of = new Map<number, Network>();
   for (const p of pylons) of.set(p.id, must(byRoot.get(find(pylons.indexOf(p))), 'network'));
   for (const b of s.buildings) {
-    if (!POWERED(b)) continue;
+    if (!POWERED(b) || isFlooded(s, b)) continue;
     const i = pylons.findIndex((p) => pylonReaches(b, p.x, p.y));
     if (i < 0) continue;
     const net = must(byRoot.get(find(i)), 'network');

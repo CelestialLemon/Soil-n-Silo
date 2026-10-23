@@ -294,7 +294,7 @@ that it is limited to, whether it can be severe, its look and its `push`:
 | Steady breeze (good) | summer | dry ×1.2, hot ×1.2, stormy ×0.5 | 20–28 h | no |
 | Gale | autumn | gales ×3, stormy ×2, mild ×0.4 | 20–28 h | yes |
 | Tropical storm | summer (×0.25, late), autumn (×0.5) | stormy ×3, wet ×1.5, gales ×1.2, hot ×0.5, mild ×0.3, dry ×0.1 | 24–48 h | yes: the hurricane |
-| Flood | spring; also after a tropical storm | high river ×3, wet ×2, stormy ×1.5, mild ×0.6, dry ×0.2 | 24–48 h | yes |
+| Flood | spring; also after a spring thunderstorm and after a tropical storm | high river ×3, wet ×2, stormy ×1.5, mild ×0.6, dry ×0.2 | 24–48 h | yes |
 | Late frost | spring, from 20:00–23:00 | dry ×1.5, wet ×0.8, gales ×0.5, mild ×0.4, hot ×0.2 | 8–10 h | yes |
 | Cold snap | winter | hard ×2.5, gales ×1, mild ×0.3 | 24–48 h | yes |
 | Blizzard | winter, hard character only | | 24–48 h | yes |
@@ -305,7 +305,7 @@ hurricane's flood is the severe one): the one case where events touch, and the f
 level's events.
 
 **Events land one issue at a time.** The whole catalogue is rolled and shown, but a kind's `push` is filled in by its own issue:
-2.3 (below) the thunderstorm, heat wave, fog and the three good events; 2.4 gale, tropical storm, hurricane; 2.5 flood; 2.6 late
+2.3 (below) the thunderstorm, heat wave, fog and the three good events; 2.4 gale, tropical storm, hurricane; 2.5 (below) flood; 2.6 late
 frost; 2.7 cold snap and blizzard; 2.8 dust storm. Until its issue lands an event changes only the **look** of the sky (cloud and
 drawn rain or snow, eased in with the event's ramp; the rules do not see it), the HUD chip and the list the forecast will read.
 
@@ -326,10 +326,57 @@ drawn rain or snow, eased in with the event's ramp; the rules do not see it), th
   to ×0.1 above 34°C, and hens slow (less with trees by the coop). A warm tint lifts the light (the game-side `Look`, `greyLook`:
   `Look.heat` in the catalogue, `lookAt(...).heat`, `Weather.heat`): a warmer lit and shadow tint and a golden sky.
 - **Heavy rain.** An event may carry `heavyRain` in the catalogue (the thunderstorm), and `heavyRainEvents(scenario, time)` lists
-  those under way. This is the hook for the spring flood (2.5): a spring thunderstorm counts as heavy rain. Soft rain and the
+  those under way. A spring thunderstorm counts as heavy rain, and its flood follows it (see The flood, below). Soft rain and the
   everyday showers do not.
 - Fog's look (haze) comes with 2.9: for now it is only a greyer sky; its rules are in.
 - A severe form's length can differ from the ordinary one (`severeHours`): only the heat wave has one so far.
+
+**The flood (2.5).** The river (any water: a lake or pond spreads over its shore the same way) spreads over the low ground beside
+it for a day or two, then drains.
+
+- **When.** In spring as a flood of its own (odds in the table), at once after a spring thunderstorm (`then: 'flood', thenIn: ['spring']`
+  in its entry; the season must be known: `eventChain` and `eventOn` take it, a summer storm brings none) and after a tropical
+  storm in any season. A flood that follows a storm has the storm's strength: a hurricane's is the severe one. It lasts the
+  event's 24–48 h (a following one the usual 36 h), builds in and drains over the usual 1.5 h ramps.
+- **How high.** The catalogue's `flood` field is the levels the river stands above its own surface at the peak: **1 ordinary,
+  2 severe** (`floodLevel(event)`, the hook for 2.4's levels). `floodRise(scenario, time)` is that times the event's intensity, and
+  moves the flood through half-level **steps** (`floodStep`, the rise rounded down, so the water never stands above the rise and what it covers is wet): the covered tiles are worked out once per step and kept (`flooded`),
+  so the rules and the view read the same set, and the layout is touched when it moves (`syncFlood`).
+- **Where: height, not distance.** Every water tile is a source at its own surface (a river's reaches stand at different levels
+  either side of a fall). Water spreads tile to tile (four ways) over a tile whose ground (its centre's height, `centreLevel`) is
+  lower than the water's surface there. The surface is the source's plus the rise, **less `FALL` = 0.16 of a level for every tile
+  it has run**: floods thin out over a wide plain instead of drowning it. A flood over level ground reaches `rise / FALL` tiles
+  (about 6 for an ordinary one, 12 for a severe one); a hillside, or a **bank raised with earthworks**, stops it, and ground behind
+  a bank stays dry unless the water can go round it. Earthworks change the relief, so the reach is worked out again.
+  - *Tuned from the maps* (`tools`, the probe in the PR): without `FALL` a flood on the generator's low, flat valley floor covered
+    half to nine tenths of a map and took the start of the farm (the depot's clearing is level 0 and joins the floodplain on
+    most maps). With it, an ordinary flood covers the 15–30% of the land beside the river (up to 50% on the low maps with the river
+    near the depot: c6, c8), and a severe one 25–60%.
+- **What it does.** A field with any tile under water **loses its growing crop** (growth goes to 0 each step; the weather's hold, effect *lost*);
+  its stored harvest is untouched. Any other building with a tile under water **stops** (the weather's hold, effect *stopped*, marked with the wave shape): its progress, stock
+  and charge are kept, nothing is destroyed. It leaves the power network (a flooded pylon links nothing, panels, wheels and
+  digesters make nothing, flooded machines and sprinklers want nothing), trades nothing next door, and trucks cannot load at it.
+  The depot is not stopped (but if water stands on all its sides, trucks cannot reach it) and a sapling keeps growing.
+- **Trucks** cannot drive through water: a flooded tile is not an open road tile (`roads.ts`), so routes go round it, or wait
+  (the stop is skipped, then they are *stuck* until the water drains). A truck caught on a tile as it floods is put on the nearest
+  dry tile, as when a building goes up on its tile.
+- **Silt.** Ground the water leaves (tiles that drop out of the covered set as the flood drains) gains **`SILT` = 2 fertility**, and
+  its recovery level rises by as much (`soilBase`), capped at 100. A flood costs a field its growing crop (about half a crop on
+  average, 1.5 wheat; two points of fertility on nine tiles are worth about a seventh of that over a whole level), so silt never
+  pays for the flood, but a floodplain gets richer flood by flood.
+- **Answer.** Build higher; raise a bank. The placement card of a building in hand states, as a fact, **"Floods: level N"** on ground
+  a flood reaches (N the lowest flood level, 1 or 2; shown where the season can bring a flood, and in the sandbox).
+- **Drawn.** One renderer fluid layer (`FLUIDS.flood`, `src/world/floodView.ts`) over the covered tiles and the swollen river, each at the
+  surface the rules give it; the cells are made at each step and the water stands at the step's surface, so it climbs and drains
+  in half levels (an eighth of a metre) and shows what the rules cover (the renderer hides water behind higher ground by depth; where the smooth ground is drawn higher than
+  the rules' height, within half a level, the water is raised to cover the tile, so a tile the rules flood always shows water).
+- **Marked** as a weather hold (2.2): the flood's own `wave` shape, the card's "Under water" line, the history ribbon and the results' cost
+  follow from `buildingHold` (`hold.ts`), which reads `floodHolds` (`flood.ts`). The depot and a sapling are not held.
+- **Targets.** The bot's map is flat with no water, so a flood never reaches it. `tools/floodcost.ts` puts a river down its map near
+  the depot and plays the layouts through a spring commission's rolled events with and without the flood: a flood beside the farm
+  cost 17–24% (up to 43% at worst) with 5–7 buildings flooded. A spring commission nearly always rolls one (75% at difficulty 1,
+  98% above), so **`PAR_FACTOR` spring is a tenth higher** (mild 1.1, wet 1.2, dry 1.1, hot 1.1, gales 1.15, stormy 1.3, high river 1.15).
+  The tropical storm's flood in autumn is retuned with 2.4. The campaign has no events until 2.10, so no campaign target moved.
 
 **Levers.** An event's `push` (per strength) gives some of these levers the value they reach at full strength; the rules
 read them through `pushesAt(scenario, time)`, so an effect that is a lever is one line in the event's entry:

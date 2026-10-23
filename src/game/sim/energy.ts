@@ -1,5 +1,6 @@
 import { BUILDINGS, POWER, TICK, TRUCK, type BuildingId } from '../data.ts';
 import { pushesAt } from '../events.ts';
+import { floodHolds } from '../flood.ts';
 import { networkOf, networks } from '../power.ts';
 import { notePower, type PowerStep } from '../powerlog.ts';
 import { isMachine, type BatteryBuilding, type Building, type GameState } from '../state.ts';
@@ -103,6 +104,7 @@ export function runGarages(s: GameState) {
     if (g.type !== 'garage') continue;
     const w = want?.get(g.id) ?? 0, share = shareOf(s, g);
     g.need = undefined;
+    if (floodHolds(s, g)) { g.status = 'idle'; continue; }
     g.status = !networkOf(s, g) ? 'power' : w > 0 && share <= 0 ? 'power' : w > 0 && share < 1 ? 'lowpower' : w > 0 ? 'ok' : 'idle';
   }
 }

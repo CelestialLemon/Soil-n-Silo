@@ -1146,7 +1146,7 @@ test('a random winter commission asks for nothing the cold stops: no oil, sauce,
 test('a random commission\'s target time follows its season and character: every one has a factor, and winter is the longest', () => {
   for (const season of SEASON_IDS) for (const c of charactersOf(season)) assert.ok((PAR_FACTOR[season][c] ?? 0) >= 1, `${season} ${c} has a factor`);
   const par = (season: 'spring' | 'winter') => randomPar(2, 3, climateOf(season, 'mild'));
-  assert.equal(par('spring'), 55 * 60);
+  assert.equal(par('spring'), 65 * 60); // 57 minutes of base time, times 1.1 for a mild spring's floods, to 5 minutes
   assert.ok(par('winter') > 2 * par('spring'));
   for (let i = 0; i < 60; i++) {
     const d = (i % 3 + 1) as 1 | 2 | 3, sc = randomScenario(i, d);

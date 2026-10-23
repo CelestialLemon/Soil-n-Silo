@@ -23,12 +23,13 @@ export interface BotRun { completedAt: number | null; par: number; /** The game 
  * Plays the layout `id` (a commission id, or id:variant such as c2:next) for up to `minutes` of game time, or until the
  * commission completes, passing each line of its report to `log`.
  */
-export function playLayout(id: string, minutes = 60, log: (line: string) => void = () => {}, over: Partial<Pick<Scenario, 'climate' | 'seed'>> = {}, each?: (s: GameState) => void): BotRun {
+export function playLayout(id: string, minutes = 60, log: (line: string) => void = () => {}, over: Partial<Pick<Scenario, 'climate' | 'seed' | 'events'>> & { river?: number } = {}, each?: (s: GameState) => void): BotRun {
   // A layout may be one of several for a commission: `c2:next` plays c2. `over` plays it in another climate or on another
   // seed (the weather's rolls follow the seed), as tools/seasonfactor.ts does.
   const base = scenarioById(id.split(':')[0]);
   if (!base) throw new Error(`no commission ${id}`);
-  const sc: Scenario = { ...base, ...over };
+  const { river, ...rest } = over;
+  const sc: Scenario = { ...base, ...rest };
 
   const layout = LAYOUTS[id];
   if (!layout) throw new Error(`no bot layout for ${id} yet (have: ${Object.keys(LAYOUTS).join(', ')})`);
@@ -43,6 +44,8 @@ export function playLayout(id: string, minutes = 60, log: (line: string) => void
   // The depot in the middle of the south edge, so every layout fits (nothing has looked up the layout yet).
   s.map.depot.x = Math.floor(s.map.width / 2);
   s.buildings[0].x = s.map.depot.x;
+  // `river`: a two-tile river down the map that many tiles east of the depot (west if negative), for what floods do (tools/floodcost.ts).
+  if (river !== undefined) for (let y = 0; y < s.map.height; y++) for (let x = s.map.depot.x + river; x <= s.map.depot.x + river + 1; x++) s.map.terrain[y * s.map.width + x] = TERRAIN.water;
   const steps = layout(s.map.depot.x, s.map.depot.y);
   let next = 0;
   const fmt = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;

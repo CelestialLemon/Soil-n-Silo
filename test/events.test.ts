@@ -77,12 +77,14 @@ test('random events: seeded, by difficulty, never on day 1, never overlapping, h
     const sc = randomScenario(seed, d), ev = sc.events, id = `${sc.id} ${seasonLabel(sc)}`;
     assert.deepEqual(randomScenario(seed, d).events, ev, `${id} is the same every time`);
     assert.deepEqual(sc.events, rollEvents(seed, d, sc.climate, sc.par));
-    const bad = ev.filter((e) => !EVENTS[e.kind].good && !(e.kind === 'flood' && ev[ev.indexOf(e) - 1]?.kind === 'tropicalStorm')), good = ev.filter((e) => EVENTS[e.kind].good);
+    // A flood follows its tropical storm, or its spring thunderstorm, at once: part of that storm, not one of the level's events.
+    const followsStorm = (i: number) => ev[i].kind === 'flood' && ev[i].start === endOf(ev[i - 1] ?? ev[i]) && (ev[i - 1]?.kind === 'tropicalStorm' || (ev[i - 1]?.kind === 'thunderstorm' && sc.climate.season === 'spring'));
+    const bad = ev.filter((e, i) => !EVENTS[e.kind].good && !followsStorm(i)), good = ev.filter((e) => EVENTS[e.kind].good);
     // How many: 1 bad and 1 good; 2 bad and 1 good; 2 bad and 0–1 good (fewer only where the climate allows too few kinds).
     assert.equal(bad.length, d === 1 ? 1 : 2, id);
     assert.ok(d === 3 ? good.length <= 1 : good.length === 1, id);
     for (const e of ev) {
-      assert.ok(allowed(e.kind, sc.climate) || (e.kind === 'flood' && ev[ev.indexOf(e) - 1]?.kind === 'tropicalStorm'), `${id}: ${e.kind}`);
+      assert.ok(allowed(e.kind, sc.climate) || followsStorm(ev.indexOf(e)), `${id}: ${e.kind}`);
       assert.ok(dayOf(e.start) >= 2, `${id}: none on day 1`);
       assert.ok(endOf(e) <= Math.max(sc.par, timeOf(8, 0)) + 1e-9, `${id}: ${e.kind} ends within the level`);
       assert.ok(e.length > 0 && e.start % (HOUR / 2) === 0 && e.length % (HOUR / 2) === 0, 'on the half hour');
@@ -95,7 +97,7 @@ test('random events: seeded, by difficulty, never on day 1, never overlapping, h
     // In order, none overlapping, half a day clear except where a flood follows its storm.
     for (let i = 1; i < ev.length; i++) {
       assert.ok(ev[i].start >= ev[i - 1].start, id);
-      if (ev[i].kind === 'flood' && ev[i - 1].kind === 'tropicalStorm') { floods++; assert.equal(ev[i].start, endOf(ev[i - 1]), `${id}: the flood follows its storm`); assert.equal(ev[i].strength, ev[i - 1].strength); }
+      if (followsStorm(i)) { floods++; assert.equal(ev[i].start, endOf(ev[i - 1]), `${id}: the flood follows its storm`); assert.equal(ev[i].strength, ev[i - 1].strength); }
       else assert.ok(ev[i].start - endOf(ev[i - 1]) >= 12 * HOUR - 1e-9, `${id}: half a day clear`);
     }
   }

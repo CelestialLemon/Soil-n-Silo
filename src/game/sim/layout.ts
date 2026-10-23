@@ -1,6 +1,7 @@
 import { BUILDINGS, type BuildingId } from '../data.ts';
 import { exposureAt, guardedAt, hiveReaches, meets, sprinklerWaters, sprinklerWatts, wheelSite } from '../rules.ts';
 import { buildingAt, isMachine, layoutOf, tileIndex, type Building, type FieldBuilding, type GameState } from '../state.ts';
+import { isFlooded } from '../flood.ts';
 import { runtimeOf } from '../runtime.ts';
 
 // Derived lookups, rebuilt when the layout changes: what stands beside, waters or shades each building.
@@ -34,22 +35,27 @@ export function derived(s: GameState): Derived {
   if (d && d.layout === layout) return d;
   d = { layout, sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), watts: new Map(), guarded: new Set(), fielded: new Set(), neighbours: new Map(), joined: new Map() };
   const fields = s.buildings.filter((b): b is FieldBuilding => b.type === 'field');
+  // Under flood water a hive pollinates nothing, a sprinkler waters nothing, and a field's flowers feed no hive.
   const hives = s.buildings.filter((b) => b.type === 'hive');
-  const sprinklers = s.buildings.filter((b) => b.type === 'sprinkler');
+  const sprinklers = s.buildings.filter((b) => b.type === 'sprinkler' && !isFlooded(s, b));
+  const dryHives = hives.filter((h) => !isFlooded(s, h));
   for (const f of fields) {
     for (let y = f.y; y < f.y + 3; y++) for (let x = f.x; x < f.x + 3; x++) d.fielded.add(tileIndex(s, x, y));
-    d.sprinklers.set(f.id, sprinklers.filter((sp) => sprinklerWaters(sp.x, sp.y, f)));
-    if (hives.some((h) => hiveReaches(f, h.x, h.y))) d.pollinated.add(f.id);
+    const wet = isFlooded(s, f);
+    d.sprinklers.set(f.id, wet ? [] : sprinklers.filter((sp) => sprinklerWaters(sp.x, sp.y, f)));
+    if (!wet && dryHives.some((h) => hiveReaches(f, h.x, h.y))) d.pollinated.add(f.id);
     if (guardedAt(s, f.x, f.y)) d.guarded.add(f.id);
   }
-  for (const h of hives) d.flowers.set(h.id, fields.filter((f) => hiveReaches(f, h.x, h.y)));
+  for (const h of hives) d.flowers.set(h.id, dryHives.includes(h) ? fields.filter((f) => !isFlooded(s, f) && hiveReaches(f, h.x, h.y)) : []);
   for (const t of s.buildings) if (t.type === 'turbine') d.exposure.set(t.id, exposureAt(s, t.x, t.y));
   for (const sp of sprinklers) d.watts.set(sp.id, sprinklerWatts(s, sp.x, sp.y));
   for (const b of s.buildings) if (b.type === 'wheel') d.watts.set(b.id, wheelSite(s, b.x, b.y)?.watts ?? 0);
   for (const b of s.buildings) {
     const near = besides(s, b);
     d.neighbours.set(b.id, near);
-    d.joined.set(b.id, new Set(near.filter((n) => meets(s, b, n)).map((n) => n.id)));
+    // Goods pass only between buildings the water leaves alone.
+    const dry = !isFlooded(s, b);
+    d.joined.set(b.id, new Set(near.filter((n) => dry && !isFlooded(s, n) && meets(s, b, n)).map((n) => n.id)));
   }
   rt.derived = d;
   return d;
@@ -80,5 +86,5 @@ export const isGuarded = (s: GameState, b: Building) => derived(s).guarded.has(b
 export function handsTo(s: GameState, a: Building, b: Building) {
   const d = derived(s);
   // Only placed buildings are worked out ahead; one in hand is checked as it is.
-  return d.neighbours.get(a.id)?.includes(b) ? d.joined.get(a.id)?.has(b.id) ?? false : meets(s, a, b);
+  return d.neighbours.get(a.id)?.includes(b) ? d.joined.get(a.id)?.has(b.id) ?? false : meets(s, a, b) && !isFlooded(s, a) && !isFlooded(s, b);
 }
