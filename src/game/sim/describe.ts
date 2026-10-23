@@ -11,6 +11,7 @@ import { beesFact, henFact, warmthOf } from '../warmth.ts';
 import { coopPace, coopShade } from '../rules.ts';
 import { EVENTS, pushesAt } from '../events.ts';
 import { fieldPace } from './buildings.ts';
+import { panelShare } from '../snow.ts';
 import { causeName, readHold, truckHold } from '../hold.ts';
 import { floodHolds } from '../flood.ts';
 import { turbineInGale } from '../wind.ts';
@@ -135,16 +136,24 @@ function describeHold(s: GameState, b: Building): string {
   if (!hold) return 'Held by the weather';
   const cause = `the ${causeName(hold)}`, p = pushesAt(s.scenario, s.time);
   switch (b.type) {
-    case 'solar': return `Making about ${Math.round(p.sun * 100)}% of its power: ${cause} dims the sun`;
+    case 'solar': {
+      const share = Math.round(p.sun * panelShare(s.scenario, s.time) * 100);
+      return p.sun < 1 ? `Making about ${share}% of its power: ${cause} dims the sun${panelShare(s.scenario, s.time) < 1 ? ' and snow lies on the panels' : ''}` : `Making about ${share}% of its power: snow from ${cause} lies on the panels until it melts`;
+    }
     case 'turbine': {
       const share = turbineInGale(s, b.id, exposureOf(s, b))?.share ?? 1;
       if (share > 0) return `Turning slowly, in gusts, making about ${Math.round(share * 100)}% of its power: what stands round it shelters it from ${cause}`;
       return hold.kind === 'gale' ? `Stopped: ${cause} is stronger than a turbine this exposed can stand. Trees, tall buildings or higher ground beside it would keep it turning` : `Stopped: no turbine, sheltered or not, stands ${cause}`;
     }
+    case 'wheel': return hold.effect === 'stopped' ? `Stopped: the river is frozen over here by ${cause}; a wheel at a fall keeps turning` : `Slowing: the river is freezing over in ${cause}; a wheel at a fall keeps turning`;
     case 'hive': return `The bees stay in: ${cause} is too wild to fly in`;
     case 'coop':
-      if (EVENTS[hold.kind].push[hold.strength]?.hens !== undefined) return hold.effect === 'stopped' ? `The hens have stopped laying: they stay in out of ${cause}` : `Laying at about ${Math.round(coopPace(s, b.x, b.y) * 100)}% of the pace: ${cause} unsettles the hens`;
-      return `${henFact(s.scenario, warmthOf(s), coopShade(s, b.x, b.y)).text} · ${cause} adds ${Math.round(p.warmth)}°C`;
+      if (EVENTS[hold.kind].push[hold.strength]?.hens !== undefined) {
+        if (hold.effect === 'stopped') return `The hens have stopped laying: they stay in out of ${cause}`;
+        const pace = Math.round(coopPace(s, b.x, b.y) * 100);
+        return p.warmth < 0 ? `Hens laying at about ${pace}% speed: ${cause} (${Math.round(warmthOf(s))}°C)` : `Laying at about ${pace}% of the pace: ${cause} unsettles the hens`;
+      }
+      return `${henFact(s.scenario, warmthOf(s), coopShade(s, b.x, b.y), p.hens).text} · ${cause} adds ${Math.round(p.warmth)}°C`;
     case 'field':
       if (hold.effect === 'lost') return `The growing ${CROPS[b.crop].name.toLowerCase()} is lost to ${cause}: the field starts again when it has passed`;
       return `Growing ${CROPS[b.crop].name.toLowerCase()} slowly: ${cause} adds ${Math.round(p.warmth)}°C${fieldPace(s, b).water < 1 ? ', and it has no water' : ''}`;
@@ -198,7 +207,7 @@ export function describeStatus(s: GameState, b: Building): string {
         const net = must(networks(s).of.get(b.id), 'network'), k = net.pylons.length - 1, n = net.members.length;
         return `${k ? `Linked to ${k} other pylon${k > 1 ? 's' : ''}` : 'Linked to no other pylon'} · its network powers ${n} building${n === 1 ? '' : 's'}`;
       }
-      if (b.type === 'coop' && coopPace(s, b.x, b.y) < 0.97) return henFact(s.scenario, warmthOf(s), coopShade(s, b.x, b.y)).text;
+      if (b.type === 'coop' && coopPace(s, b.x, b.y) < 0.97) return henFact(s.scenario, warmthOf(s), coopShade(s, b.x, b.y), pushesAt(s.scenario, s.time).hens).text;
       return isMachine(b) ? 'Working' : def.name;
   }
 }

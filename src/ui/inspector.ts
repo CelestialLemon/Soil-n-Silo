@@ -17,6 +17,7 @@ import { givesGoods, linksOf, recipeOf, takesGoods, wantsCompost } from '../game
 import { makes, shareOf, wants } from '../game/sim/energy.ts';
 import { fieldPace, flowersNear } from '../game/sim/buildings.ts';
 import { hollowNote } from '../game/frost.ts';
+import { pushesAt } from '../game/events.ts';
 import { beesNow, beesOut, henFact, shadeFact, warmthFact, warmthOf } from '../game/warmth.ts';
 import { runtimeOf } from '../game/runtime.ts';
 import { isStop, routeOf, routesAt } from '../game/sim/trucks.ts';
@@ -230,7 +231,7 @@ export class Inspector {
       out.push(row('Recipe', `${r.inputs.map(ingWords).join(' + ')} → ${r.outputs.length ? r.outputs.map((o) => `${o.n} ${itemName(o.item)}`).join(' + ') : `${POWER.digester} W`} · ${r.time} s`));
     }
     if (b.type === 'coop') {
-      stat('Hens', () => henFact(s.scenario, warmthOf(s), coopShade(s, b.x, b.y)).text.replace(/^Hens, /, ''));
+      stat('Hens', () => henFact(s.scenario, warmthOf(s), coopShade(s, b.x, b.y), pushesAt(s.scenario, s.time).hens).text.replace(/^Hens, /, ''));
       stat('Shade', () => shadeFact(coopTrees(s, b.x, b.y)));
     }
     if (BUILDINGS[b.type].power) stat('Power', () => { const net = networkOf(s, b), w = wants(s, b); return !net ? 'not connected' : w ? `using ${watts(w)} · getting ${pct(shareOf(s, b))}` : 'none right now'; });

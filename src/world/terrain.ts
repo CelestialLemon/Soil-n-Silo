@@ -38,7 +38,7 @@ const BED = 0x8a7a5a, BANK = 0x6a5a3e, LEDGE = 0x8a8478, BOULDER = 0x8c8a80, DEC
 const RIVER = { ...FLUIDS.water, clarity: 0.8, roughness: 0.3, waveScale: 0.7 };
 type Fluid = typeof RIVER;
 /** The water's surface below the level it lies at (its banks' top), and how deep the water is. */
-const WATER_Y = -0.12, DEPTH = 0.3;
+export const WATER_Y = -0.12, DEPTH = 0.3;
 
 const PLANE = new THREE.PlaneGeometry(1, 1), STONE = new THREE.IcosahedronGeometry(1, 0);
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;

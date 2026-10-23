@@ -18,6 +18,8 @@ export interface Derived {
   exposure: Map<number, number>;
   /** The watts each sprinkler needs (by the water near it and how high it lifts it), and each water wheel makes. */
   watts: Map<number, number>;
+  /** The water wheels whose water keeps running in a cold snap: beside a fall, or just below one (ice.ts). */
+  runs: Set<number>;
   /** Fields guarded against erosion (rules.ts, `guardedAt`). */
   guarded: Set<number>;
   /** Tiles under a field (the rest of the ground rests). */
@@ -33,7 +35,7 @@ export function derived(s: GameState): Derived {
   const rt = runtimeOf(s);
   let d = rt.derived;
   if (d && d.layout === layout) return d;
-  d = { layout, sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), watts: new Map(), guarded: new Set(), fielded: new Set(), neighbours: new Map(), joined: new Map() };
+  d = { layout, sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), watts: new Map(), runs: new Set(), guarded: new Set(), fielded: new Set(), neighbours: new Map(), joined: new Map() };
   const fields = s.buildings.filter((b): b is FieldBuilding => b.type === 'field');
   // Under flood water a hive pollinates nothing, a sprinkler waters nothing, and a field's flowers feed no hive.
   const hives = s.buildings.filter((b) => b.type === 'hive');
@@ -49,7 +51,12 @@ export function derived(s: GameState): Derived {
   for (const h of hives) d.flowers.set(h.id, dryHives.includes(h) ? fields.filter((f) => !isFlooded(s, f) && hiveReaches(f, h.x, h.y)) : []);
   for (const t of s.buildings) if (t.type === 'turbine') d.exposure.set(t.id, exposureAt(s, t.x, t.y));
   for (const sp of sprinklers) d.watts.set(sp.id, sprinklerWatts(s, sp.x, sp.y));
-  for (const b of s.buildings) if (b.type === 'wheel') d.watts.set(b.id, wheelSite(s, b.x, b.y)?.watts ?? 0);
+  for (const b of s.buildings) {
+    if (b.type !== 'wheel') continue;
+    const site = wheelSite(s, b.x, b.y);
+    d.watts.set(b.id, site?.watts ?? 0);
+    if (site?.runs) d.runs.add(b.id);
+  }
   for (const b of s.buildings) {
     const near = besides(s, b);
     d.neighbours.set(b.id, near);
@@ -81,6 +88,8 @@ export const isPollinated = (s: GameState, b: Building) => derived(s).pollinated
 export const exposureOf = (s: GameState, b: Building) => derived(s).exposure.get(b.id) ?? 1;
 /** The watts a sprinkler needs or a water wheel makes (worked out from where it stands). */
 export const wattsOf = (s: GameState, b: Building) => derived(s).watts.get(b.id) ?? 0;
+/** Whether a water wheel stands where the river keeps running in a cold snap (a fall), rather than freezing over. */
+export const runsInFrost = (s: GameState, b: Building) => derived(s).runs.has(b.id);
 export const isGuarded = (s: GameState, b: Building) => derived(s).guarded.has(b.id);
 /** Whether building `a` can hand goods to `b` next door (not across a cliff). */
 export function handsTo(s: GameState, a: Building, b: Building) {

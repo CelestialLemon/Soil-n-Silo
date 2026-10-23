@@ -5,6 +5,7 @@ import { TERRAIN } from '../game/map.ts';
 import { networks } from '../game/power.ts';
 import { isOpen } from '../game/roads.ts';
 import { readHold } from '../game/hold.ts';
+import { panelSnow } from '../game/snow.ts';
 import { windAt } from '../game/sim/clock.ts';
 import { exposureOf } from '../game/sim/layout.ts';
 import { TURBINE_WEAK, turbineShare } from '../game/wind.ts';
@@ -37,6 +38,8 @@ const ROADS = new THREE.Color(0xd8d0b0), CUT_OFF = new THREE.Color(0xff5040), WA
 /** The tint of the buildings and trucks linked to what is focused: a truck's stops, a garage's trucks. */
 export const LINK = 0x7ee060;
 const LINKED = new THREE.Color(LINK), LINK_STRENGTH = 0.55;
+/** The white of snow on roofs and panels, and how white a roof goes under snow lying on the ground and a panel under the snow a blizzard left on it (the tint's strength). */
+const SNOW = new THREE.Color(0xf2f6fc), ROOF_SNOW = 0.55, PANEL_SNOW = 0.9;
 /** How far apart trucks queuing at a building stand, one behind the other. */
 const QUEUE_GAP = 0.8;
 /**
@@ -298,6 +301,22 @@ export class WorldView {
     for (const o of this.tinted) if (!want.includes(o)) o.tint = null;
     for (const o of want) if (o.tint !== LINKED) { o.tint = LINKED; o.tintStrength = LINK_STRENGTH; }
     this.tinted = want;
+  }
+
+  /**
+   * Snow on the buildings: roofs go white with the snow lying on the ground (`ground`, 0–1), and a solar panel with the snow a
+   * blizzard left on it. Call after `links` every frame: a building's tint is the link's while it is linked.
+   */
+  snow(s: GameState, ground: number) {
+    const panels = panelSnow(s.scenario, s.time)?.intensity ?? 0;
+    for (const b of s.buildings) {
+      const o = this.shown.get(b.id)?.obj;
+      if (!o || o.tint === LINKED) continue;
+      const k = Math.max(ground * ROOF_SNOW, b.type === 'solar' ? panels * PANEL_SNOW : 0);
+      if (k < 0.02) { if (o.tint === SNOW) o.tint = null; continue; }
+      if (o.tint !== SNOW) o.tint = SNOW;
+      o.tintStrength = k;
+    }
   }
 
   /** Trees and rocks on the map, as objects so they can be cleared. */

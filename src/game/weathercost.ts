@@ -1,5 +1,5 @@
-import type { BuildingId } from './data.ts';
-import { endOf, eventName, type WeatherEvent } from './events.ts';
+import { DAY_SECONDS, type BuildingId } from './data.ts';
+import { endOf, EVENTS, eventName, type WeatherEvent } from './events.ts';
 import type { RunLog } from './runlog.ts';
 import type { Scenario } from './scenarios.ts';
 import { dayAt } from './sim/clock.ts';
@@ -42,7 +42,8 @@ function madeBy(run: RunLog, t: number): number {
 
 /** The event's cost in seconds of play, from the output; null when it can't say (too early, or too little made). */
 export function lostSeconds(run: RunLog, e: WeatherEvent, end: number): number | null {
-  const a = e.start, b = Math.min(end, endOf(e) + LAG);
+  // Over the event and after it: the half minute goods held up arrive late, or the hours its effects linger (snow on the panels).
+  const a = e.start, b = Math.min(end, endOf(e) + Math.max(LAG, (EVENTS[e.kind].lingers ?? 0) * DAY_SECONDS / 24));
   if (b <= a) return null;
   const span = Math.min(SPAN_MAX, Math.max(b - a, SPAN_MIN)), before = Math.min(span, a);
   if (before < SPAN_MIN) return null;

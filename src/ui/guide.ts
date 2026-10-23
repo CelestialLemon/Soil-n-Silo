@@ -12,6 +12,7 @@ import { CHARACTERS, charactersOf, climateOf, SEASON_IDS, SEASONS, seasonName, t
 import { FROST, MILD_DAY, RAIN_COOLING, warmthByHour } from '../game/warmth.ts';
 import { EVENTS, hoursOf, type EventKind } from '../game/events.ts';
 import { FALL, SILT } from '../game/flood.ts';
+import { BUILD_HOURS, PANEL_BLOCK } from '../game/snow.ts';
 import { SEVERE_GALE, TURBINE_LIMIT } from '../game/wind.ts';
 import { isPollinated } from '../game/sim/layout.ts';
 import { fieldFertility } from '../game/sim/soil.ts';
@@ -156,6 +157,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
   solar: {
     what: 'Makes power from the sun: most at midday, nothing at night. The sun chip beside the dial shows how strong the sun is now; on some commissions it is weak.',
     how: ['Place it within a pylon\'s reach. Add batteries to keep machines running through the night.'],
+    tips: ['Snow a blizzard leaves on the panels cuts what they make until it melts off.'],
   },
   turbine: {
     what: 'Makes power from the wind, day and night. The wind comes and goes.',
@@ -172,7 +174,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
       `It makes ${POWER.wheel} W in a current of 1 m/s, more in a faster one, and ${POWER.wheelFall} times as much beside a fall, where the river drops a level.`,
       'The season sets the river: high and fast in spring, low and slow in summer and winter, in between in autumn. The wheel states the season\'s effect.',
     ],
-    tips: ['There are only a few good places for it. A wheel beside a fall can carry a small farm through the night.'],
+    tips: ['There are only a few good places for it. A wheel beside a fall can carry a small farm through the night.', 'In a winter cold snap the river freezes over at its quiet stretches and a wheel there stops; a fall never freezes, so a wheel beside one keeps turning.'],
   },
   battery: {
     what: 'Stores spare power and gives it back when the network falls short, such as at night. Its cells light up from the bottom as it fills: one ring a quarter.',
@@ -214,7 +216,7 @@ const TOPICS: { id: TopicId; name: string; chip: string }[] = [
 ];
 
 /** The weather events that have a page, in the order of the index: their rules are in. */
-const GUIDED_EVENTS: readonly EventKind[] = ['thunderstorm', 'gale', 'tropicalStorm', 'flood', 'heatWave', 'fog', 'lateFrost', 'softRain', 'warmSpell', 'steadyBreeze'];
+const GUIDED_EVENTS: readonly EventKind[] = ['thunderstorm', 'gale', 'tropicalStorm', 'flood', 'heatWave', 'fog', 'lateFrost', 'coldSnap', 'blizzard', 'softRain', 'warmSpell', 'steadyBreeze'];
 
 const lc = (id: ItemId) => ITEMS[id].name.toLowerCase();
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
@@ -325,6 +327,24 @@ const eventText = (linkOf: (label: string, p: GuidePage) => Node, bLinkOf: (id: 
       does: [
         NODES(`The day is lifted to a mild one, ${MILD_DAY.low} to ${MILD_DAY.high}°C, if it would have been colder. A day already warmer is left as it is.`),
         NODES(`Crops grow at the pace of a mild season, and bees fly (they need ${ANIMALS.beesFly}°C).`)],
+    },
+    coldSnap: {
+      lead: 'A day or two of hard cold in the winter.',
+      does: [
+        NODES(`The whole day's warmth drops by ${-(push('coldSnap').warmth ?? 0)}°C, so crops grow slower still (see `, linkOf('Seasons and weather', { kind: 'topic', id: 'weather' }), ').'),
+        NODES(`The river freezes over from its banks, at its quiet stretches. A `, bLinkOf('wheel'), ' on the ice slows as it forms and stops once it is frozen shut.'),
+        NODES('A fall never freezes: a wheel beside one, and on the water just below it, keeps turning.'),
+        NODES(`The hens lay at ${pc(push('coldSnap').hens ?? 1)} of their pace. Ponds and lakes are left alone.`)],
+      severe: [NODES(`Colder: ${-(push('coldSnap', 'severe').warmth ?? 0)}°C below the season, and the hens lay at ${pc(push('coldSnap', 'severe').hens ?? 1)} of their pace.`)],
+    },
+    blizzard: {
+      lead: 'A day or two of driving snow in a hard winter.',
+      does: [
+        NODES('There is no sun at all, so solar panels make nothing. The wind is the season\'s own.'),
+        NODES(`The trucks drive at ${pc(push('blizzard').trucks ?? 1)} of their speed in the snow.`),
+        NODES(`The snow it leaves on the panels builds over the first ${BUILD_HOURS} hours and melts off evenly over the ${EVENTS.blizzard.lingers} hours after it ends. Under snow a panel makes ${pc(1 - PANEL_BLOCK)} of what the sun would give, so solar stays low for a while after the sky clears.`),
+        NODES('Snow lies on the ground, and white on the roofs, while it falls and for a day after.')],
+      severe: [NODES(`Deeper: the trucks drive at ${pc(push('blizzard', 'severe').trucks ?? 1)} of their speed.`)],
     },
     steadyBreeze: {
       lead: 'A day of wind in the summer, when the air is usually calm.',
@@ -674,7 +694,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
       h('div', { class: 'cd-small cd-faint' }, `Weather events · ${e.good ? 'a good one' : 'a bad one'}`), h('h1', { class: 'cd-display' }, e.name), h('p', { class: 'lead' }, d.lead),
       h('div', { class: 'cd-label sec' }, 'When'),
       h('div', { class: 'num-rows' },
-        row('Comes in', seasons),
+        row('Comes in', e.only ? `${seasons}, ${e.only.map((c) => CHARACTERS[c].word).join(' or ')} character only` : seasons),
         row('Lasts', e.severeHours ? `${hrs(e.hours)}; severe ${hrs(e.severeHours)}` : hrs(e.hours)),
         e.begins ? row('Begins', `between ${clock(e.begins[0])} and ${clock(e.begins[1])}`) : null,
         row('Severe form', e.severe ? 'yes' : 'none: it only helps'),
