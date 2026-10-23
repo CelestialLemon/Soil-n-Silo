@@ -223,7 +223,8 @@ the whole day up to ±2°C (the same every time the commission is played). Condi
 through `WARMTH_NUDGES`, a list of functions each adding its degrees. Rain is the first: while it rains or snows, warmth is nudged down by up to 2°C (by the precipitation's intensity). Thresholds the rules key off:
 
 - **Below 0°C, frost.** A frost-tender crop (tomato, sunflower) in an open field loses its growing crop each moment it is
-  frozen, so the field starts again; what it already holds is untouched. A frozen field's status is Frost.
+  frozen, so the field starts again; what it already holds is untouched. A frozen field's status is Frost. (A spring night's **late frost**
+  is the same loss for the fields it settles on, place by place: see Weather events.)
 - **Below 10°C**, tender crops stop growing (status Too cold). **Below 10°C, bees stay in** (see Hens and bees below).
 - **Above 30°C, heat.** An unwatered field's growth multiplier (×0.4 normally) falls to ×0.1 by 34°C, linearly. Heat also slows hens (see below).
 
@@ -305,7 +306,7 @@ hurricane's flood is the severe one): the one case where events touch, and the f
 level's events.
 
 **Events land one issue at a time.** The whole catalogue is rolled and shown, but a kind's `push` is filled in by its own issue:
-2.3 (below) the thunderstorm, heat wave, fog and the three good events; 2.4 gale, tropical storm, hurricane; 2.5 (below) flood; 2.6 late
+2.3 (below) the thunderstorm, heat wave, fog and the three good events; 2.4 gale, tropical storm, hurricane; 2.5 (below) flood; 2.6 (below) late
 frost; 2.7 cold snap and blizzard; 2.8 dust storm. Until its issue lands an event changes only the **look** of the sky (cloud and
 drawn rain or snow, eased in with the event's ramp; the rules do not see it), the HUD chip and the list the forecast will read.
 
@@ -378,6 +379,32 @@ it for a day or two, then drains.
   98% above), so **`PAR_FACTOR` spring is a tenth higher** (mild 1.1, wet 1.2, dry 1.1, hot 1.1, gales 1.15, stormy 1.3, high river 1.15).
   The tropical storm's flood in autumn is retuned with 2.4. The campaign has no events until 2.10, so no campaign target moved.
 
+**Late frost (2.6).** One clear spring night (8–10 hours, beginning between 20:00 and 23:00; random commissions only, never the
+campaign) when frost settles on the lowest ground (`src/game/frost.ts`: pure rules; the rime is drawn in `src/world/rime.ts`).
+
+- **Where: a hollow is judged against the ground round it**, not against the whole map (real frost pools metres down; our whole map
+  is not four). A land tile's *depth* is how far, in levels, it lies below the average of the land tiles within 6 tiles of it
+  (`FROST_RADIUS`; water doesn't count; the average follows the ground as it is after earthworks). An **ordinary** frost lies where
+  the depth is at least 0.2 of a level (`HOLLOW`): the hollows and the valley floor, about a quarter to a third of a map's tiles;
+  a slope that is level with its surroundings (depth about 0) is clear. A **severe** frost (a windy, bitter night: the wind
+  gains 0.5) lies where the depth is at least −0.2 (`SLOPE_REACH`): slopes freeze too, and only the crests that stand above the
+  ground round them are spared (about two thirds of the tiles are frozen). Flat ground has no hollows, so an ordinary frost
+  leaves it alone, and a severe one freezes all of it.
+- **What it does.** The frost bites once it is half-way through its 1.5-hour build-in (`BITES_AT` 0.5) and lets go half-way through
+  its fade. While it bites, a field of a frost-tender crop (tomato, sunflower) with at least 5 of its 9 tiles frozen has its
+  growth reset every moment, so the field starts again when the frost has passed; its status is the weather's (`Lost · late frost`,
+  see Weather's marks) and the time is counted as held. Hardy crops, and what a field already holds, are untouched.
+- **Cards.** In spring a field on frost hollow says "Frost hollow: late frost settles here" as a fact: the placement card (bad news
+  for a tender crop, plain for a hardy one), the inspector, the hover card over the field, and the hover card over bare ground.
+- **Drawn.** White rime lies over the frozen tiles: it builds in with the frost, lies at dawn and melts away over 3 game hours after
+  the frost ends (`MELT_HOURS`), through the morning. It is a sheet of tiles tinted white and dithered by opacity (up to 85%),
+  game-side; no renderer feature was needed.
+- **Answer you can build:** tender crops on slopes, hardy crops in the hollows; the greenhouse (phase 4) is frost-proof.
+- **Cost, measured with the bot** (`tools/` layouts on a flat map, where a severe frost freezes every field, the worst case): one
+  severe frost on day 2–5 made c6 (sauce) 2.3–2.6 minutes slower (of a 39 minute run), c3 (oil, bread) 0–1.2, c4, c7 and c8 under
+  half a minute. An ordinary frost reaches about a quarter of the fields, so it costs less. That is about 3% on average over a
+  spring commission's layouts, so `PAR_FACTOR` is unchanged.
+
 **Levers.** An event's `push` (per strength) gives some of these levers the value they reach at full strength; the rules
 read them through `pushesAt(scenario, time)`, so an effect that is a lever is one line in the event's entry:
 
@@ -437,7 +464,7 @@ else reads that:
 The holds there are now: a solar panel under an event that takes the sun to 80% or less (thunderstorm, fog); hens and fields
 under an event that heats the valley, when the heat takes their pace to 85% or less of what it would have been without it (so the
 season's own heat isn't marked: only the part an event adds, `feltPush` of the `warmth` lever); a driving truck when an event takes
-the trucks' speed to 80% or less (fog). A building's layout problem comes first (a panel with no pylon is "Not connected", not held), and only
+the trucks' speed to 80% or less (fog); a field whose tender crop a late frost has taken (**lost**, the diamond; the field is held whatever else its status is, as a frozen field already is). A building's layout problem comes first (a panel with no pylon is "Not connected", not held), and only
 a building that would otherwise be running is held. A later event (2.4–2.8) declares its cause the same way: a `shape` and `holds` in
 its catalogue entry, and its rule setting `status = 'weather'` and `need = holdNeed({ kind, strength, effect })` where it stops or slows
 something (a gale stopping an exposed turbine, a flood stopping a building, a frozen wheel); the marker, card, history and results

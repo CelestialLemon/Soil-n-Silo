@@ -5,6 +5,7 @@ import {
 } from './game/build.ts';
 import { BUILDINGS, CROPS, POWER, type BuildingId } from './game/data.ts';
 import { holdNeed, truckHold } from './game/hold.ts';
+import { frostComes, HOLLOW_FACT, inHollow, isHollow } from './game/frost.ts';
 import { warmthFact, warmthOf } from './game/warmth.ts';
 import { generateLand, TERRAIN } from './game/map.ts';
 import { aroundPoint, corners, MAX_LEVEL, sheetAt } from './game/relief.ts';
@@ -35,6 +36,7 @@ import { weatherNow } from './game/sim/weather.ts';
 import { allGeometries, loadModels } from './world/models.ts';
 import { FloodView } from './world/floodView.ts';
 import { PowerView } from './world/powerView.ts';
+import { Rime } from './world/rime.ts';
 import { RouteView } from './world/routeView.ts';
 import { Camera } from './world/camera.ts';
 import { CURSOR_GRID, TileCursor, type CursorPatch } from './world/tileCursor.ts';
@@ -134,6 +136,7 @@ async function play(initial: GameState) {
   const view = new WorldView(renderer, models, lie, ground.paint, world.halo.things);
   const floodView = new FloodView(renderer, lie);
   const power = new PowerView(renderer, models, lie);
+  const rime = new Rime(renderer, lie);
   const routeView = new RouteView(renderer, models, lie);
   const cursor = new TileCursor(canvas, 0xfff0c0), refused = new TileCursor(canvas, 0xe8705a);
   /** The marks on the ground the cursor draws: the tile pointed at, the points earthworks would move; those refused in red. */
@@ -565,7 +568,7 @@ async function play(initial: GameState) {
       return {
         title: BUILDINGS[b.type].name, icon: b.type, status: { status: b.status, label, need: b.need },
         text: removing ? (b.type === 'depot' ? 'The depot stays.' : `Click to remove it (refund ${priceOf(state, b.type)}).`)
-          : [line === label ? '' : line, b.type === 'field' ? `soil ${Math.round(fieldFertility(state, b))}` : '', b.type === 'field' && !removing ? warmthFact(CROPS[b.crop], warmthOf(state)).text : ''].filter(Boolean).join(' · ') || undefined,
+          : [line === label ? '' : line, b.type === 'field' ? `soil ${Math.round(fieldFertility(state, b))}` : '', b.type === 'field' && !removing ? warmthFact(CROPS[b.crop], warmthOf(state)).text : '', b.type === 'field' && !removing && frostComes(state) && inHollow(state, b.x, b.y) ? HOLLOW_FACT : ''].filter(Boolean).join(' · ') || undefined,
       };
     }
     if (!hoverTile) return null;
@@ -573,7 +576,7 @@ async function play(initial: GameState) {
     if (t === TERRAIN.water) return { title: 'Water', icon: 'water', text: 'Pylons can stand in it; trucks drive round it.' };
     if (t === TERRAIN.tree) return { title: 'A tree', icon: 'sapling', text: `Shelters wind turbines nearby; counts towards soil health. ${clear('tree')}` };
     if (t === TERRAIN.rock) return { title: 'Rock', text: clear('rock') };
-    return tool.kind === 'remove' ? null : { title: 'Grass', icon: 'soil', text: `Soil fertility ${state.map.fertility[hoverTile.y * map.width + hoverTile.x]}.` };
+    return tool.kind === 'remove' ? null : { title: 'Grass', icon: 'soil', text: `Soil fertility ${state.map.fertility[hoverTile.y * map.width + hoverTile.x]}.${frostComes(state) && isHollow(state, hoverTile.x, hoverTile.y) ? ` ${HOLLOW_FACT}.` : ''}` };
   }
   /**
    * The routes to draw: the one being edited, a focused truck's, those of a focused garage's trucks or stopping at a focused
@@ -686,6 +689,7 @@ async function play(initial: GameState) {
     }
     const shownOverlay = overlay !== 'none' ? overlay : toolOverlay;
     view.overlay(state, shownOverlay);
+    rime.sync(state, shownOverlay !== 'none');
     // The small things in the grass stand aside for the ground's lines and the overlays.
     detail.show(shownOverlay === 'none' && tool.kind !== 'build' && tool.kind !== 'earth');
     const focus = selected ?? (tool.kind === 'select' ? hoverBuilding : null);

@@ -1,5 +1,6 @@
 import { BUILDINGS, CROPS, FIELD, HIVE, ITEMS, POLLINATION_BONUS } from '../data.ts';
 import { coopPace, erosionAt, paceOf, touchesWater } from '../rules.ts';
+import { frostTakes } from '../frost.ts';
 import { beesFly, frostKills, warmthOf } from '../warmth.ts';
 import { tileIndex, type FieldBuilding, type GameState, type HiveBuilding, type MachineBuilding } from '../state.ts';
 import { derived, isGuarded, isPollinated, sprinklersOf } from './layout.ts';
@@ -14,7 +15,8 @@ import { raining } from './weather.ts';
 export function fieldPace(s: GameState, f: FieldBuilding, warmth = warmthOf(s)) {
   const wet = touchesWater(s, f.x, f.y) || raining(s.scenario, s.time) ? 1 : sprinklersOf(s, f).reduce((m, sp) => Math.max(m, shareOf(s, sp)), 0);
   const p = paceOf(wet, fieldFertility(s, f), CROPS[f.crop], warmth);
-  return { pace: p.pace, water: wet, soil: p.bySoil, warmth, byWarmth: p.byWarmth };
+  // A late frost on the field takes the crop as fast as it grows: no pace at all while it bites.
+  return { pace: frostTakes(s, f) ? 0 : p.pace, water: wet, soil: p.bySoil, warmth, byWarmth: p.byWarmth };
 }
 
 export function runMachine(s: GameState, b: MachineBuilding, dt: number) {
@@ -44,7 +46,8 @@ export function runField(s: GameState, f: FieldBuilding, dt: number) {
   const crop = CROPS[f.crop];
   const bonus = crop.flowers && isPollinated(s, f) && beesFly(warmthOf(s)) ? POLLINATION_BONUS : 0;
   // Frost takes a tender crop still growing in the open; the field starts again. What it holds already is untouched.
-  if (frostKills(crop, warmthOf(s))) { f.growth = 0; f.status = 'frost'; f.need = undefined; return; }
+  // A late frost does the same to the fields it lies on (the status is then set to the weather's, see hold.ts).
+  if (frostKills(crop, warmthOf(s)) || frostTakes(s, f)) { f.growth = 0; f.status = 'frost'; f.need = undefined; return; }
   // A harvest of the old crop waits to go before the new one can join it.
   const old = f.stored > 0 && (f.harvest ?? f.crop) !== f.crop;
   if (old || f.stored + crop.yield + bonus > FIELD.store) { f.status = 'blocked'; f.need = CROPS[f.harvest ?? f.crop].name.toLowerCase(); return; }

@@ -135,7 +135,9 @@ function describeHold(s: GameState, b: Building): string {
   switch (b.type) {
     case 'solar': return `Making about ${Math.round(p.sun * 100)}% of its power: ${cause} dims the sun`;
     case 'coop': return `${henFact(s.scenario, warmthOf(s), coopShade(s, b.x, b.y)).text} · ${cause} adds ${Math.round(p.warmth)}°C`;
-    case 'field': return `Growing ${CROPS[b.crop].name.toLowerCase()} slowly: ${cause} adds ${Math.round(p.warmth)}°C${fieldPace(s, b).water < 1 ? ', and it has no water' : ''}`;
+    case 'field':
+      if (hold.effect === 'lost') return `The growing ${CROPS[b.crop].name.toLowerCase()} is lost to ${cause}: the field starts again when it has passed`;
+      return `Growing ${CROPS[b.crop].name.toLowerCase()} slowly: ${cause} adds ${Math.round(p.warmth)}°C${fieldPace(s, b).water < 1 ? ', and it has no water' : ''}`;
     default: return `${hold.effect[0].toUpperCase()}${hold.effect.slice(1)} by ${cause}`;
   }
 }

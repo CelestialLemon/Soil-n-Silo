@@ -1,5 +1,6 @@
 import { activeEvents, EVENT_KINDS, EVENTS, eventName, feltPush, STRENGTHS, type Active, type EventKind, type Lever, type Shape, type Strength } from './events.ts';
 import { floodHolds, floodUnder } from './flood.ts';
+import { frostTakes } from './frost.ts';
 import { coopPace } from './rules.ts';
 import type { Scenario } from './scenarios.ts';
 import type { Building, GameState, Truck } from './state.ts';
@@ -87,8 +88,10 @@ export function buildingHold(s: GameState, b: Building, active: readonly Active[
       const w = warmthOf(s), calm = w - (feltPush(heat, 'warmth') ?? 0);
       return coopPace(s, b.x, b.y, w) <= coopPace(s, b.x, b.y, calm) * SLOW_BELOW ? holdOfEvent(heat, 'slowed') : null;
     }
-    // A field grows slower in a heat wave's heat, a good deal slower without water.
+    // A late frost takes the tender crop a field lies in the frost with (it starts again); a field grows slower in a heat wave's heat, a good deal slower without water.
     case 'field': {
+      const frost = frostTakes(s, b);
+      if (frost) return holdOfEvent(frost, 'lost');
       const heat = b.status === 'ok' || b.status === 'dry' ? warming(active) : null;
       if (!heat) return null;
       const w = warmthOf(s);
