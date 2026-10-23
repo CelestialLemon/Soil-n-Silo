@@ -377,7 +377,7 @@ it for a day or two, then drains.
   the depot and plays the layouts through a spring commission's rolled events with and without the flood: a flood beside the farm
   cost 17–24% (up to 43% at worst) with 5–7 buildings flooded. A spring commission nearly always rolls one (75% at difficulty 1,
   98% above), so **`PAR_FACTOR` spring is a tenth higher** (mild 1.1, wet 1.2, dry 1.1, hot 1.1, gales 1.15, stormy 1.3, high river 1.15).
-  The tropical storm's flood (autumn too) is retuned in The wind events (2.4). The campaign has no events until 2.10, so no campaign target moved.
+  The tropical storm's flood (autumn too) is retuned in The wind events (2.4). The factors were measured again, all events together, in 2.10 (see Commissions).
 
 **Late frost (2.6).** One clear spring night (8–10 hours, beginning between 20:00 and 23:00; random commissions only, never the
 campaign) when frost settles on the lowest ground (`src/game/frost.ts`: pure rules; the rime is drawn in `src/world/rime.ts`).
@@ -457,8 +457,7 @@ campaign) when frost settles on the lowest ground (`src/game/frost.ts`: pure rul
   and +2%, wet +6% and +24%, dry +0.5% and 0%, gales +5% and +27%, stormy +9% and +28% (worst +34%); summer mild +2%, wet +3% and
   +20%, dry +1%, hot +0.3%, stormy +5% and +23% (worst +48%). So **`PAR_FACTOR` is a tenth higher** for autumn wet (1.25 to 1.35) and gales (1.15 to
   1.25), 0.15 higher for autumn stormy (1.35 to 1.5, where the hurricane is also possible), and a tenth higher for summer wet and stormy
-  (1.1 to 1.2); the rest stand. The campaign has no events until 2.10, so no campaign target moved (c1 15:31, c2 32:38, c3 39:06,
-  c4 28:11, c6 28:49, c7 36:50, c8 35:02; c5 still does not finish in 90 minutes, as on `dev`).
+  (1.1 to 1.2); the rest stand. These per-event bumps were replaced by one measurement of every event together in 2.10 (see Commissions).
 
 
 **The dust storm (2.8).** The dry summer's event: half a day to a day (12–24 game hours) of blowing dust, only in a dry summer (the sandbox
@@ -481,14 +480,14 @@ difficulty 2 and 3 roll one (47% at difficulty 1); it is severe in about one in 
   (`guardedAt` in `rules.ts`, cached as `isGuarded`): a tree or a sapling within a tile of its 3 × 3 footprint, or a bean field
   sharing an edge. A guarded field loses nothing. I chose it over the turbines' graded shelter (trees in reach, `windExposure`)
   because the field already says "guarded" on its cards, one rule teaches the two lessons (soil held on slopes, soil held in the wind),
-  a sapling guards it at once (a cheap answer in time), and Tired Soil (2.10) can teach it with one tree: the card says "guarded" or "exposed".
+  a sapling guards it at once (a cheap answer in time), and Tired Soil (2.10) teaches it with a tree or a sapling beside a field: the card says "guarded" or "exposed".
 - **Answers:** trees (or saplings, or beans) beside each field; batteries for the dim hours (a third of the sun for up to a day).
 - **Marked** (2.2): the dust storm's own `dots` shape on a solar panel weak under the veil, on a driving truck slowed, and on each field
   losing soil (a new hold effect, **eroded**, "Losing soil · dust storm": the field is held only while the wind blows at a quarter of
   its strength or more, `BLOWS_AT`, and only if it is otherwise running). The card says "Losing soil to the dust storm: no tree, sapling
   or bean field beside it breaks the wind".
 - **Cards.** A field (placed, or in hand) says "Dust storm: exposed" or "guarded" with what would guard it, where a dust storm can come:
-  a dry summer's random commission, the sandbox, any commission with one placed (not the campaign until 2.10 does). `dustComes`.
+  a dry summer's random commission, the sandbox, any commission with one placed (Tired Soil, in the campaign). `dustComes`.
 - **The look.** The light goes warm brown (`look.heat` 0.5, the heat wave's tint) under a dust haze; see Haze, below.
 - **Cost, measured with the bot** (`PAR_FACTOR`; the bot's farms have no trees, so every field is unguarded, the worst case): c1, c4 and
   c6 on a flat map in a dry summer, rolled events (difficulty 2 and 3) with and without the dust storm, over 40 runs that had one: **+9%
@@ -540,7 +539,7 @@ is clear between events. They are laid out in a random order across the days fro
 last ones.
 
 **Campaign events are authored**, not rolled: `eventOn(day, hour, kind, strength?, hours?)` places "a gale on day 4, from 10:00"
-(and what follows it) in a campaign commission's `events`. None of the campaign has events yet (2.10 places them).
+(and what follows it) in a campaign commission's `events`. The campaign's are in Commissions, below (2.10).
 
 **The sandbox** has a Weather button among the panel buttons (no key) that opens a sheet listing every event with a Start button
 for each strength it has. Starting one ends the one under way (it fades out over the ramp), drops what had not begun and starts the
@@ -1009,7 +1008,7 @@ A commission has goals, a target time and modifiers. It ends when every goal is 
   level at the end.
 - **Medals:** gold within the target time, silver within 1.5×, bronze any time after. There is no failing.
 - **Season:** a season and perhaps a character (see Seasons), which set the sun and the wind.
-- **Weather events:** a list of events (see Weather events): rolled from the seed for a random commission, placed by hand for a campaign one (none yet).
+- **Weather events:** a list of events (see Weather events): rolled from the seed for a random commission, placed by hand for a campaign one (see Campaign weather, below).
 - **Modifiers:** soil richness, how much rock, water and forest the map has, relief (0 flat to 1 rugged), starting credits.
 
 **Campaign** (seeds fixed, so each plays the same every time; goals, credits and target times in `src/game/scenarios.ts`):
@@ -1024,6 +1023,44 @@ A commission has goals, a target time and modifiers. It ends when every goal is 
 | 6 | Tired Soil | 50 sauce; soil health ≥ 55 | 40 min | A dry summer | Poor soil | 0.6 |
 | 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 50 min | Spring, high river | Cramped | 0.3 |
 | 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 50 min | A stormy autumn | Everything | 0.7 |
+
+**Campaign weather (2.10).** Each commission has the events that teach what it means to, placed by hand (`eventOn(day, hour, kind, strength?)`, in `src/game/scenarios.ts`):
+none on the first day, one at a time, at least half a day clear between them, all inside the target time. Day 1 starts at 07:00 and a day is 4 minutes of play.
+
+| # | Commission | Events (day, hour) | Teaches |
+| --- | --- | --- | --- |
+| 1 | First Light | a soft rain, day 2 at 06:00 (a day) | seasons exist; rain waters the fields and rests the sprinklers |
+| 2 | Morning Bread | a thunderstorm, day 5 at 09:00 (12 h; no flood follows it here) | a dark, rainy spell for power: batteries carry it, the rain waters the fields |
+| 3 | Windy Ridge | a **severe** gale, day 7 at 08:00 (a day) | shelter for turbines: bare turbines stop, ones with trees, tall buildings or other turbines beside them keep turning (an ordinary gale only fills the turbines, so it would teach nothing) |
+| 4 | Linen for the Looms | a heat wave, day 4 at 08:00 (32 h) | flax dislikes heat; sprinklers and shade |
+| 5 | Long Nights | a cold snap, day 3 at 18:00 (36 h), then a warm spell, day 7 at 08:00 (36 h) | the cold, then a break in it (the greenhouse comes in phase 4; the commission cannot be finished before it) |
+| 6 | Tired Soil | a dust storm, day 4 at 09:00 (18 h) | trees as windbreaks guard the soil: a sapling or tree beside a field, or a bean field sharing an edge |
+| 7 | Riverlands | a flood, day 6 at 08:00 (36 h) | the floodplain, banks (earthworks) and silt |
+| 8 | Harvest Festival | a tropical storm, day 3 at 08:00 (36 h) and the flood after it, then fog, day 7 at 04:00 (5.5 h) | everything; the station (phase 3) will matter |
+
+The late frost, the blizzard and the hurricane are left for random commissions. The briefing letters name the events a campaign commission will bring
+("Weather to watch for this season: a gale."; the flood after a storm is part of the storm), and a random commission's the events its season and
+character can bring. Each event is placed after the farm has had time to get going, so it tests what was built (a gale on day 7 meets the whole power
+layout, a flood on day 6 the whole farm) rather than the first minutes.
+
+**The bot plays the real weather**, with the cheap, obvious answers each event teaches (`tools/layouts.ts`; `test/bots.test.ts` checks each):
+Riverlands has a river 16 tiles east of the depot (`RIVER_AT`: the bot's map is flat with no water) and the layout raises a bank two levels high in
+the column 15 tiles east, from 19 tiles north of the depot's row to 2 south (about 250 credits), so the flood never reaches the farm (without it the flood
+holds 6 buildings and costs about 3.5 minutes of 37); Windy Ridge's four turbines stand in a 2 × 2 block, each sheltered by the other three (exposure 0.7), so the
+severe gale furls them and stops none (it costs about half a minute; with bare turbines, 2.5); Tired Soil has a sapling beside every field (30 credits), so the dust storm takes no soil. Morning Bread's thunderstorm
+costs the bot nothing once it comes after the farm is built (day 5; on day 4, in the middle of the build, it cost 3.7 minutes), and First Light's soft rain, Linen's heat wave (+1.2 minutes), Harvest Festival's
+storm and fog (+1.8) need no change (Harvest Festival's bot has no river: on its real map even a severe flood leaves the land near the depot dry, 0% of it at ordinary strength and 3% severe, so the bot's farm is not flooded; with a river beside it the run takes 3 minutes longer).
+
+**Playtest of phase 2 (2.10, 2026-10-24).** Headless: the campaign and random commissions at each difficulty, through the bot (`npm run sim`, `tools/seasonfactor.ts`) and loaded
+in a browser (the briefing, the chip, the sky and haze, markers, the results line, the flood water). No event's length, strength or odds needed changing: what the events cost the bot is
+modest (the flood beside a farm without a bank about 9%, a severe gale on bare turbines 6% and on sheltered ones 1%, the dust storm on unguarded fields 8% and on guarded ones 1%, a heat wave 4%, a thunderstorm after the build nothing),
+and a hurricane is the one big cost (a third more, rare: a stormy autumn at difficulty 3). The campaign's placements moved only to teach better (Windy Ridge's gale severe, day 7; Morning Bread's thunderstorm from day 4, in the
+middle of the build, to day 5; Riverlands' flood from day 5 to day 6, once the farm stands).
+**No event asks for quick reactions.** Every effect is a rule that acts by itself: nothing can be done *during* an event that has to be done in a hurry (the answers are built ahead), the shortest
+(the fog, 4–7 game hours: 40–70 seconds of play) only slows trucks and dims panels, the frost's loss happens as it arrives, a flood rises over many hours in half-level steps, and the game can be paused
+at any moment to look, since pausing is free. Nothing flashes or interrupts: an event is the chip, the sky, markers on what it holds, and its line in the results.
+Left open: Long Nights (c5) cannot be finished before the greenhouse (its events are placed; its bot test stays skipped, its target 70 a placeholder); a random winter takes 2.6 to 3.8 times the base time until then;
+and the weather has been played only headless, not by hand.
 
 The bot (`npm run sim`) deliberately uses a flat, open map with even soil to test the economy, not terrain;
 `test/height.test.ts` covers the height rules. It clears First Light in about 15.5 minutes, Morning Bread in about 33 and
@@ -1051,7 +1088,9 @@ Warmth tuning (2026-10-22), after the warmth numbers had pushed Windy Ridge to 6
 18–30), so a cool spring or autumn day costs less. The fall-off width (6°C), the tender stop (10°C), frost and the daily curve stand. The bot now takes First
 Light 15.5 minutes, Morning Bread 32.6, Windy Ridge 39.1, Linen for the Looms 28.2, Tired Soil 28.8, Riverlands 36.8 and Harvest Festival 35.0, so the targets
 are 20, 45, 55, 40, 40, 50 and 50 minutes. Long Nights (about 50 minutes in the study, before bees stayed in) still can't be cleared, so its test stays skipped and
-its target 70 stands until #86 gives a real time. After phase 1 (2026-10-22) every campaign target is again about 1.4 times the bot's time: First Light 15.5 (20), Morning Bread 32.6 (45), Windy Ridge 39.1 (55), Linen for the Looms 28.2 (40), Tired Soil 28.8 (40), Riverlands 36.8 (50) and Harvest Festival 35.0 (50), so none changed.)
+its target 70 stands until #86 gives a real time. After phase 1 (2026-10-22) every campaign target is again about 1.4 times the bot's time: First Light 15.5 (20), Morning Bread 32.6 (45), Windy Ridge 39.1 (55), Linen for the Looms 28.2 (40), Tired Soil 28.8 (40), Riverlands 36.8 (50) and Harvest Festival 35.0 (50), so none changed. After phase 2 (2026-10-24), with the authored events and the bot's answers to them (below):
+First Light 15.5 (20), Morning Bread 32.6 (45), Windy Ridge 39.6 (55), Linen for the Looms 29.4 (40), Tired Soil 29.2 (40), Riverlands 36.6 (50) and Harvest Festival 36.9 (50),
+all still about 1.4 times the bot's time, so none changed.)
 
 ![The level select](images/menu.png)
 
@@ -1060,15 +1099,19 @@ up to two ground modifiers (poor soil, rocky, wooded, hilly or flat), 2–4 goal
 sauce, honey or honey cake (no sunflower or tomato grows in a winter field, and bees stay in), which the bot can't clear before
 the greenhouse (#86); the other goals come in any season. **Target time:** (15 + 12 × difficulty + 6 × goals) minutes, the
 time of a mild spring, times a **season-and-character factor** (`PAR_FACTOR` in `src/game/scenarios.ts`), rounded to 5 minutes, so
-every season and character can earn gold. The factors come from `node tools/seasonfactor.ts`: it plays every bot layout in every
-climate on three seeds and compares each with the same layout in a mild spring; the factor is halfway between the mean ratio and
-the worst, rounded up to 0.05 (a commission's goals decide which layout it is like: autumn is quicker for oil and honey cake and
-slower for linen and bread). Spring 1 to 1.2 (stormy 1.2: its thunderstorms), summer 1.2 to 1.4 (the wind events (2.4) raised wet and stormy summers to 1.2, the dust storm (2.8) a dry one to 1.35; hot summer 1.4: heat is hard on wheat, flax and beans, calm days starve
-solar and wind, and a heat wave comes), autumn 1.1 to 1.5 (wet 1.35, gales 1.25 and stormy 1.5: the tropical storm and its flood, 2.4), winter 2.6 (mild), 2.65 (gales) and 3.85 (hard): the bot
-needs 1.7 to 2.6 times as long for flour, 2.3 to 2.8 for bread and 2.9 to 4.4 for linen. The seasonfactor tool plays no events, so
-the sky events' share (2.3) was measured separately: the layouts played with each climate's rolled events (difficulty 3) against none were
-2% slower on average, 16% at the worst (a severe spring thunderstorm in a stormy spring took one run 39% longer), and the two factors above
-took a little of it; the events still to come (2.4–2.8) are retuned in 2.10. Relief starts at
+every season and character can earn gold. One table, measured once (2026-10-24, 2.10), with the weather events in: `node tools/seasonfactor.ts` plays every bot layout
+in every climate with the events a random commission rolls there (difficulty 1 to 3, four seeds each: 4 × 3 runs a layout and climate, 8 layouts), spread over as long as the bot takes in a mild spring (a level is never shorter than 28 minutes, so the events the shortest layouts, First Light's, outrun are not measured), and compares each
+run with the same layout and seed in a mild spring with no events. The factor is halfway between the mean ratio over the layouts and the worst layout's, rounded up to 0.05
+(a commission's goals decide which layout it is like: autumn is quicker for oil and honey cake and slower for linen and bread). The bot's map is flat and has no water, so each
+layout gets a river a couple of tiles beyond the farm's west edge (a flood beside the farm, the worst case; Riverlands' bot has its bank) and, except Tired Soil's, no trees (an unguarded farm for the dust storm):
+the events are measured at their worst, so the factors are on the safe side. The per-event bumps the earlier issues put in (stormy spring 1.3, wet and stormy summer 1.2, dry summer 1.35, wet and gales autumn,
+stormy autumn 1.5) counted a part of the same cost twice; the table is now **spring** mild 1.2, wet 1.25, dry 1.1, hot 1.2, gales 1.2, stormy 1.25, high river 1.2; **summer** mild 1.15, wet 1.15, dry 1.3, hot 1.3,
+stormy 1.15; **autumn** mild 1.15, wet 1.25, dry 1.2, gales 1.2, stormy 1.35; **winter** mild 2.5, gales 2.6, hard 3.75 (the bot needs 1.8 to 2.3 times as long for flour, 2.4 to 3 for bread and 2.7 to 4.3 for linen).
+The ratio (the climate and its events together), averaged over the layouts, is 1.14 in a mild spring, 1.17 in a wet one, 1.19 stormy, 1.07 dry, 1.14 gales; 1.00 in a mild summer (a dry one 1.09, a hot one 1.14: heat hurts wheat and flax, and calm
+days starve solar and wind, but tomato and sunflower love it); 0.97 to 1.10 in an autumn (stormy 1.10); at the 90th percentile of single runs 1.2 to 1.5 times. The worst single runs were 1.8 times (a stormy autumn with a hurricane) and 1.7 (First Light's layout in a hot spring, with a flood and frosts, and in a few autumns). Wet and stormy summers measured a little under a
+mild one (their storms water the fields as much as they cost) and take its factor. Playing each layout against the target of a random commission of its own difficulty and goal count, the bot earns gold in all runs but the 6 to 8 of 96 in a
+spring that are Windy Ridge's or Long Nights' layouts at difficulty 1, which ask for more than a difficulty 1 commission does. A rare jam of the bot's trucks (a truck a flood moves can come to rest in a walled pocket of the layout)
+leaves a few runs unfinished; they are left out of the means. Relief starts at
 0.25 + 0.15 × difficulty (0.4, 0.55, 0.7); Hilly sets it to 0.9, Flat to 0 (one or the other, never both). Relief
 scales the rolling hills; corner heights stay within 0–16. Flat is all one level.
 

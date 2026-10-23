@@ -10,7 +10,7 @@ import { TERRAIN } from '../src/game/map.ts';
 import { touchRelief } from '../src/game/state.ts';
 import { wheelSite } from '../src/game/rules.ts';
 import { deserialize, serialize } from '../src/game/save.ts';
-import { CAMPAIGN, randomScenario, SANDBOX, sandboxIn, scenarioById, type Scenario } from '../src/game/scenarios.ts';
+import { randomScenario, SANDBOX, sandboxIn, scenarioById, type Scenario } from '../src/game/scenarios.ts';
 import { charactersOf, climateOf, SEASON_IDS } from '../src/game/seasons.ts';
 import { hourAt, sunAt, windAt } from '../src/game/sim/clock.ts';
 import { makes } from '../src/game/sim/energy.ts';
@@ -142,8 +142,7 @@ test('events are spread over the level and fit a short one', () => {
   assert.ok(latest > 3000, `${latest}`);
 });
 
-test('campaign commissions have no events yet, and a commission can be given some by hand', () => {
-  for (const sc of CAMPAIGN) assert.deepEqual(sc.events, [], sc.id);
+test('the sandbox has no events of its own, and a commission can be given some by hand', () => {
   assert.deepEqual(SANDBOX.events, []);
   const gale = eventOn(4, 10, 'gale');
   assert.deepEqual(gale, [{ kind: 'gale', strength: 'ordinary', start: (3 * 24 + 10 - START_HOUR) * HOUR, length: 24 * HOUR }]);
