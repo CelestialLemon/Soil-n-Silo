@@ -12,6 +12,7 @@ import { CHARACTERS, charactersOf, climateOf, SEASON_IDS, SEASONS, seasonName, t
 import { FROST, MILD_DAY, RAIN_COOLING, warmthByHour } from '../game/warmth.ts';
 import { EVENTS, hoursOf, type EventKind } from '../game/events.ts';
 import { FALL, SILT } from '../game/flood.ts';
+import { SEVERE_GALE, TURBINE_LIMIT } from '../game/wind.ts';
 import { isPollinated } from '../game/sim/layout.ts';
 import { fieldFertility } from '../game/sim/soil.ts';
 import { recipeOf } from '../game/sim/goods.ts';
@@ -110,7 +111,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
     how: [
       `Place it within ${HIVE.reach} tiles of flowering fields: up to ${HIVE.maxFlowers} of them count. The Bees overlay shows its range.`,
       'Build it beside a bakery making honey cake, or make it a stop on a route, so trucks pick up the honey.',
-      `The bees stay in below ${ANIMALS.beesFly}°C: no honey and no pollination, so not in winter or on a cold spring morning.`,
+      `The bees stay in below ${ANIMALS.beesFly}°C: no honey and no pollination, so not in winter or on a cold spring morning. They stay in while a gale or a tropical storm blows too.`,
     ],
   },
   composter: {
@@ -161,6 +162,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
     how: [
       `Place it in the open, within a pylon's reach. Trees, tall buildings and higher ground within ${POWER.shelterReach} tiles shelter it and cost power.`,
       `Up high the wind is stronger: ${Math.round(POWER.windPerLevel * 100)}% more for every level it stands up.`,
+      'A severe gale stops a turbine in the open, and a hurricane stops every one, sheltered or not (see the gale and the tropical storm in the weather events). In a severe gale a turbine with trees, tall buildings or higher ground round it keeps turning, at reduced power and in gusts: shelter has this second use.',
     ],
   },
   wheel: {
@@ -212,7 +214,7 @@ const TOPICS: { id: TopicId; name: string; chip: string }[] = [
 ];
 
 /** The weather events that have a page, in the order of the index: their rules are in. */
-const GUIDED_EVENTS: readonly EventKind[] = ['thunderstorm', 'flood', 'heatWave', 'fog', 'lateFrost', 'softRain', 'warmSpell', 'steadyBreeze'];
+const GUIDED_EVENTS: readonly EventKind[] = ['thunderstorm', 'gale', 'tropicalStorm', 'flood', 'heatWave', 'fog', 'lateFrost', 'softRain', 'warmSpell', 'steadyBreeze'];
 
 const lc = (id: ItemId) => ITEMS[id].name.toLowerCase();
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
@@ -236,7 +238,7 @@ function worthReading(s: GameState): TopicId[] {
 }
 
 const NODES = (...c: (Node | string)[]) => c;
-/** The words of each weather event's page (the six whose rules are in); the numbers come from the catalogue and data.ts. */
+/** The words of each weather event's page (those whose rules are in); the numbers come from the catalogue and data.ts. */
 type EventText = { lead: string; does: (Node | string)[][]; severe?: (Node | string)[][] };
 const eventText = (linkOf: (label: string, p: GuidePage) => Node, bLinkOf: (id: BuildingId) => Node): Partial<Record<EventKind, EventText>> => {
   const push = (k: EventKind, st: 'ordinary' | 'severe' = 'ordinary') => EVENTS[k].push[st] ?? {};
@@ -250,6 +252,29 @@ const eventText = (linkOf: (label: string, p: GuidePage) => Node, bLinkOf: (id: 
         NODES(`The wind gains ${pc(push('thunderstorm').wind ?? 0)} of its full strength on top of the day's wind, so turbines make more.`),
         NODES('In spring it counts as heavy rain, which is what a flood follows.')],
       severe: [NODES(`Harder: the wind gains ${pc(push('thunderstorm', 'severe').wind ?? 0)}, the sun gives ${pc(push('thunderstorm', 'severe').sun ?? 1)} of what the cloud leaves.`)],
+    },
+    gale: {
+      lead: 'A day of strong wind in the autumn.',
+      does: [
+        NODES(`The wind gains ${pc(push('gale').wind ?? 0)} of its full strength, so every `, bLinkOf('turbine'), ' makes all it can.'),
+        NODES('The bees stay in: no honey and no pollination until it passes.'),
+        NODES('Answer: a mix of power that does not lean on the wind alone (', bLinkOf('solar'), ', ', bLinkOf('wheel'), ', a ', bLinkOf('battery'), '), and turbines with some shelter.')],
+      severe: [
+        NODES(`The wind blows past what a turbine can stand: ${SEVERE_GALE} times a full wind. A turbine stops when the wind that reaches it (the share its card shows) is over ${Math.round(TURBINE_LIMIT / SEVERE_GALE * 100)}% of full, so an exposed turbine stops, while one with trees, tall buildings or higher ground round it keeps turning, furled, at about half its power or less and in unsteady gusts. A turbine up a hill gets more wind, so it stops sooner.`),
+        NODES('Stopped turbines are marked with the gale\'s own marker, and their rotors stand still. Nothing breaks: they turn again when it passes.')],
+    },
+    tropicalStorm: {
+      lead: 'Days of heavy rain and wind in the autumn, rarely in late summer, and the flood the river brings after.',
+      does: [
+        NODES(`Heavy rain waters every open field, so the sprinklers rest. The sun gives ${pc(push('tropicalStorm').sun ?? 1)} of what the cloud leaves, so solar panels make little.`),
+        NODES(`The wind gains ${pc(push('tropicalStorm').wind ?? 0)} of its full strength: turbines make all they can. The bees stay in.`),
+        NODES('When it ends the river rises and a ', linkOf('flood', { kind: 'event', id: 'flood' }), ' follows, an ordinary one for an ordinary storm. Build for it as for any flood: higher ground, or a bank raised with earthworks.'),
+        NODES('Answer: batteries and a power mix for the dark days, and the flood\'s answers for the river.')],
+      severe: [
+        NODES(`The hurricane: wind no turbine stands, however sheltered (${push('tropicalStorm', 'severe').gale} times the wind they get, over the limit of ${TURBINE_LIMIT}), so every `, bLinkOf('turbine'), ` stops; the sun gives ${pc(push('tropicalStorm', 'severe').sun ?? 1)} of what the cloud leaves, so solar panels make almost nothing; the hens stop laying and the bees stay in.`),
+        NODES('The trucks stay in their garages through the storm\'s worst hours, the middle half of it: those on the road drive home, those at home charge but do not set off. They go on again when it eases.'),
+        NODES(`The flood that follows is certain and a level higher: the river rises ${EVENTS.flood.flood?.severe ?? 0} levels, not ${EVENTS.flood.flood?.ordinary ?? 0}.`),
+        NODES('Nothing breaks, and there is no calm eye: it only stops what runs. It comes in a stormy summer or autumn, at most once a commission, and only on the hardest difficulty.')],
     },
     flood: {
       lead: 'The river spreads over the low ground beside it for a day or two, then drains. It follows heavy rain in spring.',

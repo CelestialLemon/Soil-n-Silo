@@ -140,6 +140,8 @@ Every rule here must change where or what the player builds, or it is cut.
   night), double in a cold snap. Unpowered it goes cold and tender crops in it stop growing (they don't die). Its soil wears
   and takes compost like a field's.
 
+- **"Late summer"** (2026-10-23, 2.4): a commission is one season, so "late summer" is the summer commission, with the tropical storm
+  a good deal rarer in summer than in autumn (odds ×0.15 against ×0.3); no "late" within a level.
 - **The hurricane** (2026-10-21): the severe tropical storm, the rare wind storm. Only late in summer or in autumn, at most
   once a level, only in a stormy character at difficulty 3. Every turbine stops, sheltered or not; solar is nearly nothing; a
   flood is certain and reaches a level higher; trucks stay in their garages through the worst hours; hens and bees stop.

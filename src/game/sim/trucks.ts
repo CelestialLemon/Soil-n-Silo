@@ -1,5 +1,6 @@
 import { bays, BUILDINGS, TRUCK, type ItemId } from '../data.ts';
 import { pushesAt } from '../events.ts';
+import { garaging } from '../wind.ts';
 import { noteArrival } from '../fleet.ts';
 import { networkOf } from '../power.ts';
 import { accessTiles, distanceTo, isOpen, legLength, nearestOpen, pathTo } from '../roads.ts';
@@ -257,23 +258,27 @@ export function runTrucks(s: GameState, dt: number) {
   }
   const queued = new Set<number>();
   for (const t of s.trucks) if (t.phase === 'queue' && t.target !== null) queued.add(t.target);
+  // In a hurricane's worst hours the trucks on the road drive home and those at their garage stay: they charge, but don't set off.
+  const home = garaging(s.scenario, s.time) !== null, second = Math.floor(s.time + 1e-6) !== Math.floor(s.time - dt + 1e-6);
   for (const t of s.trucks) {
+    // One that is stuck (no way to its stop) looks for the way home once a second.
+    if (home && (t.phase === 'drive' || t.phase === 'dock' || t.phase === 'queue' || (t.phase === 'stuck' && second)) && t.target !== t.garage) goHome(s, t);
     switch (t.phase) {
       case 'parked': {
         charge(s, t, dt);
         // Given a route: off it goes (home again to charge first, if its battery is short).
-        if (routeOf(s, t)?.stops.length) { t.charged = false; setOff(s, t, t.stop); }
+        if (routeOf(s, t)?.stops.length && !home) { t.charged = false; setOff(s, t, t.stop); }
         break;
       }
       case 'charge': {
         if (charge(s, t, dt)) t.idle = 0; else t.idle += dt;
         if (!routeOf(s, t)?.stops.length) { t.phase = 'parked'; break; }
-        if (t.energy >= TRUCK.battery - 1e-6 || t.idle >= TRUCK.giveUp) { t.charged = true; setOff(s, t, t.stop); }
+        if (!home && (t.energy >= TRUCK.battery - 1e-6 || t.idle >= TRUCK.giveUp)) { t.charged = true; setOff(s, t, t.stop); }
         break;
       }
       case 'drive': drive(s, t, dt); break;
       case 'dock': atStop(s, t, dt, t.target !== null && queued.has(t.target)); break;
-      case 'stuck': redirect(s, t); break;
+      case 'stuck': if (!home) redirect(s, t); break;
       case 'queue': break;
     }
   }

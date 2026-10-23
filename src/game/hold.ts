@@ -6,6 +6,9 @@ import type { Scenario } from './scenarios.ts';
 import type { Building, GameState, Truck } from './state.ts';
 import { fieldPace } from './sim/buildings.ts';
 import { warmthOf } from './warmth.ts';
+import { exposureOf } from './sim/layout.ts';
+import { routeOf } from './sim/trucks.ts';
+import { garaging, keepingBeesIn, TURBINE_WEAK, turbineInGale } from './wind.ts';
 
 // Weather holds: a building or truck that weather stops or slows. It carries the status `weather`, whose `need` names the cause
 // (the event, its strength and what it does), so the marker, the card, the history ribbon and the results all tell it from a
@@ -70,6 +73,8 @@ const holdOfEvent = (a: Active | null, effect: Effect): Hold | null => (a ? { ki
 
 /** The share of its pace without the event that the hens and fields are left, below which they are marked. */
 const SLOW_BELOW = 0.85;
+/** The share of its pace below which a building is called stopped, not slowed. */
+const STOPPED = 0.05;
 
 /**
  * What stops or slows a building now, among the events under way (null: nothing, or the building runs as its layout lets it).
@@ -81,8 +86,17 @@ export function buildingHold(s: GameState, b: Building, active: readonly Active[
   switch (b.type) {
     // A panel makes less in the cloud and dark of a storm or a fog.
     case 'solar': return b.status === 'ok' ? holdOfEvent(cutting(active, 'sun'), 'weak') : null;
-    // The hens lay slower in the heat an event brings (and in what the season's own heat leaves them: that is not weather's).
+    // A turbine stops in a gale stronger than its shelter lets it stand, and makes less when it keeps turning (wind.ts).
+    case 'turbine': {
+      const g = b.status === 'ok' ? turbineInGale(s, b.id, exposureOf(s, b)) : null;
+      return g && g.share <= TURBINE_WEAK ? holdOfEvent(g.cause, g.share <= 0 ? 'stopped' : 'weak') : null;
+    }
+    // The bees stay in when the weather says so.
+    case 'hive': return b.status === 'ok' ? holdOfEvent(keepingBeesIn(s.scenario, s.time), 'stopped') : null;
+    // The hens lay slower in the heat an event brings (and in what the season's own heat leaves them: that is not weather's), and stop in a hurricane.
     case 'coop': {
+      const stormed = b.status === 'ok' ? cutting(active, 'hens') : null;
+      if (stormed) return holdOfEvent(stormed, (feltPush(stormed, 'hens') ?? 1) <= STOPPED ? 'stopped' : 'slowed');
       const heat = b.status === 'ok' ? warming(active) : null;
       if (!heat) return null;
       const w = warmthOf(s), calm = w - (feltPush(heat, 'warmth') ?? 0);
@@ -101,9 +115,11 @@ export function buildingHold(s: GameState, b: Building, active: readonly Active[
   }
 }
 
-/** What slows a truck now: a driving truck, in fog. */
+/** What stops or slows a truck now: a driving truck, in fog; a truck with a route, kept in its garage by a hurricane's worst hours. */
 export function truckHold(s: GameState, t: Truck, active: readonly Active[] = activeEvents(s.scenario, s.time)): Hold | null {
-  return t.phase === 'drive' && t.path.length ? holdOfEvent(cutting(active, 'trucks'), 'slowed') : null;
+  if (t.phase === 'drive' && t.path.length) return holdOfEvent(cutting(active, 'trucks'), 'slowed');
+  const kept = (t.phase === 'parked' || t.phase === 'charge') && routeOf(s, t)?.stops.length ? garaging(s.scenario, s.time) : null;
+  return kept ? { kind: kept.kind, strength: kept.strength, effect: 'stopped' } : null;
 }
 
 /** Sets the status of every building the weather holds. Run after the buildings' own statuses are final. */

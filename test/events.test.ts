@@ -168,13 +168,13 @@ test('the events under way: they build in, hold and fade out, and the forecast c
 });
 
 test('the levers: an event pushes the sun, wind, cloud, rain, warmth, river and trucks, felt as strongly as it has built', () => {
-  const [e] = eventOn(3, 8, 'gale');
+  const [e] = eventOn(3, 8, 'dustStorm');
   const sc = with1({ ...SANDBOX, climate: { ...SANDBOX.climate, conditions: { cloud: 0, rain: 0, calm: 0 } } }, e);
   const mid = e.start + 8 * HOUR, before = e.start - HOUR, none = { ...sc, events: [] };
   assert.deepEqual(pushesAt(sc, mid), pushesAt(none, mid), 'no push, no change');
   assert.deepEqual(pushesAt(sc, mid), NEUTRAL);
   const push: Partial<Pushes> = { sun: 0.4, wind: 0.5, cloud: 0.8, rain: 0.9, warmth: -6, river: 0.5, trucks: 0.5 };
-  pushing('gale', 'ordinary', push, () => {
+  pushing('dustStorm', 'ordinary', push, () => {
     const p = pushesAt(sc, mid);
     for (const l of Object.keys(push) as Lever[]) assert.equal(p[l], push[l], l);
     assert.deepEqual(pushesAt(sc, before), NEUTRAL, 'nothing before it starts');
@@ -195,8 +195,8 @@ test('the levers: an event pushes the sun, wind, cloud, rain, warmth, river and 
   });
   assert.deepEqual(pushesAt(sc, mid), NEUTRAL, 'the table is put back');
   // Several events at once: multipliers multiply, additions add, floors take the highest.
-  const both = with1(SANDBOX, ...eventOn(3, 8, 'gale'), ...eventOn(3, 8, 'fog', 'ordinary', 20));
-  pushing('gale', 'ordinary', { sun: 0.5, wind: 0.2, cloud: 0.3 }, () => pushing('fog', 'ordinary', { sun: 0.5, wind: 0.1, cloud: 0.6 }, () => {
+  const both = with1(SANDBOX, ...eventOn(3, 8, 'dustStorm'), ...eventOn(3, 8, 'fog', 'ordinary', 20));
+  pushing('dustStorm', 'ordinary', { sun: 0.5, wind: 0.2, cloud: 0.3 }, () => pushing('fog', 'ordinary', { sun: 0.5, wind: 0.1, cloud: 0.6 }, () => {
     const p = pushesAt(both, at(3, 14));
     assert.equal(p.sun, 0.25);
     assert.ok(Math.abs(p.wind - 0.3) < 1e-9);
@@ -246,16 +246,18 @@ test('an event\'s push reaches the water wheel and the trucks', () => {
 
 test('the sky shows an event without changing the rules: rain is drawn but no field counts as watered', () => {
   const sc = { ...SANDBOX, climate: { ...SANDBOX.climate, conditions: { cloud: 0, rain: 0, calm: 0 } } };
-  const [e] = eventOn(3, 8, 'tropicalStorm'); // its effects come with 2.4
+  const [e] = eventOn(3, 8, 'tropicalStorm'); // with its effects taken out, as an event whose issue has not landed
   const mid = e.start + 5 * HOUR, storm = with1(sc, e);
   assert.equal(weatherAt(sc, mid).sky, 'clear');
-  const w = weatherAt(storm, mid);
-  assert.equal(w.sky, 'rain');
-  assert.ok(w.precip > 0.5 && w.cloud > 0.9);
-  assert.equal(raining(storm, mid), false, 'effects come later');
-  assert.equal(sunAt(storm, at(3, 12)), sunAt(sc, at(3, 12)));
-  assert.equal(precipAt(storm, mid), 0);
-  assert.ok(lookAt(storm, mid).precip > 0.5);
+  pushing('tropicalStorm', 'ordinary', {}, () => {
+    const w = weatherAt(storm, mid);
+    assert.equal(w.sky, 'rain');
+    assert.ok(w.precip > 0.5 && w.cloud > 0.9);
+    assert.equal(raining(storm, mid), false, 'effects come later');
+    assert.equal(sunAt(storm, at(3, 12)), sunAt(sc, at(3, 12)));
+    assert.equal(precipAt(storm, mid), 0);
+    assert.ok(lookAt(storm, mid).precip > 0.5);
+  });
   // Snow in winter; the blizzard is all snow.
   const [b] = eventOn(3, 8, 'blizzard');
   const win = with1({ ...sandboxIn('winter', 'hard'), climate: { ...climateOf('winter', 'hard'), conditions: { cloud: 0, rain: 0, calm: 0 } } }, b);
