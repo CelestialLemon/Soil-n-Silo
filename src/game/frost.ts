@@ -87,6 +87,10 @@ export const frostComes = (s: GameState) => {
   return sc.events.some((e) => e.kind === 'lateFrost') || (allowed('lateFrost', sc.climate) && !CAMPAIGN.some((c) => c.id === sc.id));
 };
 
+/** What the inspector says of a field's ground: that a late frost settles here (and what it means for the crop), or null. Changes when a frost becomes possible or the ground does. */
+export const hollowNote = (s: GameState, f: FieldBuilding): string | null =>
+  frostComes(s) && inHollow(s, f.x, f.y) ? `late frost settles here${CROPS[f.crop].tender ? ' and takes a tender crop' : '; a hardy crop is unharmed'}` : null;
+
 /** The words for ground a late frost settles on, as a fact on the cards. */
 export const HOLLOW_FACT = 'Frost hollow: late frost settles here';
 

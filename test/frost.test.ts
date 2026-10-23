@@ -6,7 +6,7 @@ import { TERRAIN } from '../src/game/map.ts';
 import { DAY_SECONDS, START_HOUR, type CropId } from '../src/game/data.ts';
 import { clearWeather, EVENTS, rollEvents, startEvent, timeOf, type Strength, type WeatherEvent } from '../src/game/events.ts';
 import { placement } from '../src/game/forecast.ts';
-import { depthAt, frostComes, frostedTiles, frostNow, frostTakes, frostTiles, HOLLOW, inHollow, isHollow, MELT_HOURS, rimeAt } from '../src/game/frost.ts';
+import { depthAt, hollowNote, frostComes, frostedTiles, frostNow, frostTakes, frostTiles, HOLLOW, inHollow, isHollow, MELT_HOURS, rimeAt } from '../src/game/frost.ts';
 import { readHold } from '../src/game/hold.ts';
 import { CAMPAIGN, SANDBOX, type Scenario } from '../src/game/scenarios.ts';
 import { climateOf, type Season } from '../src/game/seasons.ts';
@@ -258,4 +258,14 @@ test('a field the river floods on a night of frost is lost to the flood, and the
   assert.ok(!isFlooded(s, f));
   const card = placement(s, 'field', 2, 12, { crop: 'tomato' }).facts.map((x) => x.label);
   assert.ok(card.includes('Floods') && card.includes('Frost hollow'), `both facts on the card: ${card.join(', ')}`);
+});
+
+test('the inspector\'s frost note appears as soon as a frost becomes possible, and not before', () => {
+  const s = game('summer', [], 0);
+  const f = field(s, HOLLOW_AT.x, HOLLOW_AT.y, 'tomato');
+  assert.equal(hollowNote(s, f), null, 'no frost can come in summer');
+  s.scenario.events = [frost('ordinary')];
+  assert.match(hollowNote(s, f) ?? '', /^late frost settles here and takes a tender crop/);
+  f.crop = 'wheat';
+  assert.match(hollowNote(s, f) ?? '', /a hardy crop is unharmed/);
 });
