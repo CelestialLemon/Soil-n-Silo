@@ -299,7 +299,7 @@ that it is limited to, whether it can be severe, its look and its `push`:
 | Late frost | spring, from 20:00–23:00 | dry ×1.5, wet ×0.8, gales ×0.5, mild ×0.4, hot ×0.2 | 8–10 h | yes |
 | Cold snap | winter | hard ×2.5, gales ×1, mild ×0.3 | 24–48 h | yes |
 | Blizzard | winter, hard character only | | 24–48 h | yes |
-| Dust storm | summer, dry character only | | 12–24 h | yes |
+| Dust storm | summer, dry character only | dry ×2 | 12–24 h | yes |
 
 The odds and lengths are first sketches. A tropical storm brings its **flood** the moment it ends, at the same strength (a
 hurricane's flood is the severe one): the one case where events touch, and the flood is part of its storm, not one of the
@@ -307,7 +307,7 @@ level's events.
 
 **Events land one issue at a time.** The whole catalogue is rolled and shown, but a kind's `push` is filled in by its own issue:
 2.3 (below) the thunderstorm, heat wave, fog and the three good events; 2.4 (below) gale, tropical storm, hurricane; 2.5 (below) flood; 2.6 (below) late
-frost; 2.7 cold snap and blizzard; 2.8 dust storm. Until its issue lands an event changes only the **look** of the sky (cloud and
+frost; 2.7 cold snap and blizzard; 2.8 (below) dust storm. Until its issue lands an event changes only the **look** of the sky (cloud and
 drawn rain or snow, eased in with the event's ramp; the rules do not see it), the HUD chip and the list the forecast will read.
 
 **The sky events (2.3).** Strengths are what the push is at full strength; each is blended in and out by the ramp.
@@ -461,6 +461,50 @@ campaign) when frost settles on the lowest ground (`src/game/frost.ts`: pure rul
   c4 28:11, c6 28:49, c7 36:50, c8 35:02; c5 still does not finish in 90 minutes, as on `dev`).
 
 
+**The dust storm (2.8).** The dry summer's event: half a day to a day (12–24 game hours) of blowing dust, only in a dry summer (the sandbox
+can start it in any season). Odds `dry ×2`, as likely as the dry summer's heat wave, so about four in five dry-summer commissions at
+difficulty 2 and 3 roll one (47% at difficulty 1); it is severe in about one in five dry summers at difficulty 3. Its rules are in
+`src/game/dust.ts` (pure), with its numbers in the catalogue entry.
+
+| | Ordinary | Severe |
+| --- | --- | --- |
+| `sun` | ×0.33 (solar to a third) | ×0.2 |
+| `trucks` | ×0.6 | ×0.45 |
+| `dust` (the fertility an unguarded field's tile loses each game hour, at full strength) | 0.6 | 1.2 |
+
+- **Unsheltered fields lose fertility to the wind.** While the storm blows, every one of the 9 tiles of a field with nothing to
+  break the wind loses `dust` fertility a game hour, blown in and out by the ramp (`blowDust`, each step): about 10 points over an
+  ordinary storm of 12–24 hours, about 20 over a severe one (a wheat harvest takes 1). Ground without a field is not touched. The
+  loss is not recovered: only ground with no field on it rests back to `soilBase` (`rest`), so compost and beans make it good, as
+  they do the wear of harvests. Ten points is about a tenth of that field's pace (poor soil ×0.4, rich ×1.4 over 0–100).
+- **Trees as windbreaks: `guardedAt`, not shelter.** A field is guarded from the dust by what already guards it from erosion
+  (`guardedAt` in `rules.ts`, cached as `isGuarded`): a tree or a sapling within a tile of its 3 × 3 footprint, or a bean field
+  sharing an edge. A guarded field loses nothing. I chose it over the turbines' graded shelter (trees in reach, `windExposure`)
+  because the field already says "guarded" on its cards, one rule teaches the two lessons (soil held on slopes, soil held in the wind),
+  a sapling guards it at once (a cheap answer in time), and Tired Soil (2.10) can teach it with one tree: the card says "guarded" or "exposed".
+- **Answers:** trees (or saplings, or beans) beside each field; batteries for the dim hours (a third of the sun for up to a day).
+- **Marked** (2.2): the dust storm's own `dots` shape on a solar panel weak under the veil, on a driving truck slowed, and on each field
+  losing soil (a new hold effect, **eroded**, "Losing soil · dust storm": the field is held only while the wind blows at a quarter of
+  its strength or more, `BLOWS_AT`, and only if it is otherwise running). The card says "Losing soil to the dust storm: no tree, sapling
+  or bean field beside it breaks the wind".
+- **Cards.** A field (placed, or in hand) says "Dust storm: exposed" or "guarded" with what would guard it, where a dust storm can come:
+  a dry summer's random commission, the sandbox, any commission with one placed (not the campaign until 2.10 does). `dustComes`.
+- **The look.** The light goes warm brown (`look.heat` 0.5, the heat wave's tint) under a dust haze; see Haze, below.
+- **Cost, measured with the bot** (`PAR_FACTOR`; the bot's farms have no trees, so every field is unguarded, the worst case): c1, c4 and
+  c6 on a flat map in a dry summer, rolled events (difficulty 2 and 3) with and without the dust storm, over 40 runs that had one: **+9%
+  on average, 26% at the 90th percentile, 34% at the worst**. With the soil loss taken out (a farm whose every field is guarded: only the sun and
+  the trucks) it is **+1.7% on average, 5% at the 90th percentile, 17% at the worst**, so the soil is the other 7%. Over a population of
+  dry-summer commissions (81% have one) the mean extra of an unguarded farm is about 7%, so **summer dry 1.25 to 1.35**.
+
+**Haze (fog and dust, drawn, for 2.9).** Renderer 0.4.0's haze (`setWeather({ haze, hazeColor, hazeTop })`) is one game-side look an
+event can carry, `look.haze` in its catalogue entry: `{ amount, color, top, thins? }` (thickness 0–1, sRGB colour, metres of height, and
+the share of its thickness left by the event's end for one that lifts). `lookAt` returns the thickest under way, felt as strongly as the
+event has built (a severe one ×1.15), `Weather.haze` carries it, and `main.ts` eases it over a few seconds (like the cloud and rain)
+into the renderer; the colour is kept while the haze thins out. Both hazes use it: the **dust storm** a warm brown (`0xc49a62`, 0.7 thick
+(0.8 severe), 6 m high), the **fog** a cool grey (`0xcfd6d8`, 0.6, 4 m) that is thickest at dawn and thins to about a third of that by
+the time it lifts. The renderer never hides the farm under it (a surface keeps a fifth of its colour) and roofs and tree tops rise
+out of it. Fog is drawn here, not left for 2.9: the dust storm needed the mechanism, so fog shares it.
+
 **Levers.** An event's `push` (per strength) gives some of these levers the value they reach at full strength; the rules
 read them through `pushesAt(scenario, time)`, so an effect that is a lever is one line in the event's entry:
 
@@ -525,7 +569,7 @@ else reads that:
 The holds there are now: a solar panel under an event that takes the sun to 80% or less (thunderstorm, fog); hens and fields
 under an event that heats the valley, when the heat takes their pace to 85% or less of what it would have been without it (so the
 season's own heat isn't marked: only the part an event adds, `feltPush` of the `warmth` lever); a driving truck when an event takes
-the trucks' speed to 80% or less (fog); a field whose tender crop a late frost has taken (**lost**, the diamond; the field is held whatever else its status is, as a frozen field already is). A building's layout problem comes first (a panel with no pylon is "Not connected", not held), and only
+the trucks' speed to 80% or less (fog); a field whose tender crop a late frost has taken (**lost**, the diamond; the field is held whatever else its status is, as a frozen field already is). A field a dust storm is stripping of soil (**eroded**, the dots) when nothing guards it (the dust storm, 2.8). A building's layout problem comes first (a panel with no pylon is "Not connected", not held), and only
 a building that would otherwise be running is held. A later event (2.4–2.8) declares its cause the same way: a `shape` and `holds` in
 its catalogue entry, and its rule setting `status = 'weather'` and `need = holdNeed({ kind, strength, effect })` where it stops or slows
 something (a gale stopping an exposed turbine, a flood stopping a building, a frozen wheel); the marker, card, history and results
@@ -1019,7 +1063,7 @@ time of a mild spring, times a **season-and-character factor** (`PAR_FACTOR` in 
 every season and character can earn gold. The factors come from `node tools/seasonfactor.ts`: it plays every bot layout in every
 climate on three seeds and compares each with the same layout in a mild spring; the factor is halfway between the mean ratio and
 the worst, rounded up to 0.05 (a commission's goals decide which layout it is like: autumn is quicker for oil and honey cake and
-slower for linen and bread). Spring 1 to 1.2 (stormy 1.2: its thunderstorms), summer 1.1 to 1.4 (the wind events (2.4) raised wet and stormy summers to 1.2; hot summer 1.4: heat is hard on wheat, flax and beans, calm days starve
+slower for linen and bread). Spring 1 to 1.2 (stormy 1.2: its thunderstorms), summer 1.2 to 1.4 (the wind events (2.4) raised wet and stormy summers to 1.2, the dust storm (2.8) a dry one to 1.35; hot summer 1.4: heat is hard on wheat, flax and beans, calm days starve
 solar and wind, and a heat wave comes), autumn 1.1 to 1.5 (wet 1.35, gales 1.25 and stormy 1.5: the tropical storm and its flood, 2.4), winter 2.6 (mild), 2.65 (gales) and 3.85 (hard): the bot
 needs 1.7 to 2.6 times as long for flour, 2.3 to 2.8 for bread and 2.9 to 4.4 for linen. The seasonfactor tool plays no events, so
 the sky events' share (2.3) was measured separately: the layouts played with each climate's rolled events (difficulty 3) against none were

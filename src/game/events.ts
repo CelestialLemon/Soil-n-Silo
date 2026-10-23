@@ -88,8 +88,18 @@ export const NEUTRAL: Readonly<Pushes> = Object.freeze(Object.fromEntries(LEVER_
 export const SHAPES = ['bolt', 'sun', 'bars', 'chevron', 'swirl', 'wave', 'diamond', 'flake', 'slash', 'dots'] as const;
 export type Shape = typeof SHAPES[number];
 
-/** How an event looks in the sky, apart from its effects: the cover and the rain or snow drawn, and how warm the light is (0–1). */
-export interface Look { cloud?: number; precip?: number; heat?: number }
+/**
+ * A haze an event lays on the ground (a fog, a dust storm): how thick (0–1; the renderer's `haze`: about 0.3 a thin mist, 0.6 a fog),
+ * its colour (sRGB hex), the height it reaches (metres; the renderer's `hazeTop`) and, for a haze that lifts, the share of its thickness
+ * left by the time the event ends.
+ */
+export interface Haze { amount: number; color: number; top: number; thins?: number }
+
+/** The hazes the catalogue uses: a cool grey for a fog, a warm brown for dust. */
+export const FOG_HAZE = 0xcfd6d8, DUST_HAZE = 0xc49a62;
+
+/** How an event looks in the sky, apart from its effects: the cover and the rain or snow drawn, how warm the light is (0–1), and its haze. */
+export interface Look { cloud?: number; precip?: number; heat?: number; haze?: Haze }
 
 export interface EventInfo {
   name: string;
@@ -134,6 +144,8 @@ export interface EventInfo {
   garages?: Partial<Record<Strength, number>>;
   /** The game hours its effects outlast it (snow on the panels after a blizzard, until it melts); the results count what it cost over them too. */
   lingers?: number;
+  /** For a dust storm: the fertility an unguarded field's tile loses each game hour at full strength, by strength (dust.ts). */
+  dust?: Partial<Record<Strength, number>>;
 }
 
 /**
@@ -160,7 +172,9 @@ export const EVENTS: Record<EventKind, EventInfo> = {
   },
   fog: {
     name: 'Fog', hours: [4, 7], begins: [3, 7], seasons: { autumn: 1 }, severe: true,
-    odds: { wet: 1.5, mild: 1.2, gales: 0.3, stormy: 0.5 }, look: { cloud: 0.6 },
+    odds: { wet: 1.5, mild: 1.2, gales: 0.3, stormy: 0.5 },
+    // A cool grey haze on the ground that thins as the morning lifts it (to a third of its thickness by the end).
+    look: { cloud: 0.6, haze: { amount: 0.6, color: FOG_HAZE, top: 4, thins: 0.35 } },
     shape: 'bars', holds: 'trucks crawling, solar panels weak',
     // Solar is weak and the trucks crawl; a severe fog is thicker.
     push: { ordinary: { sun: 0.4, trucks: 0.5 }, severe: { sun: 0.25, trucks: 0.35 } },
@@ -234,7 +248,12 @@ export const EVENTS: Record<EventKind, EventInfo> = {
   },
   dustStorm: {
     name: 'Dust storm', hours: [12, 24], seasons: { summer: 1 }, only: ['dry'], severe: true,
-    push: {}, look: { cloud: 0.4 },
+    odds: { dry: 2 }, look: { cloud: 0.4, heat: 0.5, haze: { amount: 0.7, color: DUST_HAZE, top: 6 } },
+    shape: 'dots', holds: 'solar panels weak, trucks crawling, unguarded fields losing soil',
+    // The sun is veiled to a third and the trucks crawl; the wind lifts the soil off fields with no tree or bean field beside
+    // them (dust.ts). A severe one is thicker and takes twice the soil.
+    push: { ordinary: { sun: 0.33, trucks: 0.6 }, severe: { sun: 0.2, trucks: 0.45 } },
+    dust: { ordinary: 0.6, severe: 1.2 },
   },
 };
 
@@ -336,16 +355,22 @@ export function pushesOf(active: readonly Active[]): Pushes {
 /** The levers at a time. The rules read the sun, wind, rain, warmth, river and trucks through this. */
 export const pushesAt = (sc: Pick<Scenario, 'events'>, time: number): Pushes => pushesOf(activeEvents(sc, time));
 
-/** How the sky looks because of the events under way: the most cloud, the hardest rain and the warmest light any of them gives, felt as strongly as they are. */
-export function lookAt(sc: Pick<Scenario, 'events'>, time: number): { cloud: number; precip: number; heat: number } {
-  let cloud = 0, precip = 0, heat = 0;
+/** How the sky looks because of the events under way: the most cloud, the hardest rain and the warmest light any of them gives, felt as strongly as they are, and the thickest haze. */
+export function lookAt(sc: Pick<Scenario, 'events'>, time: number): { cloud: number; precip: number; heat: number; haze: Haze | null } {
+  let cloud = 0, precip = 0, heat = 0, haze: Haze | null = null;
   for (const { event, intensity } of activeEvents(sc, time)) {
     const look = EVENTS[event.kind].look, k = intensity * (event.strength === 'severe' ? 1.15 : 1);
     cloud = Math.max(cloud, Math.min(1, (look.cloud ?? 0) * k));
     precip = Math.max(precip, Math.min(1, (look.precip ?? 0) * k));
     heat = Math.max(heat, Math.min(1, (look.heat ?? 0) * k));
+    if (look.haze) {
+      // A haze that lifts is thickest at the start and thins toward the end, on top of the ramp in and out.
+      const lift = 1 - (1 - (look.haze.thins ?? 1)) * Math.min(1, Math.max(0, (time - event.start) / event.length));
+      const amount = Math.min(1, look.haze.amount * k * lift);
+      if (!haze || amount > haze.amount) haze = { ...look.haze, amount };
+    }
   }
-  return { cloud, precip, heat };
+  return { cloud, precip, heat, haze };
 }
 
 // ---- Building events ----

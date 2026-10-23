@@ -29,6 +29,13 @@ function pushing<T>(kind: EventKind, strength: Strength, push: Partial<Pushes>, 
   try { return f(); } finally { EVENTS[kind].push = was; }
 }
 
+/** Runs `f` with an event kind pushing nothing, whatever its entry says (these tests are about the machinery, not an event's numbers). */
+function unpushing<T>(kind: EventKind, f: () => T): T {
+  const was = EVENTS[kind].push;
+  EVENTS[kind].push = {};
+  try { return f(); } finally { EVENTS[kind].push = was; }
+}
+
 const with1 = (sc: Scenario, ...events: WeatherEvent[]): Scenario => ({ ...sc, events });
 const at = (day: number, hour: number) => timeOf(day, hour);
 
@@ -167,7 +174,7 @@ test('the events under way: they build in, hold and fade out, and the forecast c
   assert.deepEqual(eventsIn(plan, at(10, 12), at(11, 0)), [], 'none after the last');
 });
 
-test('the levers: an event pushes the sun, wind, cloud, rain, warmth, river and trucks, felt as strongly as it has built', () => {
+test('the levers: an event pushes the sun, wind, cloud, rain, warmth, river and trucks, felt as strongly as it has built', () => unpushing('dustStorm', () => {
   const [e] = eventOn(3, 8, 'dustStorm');
   const sc = with1({ ...SANDBOX, climate: { ...SANDBOX.climate, conditions: { cloud: 0, rain: 0, calm: 0 } } }, e);
   const mid = e.start + 8 * HOUR, before = e.start - HOUR, none = { ...sc, events: [] };
@@ -202,7 +209,7 @@ test('the levers: an event pushes the sun, wind, cloud, rain, warmth, river and 
     assert.ok(Math.abs(p.wind - 0.3) < 1e-9);
     assert.equal(p.cloud, 0.6);
   }));
-});
+}));
 
 test('an event\'s push reaches the water wheel and the trucks', () => {
   // A wheel on a river.

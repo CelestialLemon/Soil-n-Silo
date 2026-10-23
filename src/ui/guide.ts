@@ -88,6 +88,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
       'Every harvest wears the soil out, except beans, which restore it. Compost brings it back: a field stop drops compost by itself.',
       `A beehive within ${HIVE.reach} tiles adds 1 to every harvest of a flowering crop.`,
       'In spring, tomato and sunflower belong on slopes: a late frost settles in hollows and on the low ground, and takes a tender crop there (the placement card says "Frost hollow" where it would).',
+      'In a dry summer a dust storm lifts the soil off a field with no tree, sapling or bean field beside it: the same neighbours that hold it against erosion guard it from the wind.',
     ],
   },
   sprinkler: {
@@ -216,7 +217,7 @@ const TOPICS: { id: TopicId; name: string; chip: string }[] = [
 ];
 
 /** The weather events that have a page, in the order of the index: their rules are in. */
-const GUIDED_EVENTS: readonly EventKind[] = ['thunderstorm', 'gale', 'tropicalStorm', 'flood', 'heatWave', 'fog', 'lateFrost', 'coldSnap', 'blizzard', 'softRain', 'warmSpell', 'steadyBreeze'];
+const GUIDED_EVENTS: readonly EventKind[] = ['thunderstorm', 'gale', 'tropicalStorm', 'flood', 'heatWave', 'dustStorm', 'fog', 'lateFrost', 'coldSnap', 'blizzard', 'softRain', 'warmSpell', 'steadyBreeze'];
 
 const lc = (id: ItemId) => ITEMS[id].name.toLowerCase();
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
@@ -300,11 +301,22 @@ const eventText = (linkOf: (label: string, p: GuidePage) => Node, bLinkOf: (id: 
         NODES('The light turns warm and golden.')],
       severe: [NODES(`Hotter: ${push('heatWave', 'severe').warmth}°C above the season, and it lasts ${hoursOf('heatWave', 'severe')[0]}–${hoursOf('heatWave', 'severe')[1]} hours.`)],
     },
+    dustStorm: {
+      lead: 'Half a day to a day of blowing dust in a dry summer.',
+      does: [
+        NODES(`The sun gives ${pc(push('dustStorm').sun ?? 1)} of its light, so solar panels make about a third of their power. The trucks drive at ${pc(push('dustStorm').trucks ?? 1)} of their speed.`),
+        NODES(`The wind lifts the soil off a `, bLinkOf('field'), ` with nothing to break it: each tile of it loses fertility, about ${Math.round((EVENTS.dustStorm.dust?.ordinary ?? 0) * (hoursOf('dustStorm')[0] + hoursOf('dustStorm')[1]) / 2 * 0.9)} points over an ordinary storm. A field with a tree or a sapling beside it, or a bean field sharing an edge, loses nothing: the same guard as against erosion. Ground with no field on it is not touched.`),
+        NODES('The loss stays until compost or beans restore the soil: fields do not recover by resting. A field the wind is stripping carries the dust storm\'s marker, and its cards say whether a tree or a bean field beside it would guard it.'),
+        NODES('The sky turns a warm brown, and a haze of dust lies on the ground.'),
+        NODES('Answer: a tree, a sapling or a bean field beside each ', bLinkOf('field'), ', and a ', bLinkOf('battery'), ' to carry the farm through the dim hours.')],
+      severe: [NODES(`Thicker and fiercer: the sun gives ${pc(push('dustStorm', 'severe').sun ?? 1)} of its light, the trucks drive at ${pc(push('dustStorm', 'severe').trucks ?? 1)} of their speed and an unguarded field loses twice the soil.`)],
+    },
     fog: {
       lead: 'A grey morning in the autumn.',
       does: [
         NODES(`The sun gives ${pc(push('fog').sun ?? 1)} of its light, so solar panels make less.`),
-        NODES(`The trucks drive at ${pc(push('fog').trucks ?? 1)} of their speed.`)],
+        NODES(`The trucks drive at ${pc(push('fog').trucks ?? 1)} of their speed.`),
+        NODES('A cool grey haze lies on the ground, thickest at the start and thinning as the morning lifts it. Roofs, silos and treetops rise out of it.')],
       severe: [NODES(`Thicker: the sun gives ${pc(push('fog', 'severe').sun ?? 1)} of its light and the trucks drive at ${pc(push('fog', 'severe').trucks ?? 1)} of their speed.`)],
     },
     lateFrost: {
