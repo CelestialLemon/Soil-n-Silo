@@ -3,6 +3,7 @@ import {
   ANIMALS, bays, BUILDINGS, CATEGORIES, CLEAR_COST, CROP_IDS, CROPS, EARTH, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, ITEMS, OUTPUT_BATCHES,
   POLLINATION_BONUS, POWER, RECIPES, recipesFor, SAPLING_SECONDS, SILO, TREE_HEALTH, TRUCK, type BuildingId, type Ingredient, type ItemId, type Recipe,
 } from '../game/data.ts';
+import { FROST_RADIUS, HOLLOW, HOLLOW_FACT } from '../game/frost.ts';
 import { FLEET_SECONDS } from '../game/fleet.ts';
 import { SOIL_AHEAD } from '../game/forecast.ts';
 import { RECENT_WINDOW } from '../game/flows.ts';
@@ -84,6 +85,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
       `It can lie on a slope, but not across a cliff (placing it there levels the ground). Its sloping tiles wear faster, up to ${1 + FIELD.erosion} times on a steep bank; a tree or sapling beside it, or a bean field next door, holds the soil (up to ${1 + FIELD.erosionGuarded} times).`,
       'Every harvest wears the soil out, except beans, which restore it. Compost brings it back: a field stop drops compost by itself.',
       `A beehive within ${HIVE.reach} tiles adds 1 to every harvest of a flowering crop.`,
+      'In spring, tomato and sunflower belong on slopes: a late frost settles in hollows and on the low ground, and takes a tender crop there (the placement card says "Frost hollow" where it would).',
     ],
   },
   sprinkler: {
@@ -210,7 +212,7 @@ const TOPICS: { id: TopicId; name: string; chip: string }[] = [
 ];
 
 /** The weather events that have a page, in the order of the index: their rules are in. */
-const GUIDED_EVENTS: readonly EventKind[] = ['thunderstorm', 'flood', 'heatWave', 'fog', 'softRain', 'warmSpell', 'steadyBreeze'];
+const GUIDED_EVENTS: readonly EventKind[] = ['thunderstorm', 'flood', 'heatWave', 'fog', 'lateFrost', 'softRain', 'warmSpell', 'steadyBreeze'];
 
 const lc = (id: ItemId) => ITEMS[id].name.toLowerCase();
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
@@ -277,6 +279,15 @@ const eventText = (linkOf: (label: string, p: GuidePage) => Node, bLinkOf: (id: 
         NODES(`The sun gives ${pc(push('fog').sun ?? 1)} of its light, so solar panels make less.`),
         NODES(`The trucks drive at ${pc(push('fog').trucks ?? 1)} of their speed.`)],
       severe: [NODES(`Thicker: the sun gives ${pc(push('fog', 'severe').sun ?? 1)} of its light and the trucks drive at ${pc(push('fog', 'severe').trucks ?? 1)} of their speed.`)],
+    },
+    lateFrost: {
+      lead: 'One clear spring night when frost settles on the lowest ground.',
+      does: [
+        NODES(`Cold air runs downhill and pools: the frost lies on the hollows and the valley floor, ground that lies at least ${HOLLOW} of a level lower than the ground within ${FROST_RADIUS} tiles round it. It is judged against what is round it, not the whole map, so slopes and rises stay clear.`),
+        NODES('A tender crop (tomato, sunflower) in a ', bLinkOf('field'), ' that the frost lies on (most of its nine tiles) loses its growing crop, and the field starts again when the frost has passed. Hardy crops are unharmed, and so is what a field already holds.'),
+        NODES('A field in a hollow says so on its cards: "', HOLLOW_FACT, '". White rime lies on the frozen ground at dawn and melts through the morning.'),
+        NODES('Answer: grow tomato and sunflower on slopes and put hardy crops in the hollows (a greenhouse comes later).')],
+      severe: [NODES(`A windy, bitter night (the wind gains ${pc(push('lateFrost', 'severe').wind ?? 0)}): the frost reaches the slopes too, and only the crests that stand above the ground round them are spared.`)],
     },
     softRain: {
       lead: 'A day of gentle rain, in spring or autumn.',

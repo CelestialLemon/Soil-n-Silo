@@ -724,11 +724,12 @@ const FILL_INSET = 0.08, FILL_TOP = 0.015;
 
 /**
  * Overlay tiles: a square over each map tile listed (by index, the map `width` wide), a little in from its sides, on the
- * ground `lift` (m) above it, all in one geometry (its colour is the object's tint).
+ * ground `lift` (m) above it, all in one geometry (its colour is the object's tint). `inset` is how far (of a tile) each square stands in
+ * from its tile's sides; none makes the squares run together.
  */
-export function overlayTiles(lie: Lie, tiles: Iterable<number>, width: number, lift: number): THREE.BufferGeometry {
+export function overlayTiles(lie: Lie, tiles: Iterable<number>, width: number, lift: number, inset = FILL_INSET): THREE.BufferGeometry {
   const t = new Tris();
   t.flag = FLAG.DECOR;
-  for (const i of tiles) sheet(t, lie, i % width, Math.floor(i / width), [FILL_INSET, FILL_INSET, 1 - FILL_INSET, 1 - FILL_INSET], lift + FILL_TOP, 0xf4f0e0);
+  for (const i of tiles) sheet(t, lie, i % width, Math.floor(i / width), [inset, inset, 1 - inset, 1 - inset], lift + FILL_TOP, 0xf4f0e0);
   return t.geometry();
 }

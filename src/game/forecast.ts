@@ -11,6 +11,7 @@ import { makes, shareOf, wants } from './sim/energy.ts';
 import { wattsOf } from './sim/layout.ts';
 import { describeLinks } from './sim/describe.ts';
 import { canFlood, floodsAt, isFlooded } from './flood.ts';
+import { frostComes, frostHits, inHollow } from './frost.ts';
 import { centreLevel } from './relief.ts';
 import { beesFact, beesFly, shadeFact, warmthFact, warmthOf } from './warmth.ts';
 import { inMap, type Building, type FieldBuilding, type GameState, type Setting } from './state.ts';
@@ -65,7 +66,8 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         const crop = CROPS[set.crop ?? 'wheat'], soil = soilUnder(s, x, y, 3), { sprinklers, shore, rain, water, at: waterAtTime } = waterAt(s, x, y);
         // A hive within reach of a flowering crop adds a good to every harvest.
         const pollinated = crop.flowers && beesFly(warmthOf(s)) && s.buildings.some((b) => b.type === 'hive' && !isFlooded(s, b) && hiveReaches({ type: 'field', x, y }, b.x, b.y));
-        const perMin = (crop.yield + (pollinated ? POLLINATION_BONUS : 0)) * 60 * paceOf(water, soil, crop, warmthOf(s)).pace / crop.grow;
+        // Nothing, while a late frost that lies there takes it.
+        const perMin = frostHits(s, set.crop ?? 'wheat', x, y) ? 0 : (crop.yield + (pollinated ? POLLINATION_BONUS : 0)) * 60 * paceOf(water, soil, crop, warmthOf(s)).pace / crop.grow;
         // Sloping tiles under it wear faster (erosion).
         const guarded = guardedAt(s, x, y);
         let slopes = 0, wear = 0;
@@ -77,6 +79,8 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         const HOUR = DAY_SECONDS / 24;
         let growth = 0, later = soil;
         for (let t = 0; t < SOIL_AHEAD; t += HOUR) {
+          // A late frost on the field takes what has grown (the field starts again) and nothing grows while it bites.
+          if (frostHits(s, set.crop ?? 'wheat', x, y, s.time + t)) { growth = 0; continue; }
           growth += Math.min(HOUR, SOIL_AHEAD - t) * paceOf(waterAtTime(s.time + t), later, crop, warmthOf(s, s.time + t)).pace / crop.grow;
           while (growth >= 1) { growth -= 1; later = Math.max(0, Math.min(100, later + crop.soil * (crop.soil < 0 ? wear : 1))); }
         }
@@ -86,6 +90,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
           : { label: 'Water', value: 'none', sub: `grows at ${Math.round(waterPace(0, crop.thirst, warmthOf(s)) * 100)}%`, tone: 'bad' });
         const warm = warmthFact(crop, warmthOf(s));
         facts.push({ label: 'Warmth', value: `${Math.round(warmthOf(s))}°C`, sub: warm.text.slice(warm.text.indexOf(': ') + 2), tone: warm.tone === 'bad' ? 'bad' : undefined });
+        if (frostComes(s) && inHollow(s, x, y)) facts.push({ label: 'Frost hollow', value: 'yes', sub: crop.tender ? 'late frost settles here and takes a tender crop' : 'late frost settles here; a hardy crop is unharmed', tone: crop.tender ? 'bad' : undefined });
         if (slopes) facts.push({ label: 'Slope', value: `${slopes} of 9 tiles`, sub: `wear up to ${fmt1(1 + (guarded ? FIELD.erosionGuarded : FIELD.erosion))}× as fast${guarded ? '; trees or beans beside it help' : ''}`, tone: guarded ? undefined : 'bad' });
         break;
       }

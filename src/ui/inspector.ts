@@ -16,6 +16,7 @@ import { fieldFertility } from '../game/sim/soil.ts';
 import { givesGoods, linksOf, recipeOf, takesGoods, wantsCompost } from '../game/sim/goods.ts';
 import { makes, shareOf, wants } from '../game/sim/energy.ts';
 import { fieldPace, flowersNear } from '../game/sim/buildings.ts';
+import { hollowNote } from '../game/frost.ts';
 import { beesFact, beesFly, henFact, shadeFact, warmthFact, warmthOf } from '../game/warmth.ts';
 import { runtimeOf } from '../game/runtime.ts';
 import { isStop, routeOf, routesAt } from '../game/sim/trucks.ts';
@@ -96,7 +97,7 @@ export class Inspector {
     }
     // Made again when what it shows changes: the building's settings, the trucks and routes it lists.
     const routes = runtimeOf(s).routesVersion;
-    const setting = b?.type === 'field' ? [b.crop, b.harvest ?? null] : b && isMachine(b) ? b.recipe : null;
+    const setting = b?.type === 'field' ? [b.crop, b.harvest ?? null, hollowNote(s, b)] : b && isMachine(b) ? b.recipe : null;
     const key = JSON.stringify([keysVersion(), ...(t ? ['truck', t.id, t.route, routes, this.tab]
       : [b?.id, b?.type, setting, routes, this.tab])]);
     if (key !== this.key) {
@@ -182,6 +183,7 @@ export class Inspector {
         stat('Soil fertility', () => `${Math.round(fieldFertility(s, b))}`);
         stat('Growth pace', () => { const p = fieldPace(s, b); return `${pct(p.pace)} · water ${pct(p.water)}, soil ×${p.soil.toFixed(2)}, warmth ${pct(p.byWarmth)}`; });
         stat('Warmth', () => `${Math.round(warmthOf(s))}°C: ${warmthFact(CROPS[b.crop], warmthOf(s)).text.replace(/^[^:]*: /, '')} (comfortable ${CROPS[b.crop].comfort.low}–${CROPS[b.crop].comfort.high}°C)`);
+        if (hollowNote(s, b)) stat('Frost hollow', () => hollowNote(s, b) ?? '');
         stat('Harvest', () => `${CROPS[b.crop].yield}${CROPS[b.crop].flowers && isPollinated(s, b) && beesFly(warmthOf(s)) ? ` + ${POLLINATION_BONUS} (bees)` : ''} ${fieldPace(s, b).pace <= 0 ? ', not growing now' : ` every ${Math.round(CROPS[b.crop].grow / fieldPace(s, b).pace)} s`}`);
         stat('Waiting to go', () => `${b.stored} of ${FIELD.store}`);
         stat('Compost', () => `${wantsCompost(s, b) ? 'takes it now' : 'none needed'} · below soil ${FIELD.compostBelow}`);

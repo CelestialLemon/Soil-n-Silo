@@ -49,6 +49,8 @@ export interface Runtime {
   floodSteps?: { relief: number; first: Uint8Array };
   /** The tiles under flood water now, for the relief of this version and the flood's step (flood.ts). */
   flooded?: { relief: number; value: Flooded };
+  /** How far below the ground round it each tile lies, for the ground's current levels (frost.ts). */
+  frost?: { relief: number; depth: Float64Array };
   /** Bumped whenever earthworks change the ground's levels, so the view redraws it (state.ts, `touchRelief`). */
   relief?: number;
   /** Bumped whenever a route, a stop or a truck's assignment changes, so the interface knows to redraw its panels. Numbered across games (see nextVersion). */

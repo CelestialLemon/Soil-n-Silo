@@ -186,7 +186,10 @@ export const EVENTS: Record<EventKind, EventInfo> = {
   },
   lateFrost: {
     name: 'Late frost', hours: [8, 10], begins: [20, 23], seasons: { spring: 1 }, severe: true,
-    odds: { dry: 1.5, gales: 0.5, wet: 0.8, hot: 0.2, mild: 0.4 }, push: {}, look: {},
+    odds: { dry: 1.5, gales: 0.5, wet: 0.8, hot: 0.2, mild: 0.4 }, look: {},
+    shape: 'diamond', holds: 'tender crops lost in the frost hollows',
+    // A still, clear night: frost settles on the low ground round each spot and a tender crop there is lost (frost.ts). A severe one is a windy cold night, which reaches the slopes too.
+    push: { severe: { wind: 0.5 } },
   },
   coldSnap: {
     name: 'Cold snap', hours: [24, 48], seasons: { winter: 1 }, severe: true,
