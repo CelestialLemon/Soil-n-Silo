@@ -22,10 +22,10 @@ export class FloodView {
 
   constructor(r: PixelRenderer, lie: Lie) { this.r = r; this.lie = lie; }
 
-  /** The highest the ground is drawn anywhere on a tile (at its corners and middle), in metres. */
+  /** The highest the ground is drawn anywhere on a tile (at its corners and middle), in metres, on the tile's own patch (at a cliff, not the neighbour's). */
   private highest(x: number, y: number): number {
     let top = -Infinity;
-    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0.5]] as const) top = Math.max(top, this.lie.y(x + dx, y + dy));
+    for (const [u, v] of [[0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0.5]] as const) top = Math.max(top, this.lie.tileY(x, y, u, v));
     return top;
   }
 
