@@ -187,7 +187,7 @@ export const EVENTS: Record<EventKind, EventInfo> = {
   },
   warmSpell: {
     name: 'Warm spell', good: true, hours: [24, 48], seasons: { autumn: 1, winter: 1 },
-    odds: { mild: 1.5, hot: 1.5, hard: 0.3 }, look: {},
+    odds: { mild: 1.5, hot: 1.5, hard: 0.3 }, look: { heat: 0.3 },
     // The day is lifted to a mild day's warmth (MILD_DAY): crops grow at a mild season's pace and the bees fly.
     push: { ordinary: { mild: 1 } },
   },
