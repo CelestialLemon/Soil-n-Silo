@@ -3,7 +3,7 @@ import { activeEvents, allowed, endOf, RAMP_HOURS, type Active, type Strength } 
 import { TERRAIN } from './map.ts';
 import { centreLevel } from './relief.ts';
 import { runtimeOf } from './runtime.ts';
-import type { Scenario } from './scenarios.ts';
+import { CAMPAIGN, type Scenario } from './scenarios.ts';
 import { inMap, reliefOf, type FieldBuilding, type GameState } from './state.ts';
 
 // Late frost: where frost settles. On a clear, still night the cold air runs downhill and pools in the low ground, so the frost
@@ -81,8 +81,11 @@ export function frostedTiles(s: GameState, x: number, y: number, strength: Stren
 /** Whether a field at (x, y) lies in a frost hollow: late frost settles on most of it. */
 export const inHollow = (s: GameState, x: number, y: number) => frostedTiles(s, x, y) >= FIELD_TILES;
 
-/** Whether the season can bring a late frost at all (so the cards say which ground it settles on). */
-export const frostComes = (s: GameState) => allowed('lateFrost', s.scenario.climate);
+/** Whether this commission can have a late frost (so the cards say which ground it settles on): a spring one that is not in the campaign (random commissions and the sandbox), or any that has one placed. */
+export const frostComes = (s: GameState) => {
+  const sc = s.scenario;
+  return sc.events.some((e) => e.kind === 'lateFrost') || (allowed('lateFrost', sc.climate) && !CAMPAIGN.some((c) => c.id === sc.id));
+};
 
 /** The words for ground a late frost settles on, as a fact on the cards. */
 export const HOLLOW_FACT = 'Frost hollow: late frost settles here';

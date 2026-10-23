@@ -394,7 +394,7 @@ campaign) when frost settles on the lowest ground (`src/game/frost.ts`: pure rul
   its fade. While it bites, a field of a frost-tender crop (tomato, sunflower) with at least 5 of its 9 tiles frozen has its
   growth reset every moment, so the field starts again when the frost has passed; its status is the weather's (`Lost · late frost`,
   see Weather's marks) and the time is counted as held. Hardy crops, and what a field already holds, are untouched.
-- **Cards.** In spring a field on frost hollow says "Frost hollow: late frost settles here" as a fact: the placement card (bad news
+- **Cards.** In a spring commission that can have a frost (random ones and the sandbox, not the campaign) a field on frost hollow says "Frost hollow: late frost settles here" as a fact: the placement card (bad news
   for a tender crop, plain for a hardy one), the inspector, the hover card over the field, and the hover card over bare ground.
 - **Drawn.** White rime lies over the frozen tiles: it builds in with the frost, lies at dawn and melts away over 3 game hours after
   the frost ends (`MELT_HOURS`), through the morning. It is a sheet of tiles tinted white and dithered by opacity (up to 85%),

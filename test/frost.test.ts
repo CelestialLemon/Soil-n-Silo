@@ -215,6 +215,11 @@ test('the cards say a field is in a frost hollow, in spring, and for a tender cr
   // Only a season that can bring a frost mentions it.
   const summer = game('summer', [], 0);
   assert.ok(!frostComes(summer) && frostComes(s));
+  // Not in a campaign commission: a spring one (c1) has no late frost to warn of.
+  const c1 = newGame(CAMPAIGN[0]);
+  assert.equal(c1.scenario.climate.season, 'spring');
+  assert.ok(!frostComes(c1));
+  assert.equal(placement(c1, 'field', 20, 20, { crop: 'tomato' }).facts.find((f) => f.label === 'Frost hollow'), undefined);
   assert.equal(placement(summer, 'field', HOLLOW_AT.x, HOLLOW_AT.y, { crop: 'tomato' }).facts.find((f) => f.label === 'Frost hollow'), undefined);
 });
 
