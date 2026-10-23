@@ -13,6 +13,7 @@ import { describeStatus, describeTruck } from '../src/game/sim/describe.ts';
 import { makes } from '../src/game/sim/energy.ts';
 import { exposureOf } from '../src/game/sim/layout.ts';
 import { advance } from '../src/game/sim/step.ts';
+import { tonight } from '../src/game/forecast.ts';
 import { garageOf, tileOf } from '../src/game/sim/trucks.ts';
 import { newGame, tileIndex, touchLayout, type BuildingOf, type GameState } from '../src/game/state.ts';
 import { distanceTo } from '../src/game/roads.ts';
@@ -303,4 +304,24 @@ test('a stuck truck outside when the worst hours begin finds its way home; a tur
   const t = put(s, 'turbine', 20, 20);
   assert.equal(t.status === 'ok', false);
   assert.equal(turbineShare(s, t.id, exposureOf(s, t)), 0);
+});
+
+test('tonight\'s forecast sees a hurricane that starts overnight, and one that has passed by morning', () => {
+  const calm = { ...climateOf('autumn'), conditions: NO_CONDITIONS, wind: { mean: 0.8, gust: 0 } };
+  const night = (events: WeatherEvent[]) => {
+    const s = game('autumn', events, timeOf(1, 19));
+    s.scenario.climate = calm;
+    power(s, 4, 4);
+    for (const x of [8, 10]) put(s, 'turbine', x, 6);
+    put(s, 'pylon', 9, 4);
+    const loom = put(s, 'loom', 4, 7); loom.inputs = { yarn: 30 };
+    const loom2 = put(s, 'loom', 7, 7); loom2.inputs = { yarn: 30 };
+    advance(s, 1);
+    return tonight(s)!;
+  };
+  assert.equal(night([]).dryAt, null, 'the turbines carry the night');
+  assert.ok(night([event('tropicalStorm', 'severe', 1, 20, 36)]).dryAt !== null, 'a hurricane from 20:00 stops them');
+  // One that began earlier and ends at midnight: the turbines are stopped now, and running again after.
+  const late = night([event('tropicalStorm', 'severe', 1, 8, 16)]);
+  assert.ok(late.dryAt === null || late.dryAt > timeOf(1, 23), 'they run again once it has passed');
 });

@@ -42,8 +42,8 @@ export function turbineInGale(s: GameState, id: number, exposure: number, time =
   return { cause: g.cause, share: (1 - (1 - FURLED) * k) * (1 - UNSTEADY * k * gust) };
 }
 
-/** The share of its power a turbine makes in the gale blowing, 1 when none is. */
-export const turbineShare = (s: GameState, id: number, exposure: number): number => turbineInGale(s, id, exposure)?.share ?? 1;
+/** The share of its power a turbine makes in the gale blowing at a time (default now), 1 when none is. */
+export const turbineShare = (s: GameState, id: number, exposure: number, time = s.time): number => turbineInGale(s, id, exposure, time)?.share ?? 1;
 
 /** The event under way that keeps the bees in, if the weather does. */
 export function keepingBeesIn(sc: Pick<Scenario, 'events'>, time: number): Active | null {

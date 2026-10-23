@@ -30,11 +30,11 @@ export function wants(s: GameState, b: Building): number {
   return !missing(b, r) && !outputsFit(b, r) ? def.power : 0;
 }
 
-/** Watts a generator makes this step. */
-export function makes(s: GameState, b: Building, sun: number, wind: number): number {
+/** Watts a generator makes this step (or at `time`, for a forecast: the sun and wind are those of that time). */
+export function makes(s: GameState, b: Building, sun: number, wind: number, time = s.time): number {
   switch (b.type) {
     case 'solar': return POWER.solar * sun;
-    case 'turbine': { const e = exposureOf(s, b); return POWER.turbine * wind * e * turbineShare(s, b.id, e); } // a gale can stop it or make it furl
+    case 'turbine': { const e = exposureOf(s, b); return POWER.turbine * wind * e * turbineShare(s, b.id, e, time); } // a gale can stop it or make it furl
     case 'wheel': return wattsOf(s, b) * pushesAt(s.scenario, s.time).river; // a weather event can raise or drop the river
     case 'digester': return b.progress !== null ? POWER.digester : 0;
     default: return 0;

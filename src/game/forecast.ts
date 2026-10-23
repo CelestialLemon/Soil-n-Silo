@@ -230,7 +230,7 @@ export function tonight(s: GameState): Tonight | null {
     const sun = sunAt(sc, t + dt / 2), wind = windAt(sc, t + dt / 2);
     let short = 0;
     for (const x of nets) {
-      const made = POWER.solar * sun * x.solar + x.turbines.reduce((n, b) => n + makes(s, b, 0, wind), 0) + x.digesters;
+      const made = POWER.solar * sun * x.solar + x.turbines.reduce((n, b) => n + makes(s, b, 0, wind, t + dt / 2), 0) + x.digesters;
       let spare = (made - x.other - (raining(sc, t + dt / 2) ? 0 : x.sprinklers)) * dt;
       for (let i = 0; i < x.bats.length; i++) {
         const move = spare > 0 ? Math.min(spare, POWER.battery.rate * dt, POWER.battery.capacity - x.bats[i]) : Math.max(spare, -POWER.battery.rate * dt, -x.bats[i]);
