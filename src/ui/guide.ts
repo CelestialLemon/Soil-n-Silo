@@ -111,7 +111,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
     how: [
       `Place it within ${HIVE.reach} tiles of flowering fields: up to ${HIVE.maxFlowers} of them count. The Bees overlay shows its range.`,
       'Build it beside a bakery making honey cake, or make it a stop on a route, so trucks pick up the honey.',
-      `The bees stay in below ${ANIMALS.beesFly}°C: no honey and no pollination, so not in winter or on a cold spring morning.`,
+      `The bees stay in below ${ANIMALS.beesFly}°C: no honey and no pollination, so not in winter or on a cold spring morning. They stay in while a gale or a tropical storm blows too.`,
     ],
   },
   composter: {
@@ -162,6 +162,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
     how: [
       `Place it in the open, within a pylon's reach. Trees, tall buildings and higher ground within ${POWER.shelterReach} tiles shelter it and cost power.`,
       `Up high the wind is stronger: ${Math.round(POWER.windPerLevel * 100)}% more for every level it stands up.`,
+      'A severe gale stops a turbine in the open, and a hurricane stops every one, sheltered or not (see the gale and the tropical storm in the weather events). In a severe gale a turbine with trees, tall buildings or higher ground round it keeps turning, at reduced power and in gusts: shelter has this second use.',
     ],
   },
   wheel: {

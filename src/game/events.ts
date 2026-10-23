@@ -186,7 +186,7 @@ export const EVENTS: Record<EventKind, EventInfo> = {
     push: { ordinary: { wind: 0.7, bees: 0 }, severe: { wind: 0.7, bees: 0, gale: 1.3 } },
   },
   tropicalStorm: {
-    name: 'Tropical storm', severeName: 'Hurricane', hours: [24, 48], seasons: { summer: 0.25, autumn: 0.5 }, severe: true, then: 'flood',
+    name: 'Tropical storm', severeName: 'Hurricane', hours: [24, 48], seasons: { summer: 0.15, autumn: 0.3 }, severe: true, then: 'flood',
     odds: { stormy: 3, wet: 1.5, gales: 1.2, mild: 0.3, dry: 0.1, hot: 0.5 }, heavyRain: true, look: { cloud: 1, precip: 0.8 },
     shape: 'swirl', holds: 'solar panels weak; in a hurricane every turbine, hen and bee stopped and the trucks kept in their garages',
     // Days of heavy rain and wind, and the flood after it. The bees stay in. A hurricane (the severe one) is wind no turbine stands (`gale`

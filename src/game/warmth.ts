@@ -98,10 +98,10 @@ export const beesFly = (w: number) => w >= ANIMALS.beesFly;
 /** Whether the bees fly now: warm enough, and the weather (a gale, a storm) does not keep them in. */
 export const beesOut = (s: GameState, time = s.time) => beesFly(warmthOf(s, time)) && !keepingBeesIn(s.scenario, time);
 
-/** The bees now as a fact, with what keeps them in: the cold, or the weather ("kept in by the gale"). */
+/** The bees now as a fact, with what keeps them in: the cold, or the weather ("the gale keeps them in"). */
 export function beesNow(s: GameState): { text: string; tone?: 'bad' | 'good' } {
   const a = keepingBeesIn(s.scenario, s.time);
-  return beesFact(warmthOf(s), a ? `kept in by the ${eventName(a.event.kind, a.event.strength).toLowerCase()}` : undefined);
+  return beesFact(warmthOf(s), a ? `the ${eventName(a.event.kind, a.event.strength).toLowerCase()} keeps them in` : undefined);
 }
 
 /** The coop's laying as a fact: "Hens: laying at half speed, 3°C". */
@@ -118,7 +118,7 @@ export function shadeFact(trees: number): string {
   return `within ${ANIMALS.shadeReach} tiles: the hens feel ${trees * ANIMALS.shadePerTree}°C less of a heat wave${trees * ANIMALS.shadePerTree >= ANIMALS.shadeMost ? ' (the most trees can take off)' : ''}`;
 }
 
-/** The bees as a fact: "Bees: staying in, 7°C"; `weather` is what keeps them in apart from the cold ("the gale"). */
+/** The bees as a fact: "Bees: staying in, 7°C"; `weather` is what keeps them in apart from the cold ("the gale keeps them in"). */
 export function beesFact(w: number, weather?: string): { text: string; tone?: 'bad' | 'good' } {
   if (!beesFly(w)) return { text: `Bees: staying in, ${Math.round(w)}°C (below ${ANIMALS.beesFly}°C)`, tone: 'bad' };
   return weather ? { text: `Bees: staying in, ${weather}`, tone: 'bad' } : { text: `Bees: flying, ${Math.round(w)}°C`, tone: 'good' };

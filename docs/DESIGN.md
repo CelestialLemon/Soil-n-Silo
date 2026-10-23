@@ -236,7 +236,7 @@ half speed at 36°C. **Trees by the coop shade it:** each tree within 2 tiles of
 Bees stay in below 10°C: a hive makes no honey (status Too cold, "Bees: staying in, 7°C") and a flowering field harvested then gets no
 pollination bonus. Warmth swings over a day, so a hive works in the afternoon of a cool spring day. Winter days top out at 6°C, so in winter
 the bees stay in all day; Long Nights (winter, honey cake) can't be cleared until the greenhouse (#86), and its bot test is skipped.
-Hives in a gale and bees in a greenhouse come later (phases 2 and 4); a warm spell (see Weather events) lets them fly in winter.
+The bees also stay in while a gale or a tropical storm blows (see The wind events); bees in a greenhouse come later (phase 4); a warm spell (see Weather events) lets them fly in winter.
 
 Each crop has a **comfortable range**: full speed inside it, and outside it a smooth fall-off of 1 / (1 + (d / 6)²), where d is
 the degrees outside the range: half speed 6°C out, a quarter 10°C out. This is one more factor in a field's pace, with water and
@@ -294,7 +294,7 @@ that it is limited to, whether it can be severe, its look and its `push`:
 | Warm spell (good) | autumn, winter | mild ×1.5, hot ×1.5, hard ×0.3 | 24–48 h | no |
 | Steady breeze (good) | summer | dry ×1.2, hot ×1.2, stormy ×0.5 | 20–28 h | no |
 | Gale | autumn | gales ×3, stormy ×2, mild ×0.4 | 20–28 h | yes |
-| Tropical storm | summer (×0.25, late), autumn (×0.5) | stormy ×3, wet ×1.5, gales ×1.2, hot ×0.5, mild ×0.3, dry ×0.1 | 24–48 h | yes: the hurricane |
+| Tropical storm | summer (×0.15: "late summer", see The wind events), autumn (×0.3) | stormy ×3, wet ×1.5, gales ×1.2, hot ×0.5, mild ×0.3, dry ×0.1 | 24–48 h | yes: the hurricane |
 | Flood | spring; also after a spring thunderstorm and after a tropical storm | high river ×3, wet ×2, stormy ×1.5, mild ×0.6, dry ×0.2 | 24–48 h | yes |
 | Late frost | spring, from 20:00–23:00 | dry ×1.5, wet ×0.8, gales ×0.5, mild ×0.4, hot ×0.2 | 8–10 h | yes |
 | Cold snap | winter | hard ×2.5, gales ×1, mild ×0.3 | 24–48 h | yes |
@@ -306,7 +306,7 @@ hurricane's flood is the severe one): the one case where events touch, and the f
 level's events.
 
 **Events land one issue at a time.** The whole catalogue is rolled and shown, but a kind's `push` is filled in by its own issue:
-2.3 (below) the thunderstorm, heat wave, fog and the three good events; 2.4 gale, tropical storm, hurricane; 2.5 (below) flood; 2.6 (below) late
+2.3 (below) the thunderstorm, heat wave, fog and the three good events; 2.4 (below) gale, tropical storm, hurricane; 2.5 (below) flood; 2.6 (below) late
 frost; 2.7 cold snap and blizzard; 2.8 dust storm. Until its issue lands an event changes only the **look** of the sky (cloud and
 drawn rain or snow, eased in with the event's ramp; the rules do not see it), the HUD chip and the list the forecast will read.
 
@@ -377,7 +377,7 @@ it for a day or two, then drains.
   the depot and plays the layouts through a spring commission's rolled events with and without the flood: a flood beside the farm
   cost 17–24% (up to 43% at worst) with 5–7 buildings flooded. A spring commission nearly always rolls one (75% at difficulty 1,
   98% above), so **`PAR_FACTOR` spring is a tenth higher** (mild 1.1, wet 1.2, dry 1.1, hot 1.1, gales 1.15, stormy 1.3, high river 1.15).
-  The tropical storm's flood in autumn is retuned with 2.4. The campaign has no events until 2.10, so no campaign target moved.
+  The tropical storm's flood (autumn too) is retuned in The wind events (2.4). The campaign has no events until 2.10, so no campaign target moved.
 
 **Late frost (2.6).** One clear spring night (8–10 hours, beginning between 20:00 and 23:00; random commissions only, never the
 campaign) when frost settles on the lowest ground (`src/game/frost.ts`: pure rules; the rime is drawn in `src/world/rime.ts`).
@@ -405,6 +405,62 @@ campaign) when frost settles on the lowest ground (`src/game/frost.ts`: pure rul
   half a minute. An ordinary frost reaches about a quarter of the fields, so it costs less. That is about 3% on average over a
   spring commission's layouts, so `PAR_FACTOR` is unchanged.
 
+**The wind events (2.4).** The gale, the tropical storm and the hurricane (the severe tropical storm). Their rules are in
+`src/game/wind.ts` (pure) with the numbers in the catalogue; the holds that mark them are in `hold.ts`.
+
+| Event | Ordinary | Severe |
+| --- | --- | --- |
+| Gale (autumn, 20–28 h) | `wind` +0.7 (a strong wind: turbines at full power), `bees` 0 | the same, and `gale` 1.3: exposed turbines stop |
+| Tropical storm (autumn, summer; 24–48 h) | `rain` 1 (heavy rain), `sun` ×0.4, `wind` +0.6, `bees` 0; **a flood follows** (ordinary) | the hurricane: `rain` 1, `sun` ×0.05, `wind` +0.8, `bees` 0, `hens` 0, `gale` 3; **a severe flood follows**; trucks stay in |
+
+- **Turbines and shelter.** A turbine stops while the gale it feels, the event's `gale` times the turbine's exposure to the wind
+  (`windExposure`: its shelter from trees, tall buildings and higher ground times its height, 0.4 to 1.8), is over `TURBINE_LIMIT` = 1.
+  In a severe gale (1.3) that is an exposure above about **0.77**: a bare turbine (1.0) stops, so does one with two trees or tall
+  buildings beside it (0.8) or three trees on a rise; a turbine with **three or more trees or tall buildings** within 2 tiles (0.7
+  or less) keeps turning. Up a hill a turbine gets 5% more wind a level and stops sooner (three trees at level 8 stop). In a
+  hurricane (gale 3) a turbine stops above exposure 0.33, which is every turbine (the least a turbine can get is the shelter floor, 0.4): sheltered or
+  not. A gale rarely stops a small turbine, so only the severe one does; the ordinary one has no `gale`. The gale blows in with
+  the event's ramp, so the most exposed turbines stop first and the sheltered ones never do.
+- **A turbine that keeps turning furls**: it makes `(1 − 0.5 × k) × (1 − 0.5 × k × gust)` of what it would make, `k` = the gale it feels
+  as a share of the limit (so 0.7 sheltered by three trees in a severe gale makes about 40–60% of its ordinary power), `gust` a seeded noise 0–1 that changes over
+  a few seconds (`FURLED`, `UNSTEADY`): reduced and unsteady. A stopped turbine makes nothing; nothing breaks, it turns again when the
+  gale eases.
+- **Bees** stay in while the weather's `bees` push is below half (the gale, the tropical storm and the hurricane): the hive's honey stops
+  (the weather's hold, *stopped*), and a flowering field harvested then gets no pollination bonus (`beesOut`).
+- **Hens** stop laying in a hurricane (`hens` 0, read by `coopPace`; the coop is held, *stopped*; while the storm builds in or fades out they are *slowed*).
+- **Trucks stay in their garages through the hurricane's worst hours**: the middle half of the event (`garages` 0.5 in the catalogue,
+  `garaging(scenario, time)`). When it begins, a truck on the road drives home; one at its garage charges but does not set off; they set off again when the
+  worst hours are over. They are marked as held (*stopped*) while they wait. The 12 hours the flood stands afterwards are not in the worst hours, but the flood keeps trucks off the
+  water as it always does.
+- **Solar** is weakened by the sun lever (the existing mark: ×0.4 in a tropical storm, ×0.05 in a hurricane: nearly nothing).
+- **The flood after** a tropical storm comes at once, at its strength: a hurricane's is the severe one (2 levels), certain and a level higher than the ordinary storm's (1).
+- **Marked** as weather holds: the gale has the `chevron` shape and the tropical storm the `swirl`. A stopped turbine is *stopped*, one turning furled is *weak*
+  (≤ 85% of its power); its card says "Stopped: the severe gale is stronger than a turbine this exposed can stand. Trees, tall buildings
+  or higher ground beside it would keep it turning". A stopped turbine's rotor stands still (a fourth rotor look in `models.ts`, no renderer change).
+  A hive stopped by the weather, a coop whose hens have stopped, a truck kept in its garage and a panel under the storm's cloud are marked the same way.
+- **Cards.** A turbine in hand, where a severe gale can come (autumn and the sandbox), says "Severe gale: keeps turning" or "stops" from its shelter; the
+  "Now" watts take a gale into account.
+- **"Late summer"** is the summer commission. A commission is one season, so there is no "late" within it: a tropical storm in summer
+  is half as likely as in autumn (`seasons: { summer: 0.15, autumn: 0.3 }`), the storm season's tail, and rarer for it. The odds were
+  0.25 and 0.5 in 2.1; the bad events of an autumn are only fog, the gale and the tropical storm, so those odds put a tropical storm in 22% of a mild
+  autumn's commissions and 71% of a stormy one's, which is not rare. At 0.15 and 0.3: 14% mild, 34% wet, 32% gales, 58% stormy
+  (difficulty 2 and 3); in summer 10% mild, 26% wet, 5% hot, 1% dry, 33% stormy. The hurricane is possible in either season, only in a stormy
+  character at difficulty 3 (23% of those in autumn, 13% in summer), at most once a level.
+- **Answers you can build:** a power mix (the gale and the hurricane stop the wind but not the wheel or the digester; the tropical storm dims the
+  panels), batteries to carry the dark days, turbines in a grove or by tall buildings, garages near the routes, and the flood's answers (higher ground, banks).
+- **Cost, measured with the bot** (`PAR_FACTOR`). The bot's map is flat with no water, so, as for the flood (2.5), a synthetic river is put down
+  8 tiles from the depot, beside the farm: the worst case for the storm's flood. One event on day 3 against none, on c1, c4 and c6 (the
+  mean over the layouts and climates): a gale 0%; a severe gale 0–2% (the bot's farms lean on solar, so a stopped turbine costs little);
+  a tropical storm 17–22% (almost all of it the flood after it, a little the dark days); a hurricane 34–39% (worst 59%, on the short c1: it is
+  about 9 minutes of lost play however long the run is). Over a population of random commissions (difficulty 2 and 3, the events rolled
+  as they would be, 48 runs a climate) the extra over the same run without wind events was, mean and 90th percentile: autumn mild +2%
+  and +2%, wet +6% and +24%, dry +0.5% and 0%, gales +5% and +27%, stormy +9% and +28% (worst +34%); summer mild +2%, wet +3% and
+  +20%, dry +1%, hot +0.3%, stormy +5% and +23% (worst +48%). So **`PAR_FACTOR` is a tenth higher** for autumn wet (1.25 to 1.35) and gales (1.15 to
+  1.25), 0.15 higher for autumn stormy (1.35 to 1.5, where the hurricane is also possible), and a tenth higher for summer wet and stormy
+  (1.1 to 1.2); the rest stand. The campaign has no events until 2.10, so no campaign target moved (c1 15:31, c2 32:38, c3 39:06,
+  c4 28:11, c6 28:49, c7 36:50, c8 35:02; c5 still does not finish in 90 minutes, as on `dev`).
+
+
 **Levers.** An event's `push` (per strength) gives some of these levers the value they reach at full strength; the rules
 read them through `pushesAt(scenario, time)`, so an effect that is a lever is one line in the event's entry:
 
@@ -418,6 +474,9 @@ read them through `pushesAt(scenario, time)`, so an effect that is a lever is on
 | `river` | multiplying | `makes`: a multiple of the current, so of what water wheels make |
 | `trucks` | multiplying | `drive`: a multiple of the trucks' speed |
 | `mild` | the highest | `WARMTH_NUDGES`: how far the day's warmth is lifted to a mild day's curve (0–1), never cooled |
+| `gale` | the highest | `turbineInGale` (`wind.ts`): gale-force wind, in multiples of a full wind (0: none); a turbine stops while this times its exposure is over `TURBINE_LIMIT` (1) |
+| `bees` | multiplying | `keepingBeesIn`: a multiple of how far the bees fly; below half they stay in |
+| `hens` | multiplying | `coopPace`: a multiple of the hens' laying |
 
 An event builds in over 1.5 game hours (15 s of play) and fades out over the last 1.5, so each push is blended from neutral by
 the event's `intensityAt`, 0 to 1 (events under way together combine their pushes). An effect that is more than a lever (the
@@ -557,7 +616,7 @@ heights keep the rules clear. A mountains-themed commission could come later.
 | Next door | Goods pass only where at least one shared tile edge joins; cliffs stop them in both directions |
 | Field water | An edge touching water waters the field only if both ends of the ground edge are at the water's level |
 | Sprinklers | 3 W with water within 8 tiles, else 8 W; add 0.5 W per level of centre height above the highest water in reach, or above level 0 without it |
-| Wind turbines | Wind × (1 + 0.05 × centre level). Shelter costs 10% per tree or tall building within 2 tiles, plus 3% per level of higher ground, down to 40%, before the height multiplier |
+| Wind turbines | Wind × (1 + 0.05 × centre level). Shelter costs 10% per tree or tall building within 2 tiles, plus 3% per level of higher ground, down to 40%, before the height multiplier. Shelter also keeps a turbine turning in a severe gale (it stops when its exposure is above about 0.77; see The wind events) |
 | Erosion | Soil loss × (1 + 0.5 × span / 2), or × (1 + 0.25 × span / 2) when guarded. Flat tiles ×1; full steepness ×1.5, or ×1.25 guarded. Beans still restore soil |
 | Water wheels | 20 W × current in m/s, ×2 beside a fall; a flat 2 × 2 bank at the river's level, facing it |
 
@@ -924,8 +983,8 @@ time of a mild spring, times a **season-and-character factor** (`PAR_FACTOR` in 
 every season and character can earn gold. The factors come from `node tools/seasonfactor.ts`: it plays every bot layout in every
 climate on three seeds and compares each with the same layout in a mild spring; the factor is halfway between the mean ratio and
 the worst, rounded up to 0.05 (a commission's goals decide which layout it is like: autumn is quicker for oil and honey cake and
-slower for linen and bread). Spring 1 to 1.2 (stormy 1.2: its thunderstorms), summer 1.1 to 1.4 (hot summer 1.4: heat is hard on wheat, flax and beans, calm days starve
-solar and wind, and a heat wave comes), autumn 1.1 to 1.35 (stormy 1.35), winter 2.6 (mild), 2.65 (gales) and 3.85 (hard): the bot
+slower for linen and bread). Spring 1 to 1.2 (stormy 1.2: its thunderstorms), summer 1.1 to 1.4 (the wind events (2.4) raised wet and stormy summers to 1.2; hot summer 1.4: heat is hard on wheat, flax and beans, calm days starve
+solar and wind, and a heat wave comes), autumn 1.1 to 1.5 (wet 1.35, gales 1.25 and stormy 1.5: the tropical storm and its flood, 2.4), winter 2.6 (mild), 2.65 (gales) and 3.85 (hard): the bot
 needs 1.7 to 2.6 times as long for flour, 2.3 to 2.8 for bread and 2.9 to 4.4 for linen. The seasonfactor tool plays no events, so
 the sky events' share (2.3) was measured separately: the layouts played with each climate's rolled events (difficulty 3) against none were
 2% slower on average, 16% at the worst (a severe spring thunderstorm in a stormy spring took one run 39% longer), and the two factors above

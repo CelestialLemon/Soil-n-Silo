@@ -142,8 +142,8 @@ const PRODUCTS: { item: ItemId; n: number; level: number }[] = [
  */
 export const PAR_FACTOR: Record<Season, Partial<Record<Character, number>>> = {
   spring: { mild: 1.1, wet: 1.2, dry: 1.1, hot: 1.1, gales: 1.15, stormy: 1.3, highRiver: 1.15 },
-  summer: { mild: 1.2, wet: 1.1, dry: 1.25, hot: 1.4, stormy: 1.1 },
-  autumn: { mild: 1.1, wet: 1.25, dry: 1.15, gales: 1.15, stormy: 1.35 },
+  summer: { mild: 1.2, wet: 1.2, dry: 1.25, hot: 1.4, stormy: 1.2 },
+  autumn: { mild: 1.1, wet: 1.35, dry: 1.15, gales: 1.25, stormy: 1.5 },
   winter: { mild: 2.6, gales: 2.65, hard: 3.85 },
 };
 

@@ -255,7 +255,7 @@ test('a truck far from home when the worst hours begin turns back', () => {
 });
 
 test('the odds: a tropical storm is rarer in summer than autumn, a hurricane needs a stormy character and the hardest difficulty', () => {
-  assert.equal(EVENTS.tropicalStorm.seasons.summer, 0.25);
+  assert.equal(EVENTS.tropicalStorm.seasons.summer, 0.15);
   assert.ok((EVENTS.tropicalStorm.seasons.autumn ?? 0) > (EVENTS.tropicalStorm.seasons.summer ?? 0));
   assert.ok(!EVENTS.tropicalStorm.seasons.spring && !EVENTS.tropicalStorm.seasons.winter, 'only late in summer or in autumn');
   let storms = 0, hurricanes = 0;
