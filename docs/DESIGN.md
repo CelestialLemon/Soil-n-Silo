@@ -329,7 +329,8 @@ drawn rain or snow, eased in with the event's ramp; the rules do not see it), th
 - **Heavy rain.** An event may carry `heavyRain` in the catalogue (the thunderstorm), and `heavyRainEvents(scenario, time)` lists
   those under way. A spring thunderstorm counts as heavy rain, and its flood follows it (see The flood, below). Soft rain and the
   everyday showers do not.
-- Fog's look (haze) comes with 2.9: for now it is only a greyer sky; its rules are in.
+- Fog's look is a haze (see Haze, below). A warm spell lights the day a little gold (`look.heat` 0.3, a third of the way to a heat wave's tint),
+  so a kind turn reads in the world too.
 - A severe form's length can differ from the ordinary one (`severeHours`): only the heat wave has one so far.
 
 **The flood (2.5).** The river (any water: a lake or pond spreads over its shore the same way) spreads over the low ground beside
@@ -495,14 +496,38 @@ difficulty 2 and 3 roll one (47% at difficulty 1); it is severe in about one in 
   the trucks) it is **+1.7% on average, 5% at the 90th percentile, 17% at the worst**, so the soil is the other 7%. Over a population of
   dry-summer commissions (81% have one) the mean extra of an unguarded farm is about 7%, so **summer dry 1.25 to 1.35**.
 
-**Haze (fog and dust, drawn, for 2.9).** Renderer 0.4.0's haze (`setWeather({ haze, hazeColor, hazeTop })`) is one game-side look an
+**Haze (fog and dust, drawn).** Renderer 0.4.0's haze (`setWeather({ haze, hazeColor, hazeTop })`) is one game-side look an
 event can carry, `look.haze` in its catalogue entry: `{ amount, color, top, thins? }` (thickness 0–1, sRGB colour, metres of height, and
 the share of its thickness left by the event's end for one that lifts). `lookAt` returns the thickest under way, felt as strongly as the
 event has built (a severe one ×1.15), `Weather.haze` carries it, and `main.ts` eases it over a few seconds (like the cloud and rain)
 into the renderer; the colour is kept while the haze thins out. Both hazes use it: the **dust storm** a warm brown (`0xc49a62`, 0.7 thick
 (0.8 severe), 6 m high), the **fog** a cool grey (`0xcfd6d8`, 0.6, 4 m) that is thickest at dawn and thins to about a third of that by
 the time it lifts. The renderer never hides the farm under it (a surface keeps a fifth of its colour) and roofs and tree tops rise
-out of it. Fog is drawn here, not left for 2.9: the dust storm needed the mechanism, so fog shares it.
+out of it. The dust storm needed the mechanism, so fog shares it.
+
+**How each event looks (the 2.9 audit).** Every event is drawn by one game-side look in its catalogue entry or by its own view, never by
+the rules; the everyday weather goes on under it, so an event that adds no cloud or rain can still have some. Checked by playing each in the sandbox at its start, peak and end (and the ones that follow each other: a storm and its flood,
+a blizzard and the snow it leaves), in the season it comes in:
+
+| Event | What the player sees |
+| --- | --- |
+| Thunderstorm | Full cloud (`cloud` 1), heavy rain (`precip` 0.9): a dark grey-green valley. In spring the flood follows (below). |
+| Heat wave | A hazy gold light (`heat` 1), no cloud of its own; the strongest tint in the game. |
+| Fog | A cool grey haze 4 m high under a greyer sky (`cloud` 0.6). The catalogue thickness (0.6, 0.69 severe) is never quite reached: the ramp and the thinning are applied together, so a usual fog peaks near 0.5 (0.57 severe) soon after it begins and thins to nothing as the morning lifts it. Roofs and tree tops stand out of it and the farm is never hidden. |
+| Soft rain | Cloud 0.7 and a light rain (`precip` 0.35). |
+| Warm spell | A mild gold light (`heat` 0.3); it adds no cloud or rain. |
+| Steady breeze | Wind only (the trees lean and gust, the HUD's wind reading rises); it adds no cloud or rain. |
+| Gale | Cloud 0.5 and a strong wind that leans the trees; it adds no rain. |
+| Tropical storm, hurricane | Full cloud, the heaviest rain (the rules' heavy rain makes `precip` 1) and a strong wind; the two look alike at their peak (the hurricane's `sun` 0.05 is a rule: it dims the panels, not the light). The flood follows. |
+| Flood | One silty brown water layer over the swollen river and every tile the rules flood (`floodView.ts`). It climbs in half levels over the 1½-hour ramp, stands for the event and drains over the last 1½ hours. A severe flood (a hurricane's) is two levels and reaches further. The sky is clearing as it rises. |
+| Late frost | White rime over the frozen tiles of the frost hollows (`rime.ts`): builds in with the night, lies at dawn and melts away over 3 hours. |
+| Cold snap | A pale sky (`cloud` 0.3), and the river's quiet stretches freeze white and blue (`iceView.ts`, grown in from the banks); falls and the water beside them stay open. |
+| Blizzard | Full cloud and the heaviest snow (`precip` 1): the ground is buried white, roofs and panels go white by tint, and the snow melts away in patches over the following day (`lyingSnow`, `snowView.ts`). |
+| Dust storm | A warm brown haze (0.7, 6 m high; 0.8 severe) and a half-strength warm tint (`heat` 0.5) under thin cloud: the farm shows through, the river turns brown. |
+
+Two things to know when reading the table. The eased numbers (cloud, rain, haze) are the sky's targets: `main.ts` moves toward them with
+a 3-second ease, so a still taken the moment an event starts shows less of it than the same event a few seconds on. And a still
+cannot show the wind: the gale and the breeze lean the trees only while the game runs.
 
 **Levers.** An event's `push` (per strength) gives some of these levers the value they reach at full strength; the rules
 read them through `pushesAt(scenario, time)`, so an effect that is a lever is one line in the event's entry:

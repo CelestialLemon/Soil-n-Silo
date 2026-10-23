@@ -122,6 +122,14 @@ test('the heat wave warms the look, and a clear day with no heat is left alone',
   assert.notEqual(warm.skyBot.getHex(), noon.skyBot.getHex());
 });
 
+test('a warm spell lights the day a little gold, far less than a heat wave, and leaves the sky and rain alone', () => {
+  const { s, e } = during('autumn', 'warmSpell', 'ordinary', 8);
+  const look = lookAt(s.scenario, e.start + e.length / 2), hot = lookAt(during('summer', 'heatWave').s.scenario, during('summer', 'heatWave').s.time);
+  assert.ok(look.heat > 0 && look.heat < hot.heat / 2, 'a mild warmth in the light');
+  assert.equal(look.cloud + look.precip, 0);
+  assert.equal(look.haze, null);
+});
+
 test('a severe heat wave lasts longer than an ordinary one, and the short events stay short', () => {
   assert.ok(hoursOf('heatWave', 'severe')[0] >= hoursOf('heatWave')[1]);
   for (const [kind, h] of [['thunderstorm', 14], ['fog', 7], ['softRain', 28]] as const) assert.ok(hoursOf(kind)[1] <= h, kind);
