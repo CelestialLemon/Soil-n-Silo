@@ -1,4 +1,6 @@
 import { POWER } from '../game/data.ts';
+import { EVENT_KINDS, EVENTS } from '../game/events.ts';
+import { holdNeed } from '../game/hold.ts';
 import { networks, usedBy } from '../game/power.ts';
 import { dayAt, hourAt } from '../game/sim/clock.ts';
 import type { BatteryBuilding, GameState, Status } from '../game/state.ts';
@@ -37,7 +39,11 @@ const MARKERS: [Status, string, string][] = [
 export function markersCard() {
   return h('div', { class: 'cd-card markers' },
     h('div', { class: 'row-head' }, h('span', { class: 'cd-label' }, 'What the markers mean'), h('span', { class: 'cd-small' }, 'a shape and a word, never colour alone')),
-    h('div', { class: 'list' }, ...MARKERS.map(([st, word, what]) => h('div', null, statusPill(st, word), h('span', { class: 'cd-small' }, what)))));
+    h('div', { class: 'list' }, ...MARKERS.map(([st, word, what]) => h('div', null, statusPill(st, word), h('span', { class: 'cd-small' }, what)))),
+    // Weather has a shape for each event, so the weather's doing can be told from the layout's: a dark slate tint, and the event's own shape.
+    h('div', { class: 'row-head' }, h('span', { class: 'cd-label' }, 'Held by the weather'), h('span', { class: 'cd-small' }, 'a slate tint and the shape of the event')),
+    h('div', { class: 'list' }, ...EVENT_KINDS.filter((k) => EVENTS[k].shape).map((k) => h('div', null,
+      statusPill('weather', EVENTS[k].name, '', holdNeed({ kind: k, strength: 'ordinary', effect: 'slowed' })), h('span', { class: 'cd-small' }, EVENTS[k].holds)))));
 }
 
 const key = (k: string) => h('span', { class: 'cd-key' }, k);

@@ -13,7 +13,7 @@ import { statusLook, statusPill } from './widgets.ts';
 // are divided by the interface's zoom.
 
 export interface Spot { sx: number; sy: number }
-export interface MarkerSpot extends Spot { id: number; status: Status }
+export interface MarkerSpot extends Spot { id: number; status: Status; need?: string }
 export interface NetSpot extends Spot { colour: number; net: Network }
 export interface StopSpot extends Spot { colour: number; text: string }
 export interface TruckSpot extends Spot { id: number; name: string; what: string }
@@ -21,7 +21,7 @@ export interface TruckSpot extends Spot { id: number; name: string; what: string
 /** The building in hand: where, how many (dragged out), and what they all cost, with the earthworks they need. */
 export interface PlaceSpot extends Spot, Setting { type: BuildingId; x: number; y: number; count: number; price: number }
 /** What is under the pointer, for the hover card. */
-export interface Hover { title: string; icon?: string; status?: { status: Status; label: string }; text?: string }
+export interface Hover { title: string; icon?: string; status?: { status: Status; label: string; need?: string }; text?: string }
 
 /** A pool of elements made as needed and hidden when not, so a list redrawn every frame makes nothing new. */
 class Pool {
@@ -61,7 +61,7 @@ export class WorldLayer {
 
   setMarkers(list: MarkerSpot[]) {
     this.markers.show(list, this.z, (x) => x, (el, m) => {
-      const look = statusLook(m.status), cls = `mk ${look.cls}${look.outline ? ' is-outline' : ''}`;
+      const look = statusLook(m.status, m.need), cls = `mk ${look.cls}${look.outline ? ' is-outline' : ''}`;
       if (el.className !== cls) el.className = cls;
       if (look.col) el.style.setProperty('--col', look.col); else el.style.removeProperty('--col');
     });
@@ -123,7 +123,7 @@ export class WorldLayer {
     this.hoverKey = key;
     fill(this.hover,
       h('div', { class: 'head' }, hover.icon ? icon(hover.icon) : null, hover.title),
-      hover.status ? statusPill(hover.status.status, hover.status.label) : null,
+      hover.status ? statusPill(hover.status.status, hover.status.label, '', hover.status.need) : null,
       hover.text ? h('p', { class: 'cd-small' }, hover.text) : null);
   }
 }

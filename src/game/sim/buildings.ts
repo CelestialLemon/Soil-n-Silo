@@ -11,9 +11,8 @@ import { raining } from './weather.ts';
 // Buildings: one step of each machine, field and hive.
 
 /** Growth per second of a field as a multiple of its crop's normal pace, and the parts it's made of. */
-export function fieldPace(s: GameState, f: FieldBuilding) {
+export function fieldPace(s: GameState, f: FieldBuilding, warmth = warmthOf(s)) {
   const wet = touchesWater(s, f.x, f.y) || raining(s.scenario, s.time) ? 1 : sprinklersOf(s, f).reduce((m, sp) => Math.max(m, shareOf(s, sp)), 0);
-  const warmth = warmthOf(s);
   const p = paceOf(wet, fieldFertility(s, f), CROPS[f.crop], warmth);
   return { pace: p.pace, water: wet, soil: p.bySoil, warmth, byWarmth: p.byWarmth };
 }

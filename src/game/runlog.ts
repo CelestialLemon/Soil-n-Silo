@@ -1,4 +1,6 @@
-import { BUILDINGS, type BuildingId, type ItemId } from './data.ts';
+import { BUILDINGS, ITEMS, type BuildingId, type ItemId } from './data.ts';
+import { activeEvents } from './events.ts';
+import { eventIndex, readHold, truckHold, type Hold } from './hold.ts';
 import { nightOf } from './powerlog.ts';
 import type { Scenario } from './scenarios.ts';
 import type { GameState } from './state.ts';
@@ -26,6 +28,8 @@ export interface RunLog {
   /** The goal good delivered, sampled every `curveStep` seconds from the start. */
   curveStep: number;
   curve: number[];
+  /** The value of every good the valley has made (at the depot's prices), sampled with the curve: a smoother measure of how fast it works than deliveries, which come in truckloads. */
+  output: number[];
   /** Seconds each kind of building stood, and seconds spent in each problem, keyed `type|status|need`. */
   time: Partial<Record<BuildingId, number>>;
   problems: Record<string, number>;
@@ -33,9 +37,14 @@ export interface RunLog {
   nights: { day: number; short: number; types: BuildingId[] }[];
   /** Truck seconds on a route, waiting at stops in all, and waiting at each kind of building. */
   trucks: { total: number; wait: number; at: Partial<Record<BuildingId, number>> };
+  /**
+   * Seconds the weather held something, by the scenario's event (its index) and what it held: a kind of building, or `truck`
+   * (keyed `index|type`). The results read what each event cost from these and the curve (weathercost.ts).
+   */
+  held: Record<string, number>;
 }
 
-export const newRunLog = (): RunLog => ({ marks: [], curveStep: RUN_SAMPLE, curve: [0], time: {}, problems: {}, nights: [], trucks: { total: 0, wait: 0, at: {} } });
+export const newRunLog = (): RunLog => ({ marks: [], curveStep: RUN_SAMPLE, curve: [0], output: [0], time: {}, problems: {}, nights: [], trucks: { total: 0, wait: 0, at: {} }, held: {} });
 
 /** Byproducts: put to use, they close a loop. */
 const BYPRODUCTS: ItemId[] = ['bran', 'seedcake', 'manure'];
@@ -81,6 +90,11 @@ export function noteRun(s: GameState, dt: number, night: boolean, short: boolean
     run.problems[key] = (run.problems[key] ?? 0) + dt;
     if (n && short && (b.status === 'power' || b.status === 'lowpower') && !n.types.includes(b.type)) n.types.push(b.type);
   }
+  const active = activeEvents(s.scenario, s.time);
+  if (active.length) {
+    for (const b of s.buildings) { const h = b.status === 'weather' ? readHold(b.need) : null; if (h) noteHeld(s, h, b.type, dt); }
+    for (const t of s.trucks) { const h = t.route !== null ? truckHold(s, t, active) : null; if (h) noteHeld(s, h, 'truck', dt); }
+  }
   for (const t of s.trucks) {
     if (t.route === null) continue;
     run.trucks.total += dt;
@@ -95,9 +109,11 @@ export function noteRun(s: GameState, dt: number, night: boolean, short: boolean
   if (item && (s.completedAt !== null || s.time >= run.curve.length * run.curveStep - 1e-6)) {
     if (run.curve.length >= RUN_MAX_SAMPLES) {
       run.curve = run.curve.filter((_, i) => i % 2 === 0);
+      run.output = run.output.filter((_, i) => i % 2 === 0);
       run.curveStep *= 2;
     }
     run.curve.push(s.delivered[item] ?? 0);
+    run.output.push(valueMade(s));
   }
   // Once a second, and on the step that completes the commission: the milestones.
   if (Math.floor(s.time + 1e-6) === Math.floor(s.time - dt + 1e-6) && s.completedAt === null) return;
@@ -111,6 +127,17 @@ export function noteRun(s: GameState, dt: number, night: boolean, short: boolean
     const first = must(run.nights.find((x) => x.short > 0), 'short night');
     run.marks.push({ t: s.time, kind: 'night', n: first.day });
   }
+}
+
+/** The value of every good made so far, at the depot's prices. */
+const valueMade = (s: GameState) => (Object.keys(s.made) as ItemId[]).reduce((n, i) => n + (s.made[i] ?? 0) * ITEMS[i].price, 0);
+
+/** Notes `dt` seconds of something held by the weather: a kind of building or a truck. */
+function noteHeld(s: GameState, h: Hold, what: BuildingId | 'truck', dt: number) {
+  const i = eventIndex(s.scenario, s.time, h);
+  if (i < 0) return;
+  const key = `${i}|${what}`;
+  s.run.held[key] = (s.run.held[key] ?? 0) + dt;
 }
 
 /** The entry for the night going on now; null once RUN_MAX_NIGHTS are kept and this is a new one. */

@@ -15,6 +15,7 @@ import { runMachine, runField, runHive } from './buildings.ts';
 import { runTrucks, cutOff } from './trucks.ts';
 import { recordHistory, rest, updateStats, goalDone, updateGoals } from './stats.ts';
 import { blockedGood, served } from './describe.ts';
+import { applyHolds } from '../hold.ts';
 
 // The simulation: one fixed step of TICK seconds at a time. Each step balances power, runs every building, hands goods to
 // the buildings next door that take them, drives the trucks along their routes (docking, moving goods, charging), then
@@ -80,6 +81,8 @@ export function tick(s: GameState) {
     const g = b.status === 'blocked' ? blockedGood(b) : null;
     if (g && !served(s, b, g, 'pick')) { b.status = 'noroute'; b.need = ITEMS[g].name.toLowerCase(); }
   }
+  // Last, what weather stops or slows (a layout's own problem, found above, comes first).
+  applyHolds(s);
   recordHistory(s, sun, wind, dt);
   // Once a second, ground without a field recovers a little.
   if (Math.floor(s.time + 1e-6) !== Math.floor(s.time - dt + 1e-6)) rest(s);

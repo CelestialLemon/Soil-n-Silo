@@ -1,3 +1,4 @@
+import { holdLabel, holdShape, readHold } from '../game/hold.ts';
 import { SILVER_PAR, tagsOf, type Goal, type Scenario } from '../game/scenarios.ts';
 import { soilHealth } from '../game/sim/soil.ts';
 import { goalDone, ratePerMin, type Medal } from '../game/sim/stats.ts';
@@ -33,8 +34,11 @@ export function ring(o: { v: number; d?: number; w?: number; col?: string }, ...
 
 // ---- Statuses ----
 
-/** How a status looks: the class for its shape and tint (`cd-status` and markers), and whether it is drawn as an outline. */
-export function statusLook(status: Status): { cls: string; outline?: boolean; col?: string } {
+/**
+ * How a status looks: the class for its shape and tint (`cd-status` and markers), and whether it is drawn as an outline. A
+ * building held by weather (`need` names the cause) has the shape of the event that holds it.
+ */
+export function statusLook(status: Status, need?: string): { cls: string; outline?: boolean; col?: string } {
   switch (status) {
     case 'ok': return { cls: '' };
     case 'idle': case 'rain': return { cls: '', col: 'var(--ink-3)' };
@@ -47,6 +51,7 @@ export function statusLook(status: Status): { cls: string; outline?: boolean; co
     case 'noroad': return { cls: 'is-unreachable', outline: true };
     case 'dry': return { cls: 'is-dry' };
     case 'cold': case 'frost': return { cls: 'is-dry' };
+    case 'weather': return { cls: `is-weather w-${holdShape(need)}` };
   }
 }
 
@@ -74,12 +79,13 @@ export function statusLabel(b: { type: Building['type'] }, status: Status, need?
     case 'rain': return 'Resting in rain';
     case 'cold': return 'Too cold';
     case 'frost': return 'Frost';
+    case 'weather': { const h = readHold(need); return h ? holdLabel(h) : 'Weather'; }
   }
 }
 
-/** A status as a pill: its shape, its word, its tint. */
-export function statusPill(status: Status, label: string, cls = '') {
-  const look = statusLook(status);
+/** A status as a pill: its shape, its word, its tint (`need`: the cause, for a building held by weather). */
+export function statusPill(status: Status, label: string, cls = '', need?: string) {
+  const look = statusLook(status, need);
   const el = h('span', { class: `cd-status ${look.cls}${look.outline ? ' is-outline' : ''}${cls ? ` ${cls}` : ''}` }, label);
   if (look.col) el.style.setProperty('--col', look.col);
   return el;

@@ -30,9 +30,9 @@ export function deserialize(json: string | null): Result<GameState> {
   const parsed = tryParseJson(json);
   if (!parsed.ok) return err(`The save isn't JSON: ${parsed.error}`);
   const s = parsed.value as GameState | null;
-  if (s?.version !== 14) return err('The save is from another version (this game reads version 14).');
+  if (s?.version !== 15) return err('The save is from another version (this game reads version 15).');
   if (!complete(s)) return err('The save is broken: its state is incomplete or out of range.');
-  if (!validRun(s.run, s.scenario.goals.length)) return err('The save is broken: its run log is incomplete or out of range.');
+  if (!validRun(s.run, s.scenario.goals.length, s.scenario.events.length)) return err('The save is broken: its run log is incomplete or out of range.');
   return ok(s);
 }
 
@@ -119,15 +119,16 @@ function validChosen(c: GameState['chosen']): boolean {
 
 const MARKS = ['first', 'night', 'truck', 'second', 'loop', 'goal'];
 /** The run's log: milestones (each with what its kind needs), the curve, and seconds by kind of building, problem and night. */
-function validRun(r: RunLog, goals: number): boolean {
+function validRun(r: RunLog, goals: number, events: number): boolean {
   const kinds = (o: unknown) => nums(o) && Object.keys(o as object).every((k) => k in BUILDINGS);
   const needs = (m: Mark) => (m.kind === 'first' || m.kind === 'loop' ? m.item !== undefined : m.kind === 'second' ? m.type !== undefined
     : m.kind === 'goal' ? m.goal !== undefined && m.goal >= 0 && m.goal < goals : true);
   return !!r && arr(r.marks) && r.marks.every((m) => !!m && num(m.t) && MARKS.includes(m.kind) && (m.item === undefined || item(m.item))
       && (m.type === undefined || type(m.type)) && (m.goal === undefined || int(m.goal)) && (m.n === undefined || num(m.n)) && needs(m))
-    && num(r.curveStep) && r.curveStep > 0 && arr(r.curve) && r.curve.every(num) && kinds(r.time) && nums(r.problems)
+    && num(r.curveStep) && r.curveStep > 0 && arr(r.curve) && r.curve.every(num) && arr(r.output) && r.output.length === r.curve.length && r.output.every(num) && kinds(r.time) && nums(r.problems)
     && arr(r.nights) && r.nights.every((n) => !!n && num(n.day) && num(n.short) && arr(n.types) && n.types.every(type))
-    && !!r.trucks && num(r.trucks.total) && num(r.trucks.wait) && kinds(r.trucks.at);
+    && !!r.trucks && num(r.trucks.total) && num(r.trucks.wait) && kinds(r.trucks.at)
+    && nums(r.held) && Object.keys(r.held).every((k) => { const [i, what] = k.split('|'); return int(Number(i)) && Number(i) >= 0 && Number(i) < events && (what === 'truck' || type(what)); });
 }
 
 /** A route: stops at buildings (each good dropped or picked up, never both), with a wait in range. */

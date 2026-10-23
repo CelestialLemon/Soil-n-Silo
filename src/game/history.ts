@@ -197,25 +197,25 @@ export function heldSince(h: History): { status: Status; need?: string; from: nu
   return r ? { status: r.status, need: r.need, from: r.from } : null;
 }
 
-/** What a building waited for: an input, power, room for its output, water, flowers, a road or warmth. */
-export type WaitKind = 'input' | 'power' | 'output' | 'water' | 'flowers' | 'road' | 'warmth';
+/** What a building waited for: an input, power, room for its output, water, flowers, a road or warmth; or what held it, the weather. */
+export type WaitKind = 'input' | 'power' | 'output' | 'water' | 'flowers' | 'road' | 'warmth' | 'weather';
 export interface Wait { kind: WaitKind; need?: string; seconds: number; share: number; statuses: Status[] }
 
 const WAIT_OF: Partial<Record<Status, WaitKind>> = {
   input: 'input', power: 'power', lowpower: 'power', nolink: 'power', blocked: 'output', noroute: 'output', dry: 'water',
-  flowers: 'flowers', noroad: 'road', cold: 'warmth', frost: 'warmth',
+  flowers: 'flowers', noroad: 'road', cold: 'warmth', frost: 'warmth', weather: 'weather',
 };
 
 /**
  * What a building spent the window waiting for, ranked by the share of the window: each input it lacked, power, room for its
- * output (by good), water, flowers or a road. Time working or idle isn't waiting.
+ * output (by good), water, flowers, a road or weather (by cause: a gale and a fog are two). Time working or idle isn't waiting.
  */
 export function waitsOf(sum: Summary): Wait[] {
   const total = sum.shares.reduce((n, x) => n + x.seconds, 0), by = new Map<string, Wait>();
   for (const x of sum.shares) {
     const kind = WAIT_OF[x.status];
     if (!kind) continue;
-    const need = kind === 'input' || kind === 'output' ? x.need : undefined, key = `${kind}|${need ?? ''}`;
+    const need = kind === 'input' || kind === 'output' || kind === 'weather' ? x.need : undefined, key = `${kind}|${need ?? ''}`;
     let w = by.get(key);
     if (!w) by.set(key, (w = { kind, need, seconds: 0, share: 0, statuses: [] }));
     w.seconds += x.seconds;

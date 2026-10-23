@@ -4,6 +4,7 @@ import { CROPS, HIVE, POWER, TICK, TRUCK, type BuildingId, type ItemId } from '.
 import { TERRAIN } from '../game/map.ts';
 import { networks } from '../game/power.ts';
 import { isOpen } from '../game/roads.ts';
+import { readHold } from '../game/hold.ts';
 import { windAt } from '../game/sim/clock.ts';
 import { HANDOFF_SECONDS, recentHandoffs } from '../game/sim/goods.ts';
 import { cutOff, lastPose } from '../game/sim/trucks.ts';
@@ -184,12 +185,12 @@ export class WorldView {
   }
 
   /** Where each building with a problem shows its marker: a point over it, in world space. */
-  markerSpots(s: GameState): { id: number; status: Status; x: number; y: number; z: number }[] {
-    const out: { id: number; status: Status; x: number; y: number; z: number }[] = [];
+  markerSpots(s: GameState): { id: number; status: Status; need?: string; x: number; y: number; z: number }[] {
+    const out: { id: number; status: Status; need?: string; x: number; y: number; z: number }[] = [];
     for (const b of s.buildings) {
       if (!hasMarker(b)) continue;
       const n = sizeOf(b), h = this.m.buildings[b.type].height;
-      out.push({ id: b.id, status: b.status, x: b.x + n / 2, y: standY(this.lie, s.map, n, b.x, b.y) + (b.type === 'field' ? 0.9 : h) + 0.35, z: b.y + n / 2 });
+      out.push({ id: b.id, status: b.status, need: b.need, x: b.x + n / 2, y: standY(this.lie, s.map, n, b.x, b.y) + (b.type === 'field' ? 0.9 : h) + 0.35, z: b.y + n / 2 });
     }
     return out;
   }
@@ -408,7 +409,8 @@ function edge(a0: number, na: number, b0: number, nb: number): { at: number; dir
 /** Is it doing its thing (to show its running look)? */
 function isRunning(b: Building) {
   if (isMachine(b)) return b.progress !== null;
-  return b.status === 'ok';
+  // Weather that only slows or weakens it leaves it running; stopped, it rests.
+  return b.status === 'ok' || (b.status === 'weather' && readHold(b.need)?.effect !== 'stopped');
 }
 
 const QUIET = new Set<BuildingId>(['depot', 'sapling']);

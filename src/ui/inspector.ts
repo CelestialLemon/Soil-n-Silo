@@ -130,7 +130,7 @@ export class Inspector {
     const status = h('span'), since = h('span', { class: 'cd-small' }), rate = h('span', { class: 'rate' });
     lines.push(() => {
       const label = statusLabel(b, b.status, b.need, shareOf(s, b));
-      rebuild(status, `${b.status}|${label}`, () => [statusPill(b.status, label)]);
+      rebuild(status, `${b.status}|${label}`, () => [statusPill(b.status, label, '', b.need)]);
       const hist = historyOf(s, b), held = hist ? heldSince(hist) : null;
       set(since, held && held.from > (hist?.since ?? 0) + 1e-6 ? `for ${playTime(s.time - held.from)}` : '');
       const main = makesOf(b).items[0];
