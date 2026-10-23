@@ -819,8 +819,8 @@ To load or unload, a truck parks on an open tile next to the building: the one i
 the ground joins the building's edge (not below or above a cliff). At its garage a truck leaves by the side that reaches its
 stops. A building with no open tile next to it, or only ones walled off from where the truck is, can't be reached: the truck skips that stop and goes on
 to the next, and if it can reach none of its stops it waits where it is. Its way is worked out again whenever the layout
-or ground changes, so a building placed across its way sends it round, and a truck on a tile you build on moves to the nearest open
-tile. Packing buildings tightly saves ground but makes trucks drive further round, or cuts a building off.
+or ground changes, so a building placed across its way sends it round, and a truck on a tile you build on (or that floods) moves to the nearest open
+tile from which it can drive to its garage (the nearest open tile if none can, e.g. the garage is walled in), so it is never left in a walled pocket with no way out. Packing buildings tightly saves ground but makes trucks drive further round, or cuts a building off.
 
 **One truck at a time.** A building loads or unloads one truck at a time (the depot two); the others queue beside it in the
 order they came. A queue is the sign of a bottleneck: split the route, or put a silo between.
@@ -1110,8 +1110,7 @@ stormy 1.15; **autumn** mild 1.15, wet 1.25, dry 1.2, gales 1.2, stormy 1.35; **
 The ratio (the climate and its events together), averaged over the layouts, is 1.14 in a mild spring, 1.17 in a wet one, 1.19 stormy, 1.07 dry, 1.14 gales; 1.00 in a mild summer (a dry one 1.09, a hot one 1.14: heat hurts wheat and flax, and calm
 days starve solar and wind, but tomato and sunflower love it); 0.97 to 1.10 in an autumn (stormy 1.10); at the 90th percentile of single runs 1.2 to 1.5 times. The worst single runs were 1.8 times (a stormy autumn with a hurricane) and 1.7 (First Light's layout in a hot spring, with a flood and frosts, and in a few autumns). Wet and stormy summers measured a little under a
 mild one (their storms water the fields as much as they cost) and take its factor. Playing each layout against the target of a random commission of its own difficulty and goal count, the bot earns gold in all runs but the 6 to 8 of 96 in a
-spring that are Windy Ridge's or Long Nights' layouts at difficulty 1, which ask for more than a difficulty 1 commission does. A rare jam of the bot's trucks (a truck a flood moves can come to rest in a walled pocket of the layout)
-leaves a few runs unfinished; they are left out of the means. Relief starts at
+spring that are Windy Ridge's or Long Nights' layouts at difficulty 1, which ask for more than a difficulty 1 commission does. Relief starts at
 0.25 + 0.15 × difficulty (0.4, 0.55, 0.7); Hilly sets it to 0.9, Flat to 0 (one or the other, never both). Relief
 scales the rolling hills; corner heights stay within 0–16. Flat is all one level.
 

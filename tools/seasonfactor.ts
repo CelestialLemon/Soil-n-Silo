@@ -11,8 +11,7 @@
 //
 // Run: node tools/seasonfactor.ts [layouts, comma separated; default all but c2] [seeds, default 4] [minutes cap, default 150] [workers, default 6]
 // The layouts a winter can't clear (sauce, oil and honey cake need crops and bees a winter doesn't give) show as "-".
-// A run that never finishes is left out of a layout's mean when most of that layout's runs in the climate finish (a rare jam of the bot's trucks, not the weather:
-// a truck the flood moves can end up in a pocket it cannot leave); a layout most of whose runs fail (a winter's sauce) shows as "-", and the number left out is printed.
+// A run that never finishes is left out of a layout's mean when most of that layout's runs in the climate finish (a jam of the bot's trucks, not the weather); a layout most of whose runs fail (a winter's sauce) shows as "-", and the number left out is printed.
 // The raw times go to the file in the 6th argument (default /tmp/seasonfactor.json), and `node tools/seasonfactor.ts --report <file>` prints the table again from it.
 // Prints, per climate, each layout's mean ratio over the seeds and difficulties, the mean ratio over the layouts, the 90th percentile
 // and the worst of the single runs, and the suggested factor: halfway between the mean over the layouts and the worst layout, up to 0.05.

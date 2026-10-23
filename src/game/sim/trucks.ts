@@ -243,7 +243,7 @@ export function runTrucks(s: GameState, dt: number) {
     runtimeOf(s).truckLayout = layout;
     for (const t of s.trucks) {
       if (!isOpen(s, Math.floor(t.x), Math.floor(t.y))) {
-        const i = nearestOpen(s, Math.floor(t.x), Math.floor(t.y));
+        const i = nearestOpen(s, Math.floor(t.x), Math.floor(t.y), garageOf(s, t) ?? undefined);
         if (i !== null) { t.x = i % s.map.width + 0.5; t.y = Math.floor(i / s.map.width) + 0.5; jumped(s, t); }
       }
       const b = t.target !== null ? buildingById(s, t.target) : null, here = tileOf(s, t);
