@@ -50,7 +50,7 @@ test('a hold names its event, its strength and what it does to the building, and
   assert.deepEqual(readHold(holdNeed(h)), h);
   assert.equal(holdLabel(h), 'Stopped · severe gale');
   assert.equal(holdLabel({ kind: 'tropicalStorm', strength: 'severe', effect: 'stopped' }), 'Stopped · hurricane');
-  for (const bad of [undefined, '', 'wheat', 'fog:ordinary', 'fog:mild:slowed', 'rain:ordinary:slowed', 'fog:ordinary:vanished']) assert.equal(readHold(bad), null, String(bad));
+  for (const bad of [undefined, 42 as unknown as string, '', 'wheat', 'fog:ordinary', 'fog:mild:slowed', 'rain:ordinary:slowed', 'fog:ordinary:vanished']) assert.equal(readHold(bad), null, String(bad));
 });
 
 test('every event that marks things has a shape of its own', () => {

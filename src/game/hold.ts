@@ -23,7 +23,7 @@ export const holdNeed = (h: Hold) => `${h.kind}:${h.strength}:${h.effect}`;
 
 /** The hold a `need` names, or null if it isn't one. */
 export function readHold(need: string | undefined): Hold | null {
-  const [kind, strength, effect] = need?.split(':') ?? [];
+  const [kind, strength, effect] = typeof need === 'string' ? need.split(':') : [];
   if (!EVENT_KINDS.includes(kind as EventKind) || !STRENGTHS.includes(strength as Strength) || !EFFECTS.includes(effect as Effect)) return null;
   return { kind: kind as EventKind, strength: strength as Strength, effect: effect as Effect };
 }

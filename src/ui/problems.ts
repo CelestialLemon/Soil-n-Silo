@@ -40,7 +40,7 @@ export class ProblemsStrip {
   update(s: GameState, show: boolean) {
     this.el.hidden = !show;
     if (!show) { this.pop.hidden = true; this.key = ''; return; }
-    const list = problemsOf(s), key = list.slice(0, SHOWN).map((p) => `${p.b.id}:${p.b.status}`).join(' ') + `|${list.length}`;
+    const list = problemsOf(s), key = list.slice(0, SHOWN).map((p) => `${p.b.id}:${p.b.status}:${p.b.need ?? ''}`).join(' ') + `|${list.length}`;
     if (key !== this.key) {
       this.key = key;
       fill(this.el, h('span', { class: 'cd-pstrip__n', title: `${list.length} building${list.length === 1 ? '' : 's'} with a problem` }, String(list.length)),

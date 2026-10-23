@@ -115,11 +115,11 @@ function runChart(s: GameState, end: number) {
 function weatherFact(s: GameState, end: number): HTMLElement | null {
   const costs = eventCosts(s.scenario, s.run, end);
   if (!costs.length) return null;
-  const total = costs.reduce((n, c) => n + (c.seconds ?? 0), 0);
+  const total = costs.reduce((n, c) => n + (c.seconds ?? 0), 0), unknown = costs.every((c) => c.seconds === null);
   const things = (c: (typeof costs)[number]) => (Object.keys(c.held) as (keyof typeof BUILDINGS | 'truck')[])
     .map((k) => (k === 'truck' ? 'trucks' : `${lcBuilding(k)}${lcBuilding(k).endsWith('s') ? 'es' : 's'}`));
   const list = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : xs[0]);
-  return h('div', { class: 'fac' }, h('b', null, icon('wind', 24), 'Weather'), h('span', { class: `big${total ? ' cd-bad' : ''}` }, total ? `~${dec(Math.round(total / 30) / 2)} min` : 'little'),
+  return h('div', { class: 'fac' }, h('b', null, icon('wind', 24), 'Weather'), h('span', { class: `big${total ? ' cd-bad' : ''}` }, unknown ? '–' : total ? `~${dec(Math.round(total / 30) / 2)} min` : 'little'),
     h('div', { class: 'full' }, ...costs.slice(0, 4).map((c) => h('div', { class: 'cd-small' },
       `${eventTitle(c)} held back ${list(things(c))}${c.seconds === null ? '.' : c.seconds ? ` and cost about ${aboutTime(c.seconds)}.` : ' and cost the run very little.'}`))));
 }
