@@ -62,3 +62,4 @@
 .cd-i--medal { background-position: calc(var(--s, 32px) * -0) calc(var(--s, 32px) * -6); }
 .cd-i--trash { background-position: calc(var(--s, 32px) * -1) calc(var(--s, 32px) * -6); }
 .cd-i--menu { background-position: calc(var(--s, 32px) * -2) calc(var(--s, 32px) * -6); }
+.cd-i--station { background-position: calc(var(--s, 32px) * -3) calc(var(--s, 32px) * -6); }

@@ -17,6 +17,7 @@ import { frostComes, frostHits, inHollow } from './frost.ts';
 import { centreLevel } from './relief.ts';
 import { beesNow, beesOut, shadeFact, warmthFact, warmthOf } from './warmth.ts';
 import { canGale, SEVERE_GALE, standsGale, turbineShare } from './wind.ts';
+import { hasStation } from './station.ts';
 import { inMap, type Building, type FieldBuilding, type GameState, type Setting } from './state.ts';
 
 // Forecasts from what the game already knows: what a building in hand would do on a tile (facts about the tile, no advice),
@@ -155,6 +156,11 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         facts.push(pylonFact());
         break;
       }
+      case 'station':
+        facts.push({ label: 'Forecast', value: 'three days', sub: 'ahead, renewed every hour while it has power' });
+        if (hasStation(s)) facts.push({ label: 'Station', value: 'already one', sub: 'The valley already has a station: a second adds nothing' });
+        facts.push(pylonFact());
+        break;
       case 'sapling':
         facts.push({ label: 'Grows', value: `${SAPLING_SECONDS} s`, sub: 'into a tree' });
         facts.push({ label: 'Soil health', value: `+${TREE_HEALTH.perTree}`, sub: `a tree, up to ${TREE_HEALTH.cap} in all` });

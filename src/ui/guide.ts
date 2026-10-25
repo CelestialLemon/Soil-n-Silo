@@ -195,6 +195,15 @@ const ENTRIES: Record<BuildingId, Entry> = {
     ],
     tips: ['Two networks that don\'t link don\'t share power. Each network has its own colour on the Power overlay: its reach, the wires between its pylons and a line to every building it powers.', 'Select or point at a pylon, or select any powered building, to see its network.'],
   },
+  station: {
+    what: 'Reads the sky and gives the valley a forecast: the next three days, a day\'s highs and lows, its sun, wind and rain, and the events on their way, in ranges that always hold what really happens and narrow as the day comes.',
+    how: [
+      `Place it within a pylon's reach: it needs ${BUILDINGS.station.power} W all the time. Where it stands makes no difference: no shelter, height or exposure counts.`,
+      'With power it renews the forecast every game hour. Without (short of power, cut off from the grid, or under flood water) it keeps the last forecast, marked out of date with the hour it is from, and stops renewing.',
+      'One is enough: a second adds nothing. Bulldoze the last one and the forecast is gone.',
+    ],
+    tips: ['Its cups turn with the wind, powered or not.'],
+  },
   sapling: {
     what: 'Grows into a tree. Trees add to soil health; some commissions ask for it.',
     how: ['Plant it on open grass.'],
@@ -393,7 +402,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
       ...SEASON_IDS.map((x) => h('button', { class: `topic${page.kind === 'season' && page.id === x ? ' is-on' : ''}`, onclick: () => go({ kind: 'season', id: x }) }, SEASONS[x].name)),
       ...GUIDED_EVENTS.map((x) => h('button', { class: `topic${page.kind === 'event' && page.id === x ? ' is-on' : ''}`, onclick: () => go({ kind: 'event', id: x }) }, EVENTS[x].name)));
     const tile = (id: BuildingId) => h('button', { class: `gtile${page.kind === 'building' && page.id === id ? ' is-on' : ''}${have.has(id) ? ' is-here' : ''}`, onclick: () => go({ kind: 'building', id }) },
-      icon(id, 40), TILE_NAMES[id] ?? BUILDINGS[id].name);
+      icon(id, 40), TILE_NAMES[id] ?? BUILDINGS[id].short ?? BUILDINGS[id].name);
     let list: (Node | null)[];
     if (query) {
       // Search: buildings, goods, topics and keys whose words match.
@@ -469,7 +478,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
   function facts(id: BuildingId) {
     const d = BUILDINGS[id], r = recipesFor(id)[0];
     const f = (label: string, fig: string, sub: string) => h('div', null, h('div', { class: 'cd-label' }, label), h('div', { class: 'cd-figure' }, fig), h('div', { class: 'cd-small' }, sub));
-    const watts = id === 'sprinkler' ? [`${POWER.sprinklerNearWater}–${SPRINKLER_MOST} W`, 'near water to far and high'] : id === 'garage' ? [`${TRUCK.chargeRate} W`, 'a truck charging']
+    const watts = id === 'station' ? [`${d.power} W`, 'all the time'] : id === 'sprinkler' ? [`${POWER.sprinklerNearWater}–${SPRINKLER_MOST} W`, 'near water to far and high'] : id === 'garage' ? [`${TRUCK.chargeRate} W`, 'a truck charging']
       : d.power ? [`${d.power} W`, 'while working'] : id === 'solar' ? [`${POWER.solar} W`, 'at noon, full sun'] : id === 'turbine' ? [`${POWER.turbine}–${Math.round(TURBINE_MOST)} W`, 'in full wind, low to high']
         : id === 'wheel' ? [`${POWER.wheel} W`, `at 1 m/s; ×${POWER.wheelFall} beside a fall`]
         : id === 'digester' ? [`${POWER.digester} W`, 'made while burning'] : id === 'battery' ? [`${POWER.battery.capacity} J`, 'stored'] : ['—', 'none'];
@@ -595,6 +604,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
       case 'solar': rows.push(['At midday, full sun', `${POWER.solar} W (times the sun's strength)`], ['At night', '0 W']); break;
       case 'turbine': rows.push(['In full wind', `${POWER.turbine} W`], ['Shelter', `−${POWER.shelter * 100}% for each tree or tall building within ${POWER.shelterReach} tiles, down to ${POWER.shelterFloor * 100}%`]); break;
       case 'battery': rows.push(['Stores', `${POWER.battery.capacity} J (${Math.round(POWER.battery.capacity / 60)} W for a minute)`], ['Charges and gives', `up to ${POWER.battery.rate} W`]); break;
+      case 'station': rows.push(['Sees', 'three days ahead'], ['Renewed', 'every game hour, while it has power'], ['A second', 'adds nothing: one is enough']); break;
       case 'pylon': rows.push(['Powers', `buildings with a tile within ${POWER.pylon.reach} tiles`], ['Links to', `pylons within ${POWER.pylon.link} tiles`]); break;
       case 'sapling': rows.push(['Grows into a tree in', `${SAPLING_SECONDS} s`]); break;
       case 'depot': rows.push(['Pays', 'each good\'s price (see Goods)'], ['Loads', `${plural(bays('depot'), 'truck')} at a time`]); break;
@@ -823,6 +833,7 @@ function powerLine(id: BuildingId): string {
   if (id === 'sprinkler') return `uses ${POWER.sprinklerNearWater} W near water, else ${POWER.sprinklerFar} W, more up high`;
   if (id === 'wheel') return `makes about ${POWER.wheel} W, ${POWER.wheelFall}× beside a fall`;
   if (id === 'garage') return `up to ${TRUCK.chargeRate} W for each truck charging`;
+  if (id === 'station') return `uses ${d.power} W all the time`;
   if (d.power) return `uses ${d.power} W while working`;
   if (id === 'solar') return `makes up to ${POWER.solar} W in full sun`;
   if (id === 'turbine') return `makes up to ${POWER.turbine} W`;

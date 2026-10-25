@@ -69,7 +69,7 @@ export class Dock {
         class: `cd-tile${on ? ' is-on' : ''}${s.credits < priceOf(s, id) ? ' is-poor' : ''}`, title: tip(d.name, ...(d.key ? keyNames(`build:${id}`) : [])),
         onclick: () => { const t = this.host.tool(); this.host.setTool(on ? { kind: 'select' } : { kind: 'build', type: id, rot: t.kind === 'build' ? t.rot : 1 }); },
         onpointerenter: () => this.host.tip(id), onpointerleave: () => this.host.tip(null),
-      }, icon(id), h('span', { class: 'label' }, d.name), h('span', { class: 'cd-tile__cost' }, costLine(s, id)));
+      }, icon(id), h('span', { class: 'label' }, d.short ?? d.name), h('span', { class: 'cd-tile__cost' }, costLine(s, id)));
       this.tiles.set(id, b);
       if (on) held = b;
       return b;

@@ -25,6 +25,7 @@ export function wants(s: GameState, b: Building): number {
   const def = BUILDINGS[b.type];
   if (!def.power) return 0;
   if (b.type === 'sprinkler') return raining(s.scenario, s.time) ? 0 : wattsOf(s, b); // fields are watered by the rain
+  if (b.type === 'station') return floodHolds(s, b) ? 0 : def.power; // a drowned station is stopped: it draws nothing
   if (b.type === 'garage') return runtimeOf(s).charging?.get(b.id) ?? 0;
   if (!isMachine(b)) return 0;
   const r = recipeOf(b);

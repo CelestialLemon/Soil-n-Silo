@@ -13,6 +13,7 @@ import { pauseScreen } from './pause.ts';
 import { settingsPanel } from './settingsPanel.ts';
 import { weatherSheet } from './weatherPanel.ts';
 import { clearWeather, eventName, startEvent } from '../game/events.ts';
+import { renewNow } from '../game/station.ts';
 import { CommissionCard, TopRight, ViewBar, viewControls, type Panel, type PlayHost } from './playhud.ts';
 import { powerSheet } from './powerpanel.ts';
 import { ProblemsStrip } from './problems.ts';
@@ -115,7 +116,7 @@ export class Hud {
     this.controls = viewControls(play);
     this.side = new Inspector({
       state: () => host.state(), tool: () => host.tool(), selected: () => host.selected(), select: (id) => { host.select(id); this.refresh(); },
-      did: (r) => this.did(r), openGuide: (p) => this.openGuide(p), editRoute: (r) => this.edit(r),
+      did: (r) => this.did(r), openGuide: (p) => this.openGuide(p), editRoute: (r) => this.edit(r), openForecast: () => this.openForecast(),
     });
     this.routes = new RoutesCard({
       state: () => host.state(), tool: () => host.tool(), setTool: (t) => host.setTool(t), did: (r) => this.did(r), toast: (m, ok) => this.toast(m, ok),
@@ -238,6 +239,11 @@ export class Hud {
     this.openModal(p, sheet.el, false, sheet.update);
   }
 
+  // ---- The forecast ----
+
+  /** Opens the forecast panel from the station's inspector. The panel is 3.3 (#135), which fills this in; until then it says so. */
+  openForecast() { this.toast('The forecast panel is not built yet', false, 'wind'); }
+
   // ---- The sandbox's weather ----
 
   /** Opens the sandbox's weather control, or closes it. Choosing an event closes it, to show the sky. */
@@ -246,8 +252,8 @@ export class Hud {
     const s = () => this.host.state(), done = () => { this.close('weather'); this.host.changed(); };
     const sheet = weatherSheet({
       state: s,
-      start: (kind, strength) => { const r = startEvent(s(), kind, strength); this.toast(r.ok ? `${eventName(kind, strength)} begins` : r.error, r.ok, 'wind'); if (r.ok) done(); },
-      clear: () => { const r = clearWeather(s()); this.toast(r.ok ? 'The weather clears' : r.error, r.ok, 'sun'); if (r.ok) done(); },
+      start: (kind, strength) => { const r = startEvent(s(), kind, strength); this.toast(r.ok ? `${eventName(kind, strength)} begins` : r.error, r.ok, 'wind'); if (r.ok) { renewNow(s()); done(); } },
+      clear: () => { const r = clearWeather(s()); this.toast(r.ok ? 'The weather clears' : r.error, r.ok, 'sun'); if (r.ok) { renewNow(s()); done(); } },
       close: () => this.close('weather'),
     });
     this.openModal('weather', sheet.el, false, sheet.update);

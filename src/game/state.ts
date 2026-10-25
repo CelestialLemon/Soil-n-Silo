@@ -145,7 +145,7 @@ export interface Stats {
 export const STAT_BUCKET = 10, STAT_BUCKETS = 7;
 
 export interface GameState {
-  version: 15;
+  version: 16;
   scenario: Scenario;
   map: MapData;
   /**
@@ -176,6 +176,8 @@ export interface GameState {
   made: Partial<Record<ItemId, number>>;
   /** The run so far, for the results (runlog.ts). */
   run: RunLog;
+  /** When the weather station last renewed the forecast, in seconds of play (a whole game hour; see station.ts), or null before the first. The forecast itself is worked out from it (outlook.ts). */
+  forecastIssued: number | null;
   /** What the player last chose while placing, for the level: the crop of the next field, and a recipe by building type (none: its first). */
   chosen: { crop: CropId; recipes: Record<string, string> };
 }
@@ -184,10 +186,10 @@ export interface GameState {
 export function newGame(sc: Scenario): GameState {
   const map = generateMap(sc);
   const s: GameState = {
-    version: 15, scenario: { ...sc, events: sc.events.map((e) => ({ ...e })) }, map, worked: map.terrain.map(() => 0), soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
+    version: 16, scenario: { ...sc, events: sc.events.map((e) => ({ ...e })) }, map, worked: map.terrain.map(() => 0), soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
     buildings: [], routes: [], trucks: [], nextId: 1, credits: sc.credits, time: 0, carry: 0, delivered: {}, earned: 0,
     stats: { since: 0, made: [{}], delivered: {} }, reached: sc.goals.map(() => false), completedAt: null, made: {}, run: newRunLog(),
-    chosen: { crop: 'wheat', recipes: {} },
+    chosen: { crop: 'wheat', recipes: {} }, forecastIssued: null,
   };
   s.buildings.push(makeBuilding(s, 'depot', map.depot.x, map.depot.y, 0));
   return s;

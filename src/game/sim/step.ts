@@ -18,6 +18,7 @@ import { runTrucks, cutOff } from './trucks.ts';
 import { recordHistory, rest, updateStats, goalDone, updateGoals } from './stats.ts';
 import { blockedGood, served } from './describe.ts';
 import { applyHolds } from '../hold.ts';
+import { renewForecast } from '../station.ts';
 
 // The simulation: one fixed step of TICK seconds at a time. Each step balances power, runs every building, hands goods to
 // the buildings next door that take them, drives the trucks along their routes (docking, moving goods, charging), then
@@ -53,11 +54,11 @@ export function tick(s: GameState) {
       case 'silo': b.status = 'idle'; break;
       case 'field': runField(s, b, dt); break;
       case 'hive': runHive(s, b, dt); break;
-      case 'sprinkler': case 'battery': case 'pylon': case 'solar': case 'turbine': case 'wheel': {
+      case 'sprinkler': case 'battery': case 'pylon': case 'solar': case 'turbine': case 'wheel': case 'station': {
         if (b.type === 'sprinkler' && raining(s.scenario, s.time)) { b.status = 'rain'; break; } // the rain waters the fields, connected or not
         const net = BUILDINGS[b.type].grid === 'link' ? null : networkOf(s, b);
         if (BUILDINGS[b.type].grid !== 'link' && !net) { b.status = 'nolink'; break; }
-        if (b.type === 'sprinkler') { const sh = shareOf(s, b); b.status = sh <= 0 ? 'power' : sh < 1 ? 'lowpower' : 'ok'; }
+        if (b.type === 'sprinkler' || b.type === 'station') { const sh = shareOf(s, b); b.status = sh <= 0 ? 'power' : sh < 1 ? 'lowpower' : 'ok'; }
         else if (b.type === 'solar') b.status = sun > 0 ? 'ok' : 'idle';
         else if (b.type === 'wheel') b.status = wattsOf(s, b) > 0 ? 'ok' : 'idle';
         else b.status = 'ok';
@@ -93,6 +94,7 @@ export function tick(s: GameState) {
   }
   // Last, what weather stops or slows (a layout's own problem, found above, comes first).
   applyHolds(s);
+  renewForecast(s);
   recordHistory(s, sun, wind, dt);
   // Once a second, ground without a field recovers a little.
   if (Math.floor(s.time + 1e-6) !== Math.floor(s.time - dt + 1e-6)) rest(s);

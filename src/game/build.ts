@@ -6,6 +6,7 @@ import { err, ok, type Result } from './result.ts';
 import { accessTiles, nearestOpen } from './roads.ts';
 import { givesGoods, takesGoods } from './sim/goods.ts';
 import { runtimeOf, touchRoutes } from './runtime.ts';
+import { dropForecastIfNone } from './station.ts';
 import { isStop, redirect, routeChanged } from './sim/trucks.ts';
 import {
   addBuilding, applySetting, buildingAt, inMap, makeBuilding, removeBuilding, terrainAt, tileIndex, touchLayout, touchRelief, type Building, type BuildingOf, type Dir, type GameState, type MachineBuilding, type Setting,
@@ -232,6 +233,7 @@ export function remove(s: GameState, b: Building): Action {
   const trucks = s.trucks.filter((t) => t.garage === b.id);
   for (const t of trucks) sellTruck(s, t);
   removeBuilding(s, b);
+  if (b.type === 'station') dropForecastIfNone(s);
   s.credits += priceOf(s, b.type);
   // It leaves every route that stops there.
   for (const r of s.routes) {

@@ -715,6 +715,45 @@ are cells of the clock.) The sizes step; they are not a line, so a window's widt
   48, 24 h), a flood after its storm, an event under way, the sandbox, determinism, and that moving an event half an hour inside its cells changes
   nothing.
 
+### The weather station (3.2)
+
+The building that gives the forecast (3.1): `src/game/station.ts`. Panel (3.3) and projections (3.4) read it through `stationForecast`.
+
+- **1 × 1, 80 credits, 3 W**, in the **Power** category (it is infrastructure on the grid, beside the pylon, rather than a farming tool). A
+  powered building like the sprinkler: it needs a pylon in reach and draws `BUILDINGS.station.power` all the time (the sprinkler rests in rain,
+  the station never does). It stands on any grass tile, steep banks included; **where it stands makes no difference**: no shelter, height or
+  exposure rules, and it is not `tall` (it shelters no turbine). It is available in every commission for now (3.6 decides from which one).
+- **One is enough; a second adds nothing.** The placement card says so as a fact once the valley has a station ("The valley already has a
+  station: a second adds nothing", not a warning) and placing another is allowed. Two stations are one source of the forecast: it is renewed
+  while any works.
+- **It works** only on full power and dry. Not working: a network that gives it none (`power`) or only part of its 3 W (`short`: a station short
+  of power stops, it does not renew on a trickle), a station no pylon reaches (`nolink`, read from the layout as it stands, so a pylon bulldozed
+  while paused counts at once) and one under flood water (`flood`: a flooded building is stopped, so it also draws nothing). The power it got is
+  last step's, as for every building.
+- **The forecast is kept as one number**: `GameState.forecastIssued`, the hour of the last forecast in seconds of play (null before the first).
+  The forecast itself is `forecastAt(scenario, forecastIssued)`, so nothing else is saved. While a station works, the step renews it at every
+  whole game hour (`issueTimeOf(time)`, once an hour, never earlier than the one in hand), and on the first step it works.
+- **Out of date.** With no working station the number stays, and the forecast is `stale` from that moment (not an hour later: the inspector
+  must not say "renewed every hour" of a station that has none), also when the one in hand is older than the hour in progress. It keeps what it last said and stops narrowing; what has
+  happened since is dropped from it as `forecastAt` does for an old hour. A station that works again renews at once. The reason (`StationFault`)
+  is the one of the station nearest to working: `short` ("short of power"), `power` ("no power"), `nolink` ("no power, no pylon in reach"), `flood` ("under water"). Hours
+  are told as the hour of the forecast ("as of day 4, 14:00").
+- **Bulldoze the last station and the forecast is gone** (`forecastIssued` null); a station built afterwards starts with none, and gives its
+  first forecast the step it has power. One of two bulldozed leaves the forecast as it is.
+- **The sandbox's Weather panel** renews the forecast at once, at that exact moment (`renewNow`, if a station works), so an event the player
+  starts, or the sky they clear, is told as it is (under way, never "coming within the hour"); the next whole hour renews as usual. Without a
+  working station nothing is renewed and the forecast stays out of date. (The sandbox has no weather of its own ahead, so there is little for
+  an old forecast to say; one read after the player changed the weather shows the new weather, since the forecast is a function of the scenario.)
+- **The inspector** says what it sees: "Forecast: 3 days ahead, renewed every hour"; out of date it says "out of date: no power", and an
+  "Issued" row has the hour of the forecast ("day 4, 14:00"); before the first, "none yet" (and why). The dock and guide tile say "Station". A button opens the forecast panel (3.3; until it is built, a message says so). Its status
+  pill, hover card, history ribbon and marker are those of any powered building (`Forecasting` while it works; No power, Not connected, or
+  stopped by the flood otherwise). **The guide** has its page (cost, power, what it sees, that one is enough).
+- **The model** is `public/models/weather_station.glb` (3.5): the cups turn with the wind whether or not it has power, at three speeds by the
+  wind (below 0.35 of full wind 1.5 rad/s, below 0.7 3.5, else 6), as the turbine's rotor does, with no power test.
+- **The bot is unchanged**: it builds no station (3.6 does), so every target time is the same.
+- **Tests** (`test/station.test.ts`): the numbers; the placement card before and after; hourly renewal and nothing before power; no pylon;
+  out of date and back; flood; two stations; bulldozing; the sandbox's renewal; the save (version 16, a bad hour refused, version 15 refused).
+
 ### The valley's look by season
 
 The season is fixed per level, so its colours are set when the map is built and quantised with the rest (`TURF` in
@@ -882,7 +921,7 @@ Every building is available from the start. Removing one refunds its building co
 | Ground needed | Buildings |
 | --- | --- |
 | No cliff inside the footprint; slopes allowed | Field |
-| Any grass tile, including a steep bank | Sprinkler, beehive, wind turbine, pylon, sapling |
+| Any grass tile, including a steep bank | Sprinkler, beehive, wind turbine, pylon, weather station, sapling |
 | Flat at one level | Silo, garage, coop, composter, all processing machines, solar panel, water wheel, battery, digester, depot |
 
 Placement levels unsuitable ground for the extra price in "Height and earthworks". Trees, rock, water and buildings still
@@ -1069,6 +1108,7 @@ digester.
 | Battery | 2 × 2 | 150 | Stores 2.4 kJ, charges and discharges at up to 40 W |
 | Digester | 2 × 2 | 180 | Burns one manure, bran or seed cake every 10 s for a steady 30 W |
 | Pylon | 1 × 1 | 10 | Powers buildings with any tile within 3 tiles; links to pylons within 8 tiles |
+| Weather station | 1 × 1 | 80 | Draws 3 W all the time; gives the forecast (see "The weather station") |
 
 A wheel uses the strongest current touching its bank at the same level, times the season's **flow** (the `river` section of
 `seasons.ts`): spring 1.5, summer 0.6, autumn 0.9, winter 0.5; a high river adds 0.3, a dry season takes off 0.1. So a spring
@@ -1217,7 +1257,7 @@ Early on, raw goods are the way to afford the first machines; products pay far b
 ## Saving
 
 The game saves the commission in progress (one at a time) in the browser every 30 s and when the page is hidden, and remembers
-each commission's best medal and time. Saves are version 15 (the commission's events are saved with it; the run log keeps what the weather held and the valley's output). A save from an older version of the game is refused.
+each commission's best medal and time. Saves are version 16 (the commission's events are saved with it, and the hour of the weather station's last forecast; the run log keeps what the weather held and the valley's output). A save from an older version of the game is refused.
 
 ## Open questions
 

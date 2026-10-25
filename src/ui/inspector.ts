@@ -21,13 +21,14 @@ import { hollowNote } from '../game/frost.ts';
 import { pushesAt } from '../game/events.ts';
 import { beesNow, beesOut, henFact, shadeFact, warmthFact, warmthOf } from '../game/warmth.ts';
 import { runtimeOf } from '../game/runtime.ts';
+import { FAULT_WORDS, stationForecast, stationFault, stationsOf } from '../game/station.ts';
 import { isStop, routeOf, routesAt } from '../game/sim/trucks.ts';
 import { describeLinks, describeStatus, describeTruck, truckProblems } from '../game/sim/describe.ts';
 import { buildingById, isMachine, routeById, truckById, type Building, type GameState, type Route, type Truck } from '../game/state.ts';
 import { netColour } from '../world/powerView.ts';
 import { NET_COLOURS } from '../world/shapes.ts';
 import { h, icon, rebuild, set, setVar } from './dom.ts';
-import { dec, hex, itemName, num, pct, playTime, watts } from './format.ts';
+import { dayClock, dec, hex, itemName, num, pct, playTime, watts } from './format.ts';
 import type { GuidePage } from './guide.ts';
 import { historyView, makesOf, type HistoryWindow } from './historyView.ts';
 import type { Tool } from './hud.ts';
@@ -53,6 +54,8 @@ export interface InspectorHost {
   openGuide(page: GuidePage): void;
   /** Opens a route in the routes card. */
   editRoute(r: Route): void;
+  /** Opens the forecast panel (the station's inspector has a button for it). */
+  openForecast(): void;
 }
 
 /** What a building does with power, in a few words, for its header. */
@@ -67,6 +70,13 @@ export function powerWords(type: Building['type']) {
   if (type === 'digester') return `${POWER.digester} W while burning`;
   if (type === 'battery') return `holds ${POWER.battery.capacity} J`;
   return '';
+}
+
+/** What the station's forecast is now: how far it looks and how often it is renewed, or that it is out of date and why (its hour is on the next row). */
+function forecastLine(s: GameState): string {
+  const f = stationForecast(s);
+  if (!f) { const fault = stationFault(s); return fault ? `none yet: ${FAULT_WORDS[fault]}` : 'none yet'; }
+  return f.stale ? `out of date: ${f.reason ? FAULT_WORDS[f.reason] : 'not renewed this hour'}` : '3 days ahead, renewed every hour';
 }
 
 const row = (label: string, value: Node | string) => h('div', { class: 'cd-row' }, h('span', null, label), h('i'), typeof value === 'string' ? h('b', null, value) : value);
@@ -215,6 +225,15 @@ export class Inspector {
         if (b.type === 'wheel') { const site = wheelSite(s, b.x, b.y); stat('River', () => (site ? `${site.current.toFixed(1)} m/s${site.fall ? ', beside a fall' : ''}` : 'no current'));
           if (site) { const flow = s.scenario.climate.river.flow; stat('Season', () => `${riverSeason(flow)}, ×${flow.toFixed(1)} current`); } }
         break;
+      case 'station': {
+        stat('Forecast', () => forecastLine(s));
+        stat('Issued', () => { const f = stationForecast(s); return f ? dayClock(f.issued) : 'none yet'; });
+        stat('Stations', () => { const n = stationsOf(s).length; return n > 1 ? `${n} in the valley: one is enough, the others add nothing` : 'one is enough'; });
+        const open = h('button', { class: 'cd-btn is-sm', onclick: () => this.host.openForecast() }, icon('wind', 16), 'Open the forecast');
+        lines.push(() => { open.disabled = !stationForecast(s); });
+        out.push(h('div', { class: 'side-add' }, open));
+        break;
+      }
       case 'depot': {
         const list = h('div', { class: 'chips' });
         lines.push(() => rebuild(list, JSON.stringify(s.delivered), () => {
