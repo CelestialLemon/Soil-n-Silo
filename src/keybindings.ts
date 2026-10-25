@@ -9,7 +9,7 @@ export type ActionId =
   | `build:${BuildingId}` | 'earth' | 'remove' | 'rotate' | 'choice'
   | 'turnLeft' | 'turnRight' | 'zoomIn' | 'zoomOut' | 'overlay' | 'panLeft' | 'panRight' | 'panUp' | 'panDown'
   | 'pause' | 'speed1' | 'speed2' | 'speed3'
-  | 'ledger' | 'routes' | 'power' | 'guide';
+  | 'ledger' | 'routes' | 'power' | 'forecast' | 'guide';
 
 export type GroupId = 'build' | 'view' | 'time' | 'panels';
 export const GROUPS: { id: GroupId; name: string; col: string }[] = [
@@ -53,6 +53,7 @@ export const ACTIONS: readonly ActionDef[] = [
   { id: 'ledger', label: 'Ledger', group: 'panels', keys: ['Tab'] },
   { id: 'routes', label: 'Routes', group: 'panels', keys: ['KeyO'] },
   { id: 'power', label: 'Power', group: 'panels', keys: ['KeyW'] },
+  { id: 'forecast', label: 'Forecast', group: 'panels', keys: ['KeyH'], note: 'Once the valley has a weather station.' },
   { id: 'guide', label: 'Guide', group: 'panels', keys: ['KeyG'] },
 ];
 
