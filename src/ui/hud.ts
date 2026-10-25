@@ -11,9 +11,10 @@ import { Inspector } from './inspector.ts';
 import { ledgerSheet } from './ledger.ts';
 import { pauseScreen } from './pause.ts';
 import { settingsPanel } from './settingsPanel.ts';
+import { forecastSheet } from './forecastPanel.ts';
 import { weatherSheet } from './weatherPanel.ts';
 import { clearWeather, eventName, startEvent } from '../game/events.ts';
-import { renewNow } from '../game/station.ts';
+import { hasStation, renewNow } from '../game/station.ts';
 import { CommissionCard, TopRight, ViewBar, viewControls, type Panel, type PlayHost } from './playhud.ts';
 import { powerSheet } from './powerpanel.ts';
 import { ProblemsStrip } from './problems.ts';
@@ -201,13 +202,14 @@ export class Hud {
 
   /** Whether a panel is open. */
   panelOpen(p: Panel) {
-    if (p === 'ledger' || p === 'power') return this.modals.some((m) => m.name === p);
+    if (p === 'ledger' || p === 'power' || p === 'forecast') return this.modals.some((m) => m.name === p);
     if (p === 'routes') return this.routesShown;
     if (p === 'guide' || p === 'weather') return this.modals.some((m) => m.name === p);
     return false;
   }
   togglePanel(p: Panel) {
     if (p === 'ledger' || p === 'power') this.toggleSheet(p);
+    else if (p === 'forecast') this.toggleForecast();
     else if (p === 'routes') this.toggleRoutes();
     else if (p === 'guide') this.openGuide();
     else if (p === 'weather') this.toggleWeather();
@@ -232,7 +234,7 @@ export class Hud {
   /** Opens the ledger or the power panel (closing the other), or closes it. The game runs on behind them. */
   toggleSheet(p: 'ledger' | 'power') {
     if (this.modals.some((m) => m.name === p)) { this.close(p); return; }
-    this.modals = this.modals.filter((m) => m.name !== 'ledger' && m.name !== 'power');
+    this.modals = this.modals.filter((m) => m.name !== 'ledger' && m.name !== 'power' && m.name !== 'forecast');
     const sheet = p === 'ledger'
       ? ledgerSheet({ state: () => this.host.state(), openPower: () => this.toggleSheet('power'), close: () => this.close('ledger') })
       : powerSheet({ state: () => this.host.state(), close: () => this.close('power') });
@@ -241,8 +243,19 @@ export class Hud {
 
   // ---- The forecast ----
 
-  /** Opens the forecast panel from the station's inspector. The panel is 3.3 (#135), which fills this in; until then it says so. */
-  openForecast() { this.toast('The forecast panel is not built yet', false, 'wind'); }
+  /** Opens the forecast panel (closing the Ledger and Power sheets), or closes it. Without a weather station there is none to open. */
+  toggleForecast() {
+    if (this.modals.some((m) => m.name === 'forecast')) { this.close('forecast'); return; }
+    if (!hasStation(this.host.state())) { this.toast('The valley has no weather station', false, 'wind'); return; }
+    this.modals = this.modals.filter((m) => m.name !== 'ledger' && m.name !== 'power');
+    const sheet = forecastSheet({
+      state: () => this.host.state(), openGuide: () => this.openGuide({ kind: 'topic', id: 'weather' }), close: () => this.close('forecast'),
+    });
+    this.openModal('forecast', sheet.el, false, sheet.update);
+  }
+
+  /** Opens the forecast panel from the station's inspector (it stays open if it already is). */
+  openForecast() { if (!this.modals.some((m) => m.name === 'forecast')) this.toggleForecast(); }
 
   // ---- The sandbox's weather ----
 

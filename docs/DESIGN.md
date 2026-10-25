@@ -66,6 +66,7 @@ It is build-only and point-and-click. There is no character and no manual farmin
 | Space, 1, 2, 3 | Pause, 1×, 2×, 4× speed. You can build while paused |
 | Tab | The ledger: the valley's health, and each good made, used and delivered |
 | W | The Power panel: the last day by source, each network, tonight's charge, where the watts go |
+| H | The forecast panel (once the valley has a weather station): three days of ranges, and the events with their windows |
 | G | The guide: a page for every building (what it does, how to use it, what it takes and gives, its numbers), the goods, and the basics |
 | V (or the view bar) | Views: soil fertility, height, sprinkler water, power reach, roads, bee range |
 | Esc | Close what is open; with nothing open, the pause screen (the way to the settings, what the markers mean) |
@@ -654,7 +655,7 @@ usual night or day of the season, with no event that has not begun (**Projection
 
 ### The forecast (3.1)
 
-What a weather station will know (3.2 builds it, 3.3 shows it): `forecastAt(scenario, issued)` in `src/game/outlook.ts`, pure rules with no
+What a weather station will know (3.2 builds it, 3.3 shows it, in the forecast panel): `forecastAt(scenario, issued)` in `src/game/outlook.ts`, pure rules with no
 state. It is **the truth, blurred**: a pure function of the scenario and the hour it was issued, so the game keeps only that hour. It looks
 **three days ahead** (72 game hours) and is **issued every game hour** (`issueTimeOf(time)` is the last whole hour). In the sandbox the weather
 is changed by hand (`startEvent`, `clearWeather`), so the forecast is worked out again at once at the exact time (`forecastAt(sc, s.time)`):
@@ -749,7 +750,7 @@ The building that gives the forecast (3.1): `src/game/station.ts`. Panel (3.3) a
   working station nothing is renewed and the forecast stays out of date. (The sandbox has no weather of its own ahead, so there is little for
   an old forecast to say; one read after the player changed the weather shows the new weather, since the forecast is a function of the scenario.)
 - **The inspector** says what it sees: "Forecast: 3 days ahead, renewed every hour"; out of date it says "out of date: no power", and an
-  "Issued" row has the hour of the forecast ("day 4, 14:00"); before the first, "none yet" (and why). The dock and guide tile say "Station". A button opens the forecast panel (3.3; until it is built, a message says so). Its status
+  "Issued" row has the hour of the forecast ("day 4, 14:00"); before the first, "none yet" (and why). The dock and guide tile say "Station". A button opens the forecast panel (3.3). Its status
   pill, hover card, history ribbon and marker are those of any powered building (`Forecasting` while it works; No power, Not connected, or
   stopped by the flood otherwise). **The guide** has its page (cost, power, what it sees, that one is enough).
 - **The model** is `public/models/weather_station.glb` (3.5): the cups turn with the wind whether or not it has power, at three speeds by the
@@ -832,6 +833,54 @@ forecast"; a field's card shows the soil range. The guide's Power and Field page
 (they read the weather as it was then, and remember what they say to the eighth of a second), and each projection runs the layout once per view
 (up to 27 per world for the night, 9 for the soil): about 2 ms for a night and 5–25 ms for a field's card with many events, so the placement
 card, which is recomputed as the ghost moves, stays cheap.
+
+### The forecast panel (3.3)
+
+The station's forecast as a HUD sheet like the Power panel: `src/ui/forecastPanel.ts` (the DOM) over `src/ui/forecastWords.ts` (the words and
+what the panel keeps of the forecast, pure, so `npm test` covers it: `test/forecastPanel.test.ts`). It only reads `stationForecast`; it adds
+no rule and no number of its own, so every range it prints is the forecast's.
+
+- **Opens** from a **Forecast** button beside Power (the HUD's panel buttons are Ledger, Routes, Power, Forecast, Guide; the sandbox's Weather
+  stays after them), from the station's inspector ("Open the forecast"), and with its own key, **H** (Settings → Keys, Panels). The button
+  shows **only while the valley has a station** (out of date or not); the key says "The valley has no weather station" otherwise. Opening it
+  closes the Ledger and the Power panel (as those do each other), and it closes itself if the last station is bulldozed. It is a live sheet like
+  the Power panel (the game runs on and the other keys work); Esc closes it. The sandbox's Weather panel and this one coexist as separate sheets
+  (each button and, for this one, the key toggles its own; like every sheet, one covers the HUD's buttons while it is open, so one is closed
+  to open the other). Choosing an event in the Weather panel renews the forecast at once (`renewNow`) and shows the sky; this panel then shows it.
+- **The days.** A column for each day the forecast lists (`Forecast.days`): **Today** (the day in progress), **Tomorrow**, then "Day 5" and so
+  on: today plus the three days ahead, so three or four columns by the hour (the days whose noon is within 72 h). A day before today is
+  dropped from an old forecast. Each column:
+  - the day's **high** and **low** as ranges ("8 to 12°C", "−1 to 3°C", a real minus; one value where the range is one);
+  - the **sun**, **wind** (and its strongest hour) and **rain**, or **snow** in winter, as the words of the bands the range spans ("cloudy to
+    partly cloudy", `wordsFor`) with a small bar that shows where the range lies; rain also as hours ("up to 2 hours", "4 to 6 hours",
+    "none"). The third day ahead is not told them: "Sun, wind and rain are not told this far ahead";
+  - its **events**, in the day the event's window begins (an event that has begun is in today's column); one the forecast lists in no column (past the last, or begun once an out-of-date forecast's days have run out) goes
+    under "Also in the forecast". "None told for this day yet": an event that is not listed is **not told, not ruled out**.
+- **An event** is a card: the name with its article ("A severe gale", "A storm", "A tropical storm, then a flood": a flood after its storm
+  is folded into its storm's card while the storm is listed), how sure ("possible": only its family; "likely"; "under way"; never a doubt),
+  the **window it happens in** from the earliest start to the latest end ("10:00–22:00", "tomorrow 22:00–day 6 04:00"; an end at midnight is
+  "24:00", a lower bound is told rounded down and an upper one up, to the ten minutes; with a flood after it, the window runs to the flood's end), then lines for when it can begin, when it can end, how long it can last, and what it may still be ("may be a thunderstorm, a
+  tropical storm or a gale", "may grow to hurricane"). An event under way says "until" the latest end and has no start. Times are told to ten
+  minutes and have a day word against today ("tomorrow", "day 6"), not repeated inside one day.
+- **Hard turns and kind turns** (the weather panel's own words) are told apart by **shape and word**, not colour: a hard turn is a **triangle**
+  (the warning icon) with "Hard turn" on a card with a square corner and a rust edge; a kind turn is a **circle** with "Kind turn" on a rounded
+  card with a ring.
+- **Out of date** (`stale`): a banner "Out of date: no power since day 4, 14:00" (the station's `FAULT_WORDS`: "no power", "short of
+  power", "no power, no pylon in reach", "under water"; the time is the hour the forecast was issued, the last renewal), under it "This is
+  what it last said. Times already past are dropped from it, and it does not narrow until the station renews it", and the header says
+  "From day 4, 14:00" instead of "Issued". It **keeps what it last said** and **drops what is past**: an event whose latest end is past is gone;
+  the windows of the others are cut at the time now (a start window "10:30–12:00" read at 10:30; one whose start is past is told "until",
+  "should have begun; ends …"); days before today are gone. It is redrawn every ten game minutes. A valley whose station has had no power yet
+  says "No forecast yet" and why.
+- **The HUD chip**: a small mark on the weather chip while the (not out-of-date) forecast names an event that begins within the next day: a
+  triangle if any is a hard turn, a circle if all are kind. Nothing else changes, no toast, nothing flashes; its tooltip says what ("In the next
+  day, from the forecast: a tropical storm, then a flood, likely tomorrow 08:00–day 4 24:00"). The mark is the one hint; the rest is in the
+  panel. It is not shown while the forecast is out of date.
+- **Facts, never advice**: the panel says what will happen and when, not what to build. The guide's Seasons and weather page has a section,
+  "Reading the forecast" (ranges, narrowing, events and their words, hard and kind turns, out of date), that the panel's "How to read it"
+  button opens; the station's page says what it gives.
+- **Known and acceptable**: the forecast is a function of the scenario, so after the sandbox's Weather panel changes the weather, an old
+  forecast read later shows the new weather (the station's own note in 3.2).
 
 ### The valley's look by season
 

@@ -529,6 +529,7 @@ async function play(initial: GameState) {
       case 'zoomOut': camera.zoomStep(-1, pointer ?? undefined); break;
       case 'ledger': hud.toggleSheet('ledger'); break;
       case 'power': hud.toggleSheet('power'); break;
+      case 'forecast': hud.toggleForecast(); break;
       case 'routes': hud.toggleRoutes(); break;
       case 'guide': hud.openGuide(); hud.refresh(); return;
       case 'overlay': { const order: Overlay[] = ['none', 'fertility', 'height', 'water', 'power', 'roads', 'bees']; overlay = order[(order.indexOf(overlay) + 1) % order.length]; break; }
