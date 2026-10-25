@@ -37,15 +37,15 @@ export function warmthAt(sc: Scenario, time: number): number {
  * What nudges the warmth at a time, in °C: each entry adds its part. This is the one place conditions (rain, 1.3) and weather
  * events (a heat wave, a cold snap, phase 2) add theirs, by pushing a function here.
  */
-export const WARMTH_NUDGES: ((s: GameState, time: number) => number)[] = [
+export const WARMTH_NUDGES: ((sc: Scenario, time: number) => number)[] = [
   // Rain or snow cools the valley, by up to RAIN_COOLING at its heaviest.
-  (s, time) => -RAIN_COOLING * precipAt(s.scenario, time),
+  (sc, time) => -RAIN_COOLING * precipAt(sc, time),
   // A weather event lifts or drops the whole curve (a heat wave, a cold snap), its `warmth` push; a warm spell lifts a cold day up to a mild one.
-  (s, time) => {
-    const p = pushesAt(s.scenario, time);
+  (sc, time) => {
+    const p = pushesAt(sc, time);
     if (!p.mild) return p.warmth;
-    const mild = warmthByHour({ warmth: MILD_DAY, sun: s.scenario.climate.sun }, hourAt(time));
-    return p.warmth + p.mild * Math.max(0, mild - warmthAt(s.scenario, time));
+    const mild = warmthByHour({ warmth: MILD_DAY, sun: sc.climate.sun }, hourAt(time));
+    return p.warmth + p.mild * Math.max(0, mild - warmthAt(sc, time));
   },
 ];
 
@@ -54,10 +54,13 @@ export const MILD_DAY = { low: 12, high: 24, drift: 0 };
 
 /** The most, in °C, that precipitation cools the valley. */
 export const RAIN_COOLING = 2;
-const warmthNudge = (s: GameState, time: number) => WARMTH_NUDGES.reduce((sum, f) => sum + f(s, time), 0);
+const warmthNudge = (sc: Scenario, time: number) => WARMTH_NUDGES.reduce((sum, f) => sum + f(sc, time), 0);
+
+/** The valley's warmth at a time in a scenario, in °C: the weather alone (the forecast reads it ahead). */
+export const warmthIn = (sc: Scenario, time: number): number => warmthAt(sc, time) + warmthNudge(sc, time);
 
 /** The valley's warmth at a time (default now), in °C. */
-export const warmthOf = (s: GameState, time = s.time): number => warmthAt(s.scenario, time) + warmthNudge(s, time);
+export const warmthOf = (s: GameState, time = s.time): number => warmthIn(s.scenario, time);
 
 /** How a crop's growth fares in a warmth, 0–1: full inside its comfortable range, slower smoothly outside it, none for a tender crop below FIELD.tenderStops. */
 export function warmthPace(crop: CropDef, w: number): number {
