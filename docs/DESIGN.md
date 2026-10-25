@@ -212,9 +212,13 @@ written into the text):
 - **The briefing letter** carries a paragraph on the season in the writer's voice (each campaign letter has its own; random
   commissions and the sandbox get a neutral line per season and character, `letters.ts`), then the weather events the season
   and character can bring ("Weather to watch for this season: a thunderstorm, a flood or a late frost. Kinder turns it can take:
-  a soft rain."), never when they come.
+  a soft rain."), never when they come, and then what a weather station gives ("A weather station (80 credits, 3 W) tells when: it gives a forecast
+  of the next three days.", `stationWords`, from the price in `data.ts`). Harvest Festival's letter, where the station
+  matters (the stormy autumn's tropical storm, its flood and the fog), adds a paragraph in Wren's voice: the old hands expect a big storm in festival
+  week and fog before the lanterns go up, and a station "would tell us the day and the hour".
 - **The guide** has a page for each season (sun, wind, warmth, rain, cloud, calm, the river, hours a day each crop is
-  comfortable, hens, bees, and what each character shifts) and "Seasons and weather" in the basics. The field page's crop
+  comfortable, hens, bees, and what each character shifts) and "Seasons and weather" in the basics, which says what you see with and without
+  a station ("With and without a station") and how to read the forecast. The field page's crop
   table gives each crop's comfortable range.
 
 ### Warmth
@@ -614,10 +618,21 @@ is measured, not the goal good delivered, because deliveries come in truckloads:
 event it is closer (an RMS error of 68 s over 42 runs, against 104 s). It is an estimate, stated as "about", and it can be a
 minute out.
 
-**Showing events.** Without a weather station (phase 3) the player sees the events the season can bring in the briefing, and an
-event only once it starts: in the sky and as its name on the weather chip. The screens that look ahead (the Power panel's "tonight",
-the history view's "Batteries run dry…", a field's soil in ten minutes) do not tell the future either: without a station they are for a
-usual night or day of the season, with no event that has not begun (**Projections (3.4)**).
+**Showing events (3.6).** What the player sees of the weather depends on whether the valley has a weather station.
+
+| | Without a station | With one |
+| --- | --- | --- |
+| Before play | the briefing names the events the season can bring, never when, and says a station gives the forecast, with its price | the same |
+| Now | the season, its character, the sky and the warmth on the chip; an event once it starts, in the sky and as its name on the chip, with no warning and no length | the same |
+| Ahead | nothing | the forecast panel (**H**): three days of ranges and events with their windows; a mark on the chip while something is due in the next day |
+| "Tonight", "Batteries run dry…", a field's soil in ten minutes | for a usual night or day of the season, with no event that has not begun (**Projections (3.4)**) | a band worked out for every way the forecast allows |
+
+**Availability: the station is available from the first commission** (and in the sandbox), not unlocked by a later one. It is cheap information, not a power:
+a forecast of the next three days does not make a farm run better, it lets the player *choose* what to build ahead of an event (a bank before a flood,
+a sapling beside each field before a dust storm, a battery before a storm), and a commission's events are what teach that. A player who builds one in
+First Light sees a soft rain on its way and learns what a forecast is; one who waits for a later commission would meet the first storm blind.
+It is not free: 80 credits and 3 W are real money and watts in the first minutes (a station built at the start of Windy Ridge costs the bot 4 minutes of 40;
+see the playtest below).
 
 **The winter events (2.7).**
 
@@ -751,7 +766,7 @@ The building that gives the forecast (3.1): `src/game/station.ts`. Panel (3.3) a
 - **1 × 1, 80 credits, 3 W**, in the **Power** category (it is infrastructure on the grid, beside the pylon, rather than a farming tool). A
   powered building like the sprinkler: it needs a pylon in reach and draws `BUILDINGS.station.power` all the time (the sprinkler rests in rain,
   the station never does). It stands on any grass tile, steep banks included; **where it stands makes no difference**: no shelter, height or
-  exposure rules, and it is not `tall` (it shelters no turbine). It is available in every commission for now (3.6 decides from which one).
+  exposure rules, and it is not `tall` (it shelters no turbine). **It is available in every commission from the start** (3.6: see **Showing events**).
 - **One is enough; a second adds nothing.** The placement card says so as a fact once the valley has a station ("The valley already has a
   station: a second adds nothing", not a warning) and placing another is allowed. Two stations are one source of the forecast: it is renewed
   while any works.
@@ -779,7 +794,9 @@ The building that gives the forecast (3.1): `src/game/station.ts`. Panel (3.3) a
   stopped by the flood otherwise). **The guide** has its page (cost, power, what it sees, that one is enough).
 - **The model** is `public/models/weather_station.glb` (3.5): the cups turn with the wind whether or not it has power, at three speeds by the
   wind (below 0.35 of full wind 1.5 rad/s, below 0.7 3.5, else 6), as the turbine's rotor does, with no power test.
-- **The bot is unchanged**: it builds no station (3.6 does), so every target time is the same.
+- **The bot** builds one in Tired Soil, Riverlands and Harvest Festival (3.6; `station()` in `tools/layouts.ts`, west of the sauce's first pylon), after the first
+  loop runs and a few minutes before the first event. It plays the whole seeded weather in hand, so the forecast tells it nothing: the station is only its cost
+  (+18 s, +63 s and +35 s on 29:13, 36:35 and 36:52). The other layouts build none.
 - **Tests** (`test/station.test.ts`): the numbers; the placement card before and after; hourly renewal and nothing before power; no pylon;
   out of date and back; flood; two stations; bulldozing; the sandbox's renewal; the save (version 16, a bad hour refused, version 15 refused).
 
@@ -1342,7 +1359,7 @@ none on the first day, one at a time, at least half a day clear between them, al
 | 5 | Long Nights | a cold snap, day 3 at 18:00 (36 h), then a warm spell, day 7 at 08:00 (36 h) | the cold, then a break in it (the greenhouse comes in phase 4; the commission cannot be finished before it) |
 | 6 | Tired Soil | a dust storm, day 4 at 09:00 (18 h) | trees as windbreaks guard the soil: a sapling or tree beside a field, or a bean field sharing an edge |
 | 7 | Riverlands | a flood, day 6 at 08:00 (36 h) | the floodplain, banks (earthworks) and silt |
-| 8 | Harvest Festival | a tropical storm, day 3 at 08:00 (36 h) and the flood after it, then fog, day 7 at 04:00 (5.5 h) | everything; the station (phase 3) will matter |
+| 8 | Harvest Festival | a tropical storm, day 3 at 08:00 (36 h) and the flood after it, then fog, day 7 at 04:00 (5.5 h) | everything; the station (phase 3) matters: the storm is named three days out, the letter says so |
 
 The late frost, the blizzard and the hurricane are left for random commissions. The briefing letters name the events a campaign commission will bring
 ("Weather to watch for this season: a gale."; the flood after a storm is part of the storm), and a random commission's the events its season and
@@ -1367,6 +1384,29 @@ middle of the build, to day 5; Riverlands' flood from day 5 to day 6, once the f
 at any moment to look, since pausing is free. Nothing flashes or interrupts: an event is the chip, the sky, markers on what it holds, and its line in the results.
 Left open: Long Nights (c5) cannot be finished before the greenhouse (its events are placed; its bot test stays skipped, its target 70 a placeholder); a random winter takes 2.6 to 3.8 times the base time until then;
 and the weather has been played only headless, not by hand.
+
+**Playtest of phase 3 (3.6, 2026-10-25).** Driven headless (scripts on the real rules, outside the repo) and in headless Chromium on the dev server (the briefing, the guide's
+"Seasons and weather", and the forecast panel on Harvest Festival's day 2 at 14:00, from a save with a station); not yet played start to finish by a person.
+- **Does the forecast change what the player builds, and when?** Yes, three ways. *Whether:* a random commission's briefing names 3.9 kinds of event the season can bring and 2.4 of
+  them happen (900 commissions, seeds 1–300 at each difficulty), so without a station a player insures against a flood or a frost that never comes; with one, only against what is
+  listed. *When:* the first event of a random commission falls on day 5.7 at the median (earliest day 1.7), and each is named by its family 72 game hours ahead (12 minutes of play), by
+  kind at 48 h and in full at 24 h (4 minutes), enough to buy any answer (a bank for 250 credits, a sapling beside each field, a battery) when it is named rather than at the start.
+  Harvest Festival's storm is named from the first minute (49 h ahead), and its flood is told once the storm's kind is. *Power first:* the station takes 3 W and only works on all of it,
+  so in the bot's Harvest Festival, built at minute 6 on a grid with no battery yet, it was "short of power" until minute 9 and renewed nothing before then (the first event begins at 8.2):
+  a player who wants the forecast early wants power first.
+- **Horizons and widths.** An event's start window is 24 h wide at three days out ("day 5"), 12 h at two, 4 h tomorrow, and 2 h inside six hours; a day's high and low ±4, ±2, ±1°C; sun, wind and rain
+  only from two days out. Tomorrow is sharp enough to act on, and day three is vague enough ("a storm, possible") that the next update is wanted. The panel at day 2 14:00 in Harvest Festival
+  reads well: tomorrow's card carries "a tropical storm, then a flood, likely", begins 08:00–12:00, the storm ends day 4 08:00–24:00, the flood ends day 6. No width needed changing.
+- **Honest in play.** Every minute of bot runs with a station (First Light's layout in every season and character at each difficulty, and Harvest Festival's in its own weather and the same
+  worlds), the forecast in hand was checked against what happens: 16,100 checks (events' start, end, length and possible kinds, every day's warmth, sun, wind, gust and rain), no range missed
+  and none widened (1,296 of those minutes were out of date, a station short of power, and the old forecast stayed honest).
+- **The price, 80 credits and 3 W, stays.** Built at the start, the station costs the bot Harvest Festival +68 s (36:52 to 38:00), Tired Soil +2:27, Riverlands +2:03 and Windy Ridge +4:05 of 39:37
+  (10%: its power is wind alone and 1,100 credits), more than its 80 credits are worth because credits and watts are what the first minutes lack. A few minutes later it costs +18 s, +63 s and +35 s
+  (the bot's layouts). So it is a real choice in the tight commissions (Windy Ridge builds none), and a cheap one in the rest. `PAR_FACTOR` is unchanged: `tools/seasonfactor.ts` reran
+  with the stations in the layouts and no climate's suggested factor is above its table value.
+- **Left open.** (1) Playing it by hand, start to finish, on a few commissions. (2) 3.7 (#144): the Power panel's "tonight" band is honest but wide with a station; this needs the
+  near-term conditions in blocks of the day, then a second look at the band and the soil card. (3) The forecast panel's "None told for this day yet" on a day a storm and its flood still span
+  (Harvest Festival's day 4: the storm ends then) reads as "nothing is coming"; the card of the day it begins carries it. A wording to look at with the panel in hand. (4) Long Nights still waits for the greenhouse (#86).
 
 The bot (`npm run sim`) deliberately uses a flat, open map with even soil to test the economy, not terrain;
 `test/height.test.ts` covers the height rules. It clears First Light in about 15.5 minutes, Morning Bread in about 33 and

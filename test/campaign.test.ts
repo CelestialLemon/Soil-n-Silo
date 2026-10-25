@@ -4,7 +4,8 @@ import { DAY_SECONDS } from '../src/game/data.ts';
 import { allowed, endOf, EVENT_KINDS, EVENTS, type EventKind, type Strength, type WeatherEvent } from '../src/game/events.ts';
 import { CAMPAIGN } from '../src/game/scenarios.ts';
 import { dayAt, hourAt } from '../src/game/sim/clock.ts';
-import { eventWords } from '../src/game/eventwords.ts';
+import { eventWords, stationWords } from '../src/game/eventwords.ts';
+import { randomScenario, SANDBOX } from '../src/game/scenarios.ts';
 
 // The campaign's weather is placed by hand (2.10): each commission has the events that teach what it means to, none on the first day,
 // none that overlap, and never the late frost, the blizzard or the hurricane, which are left for random commissions.
@@ -86,4 +87,11 @@ test('the briefing letter names the events a campaign commission will bring, and
   assert.equal(words('c8'), 'Weather to watch for this season: fog or a tropical storm.');
   const season = { ...byId('c1'), id: 'r1-1' };
   assert.match(eventWords(season).join(' '), /thunderstorm, a flood or a late frost/);
+});
+
+test('every briefing that names events says what a weather station gives, with its price', () => {
+  for (const sc of [...CAMPAIGN, SANDBOX, randomScenario(7, 2)]) {
+    assert.ok(eventWords(sc).length > 0, `${sc.id} names no events`);
+    assert.deepEqual(stationWords(sc), ['A weather station (80 credits, 3 W) tells when: it gives a forecast of the next three days.'], sc.id);
+  }
 });

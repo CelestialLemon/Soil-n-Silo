@@ -1,3 +1,4 @@
+import { BUILDINGS } from './data.ts';
 import { EVENT_KINDS, EVENTS, eventsOf, type EventKind } from './events.ts';
 import { CAMPAIGN, type Scenario } from './scenarios.ts';
 
@@ -21,4 +22,14 @@ function namedEvents(sc: Scenario): EventKind[] {
 export function eventWords(sc: Scenario): string[] {
   const kinds = namedEvents(sc), bad = kinds.filter((k) => !EVENTS[k].good).map(anEvent), good = kinds.filter((k) => EVENTS[k].good).map(anEvent);
   return [...(bad.length ? [`Weather to watch for this season: ${listOf(bad)}.`] : []), ...(good.length ? [`Kinder turns it can take: ${listOf(good)}.`] : [])];
+}
+
+/**
+ * What a weather station gives, said once the letter has named the events (which it does without their times): the forecast, with its
+ * price. Empty where the letter names none.
+ */
+export function stationWords(sc: Scenario): string[] {
+  if (!namedEvents(sc).length) return [];
+  const { cost, power } = BUILDINGS.station;
+  return [`A weather station (${cost} credits, ${power} W) tells when: it gives a forecast of the next three days.`];
 }

@@ -155,9 +155,11 @@ Six tree species and bushes vary by place, with willows by water and pines up hi
   summer wants a cooler wheat range or a summer-crop push. `tools/seasonfactor.ts` should be rerun whenever a season,
   warmth or crop range changes, and `PAR_FACTOR` updated. Not played by hand: only headless runs (loading, conditions, rain
   and snow, no NaNs).
-- **Climate phase 2, left open after the playtest (2026-10-24):** the authored campaign events (`DESIGN.md`, "Campaign weather") and the one consistent `PAR_FACTOR`
-  table are in, played only headless (the bot, and a headless browser for the chip, sky, haze, markers and results). Worth playing by hand: every campaign event on its commission, then random
-  commissions of each season; the hurricane costs the bot a third more and is the likeliest to feel unfair. Long Nights still waits for the greenhouse (#86).
+- **Climate phase 3, left open after the playtest (2026-10-25):** the station, the forecast, its panel and the projections are in and
+  were played headless and in a headless browser (`DESIGN.md`, "Playtest of phase 3"): the forecast changes whether, when and with what
+  power a player builds, its ranges held in about 16,000 checks, and 80 credits and 3 W stay. Still to do: play every campaign event by hand
+  (the hurricane costs the bot a third more and is the likeliest to feel unfair), and random commissions of each season; sharper
+  near-term conditions for the Power panel's "tonight" (#144); Long Nights waits for the greenhouse (#86).
 - Play the **problems strip** (experimental, off by default, a setting on the pause screen) and decide whether it stays.
   It lists the buildings with a problem now, longest first; the plan was to build it on the history instead (buildings below
   about 70% working over the last few minutes, worst first) and perhaps group it by cause.
