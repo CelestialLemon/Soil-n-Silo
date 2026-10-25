@@ -82,7 +82,7 @@ export function waitFact(s: GameState, b: Building, w: Wait): string {
       const net = networkOf(s, b);
       if (!net) return 'No pylon reaches it.';
       const t = tonight(s);
-      return `Its network: ${watts(net.made)} made, ${watts(usedBy(net))} used now.${t?.dry ? ` Batteries ${dryLine(t)} tonight, ${t.basis}.` : ''}`;
+      return `Its network: ${watts(net.made)} made, ${watts(usedBy(net))} used now.${t?.dry ? ` Batteries ${dryLine(t)} tonight, ${t.basis}${t.notCounted ? `; ${t.notCounted}` : ''}.` : ''}`;
     }
     case 'output': {
       const item = itemByName(w.need);

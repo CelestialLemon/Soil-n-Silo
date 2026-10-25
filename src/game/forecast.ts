@@ -104,7 +104,8 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         const base = spread(runs), many = base.hi - base.lo > 1e-9, step = many ? Math.abs(crop.soil * (crop.soil < 0 ? wear : 1)) : 0;
         const then = many ? { lo: Math.max(0, Math.floor(base.lo - step)), hi: Math.min(100, Math.ceil(base.hi + step)) } : { lo: Math.round(base.lo), hi: Math.round(base.lo) };
         facts.push({ label: crop.name, value: `+${fmt1(perMin)}`, sub: 'a minute, at this warmth' });
-        facts.push({ label: 'Soil', value: String(Math.round(soil)), then: then.lo === then.hi ? String(then.lo) : `${then.lo}–${then.hi}`, sub: `in ${SOIL_AHEAD / 60} min if harvests are carried off${reading.kind === 'truth' ? '' : `, ${basisOf(reading, s.scenario.climate, s.time).replace(/^for /, 'in ')}`}${notCounted(reading, s.time + SOIL_AHEAD) ? `; ${notCounted(reading, s.time + SOIL_AHEAD)}` : ''}` });
+        const skipped = notCounted(s.scenario, reading, s.time, s.time + SOIL_AHEAD);
+        facts.push({ label: 'Soil', value: String(Math.round(soil)), then: then.lo === then.hi ? String(then.lo) : `${then.lo}–${then.hi}`, sub: `in ${SOIL_AHEAD / 60} min if harvests are carried off${reading.kind === 'truth' ? '' : `, ${basisOf(reading, s.scenario.climate, s.time).replace(/^for /, 'in ')}`}${skipped ? `; ${skipped}` : ''}` });
         facts.push(shore ? { label: 'Water', value: 'beside water', sub: 'grows at 100%' } : rain ? { label: 'Water', value: 'rain', sub: 'grows at 100% while it rains', tone: 'good' } : sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round(waterPace(water, crop.thirst, warmthOf(s)) * 100)}%` }
           : { label: 'Water', value: 'none', sub: `grows at ${Math.round(waterPace(0, crop.thirst, warmthOf(s)) * 100)}%`, tone: 'bad' });
         const warm = warmthFact(crop, warmthOf(s));
@@ -231,6 +232,8 @@ export interface Tonight {
   dry: { from: number; to: number; always: boolean; after: Range; short: Range } | null;
   /** How the weather ahead was read, in words ("for a usual winter", "from the forecast"), and how many runs the range is over (1: one value). */
   basis: string;
+  /** What the range does not count (an event the forecast only calls possible), or "". */
+  notCounted: string;
   reading: Reading['kind'];
   runs: number;
 }
@@ -311,7 +314,7 @@ export function tonight(s: GameState, reading: Reading = readingOf(s)): Tonight 
       from: Math.min(...dry.map((r) => r.dryAt as number)), to: dry.length === runs.length ? Math.max(...dry.map((r) => r.dryAt as number)) : sunrise, always: dry.length === runs.length,
       after: spread(dry.map((r) => (r.shortFor ? r.shortSum / r.shortFor : 0))), short: spread(dry.map((r) => r.shortFor)),
     } : null,
-    basis: basisOf(reading, s.scenario.climate, now), reading: reading.kind, runs: runs.length,
+    basis: basisOf(reading, s.scenario.climate, now), notCounted: notCounted(s.scenario, reading, now, end), reading: reading.kind, runs: runs.length,
   };
 }
 

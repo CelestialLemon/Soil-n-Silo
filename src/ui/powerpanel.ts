@@ -108,7 +108,7 @@ function tonightCard(s: GameState) {
       dryBar,
       t.dry && !banded ? svg('circle', { cx: x(t.dry.from), cy: y(0), r: 5, class: 'dry' }) : null,
       ...ticks.map((tt) => svg('text', { x: x(tt), y: H + 22, 'text-anchor': 'middle' }, clockAt(tt)))),
-    h('div', { class: 'cd-small' }, `${pct(t.points[0].k)} now. ${banded ? 'The shaded band is every night the forecast allows; the line is the hardest. ' : ''}${peak}`));
+    h('div', { class: 'cd-small' }, `${pct(t.points[0].k)} now. ${banded ? 'The shaded band is every night the forecast allows; the line is the hardest. ' : ''}${peak}${t.notCounted ? ` ${t.notCounted[0].toUpperCase()}${t.notCounted.slice(1)}.` : ''}`));
 }
 
 export function powerSheet(host: PowerHost) {

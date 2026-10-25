@@ -790,8 +790,9 @@ over is a fact (the snow it left on the panels melts by its rule, and ice thaws 
 - **Worlds.** For each event the forecast names (but not one only called "possible", day three), the events it allows at its corners (`cornerWorlds`:
   each kind and strength not ruled out, at the vertices of the start and end windows and the length range, a flood after each of its storm's
   corners) and at the middle of what the windows allow (a night's charge is not monotone in when a storm begins), combined across events (at
-  most 48 worlds; beyond that each event is varied on its own). What the player sees since the forecast was issued is folded in: an event
-  that has begun is told in full (kind, strength, start) with the forecast's end range; one that is over is a fact; one that has not begun
+  most 256 worlds; beyond that each event keeps only its corners, then only the extremes of each kind and strength, so the combined worst
+  cases stay). What the player sees since the forecast was issued is folded in: an event
+    that has begun is told in full (kind, strength, start) with the forecast's end range; one that is over is a fact; one that has not begun
   starts no earlier than this hour. An out-of-date station's forecast is read the same way (what it named, and the usual weather for the rest).
 - **Conditions.** Each day's sun share, mean wind, hours of rain and warmth range are read at three levels (the lowest, the middle, the highest;
   the middle because a crop's pace peaks inside its warm range). The events' effect on sun and wind is taken out of a day's numbers and laid
@@ -800,7 +801,7 @@ over is a fact (the snow it left on the panels melts by its rule, and ice thaws 
   known now (sun's share 0.8 an hour, wind 1.3 an hour at the most). Tonight's margins (`NIGHT_MARGINS`): sun share ±0.5, wind ±0.5, rain the whole
   of 0–1 (it is on or off); the soil's (`SOIL_MARGINS`): rain ±0.15 of the day, warmth ±1°C beyond the season's drift (±2°C) and the rain's cooling
   (up to 2°C), inside the day's lowest and highest hour. The season's own limits clip them (cloud takes 65% of the sun at most, calm 60% of the
-  wind). A day without conditions (day three, or past the forecast) is the usual.
+  wind). A day without conditions (day three, or past the forecast) is the usual. A turbine's unsteadiness in a gale is the seeded noise in the truth; a lens takes it at its worst when its wind is lowest and at its best when highest (the usual weather, in the middle).
 - **Spread.** Tonight is the lowest and highest charge at each moment over all the runs (the band, drawn behind the line of the hardest night), the
   dry time the earliest and the latest (or "may run dry from" a time, when some nights last), the shortfall and the time short as ranges. The soil
   is the lowest and highest over the runs, rounded outward and widened by one harvest's change where the runs disagree ("62 → 55–59").
@@ -811,8 +812,9 @@ over is a fact (the snow it left on the panels melts by its rule, and ice thaws 
   seeded weather) is inside the band at every step and its dry time inside the dry range; the real soil is inside the soil range; and a range lies
   inside the one an hour before (from the charge the real night has then). The margins above were set by measuring these over thousands of
   cases on seeds the test does not use (zero misses in about 8,000 nights, 32,000 soils and 1,900 pairs of hours).
-- **Day three.** An event the forecast only calls possible (a family: "a storm, possible") is not in the range, and the label says so ("a possible
-  storm on day 5 is not counted"); the test leaves those cases out.
+- **Day three.** An event the forecast only calls possible (a family: "a storm, possible") that the player has not seen begin or end is not in
+  the range, and the label says so ("a possible storm on day 5 is not counted"), on tonight's card and the history line as on the soil card;
+  the test leaves those cases out. The usual weather counts the cloud and cooling of rain an event under way brings.
 - **How wide.** A day's published ranges say little about a night: the wind of a night strays by up to ±0.2 from its day's mean in the seeded
   weather, the sun of an afternoon by up to ±0.4, and a shower is on or off. The bands are honest, so they are wide (on average about half the
   battery's capacity across the night in the measured layouts), narrowest where an event the forecast names decides the night and in the

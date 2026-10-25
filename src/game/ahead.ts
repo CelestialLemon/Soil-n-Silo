@@ -5,7 +5,7 @@ import { cornerWorlds, FAMILIES, issueTimeOf, type EventForecast, type Forecast,
 import type { Scenario } from './scenarios.ts';
 import { CHARACTERS, SEASONS, type Climate } from './seasons.ts';
 import { dayAt, hourAt, sunAt, windAt } from './sim/clock.ts';
-import { CALM_DROP, CLOUD_DIM, clearShare, RAIN_FROM, raining } from './sim/weather.ts';
+import { CALM_DROP, CLOUD_DIM, clearShare, RAIN_FROM, raining, SHOWER_CLOUD } from './sim/weather.ts';
 import { stationForecast } from './station.ts';
 import type { GameState } from './state.ts';
 import { eventWarmth, RAIN_COOLING, warmthByHour, warmthIn } from './warmth.ts';
@@ -109,7 +109,8 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
  */
 function viewOf(sc: Scenario, now: number, events: WeatherEvent[], picks?: Picks, level: Level = {}, margins: Margins = {}, days = new Map<number, { sun: number; wind: number }>()): Ahead {
   const c = sc.climate, u = usualOf(c), winter = c.season === 'winter', n = nowOf(sc, now);
-  const view: View = { events, gust: () => 0.5 };
+  // A turbine in a gale is steady or not as the seeded noise goes: a forecast lens takes it at its worst when the wind is low and at its best when high; the usual weather, in the middle.
+  const view: View = { events, gust: () => (picks ? 1 - (level.wind ?? 0.5) : 0.5) };
   // The weight of what is known now: it fades over EASE_HOURS.
   const ease = (t: number) => Math.max(0, 1 - (t - now) / (EASE_HOURS * HOUR));
   // Without a range, the weather now eases to the usual. With one, the weather lies in it, and within what it can have changed since now
@@ -140,7 +141,11 @@ function viewOf(sc: Scenario, now: number, events: WeatherEvent[], picks?: Picks
   // Cloud leaves the sun at least this share, and a wind of the season never leaves the range the season's mean, gusts and calm spells give.
   const sunLeast = 1 - CLOUD_DIM, windLeast = Math.max(0.05, (c.wind.mean - c.wind.gust) * (1 - CALM_DROP)), windMost = Math.min(1, c.wind.mean + c.wind.gust);
   // The usual day's warmth (without the seeded drift), with the events in force.
-  const usualWarm = (t: number) => usualWarmth(c, hourAt(t)) + eventWarmth(kept, t, warmthByHour(c, hourAt(t)));
+  const usualWarm = (t: number) => {
+    const rain = pushesAt(view, t).rain;
+    // (Rain an event brings cools more than the usual showers do.)
+    return usualWarmth(c, hourAt(t)) - (rain >= RAIN_FROM ? RAIN_COOLING * Math.max(0, rain - u.precip) : 0) + eventWarmth(kept, t, warmthByHour(c, hourAt(t)));
+  };
   const warmNow = warmthIn(sc, now);
   return {
     events, gust: view.gust,
@@ -150,7 +155,10 @@ function viewOf(sc: Scenario, now: number, events: WeatherEvent[], picks?: Picks
       const day = picks?.sun?.(t), p = pushOfDay(t).sun, m = margins.sun ?? 0;
       // A forecast's day holds the events' dimming too: the cloud's share is the day's, less what the world's events take, within what cloud takes at most.
       const r = day && (p > 1e-6 ? { lo: clamp(day.lo / p - m, sunLeast, 1), hi: clamp(day.hi / p + m, sunLeast, 1) } : { lo: sunLeast, hi: 1 });
-      return clear * mix('sun', n.cloud, r, u.clear, t) * pushesAt(view, t).sun;
+      const p2 = pushesAt(view, t);
+      // (Where there is no range, rain an event brings covers the sky too.)
+      const rainy = !r && p2.rain >= RAIN_FROM ? 1 - CLOUD_DIM * Math.min(1, SHOWER_CLOUD * p2.rain) : 1;
+      return clear * Math.min(mix('sun', n.cloud, r, u.clear, t), rainy) * p2.sun;
     },
     wind(t) {
       const day = picks?.wind?.(t), p = pushOfDay(t).wind, m = margins.wind ?? 0;
@@ -185,8 +193,8 @@ export const usualView = (sc: Scenario, now: number): Ahead => viewOf(sc, now, k
 
 // ---- The forecast's worlds ----
 
-/** The most worlds (combinations of the ways events may turn out) a projection runs over before it varies the events one at a time. */
-const MAX_WORLDS = 48;
+/** The most worlds (combinations of the ways events may turn out) a projection runs over before it keeps to fewer ways for each event. */
+const MAX_WORLDS = 256;
 
 /**
  * The forecast as the player can read it at `at` (a game hour at or before now): what the station says, with what the player sees
@@ -234,12 +242,34 @@ export function worldsOf(sc: Scenario, f: Forecast, now: number, until: number):
     return { ...e, start: { lo: start, hi: start }, end: { lo: end, hi: end }, length: { lo: end - start, hi: end - start } };
   };
   const middle: Forecast = { ...f, events: seen.map(centre) };
-  const roots = seen.filter((e) => e.after === null && e.detail !== 'family' && e.start.lo < until).map((e) => [...cornerWorlds(view, e), ...cornerWorlds(middle, centre(e))]);
+  const roots0 = seen.filter((e) => e.after === null && e.detail !== 'family' && e.start.lo < until);
+  // Every combination of the events' corners and middles; where there are too many to run, of their corners alone, and then of the
+  // extremes of each (the earliest and latest start, the shortest and longest, of each kind and strength): the combined worst cases stay.
+  const extremes = (all: WeatherEvent[][]): WeatherEvent[][] => {
+    // (A world's first event is the one the entry is about; a flood laid after it comes with it.)
+    const key = (w: WeatherEvent[]) => `${w[0].kind}/${w[0].strength}`, keys = [...new Set(all.map(key))];
+    const keep = new Set<WeatherEvent[]>();
+    for (const k of keys) {
+      const own = all.filter((w) => key(w) === k);
+      for (const f of [(w: WeatherEvent[]) => w[0].start, (w: WeatherEvent[]) => -w[0].start, (w: WeatherEvent[]) => endOf(w[0]), (w: WeatherEvent[]) => -endOf(w[0])]) keep.add(own.reduce((x, y) => (f(y) < f(x) ? y : x)));
+    }
+    return [...keep];
+  };
+  const tiers: ((e: EventForecast) => WeatherEvent[][])[] = [
+    (e) => [...cornerWorlds(view, e), ...cornerWorlds(middle, centre(e))],
+    (e) => cornerWorlds(view, e),
+    (e) => extremes(cornerWorlds(view, e)),
+  ];
   let worlds: WeatherEvent[][] = [[]];
-  const size = roots.reduce((n, r) => n * r.length, 1);
-  if (size <= MAX_WORLDS) for (const r of roots) worlds = worlds.flatMap((w) => r.map((x) => [...w, ...x]));
-  // Too many to combine: each event on its own, the others at their first corner.
-  else roots.forEach((r, i) => r.forEach((x) => worlds.push(roots.flatMap((o, j) => (j === i ? x : o[0])))));
+  for (const tier of tiers) {
+    const roots = roots0.map(tier).map((r) => r.filter((w, i, all) => all.findIndex((x) => JSON.stringify(x) === JSON.stringify(w)) === i));
+    if (roots.reduce((n, r) => n * r.length, 1) > MAX_WORLDS && tier !== tiers[tiers.length - 1]) continue;
+    worlds = [[]];
+    for (const r of roots) worlds = worlds.flatMap((w) => r.map((x) => [...w, ...x]));
+    // (At the last tier, if there are still too many, an even sample of them.)
+    if (worlds.length > MAX_WORLDS) worlds = worlds.filter((_, i) => i % Math.ceil(worlds.length / MAX_WORLDS) === 0);
+    break;
+  }
   const out = worlds.map((w) => [...fixed, ...w]);
   if (!byKey) cache.set(sc, (byKey = new Map<string, WeatherEvent[][]>()));
   if (byKey.size > 12) byKey.clear();
@@ -288,11 +318,14 @@ export function viewsOf(s: GameState, reading: Reading, margins: Margins, until:
 }
 
 /**
- * The events the forecast only says are possible (a family, day three) that reach into the projection: they are not in the range (nothing
- * says what they are, or whether it is this one), so a projection says it does not count them. Of the forecast reading only.
+ * The events the forecast only says are possible (a family, day three) that reach into the projection and that the player has not seen
+ * begin or end: they are not in the range (nothing says what they are, or whether it is this one), so a projection says it does not
+ * count them. Of the forecast reading only.
  */
-export function possibleIn(reading: Reading, until: number): EventForecast[] {
-  return reading.kind === 'forecast' ? reading.forecast.events.filter((e) => e.detail === 'family' && e.after === null && e.start.lo < until) : [];
+export function possibleIn(sc: Scenario, reading: Reading, now: number, until: number): EventForecast[] {
+  if (reading.kind !== 'forecast') return [];
+  const f = reading.forecast, at = Math.max(issueTimeOf(now), Math.min(f.issued, now));
+  return seenBy(sc, f, at).filter((e) => e.detail === 'family' && e.after === null && e.start.lo < until);
 }
 
 /** The least and the most of some numbers: the range the runs span. */
@@ -324,8 +357,8 @@ export function basisOf(reading: Reading, climate: Pick<Climate, 'season' | 'cha
 }
 
 /** What a projection does not count, as a fact: "a possible storm on day 5 is not counted" (empty where it counts everything the forecast says). */
-export function notCounted(reading: Reading, until: number): string {
-  const e = possibleIn(reading, until);
+export function notCounted(sc: Scenario, reading: Reading, now: number, until: number): string {
+  const e = possibleIn(sc, reading, now, until);
   if (!e.length) return '';
   const words = e.map((x) => `a possible ${FAMILIES[x.family].name.toLowerCase()} on day ${dayAt(x.start.lo)}`);
   return `${words.join(' and ')} ${e.length > 1 ? 'are' : 'is'} not counted`;

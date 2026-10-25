@@ -97,8 +97,8 @@ test('with a station, an event the forecast names is a range; one that is only p
   const g = rig(far, now, { charge: 1, solar: 0, turbines: 0, looms: 0 });
   const soil = soilThen(g, 'wheat', { kind: 'forecast', forecast: f, stale: false });
   assert.match(soil.sub, /a possible storm on day 4 is not counted/);
-  assert.equal(possibleIn({ kind: 'forecast', forecast: f, stale: false }, now + 60 * HOUR).length, 1);
-  assert.equal(notCounted(USUAL, now + 60 * HOUR), '');
+  assert.equal(possibleIn(far, { kind: 'forecast', forecast: f, stale: false }, now, now + 60 * HOUR).length, 1);
+  assert.equal(notCounted(far, USUAL, now, now + 60 * HOUR), '');
   // The storm does show in a night it reaches.
   const night = timeOf(4, 15), t = tonight(rig(named, night, { charge: 0.7, solar: 1, turbines: 2, looms: 2 }), forecastOf(named, night))!;
   assert.ok(t.runs > 1 && t.dry?.always, 'a hurricane under way stops the turbines in every night the forecast allows');
@@ -257,4 +257,33 @@ test('the projections follow the station: none, working, out of date, gone', () 
   assert.ok(!hasStation(s));
   assert.equal(readingOf(s).kind, 'usual');
   assert.match(soilThen(s, 'wheat', readingOf(s)).sub, /, in a usual mild spring$/);
+});
+
+test('combined worst cases are kept: two severe storms in one soil projection', () => {
+  const sc: Scenario = { ...steady('summer', 13, [...eventOn(2, 10, 'dustStorm', 'severe', 24), ...eventOn(3, 22, 'dustStorm', 'severe', 18)]), climate: { ...climateOf('summer', 'dry'), conditions: NO_CONDITIONS, warmth: { ...climateOf('summer').warmth, drift: 0 } } };
+  const time = timeOf(2, 8), g = rig(sc, time, { charge: 1, solar: 0, turbines: 0, looms: 0 });
+  const real = Number(soilThen(g, 'wheat', TRUTH).then), [lo, hi] = soilRange(soilThen(g, 'wheat', forecastOf(sc, time)));
+  assert.ok(lo <= real && real <= hi, `soil ${real} is outside ${lo}–${hi}`);
+});
+
+test('a turbine in a severe gale keeps its seeded unsteadiness inside the range', () => {
+  const sc = steady('autumn', 1, eventOn(2, 8, 'gale', 'severe', 30)), time = timeOf(2, 15);
+  const g = rig(sc, time, { charge: 0.7, solar: 0, turbines: 4, looms: 2 });
+  const real = tonight(g, TRUTH)!, told = tonight(g, forecastOf(sc, time))!;
+  real.points.forEach((p, i) => assert.ok(told.points[i].lo <= p.k + 1e-9 && p.k <= told.points[i].hi + 1e-9, `step ${i}: ${p.k} is outside ${told.points[i].lo}–${told.points[i].hi}`));
+});
+
+test('the usual weather counts the cloud and the cooling of rain an event under way brings', () => {
+  const sc = { ...steady('autumn', 1, eventOn(2, 8, 'softRain', 'ordinary', 24)) }, now = timeOf(2, 12);
+  const dry = { ...sc, events: [] as WeatherEvent[] };
+  const wet = usualView(sc, now), none = usualView(dry, now), later = now + 5 * HOUR;
+  assert.ok(wet.sun(later) < none.sun(later) - 0.01, 'rain dims the sun after the hour is up');
+  assert.ok(wet.warmth(later) < none.warmth(later) - 0.1, 'and cools the valley');
+});
+
+test('tonight says what a stale forecast only called possible and does not count', () => {
+  const sc = steady('autumn', 3, eventOn(3, 21, 'tropicalStorm', 'severe', 30)), time = timeOf(3, 15);
+  const old: Reading = { kind: 'forecast', forecast: forecastAt(sc, timeOf(1, 12)), stale: true };
+  const t = tonight(rig(sc, time, { charge: 0.7, solar: 1, turbines: 2, looms: 2 }), old)!;
+  assert.match(t.notCounted, /a possible storm on day 3 is not counted/);
 });
