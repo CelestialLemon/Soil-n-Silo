@@ -648,6 +648,71 @@ event only once it starts: in the sky and as its name on the weather chip.
   (the country round the map). A fall and the water one tile round it stay open, so the wheels that keep turning stand by open water.
 - **The guide** has a page for each, and the wheel's placement card says whether it freezes in a winter's cold snap.
 
+### The forecast (3.1)
+
+What a weather station will know (3.2 builds it, 3.3 shows it): `forecastAt(scenario, issued)` in `src/game/outlook.ts`, pure rules with no
+state. It is **the truth, blurred**: a pure function of the scenario and the hour it was issued, so the game keeps only that hour. It looks
+**three days ahead** (72 game hours) and is **issued every game hour** (`issueTimeOf(time)` is the last whole hour). In the sandbox the weather
+is changed by hand (`startEvent`, `clearWeather`), so the forecast is worked out again at once at the exact time (`forecastAt(sc, s.time)`):
+an event started by hand is under way, never "coming", and nothing is forecast ahead (the sandbox has no events of its own); the one thing told
+ahead is the flood that follows a storm started by hand, because it is part of the storm.
+
+**Honest, and only narrowing.** Every number and window holds what really happens, and each hour's range lies inside the hour before's. Both
+come from one construction: a range is the **cell of a fixed grid** that holds the truth, and the grid gets finer as the lead shrinks, each
+size dividing the one above. The truth is in its cell at every size, and a finer cell lies inside a coarser one. (The issue sketched a window
+of a seeded position round the truth, `[truth − u·w, truth + (1 − u)·w]`. That nests too, but it gives the truth away: the window's ends in two
+forecasts of the same event are two equations in the truth and `u`. A cell says only which cell. It also reads better, "day 6" and "morning"
+are cells of the clock.) The sizes step; they are not a line, so a window's width tells how far off an event is only to a tier.
+
+| Lead | Events: named | A time (start, end) told in | A day's high and low | A day's sun, wind, rain |
+| --- | --- | --- | --- | --- |
+| 0–6 h | kind and strength | 2-hour cell of the clock | 2°C cell (about ±1) | a 0.1 cell (sun, wind), 2 h (rain) |
+| 6–24 h ("tomorrow") | kind and strength | 4-hour cell (±2) | 2°C | the same |
+| 24–48 h ("day two") | kind; strength may still be open | half a day (00:00–12:00, 12:00–24:00) | 4°C cell (about ±2) | a 0.3 cell, 6 h of rain: "a band" |
+| 48–72 h ("day three") | a family and a day: "a storm, possible" | a day | 8°C cell (about ±4) | none |
+
+- A lead is measured to the event's own start (and, for its end, to its end); for a day, to its noon, so the lead of a day is public and the
+  rows read day by day: at 14:00 the day in progress is as sharp as 0–24 h, tomorrow (noon in 22 h) the same, then 46 h and 70 h. The forecast
+  lists the day in progress and each day whose noon is within 72 h, so three or four days.
+- **Events.** One entry for each event not yet over that is under way or begins within 72 h (`EventForecast`). Before it is listed it is not
+  told (not "none coming"); once it is, it stays until it is over. Nothing is listed that does not come: **"possible" is how vague the
+  forecast is, never a doubt**. It carries `start` and `end` windows (an event under way has one start; the forecast is then of its end: "the
+  gale eases, 18:00–21:00"), the `length` they allow, and `possible`: the kind and strength pairs not yet ruled out. The start window is
+  never earlier than the issue time (it has not begun, which is known); the end window never earlier than the start window plus the least that
+  any possible kind lasts, nor later than the start window plus the most (the catalogue's hours, which tighten as the kinds do). An entry's
+  `id` is its event's index in `Scenario.events`, the same from one forecast to the next; the list is ordered by the windows (then `id`),
+  never by the true starts inside them. A length the catalogue does not give (only a hand-authored one) widens the bounds by whole quarter
+  days, never to its exact value.
+- **Naming less than the truth is honest**: a hurricane is a tropical storm, which is a storm. Day three says the **family**, day two the
+  kind (`strength` still open, so a "tropical storm" may be a hurricane), tomorrow all of it. Families (`FAMILIES`), each all bad events or all
+  good ones: **storm** (thunderstorm, tropical storm, gale), **flood**, **heat spell** (heat wave), **cold spell** (late frost, cold snap,
+  blizzard), **haze** (fog, dust storm), **fair spell** (soft rain, warm spell, steady breeze). A family lists only the kinds the season and
+  character can bring (what the briefing already says), so in an autumn a "storm" is a tropical storm or a gale. `certainty` is `possible`
+  (a family), `likely` (a kind or a kind and strength) or `certain` (under way).
+- **A flood after its storm** is part of the storm (2.5): it is listed (`after` = the storm's id) once the storm's kind is named, or the flood is
+  under way. Its start window is the storm's end window; its own end is told as any end is; its strength is the storm's (so a hurricane's
+  flood is a severe one). "A tropical storm, then a flood" in the panel.
+- **A day** (`DayForecast`, `dayTruth`): its **high and low** (the highest and lowest of the hourly readings of the valley's warmth with the
+  events' nudges), and its **conditions**, from the seeded curves at the middle of each hour of the day: the sun's **share of a clear
+  day's** (cloud, fog, a blizzard take it down), the **mean wind** and its **strongest hour** (calm spells lower the mean), and the **hours of
+  rain or snow** (winter: `snow`). The words (`SUN_BANDS`, `WIND_BANDS`, `RAIN_BANDS`, `wordsFor`) are bands of those numbers, and a range gives
+  the first and last band it spans ("light wind to windy"), so the truth's band is always among the words. Day one has only its hours from the
+  start hour. Each is the cell of the true value, so no derived range is built from other ranges that could fail to nest.
+- **What it carries.** Only ranges, the pairs not ruled out, windows and `certainty`: no truth and no seed. What reads it (the panel, 3.4's
+  projections) can tell two scenarios apart only by what the forecast says. `cornersOf(entry)` is the events an entry allows at its corners:
+  each possible kind and strength at the vertices of the region its start window, end window and lengths allow together, so every one
+  satisfies all that the forecast says; `cornerWorlds(forecast, entry)` lays a flood after each of its storm's corners, inside the flood's
+  own window. A projection run in each brackets the truth where it is monotone in the start, the end and the length, and 3.4 decides what to
+  do where it is not. It is the forecast that tells the projection what it knows:
+  an entry only on day three (`detail: 'family'`) is told as a wide window and every kind the season allows.
+- **The bot is unchanged**: nothing in the rules reads the forecast yet, and the one change outside it (`warmthIn(scenario, time)`, the
+  warmth without a game around it; `warmthOf` is the same as before) gives the same numbers, so no target time moves.
+- **Tests** (`test/outlook.test.ts`): for every campaign commission and for 40 random seeds at each difficulty, at every hour until two hours
+  past the last event, every event window, length, kind and strength, and every day's warmth and conditions holds the truth, nothing is named
+  that does not come or named twice or dropped before it is over, and each range lies inside the one an hour before; the tier boundaries (72,
+  48, 24 h), a flood after its storm, an event under way, the sandbox, determinism, and that moving an event half an hour inside its cells changes
+  nothing.
+
 ### The valley's look by season
 
 The season is fixed per level, so its colours are set when the map is built and quantised with the rest (`TURF` in
