@@ -1385,8 +1385,8 @@ at any moment to look, since pausing is free. Nothing flashes or interrupts: an 
 Left open: Long Nights (c5) cannot be finished before the greenhouse (its events are placed; its bot test stays skipped, its target 70 a placeholder); a random winter takes 2.6 to 3.8 times the base time until then;
 and the weather has been played only headless, not by hand.
 
-**Playtest of phase 3 (3.6, 2026-10-25).** Driven headless (scripts on the real rules, outside the repo) and in headless Chromium on the dev server (the briefing, the guide's
-"Seasons and weather", and the forecast panel on Harvest Festival's day 2 at 14:00, from a save with a station); not yet played start to finish by a person.
+**Playtest of phase 3 (3.6, 2026-10-26).** Driven headless (scripts on the real rules, outside the repo) and in headless Chromium on the dev server (the briefing, the guide's
+"Seasons and weather", the forecast panel and the Power panel on Harvest Festival's day 2 at 14:00, from saves with and without a station); not yet played start to finish by a person.
 - **Does the forecast change what the player builds, and when?** Yes, three ways. *Whether:* a random commission's briefing names 3.9 kinds of event the season can bring and 2.4 of
   them happen (900 commissions, seeds 1–300 at each difficulty), so without a station a player insures against a flood or a frost that never comes; with one, only against what is
   listed. *When:* the first event of a random commission falls on day 5.7 at the median (earliest day 1.7), and each is named by its family 72 game hours ahead (12 minutes of play), by
@@ -1397,15 +1397,20 @@ and the weather has been played only headless, not by hand.
 - **Horizons and widths.** An event's start window is 24 h wide at three days out ("day 5"), 12 h at two, 4 h tomorrow, and 2 h inside six hours; a day's high and low ±4, ±2, ±1°C; sun, wind and rain
   only from two days out. Tomorrow is sharp enough to act on, and day three is vague enough ("a storm, possible") that the next update is wanted. The panel at day 2 14:00 in Harvest Festival
   reads well: tomorrow's card carries "a tropical storm, then a flood, likely", begins 08:00–12:00, the storm ends day 4 08:00–24:00, the flood ends day 6. No width needed changing.
-- **Honest in play.** Every minute of bot runs with a station (First Light's layout in every season and character at each difficulty, and Harvest Festival's in its own weather and the same
-  worlds), the forecast in hand was checked against what happens: 16,100 checks (events' start, end, length and possible kinds, every day's warmth, sun, wind, gust and rain), no range missed
-  and none widened (1,296 of those minutes were out of date, a station short of power, and the old forecast stayed honest).
+- **Honest in play** (rerun on the forecast with 3.7's blocks). Every minute of bot runs with a station (First Light's layout in every season and character at each difficulty, and Harvest Festival's in its own
+  weather and the same worlds), the forecast in hand was checked against what happens: 16,128 checks (events' start, end, length and possible kinds, every day's warmth, sun, wind, gust and rain) and 1.17 million
+  samples inside the blocks (the seasonal wind and the showers at 15 moments of each block, and each block against the one that held its hours in the last forecast): no range missed and none widened (1,296 of those
+  minutes were out of date, a station short of power, and the old forecast stayed honest).
+- **What it looks like** (3.7). The forecast panel shows today's and tomorrow's weather in six-hour stretches ("Through the day"), and the Power panel's tonight band is a band with a station and one line without. Harvest Festival,
+  day 2 at 14:00, three panels, a turbine, six sprinklers and two half-charged batteries: the usual stormy autumn says "held, lowest 57%" as a single line; the forecast says "held, 7%–64%" and the hardest night's line runs down to
+  about 0% by sunrise, because tomorrow is a dark day with 20 to 22 hours of rain (the band's top is the night in which the sprinklers rest and the wind blows). With two panels, two turbines and one battery the band is 100% to 100%: it says
+  the night is safe. The station's own 3 W shows (52 W used against 49).
 - **The price, 80 credits and 3 W, stays.** Built at the start, the station costs the bot Harvest Festival +68 s (36:52 to 38:00), Tired Soil +2:27, Riverlands +2:03 and Windy Ridge +4:05 of 39:37
   (10%: its power is wind alone and 1,100 credits), more than its 80 credits are worth because credits and watts are what the first minutes lack. A few minutes later it costs +18 s, +63 s and +35 s
   (the bot's layouts). So it is a real choice in the tight commissions (Windy Ridge builds none), and a cheap one in the rest. `PAR_FACTOR` is unchanged: `tools/seasonfactor.ts` reran
   with the stations in the layouts and no climate's suggested factor is above its table value.
-- **Left open.** (1) Playing it by hand, start to finish, on a few commissions. (2) 3.7 (#144): the Power panel's "tonight" band is honest but wide with a station; this needs the
-  near-term conditions in blocks of the day, then a second look at the band and the soil card. (3) The forecast panel's "None told for this day yet" on a day a storm and its flood still span
+- **Left open.** (1) Playing it by hand, start to finish, on a few commissions. (2) Where the night's rain is open (a block that can be dry or pouring for 3 to 6 hours) the band's top is wide, since a night of rain lets the
+  sprinklers rest and fills the batteries: the band says what can happen, but a player may want it split by the rain; look at it in play. (3) The forecast panel's "None told for this day yet" on a day a storm and its flood still span
   (Harvest Festival's day 4: the storm ends then) reads as "nothing is coming"; the card of the day it begins carries it. A wording to look at with the panel in hand. (4) Long Nights still waits for the greenhouse (#86).
 
 The bot (`npm run sim`) deliberately uses a flat, open map with even soil to test the economy, not terrain;
