@@ -239,10 +239,11 @@ export interface Tonight {
 }
 
 /**
- * How far past the day's published ranges the forecast's runs of the night reach (ahead.ts, `Margins`): a night's sun share and wind
- * stray from the day's by this much at most in the seeded weather, and rain is on or off (a sprinkler rests wholly or not at all).
+ * How far past the day's published ranges the forecast's runs of the night reach (ahead.ts, `Margins`): an hour's sun share can be any
+ * the season allows (a sunny day's afternoon can be wholly clouded: a margin of 1), the wind of a night strays from the day's by this much at
+ * most in the seeded weather, and rain is on or off (a sprinkler rests wholly or not at all).
  */
-export const NIGHT_MARGINS = { sun: 0.5, wind: 0.5, rain: 1 };
+export const NIGHT_MARGINS = { sun: 1, wind: 0.5, rain: 1 };
 
 const lowered = (r: Range, some: boolean): Range => (some ? { lo: 0, hi: r.hi } : r);
 
