@@ -3,7 +3,7 @@ import { hasStation, stationFault, stationForecast, FAULT_WORDS } from '../game/
 import type { GameState } from '../game/state.ts';
 import { DAY_SECONDS } from '../game/data.ts';
 import { h, icon, rebuild } from './dom.ts';
-import { forecastView, type ConditionWords, type DayView, type EventRow, type ForecastView } from './forecastWords.ts';
+import { forecastView, type ConditionWords, type DayView, type EventRow, type ForecastView, type PartView } from './forecastWords.ts';
 import { tip } from './keyhints.ts';
 
 // The forecast panel: what the weather station tells, as a HUD sheet like the Power panel. Three days (today and the ones the forecast
@@ -35,6 +35,13 @@ function conditionRows(c: ConditionWords) {
   ];
 }
 
+/** The day's stretches of six hours, as the forecast's blocks tell them. */
+function partRows(parts: PartView[]) {
+  return h('div', { class: 'fc-parts' },
+    h('div', { class: 'cd-label' }, 'Through the day'),
+    ...parts.map((p) => h('div', { class: 'fc-part' }, h('span', { class: 'fc-part-when' }, p.when), h('span', null, [p.sun, p.wind, p.rain].filter((x) => x !== null).join(', ')))));
+}
+
 function eventCard(e: EventRow) {
   // A hard turn is a triangle on a sharp-cornered card, a kind turn a circle on a rounded one: told apart without colour.
   const tag = h('span', { class: `fc-tag ${e.good ? 'is-kind' : 'is-hard'}` }, e.good ? h('i', { class: 'fc-dot', 'aria-hidden': 'true' }) : icon('warn', 16), e.tag);
@@ -53,6 +60,7 @@ function dayColumn(d: DayView) {
       h('div', null, h('span', { class: 'cd-label' }, 'Low'), h('b', null, d.low))),
     d.conditions ? h('div', { class: 'fc-conds' }, ...conditionRows(d.conditions))
       : h('p', { class: 'cd-small fc-far' }, 'Sun, wind and rain are not told this far ahead.'),
+    d.parts.length ? partRows(d.parts) : null,
     h('div', { class: 'cd-label fc-evs-label' }, 'Events'),
     ...(d.events.length ? d.events.map(eventCard) : [h('p', { class: 'cd-small' }, 'None told for this day yet.')]));
 }
@@ -62,7 +70,7 @@ function body(v: ForecastView) {
     v.stale ? h('div', { class: 'fc-stale', role: 'status' }, icon('warn', 22), h('div', null, h('b', null, v.stale), h('div', { class: 'cd-small' }, 'This is what it last said. Times already past are dropped from it, and it does not narrow until the station renews it.'))) : null,
     h('div', { class: 'fc-days' }, ...v.days.map(dayColumn)),
     v.rest.length ? h('section', { class: 'fc-rest' }, h('div', { class: 'cd-label' }, 'Also in the forecast'), h('div', { class: 'fc-rest-list' }, ...v.rest.map(eventCard))) : null,
-    h('p', { class: 'cd-small fc-note' }, 'What happens always falls inside these ranges; they narrow as the day comes. An event that is not listed is not told yet, not ruled out.'),
+    h('p', { class: 'cd-small fc-note' }, 'What happens always falls inside these ranges; they narrow as the day comes. The stretches of the day are the weather with no event in it: an event listed beside them comes on top. An event that is not listed is not told yet, not ruled out.'),
   ];
 }
 
@@ -95,7 +103,7 @@ export function forecastSheet(host: ForecastHost) {
     const key = `${sf.issued}|${sf.stale}|${sf.reason}|${Math.floor(s.time / (DAY_SECONDS / 144) + 1e-6)}`;
     if (key === seen && sf.forecast === shown) return;
     seen = key; shown = sf.forecast;
-    const v = forecastView(sf, s.time);
+    const sun = s.scenario.climate.sun, v = forecastView(sf, s.time, { rise: sun.rise, set: sun.set, snow: s.scenario.climate.season === 'winter' });
     meta.replaceChildren(h('div', { class: 'cd-small' }, `${sf.stale ? 'From' : 'Issued'} ${v.issued}`), h('div', { class: 'cd-small' }, `looks ahead to ${v.until}`));
     delete content.dataset.key;
     content.replaceChildren(...body(v).filter((n): n is HTMLElement => n !== null));

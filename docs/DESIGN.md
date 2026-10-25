@@ -703,6 +703,30 @@ are cells of the clock.) The sizes step; they are not a line, so a window's widt
   rain or snow** (winter: `snow`). The words (`SUN_BANDS`, `WIND_BANDS`, `RAIN_BANDS`, `wordsFor`) are bands of those numbers, and a range gives
   the first and last band it spans ("light wind to windy"), so the truth's band is always among the words. Day one has only its hours from the
   start hour. Each is the cell of the true value, so no derived range is built from other ranges that could fail to nest.
+- **Blocks of the day (3.7)** (`src/game/blocks.ts`, `Forecast.blocks`). A day's numbers say little of an hour (a night's wind strays from its
+  day's mean, an afternoon's sun by up to 0.4, a shower is on or off), so the near term is also told in **blocks of the day**: clock-aligned
+  (midnight, then every 6, 3 or 1 hour). **Six-hour** blocks cover the three days (and 6 h more to the end of the block), a six-hour block
+  splits in **threes** once it begins within 24 h, and a three-hour block in **hours** once it begins within 6 h (so an hour 2 h ahead is an
+  hour, one 30 h ahead a six-hour block, and the block in progress is told for what is left of it). Each block carries, as a range every
+  moment of its hours lies in: `sun` (the sun's share of a clear sky that cloud leaves, 0.35–1), `wind` (the seasonal wind before an event's
+  push and before it is held to 0.05–1; its top is the strongest hour), `precip` (how hard the showers fall at any moment, 0 where the sky
+  can be dry at some moment), `rain` (the share of an **hour** that showers, over the hours that start in the block: the water a field gets
+  in an hour) and `drift` (the seeded drift of the day's warmth, °C; the day's curve is public). **No weather event is in a block**: the
+  events are told on their own with windows, and a projection lays each one's effect on the block at its own timing (sun is the least of
+  the block's share and the events' cloud, wind adds the push, rain is on where either rains, warmth takes the nudges), so the two are
+  never pulled apart and no margin is needed for them.
+
+  *How it is honest and nested.* A block's range is the range of the true values over its hours, each end rounded outward to a fixed grid
+  (sun and wind 0.025 for hours, 0.05 for threes, 0.1 for sixes up to 48 h ahead and 0.2 beyond; rain and precip 0.125, 0.125, 0.25, 0.5;
+  drift 0.25, 0.5, 1, 2 °C: each divides the one above), so the truth is inside and the grid says only which cell. A finer block lies in the
+  coarser one that held its hours, over fewer hours and on a finer grid, so each hour's range is inside the last one's (the block in progress
+  is cut to what is left of it: the range over fewer hours is inside the range over more). The true values come from 5-game-minute **bins**
+  that hold the curve at both ends and the most its curvature can take it past them (`Δ²/8 ×` the largest second derivative: the spell's
+  smoothstep glide is at most `6/len²`, the wind's noise and calm product at most `3.853·gust + 0.144·max(|mean ± gust|)` per hour², at most 0.002 for any
+  season), so a bin's range holds every moment of it, not only the samples. The hour's rain share is read as twelve samples at the
+  five-minute midpoints (the same samples the soil card takes of the seeded weather), which fall in twelve consecutive bins. Tested by
+  walking the weather every 0.07 game hour (`test/outlook.test.ts`).
+
 - **What it carries.** Only ranges, the pairs not ruled out, windows and `certainty`: no truth and no seed. What reads it (the panel, 3.4's
   projections) can tell two scenarios apart only by what the forecast says. `cornersOf(entry)` is the events an entry allows at its corners:
   each possible kind and strength at the vertices of the region its start window, end window and published length range allow together, so
@@ -792,37 +816,59 @@ over is a fact (the snow it left on the panels melts by its rule, and ice thaws 
   each kind and strength not ruled out, at the vertices of the start and end windows and the length range, a flood after each of its storm's
   corners) and at the middle of what the windows allow (a night's charge is not monotone in when a storm begins), combined across events (at
   most 128 worlds; beyond that each event keeps only its corners, then only the extremes of each kind and strength, so the combined worst
-  cases stay). What the player sees since the forecast was issued is folded in: an event
+  cases stay). **Tonight's band (3.7)** also stands the event at **every half hour** inside its start and end windows (a lattice of multiples of half an
+  hour, so a window that narrows keeps its points: `gridWorlds`), up to 256 worlds (a night is two runs a world, not nine); beyond that, as above. A
+  review found a thunderstorm ending between the corners and the middle of its window that the night's charge fell outside of by 2.7% of the capacity;
+  at hourly points 0.2%, at half hours none. Reviews still built misses of about 0.1% by moving a storm's length and its flood together, so the band is widened by
+  **0.5% of the capacity** (`TIMING_SLACK`) wherever the worlds differ in an event's timing, and not otherwise (so a band still lies inside the one before). What the player sees since the forecast was issued is folded in: an event
     that has begun is told in full (kind, strength, start) with the forecast's end range; one that is over is a fact; one that has not begun
-  starts no earlier than this hour. An out-of-date station's forecast is read the same way (what it named, and the usual weather for the rest: a day it has no conditions for is one value, and the label says "the usual weather past it"; the range is not claimed to hold the real outcome there).
-- **Conditions.** Each day's sun share, mean wind, hours of rain and warmth range are read at three levels (the lowest, the middle, the highest;
-  the middle because a crop's pace peaks inside its warm range). The events' effect on sun and wind is taken out of a day's numbers and laid
-  back at the world's timing, so a storm's hours are where the world puts them. A day's range is widened by a **margin** for how far an hour or a
-  night strays from its day (the hours of a night are not the day's average), and for the first hours the range is the **cone** round what is
-  known now (sun's share 0.8 an hour at the most, and a jump of 0.12 where a shower sets in; wind 1.3 an hour). Tonight's margins (`NIGHT_MARGINS`): the sun's share the whole of what cloud allows (a sunny day's afternoon can be wholly clouded, so the
-  day's number says little of an hour's), wind ±0.5, rain the whole of 0–1 (it is on or off); the soil's (`SOIL_MARGINS`): rain ±0.15 of the day, warmth ±1°C beyond the season's drift (±2°C) and the rain's cooling
-  (up to 2°C), inside the day's lowest and highest hour. The season's own limits clip them (cloud takes 65% of the sun at most, calm 60% of the
-  wind). A day without conditions (day three, or past the forecast) is the usual. A turbine's unsteadiness in a gale is the seeded noise in the truth; a lens takes it at its worst when its wind is lowest and at its best when highest (the usual weather, in the middle).
+  starts no earlier than this hour. An out-of-date station's forecast is read the same way (what it named, and the usual weather for the rest: an hour past its last block is the usual weather as one value, and the label says "the usual weather past it"; the range is not claimed to hold the real outcome there).
+- **Conditions (3.7).** The weather of an hour is read from the forecast's **block** that holds it (`Forecast.blocks`, "The forecast (3.1)"), not from its
+  day. The block holds the weather with no event in it, so the events' effects are laid on it at the world's own timing, exactly: the sun is
+  `clear × min(block share, 1 − 0.65 × the events' cloud) × the events' sun`, where the events' cloud is the greater of their own and the cloud
+  of the rain they bring (rain over 0.12, 1.5 of its strength); the wind is `block + the events' push`, held to 0.05–1 as the seeded wind is;
+  it rains where the block's showers or an event's rain do; the warmth is the day's curve plus the block's drift, cooled by the showers or the rain an event
+  brings (up to 2°C), plus the events' nudges. So no margin is needed: **`NIGHT_MARGINS` and `SOIL_MARGINS` are gone.** For the first hours the block's range is
+  cut to the **cone** round what is known now (sun's share 0.8 an hour at the most, and a jump of 0.12 where a shower sets in; wind 1.3 an hour). What
+  the player sees now is the weather *with* the events under way in it, at a strength that fades as an event ends (and its end is not told
+  exactly), so the cone assumes an event under way may hide up to its full cloud and push up to its full wind: where it could hide cloud the sun's
+  share is read as at least what is seen, and the wind as between what is seen less the full push and what is seen (one side only where it sits at
+  a limit, 1 or 0.05). Two scenarios that differ only in when an event ends give the same projection. Past the last
+  block (an out-of-date forecast) the weather is the usual. Each projection says which conditions it varies and how (`Lenses`): the night's sun, wind
+  and rain, **together** at their lowest and at their highest (the charge only rises with each, so those two runs bracket every other; there were 27
+  combinations before), the soil's rain at its lowest and highest, each run twice where the warmth is a range: at the **slowest** pace over the
+  warmths the block allows (its drift, with the showers' cooling at none and at the hardest) **hour by hour**, and at the fastest (a crop's pace peaks
+  inside its warm range, so not at one level all through: a review found a harvest that uniform levels missed): up to 4 runs a world. Rain has two readings: at a **moment** it is on or off (`Ahead.rain`, the sprinklers rest;
+  the block's `precip` says whether the sky can be wet or dry at some moment), and over an **hour** it is a share (`Ahead.hourRain`: the twelve
+  five-minute samples of the hour; the soil card reads this, in the seeded weather too, and the block's `rain` holds it). Rain an event brings is
+  its own samples, so the hour's share is at least the greater and at most the sum of the two. A turbine's unsteadiness in a gale is the seeded
+  noise in the truth; a lens takes it at its worst when its wind is lowest and at its best when highest (the usual weather, in the middle).
 - **Spread.** Tonight is the lowest and highest charge at each moment over all the runs (the band, drawn behind the line of the hardest night), the
-  dry time the earliest and the latest (or "may run dry from" a time, when some nights last), the shortfall ("up to 45 W": an average over a night's short hours, which is not monotone in the weather) and the time short as ranges (from nothing where some nights last). The soil
-  is the lowest and highest over the runs, rounded outward and widened by one harvest's change where the runs disagree or any grows ("62 → 55–59"), so a harvest more or less than the sampled weather reaches is allowed.
+  dry time the earliest and the latest (or "may run dry from" a time, when some nights last), the shortfall ("up to 45 W": the greatest step's shortfall in the run that is short most; the average over a night's short hours is not monotone in the weather) and the time short as ranges (from nothing where some nights last). The soil
+  is the lowest and highest over the runs, rounded outward ("62 → 55–59"). (The soil used to be widened by one harvest's change wherever the runs disagreed. The slowest and fastest hour-by-hour runs bracket the harvests the weather allows (the pace also rises with the soil and a harvest wears it, so the slow run's pace is taken at the least soil any run can have and the fast run's at the most, the two stepped together; a review found the fast run harvesting fewer times than the truth when it ignored that), which the sweeps below check, so that allowance is gone; it stays only where the forecast leaves room in when a **dust storm or a late frost** begins or ends, because soil is not monotone in such an event's timing (a storm a little longer can suppress a harvest) and the worlds are only sampled: a review found a case.)
 - **Only the forecast.** A view reads the forecast, the climate, and what the player can see now (which events have begun and ended, with their
   kind, strength and start, and the weather of this hour): never the scenario's events or curves ahead, so two scenarios whose forecasts read the
   same give the same range (`test/projections.test.ts` moves an event inside its cells and checks).
 - **The truth is inside, nesting.** For every campaign commission and 30 random ones, at every 13th hour, the real night (the projection run on the
   seeded weather) is inside the band at every step and its dry time inside the dry range; the real soil is inside the soil range; and a range lies
-  inside the one an hour before (from the charge the real night has then). The margins above were set by measuring these over thousands of
-  cases on seeds the test does not use (zero misses in about 8,000 nights and 32,000 soils). Nesting is exact where the inputs are (the day ranges, the cone). In the nights it holds in the test sweep to
-  within 2% of capacity, but not always: where an event's window narrows, the worst night can lie between the corners and the middle that are sampled,
-  so the band can move by more than that (a review found 43% → 32% at one hour for a four-turbine layout). A fixed grid of timings (every two game hours inside
-  a window, which nests exactly) would fix it at the cost of many more worlds; left for later.
+  inside the one an hour before (from the charge the real night has then). It was also measured over thousands of cases on seeds the tests do not use:
+  zero misses in about 1,800 nights and 3,000 soils (campaign and 60 random commissions, two layouts), 2,800 nights round storms at every lead from 70 h to the storm,
+  and about 33,000 soils (some 500 random commissions, three crops). Nesting is exact where the inputs are (the blocks, the cone). In the nights the sweeps
+  show no band that moves out of the last hour's (the test allows 1.5% of the capacity): 0 of about 15,000 hour-to-hour pairs (campaign, 80 random
+  commissions, three layouts, and round storms at every lead) moved at all, where the day-range version had 12 of 15,000 and one of 1.6%, and a review had found
+  43% → 32% once; before the half-hour points were added, 2 of 4,900 moved by 1.0%. It is not a proof: the worst night could lie between the points
+  that are sampled (a half hour), and only the sweeps say it does not. A certified bound would need the event's effect bounded over the whole window,
+  which the nonmonotone turbine in a gale does not allow cheaply.
 - **Day three.** An event the forecast only calls possible (a family: "a storm, possible") that the player has not seen begin or end is not in
   the range, and the label says so ("a possible storm on day 5 is not counted"), on tonight's card and the history line as on the soil card;
   the test leaves those cases out. The usual weather counts the cloud and cooling of rain an event under way brings.
-- **How wide.** A day's published ranges say little about a night: the wind of a night strays by up to ±0.2 from its day's mean in the seeded
-  weather, the sun of an afternoon by up to ±0.4, and a shower is on or off. The bands are honest, so they are wide (on average about half the
-  battery's capacity across the night in the measured layouts), narrowest where an event the forecast names decides the night and in the
-  first hours (the cone). A tighter band needs finer numbers from the forecast (a half-day's sun, wind and rain, not a day's).
+- **How wide (3.7).** Before the blocks a day's ranges said little about a night (the wind of a night strays by up to ±0.2 from its day's mean, the sun of
+  an afternoon by up to ±0.4, a shower is on or off), so the margins made the band about half the battery's capacity wide on average, and 0–100% in
+  Harvest Festival on day 2 ("may run dry from 21:40"). With the blocks, over the campaign and 60 random commissions at two layouts (1,768 nights, times
+  across the first six days), the band is **0.15 of the capacity wide on average (0.54 before), and 0.34 at its widest point on average (0.75 before;
+  0.83 before, 0.40 after, for the afternoon, 13:00–19:00)**; Harvest Festival's day 2 at 14:00 with two turbines and two panels, 0–100% before, is now 89–100% ("holds"). The soil
+  card's range is 2.9 wide on average (6.2 before; 4.9 against 8.1 over 2,000 soils across a different set of seeds). What is left is real:
+  the far hours of a 60-hour soil run are told only in sixes and on coarse grids, and a night's wind is told by the hour only a few hours ahead.
 
 **Words.** The labels say what the projection assumes, as facts: "Tonight, for a usual winter" and "in 10 min, in a usual spring" without a
 station; "from the forecast" with one; "from the forecast of day 4, 14:00" when it is out of date. The Power panel draws the band with the line of
@@ -831,8 +877,8 @@ forecast"; a field's card shows the soil range. The guide's Power and Field page
 
 **Cost.** The worlds are worked out per forecast hour (cached with the events the player has seen begin or end), the views for half a second of play
 (they read the weather as it was then, and remember what they say to the eighth of a second), and each projection runs the layout once per view
-(up to 27 per world for the night, 9 for the soil): about 2 ms for a night and 5–25 ms for a field's card with many events, so the placement
-card, which is recomputed as the ghost moves, stays cheap.
+(2 per world for the night, up to 4 for the soil): about 1 ms for a night (it was 2–5) and 5–25 ms for a field's card with many events, so the placement
+card, which is recomputed as the ghost moves, stays cheap. The blocks cost a few ms the first time a forecast is made for a scenario (the bins are kept per scenario).
 
 ### The forecast panel (3.3)
 

@@ -1,5 +1,5 @@
 import { BUILDINGS, CROPS, DAY_SECONDS, FIELD, HIVE, ITEMS, POLLINATION_BONUS, POWER, recipesFor, SAPLING_SECONDS, TREE_HEALTH, type BuildingId } from './data.ts';
-import { EVENTS } from './events.ts';
+import { EVENT_KINDS, EVENTS, type EventKind } from './events.ts';
 import { networks, POWERED, pylonsInLink } from './power.ts';
 import { HOUR_SECONDS } from './powerlog.ts';
 import { coopPace, coopTrees, erosionAt, guardedAt, hiveReaches, paceOf, pylonReaches, riverSeason, sprinklerWaters, sprinklerWatts, touchesWater, waterLevelNear, waterPace, wheelSite, windExposure } from './rules.ts';
@@ -9,7 +9,7 @@ import { raining } from './sim/weather.ts';
 import { panelShare, panelSnow } from './snow.ts';
 import { linksAt } from './sim/goods.ts';
 import { makes, shareOf, wants } from './sim/energy.ts';
-import { basisFor, notCounted, readingOf, spread, viewsOf, type Ahead, type Reading } from './ahead.ts';
+import { basisFor, eventsVary, notCounted, readingOf, spread, viewsOf, type Ahead, type Lenses, type Reading } from './ahead.ts';
 import type { Range } from './outlook.ts';
 import { wattsOf } from './sim/layout.ts';
 import { describeLinks } from './sim/describe.ts';
@@ -34,8 +34,11 @@ export interface Placement {
   next: string[];
 }
 
-/** The same for a field's soil: the rain's hours and the day's warmth (a soil is the sum of the hours, so it strays less than a night's charge). */
-export const SOIL_MARGINS = { rain: 0.15, warmth: 1 };
+/** What a field's soil is run over in the forecast's ranges (ahead.ts, `Lenses`): the rain's share of each hour at its lowest and highest; the warmth is taken hour by hour (below). */
+export const SOIL_LENSES = { ends: ['rain'] } satisfies Lenses;
+
+/** The events whose timing a field's soil is not monotone in: a dust storm takes soil and so can suppress a harvest, a late frost starts the crop again. */
+const SOIL_EVENTS: readonly EventKind[] = ['dustStorm', 'lateFrost'];
 
 /** How far ahead, in seconds of play, the placement card shows a field's soil. */
 export const SOIL_AHEAD = 600;
@@ -86,23 +89,47 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         // Growth over the next SOIL_AHEAD seconds an hour of play at a time, with the warmth and rain of each hour; each harvest wears the soil and slows the next.
         // The weather ahead is read as `reading` says (ahead.ts): one run, or one for each way the forecast allows (the soil is then a range).
         const HOUR = DAY_SECONDS / 24;
-        const runs = viewsOf(s, reading, SOIL_MARGINS, s.time + SOIL_AHEAD).map((view) => {
-          let growth = 0, later = soil, harvested = false;
+        // A forecast's world is run twice, the slowest the weather allows (the least rain, the hour's slowest pace over the warmths a block allows) and the fastest
+        // (the most rain, the fastest pace). The pace also rises with the soil, and a harvest wears it (or builds it), so a run that harvests sooner has a different
+        // soil later: the slowest run's pace is taken at the least soil any run can have, the fastest at the most (worn only by the harvests the slow run makes,
+        // built only by the fast run's), and the two are stepped together. Without a forecast the one run is the weather as it is.
+        const run = (views: Ahead[]): { later: number }[] => {
+          const delta = crop.soil * (crop.soil < 0 ? wear : 1), clampSoil = (v: number) => Math.max(0, Math.min(100, v)), bounded = views.length > 1;
+          // `soils` are what each run ends with; `least` and `most` the soil any run can have.
+          const soils = views.map(() => soil), growth = views.map(() => 0);
+          let least = soil, most = soil;
           for (let t = 0; t < SOIL_AHEAD; t += HOUR) {
-            // A dust storm blowing over an unguarded field takes its soil (the hour's wind, at the hour's middle).
-            if (!guarded) later = Math.max(0, later - (dustFor(view, s.time + t + HOUR / 2)?.rate ?? 0) * Math.min(1, (SOIL_AHEAD - t) / HOUR));
-            // A late frost on the field takes what has grown (the field starts again) and nothing grows while it bites.
-            if (frostHits(s, set.crop ?? 'wheat', x, y, s.time + t, view)) { growth = 0; continue; }
-            const rain = shore ? 1 : view.rain(s.time + t), wet = rain + (1 - rain) * share;
-            growth += Math.min(HOUR, SOIL_AHEAD - t) * paceOf(wet, later, crop, view.warmth(s.time + t)).pace / crop.grow;
-            while (growth >= 1) { growth -= 1; harvested = true; later = Math.max(0, Math.min(100, later + crop.soil * (crop.soil < 0 ? wear : 1))); }
+            // (Every run's pace is worked out from the soil at the start of the hour, before any run harvests in it.)
+            const grew = views.map((view, k) => {
+              // A dust storm blowing over an unguarded field takes its soil (the hour's wind, at the hour's middle).
+              const dust = guarded ? 0 : (dustFor(view, s.time + t + HOUR / 2)?.rate ?? 0) * Math.min(1, (SOIL_AHEAD - t) / HOUR);
+              soils[k] = Math.max(0, soils[k] - dust);
+              if (k === 0) { least = Math.max(0, least - dust); most = Math.max(0, most - dust); }
+              // A late frost on the field takes what has grown (the field starts again) and nothing grows while it bites.
+              if (frostHits(s, set.crop ?? 'wheat', x, y, s.time + t, view)) { growth[k] = 0; return 0; }
+              const rain = shore ? 1 : view.hourRain(s.time + t), wet = rain + (1 - rain) * share;
+              const paces = view.warmths(s.time + t).map((w) => paceOf(wet, bounded ? (k ? most : least) : soils[0], crop, w).pace);
+              return Math.min(HOUR, SOIL_AHEAD - t) * (k ? Math.max(...paces) : Math.min(...paces)) / crop.grow;
+            });
+            grew.forEach((by, k) => {
+              growth[k] += by;
+              while (growth[k] >= 1) {
+                growth[k] -= 1; soils[k] = clampSoil(soils[k] + delta);
+                // The slow run's harvest wears the most soil there is (or builds the least); the fast run's, the least (or the most).
+                if ((delta < 0) === (k === 0)) most = clampSoil(most + delta); else least = clampSoil(least + delta);
+              }
+            });
           }
-          return { later, grew: growth > 0 || harvested };
-        });
-        // Where the runs differ (the forecast leaves room), a harvest more or less than they reach may be: soil moves a step with each one.
-        // (The ends are rounded outward, so the soil in whole numbers is inside.)
-        const base = spread(runs.map((r) => r.later)), many = runs.length > 1 && (base.hi - base.lo > 1e-9 || runs.some((r) => r.grew)), step = many ? Math.abs(crop.soil * (crop.soil < 0 ? wear : 1)) : 0;
-        const then = many ? { lo: Math.max(0, Math.floor(base.lo - step)), hi: Math.min(100, Math.ceil(base.hi + step)) } : { lo: Math.round(base.lo), hi: Math.round(base.lo) };
+          return soils.map((later) => ({ later }));
+        };
+        // (The views of a world come together: the least rain, then the most.)
+        const views = viewsOf(s, reading, SOIL_LENSES, s.time + SOIL_AHEAD), runs = reading.kind === 'forecast' ? views.flatMap((_, n) => (n % 2 ? [] : run([views[n], views[n + 1]]))) : views.flatMap((v) => run([v]));
+        // Where the runs differ (the forecast leaves room) the soil is the lowest and highest of them, rounded outward so the soil in whole numbers is inside.
+        // (Each run takes the hour's slowest or fastest pace, so the runs bracket the harvests the weather allows. Where the forecast leaves room in when a
+        // dust storm or a late frost begins or ends, soil is not monotone in it: a dust storm that lasts a little longer can suppress a harvest, and the worlds are only
+        // sampled. A harvest more or less than the runs reach is then allowed: soil moves a step with each one.)
+        const base = spread(runs.map((r) => r.later)), many = base.hi - base.lo > 1e-9, step = eventsVary(s, reading, s.time + SOIL_AHEAD, SOIL_EVENTS) ? Math.abs(crop.soil * (crop.soil < 0 ? wear : 1)) : 0;
+        const then = many || step > 0 ? { lo: Math.max(0, Math.floor(base.lo - step)), hi: Math.min(100, Math.ceil(base.hi + step)) } : { lo: Math.round(base.lo), hi: Math.round(base.lo) };
         facts.push({ label: crop.name, value: `+${fmt1(perMin)}`, sub: 'a minute, at this warmth' });
         const skipped = notCounted(s.scenario, reading, s.time, s.time + SOIL_AHEAD);
         facts.push({ label: 'Soil', value: String(Math.round(soil)), then: then.lo === then.hi ? String(then.lo) : `${then.lo}–${then.hi}`, sub: `in ${SOIL_AHEAD / 60} min if harvests are carried off${reading.kind === 'truth' ? '' : `, ${basisFor(reading, s.scenario.climate, s.time, s.time + SOIL_AHEAD).replace(/^for /, 'in ')}`}${skipped ? `; ${skipped}` : ''}` });
@@ -239,16 +266,22 @@ export interface Tonight {
 }
 
 /**
- * How far past the day's published ranges the forecast's runs of the night reach (ahead.ts, `Margins`): an hour's sun share can be any
- * the season allows (a sunny day's afternoon can be wholly clouded: a margin of 1), the wind of a night strays from the day's by this much at
- * most in the seeded weather, and rain is on or off (a sprinkler rests wholly or not at all).
+ * What tonight is run over in the forecast's ranges (ahead.ts, `Lenses`): the sun, the wind and the rain that rests the sprinklers, all
+ * at their lowest and all at their highest. The charge only rises with each, so those two runs bracket every other.
  */
-export const NIGHT_MARGINS = { sun: 1, wind: 0.5, rain: 1 };
+export const NIGHT_LENSES = { together: ['sun', 'wind', 'rain'], fine: true } satisfies Lenses;
+
+/**
+ * What the band is widened by, as a share of the capacity, where the forecast leaves room in when an event begins or ends: the worlds stand the event at every
+ * half hour inside its windows, and the worst night can lie between two (a sweep and a review found misses of at most 0.23% with hourly points, 0.13% with half hours).
+ * The allowance is there while the worlds differ and goes when they do not (the event is over), so a band still lies inside the one before.
+ */
+export const TIMING_SLACK = 0.005;
 
 const lowered = (r: Range, some: boolean): Range => (some ? { lo: 0, hi: r.hi } : r);
 
 /** One run of the night: the charge at each step, and how it went dry. */
-interface Night { k: number[]; dryAt: number | null; shortSum: number; shortFor: number; peak: { t: number; k: number } }
+interface Night { k: number[]; dryAt: number | null; shortSum: number; shortFor: number; shortMost: number; peak: { t: number; k: number } }
 
 /**
  * How the batteries' charge will go until the morning, if every network keeps using what it uses now (and digesters burning
@@ -280,7 +313,7 @@ export function tonight(s: GameState, reading: Reading = readingOf(s)): Tonight 
   const run = (view: Ahead): Night => {
     const bats = nets.map((x) => [...x.bats]);
     const stored = () => bats.reduce((n, b) => n + b.reduce((a, c) => a + c, 0), 0);
-    let dryAt: number | null = null, shortSum = 0, shortFor = 0, peak = { t: now, k: stored() / capacity };
+    let dryAt: number | null = null, shortSum = 0, shortFor = 0, shortMost = 0, peak = { t: now, k: stored() / capacity };
     const k = [peak.k];
     for (const { t, dt } of steps) {
       const mid = t + dt / 2, sun = view.sun(mid), wind = view.wind(mid), rain = view.rain(mid);
@@ -301,14 +334,15 @@ export function tonight(s: GameState, reading: Reading = readingOf(s)): Tonight 
       if (inNight && dryAt === null && level < 1e-6 && short > 1e-6) dryAt = t + dt;
       k.push(level);
       if ((sunset === null || t + dt <= sunset) && level > peak.k) peak = { t: t + dt, k: level };
-      if (inNight && dryAt !== null && short > 1e-6) { shortSum += short * dt; shortFor += dt; }
+      if (inNight && dryAt !== null && short > 1e-6) { shortSum += short * dt; shortFor += dt; shortMost = Math.max(shortMost, short); }
     }
-    return { k, dryAt, shortSum, shortFor, peak };
+    return { k, dryAt, shortSum, shortFor, shortMost, peak };
   };
-  const runs = viewsOf(s, reading, NIGHT_MARGINS, end).map(run);
+  const runs = viewsOf(s, reading, NIGHT_LENSES, end).map(run);
   // The hardest night: the run that ends lowest, going dry the earliest.
   const hard = runs.reduce((a, b) => (b.k[b.k.length - 1] < a.k[a.k.length - 1] - 1e-9 || (Math.abs(b.k[b.k.length - 1] - a.k[a.k.length - 1]) <= 1e-9 && (b.dryAt ?? Infinity) < (a.dryAt ?? Infinity)) ? b : a));
-  const points = [now, ...steps.map((x) => x.t + x.dt)].map((t, i) => ({ t, k: hard.k[i], lo: Math.min(...runs.map((r) => r.k[i])), hi: Math.max(...runs.map((r) => r.k[i])) }));
+  const slack = eventsVary(s, reading, end, EVENT_KINDS) ? TIMING_SLACK : 0;
+  const points = [now, ...steps.map((x) => x.t + x.dt)].map((t, i) => ({ t, k: hard.k[i], lo: Math.max(0, Math.min(...runs.map((r) => r.k[i])) - (i ? slack : 0)), hi: Math.min(1, Math.max(...runs.map((r) => r.k[i])) + (i ? slack : 0)) }));
   const dry = runs.filter((r) => r.dryAt !== null);
   return {
     points, sunset, sunrise, dryAt: hard.dryAt, shortAfter: hard.shortFor ? hard.shortSum / hard.shortFor : 0, shortFor: hard.shortFor, peak: hard.peak,
@@ -316,8 +350,8 @@ export function tonight(s: GameState, reading: Reading = readingOf(s)): Tonight 
       // When some runs last the night it may be as late as sunrise (or never): the runs in between are only the levels that were tried.
       from: Math.min(...dry.map((r) => r.dryAt as number)), to: dry.length === runs.length ? Math.max(...dry.map((r) => r.dryAt as number)) : sunrise, always: dry.length === runs.length,
       // (Where some runs last the night, a night between may be short a little, or for a little while.)
-      // (The average of a night's shortfall is not monotone in the weather: it counts a partly spent first step, so it is only said to be up to the most.)
-      after: lowered(spread(dry.map((r) => (r.shortFor ? r.shortSum / r.shortFor : 0))), true), short: lowered(spread(dry.map((r) => r.shortFor)), dry.length < runs.length),
+      // (The average of a night's shortfall is not monotone in the weather: it counts a partly spent first step, so it is only said to be up to the most: the greatest step's in the run that is short most.)
+      after: lowered(spread(dry.map((r) => r.shortMost)), true), short: lowered(spread(dry.map((r) => r.shortFor)), dry.length < runs.length),
     } : null,
     basis: basisFor(reading, s.scenario.climate, now, end), notCounted: notCounted(s.scenario, reading, now, end), reading: reading.kind, runs: runs.length,
   };

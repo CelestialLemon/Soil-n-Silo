@@ -1,11 +1,12 @@
+import { blockAtTime, type Block } from './blocks.ts';
 import { DAY_SECONDS } from './data.ts';
-import { endOf, pushesAt, timeOf, type WeatherEvent } from './events.ts';
+import { activeEvents, endOf, pushesAt, pushesOf as pushesOfActive, type EventKind, type Pushes, type WeatherEvent } from './events.ts';
 import { clearSun, usualOf, usualWarmth } from './expected.ts';
-import { cornerWorlds, FAMILIES, issueTimeOf, type EventForecast, type Forecast, type Range } from './outlook.ts';
+import { cornerWorlds, FAMILIES, gridWorlds, issueTimeOf, type EventForecast, type Forecast, type Range } from './outlook.ts';
 import type { Scenario } from './scenarios.ts';
 import { CHARACTERS, SEASONS, type Climate } from './seasons.ts';
 import { dayAt, hourAt, sunAt, windAt } from './sim/clock.ts';
-import { CALM_DROP, CLOUD_DIM, clearShare, RAIN_FROM, raining, SHOWER_CLOUD } from './sim/weather.ts';
+import { CLOUD_DIM, clearShare, RAIN_FROM, raining, SHOWER_CLOUD } from './sim/weather.ts';
 import { stationForecast } from './station.ts';
 import type { GameState } from './state.ts';
 import { eventWarmth, RAIN_COOLING, warmthByHour, warmthIn } from './warmth.ts';
@@ -37,10 +38,18 @@ export interface Ahead extends View {
   sun(time: number): number;
   /** The wind, 0–1. */
   wind(time: number): number;
-  /** The share of the time, 0–1, that rain falls and waters every field and rests the sprinklers (0 in winter: snow does neither). */
+  /** The share of the time, 0–1, that rain falls and waters every field and rests the sprinklers (0 in winter: snow does neither). At a moment: 0 or 1 in the seeded weather. */
   rain(time: number): number;
+  /** The share of the hour from `time` that it rains (0–1; 0 in winter), the water a field gets in that hour. */
+  hourRain(time: number): number;
   /** The valley's warmth in °C. */
   warmth(time: number): number;
+  /**
+   * The warmths the weather can have at a time, for a result that is not monotone in the warmth (a crop's pace peaks inside its warm range): the
+   * one warmth in the seeded or usual weather, in a forecast's block the warmths across its drift and showers' cooling, so a projection takes its
+   * least or its most over them hour by hour rather than at one level all through.
+   */
+  warmths(time: number): number[];
 }
 
 /** How a projection reads the weather ahead. */
@@ -83,14 +92,6 @@ export function keptEvents(sc: Pick<Scenario, 'events'>, now: number): WeatherEv
 
 // ---- Building a view ----
 
-/** What a forecast says of the conditions at a time (the range of its day, widened for what a day's range does not hold): undefined where it has nothing to say. */
-interface Picks {
-  sun?: (time: number) => Range | undefined;
-  wind?: (time: number) => Range | undefined;
-  rain?: (time: number) => Range | undefined;
-  warmth?: (time: number) => Range | undefined;
-}
-
 /** How far along its range a lens reads each condition, 0 (the lowest) to 1 (the highest). */
 type Level = Partial<Record<Dim, number>>;
 
@@ -104,90 +105,123 @@ const JUMP = { sun: CLOUD_DIM * SHOWER_CLOUD * RAIN_FROM, wind: 0 } as const;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+/** The cloud a world's events put in the sky at once (their own cloud, and the cloud of the rain they bring): the sun's share is the least of this and the day's. */
+const eventCloud = (p: { cloud: number; rain: number }) => Math.max(p.cloud, p.rain >= RAIN_FROM ? Math.min(1, SHOWER_CLOUD * p.rain) : 0);
+
+/** What the lenses of one world share: what its events push at a time, and the share of an hour they rain. */
+interface Shared { pushes: Map<number, Pushes>; eventRain: Map<number, number> }
+
+/** What the player can see of the weather now, as ranges the weather of the block-free hours is held to for the next hours (the cone). */
+interface Known {
+  /** The sun's share cloud leaves, with no event in it. It is read as it is unless an event's cloud hides it (then it is at least this). */
+  sun: Range;
+  /** The seasonal wind before the events' push and before it is held to 0.05–1: exact, unless the wind is at a limit (then on one side of it). */
+  wind: Range;
+}
+
+function knownOf(sc: Scenario, now: number): Known {
+  // What the player sees is the sky and the wind with the events under way in them, at the strength they are felt (which fades out as an event ends,
+  // and its end is not told exactly): so an event that is under way may hide up to its full cloud and push up to its full wind, no more.
+  const full = pushesOfActive(activeEvents(sc, now).map(({ event }) => ({ event, intensity: 1 })));
+  const share = clearShare(sc, now), wind = windAt(sc, now);
+  const hidden = eventCloud(full) > 0;
+  return {
+    sun: { lo: share, hi: hidden ? 1 : share },
+    wind: wind >= 1 - 1e-9 ? { lo: 1 - full.wind, hi: Infinity } : wind <= 0.05 + 1e-9 ? { lo: -Infinity, hi: 0.05 } : { lo: wind - full.wind, hi: wind },
+  };
+}
+
+/** The point of a range a lens reads at `level` (0 the lowest end, 1 the highest). */
+const pick = (r: Range, level: number) => r.lo + (r.hi - r.lo) * level;
+
 /**
- * A view of the weather ahead: the usual weather where nothing says otherwise, and the picks of a forecast's days where they do (they
- * hold the events' effects on sun, wind, rain and warmth; the events in `events` are for what the picks do not hold: the gale that
- * stops a turbine, the snow on the panels, ice, dust and frost, and every effect on a day without picks). A lens reads a pick at `level`.
+ * A view of the weather ahead: the usual weather where nothing says otherwise, and the forecast's blocks where they do. A block holds the
+ * weather with no event in it; the events of the world (`events`) are laid on it at their own timing: the sun's share is the least of
+ * the block's and the events' cloud, the wind adds their push, rain is on where either rains, the warmth takes their nudges. For the
+ * first hours a block's range is cut to the cone round what is known now. A lens reads each range at `level`.
  */
-function viewOf(sc: Scenario, now: number, events: WeatherEvent[], picks?: Picks, level: Level = {}, margins: Margins = {}, days = new Map<number, { sun: number; wind: number }>()): Ahead {
-  const c = sc.climate, u = usualOf(c), winter = c.season === 'winter', n = nowOf(sc, now);
+function viewOf(sc: Scenario, now: number, events: WeatherEvent[], blocks?: readonly Block[], level: Level = {}, shared: Shared = { pushes: new Map(), eventRain: new Map() }): Ahead {
+  const c = sc.climate, u = usualOf(c), winter = c.season === 'winter', n = nowOf(sc, now), known = blocks ? knownOf(sc, now) : undefined;
   // A turbine in a gale is steady or not as the seeded noise goes: a forecast lens takes it at its worst when the wind is low and at its best when high; the usual weather, in the middle.
-  const view: View = { events, gust: () => (picks ? 1 - (level.wind ?? 0.5) : 0.5) };
+  const view: View = { events, gust: () => (blocks ? 1 - (level.wind ?? 0.5) : 0.5) };
   // The weight of what is known now: it fades over EASE_HOURS.
   const ease = (t: number) => Math.max(0, 1 - (t - now) / (EASE_HOURS * HOUR));
-  // Without a range, the weather now eases to the usual. With one, the weather lies in it, and within what it can have changed since now
-  // (a lens reads it at its `level`): the cone round what is known narrows the range for the first hours and nests with every hour's.
-  const mix = (dim: Dim, known: number, r: Range | undefined, usual: number, t: number) => {
-    if (!r) { const w = ease(t); return w * known + (1 - w) * usual; }
-    const reach = dim === 'sun' || dim === 'wind' ? (t > now ? DRIFT[dim] * (t - now) / HOUR + JUMP[dim] : 0) : Infinity;
-    const lo = Math.max(r.lo, known - reach), hi = Math.min(r.hi, known + reach);
-    return lo <= hi ? lo + (hi - lo) * (level[dim] ?? 0.5) : clamp(known, r.lo, r.hi);
-  };
+  const eased = (known_: number, usual: number, t: number) => { const w = ease(t); return w * known_ + (1 - w) * usual; };
   const kept = { events, climate: c };
-  // What the world's events do to a day's sun and wind on average (a forecast's day holds them): the sun's share of its clear curve and the wind's push, from the hourly middles as the day's numbers are.
-  const pushOfDay = (t: number) => {
-    const day = dayAt(t);
-    let m = days.get(day);
-    if (!m) {
-      let sunSum = 0, clearSum = 0, windSum = 0, hours = 0;
-      for (let h = 0; h < 24; h++) {
-        const tt = timeOf(day, h + 0.5);
-        if (tt < 0) continue;
-        const p = pushesAt(view, tt), clear = clearSun(c, hourAt(tt));
-        sunSum += clear * p.sun; clearSum += clear; windSum += p.wind; hours++;
-      }
-      days.set(day, (m = { sun: clearSum > 0 ? sunSum / clearSum : 1, wind: hours ? windSum / hours : 0 }));
-    }
-    return m;
+  // The block range at a time, cut to the cone round what is known now (it narrows the range for the first hours and nests with every hour's).
+  const cone = (dim: 'sun' | 'wind', b: Range, t: number): Range => {
+    const k = (known as Known)[dim], reach = t > now ? DRIFT[dim] * (t - now) / HOUR + JUMP[dim] : 0;
+    const lo = Math.max(b.lo, k.lo - reach), hi = Math.min(b.hi, k.hi + reach);
+    return lo <= hi ? { lo, hi } : { lo: clamp(k.lo, b.lo, b.hi), hi: clamp(k.lo, b.lo, b.hi) };
   };
-  // Cloud leaves the sun at least this share, and a wind of the season never leaves the range the season's mean, gusts and calm spells give.
-  const sunLeast = 1 - CLOUD_DIM, windLeast = Math.max(0.05, (c.wind.mean - c.wind.gust) * (1 - CALM_DROP)), windMost = Math.min(1, c.wind.mean + c.wind.gust);
-  // The usual day's warmth (without the seeded drift), with the events in force.
+  const block = (t: number) => (blocks ? blockAtTime(blocks, t) : undefined);
+  // What the world's events push at a time, worked out once for the world (its lenses all ask).
+  const pushesOf = (t: number): Pushes => { let p = shared.pushes.get(t); if (!p) shared.pushes.set(t, (p = pushesAt(view, t))); return p; };
+  const rainOf = (t: number) => { const p = pushesOf(t).rain; return p >= RAIN_FROM ? p : 0; };
   const usualWarm = (t: number) => {
-    const rain = pushesAt(view, t).rain;
+    const rain = pushesOf(t).rain;
     // (Rain an event brings cools more than the usual showers do.)
     return usualWarmth(c, hourAt(t)) - (rain >= RAIN_FROM ? RAIN_COOLING * Math.max(0, rain - u.precip) : 0) + eventWarmth(kept, t, warmthByHour(c, hourAt(t)));
   };
   const warmNow = warmthIn(sc, now);
+  // The day's curve and the seeded drift in the block's range, cooled by the showers and by the rain an event brings, and the events' nudges.
+  const warmAt = (b: Block, t: number, drift: number, rain: number) => {
+    const curve = warmthByHour(c, hourAt(t)) + pick(b.drift, drift);
+    return curve - RAIN_COOLING * Math.max(pick(b.precip, rain), rainOf(t)) + eventWarmth(kept, t, curve);
+  };
   return {
     events, gust: view.gust,
     sun(t) {
       const clear = clearSun(c, hourAt(t));
       if (clear <= 0) return 0;
-      const day = picks?.sun?.(t), p = pushOfDay(t).sun, m = margins.sun ?? 0;
-      // A forecast's day holds the events' dimming too: the cloud's share is the day's, less what the world's events take, within what cloud takes at most.
-      const r = day && (p > 1e-6 ? { lo: clamp(day.lo / p - m, sunLeast, 1), hi: clamp(day.hi / p + m, sunLeast, 1) } : { lo: sunLeast, hi: 1 });
-      const p2 = pushesAt(view, t);
-      // (Where there is no range, rain an event brings covers the sky too.)
-      const rainy = !r && p2.rain >= RAIN_FROM ? 1 - CLOUD_DIM * Math.min(1, SHOWER_CLOUD * p2.rain) : 1;
-      return clear * Math.min(mix('sun', n.cloud, r, u.clear, t), rainy) * p2.sun;
+      const p = pushesOf(t), b = block(t);
+      if (b) return clear * Math.min(pick(cone('sun', b.sun, t), level.sun ?? 0.5), 1 - CLOUD_DIM * eventCloud(p)) * p.sun;
+      // (Where there is no block, rain an event brings covers the sky too.)
+      const rainy = p.rain >= RAIN_FROM ? 1 - CLOUD_DIM * Math.min(1, SHOWER_CLOUD * p.rain) : 1;
+      return clear * Math.min(eased(n.cloud, u.clear, t), rainy) * p.sun;
     },
     wind(t) {
-      const day = picks?.wind?.(t), p = pushOfDay(t).wind, m = margins.wind ?? 0;
-      // (Wind a gale pushes is cut off at a full wind, so a day it blows in says nothing of the wind without it, beyond the season's range.)
-      const r = day && (p > 1e-9 ? { lo: windLeast, hi: windMost } : { lo: clamp(day.lo - m, windLeast, windMost), hi: clamp(day.hi + m, windLeast, windMost) });
-      return clamp(mix('wind', n.windBase, r, u.wind, t) + pushesAt(view, t).wind, 0.05, 1);
+      const b = block(t), push = pushesOf(t).wind;
+      if (b) return clamp(pick(cone('wind', b.wind, t), level.wind ?? 0.5) + push, 0.05, 1);
+      return clamp(eased(n.windBase, u.wind, t) + push, 0.05, 1);
     },
     rain(t) {
       if (winter) return 0;
-      const r = picks?.rain?.(t);
-      if (!r && pushesAt(view, t).rain >= RAIN_FROM) return 1;
-      return clamp(mix('rain', n.rain, r, u.showers, t), 0, 1);
+      if (rainOf(t) > 0) return 1;
+      const b = block(t);
+      if (b) return pick({ lo: b.precip.lo > 0 ? 1 : 0, hi: b.precip.hi > 0 ? 1 : 0 }, level.rain ?? 0.5);
+      return clamp(eased(n.rain, u.showers, t), 0, 1);
+    },
+    hourRain(t) {
+      if (winter) return 0;
+      const b = block(t);
+      // The events' share of the hour: five-minute samples, twelve to the hour.
+      let e = shared.eventRain.get(t);
+      if (e === undefined) { e = 0; for (let k = 0; k < 12; k++) if (rainOf(t + (k + 0.5) * HOUR / 12) > 0) e += 1 / 12; shared.eventRain.set(t, e); }
+      // Without a block: the usual share of showers on what the events leave dry.
+      if (!b) return e + (1 - e) * clamp(eased(n.rain, u.showers, t), 0, 1);
+      // The hour is twelve samples: the block's share of showers and the events' (the samples where either rains are at least the greater and at most the sum).
+      return pick({ lo: Math.max(b.rain.lo, e), hi: Math.min(1, b.rain.hi + e) }, level.rain ?? 0.5);
     },
     warmth(t) {
-      const day = picks?.warmth?.(t);
-      if (!day) return mix('warmth', warmNow, undefined, usualWarm(t), t);
-      // The season's curve and the events' lift (their timing is the world's), as far either way as the day's drift and the rain's cooling
-      // take it and the margin allows, inside what the day's lowest and highest hour allow.
-      const at = warmthByHour(c, hourAt(t)) + eventWarmth(kept, t, warmthByHour(c, hourAt(t))), lo = Math.max(day.lo, at - c.warmth.drift - RAIN_COOLING - (margins.warmth ?? 0)), hi = Math.min(day.hi, at + c.warmth.drift + (margins.warmth ?? 0));
-      return mix('warmth', warmNow, lo <= hi ? { lo, hi } : day, 0, t);
+      const b = block(t);
+      if (!b) return eased(warmNow, usualWarm(t), t);
+      return warmAt(b, t, level.warmth ?? 0.5, level.rain ?? 0.5);
+    },
+    warmths(t) {
+      const b = block(t);
+      if (!b) return [this.warmth(t)];
+      // Across the drift and between no showers and the hardest, at least every quarter degree (a crop's pace peaks inside the range, and the water's with the heat).
+      const all = [0, 0.5, 1].flatMap((d) => [0, 1].map((r) => warmAt(b, t, d, r))), lo = Math.min(...all), hi = Math.max(...all), n = Math.max(1, Math.min(12, Math.ceil((hi - lo) / 0.25)));
+      return Array.from({ length: n + 1 }, (_, k) => lo + (hi - lo) * k / n);
     },
   };
 }
 
 /** The seeded weather itself. */
 export function truthView(sc: Scenario): Ahead {
-  return { events: sc.events, sun: (t) => sunAt(sc, t), wind: (t) => windAt(sc, t), rain: (t) => (raining(sc, t) ? 1 : 0), warmth: (t) => warmthIn(sc, t) };
+  const hourRain = (t: number) => { let n = 0; for (let k = 0; k < 12; k++) if (raining(sc, t + (k + 0.5) * HOUR / 12)) n++; return n / 12; };
+  return { events: sc.events, sun: (t) => sunAt(sc, t), wind: (t) => windAt(sc, t), rain: (t) => (raining(sc, t) ? 1 : 0), hourRain, warmth: (t) => warmthIn(sc, t), warmths: (t) => [warmthIn(sc, t)] };
 }
 
 /** The usual weather from `now` on, with the events under way kept on. */
@@ -197,6 +231,8 @@ export const usualView = (sc: Scenario, now: number): Ahead => viewOf(sc, now, k
 
 /** The most worlds (combinations of the ways events may turn out) a projection runs over before it keeps to fewer ways for each event. */
 const MAX_WORLDS = 128;
+/** A night run at every half hour inside the windows is two runs a world (not nine), so it affords twice the worlds. */
+const MAX_FINE_WORLDS = 256;
 
 /**
  * The forecast as the player can read it at `at` (a game hour at or before now): what the station says, with what the player sees
@@ -226,11 +262,11 @@ const cache = new WeakMap<Forecast, Map<string, WeatherEvent[][]>>();
  * ones under way that the forecast doesn't name kept on, and for each event the forecast names (but only says "possible" of) every
  * corner it allows (`cornerWorlds`), combined. Events that begin after `until` can't reach the projection and are left out.
  */
-export function worldsOf(sc: Scenario, f: Forecast, now: number, until: number): WeatherEvent[][] {
+export function worldsOf(sc: Scenario, f: Forecast, now: number, until: number, fine = false): WeatherEvent[][] {
   // (The hour the player's forecast was in force: this hour's, or a sandbox forecast renewed at this very moment.)
   const at = Math.max(issueTimeOf(now), Math.min(f.issued, now));
   // What the player has seen begin and end (it changes the worlds), by event.
-  const key = `${at}|${until}|${sc.events.map((e) => `${e.start <= now ? 1 : 0}${endOf(e) <= now ? 1 : 0}`).join('')}`;
+  const key = `${at}|${until}|${fine}|${sc.events.map((e) => `${e.start <= now ? 1 : 0}${endOf(e) <= now ? 1 : 0}`).join('')}`;
   let byKey = cache.get(f);
   const hit = byKey?.get(key);
   if (hit) return hit;
@@ -261,18 +297,34 @@ export function worldsOf(sc: Scenario, f: Forecast, now: number, until: number):
     return [...keep];
   };
   const tiers: ((e: EventForecast) => WeatherEvent[][])[] = [
+    ...(fine ? [(e: EventForecast) => [...gridWorlds(view, e, HOUR / 2), ...cornerWorlds(middle, centre(e))]] : []),
     (e) => [...cornerWorlds(view, e), ...cornerWorlds(middle, centre(e))],
     (e) => cornerWorlds(view, e),
     (e) => extremes(cornerWorlds(view, e)),
   ];
   let worlds: WeatherEvent[][] = [[]];
-  for (const tier of tiers) {
-    const roots = roots0.map(tier).map((r) => r.filter((w, i, all) => all.findIndex((x) => JSON.stringify(x) === JSON.stringify(w)) === i));
-    if (roots.reduce((n, r) => n * r.length, 1) > MAX_WORLDS && tier !== tiers[tiers.length - 1]) continue;
+  const cap = fine ? MAX_FINE_WORLDS : MAX_WORLDS, dedupe = (r: WeatherEvent[][]) => r.filter((w, i, all) => all.findIndex((x) => JSON.stringify(x) === JSON.stringify(w)) === i);
+  const count = (roots: WeatherEvent[][][]) => roots.reduce((n, r) => n * r.length, 1);
+  for (let k = 0; k < tiers.length; k++) {
+    const roots = roots0.map(tiers[k]).map(dedupe);
+    if (count(roots) > cap && k < tiers.length - 1) continue;
+    // Where the finer ways did not fit for every event, give them to as many events as fit, the cheapest first (the fewest worlds added: a window of
+    // a few hours that is the one that matters tonight before a long one), then the earliest (the cap should not drop the timing of one event
+    // because another was added).
+    if (count(roots) <= cap) {
+      const finest = roots0.map((e) => dedupe(tiers[0](e)));
+      const order = roots0.map((_, n) => n).sort((a, b) => finest[a].length / roots[a].length - finest[b].length / roots[b].length || roots0[a].start.lo - roots0[b].start.lo);
+      for (const i of order) {
+        for (let finer = 0; finer < k; finer++) {
+          const options = finer === 0 ? finest[i] : dedupe(tiers[finer](roots0[i])), trial = roots.map((r, n) => (n === i ? options : r));
+          if (count(trial) <= cap) { roots[i] = options; break; }
+        }
+      }
+    }
     worlds = [[]];
     for (const r of roots) worlds = worlds.flatMap((w) => r.map((x) => [...w, ...x]));
     // (At the last tier, if there are still too many, an even sample of them.)
-    if (worlds.length > MAX_WORLDS) worlds = worlds.filter((_, i) => i % Math.ceil(worlds.length / MAX_WORLDS) === 0);
+    if (worlds.length > cap) worlds = worlds.filter((_, i) => i % Math.ceil(worlds.length / cap) === 0);
     break;
   }
   const out = worlds.map((w) => [...fixed, ...w]);
@@ -284,69 +336,65 @@ export function worldsOf(sc: Scenario, f: Forecast, now: number, until: number):
 
 // ---- Levels ----
 
-/**
- * How much wider than a day's published range a projection reads each condition it varies, by the condition (the sun's and wind's
- * share are fractions of 1, the rain's a fraction of the day, the warmth °C): the hours a projection reads are not the day the
- * range holds, and the weather really varies through the day (a night's wind is not the day's mean, rain is on or off). Each
- * projection says how much it needs (a night's charge is more sensitive to the wind than a field's soil is to the hours of rain).
- */
-export type Margins = Partial<Record<Dim, number>>;
-
 /** The levels a lens takes in a range: its ends, and the middle (a result that is not monotone, a crop's pace across its comfortable warmth, peaks inside). */
 export const LEVELS = [0, 0.5, 1] as const;
 
-/** What the forecast says of each condition at a time, from the range of the day that time falls in. */
-function picksOf(f: Forecast, climate: Scenario['climate'], margins: Margins): Picks {
-  const days = new Map(f.days.map((d) => [d.day, d]));
-  const winter = climate.season === 'winter';
-  const grow = (r: Range, m: number, lo: number, hi: number): Range => ({ lo: clamp(r.lo - m, lo, hi), hi: clamp(r.hi + m, lo, hi) });
-  return {
-    sun: (t) => days.get(dayAt(t))?.conditions?.sun,
-    wind: (t) => days.get(dayAt(t))?.conditions?.wind,
-    rain: (t) => { const c = days.get(dayAt(t))?.conditions; return c && !winter ? grow({ lo: c.rain.lo / 24, hi: c.rain.hi / 24 }, margins.rain ?? 0, 0, 1) : undefined; },
-    // No hour of the day is colder than its lowest or warmer than its highest.
-    warmth: (t) => { const w = days.get(dayAt(t))?.warmth; return w && { lo: w.low.lo, hi: w.high.hi }; },
-  };
-}
+/**
+ * Which conditions a projection varies over the forecast's ranges, and how. `together` move as one, all at their lowest or all at their
+ * highest: for a result that only rises with each of them (a night's charge rises with the sun, the wind and the rain that rests the
+ * sprinklers), the two runs bracket every other. `ends` are read at their lowest and highest in every combination (a crop grows faster
+ * with every share of rain), `each` at every level in every combination: for a result that does not move one way with them (a crop's
+ * pace across its warmth).
+ */
+export interface Lenses { together?: Dim[]; ends?: Dim[]; each?: Dim[]; /** Also run events at every half hour inside their windows (a night's charge is not monotone in when a storm begins or ends); where there are too few worlds to afford it, at their corners. */ fine?: boolean }
 
 const viewCache = new WeakMap<Forecast, Map<string, Ahead[]>>();
 
-/** A view that remembers what it said: the weather at the same time (to the eighth of a second of play) is worked out once. */
+/** A view that remembers what it said: the weather at the same time is worked out once. */
 function remembered(v: Ahead): Ahead {
-  const memo = { sun: new Map<number, number>(), wind: new Map<number, number>(), rain: new Map<number, number>(), warmth: new Map<number, number>() };
+  const memo = { sun: new Map<number, number>(), wind: new Map<number, number>(), rain: new Map<number, number>(), hourRain: new Map<number, number>(), warmth: new Map<number, number>() }, warmths = new Map<number, number[]>();
   const wrap = (k: keyof typeof memo) => (t: number) => {
-    const r = Math.round(t * 8) / 8;
-    let x = memo[k].get(r);
-    if (x === undefined) memo[k].set(r, (x = v[k](r)));
+    let x = memo[k].get(t);
+    if (x === undefined) memo[k].set(t, (x = v[k](t)));
     return x;
   };
-  return { ...v, sun: wrap('sun'), wind: wrap('wind'), rain: wrap('rain'), warmth: wrap('warmth') };
+  return { ...v, sun: wrap('sun'), wind: wrap('wind'), rain: wrap('rain'), hourRain: wrap('hourRain'), warmth: wrap('warmth'), warmths: (t) => { let x = warmths.get(t); if (!x) warmths.set(t, (x = v.warmths(t))); return x; } };
 }
 
 /**
- * The views a projection runs over: one for the truth or the usual weather; for a forecast, every world it allows at every level of the
- * conditions `margins` name. The views for a forecast are kept for half a second of play (the card is made again as the ghost moves) and
+ * The views a projection runs over: one for the truth or the usual weather; for a forecast, every world it allows at the levels of the
+ * conditions `lenses` name. The views for a forecast are kept for half a second of play (the card is made again as the ghost moves) and
  * read the weather as it was then.
  */
-export function viewsOf(s: GameState, reading: Reading, margins: Margins, until: number): Ahead[] {
+export function viewsOf(s: GameState, reading: Reading, lenses: Lenses, until: number): Ahead[] {
   const sc = s.scenario;
   if (reading.kind === 'truth') return [truthView(sc)];
   if (reading.kind === 'usual') return [usualView(sc, s.time)];
   const f = reading.forecast, now = Math.floor(s.time * 2) / 2, by = Math.ceil(until / HOUR) * HOUR;
-  const key = `${now}|${by}|${margins.sun}|${margins.wind}|${margins.rain}|${margins.warmth}|${sc.events.map((e) => `${e.start <= now ? 1 : 0}${endOf(e) <= now ? 1 : 0}`).join('')}`;
+  const key = `${now}|${by}|${lenses.together?.join()}|${lenses.ends?.join()}|${lenses.each?.join()}|${lenses.fine}|${sc.events.map((e) => `${e.start <= now ? 1 : 0}${endOf(e) <= now ? 1 : 0}`).join('')}`;
   let byKey = viewCache.get(f);
   const hit = byKey?.get(key);
   if (hit) return hit;
-  const worlds = worldsOf(sc, f, now, by);
-  // Every combination of levels of the dimensions that matter (the middle of the ones that don't).
-  let levels: Partial<Record<Dim, number>>[] = [{}];
-  for (const d of Object.keys(margins) as Dim[]) levels = levels.flatMap((l) => LEVELS.map((k) => ({ ...l, [d]: k })));
-  const picks = picksOf(f, sc.climate, margins);
-  const out = worlds.flatMap((w) => { const days = new Map<number, { sun: number; wind: number }>(); return levels.map((l) => remembered(viewOf(sc, now, w, picks, l, margins, days))); });
+  const worlds = worldsOf(sc, f, now, by, lenses.fine);
+  let levels: Level[] = lenses.together?.length ? [0, 1].map((k) => Object.fromEntries((lenses.together as Dim[]).map((d) => [d, k]))) : [{}];
+  for (const d of lenses.ends ?? []) levels = levels.flatMap((l) => [0, 1].map((k) => ({ ...l, [d]: k })));
+  for (const d of lenses.each ?? []) levels = levels.flatMap((l) => LEVELS.map((k) => ({ ...l, [d]: k })));
+  const out = worlds.flatMap((w) => { const shared: Shared = { pushes: new Map(), eventRain: new Map() }; return levels.map((l) => remembered(viewOf(sc, now, w, f.blocks, l, shared))); });
   if (!byKey) viewCache.set(f, (byKey = new Map<string, Ahead[]>()));
   if (byKey.size > 6) byKey.clear();
   byKey.set(key, out);
   return out;
+}
+
+/**
+ * Whether the forecast leaves room in when an event of these kinds begins or ends, or what it is, for a projection until `until`: the worlds
+ * differ in them. A result that is not monotone in such an event's timing (a dust storm that suppresses a harvest the soil would have made) can
+ * fall between the sampled worlds.
+ */
+export function eventsVary(s: GameState, reading: Reading, until: number, kinds: readonly EventKind[]): boolean {
+  if (reading.kind !== 'forecast') return false;
+  const signatures = new Set(worldsOf(s.scenario, reading.forecast, Math.floor(s.time * 2) / 2, Math.ceil(until / HOUR) * HOUR).map((w) => JSON.stringify(w.filter((e) => kinds.includes(e.kind)))));
+  return signatures.size > 1;
 }
 
 /**
@@ -403,7 +451,8 @@ export function notCounted(sc: Scenario, reading: Reading, now: number, until: n
 export function basisFor(reading: Reading, climate: Pick<Climate, 'season' | 'character'>, now: number, until: number): string {
   const basis = basisOf(reading, climate, now);
   if (reading.kind !== 'forecast' || !reading.stale) return basis;
-  const reached = new Set(reading.forecast.days.filter((d) => d.conditions).map((d) => d.day));
-  for (let day = dayAt(now); day <= dayAt(until); day++) if (!reached.has(day)) return `${basis}, the usual weather past it`;
+  // A forecast out of date reaches only as far as its blocks do; past them the weather is the usual.
+  const last = reading.forecast.blocks[reading.forecast.blocks.length - 1];
+  if (!last || until > last.end + 1e-6) return `${basis}, the usual weather past it`;
   return basis;
 }
