@@ -2,7 +2,7 @@ import { tryParseJson } from '../game/result.ts';
 import { readOverrides, type Overrides } from '../keybindings.ts';
 
 // The player's settings, kept in the browser beside the save: interface size, pixel size, reduce motion, show pace, the
-// experimental problems strip, the frame rate readout, and the keys. Each deployment keeps its own (the key follows the save's).
+// experimental problems strip, the frame rate readout, the testing speeds, and the keys. Each deployment keeps its own (the key follows the save's).
 
 export interface Settings {
   /** The interface's size, 0.9–1.3 (it scales the HUD and menus, not the world). */
@@ -17,6 +17,8 @@ export interface Settings {
   problemsStrip: boolean;
   /** The frame rate readout: none, the frame rate once a second, or that with a frame time graph and the lows. */
   frameStats: FrameStatsMode;
+  /** Testing aid: 8× and 16× join the speed buttons. */
+  fastSpeeds: boolean;
   /** The keys the player changed from the defaults (keybindings.ts). */
   keys: Overrides;
 }
@@ -28,7 +30,7 @@ export const FRAME_STATS_MODES = ['off', 'minimal', 'full'] as const;
 export type FrameStatsMode = typeof FRAME_STATS_MODES[number];
 export const UI_SIZES = { min: 0.9, max: 1.3, step: 0.05 };
 
-const DEFAULTS: Settings = { uiSize: 1, pixelSize: 2, reduceMotion: false, showPace: false, problemsStrip: false, frameStats: 'off', keys: {} };
+const DEFAULTS: Settings = { uiSize: 1, pixelSize: 2, reduceMotion: false, showPace: false, problemsStrip: false, frameStats: 'off', fastSpeeds: false, keys: {} };
 
 /** Settings from their saved JSON, each falling back to its default when missing or out of range. */
 export function readSettings(json: string | null): Settings {
@@ -41,6 +43,7 @@ export function readSettings(json: string | null): Settings {
     showPace: typeof o.showPace === 'boolean' ? o.showPace : DEFAULTS.showPace,
     problemsStrip: typeof o.problemsStrip === 'boolean' ? o.problemsStrip : DEFAULTS.problemsStrip,
     frameStats: (FRAME_STATS_MODES as readonly unknown[]).includes(o.frameStats) ? o.frameStats as FrameStatsMode : DEFAULTS.frameStats,
+    fastSpeeds: typeof o.fastSpeeds === 'boolean' ? o.fastSpeeds : DEFAULTS.fastSpeeds,
     keys: readOverrides(o.keys),
   };
 }

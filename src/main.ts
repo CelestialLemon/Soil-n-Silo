@@ -150,6 +150,8 @@ async function play(initial: GameState) {
   const camera = new Camera(renderer, canvas, settings, map, { x: map.depot.x + 1.5, z: map.depot.y - 4 }, () => { repick = 2; });
 
   let speed = 1, paused = false, overlay: Overlay = 'none';
+  // Switching the testing speeds off while at one drops to the top normal speed.
+  settings.listen((s) => { if (!s.fastSpeeds && speed > 4) speed = 4; });
   let tool: Tool = { kind: 'select' };
   let selected: number | null = null;
   /** The route under the pointer in the routes panel, drawn on the map. */
