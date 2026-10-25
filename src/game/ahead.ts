@@ -196,7 +196,7 @@ export const usualView = (sc: Scenario, now: number): Ahead => viewOf(sc, now, k
 // ---- The forecast's worlds ----
 
 /** The most worlds (combinations of the ways events may turn out) a projection runs over before it keeps to fewer ways for each event. */
-const MAX_WORLDS = 256;
+const MAX_WORLDS = 128;
 
 /**
  * The forecast as the player can read it at `at` (a game hour at or before now): what the station says, with what the player sees
@@ -309,17 +309,44 @@ function picksOf(f: Forecast, climate: Scenario['climate'], margins: Margins): P
   };
 }
 
-/** The views a projection runs over: one for the truth or the usual weather; for a forecast, every world it allows at every level of the conditions `dims` it varies. */
+const viewCache = new WeakMap<Forecast, Map<string, Ahead[]>>();
+
+/** A view that remembers what it said: the weather at the same time (to the eighth of a second of play) is worked out once. */
+function remembered(v: Ahead): Ahead {
+  const memo = { sun: new Map<number, number>(), wind: new Map<number, number>(), rain: new Map<number, number>(), warmth: new Map<number, number>() };
+  const wrap = (k: keyof typeof memo) => (t: number) => {
+    const r = Math.round(t * 8) / 8;
+    let x = memo[k].get(r);
+    if (x === undefined) memo[k].set(r, (x = v[k](r)));
+    return x;
+  };
+  return { ...v, sun: wrap('sun'), wind: wrap('wind'), rain: wrap('rain'), warmth: wrap('warmth') };
+}
+
+/**
+ * The views a projection runs over: one for the truth or the usual weather; for a forecast, every world it allows at every level of the
+ * conditions `margins` name. The views for a forecast are kept for half a second of play (the card is made again as the ghost moves) and
+ * read the weather as it was then.
+ */
 export function viewsOf(s: GameState, reading: Reading, margins: Margins, until: number): Ahead[] {
-  const sc = s.scenario, now = s.time;
+  const sc = s.scenario;
   if (reading.kind === 'truth') return [truthView(sc)];
-  if (reading.kind === 'usual') return [usualView(sc, now)];
-  const f = reading.forecast, worlds = worldsOf(sc, f, now, until);
+  if (reading.kind === 'usual') return [usualView(sc, s.time)];
+  const f = reading.forecast, now = Math.floor(s.time * 2) / 2, by = Math.ceil(until / HOUR) * HOUR;
+  const key = `${now}|${by}|${margins.sun}|${margins.wind}|${margins.rain}|${margins.warmth}|${sc.events.map((e) => `${e.start <= now ? 1 : 0}${endOf(e) <= now ? 1 : 0}`).join('')}`;
+  let byKey = viewCache.get(f);
+  const hit = byKey?.get(key);
+  if (hit) return hit;
+  const worlds = worldsOf(sc, f, now, by);
   // Every combination of levels of the dimensions that matter (the middle of the ones that don't).
   let levels: Partial<Record<Dim, number>>[] = [{}];
   for (const d of Object.keys(margins) as Dim[]) levels = levels.flatMap((l) => LEVELS.map((k) => ({ ...l, [d]: k })));
   const picks = picksOf(f, sc.climate, margins);
-  return worlds.flatMap((w) => { const days = new Map<number, { sun: number; wind: number }>(); return levels.map((l) => viewOf(sc, now, w, picks, l, margins, days)); });
+  const out = worlds.flatMap((w) => { const days = new Map<number, { sun: number; wind: number }>(); return levels.map((l) => remembered(viewOf(sc, now, w, picks, l, margins, days))); });
+  if (!byKey) viewCache.set(f, (byKey = new Map<string, Ahead[]>()));
+  if (byKey.size > 6) byKey.clear();
+  byKey.set(key, out);
+  return out;
 }
 
 /**

@@ -790,7 +790,7 @@ over is a fact (the snow it left on the panels melts by its rule, and ice thaws 
 - **Worlds.** For each event the forecast names (but not one only called "possible", day three), the events it allows at its corners (`cornerWorlds`:
   each kind and strength not ruled out, at the vertices of the start and end windows and the length range, a flood after each of its storm's
   corners) and at the middle of what the windows allow (a night's charge is not monotone in when a storm begins), combined across events (at
-  most 256 worlds; beyond that each event keeps only its corners, then only the extremes of each kind and strength, so the combined worst
+  most 128 worlds; beyond that each event keeps only its corners, then only the extremes of each kind and strength, so the combined worst
   cases stay). What the player sees since the forecast was issued is folded in: an event
     that has begun is told in full (kind, strength, start) with the forecast's end range; one that is over is a fact; one that has not begun
   starts no earlier than this hour. An out-of-date station's forecast is read the same way (what it named, and the usual weather for the rest: a day it has no conditions for is one value, and the label says "the usual weather past it"; the range is not claimed to hold the real outcome there).
@@ -804,7 +804,7 @@ over is a fact (the snow it left on the panels melts by its rule, and ice thaws 
   wind). A day without conditions (day three, or past the forecast) is the usual. A turbine's unsteadiness in a gale is the seeded noise in the truth; a lens takes it at its worst when its wind is lowest and at its best when highest (the usual weather, in the middle).
 - **Spread.** Tonight is the lowest and highest charge at each moment over all the runs (the band, drawn behind the line of the hardest night), the
   dry time the earliest and the latest (or "may run dry from" a time, when some nights last), the shortfall and the time short as ranges (from nothing where some nights last). The soil
-  is the lowest and highest over the runs, rounded outward and widened by one harvest's change where the runs disagree ("62 → 55–59").
+  is the lowest and highest over the runs, rounded outward and widened by one harvest's change where the runs disagree or any grows ("62 → 55–59"), so a harvest more or less than the sampled weather reaches is allowed.
 - **Only the forecast.** A view reads the forecast, the climate, and what the player can see now (which events have begun and ended, with their
   kind, strength and start, and the weather of this hour): never the scenario's events or curves ahead, so two scenarios whose forecasts read the
   same give the same range (`test/projections.test.ts` moves an event inside its cells and checks).
@@ -825,8 +825,10 @@ station; "from the forecast" with one; "from the forecast of day 4, 14:00" when 
 the hardest night, "dry between 01:40 and 03:10" or "may run dry from 02:10"; the history view says "Batteries run dry between … tonight, from the
 forecast"; a field's card shows the soil range. The guide's Power and Field pages say how the projections are made, with and without a station.
 
-**Cost.** A lens set is worked out per forecast hour for the world list (cached), and each projection runs the layout once per lens (up to 27 per
-world for the night, 9 for the soil): about 2 ms for a night, so the placement card, which is recomputed as the ghost moves, stays cheap.
+**Cost.** The worlds are worked out per forecast hour (cached with the events the player has seen begin or end), the views for half a second of play
+(they read the weather as it was then, and remember what they say to the eighth of a second), and each projection runs the layout once per view
+(up to 27 per world for the night, 9 for the soil): about 2 ms for a night and 5–25 ms for a field's card with many events, so the placement
+card, which is recomputed as the ghost moves, stays cheap.
 
 ### The valley's look by season
 

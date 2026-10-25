@@ -308,3 +308,16 @@ test('a shower that sets in, a milder shortfall between two runs, and weather ch
   const renewed = forecastAt(sc, now);
   assert.notEqual(worldsOf(g.scenario, renewed, now, now + 100), w1, 'a forecast renewed is not read from the one before');
 });
+
+test('a soil range keeps room for a harvest when the sampled runs agree, and the card stays cheap as the ghost moves', () => {
+  const sc = randomScenario(1, 3), time = 763, g = rig(sc, time, { charge: 1, solar: 0, turbines: 0, looms: 0 });
+  const reading = forecastOf(sc, time), field = (r: Reading) => placement(g, 'field', 20, 20, { crop: 'sunflower' }, r).facts.find((f) => f.label === 'Soil')!;
+  const real = Number(field(TRUTH).then), [lo, hi] = soilRange(field(reading));
+  assert.ok(lo <= real && real <= hi, `soil ${real} is outside ${lo}–${hi}`);
+  // A heavy case (many events, many worlds): the card is recomputed on every tile the ghost crosses.
+  const heavy = randomScenario(86, 3), gh = rig(heavy, 1083, LAYOUTS[0]), rh = forecastOf(heavy, 1083);
+  placement(gh, 'field', 20, 20, { crop: 'tomato' }, rh);
+  const t0 = Date.now();
+  for (let i = 0; i < 20; i++) placement(gh, 'field', 20 + (i % 5), 20, { crop: 'tomato' }, rh);
+  assert.ok((Date.now() - t0) / 20 < 25, `${(Date.now() - t0) / 20} ms a card`);
+});

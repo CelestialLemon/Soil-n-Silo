@@ -87,7 +87,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         // The weather ahead is read as `reading` says (ahead.ts): one run, or one for each way the forecast allows (the soil is then a range).
         const HOUR = DAY_SECONDS / 24;
         const runs = viewsOf(s, reading, SOIL_MARGINS, s.time + SOIL_AHEAD).map((view) => {
-          let growth = 0, later = soil;
+          let growth = 0, later = soil, harvested = false;
           for (let t = 0; t < SOIL_AHEAD; t += HOUR) {
             // A dust storm blowing over an unguarded field takes its soil (the hour's wind, at the hour's middle).
             if (!guarded) later = Math.max(0, later - (dustFor(view, s.time + t + HOUR / 2)?.rate ?? 0) * Math.min(1, (SOIL_AHEAD - t) / HOUR));
@@ -95,13 +95,13 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
             if (frostHits(s, set.crop ?? 'wheat', x, y, s.time + t, view)) { growth = 0; continue; }
             const rain = shore ? 1 : view.rain(s.time + t), wet = rain + (1 - rain) * share;
             growth += Math.min(HOUR, SOIL_AHEAD - t) * paceOf(wet, later, crop, view.warmth(s.time + t)).pace / crop.grow;
-            while (growth >= 1) { growth -= 1; later = Math.max(0, Math.min(100, later + crop.soil * (crop.soil < 0 ? wear : 1))); }
+            while (growth >= 1) { growth -= 1; harvested = true; later = Math.max(0, Math.min(100, later + crop.soil * (crop.soil < 0 ? wear : 1))); }
           }
-          return later;
+          return { later, grew: growth > 0 || harvested };
         });
         // Where the runs differ (the forecast leaves room), a harvest more or less than they reach may be: soil moves a step with each one.
         // (The ends are rounded outward, so the soil in whole numbers is inside.)
-        const base = spread(runs), many = base.hi - base.lo > 1e-9, step = many ? Math.abs(crop.soil * (crop.soil < 0 ? wear : 1)) : 0;
+        const base = spread(runs.map((r) => r.later)), many = runs.length > 1 && (base.hi - base.lo > 1e-9 || runs.some((r) => r.grew)), step = many ? Math.abs(crop.soil * (crop.soil < 0 ? wear : 1)) : 0;
         const then = many ? { lo: Math.max(0, Math.floor(base.lo - step)), hi: Math.min(100, Math.ceil(base.hi + step)) } : { lo: Math.round(base.lo), hi: Math.round(base.lo) };
         facts.push({ label: crop.name, value: `+${fmt1(perMin)}`, sub: 'a minute, at this warmth' });
         const skipped = notCounted(s.scenario, reading, s.time, s.time + SOIL_AHEAD);
