@@ -41,13 +41,16 @@ export const WARMTH_NUDGES: ((sc: Scenario, time: number) => number)[] = [
   // Rain or snow cools the valley, by up to RAIN_COOLING at its heaviest.
   (sc, time) => -RAIN_COOLING * precipAt(sc, time),
   // A weather event lifts or drops the whole curve (a heat wave, a cold snap), its `warmth` push; a warm spell lifts a cold day up to a mild one.
-  (sc, time) => {
-    const p = pushesAt(sc, time);
-    if (!p.mild) return p.warmth;
-    const mild = warmthByHour({ warmth: MILD_DAY, sun: sc.climate.sun }, hourAt(time));
-    return p.warmth + p.mild * Math.max(0, mild - warmthAt(sc, time));
-  },
+  (sc, time) => eventWarmth(sc, time, warmthAt(sc, time)),
 ];
+
+/** What the events under way add to a day's warmth `base` at a time, in °C: their `warmth` push, and a warm spell's lift of a colder day up to a mild one. */
+export function eventWarmth(sc: Pick<Scenario, 'events' | 'climate'>, time: number, base: number): number {
+  const p = pushesAt(sc, time);
+  if (!p.mild) return p.warmth;
+  const mild = warmthByHour({ warmth: MILD_DAY, sun: sc.climate.sun }, hourAt(time));
+  return p.warmth + p.mild * Math.max(0, mild - base);
+}
 
 /** The day a warm spell lifts a colder one to: a mild day's coldest and warmest, in °C. Crops grow at nearly full speed in it and the bees fly. */
 export const MILD_DAY = { low: 12, high: 24, drift: 0 };

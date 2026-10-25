@@ -705,6 +705,9 @@ button { font: inherit; }
 .tonight .night { fill: #2e3d52; opacity: 0.08; }
 .tonight .charge { fill: none; stroke: var(--plum); stroke-width: 3; stroke-linejoin: round; }
 .tonight .dot { fill: var(--plum); }
+.tonight .band { fill: var(--plum); opacity: 0.16; stroke: none; }
+.tonight .charge.hardest { stroke-width: 2; }
+.tonight .dryspan { stroke: var(--rust); stroke-width: 5; stroke-linecap: round; }
 .tonight .dry { fill: var(--rust); }
 .src { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 14px; }
 .src > div { display: grid; grid-template-columns: 30px 1fr; gap: 2px 10px; align-items: center; }

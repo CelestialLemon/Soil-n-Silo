@@ -20,6 +20,7 @@ import { distanceTo } from '../src/game/roads.ts';
 import { beesOut, warmthOf } from '../src/game/warmth.ts';
 import { garaging, keepingBeesIn, standsGale, turbineShare } from '../src/game/wind.ts';
 import type { BuildingId } from '../src/game/data.ts';
+import { TRUTH } from '../src/game/ahead.ts';
 
 const HOUR = DAY_SECONDS / 24;
 const NO_CONDITIONS = { cloud: 0, rain: 0, calm: 0 };
@@ -317,7 +318,7 @@ test('tonight\'s forecast sees a hurricane that starts overnight, and one that h
     const loom = put(s, 'loom', 4, 7); loom.inputs = { yarn: 30 };
     const loom2 = put(s, 'loom', 7, 7); loom2.inputs = { yarn: 30 };
     advance(s, 1);
-    return tonight(s)!;
+    return tonight(s, TRUTH)!;
   };
   assert.equal(night([]).dryAt, null, 'the turbines carry the night');
   assert.ok(night([event('tropicalStorm', 'severe', 1, 20, 36)]).dryAt !== null, 'a hurricane from 20:00 stops them');

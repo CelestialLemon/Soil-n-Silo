@@ -14,6 +14,7 @@ import { fieldPace } from '../src/game/sim/buildings.ts';
 import { describeStatus } from '../src/game/sim/describe.ts';
 import { advance } from '../src/game/sim/step.ts';
 import { newGame, touchRelief, type FieldBuilding, type GameState } from '../src/game/state.ts';
+import { TRUTH } from '../src/game/ahead.ts';
 
 const HOUR = DAY_SECONDS / 24;
 const NO_CONDITIONS = { cloud: 0, rain: 0, calm: 0 };
@@ -195,7 +196,7 @@ test('while a frost takes a field\'s crop its pace and its forecast say nothing 
 test('the ten-minute soil forecast loses what a frost ahead takes', () => {
   const at = timeOf(3, 12);
   const warm = (s: GameState) => { s.scenario.climate = { ...s.scenario.climate, warmth: { ...s.scenario.climate.warmth, low: 14, high: 24, drift: 0 } }; return s; };
-  const soonAfter = (events: WeatherEvent[]) => placement(warm(game('spring', events, at)), 'field', SLOPE_AT.x, SLOPE_AT.y, { crop: 'tomato' }).facts.find((f) => f.label === 'Soil')!;
+  const soonAfter = (events: WeatherEvent[]) => placement(warm(game('spring', events, at)), 'field', SLOPE_AT.x, SLOPE_AT.y, { crop: 'tomato' }, TRUTH).facts.find((f) => f.label === 'Soil')!;
   const clear = soonAfter([]), frozen = soonAfter([frost('severe', 3, 14, 40)]);
   assert.equal(clear.value, frozen.value);
   assert.ok(Number(frozen.then) > Number(clear.then), `soil ${frozen.then} with a long frost ahead, ${clear.then} without`);

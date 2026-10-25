@@ -12,7 +12,7 @@ import { isMachine, type Building, type GameState, type Status } from '../game/s
 import { must } from '../game/result.ts';
 import { warmthOf } from '../game/warmth.ts';
 import { fill, h, icon, set, svg } from './dom.ts';
-import { clockAt, dec, itemByName, itemName, lcBuilding, num, pct, playTime, plural, watts } from './format.ts';
+import { dec, dryLine, itemByName, itemName, lcBuilding, num, pct, playTime, plural, watts } from './format.ts';
 import { isProblem, statusLabel, statusPill } from './widgets.ts';
 
 
@@ -82,7 +82,7 @@ export function waitFact(s: GameState, b: Building, w: Wait): string {
       const net = networkOf(s, b);
       if (!net) return 'No pylon reaches it.';
       const t = tonight(s);
-      return `Its network: ${watts(net.made)} made, ${watts(usedBy(net))} used now.${t?.dryAt ? ` Batteries run dry at ${clockAt(t.dryAt)} tonight.` : ''}`;
+      return `Its network: ${watts(net.made)} made, ${watts(usedBy(net))} used now.${t?.dry ? ` Batteries ${dryLine(t)} tonight, ${t.basis}.` : ''}`;
     }
     case 'output': {
       const item = itemByName(w.need);

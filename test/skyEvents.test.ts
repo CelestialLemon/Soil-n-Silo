@@ -14,6 +14,7 @@ import { newGame, type GameState } from '../src/game/state.ts';
 import { beesFly, dryPace, henFact, henPace, warmthOf } from '../src/game/warmth.ts';
 import { greyLook } from '../src/world/greyLook.ts';
 import { lookAt as dayLook } from 'pixel3d-renderer';
+import { TRUTH } from '../src/game/ahead.ts';
 
 const NO_CONDITIONS = { cloud: 0, rain: 0, calm: 0 };
 
@@ -151,7 +152,7 @@ test('the soil forecast counts rain only while it lasts', () => {
     const events = hours === null ? [] : eventOn(3, 8, 'softRain', 'ordinary', hours);
     const g = newGame({ ...SANDBOX, climate, width: 30, height: 30, terrain: { soil: 60, soilSpread: 0, water: 'none', forest: 0, rock: 0, relief: 0 }, events });
     g.time = timeOf(3, 8) + 22 * HOUR; // two hours before the short one ends
-    return Number(placement(g, 'field', 10, 10, { crop: 'wheat' }).facts.find((f) => f.label === 'Soil')?.then);
+    return Number(placement(g, 'field', 10, 10, { crop: 'wheat' }, TRUTH).facts.find((f) => f.label === 'Soil')?.then);
   };
   const ending = soilThen(24), lasting = soilThen(1000), none = soilThen(null);
   // More water means faster growth, so more harvests wearing the soil: the less the rain, the more soil is left.
@@ -165,7 +166,7 @@ test('the soil forecast sees rain that begins later in its ten minutes', () => {
     const events = rain ? eventOn(3, 8, 'softRain', 'ordinary', 24) : [];
     const g = newGame({ ...SANDBOX, climate, width: 30, height: 30, terrain: { soil: 60, soilSpread: 0, water: 'none', forest: 0, rock: 0, relief: 0 }, events });
     g.time = timeOf(3, 8) - 26 * HOUR; // the rain begins a day and two hours ahead
-    return Number(placement(g, 'field', 10, 10, { crop: 'wheat' }).facts.find((f) => f.label === 'Soil')?.then);
+    return Number(placement(g, 'field', 10, 10, { crop: 'wheat' }, TRUTH).facts.find((f) => f.label === 'Soil')?.then);
   };
   assert.ok(soilThen(true) < soilThen(false), 'later rain speeds growth, so wears more soil');
 });
@@ -175,6 +176,6 @@ test('the soil forecast waits out a spell with no growth and sees a warm spell a
   const events = eventOn(3, 10, 'warmSpell', 'ordinary', 24);
   const g = newGame({ ...SANDBOX, climate, width: 30, height: 30, terrain: { soil: 60, soilSpread: 0, water: 'none', forest: 0, rock: 0, relief: 0 }, events });
   g.time = timeOf(2, 8);
-  const soil = placement(g, 'field', 10, 10, { crop: 'tomato' }).facts.find((f) => f.label === 'Soil');
+  const soil = placement(g, 'field', 10, 10, { crop: 'tomato' }, TRUTH).facts.find((f) => f.label === 'Soil');
   assert.ok(Number(soil?.then) < 60, 'it grows, and wears the soil, once the warm spell comes');
 });

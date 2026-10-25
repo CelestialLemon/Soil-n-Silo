@@ -9,7 +9,7 @@ import type { BatteryBuilding, GameState, MachineBuilding } from '../game/state.
 import { netColour } from '../world/powerView.ts';
 import { NET_COLOURS } from '../world/shapes.ts';
 import { fill, h, icon, svg } from './dom.ts';
-import { clock, clockAt, dec, hex, pct, plural, watts } from './format.ts';
+import { clock, clockAt, dec, dryWords, hex, pct, plural, spanOf, watts } from './format.ts';
 import { keyNames, tip } from './keyhints.ts';
 
 // The Power panel (W): what is made, used and stored now; power by source over the last 24 in-game hours as a radial chart
@@ -74,32 +74,36 @@ function radial(s: GameState) {
   return svg('svg', { class: 'cd-chart radial', viewBox: '0 0 600 600', width: 560, height: 560, 'aria-label': 'Power by source, hour by hour, over the last 24 hours' }, ...parts);
 }
 
-/** Tonight's charge until an hour after sunrise, if use stays as it is now. */
+/** Tonight's charge until an hour after sunrise, if use stays as it is now: for a usual night of the season without a station, a band over what the forecast allows with one. */
 function tonightCard(s: GameState) {
   const t = tonight(s);
   if (!t) return h('div', { class: 'cd-inset tonight' }, h('div', { class: 'cd-label', style: 'color: var(--tide)' }, 'Tonight'),
     h('p', { class: 'cd-small' }, 'No batteries: at night the networks have only what the wind and the digesters make.'));
   const W = 420, H = 120, t0 = t.points[0].t, t1 = t.points[t.points.length - 1].t;
   const x = (tt: number) => ((tt - t0) / (t1 - t0)) * W, y = (k: number) => H - k * H;
-  const nightA = t.sunset ?? t0;
+  const nightA = t.sunset ?? t0, banded = t.runs > 1;
   const ticks: number[] = [];
   for (let k = Math.ceil(hourAt(t0) / 3) * 3; ; k += 3) { const tt = t0 + ((k - hourAt(t0)) * HOUR_SECONDS); if (tt > t1) break; ticks.push(tt); }
-  const peak = t.sunset !== null && t.peak.t > t0 + 1 ? `The charge tops out at ${pct(t.peak.k)} near ${clockAt(t.peak.t)}.` : '';
+  const peak = t.sunset !== null && t.peak.t > t0 + 1 ? `${banded ? 'In the hardest night it' : 'The charge'} tops out at ${pct(t.peak.k)} near ${clockAt(t.peak.t)}.` : '';
+  const dry = dryWords(t), before = t.points.filter((p) => p.t <= t.sunrise);
+  const dryBar = t.dry && banded ? svg('line', { x1: x(t.dry.from), x2: x(Math.max(t.dry.to, t.dry.from + 1)), y1: y(0) - 3, y2: y(0) - 3, class: 'dryspan' }) : null;
   return h('div', { class: 'cd-inset tonight' },
-    h('div', { class: 'row-head' }, h('span', { class: 'cd-label', style: 'color: var(--tide)' }, 'Tonight'), h('span', { class: 'cd-small' }, 'charge, if use stays as it is now')),
+    h('div', { class: 'row-head' }, h('span', { class: 'cd-label', style: 'color: var(--tide)' }, 'Tonight'), h('span', { class: 'cd-small' }, `charge, if use stays as it is now · ${t.basis}`)),
     h('div', { class: 'fact3' },
-      h('div', null, h('b', { class: t.dryAt ? 'cd-bad' : 'cd-good' }, t.dryAt ? clockAt(t.dryAt) : 'held'), h('small', null, t.dryAt ? 'batteries run dry' : `they last the night`)),
-      h('div', null, h('b', null, t.dryAt ? watts(t.shortAfter) : `${pct(Math.min(...t.points.filter((p) => p.t <= t.sunrise).map((p) => p.k)))}`), h('small', null, t.dryAt ? 'short after that, on average' : 'lowest before sunrise')),
-      h('div', null, h('b', null, t.dryAt ? gameSpan(t.shortFor) : clockAt(t.sunrise)), h('small', null, t.dryAt ? `short, until sunrise at ${clockAt(t.sunrise)}` : 'sunrise'))),
+      h('div', null, h('b', { class: dry.bad ? 'cd-bad' : 'cd-good' }, dry.when), h('small', null, dry.what)),
+      h('div', null, h('b', null, t.dry ? spanOf(t.dry.after, watts) : spanOf({ lo: Math.min(...before.map((p) => p.lo)), hi: Math.min(...before.map((p) => p.hi)) }, (k) => pct(k))), h('small', null, t.dry ? 'short after that, on average' : 'lowest before sunrise')),
+      h('div', null, h('b', null, t.dry ? spanOf(t.dry.short, gameSpan) : clockAt(t.sunrise)), h('small', null, t.dry ? `short, until sunrise at ${clockAt(t.sunrise)}` : 'sunrise'))),
     svg('svg', { class: 'cd-chart', viewBox: `-36 -8 ${W + 48} ${H + 34}`, width: '100%' },
       svg('rect', { x: x(nightA), y: 0, width: Math.max(0, x(t.sunrise) - x(nightA)), height: H, class: 'night' }),
       ...[0, 0.5, 1].map((k) => svg('line', { x1: 0, x2: W, y1: y(k), y2: y(k), class: 'grid' })),
       ...[[1, '100%'], [0.5, '50'], [0, '0']].map(([k, l]) => svg('text', { x: -8, y: y(k as number) + 4, 'text-anchor': 'end' }, String(l))),
-      svg('polyline', { points: t.points.map((p) => `${x(p.t).toFixed(1)},${y(p.k).toFixed(1)}`).join(' '), class: 'charge' }),
+      banded ? svg('polygon', { class: 'band', points: [...t.points.map((p) => `${x(p.t).toFixed(1)},${y(p.hi).toFixed(1)}`), ...[...t.points].reverse().map((p) => `${x(p.t).toFixed(1)},${y(p.lo).toFixed(1)}`)].join(' ') }) : null,
+      svg('polyline', { points: t.points.map((p) => `${x(p.t).toFixed(1)},${y(p.k).toFixed(1)}`).join(' '), class: banded ? 'charge hardest' : 'charge' }),
       svg('circle', { cx: 0, cy: y(t.points[0].k), r: 4, class: 'dot' }),
-      t.dryAt ? svg('circle', { cx: x(t.dryAt), cy: y(0), r: 5, class: 'dry' }) : null,
+      dryBar,
+      t.dry && !banded ? svg('circle', { cx: x(t.dry.from), cy: y(0), r: 5, class: 'dry' }) : null,
       ...ticks.map((tt) => svg('text', { x: x(tt), y: H + 22, 'text-anchor': 'middle' }, clockAt(tt)))),
-    h('div', { class: 'cd-small' }, `${pct(t.points[0].k)} now. ${peak}`));
+    h('div', { class: 'cd-small' }, `${pct(t.points[0].k)} now. ${banded ? 'The shaded band is every night the forecast allows; the line is the hardest. ' : ''}${peak}`));
 }
 
 export function powerSheet(host: PowerHost) {

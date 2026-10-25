@@ -1,4 +1,7 @@
 import { BUILDINGS, ITEMS, type BuildingId, type ItemId } from '../game/data.ts';
+import type { Tonight } from '../game/forecast.ts';
+import type { Range } from '../game/outlook.ts';
+import { HOUR_SECONDS } from '../game/powerlog.ts';
 import { dayAt, hourAt } from '../game/sim/clock.ts';
 
 // Numbers and words as the interface writes them. Two clocks: play time (minutes of play, `13:00`, "5 min ago") for anything
@@ -47,3 +50,26 @@ export const itemByName = (need: string | undefined): ItemId | null =>
 
 /** A route or network colour as CSS. */
 export const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
+
+/**
+ * When the batteries run dry tonight, as the cards say it: one time for one run, a range when the forecast leaves room, "from" a time
+ * when some of the nights it allows last (they may run dry, or not).
+ */
+export function dryWords(t: Tonight): { when: string; what: string; bad: boolean } {
+  const d = t.dry;
+  if (!d) return { when: 'held', what: t.runs > 1 ? 'they last the night' : 'they last the night', bad: false };
+  if (d.always && d.to - d.from < HOUR_SECONDS / 3) return { when: clockAt(d.from), what: 'batteries run dry', bad: true };
+  if (d.always) return { when: `${clockAt(d.from)}–${clockAt(d.to)}`, what: 'batteries run dry in this time', bad: true };
+  return { when: `from ${clockAt(d.from)}`, what: 'they may run dry, or last the night', bad: true };
+}
+
+/** A range of numbers, as one when it is one ("12 W", "8–14 W"). */
+export const spanOf = (r: Range, f: (n: number) => string, join = '–') => (f(r.lo) === f(r.hi) ? f(r.lo) : `${f(r.lo)}${join}${f(r.hi)}`);
+
+/** The dry time in a sentence about tonight: "run dry at 02:40", "run dry between 01:40 and 03:10", "may run dry from 02:10". */
+export function dryLine(t: Tonight): string {
+  const d = t.dry;
+  if (!d) return 'last the night';
+  if (d.always) return d.to - d.from < HOUR_SECONDS / 3 ? `run dry at ${clockAt(d.from)}` : `run dry between ${clockAt(d.from)} and ${clockAt(d.to)}`;
+  return `may run dry from ${clockAt(d.from)}`;
+}

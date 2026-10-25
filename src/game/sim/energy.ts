@@ -9,7 +9,7 @@ import { exposureOf, runsInFrost, wattsOf } from './layout.ts';
 import { recipeOf, missing, outputsFit } from './goods.ts';
 import { runtimeOf } from '../runtime.ts';
 import { raining } from './weather.ts';
-import { turbineShare } from '../wind.ts';
+import { turbineShare, type View } from '../wind.ts';
 import { daylight } from './clock.ts';
 
 // Power: what each building wants and makes, how each network balances, and the watts garages want for charging.
@@ -33,13 +33,13 @@ export function wants(s: GameState, b: Building): number {
   return !missing(b, r) && !outputsFit(b, r) ? def.power : 0;
 }
 
-/** Watts a generator makes this step (or at `time`, for a forecast: the sun and wind are those of that time). */
-export function makes(s: GameState, b: Building, sun: number, wind: number, time = s.time): number {
+/** Watts a generator makes this step (or at `time`, for a forecast: the sun and wind are those of that time, and `view` the events then in force). */
+export function makes(s: GameState, b: Building, sun: number, wind: number, time = s.time, view: View = s.scenario): number {
   switch (b.type) {
-    case 'solar': return POWER.solar * sun * panelShare(s.scenario, time); // snow lies on the panels after a blizzard
-    case 'turbine': { const e = exposureOf(s, b); return POWER.turbine * wind * e * turbineShare(s, b.id, e, time); } // a gale can stop it or make it furl
+    case 'solar': return POWER.solar * sun * panelShare(view, time); // snow lies on the panels after a blizzard
+    case 'turbine': { const e = exposureOf(s, b); return POWER.turbine * wind * e * turbineShare(s, b.id, e, time, view); } // a gale can stop it or make it furl
     case 'wheel': { // a weather event can raise or drop the river, and a cold snap freezes it over, but not at a fall
-      const p = pushesAt(s.scenario, time);
+      const p = pushesAt(view, time);
       return wattsOf(s, b) * p.river * (runsInFrost(s, b) ? 1 : 1 - p.ice);
     }
     case 'digester': return b.progress !== null ? POWER.digester : 0;

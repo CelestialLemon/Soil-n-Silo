@@ -9,6 +9,12 @@ import type { GameState } from './state.ts';
 // rarely stops a sheltered one; the bees stay in; in a hurricane the hens stop and the trucks stay in their garages through the
 // worst hours. Pure rules; the holds that mark them are found in hold.ts.
 
+/**
+ * What the wind rules read of the weather: the events in force and, for a projection (3.4), the unsteadiness of a turbine in a gale
+ * (the seeded noise unless the view says; a projection does not know it).
+ */
+export type View = Pick<Scenario, 'events'> & { gust?: (time: number, id: number) => number };
+
 /** A turbine stops while the gale it feels (the event's `gale` times the turbine's exposure to the wind) is over this. */
 export const TURBINE_LIMIT = 1;
 /** A turbine in a gale furls its blades: at the limit it gives this share of its power, more the less gale it feels. */
@@ -34,16 +40,16 @@ export function galeFor(sc: Pick<Scenario, 'events'>, time: number, exposure: nu
  * How a gale leaves a turbine: the cause and the share of its power it makes, 0 when it has stopped. Up to the limit it furls
  * more the harder the gale blows past it, and its output rises and falls with the gusts; null when no gale blows.
  */
-export function turbineInGale(s: GameState, id: number, exposure: number, time = s.time): { cause: Active; share: number } | null {
-  const g = galeFor(s.scenario, time, exposure);
+export function turbineInGale(s: GameState, id: number, exposure: number, time = s.time, view: View = s.scenario): { cause: Active; share: number } | null {
+  const g = galeFor(view, time, exposure);
   if (!g) return null;
   if (g.felt > TURBINE_LIMIT) return { cause: g.cause, share: 0 };
-  const k = g.felt / TURBINE_LIMIT, gust = noise1(time / 4, s.scenario.seed + 79 + id * 17);
+  const k = g.felt / TURBINE_LIMIT, gust = view.gust ? view.gust(time, id) : noise1(time / 4, s.scenario.seed + 79 + id * 17);
   return { cause: g.cause, share: (1 - (1 - FURLED) * k) * (1 - UNSTEADY * k * gust) };
 }
 
 /** The share of its power a turbine makes in the gale blowing at a time (default now), 1 when none is. */
-export const turbineShare = (s: GameState, id: number, exposure: number, time = s.time): number => turbineInGale(s, id, exposure, time)?.share ?? 1;
+export const turbineShare = (s: GameState, id: number, exposure: number, time = s.time, view: View = s.scenario): number => turbineInGale(s, id, exposure, time, view)?.share ?? 1;
 
 /** The event under way that keeps the bees in, if the weather does. */
 export function keepingBeesIn(sc: Pick<Scenario, 'events'>, time: number): Active | null {
