@@ -37,6 +37,8 @@ Besides the renderer's prefixes (`decor_`, `thin_`, `move_spin_` ...), the game 
   model covers one tile; a field shows 9 of them.
 - `running_*` / `idle_*`: a machine's parts shown only while it runs / is idle. Its `move_spin_` parts turn only while it runs
   (a wind turbine's rotor always turns).
+- `move_spin_anemometer`: the weather station's cups. Like the turbine's rotor they turn whether or not the building is powered; the
+  game picks their speed from the wind (see "Needed for the weather station").
 - `smoke_emitter`: an Empty where a running machine's steam or smoke leaves (the game adds the puffs).
 - `charge_<n>`: a battery's charge rings, `n` from 0 (lowest) to 3. The game shows rings 0..k−1 for k quarters of charge.
 - `variant_<n>`: rocks and each tree species contain three overlapping alternatives,
@@ -149,3 +151,37 @@ Trucks on routes carry the goods, and the silo only stores them.
 | --- | --- | --- | --- |
 | `truck` | ~0.86 long × 0.51 wide | ~0.47 | A small electric farm truck: a rounded ceramic cab, emissive sea-glass windows, solar glass on the cab roof, and an open timber bed. Its flat floor is at 0.27 m (`TRUCK_BED` in `src/world/shapes.ts`), with all 6 goods slots clear above it; the builder checks their clearance. Front facing +Z. Seen moving in 8 directions |
 | `garage` | 2 × 2 | ~1.66 | An open-front timber shelter on individual stone shoes, slatted side/back walls, a pitched moss and solar-glass roof, planting and a copper charging post. Trucks park on the ground under the canopy |
+
+## Needed for the weather station (climate phase 3, #137; built 2026-10-25)
+
+The weather station is the building that gives a forecast (`CLIMATE.md`). Its model is a small piece of valley furniture, not a
+landmark: it stands among fields, sprinklers and pylons, so its silhouette must not be mistaken for either of them.
+
+| Model | Footprint | Height | Notes |
+| --- | --- | --- | --- |
+| `weather_station` | 1 × 1 | ~1.1 | A white slatted instrument screen (a Stevenson screen) with tilted ceramic louvres, a linen core, a brass door catch and a living-moss lid, on four timber legs with stone feet. Beside it a thin copper mast with a wind vane and a three-cup anemometer, and a small ceramic rain gauge with a copper funnel. Grass tufts. Not `tall`: it must not shelter a turbine |
+
+- **Silhouette.** A sprinkler is a squat copper riser with a brass head (0.82 m); a pylon is a slim brown timber pole (1.47 m) with a white
+  insulator and a copper cap. The station is a wide white box on legs with a thin mast beside it, 1.1 m tall. The comparison with a sprinkler and a pylon
+  at the game's camera is in the PR for #137.
+- **Moving part.** `move_spin_anemometer` is the three cups and their arms, joined, with its origin at the hub on the mast axis and
+  its local X axis vertical (as the sprinkler's head), so the cups turn about the mast. Custom property `speed = 2.5` rad/s is only
+  the default; the game sets the speed (below). Its swept disc (radius 0.23 m) stays inside the 1 × 1 footprint and above the screen's roof.
+- **How the game wires it.** Not in the model, in `src/world/`; the station building does the same as the turbine, with faster speeds
+  for the smaller cups, and not tied to the building's power:
+  1. `FILES` in `models.ts`: `station: 'weather_station'` (whatever id the building has), so its `idle`/`running` looks (the build
+     ghost, the inspector) come from `lookFrom`.
+  2. Add to `Models` a `station: Geo[]` of three geometries, built like `turbine` but with no stopped look and these speeds in rad/s:
+     **1.5** (light wind), **3.5** (moderate), **6** (strong, and every gale). Each is the whole model collected with
+     `movingPartMotion`, replacing the speed in the motion, like the turbine's three looks:
+     ```ts
+     const stationRoot = roots.get('weather_station');
+     const station = [1.5, 3.5, 6].map((speed) => stationRoot
+       ? collect(stationRoot, () => true, (m) => { const mo = movingPartMotion(m); return mo && mo.anim ? { ...mo, anim: [...(mo.anim as number[]).slice(0, 3), speed] as [number, number, number, number] } : mo; }, true).build()
+       : standIn('station').running);
+     ```
+     return it from `loadModels` beside `turbine`, and list it in `allGeometries`.
+  3. In `view.ts` `sync`, for the station, pick the look from the wind the way the turbine does, with the same bands and no
+     power or `isRunning` test: `const band = wind < 0.35 ? 0 : wind < 0.7 ? 1 : 2; key += ' ' + band; geo = () => this.m.station[band];`.
+- Tune the three speeds by eye in play: the three cups look identical every 120°, so 6 rad/s shows 3 cycles a second. Slow it down if
+  it flickers at the renderer's frame rate.

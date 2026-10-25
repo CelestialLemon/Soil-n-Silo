@@ -39,6 +39,9 @@ Rock previews show `variant_0`…`variant_2` in separate rows; each variant root
 is at the origin. Beans, sunflower and flax use four `stage_0`…`stage_3` roots
 and each covers one tile. The solar coop has a fixed open entrance.
 
+The weather station's `move_spin_anemometer` (the three cups, `speed = 2.5`) has local X vertical like the sprinkler head;
+the game picks its speed from the wind, powered or not (`docs/ASSET_BRIEF.md`, "Needed for the weather station").
+
 The battery's charge rings are four joined meshes `charge_0`…`charge_3` (lowest
 first); the game shows rings 0..k−1 for k quarters of charge. The wind turbine's
 rotor sweeps past its one tile: `build_complete(..., overhang_above=2.3)` lets a
