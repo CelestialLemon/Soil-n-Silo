@@ -115,6 +115,8 @@ test('the real night is inside the range at every hour, for every commission', (
       const g = rig(sc, time, l), real = tonight(g, TRUTH)!, told = tonight(g, forecastOf(sc, time))!;
       cases++; if (told.runs > 1) banded++;
       real.points.forEach((p, i) => assert.ok(told.points[i].lo <= p.k + 1e-9 && p.k <= told.points[i].hi + 1e-9, `${sc.id} at ${h}: the charge ${p.k} at step ${i} is outside ${told.points[i].lo}–${told.points[i].hi}`));
+      if (told.dry) assert.ok(real.shortFor >= told.dry.short.lo - 1e-6 && real.shortFor <= told.dry.short.hi + 1e-6 && real.shortAfter >= told.dry.after.lo - 1e-6 && real.shortAfter <= told.dry.after.hi + 1e-6, `${sc.id} at ${h}: short ${real.shortAfter} W for ${real.shortFor} s is outside ${JSON.stringify(told.dry.after)} W, ${JSON.stringify(told.dry.short)} s`);
+      else assert.equal(real.shortFor, 0, `${sc.id} at ${h}: it is short, and no night the forecast allows is`);
       if (real.dryAt === null) assert.ok(!told.dry?.always, `${sc.id} at ${h}: it holds, but the forecast has it dry in every case`);
       else assert.ok(told.dry !== null && real.dryAt >= told.dry.from - 1e-6 && real.dryAt <= told.dry.to + 1e-6, `${sc.id} at ${h}: dry at ${real.dryAt}, not in ${told.dry?.from}–${told.dry?.to}`);
     }
@@ -194,10 +196,10 @@ test('the labels follow: no station, a station, a station out of date', () => {
   assert.equal(basisOf(old, sc.climate, g.time), 'from the forecast of day 2, 14:00');
   assert.equal(tonight(g, USUAL)!.basis, 'for a usual autumn');
   assert.equal(tonight(g, fresh)!.basis, 'from the forecast');
-  assert.equal(tonight(g, old)!.basis, 'from the forecast of day 2, 14:00');
+  assert.equal(tonight(g, old)!.basis, 'from the forecast of day 2, 14:00', 'that forecast reaches the whole night');
   assert.match(soilThen(g, 'wheat', USUAL).sub, /in 10 min if harvests are carried off, in a usual autumn$/);
   assert.match(soilThen(g, 'wheat', fresh).sub, /, from the forecast$/);
-  assert.match(soilThen(g, 'wheat', old).sub, /, from the forecast of day 2, 14:00$/);
+  assert.match(soilThen(g, 'wheat', old).sub, /, from the forecast of day 2, 14:00, the usual weather past it$/);
 });
 
 test('the dry time is told as one time, a range, or "may run dry from"', () => {
@@ -286,4 +288,23 @@ test('tonight says what a stale forecast only called possible and does not count
   const old: Reading = { kind: 'forecast', forecast: forecastAt(sc, timeOf(1, 12)), stale: true };
   const t = tonight(rig(sc, time, { charge: 0.7, solar: 1, turbines: 2, looms: 2 }), old)!;
   assert.match(t.notCounted, /a possible storm on day 3 is not counted/);
+});
+
+test('a shower that sets in, a milder shortfall between two runs, and weather changed by hand are all covered', () => {
+  // A shower crossing the threshold dims the sun at once.
+  const a = randomScenario(8106, 3), ta = 273, ga = rig(a, ta, { charge: 0.1, solar: 4, turbines: 0, looms: 2 });
+  const ra = tonight(ga, TRUTH)!, fa = tonight(ga, forecastOf(a, ta))!;
+  ra.points.forEach((p, i) => assert.ok(fa.points[i].lo <= p.k + 1e-9 && p.k <= fa.points[i].hi + 1e-9, `step ${i}: ${p.k} is outside ${fa.points[i].lo}–${fa.points[i].hi}`));
+  // The shortfall and the time short are inside their ranges where some nights last and some do not.
+  const b = randomScenario(772, 3), tb = 223, gb = rig(b, tb, { charge: 0.8, solar: 0, turbines: 4, looms: 2 });
+  const rb = tonight(gb, TRUTH)!, fb = tonight(gb, forecastOf(b, tb))!;
+  if (fb.dry) assert.ok(rb.shortFor >= fb.dry.short.lo - 1e-6 && rb.shortFor <= fb.dry.short.hi + 1e-6 && rb.shortAfter >= fb.dry.after.lo - 1e-6 && rb.shortAfter <= fb.dry.after.hi + 1e-6);
+  // The worlds are worked out again for a forecast renewed after the weather was changed (the sandbox), and for an event seen to begin between two game hours.
+  const sc = steady('autumn', 3, eventOn(3, 8.5, 'gale', 'ordinary', 24)), now = timeOf(3, 8.75);
+  const stale = forecastAt(sc, timeOf(1, 12)), g = rig(sc, now, { charge: 0.7, solar: 1, turbines: 2, looms: 2 });
+  assert.equal(notCounted(g.scenario, { kind: 'forecast', forecast: stale, stale: true }, now, now + 100), '', 'a gale that has begun is seen, not "possible"');
+  const w1 = worldsOf(g.scenario, stale, now, now + 100);
+  assert.ok(w1.every((w) => w.some((e) => e.kind === 'gale')), 'and it is in every world');
+  const renewed = forecastAt(sc, now);
+  assert.notEqual(worldsOf(g.scenario, renewed, now, now + 100), w1, 'a forecast renewed is not read from the one before');
 });

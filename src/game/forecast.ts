@@ -9,7 +9,7 @@ import { raining } from './sim/weather.ts';
 import { panelShare, panelSnow } from './snow.ts';
 import { linksAt } from './sim/goods.ts';
 import { makes, shareOf, wants } from './sim/energy.ts';
-import { basisOf, notCounted, readingOf, spread, viewsOf, type Ahead, type Reading } from './ahead.ts';
+import { basisFor, notCounted, readingOf, spread, viewsOf, type Ahead, type Reading } from './ahead.ts';
 import type { Range } from './outlook.ts';
 import { wattsOf } from './sim/layout.ts';
 import { describeLinks } from './sim/describe.ts';
@@ -105,7 +105,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         const then = many ? { lo: Math.max(0, Math.floor(base.lo - step)), hi: Math.min(100, Math.ceil(base.hi + step)) } : { lo: Math.round(base.lo), hi: Math.round(base.lo) };
         facts.push({ label: crop.name, value: `+${fmt1(perMin)}`, sub: 'a minute, at this warmth' });
         const skipped = notCounted(s.scenario, reading, s.time, s.time + SOIL_AHEAD);
-        facts.push({ label: 'Soil', value: String(Math.round(soil)), then: then.lo === then.hi ? String(then.lo) : `${then.lo}–${then.hi}`, sub: `in ${SOIL_AHEAD / 60} min if harvests are carried off${reading.kind === 'truth' ? '' : `, ${basisOf(reading, s.scenario.climate, s.time).replace(/^for /, 'in ')}`}${skipped ? `; ${skipped}` : ''}` });
+        facts.push({ label: 'Soil', value: String(Math.round(soil)), then: then.lo === then.hi ? String(then.lo) : `${then.lo}–${then.hi}`, sub: `in ${SOIL_AHEAD / 60} min if harvests are carried off${reading.kind === 'truth' ? '' : `, ${basisFor(reading, s.scenario.climate, s.time, s.time + SOIL_AHEAD).replace(/^for /, 'in ')}`}${skipped ? `; ${skipped}` : ''}` });
         facts.push(shore ? { label: 'Water', value: 'beside water', sub: 'grows at 100%' } : rain ? { label: 'Water', value: 'rain', sub: 'grows at 100% while it rains', tone: 'good' } : sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round(waterPace(water, crop.thirst, warmthOf(s)) * 100)}%` }
           : { label: 'Water', value: 'none', sub: `grows at ${Math.round(waterPace(0, crop.thirst, warmthOf(s)) * 100)}%`, tone: 'bad' });
         const warm = warmthFact(crop, warmthOf(s));
@@ -244,6 +244,8 @@ export interface Tonight {
  */
 export const NIGHT_MARGINS = { sun: 0.5, wind: 0.5, rain: 1 };
 
+const lowered = (r: Range, some: boolean): Range => (some ? { lo: 0, hi: r.hi } : r);
+
 /** One run of the night: the charge at each step, and how it went dry. */
 interface Night { k: number[]; dryAt: number | null; shortSum: number; shortFor: number; peak: { t: number; k: number } }
 
@@ -312,9 +314,10 @@ export function tonight(s: GameState, reading: Reading = readingOf(s)): Tonight 
     dry: dry.length ? {
       // When some runs last the night it may be as late as sunrise (or never): the runs in between are only the levels that were tried.
       from: Math.min(...dry.map((r) => r.dryAt as number)), to: dry.length === runs.length ? Math.max(...dry.map((r) => r.dryAt as number)) : sunrise, always: dry.length === runs.length,
-      after: spread(dry.map((r) => (r.shortFor ? r.shortSum / r.shortFor : 0))), short: spread(dry.map((r) => r.shortFor)),
+      // (Where some runs last the night, a night between may be short a little, or for a little while.)
+      after: lowered(spread(dry.map((r) => (r.shortFor ? r.shortSum / r.shortFor : 0))), dry.length < runs.length), short: lowered(spread(dry.map((r) => r.shortFor)), dry.length < runs.length),
     } : null,
-    basis: basisOf(reading, s.scenario.climate, now), notCounted: notCounted(s.scenario, reading, now, end), reading: reading.kind, runs: runs.length,
+    basis: basisFor(reading, s.scenario.climate, now, end), notCounted: notCounted(s.scenario, reading, now, end), reading: reading.kind, runs: runs.length,
   };
 }
 

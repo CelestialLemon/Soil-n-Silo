@@ -793,17 +793,17 @@ over is a fact (the snow it left on the panels melts by its rule, and ice thaws 
   most 256 worlds; beyond that each event keeps only its corners, then only the extremes of each kind and strength, so the combined worst
   cases stay). What the player sees since the forecast was issued is folded in: an event
     that has begun is told in full (kind, strength, start) with the forecast's end range; one that is over is a fact; one that has not begun
-  starts no earlier than this hour. An out-of-date station's forecast is read the same way (what it named, and the usual weather for the rest).
+  starts no earlier than this hour. An out-of-date station's forecast is read the same way (what it named, and the usual weather for the rest: a day it has no conditions for is one value, and the label says "the usual weather past it"; the range is not claimed to hold the real outcome there).
 - **Conditions.** Each day's sun share, mean wind, hours of rain and warmth range are read at three levels (the lowest, the middle, the highest;
   the middle because a crop's pace peaks inside its warm range). The events' effect on sun and wind is taken out of a day's numbers and laid
   back at the world's timing, so a storm's hours are where the world puts them. A day's range is widened by a **margin** for how far an hour or a
   night strays from its day (the hours of a night are not the day's average), and for the first hours the range is the **cone** round what is
-  known now (sun's share 0.8 an hour, wind 1.3 an hour at the most). Tonight's margins (`NIGHT_MARGINS`): sun share ±0.5, wind ±0.5, rain the whole
+  known now (sun's share 0.8 an hour at the most, and a jump of 0.12 where a shower sets in; wind 1.3 an hour). Tonight's margins (`NIGHT_MARGINS`): sun share ±0.5, wind ±0.5, rain the whole
   of 0–1 (it is on or off); the soil's (`SOIL_MARGINS`): rain ±0.15 of the day, warmth ±1°C beyond the season's drift (±2°C) and the rain's cooling
   (up to 2°C), inside the day's lowest and highest hour. The season's own limits clip them (cloud takes 65% of the sun at most, calm 60% of the
   wind). A day without conditions (day three, or past the forecast) is the usual. A turbine's unsteadiness in a gale is the seeded noise in the truth; a lens takes it at its worst when its wind is lowest and at its best when highest (the usual weather, in the middle).
 - **Spread.** Tonight is the lowest and highest charge at each moment over all the runs (the band, drawn behind the line of the hardest night), the
-  dry time the earliest and the latest (or "may run dry from" a time, when some nights last), the shortfall and the time short as ranges. The soil
+  dry time the earliest and the latest (or "may run dry from" a time, when some nights last), the shortfall and the time short as ranges (from nothing where some nights last). The soil
   is the lowest and highest over the runs, rounded outward and widened by one harvest's change where the runs disagree ("62 → 55–59").
 - **Only the forecast.** A view reads the forecast, the climate, and what the player can see now (which events have begun and ended, with their
   kind, strength and start, and the weather of this hour): never the scenario's events or curves ahead, so two scenarios whose forecasts read the

@@ -99,6 +99,8 @@ type Level = Partial<Record<Dim, number>>;
  * hours, a shower in over two, and an event's ramp is an hour and a half), so how far an hour ahead can stray from what is known now.
  */
 const DRIFT = { sun: 0.8, wind: 1.3 } as const;
+/** The sun's share can also jump when a shower sets in: rain under RAIN_FROM is only a drizzle, and cloud takes its share at once. */
+const JUMP = { sun: CLOUD_DIM * SHOWER_CLOUD * RAIN_FROM, wind: 0 } as const;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
@@ -117,7 +119,7 @@ function viewOf(sc: Scenario, now: number, events: WeatherEvent[], picks?: Picks
   // (a lens reads it at its `level`): the cone round what is known narrows the range for the first hours and nests with every hour's.
   const mix = (dim: Dim, known: number, r: Range | undefined, usual: number, t: number) => {
     if (!r) { const w = ease(t); return w * known + (1 - w) * usual; }
-    const reach = dim === 'sun' || dim === 'wind' ? DRIFT[dim] * (t - now) / HOUR : Infinity;
+    const reach = dim === 'sun' || dim === 'wind' ? (t > now ? DRIFT[dim] * (t - now) / HOUR + JUMP[dim] : 0) : Infinity;
     const lo = Math.max(r.lo, known - reach), hi = Math.min(r.hi, known + reach);
     return lo <= hi ? lo + (hi - lo) * (level[dim] ?? 0.5) : clamp(known, r.lo, r.hi);
   };
@@ -199,15 +201,16 @@ const MAX_WORLDS = 256;
 /**
  * The forecast as the player can read it at `at` (a game hour at or before now): what the station says, with what the player sees
  * since — which events have begun (with their kind, strength and start) and which are over — folded in. An event that has begun is
- * told in full; one that has not begun starts no earlier than `at`; one that is over is left to `keptEvents`.
+ * told in full; one that has not begun starts no earlier than `at`; one that is over is left to `keptEvents`. (What has begun or ended
+ * is seen at `now`; the windows are held to the game hour `at`, so they are the same all through it.)
  */
-function seenBy(sc: Scenario, f: Forecast, at: number): EventForecast[] {
+function seenBy(sc: Scenario, f: Forecast, at: number, now: number): EventForecast[] {
   const out: EventForecast[] = [];
   for (const e of f.events) {
     const real = sc.events[e.id];
-    if (!real || endOf(real) <= at) continue;
-    const after = e.after !== null && sc.events[e.after] && endOf(sc.events[e.after]) > at ? e.after : null;
-    if (real.start <= at) {
+    if (!real || endOf(real) <= now) continue;
+    const after = e.after !== null && sc.events[e.after] && endOf(sc.events[e.after]) > now ? e.after : null;
+    if (real.start <= now) {
       const end: Range = { lo: Math.max(e.end.lo, at), hi: Math.max(e.end.hi, at) };
       out.push({ ...e, detail: 'full', certainty: 'certain', possible: [{ kind: real.kind, strength: real.strength }], underway: true, after,
         start: { lo: real.start, hi: real.start }, end, length: { lo: Math.max(e.length.lo, end.lo - real.start), hi: Math.min(e.length.hi, end.hi - real.start) } });
@@ -216,7 +219,7 @@ function seenBy(sc: Scenario, f: Forecast, at: number): EventForecast[] {
   return out;
 }
 
-const cache = new WeakMap<Scenario, Map<string, WeatherEvent[][]>>();
+const cache = new WeakMap<Forecast, Map<string, WeatherEvent[][]>>();
 
 /**
  * The worlds a forecast allows, each a list of events to run in place of the scenario's: the events already over as they were, the
@@ -225,16 +228,18 @@ const cache = new WeakMap<Scenario, Map<string, WeatherEvent[][]>>();
  */
 export function worldsOf(sc: Scenario, f: Forecast, now: number, until: number): WeatherEvent[][] {
   // (The hour the player's forecast was in force: this hour's, or a sandbox forecast renewed at this very moment.)
-  const at = Math.max(issueTimeOf(now), Math.min(f.issued, now)), key = `${f.issued}|${at}|${until}|${sc.events.length}`;
-  let byKey = cache.get(sc);
+  const at = Math.max(issueTimeOf(now), Math.min(f.issued, now));
+  // What the player has seen begin and end (it changes the worlds), by event.
+  const key = `${at}|${until}|${sc.events.map((e) => `${e.start <= now ? 1 : 0}${endOf(e) <= now ? 1 : 0}`).join('')}`;
+  let byKey = cache.get(f);
   const hit = byKey?.get(key);
   if (hit) return hit;
-  const seen = seenBy(sc, f, at), named = new Set(seen.map((e) => e.id));
+  const seen = seenBy(sc, f, at, now), named = new Set(seen.map((e) => e.id));
   const view: Forecast = { ...f, events: seen };
   const fixed = [
-    ...sc.events.filter((e) => endOf(e) <= at),
+    ...sc.events.filter((e) => endOf(e) <= now),
     // Under way and not named (a station that is out of date): the player sees it, its end is not known.
-    ...sc.events.filter((e, i) => e.start <= at && endOf(e) > at && !named.has(i)).map((e) => ({ ...e, length: FOR_GOOD })),
+    ...sc.events.filter((e, i) => e.start <= now && endOf(e) > now && !named.has(i)).map((e) => ({ ...e, length: FOR_GOOD })),
   ];
   // Each event at its corners, and at the middle of what its windows allow (a night's charge is not monotone in when a storm begins or ends: it can be worst between two corners).
   const centre = (e: EventForecast): EventForecast => {
@@ -271,7 +276,7 @@ export function worldsOf(sc: Scenario, f: Forecast, now: number, until: number):
     break;
   }
   const out = worlds.map((w) => [...fixed, ...w]);
-  if (!byKey) cache.set(sc, (byKey = new Map<string, WeatherEvent[][]>()));
+  if (!byKey) cache.set(f, (byKey = new Map<string, WeatherEvent[][]>()));
   if (byKey.size > 12) byKey.clear();
   byKey.set(key, out);
   return out;
@@ -325,7 +330,7 @@ export function viewsOf(s: GameState, reading: Reading, margins: Margins, until:
 export function possibleIn(sc: Scenario, reading: Reading, now: number, until: number): EventForecast[] {
   if (reading.kind !== 'forecast') return [];
   const f = reading.forecast, at = Math.max(issueTimeOf(now), Math.min(f.issued, now));
-  return seenBy(sc, f, at).filter((e) => e.detail === 'family' && e.after === null && e.start.lo < until);
+  return seenBy(sc, f, at, now).filter((e) => e.detail === 'family' && e.after === null && e.start.lo < until);
 }
 
 /** The least and the most of some numbers: the range the runs span. */
@@ -362,4 +367,16 @@ export function notCounted(sc: Scenario, reading: Reading, now: number, until: n
   if (!e.length) return '';
   const words = e.map((x) => `a possible ${FAMILIES[x.family].name.toLowerCase()} on day ${dayAt(x.start.lo)}`);
   return `${words.join(' and ')} ${e.length > 1 ? 'are' : 'is'} not counted`;
+}
+
+/**
+ * What a projection until `until` says it assumes: `basisOf`, and for an out-of-date forecast that does not reach so far, that the rest is
+ * the usual weather (that part of the range is one value: nothing says otherwise).
+ */
+export function basisFor(reading: Reading, climate: Pick<Climate, 'season' | 'character'>, now: number, until: number): string {
+  const basis = basisOf(reading, climate, now);
+  if (reading.kind !== 'forecast' || !reading.stale) return basis;
+  const reached = new Set(reading.forecast.days.filter((d) => d.conditions).map((d) => d.day));
+  for (let day = dayAt(now); day <= dayAt(until); day++) if (!reached.has(day)) return `${basis}, the usual weather past it`;
+  return basis;
 }
