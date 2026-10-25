@@ -702,9 +702,11 @@ are cells of the clock.) The sizes step; they are not a line, so a window's widt
   projections) can tell two scenarios apart only by what the forecast says. `cornersOf(entry)` is the events an entry allows at its corners:
   each possible kind and strength at the vertices of the region its start window, end window and published length range allow together, so
   every one satisfies all that the forecast says (while only a family is told, the length range spans its kinds); `cornerWorlds(forecast, entry)` lays a flood after each of its storm's corners, inside the flood's
-  own window. A projection run in each brackets the truth where it is monotone in the start, the end and the length, and 3.4 decides what to
-  do where it is not. It is the forecast that tells the projection what it knows:
-  an entry only on day three (`detail: 'family'`) is told as a wide window and every kind the season allows.
+  own window. A projection run in each brackets the truth where it is
+  monotone in the start and the end of each event (such a result is highest and lowest at a vertex); one that depends on a length itself, which
+  falls as the start rises, can have its extremes between the vertices, so 3.4 checks its own function against the truth and samples the region
+  where it must. It is the forecast that tells the projection what it knows: an entry only on day three (`detail: 'family'`) is told as a wide
+  window and every kind the season allows.
 - **The bot is unchanged**: nothing in the rules reads the forecast yet, and the one change outside it (`warmthIn(scenario, time)`, the
   warmth without a game around it; `warmthOf` is the same as before) gives the same numbers, so no target time moves.
 - **Tests** (`test/outlook.test.ts`): for every campaign commission and for 40 random seeds at each difficulty, at every hour until two hours

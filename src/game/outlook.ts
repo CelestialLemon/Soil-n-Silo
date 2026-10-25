@@ -276,10 +276,14 @@ function regionCorners(start: Range, end: Range, length: Range): [number, number
 }
 
 /**
- * The events an entry allows at its corners, for a projection to run at (3.4): each kind and strength not ruled out, at the corners of
- * the region its start window, end window and lengths allow together (the earliest and latest start, the earliest and latest end, the
- * shortest and longest length it can have there). Every one satisfies everything the forecast says. A flood after its storm
- * (`after`) starts where the storm ends: use `cornerWorlds`.
+ * The events an entry allows at its corners, for a projection to run at (3.4): each kind and strength not ruled out, at the vertices of
+ * the region of (start, end) that its start window, end window and published length range allow together, so every one satisfies
+ * all that the forecast says. A flood after its storm (`after`) starts where the storm ends: use `cornerWorlds`.
+ *
+ * What this brackets: a result that is monotone in the start and in the end (each way, whichever sign) is highest and lowest at a
+ * vertex, so the corners bracket the truth. A result that depends on the length itself (the end minus the start) can fall as the
+ * start rises and then its extremes can lie between the vertices: a consumer checks its own function, and samples the region
+ * where it must.
  */
 export function cornersOf(e: EventForecast): WeatherEvent[] {
   return e.possible.flatMap(({ kind, strength }) => regionCorners(e.start, e.end, e.length).map(([start, end]) => ({ kind, strength, start, length: end - start })));
@@ -289,7 +293,8 @@ export function cornersOf(e: EventForecast): WeatherEvent[] {
  * The worlds a projection runs in for one named event (3.4): each of its corners with the events that follow it laid after it, as the
  * commission lays them: a flood begins where its storm ends, at the storm's strength, and ends inside its own window. Every world
  * satisfies everything the forecast says (a storm's end that no flood could follow inside its window is not a corner). Each world is a
- * list of events to run in place of the true ones; the truth lies between them.
+ * list of events to run in place of the true ones. The same holds as for `cornersOf`: the worlds bracket a result that is monotone in
+ * the starts and the ends, not one that depends on a length (a flood's length is its end minus its storm's end).
  */
 export function cornerWorlds(f: Forecast, e: EventForecast): WeatherEvent[][] {
   // `parent` is the event of the world that `from` stands for: each follower is laid after its own.

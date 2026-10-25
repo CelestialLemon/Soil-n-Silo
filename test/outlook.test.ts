@@ -72,6 +72,11 @@ function checkHonest(sc: Scenario, f: Forecast, t0: number, label: string) {
     assert.ok(Math.min(...corners.map((c) => c.start)) <= ev.start + SLACK && Math.max(...corners.map((c) => c.start)) >= ev.start - SLACK, `${name}: corner starts`);
     assert.ok(Math.min(...corners.map((c) => c.length)) <= ev.length + SLACK && Math.max(...corners.map((c) => c.length)) >= ev.length - SLACK, `${name}: corner lengths`);
     assert.ok(Math.min(...corners.map(endOf)) <= endOf(ev) + SLACK && Math.max(...corners.map(endOf)) >= endOf(ev) - SLACK, `${name}: corner ends`);
+    // A result monotone in the start and the end, whichever way each goes, is bracketed by the corners.
+    for (const [a, b] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      const at = (c: WeatherEvent) => a * c.start + b * endOf(c), v = at(ev);
+      assert.ok(Math.min(...corners.map(at)) <= v + SLACK && Math.max(...corners.map(at)) >= v - SLACK, `${name}: corners bracket ${a}·start + ${b}·end`);
+    }
     // Every corner is an event the forecast allows: inside its windows and lengths.
     for (const c of cornerEvents) {
       assert.ok(has({ lo: e.start.lo - SLACK, hi: e.start.hi + SLACK }, c.start) && has({ lo: e.end.lo - SLACK, hi: e.end.hi + SLACK }, endOf(c)) && has({ lo: e.length.lo - SLACK, hi: e.length.hi + SLACK }, c.length), `${name}: a corner outside the forecast`);
