@@ -186,8 +186,8 @@ export class TopRight {
     const sky = h('div', { class: 'cd-dial__sky' });
     sky.style.background = skyFor(w.rise, w.set);
     this.dial.append(sky, h('div', { class: 'cd-dial__sun' }), h('div', { class: 'cd-dial__face' }, h('div', null, this.time, this.day)));
-    const seg = h('div', { class: 'cd-seg' }, ...([[0, icon('pause'), 'Pause', 'pause'], [1, '1×', 'Normal speed', 'speed1'], [2, '2×', 'Double speed', 'speed2'], [4, '4×', 'Fast', 'speed3']] as const).map(([n, label, title, action]) => {
-      const b = titledBy(h('button', { 'aria-label': title, onclick: () => host.setSpeed(n) }, label), () => tip(title, ...keyNames(action)));
+    const seg = h('div', { class: 'cd-seg' }, ...([[0, icon('pause'), 'Pause', 'pause'], [1, '1×', 'Normal speed', 'speed1'], [2, '2×', 'Double speed', 'speed2'], [4, '4×', 'Fast', 'speed3'], [8, '8×', 'Testing speed, 8×', null], [16, '16×', 'Testing speed, 16×', null]] as const).map(([n, label, title, action]) => {
+      const b = titledBy(h('button', { 'aria-label': title, onclick: () => host.setSpeed(n) }, label), () => tip(title, ...(action ? keyNames(action) : [])));
       this.speeds.push(b);
       return b;
     }));
@@ -216,7 +216,11 @@ export class TopRight {
   /** The speed and panel buttons, every frame. */
   updateButtons() {
     const speed = this.host.speed();
-    this.speeds.forEach((b, i) => b.classList.toggle('is-on', [0, 1, 2, 4][i] === speed));
+    const fast = this.host.settings().fastSpeeds;
+    this.speeds.forEach((b, i) => {
+      b.hidden = i >= 4 && !fast;
+      b.classList.toggle('is-on', [0, 1, 2, 4, 8, 16][i] === speed);
+    });
     for (const [p, b] of this.panels) b.classList.toggle('is-on', this.host.panelOpen(p));
   }
 

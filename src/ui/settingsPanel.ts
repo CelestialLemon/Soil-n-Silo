@@ -31,7 +31,7 @@ function gameRows(store: SettingsStore) {
     const b = h('button', { class: st.frameStats === m ? 'is-on' : '', onclick: () => { store.set({ frameStats: m }); for (const x of frames.children) x.classList.toggle('is-on', x === b); } }, m[0].toUpperCase() + m.slice(1));
     return b;
   }));
-  const yes = (k: 'reduceMotion' | 'showPace' | 'problemsStrip', label: string, words: string) => h('div', { class: 'set' },
+  const yes = (k: 'reduceMotion' | 'showPace' | 'problemsStrip' | 'fastSpeeds', label: string, words: string) => h('div', { class: 'set' },
     h('b', null, label), toggle(st[k], label, (v) => store.set({ [k]: v } satisfies Partial<Settings>)), h('span', { class: 'cd-small' }, words));
   return [
     h('div', { class: 'set is-slider' }, h('b', null, 'Interface size'), slider, size),
@@ -40,6 +40,7 @@ function gameRows(store: SettingsStore) {
     yes('reduceMotion', 'Reduce motion', 'Cards and gauges appear without springing.'),
     yes('showPace', 'Show pace', '“Done by” on the commission card and gold and silver ticks on the goals. Off: you see only where you are.'),
     yes('problemsStrip', 'Problems strip', 'Experimental. A strip on the right edge listing problems. Off: find them on the map.'),
+    yes('fastSpeeds', 'Fast speeds', 'For testing. Adds 8× and 16× to the speed buttons.'),
     h('div', { class: 'set is-seg' }, h('b', null, 'Frame rate'), frames,
       h('span', { class: 'cd-small' }, 'Top left while you play. Minimal: the frame rate, once a second. Full: a frame time graph, the average and the 1% and 0.1% lows.')),
   ];
