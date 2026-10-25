@@ -94,8 +94,9 @@ The build preview is see-through, green where it fits and red where it doesn't.
   building in hand tints the ones it would trade with, and its placement card says so.
 - The placement card shows Earthworks (levelling cost, level and steps), Slope (sloping tiles and soil wear), sprinkler
   watts and lift, the extra wind up high and a wheel's current and fall.
-  A field's card counts rain as water while it rains ("Water: rain"), and its ten-minute soil forecast walks the next ten minutes an
-  hour of play at a time with each hour's warmth and rain (so a rain or warm spell that begins, or ends, within them counts).
+  A field's card counts rain as water while it rains ("Water: rain"), and its ten-minute soil projection walks the next ten minutes an
+  hour of play at a time with each hour's warmth and rain (so a rain or warm spell that begins, or ends, within them counts). The
+  weather it walks is not the seeded weather ahead: see **Projections (3.4)**.
 - The Height view tints land by centre height in blended bands of 3 levels, with steep banks darker. Cliff faces show the breaks.
   It shows while building and doing earthworks, under the grid and contour lines, unless the building in hand has a view of
   its own (silos the roads, sprinklers the water, hives the bees, anything that makes, stores or uses power the power).
@@ -266,8 +267,9 @@ the gliding (a spring day is rainy about 30% of the time, a summer day about 7%,
   they draw no power. A wet spring frees power; a dry summer needs every watt for water.
 - **Snow doesn't**: winter's precipitation is snow, which waters nothing and leaves sprinklers running.
 - **The weather now** is clear, cloudy, rain or snow with a precipitation intensity 0–1 and the cloud cover
-  (`weatherNow(state)`, for the HUD chip and the look). The battery forecast ("tonight") uses the seeded sun and wind, cloud and
-  calm included, and counts the sprinklers as resting during the rain it expects.
+  (`weatherNow(state)`, for the HUD chip and the look). The battery projection ("tonight") reads the sun, wind and rain ahead as the
+  player can know them: the usual for the season without a station, the forecast's ranges with one (**Projections (3.4)**), and counts
+  the sprinklers as resting for the share of the time it rains.
 - **Falling rain and snow are drawn** (renderer 0.3.4): rain in the open seasons, snow in winter, on the same 3 s easing as the
   cloud cover. The renderer's intensity is `0.15 + 0.35 × precipitation`, so everyday showers read light to moderate (0.15–0.5)
   and the heavy end (up to 1) is left for phase 2's storms and blizzards. Cloud already thickens with a shower (`cloud` is at
@@ -612,7 +614,9 @@ event it is closer (an RMS error of 68 s over 42 runs, against 104 s). It is an 
 minute out.
 
 **Showing events.** Without a weather station (phase 3) the player sees the events the season can bring in the briefing, and an
-event only once it starts: in the sky and as its name on the weather chip.
+event only once it starts: in the sky and as its name on the weather chip. The screens that look ahead (the Power panel's "tonight",
+the history view's "Batteries run dry…", a field's soil in ten minutes) do not tell the future either: without a station they are for a
+usual night or day of the season, with no event that has not begun (**Projections (3.4)**).
 
 **The winter events (2.7).**
 
@@ -753,6 +757,81 @@ The building that gives the forecast (3.1): `src/game/station.ts`. Panel (3.3) a
 - **The bot is unchanged**: it builds no station (3.6 does), so every target time is the same.
 - **Tests** (`test/station.test.ts`): the numbers; the placement card before and after; hourly renewal and nothing before power; no pylon;
   out of date and back; flood; two stations; bulldozing; the sandbox's renewal; the save (version 16, a bad hour refused, version 15 refused).
+
+### Projections (3.4)
+
+The screens that look ahead (`tonight()` and `placement()`'s soil in `src/game/forecast.ts`) used to run the seeded sun, wind, cloud, showers,
+calm spells and events: they told the future. They now read the weather ahead through a **view** (`Ahead`, `src/game/ahead.ts`), never from the
+scenario, and the view is chosen by what the player has (`Reading`): `usual` without a station, `forecast` with one (the forecast in hand:
+a fresh one, or an out-of-date station's last), and `truth` for tests and the bot (nothing the player sees). `readingOf(state)` picks.
+
+**The usual weather** (`src/game/expected.ts`, the "expected" twin of `sunAt`, `windAt`, `cloudAt`, `precipAt`, `calmAt` and `warmthOf`). Each
+average is worked out from the same model the seeded curves use (the spell lengths and strengths, the gliding, the cloud a shower brings,
+the 12% below which a shower is only a drizzle), from the laws of a spell condition at an unknown time (`spellLaw`: two spells side by side
+with a glide between them) and of the independent cloud and shower spells:
+
+| What | Usual |
+| --- | --- |
+| Sun | the season's daily curve times the average share cloud leaves (`1 − 0.65 ×` the average cover) |
+| Wind | the season's mean times the average share calm spells leave (`1 − 0.6 ×` the average calm), no seeded gusts |
+| Rain | the average share of time it showers: sprinklers rest, and a field counts as watered, that share of the time (in winter, snow: neither) |
+| Warmth | the season's daily curve without the seeded drift, cooled by the average rain (`2°C ×` the average precipitation) |
+| Events | none that has not begun |
+
+`test/expected.test.ts` holds each to the long-run mean of the seeded curves, in every season and character (within 0.01–0.015 of cloud,
+rain, calm, wind and sun, 0.2°C of warmth; measured over 120 seeds × 80 times).
+
+**What is known now stays known.** The weather of this hour holds and eases linearly to the usual over **1 game hour** (`EASE_HOURS`). An event
+**under way** is taken to keep on through the projection (its length is not known without a station: it is run with no end); an event that is
+over is a fact (the snow it left on the panels melts by its rule, and ice thaws by its rule once the cold snap is over).
+
+**With a station** the projection is run over the ways the forecast allows, and shows the spread (`viewsOf`):
+
+- **Worlds.** For each event the forecast names (but not one only called "possible", day three), the events it allows at its corners (`cornerWorlds`:
+  each kind and strength not ruled out, at the vertices of the start and end windows and the length range, a flood after each of its storm's
+  corners) and at the middle of what the windows allow (a night's charge is not monotone in when a storm begins), combined across events (at
+  most 128 worlds; beyond that each event keeps only its corners, then only the extremes of each kind and strength, so the combined worst
+  cases stay). What the player sees since the forecast was issued is folded in: an event
+    that has begun is told in full (kind, strength, start) with the forecast's end range; one that is over is a fact; one that has not begun
+  starts no earlier than this hour. An out-of-date station's forecast is read the same way (what it named, and the usual weather for the rest: a day it has no conditions for is one value, and the label says "the usual weather past it"; the range is not claimed to hold the real outcome there).
+- **Conditions.** Each day's sun share, mean wind, hours of rain and warmth range are read at three levels (the lowest, the middle, the highest;
+  the middle because a crop's pace peaks inside its warm range). The events' effect on sun and wind is taken out of a day's numbers and laid
+  back at the world's timing, so a storm's hours are where the world puts them. A day's range is widened by a **margin** for how far an hour or a
+  night strays from its day (the hours of a night are not the day's average), and for the first hours the range is the **cone** round what is
+  known now (sun's share 0.8 an hour at the most, and a jump of 0.12 where a shower sets in; wind 1.3 an hour). Tonight's margins (`NIGHT_MARGINS`): the sun's share the whole of what cloud allows (a sunny day's afternoon can be wholly clouded, so the
+  day's number says little of an hour's), wind ±0.5, rain the whole of 0–1 (it is on or off); the soil's (`SOIL_MARGINS`): rain ±0.15 of the day, warmth ±1°C beyond the season's drift (±2°C) and the rain's cooling
+  (up to 2°C), inside the day's lowest and highest hour. The season's own limits clip them (cloud takes 65% of the sun at most, calm 60% of the
+  wind). A day without conditions (day three, or past the forecast) is the usual. A turbine's unsteadiness in a gale is the seeded noise in the truth; a lens takes it at its worst when its wind is lowest and at its best when highest (the usual weather, in the middle).
+- **Spread.** Tonight is the lowest and highest charge at each moment over all the runs (the band, drawn behind the line of the hardest night), the
+  dry time the earliest and the latest (or "may run dry from" a time, when some nights last), the shortfall ("up to 45 W": an average over a night's short hours, which is not monotone in the weather) and the time short as ranges (from nothing where some nights last). The soil
+  is the lowest and highest over the runs, rounded outward and widened by one harvest's change where the runs disagree or any grows ("62 → 55–59"), so a harvest more or less than the sampled weather reaches is allowed.
+- **Only the forecast.** A view reads the forecast, the climate, and what the player can see now (which events have begun and ended, with their
+  kind, strength and start, and the weather of this hour): never the scenario's events or curves ahead, so two scenarios whose forecasts read the
+  same give the same range (`test/projections.test.ts` moves an event inside its cells and checks).
+- **The truth is inside, nesting.** For every campaign commission and 30 random ones, at every 13th hour, the real night (the projection run on the
+  seeded weather) is inside the band at every step and its dry time inside the dry range; the real soil is inside the soil range; and a range lies
+  inside the one an hour before (from the charge the real night has then). The margins above were set by measuring these over thousands of
+  cases on seeds the test does not use (zero misses in about 8,000 nights and 32,000 soils). Nesting is exact where the inputs are (the day ranges, the cone). In the nights it holds in the test sweep to
+  within 2% of capacity, but not always: where an event's window narrows, the worst night can lie between the corners and the middle that are sampled,
+  so the band can move by more than that (a review found 43% → 32% at one hour for a four-turbine layout). A fixed grid of timings (every two game hours inside
+  a window, which nests exactly) would fix it at the cost of many more worlds; left for later.
+- **Day three.** An event the forecast only calls possible (a family: "a storm, possible") that the player has not seen begin or end is not in
+  the range, and the label says so ("a possible storm on day 5 is not counted"), on tonight's card and the history line as on the soil card;
+  the test leaves those cases out. The usual weather counts the cloud and cooling of rain an event under way brings.
+- **How wide.** A day's published ranges say little about a night: the wind of a night strays by up to ±0.2 from its day's mean in the seeded
+  weather, the sun of an afternoon by up to ±0.4, and a shower is on or off. The bands are honest, so they are wide (on average about half the
+  battery's capacity across the night in the measured layouts), narrowest where an event the forecast names decides the night and in the
+  first hours (the cone). A tighter band needs finer numbers from the forecast (a half-day's sun, wind and rain, not a day's).
+
+**Words.** The labels say what the projection assumes, as facts: "Tonight, for a usual winter" and "in 10 min, in a usual spring" without a
+station; "from the forecast" with one; "from the forecast of day 4, 14:00" when it is out of date. The Power panel draws the band with the line of
+the hardest night, "dry between 01:40 and 03:10" or "may run dry from 02:10"; the history view says "Batteries run dry between … tonight, from the
+forecast"; a field's card shows the soil range. The guide's Power and Field pages say how the projections are made, with and without a station.
+
+**Cost.** The worlds are worked out per forecast hour (cached with the events the player has seen begin or end), the views for half a second of play
+(they read the weather as it was then, and remember what they say to the eighth of a second), and each projection runs the layout once per view
+(up to 27 per world for the night, 9 for the soil): about 2 ms for a night and 5–25 ms for a field's card with many events, so the placement
+card, which is recomputed as the ghost moves, stays cheap.
 
 ### The valley's look by season
 

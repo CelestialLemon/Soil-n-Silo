@@ -21,6 +21,7 @@ import { henFact, warmthOf } from '../src/game/warmth.ts';
 import { lostSeconds } from '../src/game/weathercost.ts';
 import { newRunLog } from '../src/game/runlog.ts';
 import { weatherAt } from '../src/game/sim/weather.ts';
+import { TRUTH } from '../src/game/ahead.ts';
 
 const HOUR = DAY_SECONDS / 24;
 const NO_CONDITIONS = { cloud: 0, rain: 0, calm: 0 };
@@ -332,11 +333,11 @@ test('the battery forecast sees a river freeze before morning', () => {
   put(s, 'battery', 10, 11).charge = 0;
   put(s, 'pylon', 10, 7);
   void wheel;
-  const t = tonight(s);
+  const t = tonight(s, TRUTH);
   assert.ok(t);
   const quiet = winter([], timeOf(3, 17), true);
   put(quiet, 'pylon', 10, 9); put(quiet, 'wheel', 12, 8); put(quiet, 'battery', 10, 11).charge = 0; put(quiet, 'pylon', 10, 7);
-  const q = tonight(quiet);
+  const q = tonight(quiet, TRUTH);
   assert.ok(q);
   assert.ok(t.points[t.points.length - 1].k < q.points[q.points.length - 1].k, 'less charge at dawn when the wheel freezes');
 });

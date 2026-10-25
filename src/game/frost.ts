@@ -95,16 +95,16 @@ export const hollowNote = (s: GameState, f: FieldBuilding): string | null =>
 export const HOLLOW_FACT = 'Frost hollow: late frost settles here';
 
 /** The late frost under way that is biting now, with its strength, or null. */
-export function frostNow(s: GameState, time = s.time): Active | null {
+export function frostNow(s: GameState, time = s.time, view: Pick<Scenario, 'events'> = s.scenario): Active | null {
   let best: Active | null = null;
-  for (const a of activeEvents(s.scenario, time)) if (a.event.kind === 'lateFrost' && a.intensity >= BITES_AT && (!best || a.event.strength === 'severe')) best = a;
+  for (const a of activeEvents(view, time)) if (a.event.kind === 'lateFrost' && a.intensity >= BITES_AT && (!best || a.event.strength === 'severe')) best = a;
   return best;
 }
 
 /** The late frost that takes a crop growing (now, or at `time`) in a field with its north-west tile at (x, y), or null: a frost is biting, it lies on the field, and the crop is tender. */
-export function frostHits(s: GameState, crop: CropId, x: number, y: number, time = s.time): Active | null {
+export function frostHits(s: GameState, crop: CropId, x: number, y: number, time = s.time, view: Pick<Scenario, 'events'> = s.scenario): Active | null {
   if (!CROPS[crop].tender) return null;
-  const a = frostNow(s, time);
+  const a = frostNow(s, time, view);
   return a && frostedTiles(s, x, y, a.event.strength) >= FIELD_TILES ? a : null;
 }
 
