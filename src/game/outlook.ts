@@ -211,17 +211,18 @@ function eventForecasts(sc: Scenario, issued: number): EventForecast[] {
     const pred = followedOf(sc, i), before = pred === null ? undefined : made.get(pred);
     let detail: Detail;
     if (underway) detail = 'full';
-    else if (pred !== null) {
+    else if (before) {
       // A flood is part of its storm: it is told once the storm's kind is.
-      if (!before || before.detail === 'family') continue;
+      if (before.detail === 'family') continue;
       detail = before.detail;
-    } else if (lead > FORECAST_HOURS + EPS) continue;
+    } else if (pred !== null && endOf(sc.events[pred]) > issued) continue;
+    else if (lead > FORECAST_HOURS + EPS) continue;
     else detail = lead > TIER_HOURS[1] + EPS ? 'family' : lead > TIER_HOURS[0] + EPS ? 'kind' : 'full';
 
     // What it may be.
     let possible: Possible[];
     if (detail === 'full') possible = [{ kind: e.kind, strength: e.strength }];
-    else if (pred !== null && before) {
+    else if (before) {
       const follows = before.possible.filter((p) => EVENTS[p.kind].then === e.kind && (EVENTS[p.kind].thenIn?.includes(season) ?? true));
       possible = withTruth(follows.map((p) => ({ kind: e.kind, strength: p.strength })).filter((p, k, all) => all.findIndex((q) => sameWorld(p, q)) === k), e);
     } else if (detail === 'kind') possible = pairsOf(e.kind);
@@ -236,12 +237,12 @@ function eventForecasts(sc: Scenario, issued: number): EventForecast[] {
     const hours = possible.map((p) => hoursOf(p.kind, p.strength)), quarter = 6 * HOUR;
     const least = Math.min(...hours.map((h) => h[0] * HOUR)), most = Math.max(...hours.map((h) => h[1] * HOUR));
     const own = hoursOf(e.kind, e.strength);
-    const minLen = e.length < own[0] * HOUR ? Math.min(least, Math.max(STEP, Math.floor(e.length / quarter) * quarter), e.length) : least;
+    const minLen = e.length < own[0] * HOUR ? Math.min(least, Math.floor(e.length / quarter) * quarter) : least;
     const maxLen = e.length > own[1] * HOUR ? Math.max(most, Math.ceil(e.length / quarter) * quarter) : most;
 
     let start: Range;
     if (underway) start = { lo: e.start, hi: e.start };
-    else if (pred !== null && before) start = { lo: Math.min(before.end.lo, e.start), hi: Math.max(before.end.hi, e.start) };
+    else if (before) start = { lo: Math.min(before.end.lo, e.start), hi: Math.max(before.end.hi, e.start) };
     else {
       // It has not begun, which the forecast knows.
       const c = timeCell(e.start, lead);
@@ -255,22 +256,11 @@ function eventForecasts(sc: Scenario, issued: number): EventForecast[] {
 
     made.set(i, {
       id: i, detail, certainty: underway ? 'certain' : detail === 'family' ? 'possible' : 'likely', family: familyOf(e.kind), good: !!EVENTS[e.kind].good,
-      possible, underway, start, end: endR, length, after: pred === null || !before ? null : pred,
+      possible, underway, start, end: endR, length, after: before ? pred : null,
     });
   }
   // In the order the forecast says: by the windows, never by the true starts inside them.
   return [...made.values()].sort((a, b) => a.start.lo - b.start.lo || a.start.hi - b.start.hi || a.end.lo - b.end.lo || a.end.hi - b.end.hi || a.id - b.id);
-}
-
-/**
- * The lengths a kind and strength allows inside what the entry says: its catalogue hours where they overlap the entry's lengths, else
- * the entry's (also where the entry reaches past every kind's hours: a length authored by hand).
- */
-function lengthsOf(e: EventForecast, kind: EventKind, strength: Strength): Range {
-  const all = e.possible.map((p) => hoursOf(p.kind, p.strength)), [h0, h1] = hoursOf(kind, strength);
-  if (e.length.lo < Math.min(...all.map((h) => h[0])) * HOUR - 1e-6 || e.length.hi > Math.max(...all.map((h) => h[1])) * HOUR + 1e-6) return e.length;
-  const lo = Math.max(h0 * HOUR, e.length.lo), hi = Math.min(h1 * HOUR, e.length.hi);
-  return lo <= hi ? { lo, hi } : e.length;
 }
 
 /** The corners of the (start, end) pairs the windows and the lengths allow, all three together: the vertices of that region. */
@@ -292,7 +282,7 @@ function regionCorners(start: Range, end: Range, length: Range): [number, number
  * (`after`) starts where the storm ends: use `cornerWorlds`.
  */
 export function cornersOf(e: EventForecast): WeatherEvent[] {
-  return e.possible.flatMap(({ kind, strength }) => regionCorners(e.start, e.end, lengthsOf(e, kind, strength)).map(([start, end]) => ({ kind, strength, start, length: end - start })));
+  return e.possible.flatMap(({ kind, strength }) => regionCorners(e.start, e.end, e.length).map(([start, end]) => ({ kind, strength, start, length: end - start })));
 }
 
 /**
@@ -302,23 +292,24 @@ export function cornersOf(e: EventForecast): WeatherEvent[] {
  * list of events to run in place of the true ones; the truth lies between them.
  */
 export function cornerWorlds(f: Forecast, e: EventForecast): WeatherEvent[][] {
-  const follow = (world: WeatherEvent[], from: EventForecast): WeatherEvent[][] =>
+  // `parent` is the event of the world that `from` stands for: each follower is laid after its own.
+  const follow = (world: WeatherEvent[], from: EventForecast, parent: WeatherEvent): WeatherEvent[][] =>
     f.events.filter((x) => x.after === from.id).reduce<WeatherEvent[][]>((worlds, next) => worlds.flatMap((w) => {
-      const last = w[w.length - 1], start = endOf(last), pairs = next.possible.filter((q) => q.strength === last.strength);
-      return pairs.length ? pairs.flatMap(({ kind, strength }) => {
-        const len = lengthsOf(next, kind, strength);
-        return [Math.max(next.end.lo, start + len.lo), Math.min(next.end.hi, start + len.hi)].flatMap((end) => follow([...w, { kind, strength, start, length: end - start }], next));
-      }) : [w];
+      const start = endOf(parent), pairs = next.possible.filter((q) => q.strength === parent.strength);
+      return pairs.length ? pairs.flatMap(({ kind, strength }) => [Math.max(next.end.lo, start + next.length.lo), Math.min(next.end.hi, start + next.length.hi)].flatMap((end) => {
+        const own: WeatherEvent = { kind, strength, start, length: end - start };
+        return follow([...w, own], next, own);
+      })) : [w];
     }), [world]);
   const followers = f.events.filter((x) => x.after === e.id);
   return e.possible.flatMap(({ kind, strength }) => {
     // The ends of the event that a flood can follow inside its own window.
-    const ends = followers.reduce<Range>((r, next) => {
-      const lens = next.possible.filter((q) => q.strength === strength).map((q) => lengthsOf(next, q.kind, q.strength));
-      return lens.length ? { lo: Math.max(r.lo, next.end.lo - Math.max(...lens.map((l) => l.hi))), hi: Math.min(r.hi, next.end.hi - Math.min(...lens.map((l) => l.lo))) } : r;
-    }, e.end);
-    const own = ends.lo <= ends.hi ? ends : e.end;
-    return regionCorners(e.start, own, lengthsOf(e, kind, strength)).flatMap(([start, end]) => follow([{ kind, strength, start, length: end - start }], e));
+    const ends = followers.reduce<Range>((r, next) => (next.possible.some((q) => q.strength === strength)
+      ? { lo: Math.max(r.lo, next.end.lo - next.length.hi), hi: Math.min(r.hi, next.end.hi - next.length.lo) } : r), e.end);
+    return regionCorners(e.start, ends.lo <= ends.hi ? ends : e.end, e.length).flatMap(([start, end]) => {
+      const own: WeatherEvent = { kind, strength, start, length: end - start };
+      return follow([own], e, own);
+    });
   });
 }
 

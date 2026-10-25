@@ -700,8 +700,8 @@ are cells of the clock.) The sizes step; they are not a line, so a window's widt
   start hour. Each is the cell of the true value, so no derived range is built from other ranges that could fail to nest.
 - **What it carries.** Only ranges, the pairs not ruled out, windows and `certainty`: no truth and no seed. What reads it (the panel, 3.4's
   projections) can tell two scenarios apart only by what the forecast says. `cornersOf(entry)` is the events an entry allows at its corners:
-  each possible kind and strength at the vertices of the region its start window, end window and lengths allow together, so every one
-  satisfies all that the forecast says; `cornerWorlds(forecast, entry)` lays a flood after each of its storm's corners, inside the flood's
+  each possible kind and strength at the vertices of the region its start window, end window and published length range allow together, so
+  every one satisfies all that the forecast says (while only a family is told, the length range spans its kinds); `cornerWorlds(forecast, entry)` lays a flood after each of its storm's corners, inside the flood's
   own window. A projection run in each brackets the truth where it is monotone in the start, the end and the length, and 3.4 decides what to
   do where it is not. It is the forecast that tells the projection what it knows:
   an entry only on day three (`detail: 'family'`) is told as a wide window and every kind the season allows.

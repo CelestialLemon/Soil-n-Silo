@@ -35,7 +35,7 @@ function checkHonest(sc: Scenario, f: Forecast, t0: number, label: string) {
     if (endOf(ev) <= t0) return assert.ok(!entry, `${label}: event ${i} is over but still named`);
     const underway = ev.start <= t0, lead = (ev.start - t0) / HOUR;
     const pred = sc.events.findIndex((p, j) => j !== i && EVENTS[p.kind].then === ev.kind && p.strength === ev.strength && Math.abs(endOf(p) - ev.start) < 1e-6);
-    if (underway || pred < 0) {
+    if (underway || pred < 0 || endOf(sc.events[pred]) <= t0) {
       const should = underway || lead <= FORECAST_HOURS;
       return assert.equal(!!entry, should, `${label}: event ${i} (${ev.kind}) ${should ? 'should be named' : 'is named too early'} (lead ${lead})`);
     }
@@ -70,11 +70,12 @@ function checkHonest(sc: Scenario, f: Forecast, t0: number, label: string) {
     const cornerEvents = cornersOf(e), corners = cornerEvents.filter((c) => c.kind === ev.kind && c.strength === ev.strength);
     assert.ok(corners.length > 0);
     assert.ok(Math.min(...corners.map((c) => c.start)) <= ev.start + SLACK && Math.max(...corners.map((c) => c.start)) >= ev.start - SLACK, `${name}: corner starts`);
+    assert.ok(Math.min(...corners.map((c) => c.length)) <= ev.length + SLACK && Math.max(...corners.map((c) => c.length)) >= ev.length - SLACK, `${name}: corner lengths`);
     assert.ok(Math.min(...corners.map(endOf)) <= endOf(ev) + SLACK && Math.max(...corners.map(endOf)) >= endOf(ev) - SLACK, `${name}: corner ends`);
     // Every corner is an event the forecast allows: inside its windows and lengths.
     for (const c of cornerEvents) {
       assert.ok(has({ lo: e.start.lo - SLACK, hi: e.start.hi + SLACK }, c.start) && has({ lo: e.end.lo - SLACK, hi: e.end.hi + SLACK }, endOf(c)) && has({ lo: e.length.lo - SLACK, hi: e.length.hi + SLACK }, c.length), `${name}: a corner outside the forecast`);
-      assert.ok(c.length > 0);
+      assert.ok(c.length >= 0);
     }
   }
   // The days: their numbers hold what happens.
@@ -333,6 +334,25 @@ test('the days hold what an independent count of the weather gives', () => {
       assert.ok(Math.abs(t.sun - hours.reduce((n, x) => n + sunAt(sc, x), 0) / clear) < 1e-9);
     }
   }
+});
+
+test('several floods after one storm are each laid after the storm', () => {
+  const storm: WeatherEvent = { kind: 'tropicalStorm', strength: 'ordinary', start: 30 * HOUR, length: 30 * HOUR };
+  const flood = (length: number): WeatherEvent => ({ kind: 'flood', strength: 'ordinary', start: 60 * HOUR, length: length * HOUR });
+  const sc: Scenario = { ...SANDBOX, climate: climateOf('autumn', 'stormy'), events: [storm, flood(30), flood(40)] };
+  const named = forecastAt(sc, 10 * HOUR);
+  assert.equal(named.events.length, 3);
+  assert.deepEqual(named.events.map((e) => e.after), [null, 0, 0]);
+  for (const w of cornerWorlds(named, named.events[0])) {
+    assert.ok(w.length === 3 && w[1].start === endOf(w[0]) && w[2].start === endOf(w[0]) && w[1].length > 0 && w[2].length > 0, JSON.stringify(w));
+  }
+});
+
+test('a hand-authored length longer than its kind lasts is still bracketed by the corners', () => {
+  const sc: Scenario = { ...SANDBOX, climate: climateOf('autumn', 'gales'), events: [{ kind: 'gale', strength: 'ordinary', start: 65 * HOUR, length: 40 * HOUR }] };
+  walk(sc, 'long gale');
+  walk({ ...sc, events: [{ kind: 'gale', strength: 'ordinary', start: 650, length: 1.234 }] }, 'tiny gale');
+  assert.notEqual(forecastAt({ ...sc, events: [{ kind: 'gale', strength: 'ordinary', start: 650, length: 1.234 }] }, 0).events[0].length.lo, 1.234);
 });
 
 test('issue times are whole game hours', () => {
