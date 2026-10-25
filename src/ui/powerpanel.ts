@@ -75,9 +75,9 @@ function radial(s: GameState) {
 }
 
 /** A range of watts, "15–28 W". */
-const wattsRange = (r: { lo: number; hi: number }) => (dec(r.lo) === dec(r.hi) ? watts(r.lo) : `${dec(r.lo)}–${dec(r.hi)} W`);
+const wattsRange = (r: { lo: number; hi: number }) => (r.lo <= 0 && r.hi > 0 ? `up to ${watts(r.hi)}` : dec(r.lo) === dec(r.hi) ? watts(r.lo) : `${dec(r.lo)}–${dec(r.hi)} W`);
 /** A range of game time in hours, "5.7–9.5 h" (or as the one span when it is one). */
-const hoursRange = (r: { lo: number; hi: number }) => { const h = (sec: number) => sec / HOUR_SECONDS; return Math.abs(r.hi - r.lo) < HOUR_SECONDS / 6 ? gameSpan(r.lo) : `${dec(h(r.lo))}–${dec(h(r.hi))} h`; };
+const hoursRange = (r: { lo: number; hi: number }) => { const h = (sec: number) => sec / HOUR_SECONDS; return r.lo <= 0 && r.hi > 0 ? `up to ${dec(h(r.hi))} h` : Math.abs(r.hi - r.lo) < HOUR_SECONDS / 6 ? gameSpan(r.lo) : `${dec(h(r.lo))}–${dec(h(r.hi))} h`; };
 
 /** Tonight's charge until an hour after sunrise, if use stays as it is now: for a usual night of the season without a station, a band over what the forecast allows with one. */
 function tonightCard(s: GameState) {

@@ -803,7 +803,7 @@ over is a fact (the snow it left on the panels melts by its rule, and ice thaws 
   (up to 2°C), inside the day's lowest and highest hour. The season's own limits clip them (cloud takes 65% of the sun at most, calm 60% of the
   wind). A day without conditions (day three, or past the forecast) is the usual. A turbine's unsteadiness in a gale is the seeded noise in the truth; a lens takes it at its worst when its wind is lowest and at its best when highest (the usual weather, in the middle).
 - **Spread.** Tonight is the lowest and highest charge at each moment over all the runs (the band, drawn behind the line of the hardest night), the
-  dry time the earliest and the latest (or "may run dry from" a time, when some nights last), the shortfall and the time short as ranges (from nothing where some nights last). The soil
+  dry time the earliest and the latest (or "may run dry from" a time, when some nights last), the shortfall ("up to 45 W": an average over a night's short hours, which is not monotone in the weather) and the time short as ranges (from nothing where some nights last). The soil
   is the lowest and highest over the runs, rounded outward and widened by one harvest's change where the runs disagree or any grows ("62 → 55–59"), so a harvest more or less than the sampled weather reaches is allowed.
 - **Only the forecast.** A view reads the forecast, the climate, and what the player can see now (which events have begun and ended, with their
   kind, strength and start, and the weather of this hour): never the scenario's events or curves ahead, so two scenarios whose forecasts read the
@@ -811,9 +811,10 @@ over is a fact (the snow it left on the panels melts by its rule, and ice thaws 
 - **The truth is inside, nesting.** For every campaign commission and 30 random ones, at every 13th hour, the real night (the projection run on the
   seeded weather) is inside the band at every step and its dry time inside the dry range; the real soil is inside the soil range; and a range lies
   inside the one an hour before (from the charge the real night has then). The margins above were set by measuring these over thousands of
-  cases on seeds the test does not use (zero misses in about 8,000 nights and 32,000 soils). Nesting is exact where the inputs are (the day ranges, the cone) and holds to within two
-  per cent of the battery's capacity in the nights: where an event's window narrows, the worst night can lie between the corners and the middle that
-  are sampled, and the band then moves by that much (the test allows 0.02; none was found in 1,900 pairs, and one in a review at 0.007).
+  cases on seeds the test does not use (zero misses in about 8,000 nights and 32,000 soils). Nesting is exact where the inputs are (the day ranges, the cone). In the nights it holds in the test sweep to
+  within 2% of capacity, but not always: where an event's window narrows, the worst night can lie between the corners and the middle that are sampled,
+  so the band can move by more than that (a review found 43% → 32% at one hour for a four-turbine layout). A fixed grid of timings (every two game hours inside
+  a window, which nests exactly) would fix it at the cost of many more worlds; left for later.
 - **Day three.** An event the forecast only calls possible (a family: "a storm, possible") that the player has not seen begin or end is not in
   the range, and the label says so ("a possible storm on day 5 is not counted"), on tonight's card and the history line as on the soil card;
   the test leaves those cases out. The usual weather counts the cloud and cooling of rain an event under way brings.

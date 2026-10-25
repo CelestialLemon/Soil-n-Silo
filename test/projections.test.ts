@@ -328,3 +328,9 @@ test('a clouded afternoon on a sunny day is inside the night\'s range', () => {
   const real = tonight(g, TRUTH)!, told = tonight(g, forecastOf(sc, time))!;
   real.points.forEach((p, i) => assert.ok(told.points[i].lo <= p.k + 1e-9 && p.k <= told.points[i].hi + 1e-9, `step ${i}: ${p.k} is outside ${told.points[i].lo}–${told.points[i].hi}`));
 });
+
+test('the average shortfall of a night every run is short is inside its range', () => {
+  const sc = randomScenario(85, 3), time = 1383, g = rig(sc, time, { charge: 0.25, solar: 4, turbines: 0, looms: 2 });
+  const real = tonight(g, TRUTH)!, told = tonight(g, forecastOf(sc, time))!;
+  assert.ok(told.dry && real.shortAfter >= told.dry.after.lo - 1e-6 && real.shortAfter <= told.dry.after.hi + 1e-6, `${real.shortAfter} W is outside ${JSON.stringify(told.dry?.after)}`);
+});

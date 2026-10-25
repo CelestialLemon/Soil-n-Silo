@@ -316,7 +316,8 @@ export function tonight(s: GameState, reading: Reading = readingOf(s)): Tonight 
       // When some runs last the night it may be as late as sunrise (or never): the runs in between are only the levels that were tried.
       from: Math.min(...dry.map((r) => r.dryAt as number)), to: dry.length === runs.length ? Math.max(...dry.map((r) => r.dryAt as number)) : sunrise, always: dry.length === runs.length,
       // (Where some runs last the night, a night between may be short a little, or for a little while.)
-      after: lowered(spread(dry.map((r) => (r.shortFor ? r.shortSum / r.shortFor : 0))), dry.length < runs.length), short: lowered(spread(dry.map((r) => r.shortFor)), dry.length < runs.length),
+      // (The average of a night's shortfall is not monotone in the weather: it counts a partly spent first step, so it is only said to be up to the most.)
+      after: lowered(spread(dry.map((r) => (r.shortFor ? r.shortSum / r.shortFor : 0))), true), short: lowered(spread(dry.map((r) => r.shortFor)), dry.length < runs.length),
     } : null,
     basis: basisFor(reading, s.scenario.climate, now, end), notCounted: notCounted(s.scenario, reading, now, end), reading: reading.kind, runs: runs.length,
   };
