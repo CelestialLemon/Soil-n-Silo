@@ -21,9 +21,12 @@ export function sunAt(sc: Scenario, time: number) {
   return sun.strength * Math.sin(Math.PI * (h - sun.rise) / (sun.set - sun.rise)) * clearShare(sc, time) * pushesAt(sc, time).sun;
 }
 
-/** Wind strength 0–1 at a time: a smooth seeded curve around the season's mean, lower in a calm spell, and what weather events add. */
-export function windAt(sc: Scenario, time: number) {
+/** The seasonal wind at a time before a weather event's push and before it is held to 0.05–1: a smooth seeded curve around the season's mean, lower in a calm spell. */
+export function fairWindAt(sc: Scenario, time: number) {
   const w = sc.climate.wind;
   const n = noise1(time / 45, sc.seed + 77) * 0.7 + noise1(time / 11, sc.seed + 78) * 0.3;
-  return Math.max(0.05, Math.min(1, (w.mean + (n - 0.5) * 2 * w.gust) * windShare(sc, time) + pushesAt(sc, time).wind));
+  return (w.mean + (n - 0.5) * 2 * w.gust) * windShare(sc, time);
 }
+
+/** Wind strength 0–1 at a time: the seasonal wind (`fairWindAt`), and what weather events add. */
+export const windAt = (sc: Scenario, time: number) => Math.max(0.05, Math.min(1, fairWindAt(sc, time) + pushesAt(sc, time).wind));

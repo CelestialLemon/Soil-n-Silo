@@ -49,14 +49,23 @@ function spellAt(time: number, len: number, share: number, seed: number) {
   return a + (b - a) * smooth(c - i);
 }
 
-const rainAt = (sc: Scenario, time: number) => Math.max(spellAt(time, SPELL.rain, sc.climate.conditions.rain, sc.seed + 91), pushesAt(sc, time).rain);
+/** How hard the showers fall at a time, 0–1, before a weather event's rain (and before the drizzle under `RAIN_FROM` is dropped). */
+export const showersAt = (sc: Scenario, time: number) => spellAt(time, SPELL.rain, sc.climate.conditions.rain, sc.seed + 91);
+const rainAt = (sc: Scenario, time: number) => Math.max(showersAt(sc, time), pushesAt(sc, time).rain);
+
+/** How hard it rains or snows at a time with no weather event: the showers alone (what the forecast's blocks tell, 3.7). */
+export const fairPrecipAt = (sc: Scenario, time: number) => { const p = showersAt(sc, time); return p >= RAIN_FROM ? p : 0; };
+/** How much the cloudy spells cover at a time, 0–1 (before the cloud of a shower or an event). */
+export const cloudSpellAt = (sc: Scenario, time: number) => spellAt(time, SPELL.cloud, sc.climate.conditions.cloud, sc.seed + 92);
+/** How much of the sky is covered at a time with no weather event: the cloudy spells and the cloud of a shower. */
+export const fairCloudAt = (sc: Scenario, time: number) => Math.max(cloudSpellAt(sc, time), Math.min(1, fairPrecipAt(sc, time) * SHOWER_CLOUD));
 
 /** How hard it rains or snows at a time, 0–1: the showers, and a weather event's rain. */
 export const precipAt = (sc: Scenario, time: number) => { const p = rainAt(sc, time); return p >= RAIN_FROM ? p : 0; };
 
 /** How much of the sky is covered, 0–1: the cloudy spells, the cloud a shower brings and a weather event's. */
 export function cloudAt(sc: Scenario, time: number) {
-  return Math.max(spellAt(time, SPELL.cloud, sc.climate.conditions.cloud, sc.seed + 92), Math.min(1, precipAt(sc, time) * SHOWER_CLOUD), pushesAt(sc, time).cloud);
+  return Math.max(cloudSpellAt(sc, time), Math.min(1, precipAt(sc, time) * SHOWER_CLOUD), pushesAt(sc, time).cloud);
 }
 
 /** How still the air is, 0–1: a calm spell lowers the wind. */

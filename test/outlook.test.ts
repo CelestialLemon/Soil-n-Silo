@@ -8,8 +8,10 @@ import {
 } from '../src/game/outlook.ts';
 import { CAMPAIGN, randomScenario, SANDBOX, sandboxIn, type Scenario } from '../src/game/scenarios.ts';
 import { climateOf, SEASON_IDS } from '../src/game/seasons.ts';
-import { hourAt, sunAt, windAt } from '../src/game/sim/clock.ts';
-import { precipAt } from '../src/game/sim/weather.ts';
+import { BLOCK_HOURS, BLOCK_SPLIT, blockAtTime, type Block } from '../src/game/blocks.ts';
+import { fairWindAt, hourAt, sunAt, windAt } from '../src/game/sim/clock.ts';
+import { CLOUD_DIM, fairCloudAt, fairPrecipAt, precipAt } from '../src/game/sim/weather.ts';
+import { warmthAt, warmthByHour } from '../src/game/warmth.ts';
 import { newGame } from '../src/game/state.ts';
 import { warmthOf } from '../src/game/warmth.ts';
 
@@ -130,6 +132,19 @@ function checkNarrowing(sc: Scenario, prev: Forecast, f: Forecast, label: string
   }
 }
 
+/** Each block lies inside the block that held its hours an hour before, and a block that has begun is told for what is left of it. */
+function checkBlocksNarrowing(prev: Forecast, f: Forecast, label: string) {
+  for (const b of f.blocks) {
+    const p = blockAtTime(prev.blocks, b.start);
+    const name = `${label}: block ${b.start}–${b.end}`;
+    // (A block past where the forecast before reached is new at the far end.)
+    if (b.end <= prev.issued + SLACK || b.start >= prev.blocks[prev.blocks.length - 1].end - SLACK) continue;
+    assert.ok(p, `${name}: no block before`);
+    assert.ok(p.start <= b.start + SLACK && p.end >= b.end - SLACK, `${name}: not inside ${p.start}–${p.end}`);
+    for (const k of ['sun', 'wind', 'precip', 'rain', 'drift'] as const) assert.ok(nested(b[k], p[k]), `${name}: ${k} ${JSON.stringify(b[k])} not inside ${JSON.stringify(p[k])}`);
+  }
+}
+
 /** Every hour of a run's weather (to two hours past its last event). */
 function walk(sc: Scenario, label: string) {
   const last = Math.max(0, ...sc.events.map(endOf)), until = last + 3 * HOUR;
@@ -137,7 +152,7 @@ function walk(sc: Scenario, label: string) {
   for (let t = 0; t <= until; t += HOUR) {
     const f = forecastAt(sc, t);
     checkHonest(sc, f, t, `${label} @${t / HOUR}h`);
-    if (prev) checkNarrowing(sc, prev, f, `${label} @${t / HOUR}h`);
+    if (prev) { checkNarrowing(sc, prev, f, `${label} @${t / HOUR}h`); checkBlocksNarrowing(prev, f, `${label} @${t / HOUR}h`); }
     prev = f;
   }
 }
@@ -386,4 +401,66 @@ test('a hand-placed event with a length the catalogue does not give is still hel
   walk(long, 'long fog');
   const odd: WeatherEvent = { kind: 'coldSnap', strength: 'severe', start: 123.3, length: 77.7 };
   walk({ ...SANDBOX, climate: climateOf('winter'), events: [odd] }, 'odd');
+});
+
+// ---- Blocks of the day (3.7) ----
+
+/** The weather with no event in it, at a moment, as a block holds it. */
+const fairAt = (sc: Scenario, t: number) => ({ sun: 1 - CLOUD_DIM * fairCloudAt(sc, t), wind: fairWindAt(sc, t), precip: fairPrecipAt(sc, t), drift: warmthAt(sc, t) - warmthByHour(sc.climate, hourAt(t)) });
+
+/** Every moment of a block's hours from the issue on (finely: every 0.07 game hour), and every hour that starts in it, is inside its ranges. */
+function checkBlocksHold(sc: Scenario, f: Forecast, label: string) {
+  for (const b of f.blocks) {
+    for (let t = Math.max(b.start, f.issued); t < b.end; t += HOUR * 0.07) {
+      const w = fairAt(sc, t), name = `${label}: block ${b.start}–${b.end} at ${t}`;
+      assert.ok(has(b.sun, w.sun) && has(b.wind, w.wind) && has(b.precip, w.precip) && has(b.drift, w.drift), `${name}: ${JSON.stringify(w)} is outside ${JSON.stringify(b)}`);
+      // An hour from here, as the five-minute samples a projection takes.
+      let wet = 0;
+      for (let k = 0; k < 12; k++) if (fairPrecipAt(sc, t + (k + 0.5) * HOUR / 12) > 0) wet++;
+      assert.ok(has(b.rain, wet / 12), `${name}: the hour's rain ${wet / 12} is outside ${JSON.stringify(b.rain)}`);
+    }
+  }
+}
+
+test('the blocks hold the weather of their hours at every moment, for every commission', () => {
+  const sweep = [...CAMPAIGN, ...Array.from({ length: 24 }, (_, i) => randomScenario(4000 + i * 57, ((i % 3) + 1) as 1 | 2 | 3))];
+  for (const sc of sweep) for (let h = 0; h < 24 * 5; h += 11) checkBlocksHold(sc, forecastAt(sc, h * HOUR), `${sc.id} @${h}h`);
+  // Every season and character, a few days of it.
+  for (const season of SEASON_IDS) {
+    const sc: Scenario = { ...SANDBOX, climate: climateOf(season), seed: 99, events: [] };
+    for (let h = 0; h < 24 * 3; h += 13) checkBlocksHold(sc, forecastAt(sc, h * HOUR), season);
+  }
+});
+
+test('the blocks are six hours three days out, three hours within a day, one hour within six, aligned to the clock', () => {
+  const sc = randomScenario(7, 2), issued = 30 * HOUR, f = forecastAt(sc, issued);
+  const lens = f.blocks.map((b: Block) => Math.round((b.end - b.start) / HOUR));
+  assert.deepEqual([...new Set(lens)].sort(), [1, 3, 6]);
+  let prevEnd = -Infinity;
+  for (const b of f.blocks) {
+    const lead = (b.start - issued) / HOUR, len = (b.end - b.start) / HOUR, clock = hourAt(b.start);
+    assert.ok(b.start >= prevEnd - SLACK, 'in order, not overlapping');
+    prevEnd = b.end;
+    assert.ok(Math.abs(clock / len - Math.round(clock / len)) < 1e-6 || len === 1, `aligned to ${len} h: ${clock}`);
+    // (A block splits by when its parent begins: a six-hour block within 24 h, a three-hour block within 6 h, so the last of its pieces begin a block's length later.)
+    if (len === 6) assert.ok(lead > BLOCK_SPLIT.three, `lead ${lead}`);
+    else if (len === 3) assert.ok(lead > BLOCK_SPLIT.hour && lead <= BLOCK_SPLIT.three + 3, `lead ${lead}`);
+    else assert.ok(lead <= BLOCK_SPLIT.hour + 2, `lead ${lead}`);
+  }
+  const first = f.blocks[0], last = f.blocks[f.blocks.length - 1];
+  assert.ok(first.start <= issued + SLACK && first.end > issued, 'the block in progress comes first');
+  assert.ok(last.end >= issued + BLOCK_HOURS * HOUR - SLACK && last.start < issued + BLOCK_HOURS * HOUR, 'three days are covered');
+});
+
+test('the blocks have no more in them than their ranges: they do not depend on the events', () => {
+  const quiet: Scenario = { ...randomScenario(12, 3), events: [] }, busy: Scenario = { ...quiet, events: eventOn(3, 8, 'gale', 'severe', 30) };
+  assert.deepEqual(forecastAt(quiet, 40 * HOUR).blocks, forecastAt(busy, 40 * HOUR).blocks);
+});
+
+test('a block gets sharper as it nears: its grid steps down and its ranges narrow', () => {
+  const sc = randomScenario(12, 3), noon = timeOf(5, 12);
+  const width = (issued: number) => { const b = blockAtTime(forecastAt(sc, issued).blocks, noon + 0.1)!; return { len: (b.end - b.start) / HOUR, w: b.wind.hi - b.wind.lo, s: b.sun.hi - b.sun.lo }; };
+  const far = width(noon - 60 * HOUR), mid = width(noon - 30 * HOUR), near = width(noon - 10 * HOUR), now = width(noon - 2 * HOUR);
+  assert.deepEqual([far.len, mid.len, near.len, now.len], [6, 6, 3, 1]);
+  assert.ok(far.w >= mid.w - SLACK && mid.w >= near.w - SLACK && near.w >= now.w - SLACK, 'the wind range only narrows');
 });

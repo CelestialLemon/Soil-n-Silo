@@ -1,5 +1,5 @@
 import { DAY_SECONDS, START_HOUR } from '../game/data.ts';
-import { eventName } from '../game/events.ts';
+import { eventName, timeOf } from '../game/events.ts';
 import {
   SUN_BANDS, WIND_BANDS, kindsOf, nameOf, strengthsOf, wordsFor,
   type Conditions, type EventForecast, type Forecast, type Range,
@@ -97,6 +97,44 @@ export function conditionWords(c: Conditions): ConditionWords {
   };
 }
 
+/** A stretch of a day, six hours of the clock, as the blocks of the forecast (3.7) tell it: "06:00–12:00: sunny, light wind, dry". */
+export interface PartView {
+  when: string;
+  /** Null where the stretch has no daylight. */
+  sun: string | null;
+  wind: string;
+  rain: string;
+}
+
+/** What the sky is over, for the stretches the panel splits a day in: the sun's hours (clock hours) and whether the season's precipitation is snow. */
+export interface SkyFacts { rise: number; set: number; snow: boolean }
+
+/** The least and the most of some ranges. */
+const hullOf = (rs: Range[]): Range => ({ lo: Math.min(...rs.map((r) => r.lo)), hi: Math.max(...rs.map((r) => r.hi)) });
+const unit = (r: Range): Range => ({ lo: Math.max(0, Math.min(1, r.lo)), hi: Math.max(0, Math.min(1, r.hi)) });
+
+/**
+ * A day's four six-hour stretches in the words of the forecast's blocks (those not yet over), for the days it tells hour by hour or in
+ * threes and sixes. The blocks hold the weather with no weather event in it: the events are told on their own, so "calm" here can be
+ * a gale that is listed beside it. Facts only.
+ */
+export function dayParts(f: Forecast, day: number, now: number, sky?: SkyFacts): PartView[] {
+  const out: PartView[] = [];
+  for (let q = 0; q < 4; q++) {
+    const from = Math.max(timeOf(day, 6 * q), now), to = timeOf(day, 6 * q + 6);
+    if (to <= from + EPS) continue;
+    const blocks = f.blocks.filter((b) => b.end > from + EPS && b.start < to - EPS);
+    if (!blocks.length) continue;
+    const sun = hullOf(blocks.map((b) => b.sun)), wind = unit(hullOf(blocks.map((b) => b.wind))), rain = hullOf(blocks.map((b) => b.rain));
+    const lit = !sky || (6 * q < sky.set && 6 * q + 6 > sky.rise);
+    out.push({
+      when: span(from, to, now), sun: lit ? bandWords(SUN_BANDS, sun) : null, wind: bandWords(WIND_BANDS, wind),
+      rain: rain.hi <= 0 ? 'dry' : rain.lo > 0 ? (sky?.snow ? 'snow' : 'showers') : sky?.snow ? 'dry to snow' : 'dry to showers',
+    });
+  }
+  return out;
+}
+
 /** One event of a day, as the panel writes it. */
 export interface EventRow {
   id: number;
@@ -173,6 +211,8 @@ export interface DayView {
   low: string;
   high: string;
   conditions: ConditionWords | null;
+  /** Where the forecast tells the day in blocks (today and tomorrow): the day's stretches of six hours, those not yet over. */
+  parts: PartView[];
   events: EventRow[];
 }
 
@@ -200,11 +240,11 @@ export function staleLine(sf: StationForecast): string | null {
  * The forecast as the panel shows it at `now`: the days from today on (the forecast's own days; those past are dropped), each with its
  * events (an event goes in the day it begins, or today where it has begun), the past cut off the windows, and what is over gone.
  */
-export function forecastView(sf: StationForecast, now: number): ForecastView {
+export function forecastView(sf: StationForecast, now: number, sky?: SkyFacts): ForecastView {
   const f: Forecast = sf.forecast, today = slotOf(now).day;
   const days = f.days.filter((d) => d.day >= today).map((d): DayView => ({
     day: d.day, name: dayName(d.day, today), sub: d.day <= today + 1 ? `day ${d.day}` : '',
-    low: degrees(d.warmth.low), high: degrees(d.warmth.high), conditions: d.conditions ? conditionWords(d.conditions) : null, events: [],
+    low: degrees(d.warmth.low), high: degrees(d.warmth.high), conditions: d.conditions ? conditionWords(d.conditions) : null, parts: d.conditions ? dayParts(f, d.day, now, sky) : [], events: [],
   }));
   const rest: EventRow[] = [];
   // In the order the forecast gives: by window.

@@ -1,3 +1,4 @@
+import { blocksAt, cell, type Block } from './blocks.ts';
 import { DAY_SECONDS, START_HOUR } from './data.ts';
 import { allowed, endOf, eventName, EVENTS, hoursOf, timeOf, type EventKind, type Strength, type WeatherEvent } from './events.ts';
 import type { Scenario } from './scenarios.ts';
@@ -135,6 +136,8 @@ export interface Forecast {
   until: number;
   events: EventForecast[];
   days: DayForecast[];
+  /** The near-term conditions block by block (3.7), with no weather event in them: what the projections read. */
+  blocks: Block[];
 }
 
 /** The last whole game hour at or before `time`: when the forecast in force at `time` was issued. */
@@ -157,17 +160,6 @@ const stepAt = <T>(table: readonly (readonly [number, T])[], lead: number): T =>
 
 /** A tiny margin for comparing leads (floating point). */
 const EPS = 1e-9;
-
-/**
- * The cell of the grid of `size` that holds `v`, closed: `[k·size, (k + 1)·size]`. The cell comes from `floor(v · scale)` in whole
- * units, so the cells of sizes that divide each other nest exactly, whatever floating point does to `v`. (`scale` is how many units
- * make 1; `size` is a whole number of units.)
- */
-function cell(v: number, size: number, scale: number): Range {
-  const units = Math.round(size * scale), k = Math.floor(Math.floor(v * scale) / units);
-  // Only floating point's last digit can put `v` outside; the truth is never told apart by this.
-  return { lo: Math.min(k * units / scale, v), hi: Math.max((k + 1) * units / scale, v) };
-}
 
 const clampTo = (r: Range, lo: number, hi: number): Range => ({ lo: Math.min(hi, Math.max(lo, r.lo)), hi: Math.max(lo, Math.min(hi, r.hi)) });
 
@@ -297,6 +289,33 @@ export function cornersOf(e: EventForecast): WeatherEvent[] {
  * the starts and the ends, not one that depends on a length (a flood's length is its end minus its storm's end).
  */
 export function cornerWorlds(f: Forecast, e: EventForecast): WeatherEvent[][] {
+  return worldsFrom(f, e, (start, ends, length) => regionCorners(start, ends, length));
+}
+
+/** The values from `r.lo` to `r.hi` on a lattice of `step` (multiples of it), with both ends. */
+function lattice(r: Range, step: number): number[] {
+  const out = [r.lo];
+  for (let k = Math.floor(r.lo / step + 1e-9) + 1; k * step < r.hi - 1e-9; k++) out.push(k * step);
+  if (r.hi > r.lo + 1e-9) out.push(r.hi);
+  return out;
+}
+
+/**
+ * Like `cornerWorlds`, but at every (start, end) on a lattice of `step` game seconds inside the windows as well (and the corners): the worst
+ * night for a result that is not monotone in when an event begins or ends can lie between the corners, and the lattice narrows the gap. The lattice
+ * is of multiples of `step`, so a window that narrows (it nests) keeps the lattice points it still holds. Worlds may be many: a caller counts them.
+ */
+export function gridWorlds(f: Forecast, e: EventForecast, step: number): WeatherEvent[][] {
+  return worldsFrom(f, e, (start, ends, length) => {
+    const out = regionCorners(start, ends, length), tol = 1e-6;
+    for (const s of lattice(start, step)) for (const t of lattice(ends, step)) {
+      if (t - s >= length.lo - tol && t - s <= length.hi + tol && !out.some(([a, b]) => Math.abs(a - s) < tol && Math.abs(b - t) < tol)) out.push([s, t]);
+    }
+    return out;
+  });
+}
+
+function worldsFrom(f: Forecast, e: EventForecast, pairsOf: (start: Range, ends: Range, length: Range) => [number, number][]): WeatherEvent[][] {
   // `parent` is the event of the world that `from` stands for: each follower is laid after its own.
   const follow = (world: WeatherEvent[], from: EventForecast, parent: WeatherEvent): WeatherEvent[][] =>
     f.events.filter((x) => x.after === from.id).reduce<WeatherEvent[][]>((worlds, next) => worlds.flatMap((w) => {
@@ -311,7 +330,7 @@ export function cornerWorlds(f: Forecast, e: EventForecast): WeatherEvent[][] {
     // The ends of the event that a flood can follow inside its own window.
     const ends = followers.reduce<Range>((r, next) => (next.possible.some((q) => q.strength === strength)
       ? { lo: Math.max(r.lo, next.end.lo - next.length.hi), hi: Math.min(r.hi, next.end.hi - next.length.lo) } : r), e.end);
-    return regionCorners(e.start, ends.lo <= ends.hi ? ends : e.end, e.length).flatMap(([start, end]) => {
+    return pairsOf(e.start, ends.lo <= ends.hi ? ends : e.end, e.length).flatMap(([start, end]) => {
       const own: WeatherEvent = { kind, strength, start, length: end - start };
       return follow([own], e, own);
     });
@@ -362,7 +381,7 @@ function dayForecast(sc: Scenario, day: number, issued: number): DayForecast {
 export function forecastAt(sc: Scenario, issued: number): Forecast {
   const days: DayForecast[] = [];
   for (let d = dayAt(issued); (timeOf(d, NOON) - issued) / HOUR <= FORECAST_HOURS + EPS; d++) days.push(dayForecast(sc, d, issued));
-  return { issued, until: issued + FORECAST_HOURS * HOUR, events: eventForecasts(sc, issued), days };
+  return { issued, until: issued + FORECAST_HOURS * HOUR, events: eventForecasts(sc, issued), days, blocks: blocksAt(sc, issued) };
 }
 
 // ---- Words ----

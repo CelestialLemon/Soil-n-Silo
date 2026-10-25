@@ -6,7 +6,7 @@ import { forecastAt } from '../src/game/outlook.ts';
 import { CAMPAIGN, sandboxIn } from '../src/game/scenarios.ts';
 import type { StationForecast } from '../src/game/station.ts';
 import { ACTIONS, defaultBindings } from '../src/keybindings.ts';
-import { degrees, eventRow, forecastView, hours, remaining, soonRows, span, stamp, staleLine, withArticle } from '../src/ui/forecastWords.ts';
+import { dayParts, degrees, eventRow, forecastView, hours, remaining, soonRows, span, stamp, staleLine, withArticle } from '../src/ui/forecastWords.ts';
 
 const HOUR = DAY_SECONDS / 24;
 const sc = CAMPAIGN.find((c) => c.id === 'c8')!; // a tropical storm on day 3 at 08:00, its flood on day 4 at 20:00, a fog on day 7
@@ -149,4 +149,27 @@ test('the forecast has a key of its own in the panels group', () => {
   const a = ACTIONS.find((x) => x.id === 'forecast')!;
   assert.equal(a.group, 'panels');
   assert.equal(defaultBindings().forecast.length, 1);
+});
+
+test('today and tomorrow are told in stretches of six hours from the forecast\'s blocks, and the rest is not', () => {
+  const issued = timeOf(3, 14), view = forecastView(told(issued), issued, { rise: 6, set: 19, snow: false });
+  const [today, tomorrow] = view.days, last = view.days[view.days.length - 1];
+  assert.equal(today.parts[0].when, '14:00–18:00', 'the stretch under way is told from now');
+  assert.deepEqual(today.parts.map((p) => p.when), ['14:00–18:00', '18:00–24:00']);
+  assert.deepEqual(tomorrow.parts.map((p) => p.when), ['tomorrow 00:00–06:00', 'tomorrow 06:00–12:00', 'tomorrow 12:00–18:00', 'tomorrow 18:00–24:00']);
+  assert.equal(tomorrow.parts[0].sun, null, 'no sun is told of the night');
+  assert.ok(tomorrow.parts[1].sun && tomorrow.parts[1].wind && tomorrow.parts[1].rain);
+  assert.ok(!last.conditions && last.parts.length === 0, 'a day whose sun, wind and rain are not told is not told in stretches either');
+  // The words come from the blocks that overlap the stretch: the least and the most of them.
+  const f = told(issued).forecast, [p] = dayParts(f, 4, issued);
+  const blocks = f.blocks.filter((b) => b.end > timeOf(4, 0) && b.start < timeOf(4, 6));
+  assert.ok(blocks.length >= 1 && p.wind.length > 0);
+});
+
+test('a stretch with no rain in any hour of it is dry, and winter\'s rain is snow', () => {
+  const f = told(timeOf(3, 14)).forecast;
+  const dry = { ...f, blocks: f.blocks.map((b) => ({ ...b, rain: { lo: 0, hi: 0 } })) }, wet = { ...f, blocks: f.blocks.map((b) => ({ ...b, rain: { lo: 0, hi: 0.5 } })) };
+  assert.ok(dayParts(dry, 4, timeOf(3, 14)).every((p) => p.rain === 'dry'));
+  assert.ok(dayParts(wet, 4, timeOf(3, 14)).every((p) => p.rain === 'dry to showers'));
+  assert.ok(dayParts(wet, 4, timeOf(3, 14), { rise: 8, set: 16, snow: true }).every((p) => p.rain === 'dry to snow'));
 });
