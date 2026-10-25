@@ -74,6 +74,11 @@ function radial(s: GameState) {
   return svg('svg', { class: 'cd-chart radial', viewBox: '0 0 600 600', width: 560, height: 560, 'aria-label': 'Power by source, hour by hour, over the last 24 hours' }, ...parts);
 }
 
+/** A range of watts, "15–28 W". */
+const wattsRange = (r: { lo: number; hi: number }) => (dec(r.lo) === dec(r.hi) ? watts(r.lo) : `${dec(r.lo)}–${dec(r.hi)} W`);
+/** A range of game time in hours, "5.7–9.5 h" (or as the one span when it is one). */
+const hoursRange = (r: { lo: number; hi: number }) => { const h = (sec: number) => sec / HOUR_SECONDS; return Math.abs(r.hi - r.lo) < HOUR_SECONDS / 6 ? gameSpan(r.lo) : `${dec(h(r.lo))}–${dec(h(r.hi))} h`; };
+
 /** Tonight's charge until an hour after sunrise, if use stays as it is now: for a usual night of the season without a station, a band over what the forecast allows with one. */
 function tonightCard(s: GameState) {
   const t = tonight(s);
@@ -90,9 +95,9 @@ function tonightCard(s: GameState) {
   return h('div', { class: 'cd-inset tonight' },
     h('div', { class: 'row-head' }, h('span', { class: 'cd-label', style: 'color: var(--tide)' }, 'Tonight'), h('span', { class: 'cd-small' }, `charge, if use stays as it is now · ${t.basis}`)),
     h('div', { class: 'fact3' },
-      h('div', null, h('b', { class: dry.bad ? 'cd-bad' : 'cd-good' }, dry.when), h('small', null, dry.what)),
-      h('div', null, h('b', null, t.dry ? spanOf(t.dry.after, watts) : spanOf({ lo: Math.min(...before.map((p) => p.lo)), hi: Math.min(...before.map((p) => p.hi)) }, (k) => pct(k))), h('small', null, t.dry ? 'short after that, on average' : 'lowest before sunrise')),
-      h('div', null, h('b', null, t.dry ? spanOf(t.dry.short, gameSpan) : clockAt(t.sunrise)), h('small', null, t.dry ? `short, until sunrise at ${clockAt(t.sunrise)}` : 'sunrise'))),
+      h('div', null, h('b', { class: `${dry.bad ? 'cd-bad' : 'cd-good'}${banded ? ' fact' : ''}` }, dry.when), h('small', null, dry.what)),
+      h('div', null, h('b', { class: banded ? 'fact' : '' }, t.dry ? wattsRange(t.dry.after) : spanOf({ lo: Math.min(...before.map((p) => p.lo)), hi: Math.min(...before.map((p) => p.hi)) }, (k) => pct(k))), h('small', null, t.dry ? 'short after that, on average' : 'lowest before sunrise')),
+      h('div', null, h('b', { class: banded ? 'fact' : '' }, t.dry ? hoursRange(t.dry.short) : clockAt(t.sunrise)), h('small', null, t.dry ? `short, until sunrise at ${clockAt(t.sunrise)}` : 'sunrise'))),
     svg('svg', { class: 'cd-chart', viewBox: `-36 -8 ${W + 48} ${H + 34}`, width: '100%' },
       svg('rect', { x: x(nightA), y: 0, width: Math.max(0, x(t.sunrise) - x(nightA)), height: H, class: 'night' }),
       ...[0, 0.5, 1].map((k) => svg('line', { x1: 0, x2: W, y1: y(k), y2: y(k), class: 'grid' })),

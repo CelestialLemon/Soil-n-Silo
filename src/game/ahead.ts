@@ -6,6 +6,7 @@ import type { Scenario } from './scenarios.ts';
 import { CHARACTERS, SEASONS, type Climate } from './seasons.ts';
 import { dayAt, hourAt, sunAt, windAt } from './sim/clock.ts';
 import { CALM_DROP, CLOUD_DIM, clearShare, RAIN_FROM, raining } from './sim/weather.ts';
+import { stationForecast } from './station.ts';
 import type { GameState } from './state.ts';
 import { eventWarmth, RAIN_COOLING, warmthByHour, warmthIn } from './warmth.ts';
 import type { View } from './wind.ts';
@@ -46,7 +47,8 @@ export interface Ahead extends View {
 export type Reading =
   | { kind: 'truth' }
   | { kind: 'usual' }
-  | { kind: 'forecast'; forecast: Forecast };
+  /** The station's forecast; `stale` when no station is renewing it (the label then says what it is from). */
+  | { kind: 'forecast'; forecast: Forecast; stale: boolean };
 
 export const TRUTH: Reading = { kind: 'truth' };
 export const USUAL: Reading = { kind: 'usual' };
@@ -214,7 +216,8 @@ const cache = new WeakMap<Scenario, Map<string, WeatherEvent[][]>>();
  * corner it allows (`cornerWorlds`), combined. Events that begin after `until` can't reach the projection and are left out.
  */
 export function worldsOf(sc: Scenario, f: Forecast, now: number, until: number): WeatherEvent[][] {
-  const at = issueTimeOf(now), key = `${f.issued}|${at}|${until}|${sc.events.length}`;
+  // (The hour the player's forecast was in force: this hour's, or a sandbox forecast renewed at this very moment.)
+  const at = Math.max(issueTimeOf(now), Math.min(f.issued, now)), key = `${f.issued}|${at}|${until}|${sc.events.length}`;
   let byKey = cache.get(sc);
   const hit = byKey?.get(key);
   if (hit) return hit;
@@ -297,8 +300,8 @@ export const spread = (xs: readonly number[]): Range => ({ lo: Math.min(...xs), 
 
 /** The reading of the weather ahead that this game's player has: the station's forecast, or the usual weather without one. */
 export function readingOf(s: GameState): Reading {
-  void s; // (until the weather station: 3.2)
-  return USUAL;
+  const station = stationForecast(s);
+  return station ? { kind: 'forecast', forecast: station.forecast, stale: station.stale } : USUAL;
 }
 
 // ---- Words ----
@@ -317,7 +320,7 @@ export function basisOf(reading: Reading, climate: Pick<Climate, 'season' | 'cha
   if (reading.kind === 'truth') return 'from the weather as it will be';
   if (reading.kind === 'usual') return `for ${usualWords(climate)}`;
   const f = reading.forecast;
-  return f.issued < issueTimeOf(now) - 1e-6 ? `from the forecast of day ${dayAt(f.issued)}, ${clockWords(f.issued)}` : 'from the forecast';
+  return reading.stale || f.issued < issueTimeOf(now) - 1e-6 ? `from the forecast of day ${dayAt(f.issued)}, ${clockWords(f.issued)}` : 'from the forecast';
 }
 
 /** What a projection does not count, as a fact: "a possible storm on day 5 is not counted" (empty where it counts everything the forecast says). */

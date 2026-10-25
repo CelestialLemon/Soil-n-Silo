@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { basisOf, notCounted, possibleIn, TRUTH, USUAL, usualView, usualWords, viewsOf, worldsOf, EASE_HOURS, type Reading } from '../src/game/ahead.ts';
-import { place } from '../src/game/build.ts';
+import { basisOf, notCounted, possibleIn, readingOf, TRUTH, USUAL, usualView, usualWords, viewsOf, worldsOf, EASE_HOURS, type Reading } from '../src/game/ahead.ts';
+import { place, remove } from '../src/game/build.ts';
 import { DAY_SECONDS, POWER, type BuildingId, type CropId } from '../src/game/data.ts';
 import { endOf, eventOn, timeOf, type WeatherEvent } from '../src/game/events.ts';
 import { usualOf } from '../src/game/expected.ts';
@@ -11,6 +11,7 @@ import { CAMPAIGN, randomScenario, SANDBOX, type Scenario } from '../src/game/sc
 import { climateOf } from '../src/game/seasons.ts';
 import { windAt } from '../src/game/sim/clock.ts';
 import { advance } from '../src/game/sim/step.ts';
+import { hasStation } from '../src/game/station.ts';
 import { newGame, type GameState } from '../src/game/state.ts';
 import { dryLine, dryWords } from '../src/ui/format.ts';
 
@@ -43,7 +44,7 @@ function rig(sc: Scenario, time: number, l: Layout): GameState {
   return g;
 }
 
-const forecastOf = (sc: Scenario, time: number): Reading => ({ kind: 'forecast', forecast: forecastAt(sc, issueTimeOf(time)) });
+const forecastOf = (sc: Scenario, time: number): Reading => ({ kind: 'forecast', forecast: forecastAt(sc, issueTimeOf(time)), stale: false });
 const soilThen = (g: GameState, crop: CropId, reading: Reading) => placement(g, 'field', 8, 8, { crop }, reading).facts.find((f) => f.label === 'Soil')!;
 const soilRange = (f: { then?: string }): [number, number] => { const t = f.then ?? ''; return t.includes('–') ? [Number(t.split('–')[0]), Number(t.split('–')[1])] : [Number(t), Number(t)]; };
 
@@ -94,9 +95,9 @@ test('with a station, an event the forecast names is a range; one that is only p
   assert.equal(f.events[0]?.detail, 'family');
   assert.deepEqual(worldsOf(far, f, now, now + 60 * HOUR), [[]], 'a possible storm is not counted');
   const g = rig(far, now, { charge: 1, solar: 0, turbines: 0, looms: 0 });
-  const soil = soilThen(g, 'wheat', { kind: 'forecast', forecast: f });
+  const soil = soilThen(g, 'wheat', { kind: 'forecast', forecast: f, stale: false });
   assert.match(soil.sub, /a possible storm on day 4 is not counted/);
-  assert.equal(possibleIn({ kind: 'forecast', forecast: f }, now + 60 * HOUR).length, 1);
+  assert.equal(possibleIn({ kind: 'forecast', forecast: f, stale: false }, now + 60 * HOUR).length, 1);
   assert.equal(notCounted(USUAL, now + 60 * HOUR), '');
   // The storm does show in a night it reaches.
   const night = timeOf(4, 15), t = tonight(rig(named, night, { charge: 0.7, solar: 1, turbines: 2, looms: 2 }), forecastOf(named, night))!;
@@ -170,8 +171,8 @@ test('two scenarios whose forecasts read the same give the same range', () => {
   const fa = forecastAt(base, issueTimeOf(now)), fb = forecastAt(moved, issueTimeOf(now));
   assert.deepEqual(fa, fb, 'the forecast cannot tell them apart');
   const layout = { charge: 0.7, solar: 1, turbines: 2, looms: 2 };
-  assert.deepEqual(tonight(rig(base, now, layout), { kind: 'forecast', forecast: fa }), tonight(rig(moved, now, layout), { kind: 'forecast', forecast: fb }));
-  assert.deepEqual(soilThen(rig(base, now, layout), 'wheat', { kind: 'forecast', forecast: fa }), soilThen(rig(moved, now, layout), 'wheat', { kind: 'forecast', forecast: fb }));
+  assert.deepEqual(tonight(rig(base, now, layout), { kind: 'forecast', forecast: fa, stale: false }), tonight(rig(moved, now, layout), { kind: 'forecast', forecast: fb, stale: false }));
+  assert.deepEqual(soilThen(rig(base, now, layout), 'wheat', { kind: 'forecast', forecast: fa, stale: false }), soilThen(rig(moved, now, layout), 'wheat', { kind: 'forecast', forecast: fb, stale: false }));
   assert.notDeepEqual(base.events, moved.events, 'though the storms are not the same');
 });
 
@@ -184,7 +185,7 @@ test('the range is one value where nothing the forecast says reaches the project
 
 test('the labels follow: no station, a station, a station out of date', () => {
   const sc = steady('autumn', 5, []), g = rig(sc, timeOf(3, 14), { charge: 0.7, solar: 1, turbines: 1, looms: 1 }), fresh = forecastOf(sc, g.time);
-  const old: Reading = { kind: 'forecast', forecast: forecastAt(sc, timeOf(2, 14)) };
+  const old: Reading = { kind: 'forecast', forecast: forecastAt(sc, timeOf(2, 14)), stale: true };
   assert.equal(usualWords(climateOf('winter')), 'a usual winter');
   assert.equal(usualWords(climateOf('spring', 'wet')), 'a usual wet spring');
   assert.equal(usualWords(climateOf('autumn', 'gales')), 'a usual autumn of gales');
@@ -218,4 +219,42 @@ test('the margins and lens sets stay cheap enough to recompute as the ghost move
   assert.ok(viewsOf(g, reading, NIGHT_MARGINS, g.time + 200).length >= 27);
   assert.ok(endOf(sc.events[0]) > 0);
   void (undefined as unknown as Forecast);
+});
+
+test('the projections follow the station: none, working, out of date, gone', () => {
+  // A calm-free spring valley with a battery on the grid and a station that a turbine runs.
+  const sc: Scenario = { ...SANDBOX, id: 'st', sandbox: false, width: 30, height: 30, credits: 1e6, goals: [], terrain: { soil: 60, soilSpread: 0, water: 'none', forest: 0, rock: 0, relief: 0 },
+    climate: { ...climateOf('spring', 'mild'), conditions: NO_CONDITIONS, warmth: { low: 15, high: 15, drift: 0 } }, events: eventOn(3, 6, 'gale', 'ordinary', 24) };
+  const s = newGame(sc);
+  s.map.fertility.fill(60); s.soilBase.fill(60);
+  const put = (type: BuildingId, x: number, y: number) => { const r = place(s, type, x, y, 0); assert.ok(r.ok, `${type}: ${r.ok ? '' : r.error}`); return r.ok ? r.value.building : null; };
+  const near = (type: BuildingId) => {
+    for (let r = 1; r < 8; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { const q = place(s, type, 11 + dx, 10 + dy, 0); if (q.ok) return q.value.building; }
+    return assert.fail(`no room for a ${type}`);
+  };
+  put('pylon', 11, 10);
+  near('battery'); near('solar'); near('solar');
+  near('turbine');
+  const label = () => tonight(s)!.basis;
+  assert.equal(readingOf(s).kind, 'usual');
+  assert.equal(label(), 'for a usual mild spring');
+  const station = near('station');
+  assert.equal(readingOf(s).kind, 'usual', 'a station that has not renewed the forecast yet tells nothing');
+  advance(s, 3 * HOUR);
+  assert.equal(readingOf(s).kind, 'forecast');
+  assert.equal(label(), 'from the forecast');
+  assert.match(soilThen(s, 'wheat', readingOf(s)).sub, /, from the forecast$/);
+  assert.ok(tonight(s)!.runs > 0);
+  // Cut off from the grid: it keeps the last forecast and says so.
+  const issued = s.forecastIssued!;
+  remove(s, s.buildings.find((b) => b.type === 'pylon')!);
+  advance(s, 2 * HOUR);
+  assert.equal(s.forecastIssued, issued);
+  assert.ok(readingOf(s).kind === 'forecast' && (readingOf(s) as { stale: boolean }).stale);
+  assert.match(soilThen(s, 'wheat', readingOf(s)).sub, /, from the forecast of day 1, /);
+  // The last station gone: the forecast is gone, and the usual weather is back.
+  remove(s, station);
+  assert.ok(!hasStation(s));
+  assert.equal(readingOf(s).kind, 'usual');
+  assert.match(soilThen(s, 'wheat', readingOf(s)).sub, /, in a usual mild spring$/);
 });
