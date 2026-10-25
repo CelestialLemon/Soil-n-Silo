@@ -3,6 +3,7 @@ import type { Flooded } from './flood.ts';
 import type { Flows } from './flows.ts';
 import type { History } from './history.ts';
 import type { Networks } from './power.ts';
+import type { Forecast } from './outlook.ts';
 import type { Log } from './powerlog.ts';
 import type { Roads } from './roads.ts';
 import type { Handoff } from './sim/goods.ts';
@@ -43,6 +44,8 @@ export interface Runtime {
   fleet?: Fleet;
   /** Goods moved and soil health over the last stretch of play (flows.ts). */
   flows?: Flows;
+  /** The forecast the station last gave, for the hour it was issued and the events it was worked out from (station.ts). */
+  station?: { issued: number; events: unknown; n: number; forecast: Forecast };
   /** The hours and nights of the power log (powerlog.ts). */
   powerLog?: Log;
   /** The first step of a rising flood at which each tile floods, for the relief of this version (flood.ts). */

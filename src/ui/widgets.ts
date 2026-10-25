@@ -64,7 +64,7 @@ export function statusLabel(b: { type: Building['type'] }, status: Status, need?
   need = need?.split(' (')[0];
   switch (status) {
     case 'ok':
-      return b.type === 'field' ? 'Growing' : b.type === 'hive' ? 'Making honey' : b.type === 'garage' ? 'Charging trucks' : b.type === 'sprinkler' ? 'Watering'
+      return b.type === 'field' ? 'Growing' : b.type === 'hive' ? 'Making honey' : b.type === 'garage' ? 'Charging trucks' : b.type === 'sprinkler' ? 'Watering' : b.type === 'station' ? 'Forecasting'
         : b.type === 'solar' || b.type === 'turbine' ? 'Making power' : b.type === 'battery' ? 'Connected' : b.type === 'pylon' ? 'Linked' : 'Working';
     case 'idle': return b.type === 'garage' ? 'No truck charging' : b.type === 'solar' ? 'Night' : b.type === 'silo' ? 'Storing' : 'Idle';
     case 'input': return `Waiting for ${need ?? 'goods'}`;

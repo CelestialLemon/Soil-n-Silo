@@ -30,7 +30,7 @@ export function deserialize(json: string | null): Result<GameState> {
   const parsed = tryParseJson(json);
   if (!parsed.ok) return err(`The save isn't JSON: ${parsed.error}`);
   const s = parsed.value as GameState | null;
-  if (s?.version !== 15) return err('The save is from another version (this game reads version 15).');
+  if (s?.version !== 16) return err('The save is from another version (this game reads version 16).');
   if (!complete(s)) return err('The save is broken: its state is incomplete or out of range.');
   if (!validRun(s.run, s.scenario.goals.length, s.scenario.events.length)) return err('The save is broken: its run log is incomplete or out of range.');
   return ok(s);
@@ -100,7 +100,7 @@ function complete(s: GameState): boolean {
     && arr(s.worked) && s.worked.length === m.width * m.height && s.worked.every((w) => w === 0 || w === 1)
     && arr(s.soilBase) && s.soilBase.length === m.fertility.length && s.soilBase.every(num) && !!m.depot && num(m.depot.x) && num(m.depot.y)
     && [s.credits, s.time, s.carry, s.nextId, s.earned, s.initialTrees].every(num) && Math.abs(s.carry) <= TICK
-    && (s.completedAt === null || num(s.completedAt))
+    && (s.completedAt === null || num(s.completedAt)) && (s.forecastIssued === null || (num(s.forecastIssued) && s.forecastIssued >= 0 && s.forecastIssued <= s.time + 1e-6))
     && stock(s.delivered) && stock(s.made) && arr(s.reached) && s.reached.length === s.scenario.goals.length
     && !!st && num(st.since) && arr(st.made) && st.made.length > 0 && st.made.every(counts)
     && !!st.delivered && typeof st.delivered === 'object' && Object.entries(st.delivered).every(([k, v]) => item(k) && arr(v) && v.every(num))

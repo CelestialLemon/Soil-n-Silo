@@ -150,6 +150,12 @@ export class WorldView {
         key += ` ${speed}`;
         geo = () => this.m.turbine[speed];
       }
+      if (b.type === 'station') {
+        // The cups turn with the wind, powered or not: light, moderate or strong.
+        const band = wind < 0.35 ? 0 : wind < 0.7 ? 1 : 2;
+        key += ` ${band}`;
+        geo = () => this.m.station[band];
+      }
       if (b.type === 'battery') {
         // Its charge rings light from the bottom up, one per quarter (any charge at all lights the first).
         const k = b.charge / POWER.battery.capacity, level = k < 0.02 ? 0 : Math.min(4, Math.ceil(k * 4 - 0.02));

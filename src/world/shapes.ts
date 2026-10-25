@@ -135,6 +135,14 @@ const B: Partial<Record<BuildingId, Builder>> = {
       k.boxAt(Math.sin(a) * 0.55, 3.16 + Math.cos(a) * 0.55, 0.24, 0.1, 1.1, 0.03, C.white, { rz: -a, mo: motion.spin(hub, [0, 0, 1], 2.2) });
     }
   },
+  station: (k) => {
+    for (const [x, z] of [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.15], [0.2, 0.15]]) k.box(x, 0, z, 0.05, 0.5, 0.05, C.timber);
+    k.box(-0.1, 0.5, 0, 0.5, 0.4, 0.4, C.white).box(-0.1, 0.9, 0, 0.56, 0.05, 0.46, C.moss).cyl(0.32, 0, 0.1, 0.02, 1.0, C.copper, { seg: 6 });
+    for (let i = 0; i < 3; i++) {
+      const a = i * Math.PI * 2 / 3;
+      k.ball(0.32 + Math.cos(a) * 0.18, 1.0, 0.1 + Math.sin(a) * 0.18, 0.05, C.white, { mo: motion.spin([0.32, 1.0, 0.1], [0, 1, 0], 2.5) });
+    }
+  },
   battery: (k) => {
     k.box(0, 0, 0, 1.8, 0.12, 1.8, C.stoneLight).box(0, 0.12, 0, 1.5, 0.9, 1.1, C.ceramic).box(0, 1.02, 0, 1.6, 0.1, 1.2, C.copper)
       .box(-0.4, 0.3, 0.56, 0.4, 0.5, 0.02, C.glass, { flag: FLAG.EMISSIVE }).box(0.4, 0.3, 0.56, 0.4, 0.5, 0.02, C.glass, { flag: FLAG.EMISSIVE });

@@ -18,6 +18,8 @@ export interface Models {
   buildings: Record<BuildingId, Look>;
   /** Turbine rotors: standing still, then at three wind speeds. */
   turbine: Geo[];
+  /** The weather station with its anemometer turning at three wind speeds (light, moderate, strong). */
+  station: Geo[];
   /** Batteries with 0 to 4 charge rings lit. */
   battery: Geo[];
   /** Bars for drawing power: one per network colour (`NET_COLOURS`), then the build preview's. */
@@ -38,7 +40,7 @@ const FILES: Partial<Record<BuildingId, string>> = {
   silo: 'silo', garage: 'garage',
   sprinkler: 'sprinkler', coop: 'coop_solar', hive: 'beehive', composter: 'composter',
   mill: 'mill_electric', press: 'oil_press', spinner: 'spinner', loom: 'loom', bakery: 'bakery', cannery: 'cannery',
-  solar: 'solar_panel', turbine: 'wind_turbine', wheel: 'water_wheel', battery: 'battery', digester: 'digester', pylon: 'pylon',
+  solar: 'solar_panel', turbine: 'wind_turbine', wheel: 'water_wheel', battery: 'battery', digester: 'digester', pylon: 'pylon', station: 'weather_station',
   sapling: 'sapling', depot: 'depot',
 };
 
@@ -129,6 +131,12 @@ export async function loadModels(season: Season): Promise<Models> {
     return collect(turbineRoot, () => true, (m) => { const mo = movingPartMotion(m); return mo && mo.anim ? { ...mo, anim: [...(mo.anim as number[]).slice(0, 3), speed] as [number, number, number, number] } : mo; }, true).build();
   });
 
+  // The weather station's cups turn with the wind whether it is powered or not: three speeds, light, moderate and strong (and every gale).
+  const stationRoot = roots.get('weather_station');
+  const station = [1.5, 3.5, 6].map((speed) => stationRoot
+    ? collect(stationRoot, () => true, (m) => { const mo = movingPartMotion(m); return mo && mo.anim ? { ...mo, anim: [...(mo.anim as number[]).slice(0, 3), speed] as [number, number, number, number] } : mo; }, true).build()
+    : standIn('station').running);
+
   // A battery's charge rings (`charge_<n>`) light from the bottom up: level k shows rings 0..k-1.
   const batteryRoot = roots.get('battery');
   const battery = [0, 1, 2, 3, 4].map((level) => batteryRoot
@@ -167,7 +175,7 @@ export async function loadModels(season: Season): Promise<Models> {
   for (const id of ITEM_IDS) items[id] = itemShape(id);
 
   return {
-    buildings, turbine, battery, crops, items, rocks, trees,
+    buildings, turbine, station, battery, crops, items, rocks, trees,
     wires: [...NET_COLOURS, GHOST_WIRE].map(bar), routes: ROUTE_COLOURS.map(bar),
     truck: truckRoot ? collect(truckRoot).build() : truck(),
     frames: { ok: [1, 2, 3].map((n) => frame(n, 0xd8ffb0)), bad: [1, 2, 3].map((n) => frame(n, 0xff5040)) },
@@ -178,7 +186,7 @@ export async function loadModels(season: Season): Promise<Models> {
 export function allGeometries(m: Models): Geo[] {
   // Each once: some are shared (a bush's variants, stand-ins), and the palette recolours every geometry it is given.
   return [...new Set([
-    ...Object.values(m.buildings).flatMap((l) => [l.idle, l.running]), ...m.turbine, ...m.battery, ...m.wires, ...m.routes, ...Object.values(m.crops).flat(), ...Object.values(m.items),
+    ...Object.values(m.buildings).flatMap((l) => [l.idle, l.running]), ...m.turbine, ...m.station, ...m.battery, ...m.wires, ...m.routes, ...Object.values(m.crops).flat(), ...Object.values(m.items),
     ...Object.values(m.trees).flat(), ...m.rocks, m.truck, ...m.frames.ok, ...m.frames.bad,
 
   ])];

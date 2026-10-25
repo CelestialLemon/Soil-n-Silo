@@ -167,7 +167,7 @@ function describeHold(s: GameState, b: Building): string {
 export function describeStatus(s: GameState, b: Building): string {
   const def = BUILDINGS[b.type];
   // Water on its ground (said at once, though its status is the last step's: the water may have just come, or a bank gone).
-  if (floodHolds(s, b)) return b.type === 'field' ? `Under water: the growing ${CROPS[b.crop].name.toLowerCase()} is lost, the field starts again once it drains` : 'Under water: stopped until it drains. Nothing is lost';
+  if (floodHolds(s, b)) return b.type === 'field' ? `Under water: the growing ${CROPS[b.crop].name.toLowerCase()} is lost, the field starts again once it drains` : b.type === 'station' ? 'Under water: stopped until it drains. The forecast keeps what it last said' : 'Under water: stopped until it drains. Nothing is lost';
   switch (b.status) {
     case 'input': {
       const lack = isMachine(b) ? missing(b, recipeOf(b)) : null;
@@ -178,7 +178,9 @@ export function describeStatus(s: GameState, b: Building): string {
       if (b.need === 'compost' && b.type === 'composter' && !compostWelcome(s, b)) return 'Full of compost: no field needs any. Sell it at the depot or let fields draw it down';
       return `Output blocked: nowhere for ${b.need ?? 'its goods'} to go`;
     case 'power': return networkOf(s, b) ? `No power: the network is out of power${b.type === 'garage' ? ', so its trucks can\'t charge' : ''}` : 'No power: not in reach of a pylon';
-    case 'lowpower': return `Low power: ${b.type === 'garage' ? 'trucks charging' : 'running'} at ${Math.round(shareOf(s, b) * 100)}%`;
+    case 'lowpower':
+      if (b.type === 'station') return `Low power: ${Math.round(shareOf(s, b) * 100)}% of the 3 W, too little to renew the forecast`;
+      return `Low power: ${b.type === 'garage' ? 'trucks charging' : 'running'} at ${Math.round(shareOf(s, b) * 100)}%`;
     case 'nolink': return 'Not connected: no pylon in reach';
     case 'noroad': return 'No road: trucks can\'t reach it. Leave an open tile beside it, and a way there from the garage';
     case 'noroute': return `Full of ${b.need}: no route with trucks or building next door takes it`;
@@ -205,6 +207,7 @@ export function describeStatus(s: GameState, b: Building): string {
         const mine = s.trucks.filter((t) => t.garage === b.id), k = mine.filter((t) => t.phase === 'parked' || t.phase === 'charge').length;
         return `Charging ${k} of ${mine.length} truck${mine.length > 1 ? 's' : ''}`;
       }
+      if (b.type === 'station') return 'Renewing the forecast every hour';
       if (b.type === 'pylon') {
         const net = must(networks(s).of.get(b.id), 'network'), k = net.pylons.length - 1, n = net.members.length;
         return `${k ? `Linked to ${k} other pylon${k > 1 ? 's' : ''}` : 'Linked to no other pylon'} · its network powers ${n} building${n === 1 ? '' : 's'}`;

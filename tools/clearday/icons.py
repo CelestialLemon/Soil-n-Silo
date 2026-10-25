@@ -152,6 +152,10 @@ icon('trash', 'clay', '<rect x="14" y="18" width="36" height="40" rx="4" fill="@
   '<path class="ln" d="M24 26 V50 M32 26 V50 M40 26 V50" stroke="@c" stroke-width="3"/>')
 icon('menu', 'ui', '<rect x="10" y="14" width="44" height="7" rx="3.5" fill="@a"/>', '<rect x="10" y="29" width="44" height="7" rx="3.5" fill="@a"/>', '<rect x="10" y="44" width="44" height="7" rx="3.5" fill="@a"/>')
 
+icon('station', 'white', '<path class="ln" d="M16 50 V60 M38 50 V60" stroke="#8c5f34" stroke-width="4"/>', '<rect x="8" y="28" width="38" height="22" rx="2" fill="@a"/>',
+  '<path class="ln" d="M12 35 H42 M12 40 H42 M12 45 H42" stroke="@b" stroke-width="2.5"/>', '<rect x="6" y="23" width="42" height="6" rx="2" fill="#78a94a"/>',
+  '<path class="ln" d="M54 60 V18" stroke="#c9673f" stroke-width="3"/>', '<circle cx="54" cy="12" r="3" fill="#c9673f"/>',
+  '<ellipse cx="46" cy="12" rx="4.5" ry="3" fill="@a"/>', '<ellipse cx="62" cy="12" rx="4.5" ry="3" fill="@a"/>', '<ellipse cx="54" cy="5" rx="3" ry="3" fill="@b"/>')
 
 ORDER = list(I.keys())
 COLS = 10

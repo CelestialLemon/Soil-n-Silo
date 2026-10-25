@@ -1,5 +1,5 @@
 import { BUILDINGS, ITEMS, type BuildingId, type ItemId } from '../game/data.ts';
-import { hourAt } from '../game/sim/clock.ts';
+import { dayAt, hourAt } from '../game/sim/clock.ts';
 
 // Numbers and words as the interface writes them. Two clocks: play time (minutes of play, `13:00`, "5 min ago") for anything
 // measured over minutes of play, and the time of day (`dusk 20:00`) for the in-game hours. Power in watts, never energy.
@@ -23,6 +23,9 @@ export function clock(hour: number) {
 }
 /** The time of day at a moment of play. */
 export const clockAt = (time: number) => clock(hourAt(time));
+
+/** A moment of play as the day and the time of day: "day 4, 14:00". */
+export const dayClock = (time: number) => `day ${dayAt(time)}, ${clockAt(time)}`;
 
 /** A number with thousands separators. */
 export const num = (n: number) => Math.round(n).toLocaleString('en-GB');
