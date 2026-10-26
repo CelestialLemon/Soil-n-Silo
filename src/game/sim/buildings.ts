@@ -9,7 +9,7 @@ import { derived, isGuarded, isPollinated, sprinklersOf } from './layout.ts';
 import { changeSoil, fieldFertility, fieldGroundPace, harvestOf } from './soil.ts';
 import { ingName, recipeOf, missing, outputsFit, consume, made } from './goods.ts';
 import { shareOf } from './energy.ts';
-import { raining } from './weather.ts';
+import { waterOf } from '../wet.ts';
 
 // Buildings: one step of each machine, field and hive.
 
@@ -17,7 +17,7 @@ import { raining } from './weather.ts';
 export function fieldPace(s: GameState, f: FieldBuilding, outside = warmthOf(s)) {
   // A greenhouse grows in its own warmth (heated by power, see runGreenhouse), and the rain does not reach it.
   const warmth = f.type === 'greenhouse' ? f.inside ?? insideWarmth(CROPS[f.crop], outside) : outside;
-  const wet = touchesWater(s, f.x, f.y) || (f.type === 'field' && raining(s.scenario, s.time)) ? 1 : sprinklersOf(s, f).reduce((m, sp) => Math.max(m, shareOf(s, sp)), 0);
+  const wet = touchesWater(s, f.x, f.y) ? 1 : waterOf(s, f.type === 'field', f.x, f.y, sprinklersOf(s, f).reduce((m, sp) => Math.max(m, shareOf(s, sp)), 0));
   const p = paceOf(wet, fieldFertility(s, f), CROPS[f.crop], warmth, fieldGroundPace(s, f));
   // A late frost on the field takes the crop as fast as it grows: no pace at all while it bites (it does not reach a greenhouse).
   return { pace: f.type === 'field' && frostTakes(s, f) ? 0 : p.pace, water: wet, soil: p.bySoil, ground: p.byGround, warmth, byWarmth: p.byWarmth };

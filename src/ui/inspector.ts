@@ -1,3 +1,4 @@
+import { groundWaterNote } from '../game/wet.ts';
 import {
   addStop, buyTruck, dumpCargo, newRoute, priceOf, remove, sellTruck, setCrop, setRecipe, setTruckRoute, truckPrice, type Action,
 } from '../game/build.ts';
@@ -199,6 +200,7 @@ export class Inspector {
         stat('Soil fertility', () => `${Math.round(fieldFertility(s, b))}`);
         stat('Ground', () => { const g = groundFact(CROPS[b.crop], fieldGround(s, b)); return `${g.value}: ${g.sub}`; });
         stat('Growth pace', () => { const p = fieldPace(s, b); return `${pct(p.pace)} · water ${pct(p.water)}, soil ×${p.soil.toFixed(2)}, ground ×${p.ground.toFixed(2)}, warmth ${pct(p.byWarmth)}`; });
+        if (!under && groundWaterNote(s, true, b.x, b.y)) stat('Ground and water', () => groundWaterNote(s, true, b.x, b.y) ?? '');
         if (under) stat('Warmth', () => `${insideFact(insideNow(s, b), warmthOf(s), networkOf(s, b) ? wants(s, b) * shareOf(s, b) : 0)}: heated to ${CROPS[b.crop].comfort.low}°C when the outside is colder, vented above ${CROPS[b.crop].comfort.high}°C. Without the power it cools toward the outside. Frost, gales, dust and heat waves do not reach it; a flood does`);
         else {
           stat('Warmth', () => `${Math.round(warmthOf(s))}°C: ${warmthFact(CROPS[b.crop], warmthOf(s)).text.replace(/^[^:]*: /, '')} (comfortable ${CROPS[b.crop].comfort.low}–${CROPS[b.crop].comfort.high}°C)`);

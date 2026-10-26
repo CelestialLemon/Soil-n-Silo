@@ -1013,7 +1013,7 @@ It is laid in `layGround` as a score for each kind (a feature of the land times 
 (silt: a wider, stronger floodplain), which replaces the old `soil` and `soilSpread` settings. A plain valley is about 55–60% loam, 5–15% silt, 10–15% clay, 10–13% sand and 8% stony with a river, 8–10% more stony and no silt beside still water; a hilly one has about
 three times the stony of a flat one by itself (the height). The country beyond the edge is laid by the same rules, so the ground on the map does not depend on how much country is drawn (the land is always laid with 12 tiles of country, then cropped).
 **Rocks** lie mostly on stony ground (a stony tile adds `ROCK_STONY` to a rock's pull, on top of the hills and cliffs; about 70% of rocks lie on ground that is stony without them), and the ground under a rock is stony: clearing the rock leaves it so.
-Fertility reads the ground (5.1) and so do the crop rules (5.2, below, and **Ground in the crop rules** under Farming); the water rules (5.3) and the mud and the dust (5.4, below) are the weather's side of it.
+Fertility reads the ground (5.1) and so do the crop rules (5.2, below, and **Ground in the crop rules** under Farming); the water rules (5.3, below) and the mud and the dust (5.4, below) are the weather's side of it.
 
 **Mud and dust on the ground (5.4, `src/game/mud.ts`, `src/game/dust.ts`).** Ground meets the trucks and the weather through one trait each; the numbers are starting points kept in `TRUCK.mudSpeed`, `TRUCK.mudHours` and `DUST_BY_GROUND`.
 
@@ -1026,6 +1026,20 @@ Fertility reads the ground (5.1) and so do the crop rules (5.2, below, and **Gro
 
 The mix by commission: **Rocky** (12% rock) adds stony 0.6 (about 30% stony, from 8%); **Poor soil** adds sand 1.0 and stony 0.8 (about 40% loam, 19% sand, 27% stony, mean fertility about 15 lower); **Hilly** is stonier by its height alone; **Wooded** and **Flat** add nothing.
 Tired Soil: sand 0.9, stony 0.9. Riverlands: silt 1.2, a wide floodplain (about 25%). Windy Ridge: stony 0.8 on top of its relief 0.9. Harvest Festival: sand 0.3, stony 0.3. The others are plain valleys. The sandbox is a plain valley.
+
+**Ground and water (5.3, `src/game/wet.ts`).** The ground meets the rain and the heat wave through one trait each; nothing is saved (whether it rained in the last day follows from the seeded weather).
+- **Rain** waters every open field while it falls, as before (snow doesn't). **Clay holds water:** a clay tile stays watered for **`CLAY_HOLD` = one game day (240 s) after the rain stops** (so in a rainy season clay is rarely dry), and with no rain held it is
+  **half watered (`CLAY_HEAT` = 0.5) while a heat wave is under way**, where every other ground is unwatered. **Sand drains:** it is watered only while it rains, with no lingering wetness. That is what loam, silt and stony get as well, so sand has no water rule beyond
+  the plain one: its trait is the contrast with clay (and with the poorness the ground already gives it), which the cards say.
+- A field's water is the **mean over its nine tiles** of how watered each is, as its fertility is the mean of its tiles'. A tile gets at least its sprinklers' share of power (`max(share, clay's own water)`); water at the field's edge still waters the whole field. A heat wave's half-watering of clay is the event's: `heatWaveAt`, any heat wave under way.
+  The pace is the one that follows (`waterPace`: dry fields grow at ×0.4, nearly stop in a heat wave): a half-watered field loses half of what an unwatered one does.
+- **A greenhouse** is out of the rain, so none of this reaches it: its water is its sprinklers'.
+- **Whether it rained** is looked up on whole game hours back from now, down to the start of the commission (nothing before the commission counts), and found in `lastRainBefore`, with a one-entry cache per tick.
+- **Shown:** a field's Water fact on the placement card (and the hover) says what the ground does with the rain ("clay under 4 of 9 tiles holds the rain for a day and is half watered in a heat wave", "sand under 2 of 9 tiles drains: watered only while it rains"), with the field's water in percent
+  when clay holds some now; the inspector's **Ground and water** row says the same on a field with clay or sand under it; a field short of water says how much it has ("only 50% of its water") rather than "no water".
+- **Projections** (the soil ahead, `forecast.ts`) keep when it last rained, hour by hour: the slow run (least rain) takes the rain at the start of each hour and ended as soon as it can have, the fast run (most rain) any time in it and lasting to its end; the rain
+  known so far comes from the seeded past (the player has seen it). Heat is read from the view's events at the middle of the hour. Checked by `test/groundWater.test.ts` against the sim (a card made at any hour of a clay field's hold, or a heat wave's end, tells the soil the sim leaves it with, and a
+  forecast's range holds it).
 
 Beyond the edge the country carries on, a shade duller: the river, a track climbing out from the depot, woods rising
 into higher hills above the map's height limit. It is only scenery. Trees are oak, birch, pine, willow, poplar and apple,
@@ -1563,6 +1577,7 @@ all still about 1.4 times the bot's time, so none changed.)
 Ground (5.1, 2026-10-27): the commission's soil is no longer a setting, so the bot's flat map takes the mean fertility of the commission's own ground within 18 tiles of the depot (where its layout stands; `FARM_REACH` in `tools/bot.ts`): First Light 58, Morning Bread 55, Windy Ridge 57, Linen 57, Long Nights 54, Tired Soil 38 (it was 28), Riverlands 56 and Harvest Festival 50 (it was 50); the rest was 60. The bot's times before and after: First Light 15.5 / 15.8, Morning Bread 32.6 / 38.0 (its neighbours layout 30.1 / 30.5),
 Windy Ridge 39.6 / 41.1, Linen for the Looms 29.4 / 30.3, Long Nights 45.9 / 48.4, Tired Soil 29.5 / 25.9, Riverlands 37.6 / 39.2 and Harvest Festival 37.5 / 37.5. Targets that moved to keep about 1.4 times: Morning Bread 45 to 50 minutes and Tired Soil 40 to 35 (Tired Soil's old soil 28 was poorer than the ground round its depot, which only half-lies on sand and stony); the others stand.
 Windy Ridge's gale moved from day 7 to day 8: with the slower farm the second pair of turbines stood a minute after the first gale. Random commissions' factors were measured again (`PAR_FACTOR`, above): spring gales and high river 1.25 (were 1.2), spring stormy 1.3 (1.25), summer mild and wet and stormy 1.1 (1.15), summer dry 1.25 (1.3), autumn mild 1.2 (1.15), winter gales 2.55 (2.65) and hard 3.2 (3.35).
+Ground and water (5.3, 2026-10-27): the bot's flat map keeps its commission's own ground, so clay round the depot moves the times a little; no time moved by more than 1.5 minutes (Windy Ridge 41.05 / 41.3, Riverlands 39.2 / 37.8; the others to the second), and every target still holds at about 1.3 to 1.4 times, so none changed. See the study of random commissions' factors in the PR.
 Bees in winter (4.4): no bot layout built a greenhouse then, so no bot time or target changed; Long Nights' came in 4.6 (below).
 
 ![The level select](images/menu.png)
