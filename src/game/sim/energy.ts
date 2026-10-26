@@ -1,4 +1,4 @@
-import { BUILDINGS, POWER, TICK, TRUCK, type BuildingId } from '../data.ts';
+import { BUILDINGS, CROPS, POWER, TICK, TRUCK, drawsPower, type BuildingId } from '../data.ts';
 import { pushesAt } from '../events.ts';
 import { floodHolds } from '../flood.ts';
 import { panelShare } from '../snow.ts';
@@ -9,13 +9,14 @@ import { exposureOf, rainWaters, runsInFrost, wattsOf } from './layout.ts';
 import { recipeOf, missing, outputsFit } from './goods.ts';
 import { runtimeOf } from '../runtime.ts';
 import { turbineShare, type View } from '../wind.ts';
+import { heatNeed, warmthOf } from '../warmth.ts';
 import { daylight } from './clock.ts';
 
 // Power: what each building wants and makes, how each network balances, and the watts garages want for charging.
 
 /** The share of the power it wanted that a building got last step (1 for buildings that need none). */
 export function shareOf(s: GameState, b: Building) {
-  if (!BUILDINGS[b.type].power) return 1;
+  if (!drawsPower(b.type)) return 1;
   return runtimeOf(s).shares?.get(b.id) ?? 0;
 }
 
@@ -41,6 +42,8 @@ export function sharesIfRunning(s: GameState, sprinklers: readonly Building[], r
 /** Watts a building wants this step. */
 export function wants(s: GameState, b: Building): number {
   const def = BUILDINGS[b.type];
+  // A greenhouse draws what holding its crop's warmth takes against the outside (a flooded one is stopped).
+  if (b.type === 'greenhouse') return floodHolds(s, b) ? 0 : heatNeed(CROPS[b.crop], warmthOf(s));
   if (!def.power) return 0;
   if (b.type === 'sprinkler') return rainWaters(s, b) ? 0 : wattsOf(s, b); // open fields are watered by the rain
   if (b.type === 'station') return floodHolds(s, b) ? 0 : def.power; // a drowned station is stopped: it draws nothing

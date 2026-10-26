@@ -81,6 +81,8 @@ export interface FieldBuilding extends BuildingBase {
   harvest?: CropId;
   growth: number;
   stored: number;
+  /** A greenhouse's warmth in °C (see warmth.ts); not set until its first step, when it starts at the warmth full power would hold. Not in an open field. */
+  inside?: number;
 }
 
 export interface HiveBuilding extends BuildingBase {
@@ -148,7 +150,7 @@ export interface Stats {
 export const STAT_BUCKET = 10, STAT_BUCKETS = 7;
 
 export interface GameState {
-  version: 17;
+  version: 18;
   scenario: Scenario;
   map: MapData;
   /**
@@ -189,7 +191,7 @@ export interface GameState {
 export function newGame(sc: Scenario): GameState {
   const map = generateMap(sc);
   const s: GameState = {
-    version: 17, scenario: { ...sc, events: sc.events.map((e) => ({ ...e })) }, map, worked: map.terrain.map(() => 0), soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
+    version: 18, scenario: { ...sc, events: sc.events.map((e) => ({ ...e })) }, map, worked: map.terrain.map(() => 0), soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
     buildings: [], routes: [], trucks: [], nextId: 1, credits: sc.credits, time: 0, carry: 0, delivered: {}, earned: 0,
     stats: { since: 0, made: [{}], delivered: {} }, reached: sc.goals.map(() => false), completedAt: null, made: {}, run: newRunLog(),
     chosen: { crop: 'wheat', recipes: {} }, forecastIssued: null,

@@ -2,7 +2,7 @@ import {
   addStop, buyTruck, dumpCargo, newRoute, priceOf, remove, sellTruck, setCrop, setRecipe, setTruckRoute, truckPrice, type Action,
 } from '../game/build.ts';
 import {
-  BUILDINGS, CATEGORIES, CROP_IDS, CROPS, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, OUTPUT_BATCHES, POLLINATION_BONUS, POWER, recipesFor, SILO, TRUCK,
+  BUILDINGS, CATEGORIES, CROP_IDS, CROPS, drawsPower, FIELD, GREENHOUSE, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, OUTPUT_BATCHES, POLLINATION_BONUS, POWER, recipesFor, SILO, TRUCK,
   type Ingredient, type ItemId,
 } from '../game/data.ts';
 import { FLEET_SECONDS, truckTime } from '../game/fleet.ts';
@@ -19,7 +19,7 @@ import { fieldPace, flowersNear } from '../game/sim/buildings.ts';
 import { dustComes, dustNote } from '../game/dust.ts';
 import { hollowNote } from '../game/frost.ts';
 import { pushesAt } from '../game/events.ts';
-import { beesNow, beesOut, henFact, insideFact, shadeFact, warmthFact, warmthOf } from '../game/warmth.ts';
+import { beesNow, beesOut, henFact, insideFact, insideNow, shadeFact, warmthFact, warmthOf } from '../game/warmth.ts';
 import { runtimeOf } from '../game/runtime.ts';
 import { FAULT_WORDS, stationForecast, stationFault, stationsOf } from '../game/station.ts';
 import { isStop, routeOf, routesAt } from '../game/sim/trucks.ts';
@@ -64,6 +64,7 @@ export function powerWords(type: Building['type']) {
   if (type === 'sprinkler') return `${POWER.sprinklerNearWater}–${SPRINKLER_MOST} W`;
   if (type === 'garage') return `${TRUCK.chargeRate} W a truck charging`;
   if (d.power) return `${d.power} W while working`;
+  if (d.heated) return `${GREENHOUSE.loss} W for each °C the outside is below its crop's warmth`;
   if (type === 'solar') return `up to ${POWER.solar} W`;
   if (type === 'turbine') return `up to ${Math.round(TURBINE_MOST)} W`;
   if (type === 'wheel') return `${POWER.wheel} W at 1 m/s, steady`;
@@ -195,7 +196,7 @@ export class Inspector {
         stat('Growth', () => pct(b.growth)); bar(() => b.growth);
         stat('Soil fertility', () => `${Math.round(fieldFertility(s, b))}`);
         stat('Growth pace', () => { const p = fieldPace(s, b); return `${pct(p.pace)} · water ${pct(p.water)}, soil ×${p.soil.toFixed(2)}, warmth ${pct(p.byWarmth)}`; });
-        if (under) stat('Warmth', () => `${insideFact(CROPS[b.crop], warmthOf(s))}: held at ${CROPS[b.crop].comfort.low}°C or the outside warmth if warmer, vented above ${CROPS[b.crop].comfort.high}°C. Frost, gales, dust and heat waves do not reach it; a flood does`);
+        if (under) stat('Warmth', () => `${insideFact(insideNow(s, b), warmthOf(s), networkOf(s, b) ? wants(s, b) * shareOf(s, b) : 0)}: heated to ${CROPS[b.crop].comfort.low}°C when the outside is colder, vented above ${CROPS[b.crop].comfort.high}°C. Without the power it cools toward the outside. Frost, gales, dust and heat waves do not reach it; a flood does`);
         else {
           stat('Warmth', () => `${Math.round(warmthOf(s))}°C: ${warmthFact(CROPS[b.crop], warmthOf(s)).text.replace(/^[^:]*: /, '')} (comfortable ${CROPS[b.crop].comfort.low}–${CROPS[b.crop].comfort.high}°C)`);
           if (hollowNote(s, b)) stat('Frost hollow', () => hollowNote(s, b) ?? '');
@@ -259,8 +260,8 @@ export class Inspector {
       stat('Hens', () => henFact(s.scenario, warmthOf(s), coopShade(s, b.x, b.y), pushesAt(s.scenario, s.time).hens).text.replace(/^Hens, /, ''));
       stat('Shade', () => shadeFact(coopTrees(s, b.x, b.y)));
     }
-    if (BUILDINGS[b.type].power) stat('Power', () => { const net = networkOf(s, b), w = wants(s, b); return !net ? 'not connected' : w ? `using ${watts(w)} · getting ${pct(shareOf(s, b))}` : 'none right now'; });
-    if (BUILDINGS[b.type].power || BUILDINGS[b.type].grid) {
+    if (drawsPower(b.type)) stat('Power', () => { const net = networkOf(s, b), w = wants(s, b); return !net ? 'not connected' : w ? `using ${watts(w)} · getting ${pct(shareOf(s, b))}` : 'none right now'; });
+    if (drawsPower(b.type) || BUILDINGS[b.type].grid) {
       const dot = h('i', { class: 'dot' }), v = h('span');
       lines.push(() => {
         const net = BUILDINGS[b.type].grid === 'link' ? networks(s).of.get(b.id) ?? null : networkOf(s, b);

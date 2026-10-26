@@ -67,8 +67,6 @@ const LEVERS = {
   ice: { neutral: 0, mix: 'max' },
   /** A multiple of the hens' laying. */
   hens: { neutral: 1, mix: 'mul' },
-  /** A multiple of the heat a greenhouse needs: the hook for the greenhouse (phase 4), which doubles its heating in a cold snap. Nothing reads it yet. */
-  heating: { neutral: 1, mix: 'mul' },
 } as const satisfies Record<string, { neutral: number; mix: 'mul' | 'add' | 'max' }>;
 
 export type Lever = keyof typeof LEVERS;
@@ -237,8 +235,8 @@ export const EVENTS: Record<EventKind, EventInfo> = {
     odds: { hard: 2.5, gales: 1, mild: 0.3 }, look: { cloud: 0.3 },
     shape: 'flake', holds: 'water wheels on frozen river, hens laying slowly',
     // The whole warmth curve drops and the hens slow; the river freezes over at its quiet stretches (ice.ts), though not at a fall;
-    // a greenhouse (phase 4) needs twice the heat. A severe snap is colder and the hens all but stop.
-    push: { ordinary: { warmth: -8, ice: 1, hens: 0.6, heating: 2 }, severe: { warmth: -13, ice: 1, hens: 0.35, heating: 3 } },
+    // a greenhouse needs more heat for it, with the outside colder (no lever of its own). A severe snap is colder and the hens all but stop.
+    push: { ordinary: { warmth: -8, ice: 1, hens: 0.6 }, severe: { warmth: -13, ice: 1, hens: 0.35 } },
   },
   blizzard: {
     name: 'Blizzard', hours: [24, 48], seasons: { winter: 1 }, only: ['hard'], severe: true, lingers: 16,

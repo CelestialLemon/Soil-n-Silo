@@ -553,7 +553,6 @@ read them through `pushesAt(scenario, time)`, so an effect that is a lever is on
 | `bees` | multiplying | `keepingBeesIn`: a multiple of how far the bees fly; below half they stay in |
 | `ice` | the highest | `makes`: how far the river's quiet stretches are frozen over (0–1); a wheel not at a fall makes `1 − ice` of what it would |
 | `hens` | multiplying | `coopPace`: a multiple of the hens' laying |
-| `heating` | multiplying | nothing yet: a greenhouse's heat demand, doubled by a cold snap (phase 4's hook) |
 
 An event builds in over 1.5 game hours (15 s of play) and fades out over the last 1.5, so each push is blended from neutral by
 the event's `intensityAt`, 0 to 1 (events under way together combine their pushes). An effect that is more than a lever (the
@@ -638,7 +637,7 @@ see the playtest below).
 
 | Event | Ordinary | Severe |
 | --- | --- | --- |
-| Cold snap | `warmth` −8°C, `ice` 1, `hens` ×0.6, `heating` ×2 | `warmth` −13°C, `hens` ×0.35, `heating` ×3 |
+| Cold snap | `warmth` −8°C, `ice` 1, `hens` ×0.6 | `warmth` −13°C, `hens` ×0.35 |
 | Blizzard (hard winters only) | `sun` ×0 (none), `trucks` ×0.5; snow on the panels after | `trucks` ×0.3 |
 
 - **The frozen river** (`src/game/ice.ts`). The cold snap freezes the river at its **quiet stretches**; the grid is worked out once from the
@@ -650,8 +649,8 @@ see the playtest below).
   Sprinklers still draw from the water under the ice (nothing in the rules reads whether the water is frozen).
 - **Hens** lay at ×0.6 of the season's pace (×0.35 in a severe snap): `hens` lever, read in `coopPace`, marked "Slowed · cold snap".
   The coop's card says how much. The −8°C also slows crops further (they are already past their range in winter) and bees stay in.
-- **Hook for the greenhouse (phase 4).** The `heating` lever is ×2 in a cold snap (×3 severe) and nothing reads it yet: the greenhouse's
-  heat demand will multiply by `pushesAt(...).heating`.
+- **Greenhouses** need more heat for it with no lever of their own: the −8°C (−13°C) lowers the outside the heating is worked from, so a
+  tomato greenhouse goes from about 14 W at −5°C to about 19 W at −13°C (see The greenhouse).
 - **The blizzard** leaves the wind as the season has it, gives no sun, slows the trucks to half (a third in a severe one) and marks
   them "Slowed · blizzard". Panels are "Stopped · blizzard" in daylight while it lasts.
 - **Snow on the panels** (`src/game/snow.ts`, `panelSnow`): a rule. It builds over the first 3 hours of a blizzard (smooth) and, once it is
@@ -1229,7 +1228,7 @@ playing trucks: every level needed many trucks, and routes doing a field-to-mill
 | Building | Size | Cost | Power | Notes |
 | --- | --- | --- | --- | --- |
 | Field | 3 × 3 | 30 | — | Grows the crop chosen as it is placed (wheat, until you choose another) on its 9 tiles. Takes compost (a truck brings it) |
-| Greenhouse | 3 × 3 | 150 | — | A field under glass (4.1): any crop in any season, sheltered from the weather, held warm for free. Flat ground only (levelled like a machine's, no cliff). Waters like a field: a sprinkler or a water edge; rain does not reach it. See **The greenhouse** below |
+| Greenhouse | 3 × 3 | 150 | — | A field under glass (4.1): any crop in any season, sheltered from the weather, heated by power. Flat ground only (levelled like a machine's, no cliff). Waters like a field: a sprinkler or a water edge; rain does not reach it. See **The greenhouse** below |
 | Sprinkler | 1 × 1 | 25 | 3 W within 8 tiles of water, else 8 W; +0.5 W per level lifted, from centre height | Waters fields whose centre is within 3 tiles |
 | Coop | 3 × 3 | 150 | — | Four chickens. Every 2 feed (beans, bran or seed cake) give 2 eggs and 1 manure, 16 s |
 | Beehive | 1 × 1 | 60 | — | Makes honey from flowering fields (not wheat) within 4 tiles, faster with more of them (up to 3). Pollinates fields within 4 tiles |
@@ -1255,14 +1254,34 @@ under a timber frame.
 - **Water:** a sprinkler within reach or a water edge, like a field. Rain and soft rain do not water it, so a sprinkler that waters a
   greenhouse draws its power in the rain (one that waters only open fields still rests), and the placement card's soil projection
   does not count on rain for it.
-- **Inside warmth** (`insideWarmth`, `warmth.ts`): the crop's `comfort.low` (6°C wheat, beans, flax; 14°C sunflower; 18°C tomato), or the
-  outside when warmer, vented down to `min(comfort.high, FIELD.heat)` when hotter (free). So a crop in a greenhouse always grows at full
-  speed for warmth, and no dry-heat slowdown reaches it (the `FIELD.heat` cap matters only for sunflower, 32 → 30°C). 4.2 makes the heat cost power.
+- **Inside warmth** (`inside` on the building, saved; save version 18): the target is the crop's `comfort.low` (6°C wheat, beans, flax;
+  14°C sunflower; 18°C tomato). With the power it needs the greenhouse holds it, or the outside when warmer, and it is vented down to
+  `min(comfort.high, FIELD.heat)` when hotter (free; the cap matters only for sunflower, 32 → 30°C). A new greenhouse starts at that warmth.
+  Crops grow by `warmthPace` of the *inside* warmth, as outdoors: slower below the range, a tender crop stops below `FIELD.tenderStops`
+  (10°C) but is never lost (no frost loss inside), and its growth is kept.
+- **Heating (4.2).** It draws `GREENHOUSE.loss` = 0.6 W for each °C the outside is below the target (`heatNeed`; nothing when warmer), as a
+  consumer on the network like a machine (`wants` in `energy.ts`, `heated` on its `BUILDINGS` entry): a tomato greenhouse about 14 W at
+  −5°C, wheat about 7 W, nothing in summer, little on a spring night. A cold snap's −8°C needs more through the colder outside alone
+  (the `heating` lever is gone). The power log records the watts under `greenhouse`, a line of its own in the Power panel.
+- **Cooling and warming** (heat balance with Sol, time in game hours, `insideAfter` in `warmth.ts`): `dT/dh = (O − T)·loss/capacity + P/capacity`,
+  `loss` 0.6 W/°C, `capacity` `GREENHOUSE.capacity` = 3 W·h/°C, P the watts it is given (its network's share of `heatNeed`). Each 0.1 s step is
+  integrated exactly with the outside and P held: it relaxes toward `O + P/loss` with a time constant of 5 game hours (50 s of play),
+  so a step's size changes nothing. Full power holds the target; none relaxes toward the outside; half power settles halfway. Tomato at
+  −5°C from 18°C with no power: 13.8°C after 1 h, 10.4°C after 2 h (a third of the growth speed lost), −0.4°C after 8 h; it stops
+  below 10°C after 2.1 h. Half power for 16 h: 7.0°C. A short shortage costs a little growth, a night without power costs the night.
+  **The warming back is slow**: the heating only ever delivers the steady-state watts (no extra to catch up), so after a 16 h outage
+  with full power again the growth resumes after about 5 h, 13.5°C after 8 h, 16°C after 12 h, and a 2 h outage costs about 3 hours
+  of growth with its tail. Faster recovery would need extra watts or a faster warming than cooling; not done (energy-consistent
+  baseline), a call for the design lead.
+- **Status:** a greenhouse below its target for lack of power shows the existing No power or Low power status, described as "Cooling: not
+  enough power"; the history ribbon records it as for any building. Not connected to a pylon, it gets no share and cools too (needs
+  nothing in summer, so no shortage then).
 - **Reaches it:** floods (the growing crop is lost, it starts again; what it holds is kept).
   **Does not:** late frost and cold snap (nothing is lost, and the crop keeps its full-speed warmth), gales and storms, dust (no fertility
   lost), heat waves (no slowdown). Snow on its roof is only drawn and changes nothing. Nothing breaks it: weather disrupts, never destroys.
 - **Bees** reach it like a field when they fly (flying in winter is 4.4).
-- **Cards:** the inspector and hover card are a field's plus "Inside 18°C, outside −3°C"; the placement card shows the inside warmth and
+- **Cards:** the inspector and hover card are a field's plus "Inside 18°C, outside −3°C, heating 13 W" (the watts it gets); the placement
+  card shows the outside warmth, the watts it would need now, and its pylon reach (its soil projection assumes full power: 4.3), with
   no frost hollow or dust line. The guide has a Greenhouse page.
 - **Bot:** not yet (4.6), so no target time changes.
 

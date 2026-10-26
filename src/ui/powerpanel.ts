@@ -1,4 +1,4 @@
-import { BUILDINGS, POWER, TRUCK, type BuildingId } from '../game/data.ts';
+import { BUILDINGS, drawsPower, GREENHOUSE, POWER, TRUCK, type BuildingId } from '../game/data.ts';
 import { gameSpan, tonight } from '../game/forecast.ts';
 import { networks, usedBy } from '../game/power.ts';
 import { HOUR_SECONDS, nightsOf, powerDay } from '../game/powerlog.ts';
@@ -121,13 +121,14 @@ export function powerSheet(host: PowerHost) {
     const bats = s.buildings.filter((b): b is BatteryBuilding => b.type === 'battery' && networks(s).of.has(b.id)), cap = bats.length * POWER.battery.capacity, stored = bats.reduce((n, b) => n + b.charge, 0);
     const day = powerDay(s), nights = nightsOf(s);
     // Where the watts go: each kind of building that draws power, over the day and now.
-    const types = (Object.keys(BUILDINGS) as BuildingId[]).filter((t) => BUILDINGS[t].power && s.buildings.some((b) => b.type === t));
+    const types = (Object.keys(BUILDINGS) as BuildingId[]).filter((t) => drawsPower(t) && s.buildings.some((b) => b.type === t));
     const nowOf = (t: BuildingId) => s.buildings.filter((b) => b.type === t && networks(s).of.has(b.id)).reduce((n, b) => n + wants(s, b) * shareOf(s, b), 0);
     const totalUse = Math.max(1e-9, ...types.map((t) => day.use[t] ?? 0));
     const sub = (t: BuildingId) => {
       const mine = s.buildings.filter((b) => b.type === t);
       if (t === 'garage') return `${plural(s.trucks.length, 'truck')}, ${TRUCK.chargeRate} W a truck charging`;
       if (t === 'sprinkler') { const w = mine.map((b) => wattsOf(s, b)), lo = Math.min(...w), hi = Math.max(...w); return `${lo === hi ? lo : `${lo}–${hi}`} W each, by water and height`; }
+      if (t === 'greenhouse') return `heating: ${GREENHOUSE.loss} W for each °C the outside is below its crop's warmth`;
       return `${BUILDINGS[t].power} W while working`;
     };
     const lastNight = nights.length ? nights[nights.length - 1] : null;
@@ -158,7 +159,7 @@ export function powerSheet(host: PowerHost) {
             h('div', { class: 'net is-hd' }, h('span', null, 'Network'), h('span', null, 'Made'), h('span', null, 'Used'), h('span', null, 'Stored'), h('span', null, 'Short')),
             ...(nets.length ? nets.map((n, i) => h('div', { class: 'net is-row' },
               h('div', { class: 'nm' }, h('i', { class: 'sw', style: `background: ${hex(NET_COLOURS[netColour(s, n)])}` }),
-                h('div', null, h('b', null, `Network ${i + 1}`), h('div', { class: 'cd-small' }, `${plural(n.pylons.length, 'pylon')} · ${plural(n.members.filter((b) => BUILDINGS[b.type].power).length, 'building')} draw${n.members.filter((b) => BUILDINGS[b.type].power).length === 1 ? 's' : ''}`))),
+                h('div', null, h('b', null, `Network ${i + 1}`), h('div', { class: 'cd-small' }, `${plural(n.pylons.length, 'pylon')} · ${plural(n.members.filter((b) => drawsPower(b.type)).length, 'building')} draw${n.members.filter((b) => drawsPower(b.type)).length === 1 ? 's' : ''}`))),
               h('span', { class: 'v' }, watts(n.made)), h('span', { class: 'v' }, watts(usedBy(n))), h('span', { class: 'v' }, n.capacity ? pct(n.stored / n.capacity) : '–'),
               h('span', { class: `v${n.share < 1 && n.wanted > 0 ? ' cd-bad' : ''}` }, watts(n.wanted * (1 - n.share))))) : [h('p', { class: 'cd-small' }, 'No pylons yet: a network is a set of linked pylons.')]),
             nets.length === 1 ? h('div', { class: 'cd-small note' }, 'The only network: every powered building that reaches a pylon is on it.') : null),
