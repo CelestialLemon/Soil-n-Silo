@@ -1,4 +1,4 @@
-import { BUILDINGS, CROPS, DAY_SECONDS, FIELD, HIVE, ITEMS, POLLINATION_BONUS, POWER, recipesFor, SAPLING_SECONDS, TREE_HEALTH, type BuildingId } from './data.ts';
+import { BUILDINGS, CROPS, DAY_SECONDS, FIELD, GREENHOUSE, HIVE, ITEMS, POLLINATION_BONUS, POWER, recipesFor, SAPLING_SECONDS, TREE_HEALTH, type BuildingId } from './data.ts';
 import { EVENT_KINDS, EVENTS, type EventKind } from './events.ts';
 import { networks, POWERED, pylonsInLink } from './power.ts';
 import { HOUR_SECONDS } from './powerlog.ts';
@@ -17,7 +17,7 @@ import { canFlood, floodsAt, isFlooded } from './flood.ts';
 import { dustComes, dustFor } from './dust.ts';
 import { frostComes, frostHits, inHollow } from './frost.ts';
 import { centreLevel } from './relief.ts';
-import { beesNow, beesOut, insideFact, insideWarmth, shadeFact, warmthFact, warmthOf } from './warmth.ts';
+import { beesNow, beesOut, heatNeed, insideWarmth, shadeFact, warmthFact, warmthOf } from './warmth.ts';
 import { canGale, SEVERE_GALE, standsGale, turbineShare } from './wind.ts';
 import { hasStation } from './station.ts';
 import { growsCrops, inMap, type Building, type FieldBuilding, type GameState, type Setting } from './state.ts';
@@ -140,10 +140,11 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         facts.push(shore ? { label: 'Water', value: 'beside water', sub: 'grows at 100%' } : rain ? { label: 'Water', value: 'rain', sub: 'grows at 100% while it rains', tone: 'good' } : sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round(waterPace(water, crop.thirst, warmthIn(warmthOf(s))) * 100)}%` }
           : { label: 'Water', value: 'none', sub: `grows at ${Math.round(waterPace(0, crop.thirst, warmthIn(warmthOf(s))) * 100)}%`, tone: 'bad' });
         const warm = warmthFact(crop, warmthIn(warmthOf(s)));
-        facts.push(under ? { label: 'Warmth', value: `${Math.round(warmthIn(warmthOf(s)))}°C inside`, sub: `${insideFact(crop, warmthOf(s)).replace(/^Inside [^,]*, /, '')}; held warm for free`, tone: 'good' }
+        facts.push(under ? { label: 'Warmth', value: `${Math.round(warmthIn(warmthOf(s)))}°C inside`, sub: `outside ${Math.round(warmthOf(s))}°C; heating ${Math.round(heatNeed(crop, warmthOf(s)))} W now, ${GREENHOUSE.loss} W for each °C the outside is below ${crop.comfort.low}°C`, tone: 'good' }
           : { label: 'Warmth', value: `${Math.round(warmthOf(s))}°C`, sub: warm.text.slice(warm.text.indexOf(': ') + 2), tone: warm.tone === 'bad' ? 'bad' : undefined });
         if (!under && frostComes(s) && inHollow(s, x, y)) facts.push({ label: 'Frost hollow', value: 'yes', sub: crop.tender ? 'late frost settles here and takes a tender crop' : 'late frost settles here; a hardy crop is unharmed', tone: crop.tender ? 'bad' : undefined });
         if (!under && dustComes(s)) facts.push({ label: 'Dust storm', value: guarded ? 'guarded' : 'exposed', sub: guarded ? 'trees or beans beside it break the wind' : 'a dust storm lifts its soil; a tree, sapling or bean field beside it would guard it', tone: guarded ? 'good' : 'bad' });
+        if (under) facts.push(pylonFact());
         if (slopes) facts.push({ label: 'Slope', value: `${slopes} of 9 tiles`, sub: `wear up to ${fmt1(1 + (guarded ? FIELD.erosionGuarded : FIELD.erosion))}× as fast${guarded ? '; trees or beans beside it help' : ''}`, tone: guarded ? undefined : 'bad' });
         break;
       }

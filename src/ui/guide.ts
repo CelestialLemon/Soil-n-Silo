@@ -1,6 +1,6 @@
 import { chainOf, type Step } from '../game/chain.ts';
 import {
-  ANIMALS, bays, BUILDINGS, CATEGORIES, CLEAR_COST, CROP_IDS, CROPS, EARTH, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, ITEMS, OUTPUT_BATCHES,
+  ANIMALS, bays, BUILDINGS, GREENHOUSE, CATEGORIES, CLEAR_COST, CROP_IDS, CROPS, EARTH, FIELD, GROUP_NAMES, GROUPS, HIVE, INPUT_BATCHES, ITEM_IDS, ITEMS, OUTPUT_BATCHES,
   POLLINATION_BONUS, POWER, RECIPES, recipesFor, SAPLING_SECONDS, SILO, TREE_HEALTH, TRUCK, type BuildingId, type Ingredient, type ItemId, type Recipe,
 } from '../game/data.ts';
 import { FROST_RADIUS, HOLLOW, HOLLOW_FACT } from '../game/frost.ts';
@@ -93,7 +93,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
     ],
   },
   greenhouse: {
-    what: `A field under glass: grows the chosen crop on its ${BUILDINGS.greenhouse.size} × ${BUILDINGS.greenhouse.size} tiles in any season, and costs ${BUILDINGS.greenhouse.cost} credits. It is held warm for free: inside it is at least as warm as its crop needs for full speed (${CROPS.wheat.comfort.low}°C for wheat, beans and flax, ${CROPS.sunflower.comfort.low}°C for sunflower, ${CROPS.tomato.comfort.low}°C for tomato), or the outside warmth when that is warmer, and vented down above its crop's top comfort.`,
+    what: `A field under glass: grows the chosen crop on its ${BUILDINGS.greenhouse.size} × ${BUILDINGS.greenhouse.size} tiles in any season, and costs ${BUILDINGS.greenhouse.cost} credits. It is heated by power: with enough, inside it is at least as warm as its crop needs for full speed (${CROPS.wheat.comfort.low}°C for wheat, beans and flax, ${CROPS.sunflower.comfort.low}°C for sunflower, ${CROPS.tomato.comfort.low}°C for tomato), or the outside warmth when that is warmer, and it is vented down above its crop's top comfort for free. It draws ${GREENHOUSE.loss} W for each °C the outside is below that, so a winter night costs most and a summer day nothing. With less power than it needs it cools toward the outside (with none, in about ${GREENHOUSE.capacity / GREENHOUSE.loss} hours it is most of the way there), growing slower, and a tender crop stops below ${FIELD.tenderStops}°C; it never dies of the cold in there. When power returns it warms back up, slowly.`,
     how: [
       'Build it on flat ground: it cannot stand on a slope.',
       `Water it like a field: beside a river or pond, or with a sprinkler within ${POWER.sprinklerReach} tiles of its centre. The rain does not reach it, so a sprinkler near it runs in the rain too.`,
@@ -493,7 +493,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
     const d = BUILDINGS[id], r = recipesFor(id)[0];
     const f = (label: string, fig: string, sub: string) => h('div', null, h('div', { class: 'cd-label' }, label), h('div', { class: 'cd-figure' }, fig), h('div', { class: 'cd-small' }, sub));
     const watts = id === 'station' ? [`${d.power} W`, 'all the time'] : id === 'sprinkler' ? [`${POWER.sprinklerNearWater}–${SPRINKLER_MOST} W`, 'near water to far and high'] : id === 'garage' ? [`${TRUCK.chargeRate} W`, 'a truck charging']
-      : d.power ? [`${d.power} W`, 'while working'] : id === 'solar' ? [`${POWER.solar} W`, 'at noon, full sun'] : id === 'turbine' ? [`${POWER.turbine}–${Math.round(TURBINE_MOST)} W`, 'in full wind, low to high']
+      : d.power ? [`${d.power} W`, 'while working'] : d.heated ? [`${GREENHOUSE.loss} W`, 'for each °C the outside is below its crop\'s warmth'] : id === 'solar' ? [`${POWER.solar} W`, 'at noon, full sun'] : id === 'turbine' ? [`${POWER.turbine}–${Math.round(TURBINE_MOST)} W`, 'in full wind, low to high']
         : id === 'wheel' ? [`${POWER.wheel} W`, `at 1 m/s; ×${POWER.wheelFall} beside a fall`]
         : id === 'digester' ? [`${POWER.digester} W`, 'made while burning'] : id === 'battery' ? [`${POWER.battery.capacity} J`, 'stored'] : ['—', 'none'];
     return h('div', { class: 'nums' },
@@ -611,7 +611,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
           ['Compost', `taken only below soil ${FIELD.compostBelow}: +${FIELD.compostGain} on every tile at once`]);
         break;
       case 'greenhouse':
-        rows.push(['Grow times are for', 'a watered greenhouse at soil 60'], ['Inside', 'the crop\'s lowest full-speed warmth, or the outside if warmer; vented above its highest'],
+        rows.push(['Grow times are for', 'a watered greenhouse at soil 60'], ['Inside', 'the crop\'s lowest full-speed warmth, or the outside if warmer; vented above its highest'], ['Heating', `${GREENHOUSE.loss} W for each °C the outside is below it`], ['Cooling', `with less power it drifts toward the outside, ${GREENHOUSE.capacity / GREENHOUSE.loss} hours to most of the way`],
           ['Wheat, beans, flax', `${CROPS.wheat.comfort.low}°C`], ['Sunflower', `${CROPS.sunflower.comfort.low}°C`], ['Tomato', `${CROPS.tomato.comfort.low}°C`],
           ['Holds', `${FIELD.store} harvested goods`], ['Compost', `taken only below soil ${FIELD.compostBelow}: +${FIELD.compostGain} on every tile at once`]);
         break;
@@ -868,6 +868,7 @@ function powerLine(id: BuildingId): string {
   if (id === 'garage') return `up to ${TRUCK.chargeRate} W for each truck charging`;
   if (id === 'station') return `uses ${d.power} W all the time`;
   if (d.power) return `uses ${d.power} W while working`;
+  if (d.heated) return `uses ${GREENHOUSE.loss} W for each °C the outside is below its crop's warmth`;
   if (id === 'solar') return `makes up to ${POWER.solar} W in full sun`;
   if (id === 'turbine') return `makes up to ${POWER.turbine} W`;
   if (id === 'digester') return `makes ${POWER.digester} W while burning`;

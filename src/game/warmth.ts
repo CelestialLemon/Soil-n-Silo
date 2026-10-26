@@ -1,9 +1,9 @@
 import { eventName, pushesAt } from './events.ts';
-import { ANIMALS, DAY_SECONDS, FIELD, type CropDef } from './data.ts';
+import { ANIMALS, CROPS, DAY_SECONDS, FIELD, GREENHOUSE, type CropDef } from './data.ts';
 import { noise1 } from './rng.ts';
 import type { Scenario } from './scenarios.ts';
 import type { Climate } from './seasons.ts';
-import type { GameState } from './state.ts';
+import type { FieldBuilding, GameState } from './state.ts';
 import { keepingBeesIn } from './wind.ts';
 import { hourAt } from './sim/clock.ts';
 import { precipAt } from './sim/weather.ts';
@@ -72,13 +72,32 @@ export function warmthPace(crop: CropDef, w: number): number {
   return 1 / (1 + (d / FIELD.warmthWidth) ** 2);
 }
 
-/** The warmth inside a greenhouse growing a crop, given the outside's: held at the lowest the crop grows at full speed in, or the outside when warmer, and vented down to the crop's highest (or FIELD.heat, where an unwatered crop would slow) when hotter. Free: 4.2 makes the warmth cost power. */
-export const insideWarmth = (crop: CropDef, outside: number) => Math.min(Math.max(outside, crop.comfort.low), crop.comfort.high, FIELD.heat);
+/** The warmth a greenhouse growing a crop holds with all the power it needs: the lowest the crop grows at full speed in, or the outside when warmer, and vented down to the crop's highest (or FIELD.heat, where an unwatered crop would slow) when hotter. A new greenhouse starts here, and the forecast reads it (4.3). */
+export const insideWarmth = (crop: CropDef, outside: number) => Math.min(Math.max(outside, crop.comfort.low), ventAt(crop));
 
-/** A greenhouse's warmth as a fact, "Inside 18°C, outside −3°C" (the crop it grows and the outside warmth). */
-export function insideFact(crop: CropDef, outside: number): string {
+/** The warmth a greenhouse vents down to, for free. */
+const ventAt = (crop: CropDef) => Math.min(crop.comfort.high, FIELD.heat);
+
+/** A greenhouse's warmth now, in °C: what it has cooled or warmed to (a new one, not yet stepped, the warmth full power would hold). */
+export const insideNow = (s: GameState, g: FieldBuilding) => g.inside ?? insideWarmth(CROPS[g.crop], warmthOf(s));
+
+/** The watts a greenhouse growing a crop needs to hold its warmth with the outside at a warmth: GREENHOUSE.loss for each °C the outside is below the crop's comfortable low, none when warmer. */
+export const heatNeed = (crop: CropDef, outside: number) => GREENHOUSE.loss * Math.max(0, crop.comfort.low - outside);
+
+/**
+ * A greenhouse's warmth after `seconds` of play, from `inside` now, with the outside's warmth and the watts it is given held for the
+ * step: it relaxes exactly toward what that power would hold (the outside plus the watts over the loss) with a time constant of
+ * capacity / loss game hours (5), and is vented down to the crop's highest comfortable warmth.
+ */
+export function insideAfter(crop: CropDef, inside: number, outside: number, watts: number, seconds: number): number {
+  const hours = seconds / (DAY_SECONDS / 24), held = outside + watts / GREENHOUSE.loss;
+  return Math.min(ventAt(crop), held + (inside - held) * Math.exp(-hours * GREENHOUSE.loss / GREENHOUSE.capacity));
+}
+
+/** A greenhouse's warmth as a fact: "Inside 18°C, outside −3°C, heating 13 W" (its warmth, the outside's and the watts it is heated with, if given). */
+export function insideFact(inside: number, outside: number, watts?: number): string {
   const deg = (n: number) => { const r = Math.round(n); return `${r < 0 ? '−' : ''}${Math.abs(r)}°C`; };
-  return `Inside ${deg(insideWarmth(crop, outside))}, outside ${deg(outside)}`;
+  return `Inside ${deg(inside)}, outside ${deg(outside)}${watts === undefined ? '' : `, heating ${Math.round(watts)} W`}`;
 }
 
 /** Whether frost takes the growing crop in an open field. */

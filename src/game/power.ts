@@ -1,4 +1,4 @@
-import { BUILDINGS } from './data.ts';
+import { BUILDINGS, drawsPower } from './data.ts';
 import { isFlooded } from './flood.ts';
 import { pylonReaches, pylonsLink } from './rules.ts';
 import { layoutOf, sizeOf, type Building, type GameState } from './state.ts';
@@ -28,7 +28,7 @@ export interface Networks { layout: number; list: Network[]; of: Map<number, Net
 
 export const POWERED = (b: Building) => BUILDINGS[b.type].grid !== 'link' && (isGenerator(b) || isConsumer(b) || BUILDINGS[b.type].grid === 'storage');
 export const isGenerator = (b: Building) => BUILDINGS[b.type].grid === 'source';
-export const isConsumer = (b: Building) => !!BUILDINGS[b.type].power;
+export const isConsumer = (b: Building) => drawsPower(b.type);
 
 export function networks(s: GameState): Networks {
   const layout = layoutOf(s);

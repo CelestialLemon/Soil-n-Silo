@@ -25,7 +25,7 @@ export interface DockHost {
 /** A tile's second line: its price, and the watts it uses. */
 export function costLine(s: GameState, id: BuildingId) {
   const d = BUILDINGS[id], price = priceOf(s, id);
-  return `${price ? num(price) : 'free'}${d.power ? ` · ${d.power} W` : ''}`;
+  return `${price ? num(price) : 'free'}${d.power ? ` · ${d.power} W` : d.heated ? ' · heated' : ''}`;
 }
 
 export class Dock {

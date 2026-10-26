@@ -177,8 +177,11 @@ export function describeStatus(s: GameState, b: Building): string {
     case 'blocked':
       if (b.need === 'compost' && b.type === 'composter' && !compostWelcome(s, b)) return 'Full of compost: no field needs any. Sell it at the depot or let fields draw it down';
       return `Output blocked: nowhere for ${b.need ?? 'its goods'} to go`;
-    case 'power': return networkOf(s, b) ? `No power: the network is out of power${b.type === 'garage' ? ', so its trucks can\'t charge' : ''}` : 'No power: not in reach of a pylon';
+    case 'power':
+      if (b.type === 'greenhouse') return networkOf(s, b) ? 'Cooling: not enough power. The network has none for the heating' : 'Cooling: not enough power. No pylon in reach of it';
+      return networkOf(s, b) ? `No power: the network is out of power${b.type === 'garage' ? ', so its trucks can\'t charge' : ''}` : 'No power: not in reach of a pylon';
     case 'lowpower':
+      if (b.type === 'greenhouse') return `Cooling: not enough power. Only ${Math.round(shareOf(s, b) * 100)}% of the heating it needs`;
       if (b.type === 'station') return `Low power: ${Math.round(shareOf(s, b) * 100)}% of the 3 W, too little to renew the forecast`;
       return `Low power: ${b.type === 'garage' ? 'trucks charging' : 'running'} at ${Math.round(shareOf(s, b) * 100)}%`;
     case 'nolink': return 'Not connected: no pylon in reach';

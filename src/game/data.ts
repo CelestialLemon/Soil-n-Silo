@@ -133,6 +133,8 @@ export interface BuildingDef {
   category: Category | null;
   /** Watts it draws while working. */
   power?: number;
+  /** Draws power by a rule of its own, not a fixed number of watts (the greenhouse: by how far the outside is below its crop's warmth, see GREENHOUSE). */
+  heated?: true;
   /** Tall: shelters a wind turbine next to it. */
   tall?: boolean;
   /** Holds any goods for trucks (a silo, the depot). */
@@ -156,7 +158,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   silo: { name: 'Silo', size: 2, cost: 80, category: 'logistics', stores: true, tall: true, key: 'L', hint: 'Stores goods: trucks drop them here and pick them up again.' },
   garage: { name: 'Garage', size: 2, cost: 100, category: 'logistics', power: 20, key: 'T', get hint() { return `Home of up to ${TRUCK.perGarage} trucks: buy them here, give them routes. Charges them.`; } },
   field: { name: 'Field', size: 3, cost: 30, category: 'farming', harvests: true, key: 'F', hint: 'Grows a crop on rich soil. Water it with sprinklers, or build it beside a river or pond; feed it compost.' },
-  greenhouse: { name: 'Greenhouse', size: 3, cost: 150, category: 'farming', harvests: true, hint: 'A field under glass: any crop in any season, held warm for free, sheltered from frost, gales and dust. Rain does not reach it: water it with sprinklers or a river.' },
+  greenhouse: { name: 'Greenhouse', size: 3, cost: 150, category: 'farming', harvests: true, heated: true, get hint() { return `A field under glass: any crop in any season, sheltered from frost, gales and dust. Heated by power (${GREENHOUSE.loss} W for each °C the outside is below its crop's warmth): it cools when it gets too little. Rain does not reach it: water it with sprinklers or a river.`; } },
   sprinkler: { name: 'Sprinkler', size: 1, cost: 25, category: 'farming', power: 3, get hint() { return `Waters fields within ${POWER.sprinklerReach} tiles. Cheaper to run near water.`; } },
   coop: { name: 'Coop', size: 3, cost: 150, category: 'farming', get hint() { return `Chickens: ${recipeWords('eggs')}.`; } },
   hive: { name: 'Beehive', size: 1, cost: 60, category: 'farming', harvests: true, hint: 'Honey from flowering fields nearby; pollinates them for a bigger harvest.' },
@@ -177,6 +179,9 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   sapling: { name: 'Sapling', size: 1, cost: 5, category: 'ecology', inert: true, hint: 'Grows into a tree.' },
   depot: { name: 'Freight depot', size: 3, cost: 0, category: null, inert: true, stores: true, hint: 'Deliver goods here.' },
 };
+
+/** Whether a type of building draws power: a fixed number of watts while working, or a rule of its own (a greenhouse). */
+export const drawsPower = (type: BuildingId) => !!BUILDINGS[type].power || !!BUILDINGS[type].heated;
 
 // ---- Recipes ----
 
@@ -228,6 +233,14 @@ export const INPUT_BATCHES = 3;
 export const OUTPUT_BATCHES = 3;
 
 // ---- Power ----
+
+/**
+ * A greenhouse's heat balance, per game hour (a small glass house): it loses `loss` watts for each °C it is warmer than the outside, holds
+ * `capacity` watt-hours for each °C, and gains whatever power it is given. With the power to hold its crop's lowest comfortable warmth
+ * (`loss` W for each °C the outside is below it) it holds it; with less, or none, it relaxes toward the outside with a time constant of
+ * capacity / loss = 5 game hours (so after one time constant, 63% of the way). Vented above its crop's highest comfortable warmth, for free.
+ */
+export const GREENHOUSE = { loss: 0.6, capacity: 3 };
 
 export const POWER = {
   solar: 30,

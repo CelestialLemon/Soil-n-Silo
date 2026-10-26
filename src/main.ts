@@ -3,10 +3,10 @@ import { DEFAULT_WEATHER, lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette
 import {
   addStop, canPlace, canReshape, type Groundwork, digArea, levelledFor, type Dig, clearPrice, earthPrice, EARTHWORK_NAMES, EARTHWORKS, messageOf, place, placePrice, priceOf, remember, remove, removeAt, reshape, settingFor, settingName, stepSetting, type Setting,
 } from './game/build.ts';
-import { BUILDINGS, CROPS, POWER, type BuildingId } from './game/data.ts';
+import { BUILDINGS, CROPS, drawsPower, POWER, type BuildingId } from './game/data.ts';
 import { holdNeed, truckHold } from './game/hold.ts';
 import { frostComes, HOLLOW_FACT, inHollow, isHollow } from './game/frost.ts';
-import { insideFact, warmthFact, warmthOf } from './game/warmth.ts';
+import { insideFact, insideNow, warmthFact, warmthOf } from './game/warmth.ts';
 import { generateLand, TERRAIN } from './game/map.ts';
 import { aroundPoint, corners, MAX_LEVEL, sheetAt } from './game/relief.ts';
 import { wheelSite } from './game/rules.ts';
@@ -77,7 +77,7 @@ const HOVER_REST = 350;
 /** How far apart a drag places pylons: their reaches meet edge to edge, and each links to the next. */
 const PYLON_STEP = 2 * POWER.pylon.reach + 1;
 /** Whether placing a building should show the power networks: it makes, stores, carries or uses power. */
-const usesPower = (t: BuildingId) => !!BUILDINGS[t].grid || !!BUILDINGS[t].power;
+const usesPower = (t: BuildingId) => !!BUILDINGS[t].grid || drawsPower(t);
 
 const canvas = must(document.querySelector<HTMLCanvasElement>('#view'), '#view canvas');
 const loading = must(document.querySelector<HTMLElement>('#loading'), '#loading');
@@ -574,7 +574,7 @@ async function play(initial: GameState) {
       return {
         title: BUILDINGS[b.type].name, icon: b.type, status: { status: b.status, label, need: b.need },
         text: removing ? (b.type === 'depot' ? 'The depot stays.' : `Click to remove it (refund ${priceOf(state, b.type)}).`)
-          : [line === label ? '' : line, growsCrops(b) ? `soil ${Math.round(fieldFertility(state, b))}` : '', growsCrops(b) && !removing ? (b.type === 'greenhouse' ? insideFact(CROPS[b.crop], warmthOf(state)) : warmthFact(CROPS[b.crop], warmthOf(state)).text) : '', b.type === 'field' && !removing && frostComes(state) && inHollow(state, b.x, b.y) ? HOLLOW_FACT : ''].filter(Boolean).join(' · ') || undefined,
+          : [line === label ? '' : line, growsCrops(b) ? `soil ${Math.round(fieldFertility(state, b))}` : '', growsCrops(b) && !removing ? (b.type === 'greenhouse' ? insideFact(insideNow(state, b), warmthOf(state)) : warmthFact(CROPS[b.crop], warmthOf(state)).text) : '', b.type === 'field' && !removing && frostComes(state) && inHollow(state, b.x, b.y) ? HOLLOW_FACT : ''].filter(Boolean).join(' · ') || undefined,
       };
     }
     if (!hoverTile) return null;

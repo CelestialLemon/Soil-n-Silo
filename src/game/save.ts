@@ -30,7 +30,7 @@ export function deserialize(json: string | null): Result<GameState> {
   const parsed = tryParseJson(json);
   if (!parsed.ok) return err(`The save isn't JSON: ${parsed.error}`);
   const s = parsed.value as GameState | null;
-  if (s?.version !== 17) return err('The save is from another version (this game reads version 17).');
+  if (s?.version !== 18) return err('The save is from another version (this game reads version 18).');
   if (!complete(s)) return err('The save is broken: its state is incomplete or out of range.');
   if (!validRun(s.run, s.scenario.goals.length, s.scenario.events.length)) return err('The save is broken: its run log is incomplete or out of range.');
   return ok(s);
@@ -180,7 +180,8 @@ function validBuilding(b: Building, w: number, h: number): boolean {
   if (b.x < 0 || b.y < 0 || b.x + n > w || b.y + n > h) return false;
   switch (b.type) {
     case 'silo': return stock(b.store);
-    case 'field': case 'greenhouse': return crop(b.crop) && (b.harvest === undefined || crop(b.harvest)) && num(b.growth) && num(b.stored);
+    case 'field': return crop(b.crop) && (b.harvest === undefined || crop(b.harvest)) && num(b.growth) && num(b.stored) && b.inside === undefined;
+    case 'greenhouse': return crop(b.crop) && (b.harvest === undefined || crop(b.harvest)) && num(b.growth) && num(b.stored) && (b.inside === undefined || num(b.inside));
     case 'hive': return num(b.growth) && num(b.stored);
     case 'battery': return num(b.charge);
     case 'sapling': return num(b.age);

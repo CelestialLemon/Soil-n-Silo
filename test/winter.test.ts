@@ -179,13 +179,6 @@ test('ponds don\'t freeze, and a map\'s ice is worked out once', () => {
   assert.ok(runsAt(s.map, 14, 14) && !runsAt(s.map, 14, 8));
 });
 
-test('a cold snap leaves the greenhouse its double heat as a lever (phase 4 reads it)', () => {
-  const snap = event('coldSnap', 'ordinary', 3, 6, 30);
-  const s = winter([snap], timeOf(3, 18));
-  assert.equal(pushesAt(s.scenario, s.time).heating, 2);
-  assert.equal(pushesAt(winter([], 0).scenario, 0).heating, 1);
-});
-
 // ---- The blizzard ----
 
 test('a blizzard takes the sun entirely and slows trucks; the wind stays the season\'s', () => {
