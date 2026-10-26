@@ -2,7 +2,7 @@ import { BUILDINGS, POWER, TICK, TRUCK, type BuildingId } from '../data.ts';
 import { pushesAt } from '../events.ts';
 import { floodHolds } from '../flood.ts';
 import { panelShare } from '../snow.ts';
-import { networkOf, networks } from '../power.ts';
+import { networkOf, networks, type Network } from '../power.ts';
 import { notePower, type PowerStep } from '../powerlog.ts';
 import { isMachine, type BatteryBuilding, type Building, type GameState } from '../state.ts';
 import { exposureOf, rainWaters, runsInFrost, wattsOf } from './layout.ts';
@@ -20,17 +20,22 @@ export function shareOf(s: GameState, b: Building) {
 }
 
 /**
- * The share of its power a sprinkler resting in the rain would get if it ran (a greenhouse built in its reach wakes it: it wants
- * its watts then), from the network's last step: what it makes plus what its batteries could give, over what it would want.
+ * The share of its power each of the sprinklers resting in the rain would get if they all ran (a greenhouse built in their reach
+ * wakes them: they want their watts then), from their networks' last step: what a network makes plus what its batteries could give,
+ * over what it wants with all of them. Keyed by sprinkler id.
  */
-export function shareIfRunning(s: GameState, b: Building): number {
-  const net = networkOf(s, b);
-  if (!net) return 0;
-  const wanted = net.wanted + (wants(s, b) > 0 ? 0 : wattsOf(s, b));
-  if (net.made >= wanted) return 1;
-  const given = net.members.reduce((n, m) => n + (m.type === 'battery' ? Math.min(POWER.battery.rate, m.charge / TICK) : 0), 0);
-  const share = Math.min(1, (net.made + given) / wanted);
-  return share > 0.999 ? 1 : share;
+export function sharesIfRunning(s: GameState, resting: readonly Building[]): Map<number, number> {
+  const out = new Map<number, number>(), added = new Map<Network, number>();
+  for (const b of resting) { const net = networkOf(s, b); if (net) added.set(net, (added.get(net) ?? 0) + wattsOf(s, b)); }
+  for (const b of resting) {
+    const net = networkOf(s, b);
+    if (!net) { out.set(b.id, 0); continue; }
+    const wanted = net.wanted + (added.get(net) ?? 0);
+    const given = net.members.reduce((n, m) => n + (m.type === 'battery' ? Math.min(POWER.battery.rate, m.charge / TICK) : 0), 0);
+    const share = net.made >= wanted ? 1 : Math.min(1, (net.made + given) / wanted);
+    out.set(b.id, share > 0.999 ? 1 : share);
+  }
+  return out;
 }
 
 /** Watts a building wants this step. */
