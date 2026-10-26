@@ -1,4 +1,4 @@
-import { eventWords } from '../game/eventwords.ts';
+import { eventWords, stationWords } from '../game/eventwords.ts';
 import type { Scenario } from '../game/scenarios.ts';
 import type { Character, Season } from '../game/seasons.ts';
 import { goalWords } from './widgets.ts';
@@ -10,7 +10,7 @@ export interface Letter {
   from: string; role: string; place: string; day: string; greeting: string; body: string[]; signoff: string; asks: string;
   /** The season in the writer's voice: what it is like this year. Words only; the numbers are on the level card and in the guide. */
   season: string[];
-  /** The weather events the season can bring, in a plain voice (no times: a forecast comes with the weather station). */
+  /** The weather events the season can bring, in a plain voice and what a weather station gives (a forecast of the next three days, which is where the times are). */
   events: string[];
 }
 
@@ -91,7 +91,10 @@ const LETTERS: Record<string, Written> = {
       'Everything, at once. We know. We believe in you.',
     ],
     signoff: 'With love, and a great deal of bunting,', asks: 'What they ask',
-    season: ['The autumn has turned stormy: heavy cloud, hard rain and gusts that take the last leaves in an afternoon.'],
+    season: [
+      'The autumn has turned stormy: heavy cloud, hard rain and gusts that take the last leaves in an afternoon.',
+      'The old hands expect a big storm in festival week, and fog before the lanterns go up. A weather station would tell us the day and the hour.',
+    ],
   },
 };
 
@@ -118,7 +121,7 @@ const CHARACTER_WORDS: Record<Character, string> = {
 /** The letter a commission arrives with: what is written, with the season and the events it can bring. */
 export function letterFor(sc: Scenario): Letter {
   const l = writtenFor(sc);
-  return { ...l, season: l.season ?? [SEASON_WORDS[sc.climate.season], ...(sc.climate.character ? [CHARACTER_WORDS[sc.climate.character]] : [])], events: eventWords(sc) };
+  return { ...l, season: l.season ?? [SEASON_WORDS[sc.climate.season], ...(sc.climate.character ? [CHARACTER_WORDS[sc.climate.character]] : [])], events: [...eventWords(sc), ...stationWords(sc)] };
 }
 
 function writtenFor(sc: Scenario): Written {

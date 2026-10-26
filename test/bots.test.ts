@@ -7,6 +7,7 @@ import { endOf, RAMP_HOURS } from '../src/game/events.ts';
 import { flooded } from '../src/game/flood.ts';
 import { windExposure } from '../src/game/rules.ts';
 import { isGuarded } from '../src/game/sim/layout.ts';
+import { hasStation, stationsOf, stationWorking } from '../src/game/station.ts';
 import { turbineShare } from '../src/game/wind.ts';
 
 // Every bot layout (tools/layouts.ts) plays its commission on the real rules and must clear it within the target time:
@@ -67,3 +68,21 @@ test('Tired Soil: every field of the bot\'s farm is guarded from the dust storm'
   assert.deepEqual(unguarded, []);
   assert.ok(fields >= 8, 'fields stood in the storm');
 });
+
+// Where a player would build a weather station (3.6): the commissions whose first event is a hard turn the farm answers by building ahead. The bot
+// has the whole seeded weather in hand, so the forecast tells it nothing; its station only costs it 80 credits and 3 W, and stands before the first
+// event (it may still be short of power on the first nights, when the bot's grid has no battery: that is the price of 3 W on a small grid).
+
+for (const id of ['c6', 'c7', 'c8']) {
+  test(`the bot's ${id} stands a weather station before the first event, and it works in the run`, () => {
+    let first: number | null = null, worked = false;
+    const { state } = playLayout(id, 80, undefined, {}, (s) => {
+      if (first === null && hasStation(s)) first = s.time;
+      if (stationWorking(s)) worked = true;
+    });
+    const event = state.scenario.events[0];
+    assert.ok(first !== null && first < event.start, `${id}: the station stood from ${first}, the first event begins at ${event.start}`);
+    assert.equal(stationsOf(state).length, 1);
+    assert.ok(worked && state.forecastIssued !== null, `${id}: the station never worked`);
+  });
+}

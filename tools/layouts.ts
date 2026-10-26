@@ -85,6 +85,14 @@ const bakery = (dx: number, dy: number, recipe?: string): Step[] => [
 ];
 
 /**
+ * A weather station west of the sauce's first pylon (80 credits, 3 W), for the commissions whose first event is a hard turn the farm
+ * can answer by building ahead (a flood, a dust storm). The bot plays the whole seeded weather in hand, so the forecast tells it
+ * nothing: the station is only its cost. It goes up once the first loop runs, a few minutes before the first event, as a player
+ * would (placed at the start it costs Harvest Festival a minute, since credits are what the bot is short of then).
+ */
+const station = (dx: number, dy: number): Step => ({ type: 'station', x: dx - 5, y: dy - 10 });
+
+/**
  * The river a commission's bot plays beside (tiles east of the depot, west if negative), for the commissions whose weather is a flood: the bot's
  * map is flat with no water, so a flood would never reach it. Riverlands' farm stands west of the river.
  */
@@ -224,6 +232,7 @@ export const LAYOUTS: Record<string, Layout> = {
       ],
     },
     { type: 'solar', x: dx + 8, y: dy - 5 },
+    station(dx, dy),
   ],
   // Three orders at once, each its own block: sauce (a truck takes the coop's eggs and manure with it), linen to the west,
   // and bread to the east, the bakery taking the coop's eggs next door. A truck takes the mill's bran to the coop.
@@ -233,6 +242,7 @@ export const LAYOUTS: Record<string, Layout> = {
     { type: 'turbine', x: dx + 3, y: dy - 13 },
     ...linen(dx, dy),
     { type: 'hive', x: dx + 1, y: dy - 12 },
+    station(dx, dy),
     { type: 'battery', x: dx + 8, y: dy - 14 }, { type: 'turbine', x: dx + 5, y: dy - 13 },
     ...bakery(dx, dy),
     { bank: 15, from: -19, to: 2, times: 2 },
@@ -252,6 +262,7 @@ export const LAYOUTS: Record<string, Layout> = {
     },
     { type: 'turbine', x: dx + 3, y: dy - 13 },
     ...linen(dx, dy),
+    station(dx, dy),
     { type: 'hive', x: dx + 1, y: dy - 12 },
     { type: 'battery', x: dx + 8, y: dy - 14 }, { type: 'turbine', x: dx + 5, y: dy - 13 },
     ...bakery(dx, dy, 'honeycake'), { type: 'hive', x: dx + 5, y: dy - 6 },
