@@ -9,7 +9,7 @@ import { runtimeOf, touchRoutes } from './runtime.ts';
 import { dropForecastIfNone } from './station.ts';
 import { isStop, redirect, routeChanged } from './sim/trucks.ts';
 import {
-  addBuilding, applySetting, buildingAt, inMap, makeBuilding, removeBuilding, terrainAt, tileIndex, touchLayout, touchRelief, type Building, type BuildingOf, type Dir, type GameState, type MachineBuilding, type Setting,
+  addBuilding, applySetting, buildingAt, growsCrops, inMap, makeBuilding, removeBuilding, terrainAt, tileIndex, touchLayout, touchRelief, type Building, type BuildingOf, type Dir, type GameState, type MachineBuilding, type Setting,
   type Route, type Stop, type Truck,
 } from './state.ts';
 
@@ -172,9 +172,12 @@ export function canPlace(s: GameState, type: BuildingId, x: number, y: number): 
   return gw;
 }
 
+/** Whether a type of building grows a crop the player chooses (a field or a greenhouse). */
+const hasCrop = (type: BuildingId) => type === 'field' || type === 'greenhouse';
+
 /** The choices a type offers while placing: a field's crops, or the recipes of a machine with more than one (the bakery). */
 export function choicesOf(type: BuildingId): Setting[] {
-  if (type === 'field') return CROP_IDS.map((crop) => ({ crop }));
+  if (hasCrop(type)) return CROP_IDS.map((crop) => ({ crop }));
   const rs = recipesFor(type);
   return rs.length > 1 ? rs.map((r) => ({ recipe: r.id })) : [];
 }
@@ -183,14 +186,14 @@ export function choicesOf(type: BuildingId): Setting[] {
 export function settingFor(s: GameState, type: BuildingId): Setting {
   const all = choicesOf(type);
   if (!all.length) return {};
-  if (type === 'field') return { crop: s.chosen.crop };
+  if (hasCrop(type)) return { crop: s.chosen.crop };
   const recipe = s.chosen.recipes[type];
   return all.find((c) => c.recipe === recipe) ?? all[0];
 }
 
 /** Remembers a choice for the level, for the next time the type is picked up (a setting that doesn't fit the type is left out). */
 export function remember(s: GameState, type: BuildingId, set: Setting) {
-  if (type === 'field' && set.crop) s.chosen.crop = set.crop;
+  if (hasCrop(type) && set.crop) s.chosen.crop = set.crop;
   else if (set.recipe && choicesOf(type).some((c) => c.recipe === set.recipe)) s.chosen.recipes[type] = set.recipe;
 }
 
@@ -372,7 +375,7 @@ export function reshape(s: GameState, d: Dig): Action<{ steps: number }> {
 }
 
 export function setCrop(s: GameState, b: Building, crop: CropId): Action {
-  if (b.type !== 'field' || b.crop === crop) return no('');
+  if (!growsCrops(b) || b.crop === crop) return no('');
   // Stops that pick up the old crop here pick up the new one too (the old harvest still waiting has to go).
   for (const r of s.routes) for (const st of r.stops) {
     if (st.building === b.id && st.pick.includes(b.crop) && !st.pick.includes(crop)) { st.pick.push(crop); st.drop = st.drop.filter((i) => i !== crop); }
@@ -380,7 +383,7 @@ export function setCrop(s: GameState, b: Building, crop: CropId): Action {
   // A bean field guards the fields beside it against erosion: worked out again when one starts or stops growing beans.
   if (b.crop === 'beans' || crop === 'beans') touchLayout(s);
   b.crop = crop; b.growth = 0;
-  return done(`The field now grows ${CROPS[crop].name.toLowerCase()}${b.stored ? ` (once its ${CROPS[b.harvest ?? crop].name.toLowerCase()} harvest has gone)` : ''}.`);
+  return done(`The ${BUILDINGS[b.type].name.toLowerCase()} now grows ${CROPS[crop].name.toLowerCase()}${b.stored ? ` (once its ${CROPS[b.harvest ?? crop].name.toLowerCase()} harvest has gone)` : ''}.`);
 }
 
 export function setRecipe(b: MachineBuilding, id: string): Action {

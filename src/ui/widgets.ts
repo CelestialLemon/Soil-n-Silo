@@ -2,7 +2,7 @@ import { holdLabel, holdShape, readHold } from '../game/hold.ts';
 import { SILVER_PAR, tagsOf, type Goal, type Scenario } from '../game/scenarios.ts';
 import { soilHealth } from '../game/sim/soil.ts';
 import { goalDone, ratePerMin, type Medal } from '../game/sim/stats.ts';
-import type { Building, GameState, Status } from '../game/state.ts';
+import { growsCrops, type Building, type GameState, type Status } from '../game/state.ts';
 import { h } from './dom.ts';
 import { dec, itemName, pct, playTime } from './format.ts';
 
@@ -64,7 +64,7 @@ export function statusLabel(b: { type: Building['type'] }, status: Status, need?
   need = need?.split(' (')[0];
   switch (status) {
     case 'ok':
-      return b.type === 'field' ? 'Growing' : b.type === 'hive' ? 'Making honey' : b.type === 'garage' ? 'Charging trucks' : b.type === 'sprinkler' ? 'Watering' : b.type === 'station' ? 'Forecasting'
+      return growsCrops(b) ? 'Growing' : b.type === 'hive' ? 'Making honey' : b.type === 'garage' ? 'Charging trucks' : b.type === 'sprinkler' ? 'Watering' : b.type === 'station' ? 'Forecasting'
         : b.type === 'solar' || b.type === 'turbine' ? 'Making power' : b.type === 'battery' ? 'Connected' : b.type === 'pylon' ? 'Linked' : 'Working';
     case 'idle': return b.type === 'garage' ? 'No truck charging' : b.type === 'solar' ? 'Night' : b.type === 'silo' ? 'Storing' : 'Idle';
     case 'input': return `Waiting for ${need ?? 'goods'}`;

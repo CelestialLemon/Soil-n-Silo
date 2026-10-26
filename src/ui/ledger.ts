@@ -5,7 +5,7 @@ import { dayAt, hourAt } from '../game/sim/clock.ts';
 import { isPollinated } from '../game/sim/layout.ts';
 import { beesNow, beesOut } from '../game/warmth.ts';
 import { fieldFertility, soilHealth } from '../game/sim/soil.ts';
-import { countTrees, type GameState } from '../game/state.ts';
+import { countTrees, growsCrops, type GameState } from '../game/state.ts';
 import { fill, h, icon, svg } from './dom.ts';
 import { clock, dec, num, pct, plural, watts } from './format.ts';
 import { ring } from './widgets.ts';
@@ -31,7 +31,7 @@ function spark(values: (number | null)[], gold: boolean) {
 
 /** The valley's health: soil, trees, pollination. */
 function health(s: GameState) {
-  const fields = s.buildings.filter((b) => b.type === 'field'), soil = soilHealth(s), trend = soilTrend(s);
+  const fields = s.buildings.filter(growsCrops), soil = soilHealth(s), trend = soilTrend(s);
   const base = fields.length ? fields.reduce((n, f) => n + fieldFertility(s, f), 0) / fields.length : 50;
   const trees = countTrees(s), change = trees - s.initialTrees, nudge = Math.max(-TREE_HEALTH.cap, Math.min(TREE_HEALTH.cap, change * TREE_HEALTH.perTree));
   const goal = s.scenario.goals.find((g) => g.kind === 'soil');

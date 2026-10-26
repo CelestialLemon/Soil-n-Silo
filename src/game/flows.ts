@@ -1,5 +1,5 @@
 import { ITEMS, type ItemId } from './data.ts';
-import { isMachine, STAT_BUCKET, STAT_BUCKETS, type GameState } from './state.ts';
+import { growsCrops, isMachine, STAT_BUCKET, STAT_BUCKETS, type GameState } from './state.ts';
 import { runtimeOf } from './runtime.ts';
 
 // Goods moving through the valley over the last ten minutes, for the ledger: what was made, what buildings used, and what
@@ -100,7 +100,7 @@ export function goodsHeld(s: GameState): Counts {
   for (const b of s.buildings) {
     const stores = isMachine(b) ? [b.inputs, b.outputs] : b.type === 'silo' ? [b.store] : [];
     for (const src of stores) for (const [i, n] of Object.entries(src) as [ItemId, number][]) add(i, n);
-    if (b.type === 'field' && b.stored) add(b.harvest ?? b.crop, b.stored);
+    if (growsCrops(b) && b.stored) add(b.harvest ?? b.crop, b.stored);
     if (b.type === 'hive' && b.stored) add('honey', b.stored);
   }
   for (const t of s.trucks) for (const i of t.cargo) add(i, 1);

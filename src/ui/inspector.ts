@@ -19,12 +19,12 @@ import { fieldPace, flowersNear } from '../game/sim/buildings.ts';
 import { dustComes, dustNote } from '../game/dust.ts';
 import { hollowNote } from '../game/frost.ts';
 import { pushesAt } from '../game/events.ts';
-import { beesNow, beesOut, henFact, shadeFact, warmthFact, warmthOf } from '../game/warmth.ts';
+import { beesNow, beesOut, henFact, insideFact, shadeFact, warmthFact, warmthOf } from '../game/warmth.ts';
 import { runtimeOf } from '../game/runtime.ts';
 import { FAULT_WORDS, stationForecast, stationFault, stationsOf } from '../game/station.ts';
 import { isStop, routeOf, routesAt } from '../game/sim/trucks.ts';
 import { describeLinks, describeStatus, describeTruck, truckProblems } from '../game/sim/describe.ts';
-import { buildingById, isMachine, routeById, truckById, type Building, type GameState, type Route, type Truck } from '../game/state.ts';
+import { buildingById, growsCrops, isMachine, routeById, truckById, type Building, type GameState, type Route, type Truck } from '../game/state.ts';
 import { netColour } from '../world/powerView.ts';
 import { NET_COLOURS } from '../world/shapes.ts';
 import { h, icon, rebuild, set, setVar } from './dom.ts';
@@ -109,7 +109,7 @@ export class Inspector {
     }
     // Made again when what it shows changes: the building's settings, the trucks and routes it lists.
     const routes = runtimeOf(s).routesVersion;
-    const setting = b?.type === 'field' ? [b.crop, b.harvest ?? null, hollowNote(s, b), dustComes(s)] : b && isMachine(b) ? b.recipe : null;
+    const setting = b && growsCrops(b) ? [b.crop, b.harvest ?? null, b.type === 'field' ? hollowNote(s, b) : null, dustComes(s)] : b && isMachine(b) ? b.recipe : null;
     const key = JSON.stringify([keysVersion(), ...(t ? ['truck', t.id, t.route, routes, this.tab]
       : [b?.id, b?.type, setting, routes, this.tab])]);
     if (key !== this.key) {
@@ -186,7 +186,8 @@ export class Inspector {
     const stat = (label: string, get: () => string) => { const v = h('b'); lines.push(() => set(v, get())); out.push(row(label, v)); };
     const bar = (get: () => number) => { const el = h('div', { class: 'cd-bar' }, h('i')); lines.push(() => setVar(el, '--v', Math.max(0, Math.min(1, get())).toFixed(3))); out.push(el); };
     switch (b.type) {
-      case 'field': {
+      case 'field': case 'greenhouse': {
+        const under = b.type === 'greenhouse';
         out.push(h('div', { class: 'cd-seg wide' }, ...CROP_IDS.map((c) => h('button', {
           class: b.crop === c ? 'is-on' : '', title: `${CROPS[c].grow} s · ${CROPS[c].yield} a harvest · soil ${CROPS[c].soil > 0 ? '+' : ''}${CROPS[c].soil}${CROPS[c].flowers ? ' · flowers' : ''}`,
           onclick: () => this.host.did(setCrop(s, b, c)),
@@ -194,9 +195,12 @@ export class Inspector {
         stat('Growth', () => pct(b.growth)); bar(() => b.growth);
         stat('Soil fertility', () => `${Math.round(fieldFertility(s, b))}`);
         stat('Growth pace', () => { const p = fieldPace(s, b); return `${pct(p.pace)} · water ${pct(p.water)}, soil ×${p.soil.toFixed(2)}, warmth ${pct(p.byWarmth)}`; });
-        stat('Warmth', () => `${Math.round(warmthOf(s))}°C: ${warmthFact(CROPS[b.crop], warmthOf(s)).text.replace(/^[^:]*: /, '')} (comfortable ${CROPS[b.crop].comfort.low}–${CROPS[b.crop].comfort.high}°C)`);
-        if (hollowNote(s, b)) stat('Frost hollow', () => hollowNote(s, b) ?? '');
-        if (dustComes(s)) stat('Dust storm', () => dustNote(s, b) ?? '');
+        if (under) stat('Warmth', () => `${insideFact(CROPS[b.crop], warmthOf(s))}: held at ${CROPS[b.crop].comfort.low}°C or the outside warmth if warmer, vented above ${CROPS[b.crop].comfort.high}°C. Frost, gales, dust and heat waves do not reach it; a flood does`);
+        else {
+          stat('Warmth', () => `${Math.round(warmthOf(s))}°C: ${warmthFact(CROPS[b.crop], warmthOf(s)).text.replace(/^[^:]*: /, '')} (comfortable ${CROPS[b.crop].comfort.low}–${CROPS[b.crop].comfort.high}°C)`);
+          if (hollowNote(s, b)) stat('Frost hollow', () => hollowNote(s, b) ?? '');
+          if (dustComes(s)) stat('Dust storm', () => dustNote(s, b) ?? '');
+        }
         stat('Harvest', () => `${CROPS[b.crop].yield}${CROPS[b.crop].flowers && isPollinated(s, b) && beesOut(s) ? ` + ${POLLINATION_BONUS} (bees)` : ''} ${fieldPace(s, b).pace <= 0 ? ', not growing now' : ` every ${Math.round(CROPS[b.crop].grow / fieldPace(s, b).pace)} s`}`);
         stat('Waiting to go', () => `${b.stored} of ${FIELD.store}`);
         stat('Compost', () => `${wantsCompost(s, b) ? 'takes it now' : 'none needed'} · below soil ${FIELD.compostBelow}`);

@@ -11,7 +11,7 @@ import { exposureOf } from '../game/sim/layout.ts';
 import { TURBINE_WEAK, turbineShare } from '../game/wind.ts';
 import { HANDOFF_SECONDS, recentHandoffs } from '../game/sim/goods.ts';
 import { cutOff, lastPose } from '../game/sim/trucks.ts';
-import { buildingById, inMap, isMachine, layoutOf, reliefOf, sizeOf, terrainAt, type Building, type Dir, type FieldBuilding, type GameState, type Status, type Truck } from '../game/state.ts';
+import { buildingById, growsCrops, inMap, isMachine, layoutOf, reliefOf, sizeOf, terrainAt, type Building, type Dir, type FieldBuilding, type GameState, type Status, type Truck } from '../game/state.ts';
 import { isBank, overlayTiles, sheet, standY, Tris, type HaloThing, type Lie } from './ground.ts';
 import { baseLevel, centreLevel } from '../game/relief.ts';
 import { hash } from './kit.ts';
@@ -138,7 +138,7 @@ export class WorldView {
     for (const b of s.buildings) {
       alive.add(b.id);
       const n = sizeOf(b), cx = b.x + n / 2, cz = b.y + n / 2;
-      if (b.type === 'field') { this.syncField(s, b); continue; }
+      if (growsCrops(b)) { this.syncField(s, b); continue; }
       const running = isRunning(b);
       const y = standY(this.lie, s.map, n, b.x, b.y);
       let key = `${b.type} ${b.x} ${b.y} ${b.rot} ${running} ${y}`;
@@ -186,6 +186,11 @@ export class WorldView {
         (o) => o.setTransform(v.set(x + 0.5, this.lie.y(x + 0.5, y + 0.5) + SOIL_TOP, y + 0.5), e.set(0, turn, 0)));
       i++;
     }
+    // A greenhouse's placeholder frame over its crops.
+    if (f.type === 'greenhouse') {
+      const y = standY(this.lie, s.map, 3, f.x, f.y);
+      list[i] = this.show(list[i], `frame ${f.x} ${f.y} ${y}`, () => this.m.buildings.greenhouse.idle, f.id, (o) => o.setTransform(v.set(f.x + 1.5, y, f.y + 1.5), e.set(0, 0, 0)));
+    }
     this.parts.set(f.id, list);
   }
 
@@ -203,7 +208,7 @@ export class WorldView {
     for (const b of s.buildings) {
       if (!hasMarker(b)) continue;
       const n = sizeOf(b), h = this.m.buildings[b.type].height;
-      out.push({ id: b.id, status: b.status, need: b.need, x: b.x + n / 2, y: standY(this.lie, s.map, n, b.x, b.y) + (b.type === 'field' ? 0.9 : h) + 0.35, z: b.y + n / 2 });
+      out.push({ id: b.id, status: b.status, need: b.need, x: b.x + n / 2, y: standY(this.lie, s.map, n, b.x, b.y) + (growsCrops(b) ? 0.9 : h) + 0.35, z: b.y + n / 2 });
     }
     return out;
   }

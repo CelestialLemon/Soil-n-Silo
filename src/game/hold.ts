@@ -5,7 +5,7 @@ import { frostTakes } from './frost.ts';
 import { coopPace } from './rules.ts';
 import { PANEL_FROM, panelSnow } from './snow.ts';
 import type { Scenario } from './scenarios.ts';
-import type { Building, GameState, Truck } from './state.ts';
+import { growsCrops, type Building, type GameState, type Truck } from './state.ts';
 import { fieldPace } from './sim/buildings.ts';
 import { daylight } from './sim/clock.ts';
 import { runsInFrost } from './sim/layout.ts';
@@ -99,7 +99,7 @@ const STOPPED = 0.05;
  */
 export function buildingHold(s: GameState, b: Building, active: readonly Active[]): Hold | null {
   // Flood water stops whatever stands in it, and takes the crop a field was growing.
-  if (floodHolds(s, b)) return holdOfEvent(floodUnder(s.scenario, s.time), b.type === 'field' ? 'lost' : 'stopped');
+  if (floodHolds(s, b)) return holdOfEvent(floodUnder(s.scenario, s.time), growsCrops(b) ? 'lost' : 'stopped');
   switch (b.type) {
     // A panel makes less in the cloud and dark of a storm or a fog, none in a blizzard, and little under the snow it leaves.
     case 'solar': {

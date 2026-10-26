@@ -72,6 +72,15 @@ export function warmthPace(crop: CropDef, w: number): number {
   return 1 / (1 + (d / FIELD.warmthWidth) ** 2);
 }
 
+/** The warmth inside a greenhouse growing a crop, given the outside's: held at the lowest the crop grows at full speed in, or the outside when warmer, and vented down to the crop's highest (or FIELD.heat, where an unwatered crop would slow) when hotter. Free: 4.2 makes the warmth cost power. */
+export const insideWarmth = (crop: CropDef, outside: number) => Math.min(Math.max(outside, crop.comfort.low), crop.comfort.high, FIELD.heat);
+
+/** A greenhouse's warmth as a fact, "Inside 18°C, outside −3°C" (the crop it grows and the outside warmth). */
+export function insideFact(crop: CropDef, outside: number): string {
+  const deg = (n: number) => { const r = Math.round(n); return `${r < 0 ? '−' : ''}${Math.abs(r)}°C`; };
+  return `Inside ${deg(insideWarmth(crop, outside))}, outside ${deg(outside)}`;
+}
+
 /** Whether frost takes the growing crop in an open field. */
 export const frostKills = (crop: CropDef, w: number) => crop.tender && w < FROST;
 

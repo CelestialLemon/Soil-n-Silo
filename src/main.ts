@@ -6,7 +6,7 @@ import {
 import { BUILDINGS, CROPS, POWER, type BuildingId } from './game/data.ts';
 import { holdNeed, truckHold } from './game/hold.ts';
 import { frostComes, HOLLOW_FACT, inHollow, isHollow } from './game/frost.ts';
-import { warmthFact, warmthOf } from './game/warmth.ts';
+import { insideFact, warmthFact, warmthOf } from './game/warmth.ts';
 import { generateLand, TERRAIN } from './game/map.ts';
 import { aroundPoint, corners, MAX_LEVEL, sheetAt } from './game/relief.ts';
 import { wheelSite } from './game/rules.ts';
@@ -20,7 +20,7 @@ import { medalFor } from './game/sim/stats.ts';
 import { cargoText, describeStatus, describeTruck } from './game/sim/describe.ts';
 import { advance } from './game/sim/step.ts';
 import {
-  buildingAt, buildingById, inMap, layoutOf, newGame, reliefOf, routeById, sizeOf, terrainAt, tileIndex, truckById, type Dir, type GameState, type Route,
+  buildingAt, buildingById, growsCrops, inMap, layoutOf, newGame, reliefOf, routeById, sizeOf, terrainAt, tileIndex, truckById, type Dir, type GameState, type Route,
 } from './game/state.ts';
 import { Input } from './input.ts';
 import { Hud, type Tool } from './ui/hud.ts';
@@ -302,8 +302,8 @@ async function play(initial: GameState) {
         ghost(`frame ${okHere} ${n}`, (okHere ? models.frames.ok : models.frames.bad)[n - 1], cx, base + 0.03, cz);
         // A water wheel turns to face the river, as it will once placed.
         ghost(`b ${type}`, models.buildings[type].idle, cx, base + 0.04, cz, YAW[site ? site.rot : sp.rot], okHere);
-        // A field shows its crop, grown enough to tell apart.
-        if (type === 'field' && tool.crop) {
+        // A field or a greenhouse shows its crop, grown enough to tell apart.
+        if (growsCrops({ type }) && tool.crop) {
           const crop = tool.crop, stages = models.crops[crop], g = stages[Math.min(2, stages.length - 1)];
           tiles.forEach((h, i) => ghost(`crop ${crop}`, g, sp.x + (i % n) + 0.5, h + 0.06, sp.y + Math.floor(i / n) + 0.5, 0, okHere));
         }
@@ -574,7 +574,7 @@ async function play(initial: GameState) {
       return {
         title: BUILDINGS[b.type].name, icon: b.type, status: { status: b.status, label, need: b.need },
         text: removing ? (b.type === 'depot' ? 'The depot stays.' : `Click to remove it (refund ${priceOf(state, b.type)}).`)
-          : [line === label ? '' : line, b.type === 'field' ? `soil ${Math.round(fieldFertility(state, b))}` : '', b.type === 'field' && !removing ? warmthFact(CROPS[b.crop], warmthOf(state)).text : '', b.type === 'field' && !removing && frostComes(state) && inHollow(state, b.x, b.y) ? HOLLOW_FACT : ''].filter(Boolean).join(' · ') || undefined,
+          : [line === label ? '' : line, growsCrops(b) ? `soil ${Math.round(fieldFertility(state, b))}` : '', growsCrops(b) && !removing ? (b.type === 'greenhouse' ? insideFact(CROPS[b.crop], warmthOf(state)) : warmthFact(CROPS[b.crop], warmthOf(state)).text) : '', b.type === 'field' && !removing && frostComes(state) && inHollow(state, b.x, b.y) ? HOLLOW_FACT : ''].filter(Boolean).join(' · ') || undefined,
       };
     }
     if (!hoverTile) return null;

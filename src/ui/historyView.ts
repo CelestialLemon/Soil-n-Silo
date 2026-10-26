@@ -8,7 +8,7 @@ import { sprinklersOf } from '../game/sim/layout.ts';
 import { MAX_LEVEL } from '../game/relief.ts';
 import { recipeOf } from '../game/sim/goods.ts';
 import { routesAt, trucksOn } from '../game/sim/trucks.ts';
-import { isMachine, type Building, type GameState, type Status } from '../game/state.ts';
+import { growsCrops, isMachine, type Building, type GameState, type Status } from '../game/state.ts';
 import { must } from '../game/result.ts';
 import { warmthOf } from '../game/warmth.ts';
 import { fill, h, icon, set, svg } from './dom.ts';
@@ -51,14 +51,14 @@ function readingOf(b: Building): Reading | null {
 export function makesOf(b: Building): { items: ItemId[]; full: Partial<Record<ItemId, number>> | null } {
   const r = recipeOf(b);
   if (r) return { items: r.outputs.map((o) => o.item), full: Object.fromEntries(r.outputs.map((o) => [o.item, (o.n / r.time) * 60])) };
-  if (b.type === 'field') return { items: [b.crop], full: null };
+  if (growsCrops(b)) return { items: [b.crop], full: null };
   if (b.type === 'hive') return { items: ['honey'], full: null };
   return { items: [], full: null };
 }
 
 /** Goods of `item` (or any of a group) waiting in a building's stores now. */
 function inStore(b: Building, item: ItemId) {
-  if (b.type === 'field') return (b.harvest ?? b.crop) === item ? b.stored ?? 0 : 0;
+  if (growsCrops(b)) return (b.harvest ?? b.crop) === item ? b.stored ?? 0 : 0;
   if (b.type === 'hive') return item === 'honey' ? b.stored ?? 0 : 0;
   return isMachine(b) ? b.outputs[item] ?? 0 : 0;
 }

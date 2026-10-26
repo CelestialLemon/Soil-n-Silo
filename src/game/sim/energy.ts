@@ -5,10 +5,9 @@ import { panelShare } from '../snow.ts';
 import { networkOf, networks } from '../power.ts';
 import { notePower, type PowerStep } from '../powerlog.ts';
 import { isMachine, type BatteryBuilding, type Building, type GameState } from '../state.ts';
-import { exposureOf, runsInFrost, wattsOf } from './layout.ts';
+import { exposureOf, rainWaters, runsInFrost, wattsOf } from './layout.ts';
 import { recipeOf, missing, outputsFit } from './goods.ts';
 import { runtimeOf } from '../runtime.ts';
-import { raining } from './weather.ts';
 import { turbineShare, type View } from '../wind.ts';
 import { daylight } from './clock.ts';
 
@@ -24,7 +23,7 @@ export function shareOf(s: GameState, b: Building) {
 export function wants(s: GameState, b: Building): number {
   const def = BUILDINGS[b.type];
   if (!def.power) return 0;
-  if (b.type === 'sprinkler') return raining(s.scenario, s.time) ? 0 : wattsOf(s, b); // fields are watered by the rain
+  if (b.type === 'sprinkler') return rainWaters(s, b) ? 0 : wattsOf(s, b); // open fields are watered by the rain
   if (b.type === 'station') return floodHolds(s, b) ? 0 : def.power; // a drowned station is stopped: it draws nothing
   if (b.type === 'garage') return runtimeOf(s).charging?.get(b.id) ?? 0;
   if (!isMachine(b)) return 0;

@@ -1229,6 +1229,7 @@ playing trucks: every level needed many trucks, and routes doing a field-to-mill
 | Building | Size | Cost | Power | Notes |
 | --- | --- | --- | --- | --- |
 | Field | 3 × 3 | 30 | — | Grows the crop chosen as it is placed (wheat, until you choose another) on its 9 tiles. Takes compost (a truck brings it) |
+| Greenhouse | 3 × 3 | 150 | — | A field under glass (4.1): any crop in any season, sheltered from the weather, held warm for free. Flat ground only (levelled like a machine's, no cliff). Waters like a field: a sprinkler or a water edge; rain does not reach it. See **The greenhouse** below |
 | Sprinkler | 1 × 1 | 25 | 3 W within 8 tiles of water, else 8 W; +0.5 W per level lifted, from centre height | Waters fields whose centre is within 3 tiles |
 | Coop | 3 × 3 | 150 | — | Four chickens. Every 2 feed (beans, bran or seed cake) give 2 eggs and 1 manure, 16 s |
 | Beehive | 1 × 1 | 60 | — | Makes honey from flowering fields (not wheat) within 4 tiles, faster with more of them (up to 3). Pollinates fields within 4 tiles |
@@ -1243,6 +1244,27 @@ playing trucks: every level needed many trucks, and routes doing a field-to-mill
 | Tomato | 60 s | 4 | −1.5 |
 | Sunflower | 70 s | 3 | −2 |
 | Flax | 55 s | 3 | −1.5 |
+
+**The greenhouse (4.1).** A building of its own (`greenhouse` in `BUILDINGS`), not a kind of field, that shares the field's growing rules through
+one helper, `growsCrops(b)` (`state.ts`): crops chosen as it is placed (like a field: chips, C, the remembered choice), the same
+growth, store (`FIELD.store`), harvest, compost, next-door trading, truck stops, history and soil projection. Rules that belong to the open
+field alone test `type === 'field'`. No hotkey (G is the guide). The model is a placeholder until 4.5: a field's soil and crops
+under a timber frame.
+- **Ground:** flat (`groundOf`), unlike the field (which only needs no cliff). Its soil wears with each harvest, takes compost, and erodes
+  by `erosionAt` like a field's; a tree or sapling beside it guards it (a bean *field* beside it does not).
+- **Water:** a sprinkler within reach or a water edge, like a field. Rain and soft rain do not water it, so a sprinkler that waters a
+  greenhouse draws its power in the rain (one that waters only open fields still rests), and the placement card's soil projection
+  does not count on rain for it.
+- **Inside warmth** (`insideWarmth`, `warmth.ts`): the crop's `comfort.low` (6°C wheat, beans, flax; 14°C sunflower; 18°C tomato), or the
+  outside when warmer, vented down to `min(comfort.high, FIELD.heat)` when hotter (free). So a crop in a greenhouse always grows at full
+  speed for warmth, and no dry-heat slowdown reaches it (the `FIELD.heat` cap matters only for sunflower, 32 → 30°C). 4.2 makes the heat cost power.
+- **Reaches it:** floods (the growing crop is lost, it starts again; what it holds is kept).
+  **Does not:** late frost and cold snap (nothing is lost, and the crop keeps its full-speed warmth), gales and storms, dust (no fertility
+  lost), heat waves (no slowdown). Snow on its roof is only drawn and changes nothing. Nothing breaks it: weather disrupts, never destroys.
+- **Bees** reach it like a field when they fly (flying in winter is 4.4).
+- **Cards:** the inspector and hover card are a field's plus "Inside 18°C, outside −3°C"; the placement card shows the inside warmth and
+  no frost hollow or dust line. The guide has a Greenhouse page.
+- **Bot:** not yet (4.6), so no target time changes.
 
 - **Choosing while placing.** While a field or bakery is in hand, a strip over its dock tile (its pointer on the tile) has a
   chip for each crop or recipe; the one in hand is lit. Click a chip, or press C (Shift+C goes
@@ -1476,7 +1498,7 @@ Early on, raw goods are the way to afford the first machines; products pay far b
 ## Saving
 
 The game saves the commission in progress (one at a time) in the browser every 30 s and when the page is hidden, and remembers
-each commission's best medal and time. Saves are version 16 (the commission's events are saved with it, and the hour of the weather station's last forecast; the run log keeps what the weather held and the valley's output). A save from an older version of the game is refused.
+each commission's best medal and time. Saves are version 17 (the commission's events are saved with it, and the hour of the weather station's last forecast; the run log keeps what the weather held and the valley's output). A save from an older version of the game is refused.
 
 ## Open questions
 

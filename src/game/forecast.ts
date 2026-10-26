@@ -17,10 +17,10 @@ import { canFlood, floodsAt, isFlooded } from './flood.ts';
 import { dustComes, dustFor } from './dust.ts';
 import { frostComes, frostHits, inHollow } from './frost.ts';
 import { centreLevel } from './relief.ts';
-import { beesNow, beesOut, shadeFact, warmthFact, warmthOf } from './warmth.ts';
+import { beesNow, beesOut, insideFact, insideWarmth, shadeFact, warmthFact, warmthOf } from './warmth.ts';
 import { canGale, SEVERE_GALE, standsGale, turbineShare } from './wind.ts';
 import { hasStation } from './station.ts';
-import { inMap, type Building, type FieldBuilding, type GameState, type Setting } from './state.ts';
+import { growsCrops, inMap, type Building, type FieldBuilding, type GameState, type Setting } from './state.ts';
 
 // Forecasts from what the game already knows: what a building in hand would do on a tile (facts about the tile, no advice),
 // and how tonight's battery charge will go if power is used as it is now (the weather is seeded, so the game knows it).
@@ -54,11 +54,11 @@ function soilUnder(s: GameState, x: number, y: number, n: number) {
 }
 
 /** The sprinklers that would water a field at (x, y), and the most water any gives (the share of power it gets); rain waters every field. */
-function waterAt(s: GameState, x: number, y: number) {
-  const sp = s.buildings.filter((b) => b.type === 'sprinkler' && !isFlooded(s, b) && sprinklerWaters(b.x, b.y, { type: 'field', x, y }));
-  const shore = touchesWater(s, x, y), share = sp.reduce((m, b) => Math.max(m, shareOf(s, b)), 0);
+function waterAt(s: GameState, type: 'field' | 'greenhouse', x: number, y: number) {
+  const sp = s.buildings.filter((b) => b.type === 'sprinkler' && !isFlooded(s, b) && sprinklerWaters(b.x, b.y, { type, x, y }));
+  const shore = touchesWater(s, x, y), share = sp.reduce((m, b) => Math.max(m, shareOf(s, b)), 0), rains = type === 'field' && raining(s.scenario, s.time);
   // Rain waters every field while it lasts; a sprinkler gives its share of power as it is now.
-  return { sprinklers: sp.length, shore, rain: !shore && raining(s.scenario, s.time), water: shore || raining(s.scenario, s.time) ? 1 : share, share };
+  return { sprinklers: sp.length, shore, rain: !shore && rains, water: shore || rains ? 1 : share, share };
 }
 
 /** Whether a pylon (one not under flood water) would reach a footprint at (x, y). */
@@ -73,14 +73,16 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
   // What it would do on the ground as it will be: levelled first, if placing it levels it.
   const there = (): Placement => {
     switch (type) {
-      case 'field': {
-        const crop = CROPS[set.crop ?? 'wheat'], soil = soilUnder(s, x, y, 3), { sprinklers, shore, rain, water, share } = waterAt(s, x, y);
+      case 'field': case 'greenhouse': {
+        // A greenhouse grows in its own warmth, and neither rain, frost nor dust reach it.
+        const under = type === 'greenhouse', crop = CROPS[set.crop ?? 'wheat'], soil = soilUnder(s, x, y, 3), { sprinklers, shore, rain, water, share } = waterAt(s, type, x, y);
+        const warmthIn = (w: number) => (under ? insideWarmth(crop, w) : w);
         // A hive within reach of a flowering crop adds a good to every harvest.
-        const pollinated = crop.flowers && beesOut(s) && s.buildings.some((b) => b.type === 'hive' && !isFlooded(s, b) && hiveReaches({ type: 'field', x, y }, b.x, b.y));
+        const pollinated = crop.flowers && beesOut(s) && s.buildings.some((b) => b.type === 'hive' && !isFlooded(s, b) && hiveReaches({ type, x, y }, b.x, b.y));
         // Nothing, while a late frost that lies there takes it.
-        const perMin = frostHits(s, set.crop ?? 'wheat', x, y) ? 0 : (crop.yield + (pollinated ? POLLINATION_BONUS : 0)) * 60 * paceOf(water, soil, crop, warmthOf(s)).pace / crop.grow;
+        const perMin = !under && frostHits(s, set.crop ?? 'wheat', x, y) ? 0 : (crop.yield + (pollinated ? POLLINATION_BONUS : 0)) * 60 * paceOf(water, soil, crop, warmthIn(warmthOf(s))).pace / crop.grow;
         // Sloping tiles under it wear faster (erosion).
-        const guarded = guardedAt(s, x, y);
+        const guarded = guardedAt(s, x, y), blown = !under && !guarded;
         let slopes = 0, wear = 0;
         for (let ty = y; ty < y + 3; ty++) for (let tx = x; tx < x + 3; tx++) {
           const k = inMap(s, tx, ty) ? erosionAt(s, tx, ty, guarded) : 1;
@@ -102,13 +104,13 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
             // (Every run's pace is worked out from the soil at the start of the hour, before any run harvests in it.)
             const grew = views.map((view, k) => {
               // A dust storm blowing over an unguarded field takes its soil (the hour's wind, at the hour's middle).
-              const dust = guarded ? 0 : (dustFor(view, s.time + t + HOUR / 2)?.rate ?? 0) * Math.min(1, (SOIL_AHEAD - t) / HOUR);
+              const dust = !blown ? 0 : (dustFor(view, s.time + t + HOUR / 2)?.rate ?? 0) * Math.min(1, (SOIL_AHEAD - t) / HOUR);
               soils[k] = Math.max(0, soils[k] - dust);
               if (k === 0) { least = Math.max(0, least - dust); most = Math.max(0, most - dust); }
               // A late frost on the field takes what has grown (the field starts again) and nothing grows while it bites.
-              if (frostHits(s, set.crop ?? 'wheat', x, y, s.time + t, view)) { growth[k] = 0; return 0; }
-              const rain = shore ? 1 : view.hourRain(s.time + t), wet = rain + (1 - rain) * share;
-              const paces = view.warmths(s.time + t).map((w) => paceOf(wet, bounded ? (k ? most : least) : soils[0], crop, w).pace);
+              if (!under && frostHits(s, set.crop ?? 'wheat', x, y, s.time + t, view)) { growth[k] = 0; return 0; }
+              const rain = shore ? 1 : under ? 0 : view.hourRain(s.time + t), wet = rain + (1 - rain) * share;
+              const paces = view.warmths(s.time + t).map((w) => paceOf(wet, bounded ? (k ? most : least) : soils[0], crop, warmthIn(w)).pace);
               return Math.min(HOUR, SOIL_AHEAD - t) * (k ? Math.max(...paces) : Math.min(...paces)) / crop.grow;
             });
             grew.forEach((by, k) => {
@@ -128,22 +130,23 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         // (Each run takes the hour's slowest or fastest pace, so the runs bracket the harvests the weather allows. Where the forecast leaves room in when a
         // dust storm or a late frost begins or ends, soil is not monotone in it: a dust storm that lasts a little longer can suppress a harvest, and the worlds are only
         // sampled. A harvest more or less than the runs reach is then allowed: soil moves a step with each one.)
-        const base = spread(runs.map((r) => r.later)), many = base.hi - base.lo > 1e-9, step = eventsVary(s, reading, s.time + SOIL_AHEAD, SOIL_EVENTS) ? Math.abs(crop.soil * (crop.soil < 0 ? wear : 1)) : 0;
+        const base = spread(runs.map((r) => r.later)), many = base.hi - base.lo > 1e-9, step = !under && eventsVary(s, reading, s.time + SOIL_AHEAD, SOIL_EVENTS) ? Math.abs(crop.soil * (crop.soil < 0 ? wear : 1)) : 0;
         const then = many || step > 0 ? { lo: Math.max(0, Math.floor(base.lo - step)), hi: Math.min(100, Math.ceil(base.hi + step)) } : { lo: Math.round(base.lo), hi: Math.round(base.lo) };
         facts.push({ label: crop.name, value: `+${fmt1(perMin)}`, sub: 'a minute, at this warmth' });
         const skipped = notCounted(s.scenario, reading, s.time, s.time + SOIL_AHEAD);
         facts.push({ label: 'Soil', value: String(Math.round(soil)), then: then.lo === then.hi ? String(then.lo) : `${then.lo}–${then.hi}`, sub: `in ${SOIL_AHEAD / 60} min if harvests are carried off${reading.kind === 'truth' ? '' : `, ${basisFor(reading, s.scenario.climate, s.time, s.time + SOIL_AHEAD).replace(/^for /, 'in ')}`}${skipped ? `; ${skipped}` : ''}` });
-        facts.push(shore ? { label: 'Water', value: 'beside water', sub: 'grows at 100%' } : rain ? { label: 'Water', value: 'rain', sub: 'grows at 100% while it rains', tone: 'good' } : sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round(waterPace(water, crop.thirst, warmthOf(s)) * 100)}%` }
-          : { label: 'Water', value: 'none', sub: `grows at ${Math.round(waterPace(0, crop.thirst, warmthOf(s)) * 100)}%`, tone: 'bad' });
-        const warm = warmthFact(crop, warmthOf(s));
-        facts.push({ label: 'Warmth', value: `${Math.round(warmthOf(s))}°C`, sub: warm.text.slice(warm.text.indexOf(': ') + 2), tone: warm.tone === 'bad' ? 'bad' : undefined });
-        if (frostComes(s) && inHollow(s, x, y)) facts.push({ label: 'Frost hollow', value: 'yes', sub: crop.tender ? 'late frost settles here and takes a tender crop' : 'late frost settles here; a hardy crop is unharmed', tone: crop.tender ? 'bad' : undefined });
-        if (dustComes(s)) facts.push({ label: 'Dust storm', value: guarded ? 'guarded' : 'exposed', sub: guarded ? 'trees or beans beside it break the wind' : 'a dust storm lifts its soil; a tree, sapling or bean field beside it would guard it', tone: guarded ? 'good' : 'bad' });
+        facts.push(shore ? { label: 'Water', value: 'beside water', sub: 'grows at 100%' } : rain ? { label: 'Water', value: 'rain', sub: 'grows at 100% while it rains', tone: 'good' } : sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round(waterPace(water, crop.thirst, warmthIn(warmthOf(s))) * 100)}%` }
+          : { label: 'Water', value: 'none', sub: `grows at ${Math.round(waterPace(0, crop.thirst, warmthIn(warmthOf(s))) * 100)}%`, tone: 'bad' });
+        const warm = warmthFact(crop, warmthIn(warmthOf(s)));
+        facts.push(under ? { label: 'Warmth', value: `${Math.round(warmthIn(warmthOf(s)))}°C inside`, sub: `${insideFact(crop, warmthOf(s)).replace(/^Inside [^,]*, /, '')}; held warm for free`, tone: 'good' }
+          : { label: 'Warmth', value: `${Math.round(warmthOf(s))}°C`, sub: warm.text.slice(warm.text.indexOf(': ') + 2), tone: warm.tone === 'bad' ? 'bad' : undefined });
+        if (!under && frostComes(s) && inHollow(s, x, y)) facts.push({ label: 'Frost hollow', value: 'yes', sub: crop.tender ? 'late frost settles here and takes a tender crop' : 'late frost settles here; a hardy crop is unharmed', tone: crop.tender ? 'bad' : undefined });
+        if (!under && dustComes(s)) facts.push({ label: 'Dust storm', value: guarded ? 'guarded' : 'exposed', sub: guarded ? 'trees or beans beside it break the wind' : 'a dust storm lifts its soil; a tree, sapling or bean field beside it would guard it', tone: guarded ? 'good' : 'bad' });
         if (slopes) facts.push({ label: 'Slope', value: `${slopes} of 9 tiles`, sub: `wear up to ${fmt1(1 + (guarded ? FIELD.erosionGuarded : FIELD.erosion))}× as fast${guarded ? '; trees or beans beside it help' : ''}`, tone: guarded ? undefined : 'bad' });
         break;
       }
       case 'sprinkler': {
-        const fields = s.buildings.filter((b) => b.type === 'field' && sprinklerWaters(x, y, b)), water = inMap(s, x, y) ? waterLevelNear(s, x, y) : null;
+        const fields = s.buildings.filter((b) => growsCrops(b) && sprinklerWaters(x, y, b)), water = inMap(s, x, y) ? waterLevelNear(s, x, y) : null;
         const lift = water === null ? here : Math.max(0, here - water);
         facts.push({ label: 'Waters', value: `${fields.length} field${fields.length === 1 ? '' : 's'}`, sub: `centres within ${POWER.sprinklerReach} tiles` });
         facts.push({ label: 'Uses', value: inMap(s, x, y) ? watts(sprinklerWatts(s, x, y)) : '–', sub: `${water === null ? 'far from water' : 'near water'}${lift ? `, lifting it ${fmt1(lift)} level${lift === 1 ? '' : 's'}` : ''}` });
@@ -151,7 +154,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         break;
       }
       case 'hive': {
-        const near = s.buildings.filter((b): b is FieldBuilding => b.type === 'field' && !isFlooded(s, b) && hiveReaches(b, x, y));
+        const near = s.buildings.filter((b): b is FieldBuilding => growsCrops(b) && !isFlooded(s, b) && hiveReaches(b, x, y));
         const flowers = Math.min(HIVE.maxFlowers, near.filter((f) => CROPS[f.crop].flowers).length), out = beesOut(s);
         facts.push({ label: 'Honey', value: `+${fmt1((out ? flowers : 0) * 60 / HIVE.honeySeconds)}`, sub: 'a minute', tone: flowers && out ? undefined : 'bad' });
         facts.push({ label: 'Flowers', value: `${flowers} field${flowers === 1 ? '' : 's'}`, sub: `flowering within ${HIVE.reach} tiles` });
