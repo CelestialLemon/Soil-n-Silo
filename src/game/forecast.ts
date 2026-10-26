@@ -11,7 +11,7 @@ import { linksAt } from './sim/goods.ts';
 import { makes, shareOf, wants } from './sim/energy.ts';
 import { basisFor, eventsVary, notCounted, readingOf, spread, viewsOf, type Ahead, type Lenses, type Reading } from './ahead.ts';
 import type { Range } from './outlook.ts';
-import { wattsOf } from './sim/layout.ts';
+import { watersGreenhouse, wattsOf } from './sim/layout.ts';
 import { describeLinks } from './sim/describe.ts';
 import { canFlood, floodsAt, isFlooded } from './flood.ts';
 import { dustComes, dustFor } from './dust.ts';
@@ -298,9 +298,10 @@ export function tonight(s: GameState, reading: Reading = readingOf(s)): Tonight 
   const sunrise = nextHour(sunset ?? now, w.rise), end = sunrise + HOUR_SECONDS;
   const nets = networks(s).list.map((net) => {
     const bats = net.members.filter((b) => b.type === 'battery').map((b) => b.charge);
-    // What the sprinklers want when they run (they rest in rain) and what everything else wants now.
-    const sprinklers = net.members.filter((b) => b.type === 'sprinkler').reduce((n, b) => n + wattsOf(s, b), 0);
-    return { bats, sprinklers, other: net.members.reduce((n, b) => n + (b.type === 'sprinkler' ? 0 : wants(s, b)), 0), solar: net.members.filter((b) => b.type === 'solar').length, turbines: net.members.filter((b) => b.type === 'turbine'),
+    // What the sprinklers want when they run (they rest in rain, except those that water a greenhouse) and what everything else wants now.
+    const sprinklers = net.members.filter((b) => b.type === 'sprinkler' && !watersGreenhouse(s, b)).reduce((n, b) => n + wattsOf(s, b), 0);
+    const indoor = net.members.filter((b) => b.type === 'sprinkler' && watersGreenhouse(s, b)).reduce((n, b) => n + wattsOf(s, b), 0);
+    return { bats, sprinklers, other: indoor + net.members.reduce((n, b) => n + (b.type === 'sprinkler' ? 0 : wants(s, b)), 0), solar: net.members.filter((b) => b.type === 'solar').length, turbines: net.members.filter((b) => b.type === 'turbine'),
       digesters: net.members.filter((b) => b.type === 'digester').reduce((n, b) => n + makes(s, b, 0, 0), 0), wheels: net.members.filter((b) => b.type === 'wheel') };
   });
   const capacity = nets.reduce((n, x) => n + x.bats.length, 0) * POWER.battery.capacity;

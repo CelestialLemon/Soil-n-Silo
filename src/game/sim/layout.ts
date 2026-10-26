@@ -89,7 +89,10 @@ export function besides(s: GameState, b: { type: BuildingId; x: number; y: numbe
 export const handlesGoods = (b: Building) => !!BUILDINGS[b.type].harvests || isMachine(b);
 
 /** Whether the rain does a sprinkler's work now: it is raining and the sprinkler waters no greenhouse (the rain doesn't reach one). */
-export const rainWaters = (s: GameState, sp: Building) => raining(s.scenario, s.time) && !derived(s).indoors.has(sp.id);
+export const rainWaters = (s: GameState, sp: Building) => raining(s.scenario, s.time) && !watersGreenhouse(s, sp);
+
+/** Whether a sprinkler waters a greenhouse (so it runs in the rain). */
+export const watersGreenhouse = (s: GameState, sp: Building) => derived(s).indoors.has(sp.id);
 
 export const sprinklersOf = (s: GameState, b: Building) => derived(s).sprinklers.get(b.id) ?? [];
 export const isPollinated = (s: GameState, b: Building) => derived(s).pollinated.has(b.id);

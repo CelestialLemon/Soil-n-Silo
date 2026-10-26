@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { place, setCrop } from '../src/game/build.ts';
 import { CROP_IDS, CROPS, DAY_SECONDS, FIELD } from '../src/game/data.ts';
 import { eventOn, timeOf } from '../src/game/events.ts';
-import { placement } from '../src/game/forecast.ts';
+import { placement, tonight } from '../src/game/forecast.ts';
 import { groundOf } from '../src/game/rules.ts';
 import { TERRAIN } from '../src/game/map.ts';
 import { deserialize, serialize } from '../src/game/save.ts';
@@ -139,4 +139,21 @@ test('saves of the version before are refused', () => {
   assert.ok(back.ok);
   assert.equal(back.value.buildings.find((b) => b.type === 'greenhouse')?.type, 'greenhouse');
   assert.ok(!deserialize(JSON.stringify({ ...JSON.parse(serialize(s)), version: 16 })).ok);
+});
+
+test('tonight counts a sprinkler that waters a greenhouse as running through the rain', () => {
+  const night = (type: 'field' | 'greenhouse') => {
+    const s = valley('autumn', [], 1, timeOf(2, 20));
+    s.scenario.climate = { ...s.scenario.climate, sun: { rise: 6, set: 20, strength: 1 } };
+    place(s, 'pylon', 14, 14, 0); place(s, 'battery', 15, 14, 0);
+    build(s, type, 10, 10, 'wheat');
+    place(s, 'sprinkler', 12, 13, 0);
+    advance(s, 1);
+    const bat = s.buildings.find((b) => b.type === 'battery');
+    if (bat?.type === 'battery') bat.charge = 500;
+    return tonight(s, { kind: 'truth' });
+  };
+  const open = night('field'), under = night('greenhouse');
+  assert.ok(open && under);
+  assert.ok((under.dryAt ?? Infinity) < (open.dryAt ?? Infinity), `greenhouse ${under.dryAt}, field ${open.dryAt}`);
 });
