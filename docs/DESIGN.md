@@ -241,7 +241,7 @@ half speed at 36°C. **Trees by the coop shade it:** each tree within 2 tiles of
 "Shade: 2 trees within 2 tiles", its placement card the same for the spot). The coop stays 'Working'; its inspector, hover and placement card say "Hens, 3°C: cool season, laying at about 50% speed".
 Bees stay in below 10°C: a hive makes no honey (status Too cold, "Bees: staying in, 7°C") and a flowering field harvested then gets no
 pollination bonus. Warmth swings over a day, so a hive works in the afternoon of a cool spring day. Winter days top out at 6°C, so in winter
-the bees stay in all day; Long Nights (winter, honey cake) can't be cleared until the greenhouse (#86), and its bot test is skipped.
+the bees stay in all day, except at a working greenhouse (Bees in winter, below); Long Nights (winter, honey cake) is cleared with bees under glass (4.6).
 The bees also stay in while a gale or a tropical storm blows (see The wind events); a warm spell (see Weather events) lets them fly in winter.
 **Bees in winter (`forage.ts`).** Too cold outside (below 10°C), a hive whose reach (`hiveReaches`) takes in a **working greenhouse** (dry, powered
 when its crop needs heat, and at its crop's lowest comfortable warmth, `greenhouseWorking`; one cooling without power stops counting at once)
@@ -268,7 +268,7 @@ it, grows at about 50% speed"), and the guide's crop table shows each range and 
 
 Sunflower "copes when dry": it loses half as much growth to a lack of water. The flax's liking for wet waits for rain (1.3).
 So wheat and flax are slow in a summer's heat, tomato and sunflower are slow in spring and autumn and stopped in winter (oil
-and sauce need greenhouses then, phase 4).
+and sauce need greenhouses then: a tomato greenhouse is held at 18°C, about 14 W at −5°C).
 
 **Conditions** are the everyday weather inside a season: small, constant and unannounced, seeded like the wind curve
 (`src/game/sim/weather.ts`). The day is cut into spells (4 hours of cloud, 2.5 of showers, 5 of calm); each spell is on with the
@@ -416,7 +416,7 @@ campaign) when frost settles on the lowest ground (`src/game/frost.ts`: pure rul
 - **Drawn.** White rime lies over the frozen tiles: it builds in with the frost, lies at dawn and melts away over 3 game hours after
   the frost ends (`MELT_HOURS`), through the morning. It is a sheet of tiles tinted white and dithered by opacity (up to 85%),
   game-side; no renderer feature was needed.
-- **Answer you can build:** tender crops on slopes, hardy crops in the hollows; the greenhouse (phase 4) is frost-proof.
+- **Answer you can build:** tender crops on slopes, hardy crops in the hollows; the greenhouse (4.1) is frost-proof.
 - **Cost, measured with the bot** (`tools/` layouts on a flat map, where a severe frost freezes every field, the worst case): one
   severe frost on day 2–5 made c6 (sauce) 2.3–2.6 minutes slower (of a 39 minute run), c3 (oil, bread) 0–1.2, c4, c7 and c8 under
   half a minute. An ordinary frost reaches about a quarter of the fields, so it costs less. That is about 3% on average over a
@@ -1304,7 +1304,8 @@ under a timber frame.
 - **Cards:** the inspector and hover card are a field's plus "Inside 18°C, outside −3°C, heating 13 W" (the watts it gets); the placement
   card shows the outside warmth, the watts it would need now, and its pylon reach (its soil projection assumes full power), and its heating ahead (4.3), with
   no frost hollow or dust line. The guide has a Greenhouse page.
-- **Bot:** not yet (4.6), so no target time changes (nor in 4.3: the projections do not feed the rules).
+- **Bot:** Long Nights' layout builds greenhouses (4.6, below); the other layouts build none, except a winter's measurement (`glass`).
+- **Where it is available:** from every commission, campaign and random, and the sandbox: there is no unlock (nothing else in the game is gated). Winter commissions are where it matters, so their letters (`letters.ts`) and the guide's Seasons and weather say what it does.
 
 - **Choosing while placing.** While a field or bakery is in hand, a strip over its dock tile (its pointer on the tile) has a
   chip for each crop or recipe; the one in hand is lit. Click a chip, or press C (Shift+C goes
@@ -1418,7 +1419,7 @@ none on the first day, one at a time, at least half a day clear between them, al
 | 2 | Morning Bread | a thunderstorm, day 5 at 09:00 (12 h; no flood follows it here) | a dark, rainy spell for power: batteries carry it, the rain waters the fields |
 | 3 | Windy Ridge | a **severe** gale, day 7 at 08:00 (a day) | shelter for turbines: bare turbines stop, ones with trees, tall buildings or other turbines beside them keep turning (an ordinary gale only fills the turbines, so it would teach nothing) |
 | 4 | Linen for the Looms | a heat wave, day 4 at 08:00 (32 h) | flax dislikes heat; sprinklers and shade |
-| 5 | Long Nights | a cold snap, day 3 at 18:00 (36 h), then a warm spell, day 7 at 08:00 (36 h) | the cold, then a break in it (the greenhouse comes in phase 4; the commission cannot be finished before it) |
+| 5 | Long Nights | a cold snap, day 3 at 18:00 (36 h), then a warm spell, day 7 at 08:00 (36 h) | the cold, then a break in it; the commission is the greenhouse's: bees and beans under glass, heated through the cold snap (4.6) |
 | 6 | Tired Soil | a dust storm, day 4 at 09:00 (18 h) | trees as windbreaks guard the soil: a sapling or tree beside a field, or a bean field sharing an edge |
 | 7 | Riverlands | a flood, day 6 at 08:00 (36 h) | the floodplain, banks (earthworks) and silt |
 | 8 | Harvest Festival | a tropical storm, day 3 at 08:00 (36 h) and the flood after it, then fog, day 7 at 04:00 (5.5 h) | everything; the station (phase 3) matters: the storm is named three days out, the letter says so |
@@ -1444,7 +1445,7 @@ middle of the build, to day 5; Riverlands' flood from day 5 to day 6, once the f
 **No event asks for quick reactions.** Every effect is a rule that acts by itself: nothing can be done *during* an event that has to be done in a hurry (the answers are built ahead), the shortest
 (the fog, 4–7 game hours: 40–70 seconds of play) only slows trucks and dims panels, the frost's loss happens as it arrives, a flood rises over many hours in half-level steps, and the game can be paused
 at any moment to look, since pausing is free. Nothing flashes or interrupts: an event is the chip, the sky, markers on what it holds, and its line in the results.
-Left open: Long Nights (c5) cannot be finished before the greenhouse (its events are placed; its bot test stays skipped, its target 70 a placeholder); a random winter takes 2.6 to 3.8 times the base time until then;
+Left open: Long Nights (c5) cannot be finished before the greenhouse (settled in 4.6, below); a random winter takes 2.6 to 3.8 times the base time until then (see 4.6);
 and the weather has been played only headless, not by hand.
 
 **Playtest of phase 3 (3.6, 2026-10-26).** Driven headless (scripts on the real rules, outside the repo) and in headless Chromium on the dev server (the briefing, the guide's
@@ -1473,7 +1474,7 @@ and the weather has been played only headless, not by hand.
   with the stations in the layouts and no climate's suggested factor is above its table value.
 - **Left open.** (1) Playing it by hand, start to finish, on a few commissions. (2) Where the night's rain is open (a block that can be dry or pouring for 3 to 6 hours) the band's top is wide, since a night of rain lets the
   sprinklers rest and fills the batteries: the band says what can happen, but a player may want it split by the rain; look at it in play. (3) The forecast panel's "None told for this day yet" on a day a storm and its flood still span
-  (Harvest Festival's day 4: the storm ends then) reads as "nothing is coming"; the card of the day it begins carries it. A wording to look at with the panel in hand. (4) Long Nights still waits for the greenhouse (#86).
+  (Harvest Festival's day 4: the storm ends then) reads as "nothing is coming"; the card of the day it begins carries it. A wording to look at with the panel in hand. (4) Long Nights waited for the greenhouse (done in 4.6).
 
 The bot (`npm run sim`) deliberately uses a flat, open map with even soil to test the economy, not terrain;
 `test/height.test.ts` covers the height rules. It clears First Light in about 15.5 minutes, Morning Bread in about 33 and
@@ -1504,14 +1505,14 @@ are 20, 45, 55, 40, 40, 50 and 50 minutes. Long Nights (about 50 minutes in the 
 its target 70 stands until #86 gives a real time. After phase 1 (2026-10-22) every campaign target is again about 1.4 times the bot's time: First Light 15.5 (20), Morning Bread 32.6 (45), Windy Ridge 39.1 (55), Linen for the Looms 28.2 (40), Tired Soil 28.8 (40), Riverlands 36.8 (50) and Harvest Festival 35.0 (50), so none changed. After phase 2 (2026-10-24), with the authored events and the bot's answers to them (below):
 First Light 15.5 (20), Morning Bread 32.6 (45), Windy Ridge 39.6 (55), Linen for the Looms 29.4 (40), Tired Soil 29.2 (40), Riverlands 36.6 (50) and Harvest Festival 36.9 (50),
 all still about 1.4 times the bot's time, so none changed.)
-Bees in winter (4.4): no bot layout builds a greenhouse, so no bot time or target changed (the seven bot tests pass at their targets); Long Nights stays skipped until 4.6.
+Bees in winter (4.4): no bot layout built a greenhouse then, so no bot time or target changed; Long Nights' came in 4.6 (below).
 
 ![The level select](images/menu.png)
 
 **Random commission:** any seed and a difficulty (1–3) pick a season (any of the four, equally), a character that fits it,
 up to two ground modifiers (poor soil, rocky, wooded, hilly or flat), 2–4 goals and its weather events (see Weather events). A winter commission never asks for oil,
-sauce, honey or honey cake (no sunflower or tomato grows in a winter field, and bees stay in), which the bot can't clear before
-the greenhouse (#86); the other goals come in any season. **Target time:** (15 + 12 × difficulty + 6 × goals) minutes, the
+sauce, honey or honey cake (no sunflower or tomato grows in a winter field, and bees stay in outdoors; under glass they need a heated greenhouse of tomato or sunflower, or
+beans for the bees, which only Long Nights' bot builds, and the winter target times are not measured on those chains); the other goals come in any season. **Target time:** (15 + 12 × difficulty + 6 × goals) minutes, the
 time of a mild spring, times a **season-and-character factor** (`PAR_FACTOR` in `src/game/scenarios.ts`), rounded to 5 minutes, so
 every season and character can earn gold. One table, measured once (2026-10-24, 2.10), with the weather events in: `node tools/seasonfactor.ts` plays every bot layout
 in every climate with the events a random commission rolls there (difficulty 1 to 3, four seeds each: 4 × 3 runs a layout and climate, 8 layouts), spread over as long as the bot takes in a mild spring (a level is never shorter than 28 minutes, so the events the shortest layouts, First Light's, outrun are not measured), and compares each
@@ -1563,3 +1564,27 @@ each commission's best medal and time. Saves are version 17 (the commission's ev
 - [ ] Drones, once trucks have been played: automatic helpers from a drone hub that fly straight over water and crowded
   ground, carry little and use more power, and are assigned jobs by the hub as a whole, so none chase the same job.
 - [ ] Blueprints/copy-paste once layouts grow large.
+
+**Playtest of phase 4 and what the greenhouse did to winter (4.6, 2026-10-27).** Driven headless on the real rules (the bot, `npm run sim`, `tools/seasonfactor.ts`, scripts outside the repo); the briefing's letter
+and the guide's text were read in code, not played by hand in a browser.
+- **Long Nights is clearable.** The bot's layout (`tools/layouts.ts` c5) builds two bean greenhouses beside the hive, a wheat greenhouse west of the mill (its wheat reaches the mill by a truck) and the
+  power first (two turbines, a battery, a digester on the coop's manure): 100 honey cakes in **45.9 minutes**, through the cold snap on day 3 (the hive gathers in those hours: a test in `test/bots.test.ts`).
+  Target **65 minutes** (1.4 times, rounded to 5), where the placeholder was 70. Without the wheat greenhouse it takes 50.4 (wheat is the limit: outdoors it grows too slowly in winter to keep the mill and
+  the hens busy); with a third bean greenhouse and no more power 47.5 (the third heats at night but starves the hive); a layout that starts with the greenhouses before the first sale never finishes
+  (1,400 credits do not stretch to a bakery, a mill, a coop and three greenhouses with a garage). The honey cake pace under glass is about 2.2 a minute once it runs, and honey is not the limit.
+- **Does the greenhouse change what and where a player builds?** Yes: the hive goes within reach of a greenhouse and not a field in winter, the bean greenhouse sits where the hive reaches and a sprinkler waters, and
+  the power plan changes (heat is the biggest winter draw at night, about 6 to 7 W a wheat or bean greenhouse at −5°C, so a turbine and a battery come before the third building; a hive beside a greenhouse
+  that cooled below 6°C stops at once, so the early minutes are about power, not honey).
+- **Is heating a cost without being a wall? Is 150 credits right?** Heating is a real cost (a greenhouse needs about a fifth of a turbine at −5°C for wheat, half for tomato) and not a wall, but **150 credits is
+  too much for the bot's economy to put crops under glass early**: on every layout other than Long Nights, fields turned into greenhouses at the start (and a turbine each) made the run *slower* in winter
+  (First Light's farm in a mild winter 23.8 minutes with none, 28.8 with two, 41.6 with four, 77.2 with six; Linen in a hard winter did not finish with two), because the first sale comes late and 120 credits more per field is the first minutes' credits. With
+  idle credits at the end of a layout the greenhouses help (First Light in a hard winter 36.0 to 27.5 minutes; Linen 124 to 108), but too late to change the ratio much.
+- **Winter targets.** The bot now puts up to six fields under glass once its farm stands (`glass` in `tools/bot.ts`; fields taken down, refunded, and a greenhouse put in the same place with its stops) and
+  `tools/seasonfactor.ts` was rerun for winter (4 seeds, difficulties 1 to 3, 8 layouts): over the layouts a winter can clear (First Light, Linen, Tired Soil, Riverlands and, in a mild or windy one, Harvest Festival; Long Nights is left out, its layout is built round glass) the ratio to a mild
+  spring is about **2.4 (mild), 2.3 (gales), 2.9 (hard)**, worst layouts 2.9, 2.9 and 3.7. `PAR_FACTOR` winter: mild 2.5 to **2.65**, gales 2.6 to **2.65**, hard 3.75 to **3.35**. Winter did **not** come back
+  toward the other seasons (1.15 to 1.35): the bot's winters are held back by cash and by the hens (half rate: bread's eggs are the limit, which a greenhouse does not reach), not only by the crops. Oil, sauce, honey and honey
+  cake stay out of random winter commissions.
+- **Is the cooling fair?** The cooling and recovery tail (a 16 hour outage costs about 5 hours of growth after the power returns, see Cooling and warming) was never what stopped the bot; it matters only when the grid
+  runs dry at night, which the bot's early layouts do. Not retuned; a player will feel it when a battery runs out (a call for the design lead).
+- **Left open.** (1) Playing winter by hand, start to finish, in a browser. (2) What would bring winter toward the other seasons: a cheaper greenhouse (say 90) or more starting credits in winter, hens
+  that lay in winter at a higher rate, or a heated coop; each changes how winter feels, and none was done here. (3) Whether random winter commissions should ask for honey cake now that Long Nights proves it.

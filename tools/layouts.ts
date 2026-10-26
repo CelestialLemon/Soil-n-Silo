@@ -199,20 +199,26 @@ export const LAYOUTS: Record<string, Layout> = {
     { route: 'farm', garage: 'garage', trucks: 1, stops: [{ at: 'f1' }, { at: 'f2' }, { at: 'f3' }, { at: 'mill', pick: [] }, { at: 'press', pick: [] }] },
     { type: 'hive', x: dx + 8, y: dy - 7 }, { type: 'hive', x: dx + 1, y: dy - 16 },
   ],
-  // Honey cake through the long nights: a mill between two wheat fields, a bakery beside it making honey cake, a coop under
-  // both (bran in, eggs out) and a hive beside the bakery, gathering from three bean fields (they flower; their beans aren't
-  // needed). A digester beside the coop burns its manure for power at night. One truck takes the cake to the depot.
+  // Honey cake through the long nights, under glass: a mill between two wheat fields in the open, a bakery beside it making honey cake,
+  // a coop under both (bran in, eggs out) and a hive beside the bakery, gathering from two bean greenhouses (they flower, heated by the
+  // wind and a digester burning the coop's manure; the beans aren't needed). A third greenhouse of wheat west of the mill, past the
+  // fields, sends its wheat by a truck, for outside the wheat grows too slowly to keep the mill and the hens busy. Another truck takes
+  // the cake to the depot. The power comes first (a second turbine and a battery), since the hive stops when a greenhouse runs cold.
   c5: (dx, dy) => [
     { type: 'field', x: dx - 3, y: dy - 8, as: 'w' }, { type: 'field', x: dx - 2, y: dy - 11, as: 'n' },
     { type: 'sprinkler', x: dx - 3, y: dy - 9 }, { type: 'pylon', x: dx - 4, y: dy - 10 },
+    { type: 'turbine', x: dx + 3, y: dy - 13 }, { type: 'pylon', x: dx + 4, y: dy - 10 },
     { type: 'mill', x: dx, y: dy - 8, as: 'mill' }, { type: 'coop', x: dx, y: dy - 6 },
     { type: 'bakery', x: dx + 2, y: dy - 8, recipe: 'honeycake', as: 'bakery' }, { type: 'hive', x: dx + 4, y: dy - 8 },
-    ...[-11, -7, -4].map((y) => ({ type: 'field' as const, x: dx + 5, y: dy + y, crop: 'beans' as const })),
-    { type: 'pylon', x: dx + 4, y: dy - 10 }, { type: 'turbine', x: dx + 3, y: dy - 13 },
+    { type: 'greenhouse', x: dx + 5, y: dy - 11, crop: 'beans' }, { type: 'sprinkler', x: dx + 6, y: dy - 8 },
     { type: 'garage', x: dx + 2, y: dy - 12, as: 'garage' },
     { route: 'cake', garage: 'garage', trucks: 1, stops: [{ at: 'bakery', pick: ['honeycake'] }, { at: 'depot' }] },
+    { type: 'battery', x: dx + 5, y: dy - 14 },
     { type: 'digester', x: dx - 2, y: dy - 5 }, { type: 'pylon', x: dx - 3, y: dy - 3 },
-    { type: 'battery', x: dx + 5, y: dy - 14 }, { type: 'turbine', x: dx + 7, y: dy - 12 },
+    { type: 'turbine', x: dx + 7, y: dy - 12 },
+    { type: 'greenhouse', x: dx + 5, y: dy - 7, crop: 'beans' },
+    { type: 'greenhouse', x: dx - 7, y: dy - 10, crop: 'wheat', as: 'gw' },
+    { route: 'wheat', garage: 'garage', trucks: 1, stops: [{ at: 'gw', pick: ['wheat'] }, { at: 'mill', drop: ['wheat'], pick: [] }] },
   ],
   // Sauce on worn-out soil: a cannery between two tomato fields, an oil press beside it between two sunflower fields, a coop
   // under the press (seed cake in) and a bean field under the coop (beans in, and the soil back), a composter beside the coop

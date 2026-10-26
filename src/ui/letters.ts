@@ -60,10 +60,11 @@ const LETTERS: Record<string, Written> = {
     from: 'Old Benna', role: 'Keeper of the midwinter fair', place: 'The green, Longnight', day: 'the first frost', greeting: 'Dear ones,',
     body: [
       'The nights are drawing in. By the fair the sun will barely clear the hills, and folk need something sweet to see them through the dark.',
-      'Sixty honey cakes, if you please. The bees grow sleepy as the days shorten, and so do the panels on your roofs. Mind the lamps.',
+      'A hundred honey cakes, if you please. The bees grow sleepy as the days shorten, and so do the panels on your roofs. Mind the lamps.',
+      'They will not leave the hive once it turns cold, and nothing flowers in the frost. But I hear the glasshouses keep a little summer inside through the dark, and that the bees will work in one while the fields lie bare. I should like to see that.',
     ],
     signoff: 'Warmly, from the fireside,', asks: 'What she asks',
-    season: ['It is winter. The days are short and cold, with frost at night and snow some days, and the river runs low and slow.'],
+    season: ['It is winter. The days are short and cold, with frost at night and snow some days, and the river runs low and slow. Little grows in the open fields, and the bees stay in; under glass, with power to warm it, a greenhouse grows any crop.'],
   },
   c6: {
     from: 'Jonah Fairweather', role: 'Cannery foreman', place: 'Stillwater cannery', day: 'Wednesday', greeting: 'To the co-op,',
@@ -103,7 +104,7 @@ const SEASON_WORDS: Record<Season, string> = {
   spring: 'It is spring: the river runs high and fast, showers are frequent and the mornings are cool.',
   summer: 'It is summer: long bright days and strong sun, the river low and slow, and little rain.',
   autumn: 'It is autumn: the days are shortening, the wind is up and the river sits in between.',
-  winter: 'It is winter: short cold days, frost at night, snow in place of rain, and a slow river.',
+  winter: 'It is winter: short cold days, frost at night, snow in place of rain, and a slow river. Tender crops cannot grow in the open fields, but a greenhouse, with power to heat it, can.',
 };
 
 /** A character's words, in the same voice. */

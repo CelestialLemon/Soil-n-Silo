@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { playLayout } from '../tools/bot.ts';
 import { LAYOUTS } from '../tools/layouts.ts';
-import { DAY_SECONDS } from '../src/game/data.ts';
+import { ANIMALS, DAY_SECONDS, HIVE } from '../src/game/data.ts';
 import { endOf, RAMP_HOURS } from '../src/game/events.ts';
 import { flooded } from '../src/game/flood.ts';
 import { windExposure } from '../src/game/rules.ts';
+import { warmthOf } from '../src/game/warmth.ts';
 import { isGuarded } from '../src/game/sim/layout.ts';
 import { hasStation, stationsOf, stationWorking } from '../src/game/station.ts';
 import { turbineShare } from '../src/game/wind.ts';
@@ -13,12 +14,8 @@ import { turbineShare } from '../src/game/wind.ts';
 // Every bot layout (tools/layouts.ts) plays its commission on the real rules and must clear it within the target time:
 // a change to the rules that jams a chain, or makes a commission much slower, shows up here.
 
-// Long Nights (winter, honey cake) can't be cleared now that bees stay in below 10°C and hens lay at half speed in winter:
-// it waits for the greenhouse (#86), which brings bees and a warm spell indoors.
-const WAITING_FOR_GREENHOUSE = new Set(['c5']);
-
 for (const id of Object.keys(LAYOUTS)) {
-  test(`the bot clears ${id} within its target time`, { skip: WAITING_FOR_GREENHOUSE.has(id) && 'needs the greenhouse (#86)' }, () => {
+  test(`the bot clears ${id} within its target time`, () => {
     const { completedAt, par } = playLayout(id, 80);
     assert.ok(completedAt !== null, `${id}: not complete after 80 minutes (npm run sim -- ${id} shows why)`);
     assert.ok(completedAt <= par, `${id}: complete at ${Math.round(completedAt)} s, after the target ${par} s`);
@@ -86,3 +83,16 @@ for (const id of ['c6', 'c7', 'c8']) {
     assert.ok(worked && state.forecastIssued !== null, `${id}: the station never worked`);
   });
 }
+
+// Long Nights (4.6): honey cake in a winter is made with bees that forage only under glass. The bot's two bean greenhouses are heated through the cold,
+// and the hive gathers while the outside is far below the 10°C the bees need.
+test('Long Nights: the hive makes honey under glass while the outside is too cold for bees', () => {
+  let cold = 0, gathering = 0;
+  playLayout('c5', 80, undefined, {}, (s) => {
+    if (warmthOf(s) >= ANIMALS.beesFly) return;
+    cold++;
+    if (s.buildings.some((b) => b.type === 'hive' && b.status === 'ok' && b.stored < HIVE.store)) gathering++;
+  });
+  assert.ok(cold >= 10, `the outside was below ${ANIMALS.beesFly}°C for ${cold} minutes only`);
+  assert.ok(gathering >= cold / 2, `the hive gathered in ${gathering} of ${cold} cold minutes`);
+});

@@ -4,9 +4,9 @@
 // water, rock or trees, even soil at the scenario's mean), since the layout is the bot's, not the map's. Run by
 // `npm run sim` (tools/sim.ts), and by the tests for every layout (test/bots.test.ts).
 
-import { addStop, buyTruck, newRoute, place, reshape, setCrop, setTruckRoute, truckPrice } from '../src/game/build.ts';
+import { addStop, buyTruck, newRoute, place, remove, reshape, setCrop, setTruckRoute, truckPrice } from '../src/game/build.ts';
 import { LAYOUTS, RIVER_AT, type Step } from './layouts.ts';
-import { BUILDINGS, ITEMS } from '../src/game/data.ts';
+import { BUILDINGS, ITEMS, type CropId } from '../src/game/data.ts';
 import { must } from '../src/game/result.ts';
 import { TERRAIN } from '../src/game/map.ts';
 import { networks } from '../src/game/power.ts';
@@ -21,14 +21,15 @@ export interface BotRun { completedAt: number | null; par: number; /** The game 
 
 /**
  * Plays the layout `id` (a commission id, or id:variant such as c2:next) for up to `minutes` of game time, or until the
- * commission completes, passing each line of its report to `log`.
+ * commission completes, passing each line of its report to `log`. `over.glass` puts up to that many fields under glass once the layout stands
+ * (a winter's bot, tools/seasonfactor.ts).
  */
-export function playLayout(id: string, minutes = 60, log: (line: string) => void = () => {}, over: Partial<Pick<Scenario, 'climate' | 'seed' | 'events'>> & { river?: number } = {}, each?: (s: GameState) => void): BotRun {
+export function playLayout(id: string, minutes = 60, log: (line: string) => void = () => {}, over: Partial<Pick<Scenario, 'climate' | 'seed' | 'events'>> & { river?: number; glass?: number } = {}, each?: (s: GameState) => void): BotRun {
   // A layout may be one of several for a commission: `c2:next` plays c2. `over` plays it in another climate or on another
   // seed (the weather's rolls follow the seed), as tools/seasonfactor.ts does.
   const base = scenarioById(id.split(':')[0]);
   if (!base) throw new Error(`no commission ${id}`);
-  const { river = RIVER_AT[id.split(':')[0]], ...rest } = over;
+  const { river = RIVER_AT[id.split(':')[0]], glass = 0, ...rest } = over;
   const sc: Scenario = { ...base, ...rest };
 
   const layout = LAYOUTS[id];
@@ -104,7 +105,32 @@ export function playLayout(id: string, minutes = 60, log: (line: string) => void
     }
   }
 
+  /**
+   * Winter, once the layout stands: a field becomes a greenhouse (the field is taken down and refunded, the greenhouse put in its place
+   * with the same crop and stops) and a wind turbine goes up within reach of a pylon, for its heating. At most `glass` fields, as credits allow.
+   */
+  let glazed = 0;
+  function glaze() {
+    const f = s.buildings.find((b) => b.type === 'field');
+    if (!f || s.credits < BUILDINGS.greenhouse.cost + BUILDINGS.turbine.cost) return;
+    const { x, y, crop } = f as Building & { crop: CropId };
+    // The routes keep their stops: they point at nothing while the field is down, then at the greenhouse.
+    const stops = s.routes.flatMap((r) => r.stops.filter((st) => st.building === f.id));
+    for (const st of stops) st.building = -1;
+    must(remove(s, f), 'taking down a field');
+    const g = place(s, 'greenhouse', x, y, 1, { crop });
+    if (!g.ok) { log(`  greenhouse at ${x},${y}: ${g.error}`); glazed = glass; return; }
+    for (const st of stops) st.building = g.value.building.id;
+    glazed++;
+    const pylons = s.buildings.filter((b) => b.type === 'pylon');
+    for (const p of pylons) for (let r = 1; r <= 3; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) === r && place(s, 'turbine', p.x + dx, p.y + dy, 1, {}).ok) return;
+    }
+    log(`  no room for a turbine for the greenhouse at ${x},${y}`);
+  }
+
   for (let t = 0; t < minutes * 60; t += 1) {
+    if (next === steps.length && glazed < glass) glaze();
     while (next < steps.length && ready(steps[next])) {
       take(steps[next++]);
       if (next === steps.length) log(`${fmt(s.time)}  layout complete (${steps.length} steps)`);

@@ -9,7 +9,7 @@
 // of tiles beyond the farm's west edge (the flood reaches about 6 tiles: a flood beside the farm, roughly the fifth of the land near
 // the depot that a real map floods). Its farms have no trees but Tired Soil's, so a dust storm takes soil from the others.
 //
-// Run: node tools/seasonfactor.ts [layouts, comma separated; default all but c2] [seeds, default 4] [minutes cap, default 150] [workers, default 6]
+// Run: node tools/seasonfactor.ts [layouts, comma separated; default all but c2 and c5 (Long Nights' layout is built round glass, so it is no yardstick for a random commission)] [seeds, default 4] [minutes cap, default 150] [workers, default 6] [raw file] [seasons, comma separated; default all]
 // The layouts a winter can't clear (sauce, oil and honey cake need crops and bees a winter doesn't give) show as "-".
 // A run that never finishes is left out of a layout's mean when most of that layout's runs in the climate finish (a jam of the bot's trucks, not the weather); a layout most of whose runs fail (a winter's sauce) shows as "-", and the number left out is printed.
 // The raw times go to the file in the 6th argument (default /tmp/seasonfactor.json), and `node tools/seasonfactor.ts --report <file>` prints the table again from it.
@@ -25,6 +25,9 @@ import { PAR_FACTOR, scenarioById } from '../src/game/scenarios.ts';
 import { charactersOf, climateOf, SEASON_IDS, type Character, type Season } from '../src/game/seasons.ts';
 
 interface Job { id: string; season: Season; character: Character | null; seed: number; difficulty: 0 | 1 | 2 | 3; cap: number }
+
+/** Fields the bot puts under glass in a winter, once its layout stands (see `glass` in tools/bot.ts). */
+const WINTER_GLASS = 6;
 
 /** The bot's river for a layout: its own, or two tiles beyond the farm's west edge. */
 function riverFor(id: string): number {
@@ -55,7 +58,7 @@ function play(j: Job): number | null {
   // The events are spread over as long as the bot takes in a mild spring, so it meets every one of them, as a player taking the target time of a
   // random commission (spread over that) would meet its own: events that fall after the bot has finished would not be measured.
   const events = rollEvents(seed, j.difficulty, climate, referenceTime(j.id, seed, j.cap, river) ?? j.cap * 60);
-  return fin(playLayout(j.id, j.cap, undefined, { climate, seed, events, river }).completedAt);
+  return fin(playLayout(j.id, j.cap, undefined, { climate, seed, events, river, glass: j.season === 'winter' ? WINTER_GLASS : 0 }).completedAt);
 }
 const fin = (t: number | null) => (t === null ? null : t / 60);
 
@@ -65,10 +68,10 @@ if (!isMainThread) {
 } else {
   const reporting = process.argv[2] === '--report';
   const saved = reporting ? JSON.parse(readFileSync(process.argv[3], 'utf8')) as { ids: string[]; seeds: number; jobs: Job[]; result: (number | null)[] } : null;
-  const ids = saved ? saved.ids : process.argv[2] && process.argv[2] !== 'all' ? process.argv[2].split(',') : Object.keys(LAYOUTS).filter((id) => id !== 'c2');
-  const seeds = saved ? saved.seeds : Number(process.argv[3] ?? 4), cap = Number(process.argv[4] ?? 150), workers = Number(process.argv[5] ?? 6), rawFile = process.argv[6] ?? '/tmp/seasonfactor.json';
+  const ids = saved ? saved.ids : process.argv[2] && process.argv[2] !== 'all' ? process.argv[2].split(',') : Object.keys(LAYOUTS).filter((id) => id !== 'c2' && id !== 'c5');
+  const seeds = saved ? saved.seeds : Number(process.argv[3] ?? 4), cap = Number(process.argv[4] ?? 150), workers = Number(process.argv[5] ?? 6), rawFile = process.argv[6] ?? '/tmp/seasonfactor.json', only = process.argv[7] ? process.argv[7].split(',') : null;
   const climates: { label: string; season: Season; character: Character | null }[] = [];
-  for (const season of SEASON_IDS) for (const character of charactersOf(season)) climates.push({ label: `${season} ${character}`, season, character });
+  for (const season of SEASON_IDS) if (!only || only.includes(season)) for (const character of charactersOf(season)) climates.push({ label: `${season} ${character}`, season, character });
 
   const jobs: Job[] = saved ? saved.jobs : [];
   if (!saved) for (const id of ids) for (let k = 0; k < seeds; k++) {
