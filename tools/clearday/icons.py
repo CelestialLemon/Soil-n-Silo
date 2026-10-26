@@ -157,6 +157,14 @@ icon('station', 'white', '<path class="ln" d="M16 50 V60 M38 50 V60" stroke="#8c
   '<path class="ln" d="M54 60 V18" stroke="#c9673f" stroke-width="3"/>', '<circle cx="54" cy="12" r="3" fill="#c9673f"/>',
   '<ellipse cx="46" cy="12" rx="4.5" ry="3" fill="@a"/>', '<ellipse cx="62" cy="12" rx="4.5" ry="3" fill="@a"/>', '<ellipse cx="54" cy="5" rx="3" ry="3" fill="@b"/>')
 
+# A low glazed shell, copper ridge and living corner; the crop remains visible through it.
+icon('greenhouse', 'teal',
+  '<path d="M6 32 L32 17 L58 32 V54 H6 Z" fill="@c"/>',
+  '<path d="M6 32 L32 17 L58 32 M6 32 V54 H58 V32 M32 17 V54 M18 25 V54 M46 25 V54 M6 37 H58" class="ln" stroke="#8c5f34" stroke-width="3.5"/>',
+  '<path d="M28 18 V12 H36 V18" class="ln" stroke="#b96c49" stroke-width="4"/>',
+  '<path d="M10 52 C4 40,8 29,17 26 C19 38,14 42,10 52 Z" fill="#78a94a"/>',
+  '<path d="M24 54 V43 H39 V54" class="ln" stroke="#8c5f34" stroke-width="3"/>')
+
 ORDER = list(I.keys())
 COLS = 10
 

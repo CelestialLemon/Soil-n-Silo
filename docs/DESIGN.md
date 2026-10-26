@@ -1253,6 +1253,11 @@ playing trucks: every level needed many trucks, and routes doing a field-to-mill
 | Sunflower | 70 s | 3 | −2 |
 | Flax | 55 s | 3 | −1.5 |
 
+**Greenhouse appearance (4.5).** A low timber-and-glass shell with copper ridge vents, stone shoes and corner vines.
+The nine crop tiles remain visible through renderer-drawn glass. Snow tints the shell and its glass roof like other buildings,
+and ground snow excludes the interior. Two warm emissive lanterns inside the gables light at night only while heating watts
+are supplied (including partial power); they go dark without heating or during the day. This changes no growing or power rules.
+
 **The greenhouse (4.1).** A building of its own (`greenhouse` in `BUILDINGS`), not a kind of field, that shares the field's growing rules through
 one helper, `growsCrops(b)` (`state.ts`): crops chosen as it is placed (like a field: chips, C, the remembered choice), the same
 growth, store (`FIELD.store`), harvest, compost, next-door trading, truck stops, history and soil projection. Rules that belong to the open

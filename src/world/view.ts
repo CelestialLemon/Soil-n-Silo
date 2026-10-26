@@ -2,11 +2,12 @@ import * as THREE from 'three';
 import type { PixelObject, PixelRenderer } from 'pixel3d-renderer';
 import { CROPS, HIVE, POWER, TICK, TRUCK, type BuildingId, type ItemId } from '../game/data.ts';
 import { TERRAIN } from '../game/map.ts';
-import { networks } from '../game/power.ts';
+import { networkOf, networks } from '../game/power.ts';
 import { isOpen } from '../game/roads.ts';
 import { readHold } from '../game/hold.ts';
 import { panelSnow } from '../game/snow.ts';
-import { windAt } from '../game/sim/clock.ts';
+import { shareOf, wants } from '../game/sim/energy.ts';
+import { daylight, windAt } from '../game/sim/clock.ts';
 import { exposureOf } from '../game/sim/layout.ts';
 import { TURBINE_WEAK, turbineShare } from '../game/wind.ts';
 import { HANDOFF_SECONDS, recentHandoffs } from '../game/sim/goods.ts';
@@ -186,10 +187,11 @@ export class WorldView {
         (o) => o.setTransform(v.set(x + 0.5, this.lie.y(x + 0.5, y + 0.5) + SOIL_TOP, y + 0.5), e.set(0, turn, 0)));
       i++;
     }
-    // A greenhouse's placeholder frame over its crops.
+    // A glass shell over the game's crops; heater lanterns light only on nights receiving heat.
     if (f.type === 'greenhouse') {
       const y = standY(this.lie, s.map, 3, f.x, f.y);
-      list[i] = this.show(list[i], `frame ${f.x} ${f.y} ${y}`, () => this.m.buildings.greenhouse.idle, f.id, (o) => o.setTransform(v.set(f.x + 1.5, y, f.y + 1.5), e.set(0, 0, 0)));
+      const heated = !daylight(s.scenario, s.time) && !!networkOf(s, f) && wants(s, f) * shareOf(s, f) > 0;
+      list[i] = this.show(list[i], `shell ${f.x} ${f.y} ${y} ${heated}`, () => this.m.buildings.greenhouse[heated ? 'running' : 'idle'], f.id, (o) => o.setTransform(v.set(f.x + 1.5, y, f.y + 1.5), e.set(0, 0, 0)));
     }
     this.parts.set(f.id, list);
   }
@@ -321,7 +323,8 @@ export class WorldView {
   snow(s: GameState, ground: number) {
     const panels = panelSnow(s.scenario, s.time)?.intensity ?? 0;
     for (const b of s.buildings) {
-      const o = this.shown.get(b.id)?.obj;
+      // Fields keep their soil/crops untinted; only the greenhouse's final part is its shell.
+      const o = b.type === 'greenhouse' ? this.parts.get(b.id)?.at(-1)?.obj : this.shown.get(b.id)?.obj;
       if (!o || o.tint === LINKED) continue;
       const k = Math.max(ground * ROOF_SNOW, b.type === 'solar' ? panels * PANEL_SNOW : 0);
       if (k < 0.02) { if (o.tint === SNOW) o.tint = null; continue; }
