@@ -8,65 +8,12 @@
   and input live outside it.
 - Expected failures (an action against the rules, a broken save or settings) return a `Result` (`src/game/result.ts`) rather
   than throwing; throw only for a programmer's bug or a broken invariant.
-
-## Workflow
-
-1. **Branch.** Work on a branch off `dev`. Never commit to `dev` or `main` directly. New work goes into `dev` (deployed to
-   `/dev/` for testing) and reaches `main` only through a PR from `dev` to `main`, opened when the user asks for one.
-2. **Implement and verify.** Run `npm test`, `npm run lint` (errors fail; don't add warnings) and `npm run build` (which
-   typechecks first). The dev server is `npm run dev`, on 127.0.0.1:5190. If it's already running, use it and don't kill it.
-   Once the game has golden images, update them only on the work's branch, so new baselines reach `dev` only through the PR,
-   where the user reviews them.
-3. **Clean the working tree.** Remove the scratch files, probes and debug renders you created for this work, so the PR holds
+- No legacy compatibility: the developer is the game's only player. Don't write save or settings migrations or keep legacy
+  keys and fallbacks; bump the save version and refuse old saves instead, and delete legacy paths when you find them.
+  Revisit if the game is shared with other players.
+- **Clean the working tree.** Remove the scratch files, probes and debug renders you created for this work, so the PR holds
    only the changes the work needs. Never delete or revert changes you didn't make (the user may have uncommitted work in the
    tree), and don't run `git checkout`/`reset`/`clean`/`stash` on them.
-4. **Independent review.** Once the feature or fix is done, get a code review from a fresh `gpt-6.1-sol` session through the
-   Codex CLI. The user authorizes this as a standing rule, so don't ask before running it. Write the review request to a file
-   outside the repo, then run:
-
-   ```sh
-   codex exec --ephemeral --model gpt-6.1-sol -c model_reasoning_effort="high" --sandbox read-only \
-     --cd "$(git rev-parse --show-toplevel)" --output-last-message /tmp/review.md - < /tmp/review-request.txt
-   ```
-
-   - Give the reviewer minimal context: what the change is meant to do, and the scope to review (the diff against `dev`,
-     including uncommitted and untracked files). Don't give it your reasoning or the history behind your decisions. A fresh pair
-     of eyes is less biased by them. Ask for actionable issues with severity and file/line evidence, or an explicit "no
-     findings".
-   - If the review can't run (Codex not signed in, quota, model unavailable), tell the user. Never present a failed run as a
-     review.
-5. **Fix what matters.** Check each finding yourself before acting on it. Fix every real issue. Skip extremely minor nits that
-   are very unlikely to ever cause a problem and would only add code. If the fixes change the code materially, run a **fresh**
-   review of the new diff. Stop when a review comes back with nothing actionable. If a finding is still open after three rounds,
-   or you are unsure whether it is real, ask the user.
-6. **Push and open the PR.** Commit, push the branch and open a PR against `dev` (unless the user says otherwise). The PR
-   description is for the user, who will review it:
-   - Start with a concise summary of what was done.
-   - Briefly say what the review found and what you fixed or deliberately left.
-   - If there is anything the user should check by hand, give step-by-step instructions (commands, URL, what to look for).
-   - Include screenshots wherever they help.
-7. **Handle the GitHub review bot.** Opening the PR triggers an automatic review by the Codex connector
-   (`chatgpt-codex-connector`), which takes a few minutes. Wait for it, then read every comment
-   (`gh api repos/CelestialLemon/Soil-n-Silo/pulls/<N>/comments` and `.../reviews`). Judge each one the same way as in step 5,
-   and push fixes to the same PR. A thumbs-up reaction on the PR instead of a review means it found nothing.
-
-## Looking at the game in a browser
-
-Agents run on a headless server. The T3 Code preview tools (`mcp__t3-code__preview_*`, deferred: load them with `ToolSearch`
-first) drive a browser inside the T3 Code **desktop** app, so they only work while a desktop client is connected. From the
-mobile app they fail with "No preview automation host is available… a headless server has no browser of its own". That is not
-"no browser available".
-
-1. Try `preview_open` once. If it succeeds, use the preview tools. Their browser runs on the user's machine, so
-   `127.0.0.1:5190` there may not be the dev server in this worktree; check the page is the one you expect.
-2. If the tools can't be loaded or called, or `preview_open` fails with that error, don't retry. Use headless Chromium on the
-   server: Playwright's copy is cached in `~/.cache/ms-playwright`, so don't download another into `/tmp`. It isn't on `PATH` and
-   the revision number changes, so find it:
-   `find ~/.cache/ms-playwright -name chrome-headless-shell -type f`. If the cache is missing (a different host), install it
-   once into that default location with `npx playwright install chromium-headless-shell` and tell the user. Start the dev server first (`npm run dev`, which needs
-   `npm install` in a fresh worktree) because nothing else serves port 5190 there, then screenshot or script it from the shell,
-   e.g. `<that path> --no-sandbox --screenshot=/tmp/shot.png --window-size=1280,800 http://127.0.0.1:5190/`.
-3. Tell the user which route you used, and keep the screenshots and scripts out of the repo (see Workflow, step 3).
 
 ## Renderer issues
 
@@ -76,7 +23,8 @@ When the game needs something the renderer doesn't do, or hits a renderer bug:
 2. Make sure it is really the renderer's job (the renderer draws; the game owns state, input, UI and timing, see the renderer's
    roadmap, "Who owns what").
 3. Open the issue in `CelestialLemon/pixel3d-renderer` with the `soil-n-silo` label and the `bug` or `enhancement` label: what the
-   game needs, a minimal repro or screenshot, the renderer version the game pins, and what the game does meanwhile. If game work
-   is blocked on it, link it from a game issue labelled `renderer`.
-4. The fix ships in a new renderer release tag. Bumping the game's pin is its own small change here (re-approve the install script,
-   see `README.md`).
+   game needs, a minimal repro or screenshot, and the renderer version the game pins. If game work is blocked on it, link it
+   from a game issue labelled `renderer`.
+4. No game-side workaround: the game waits for the fix.
+5. The fix ships in a new renderer release tag; small fixes are patch bumps (0.5.0 -> 0.5.1), because the second number is a
+   major jump. Bumping the game's pin is its own small change here (re-approve the install script, see `README.md`).
