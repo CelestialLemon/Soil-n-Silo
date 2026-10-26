@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Season } from '../game/seasons.ts';
-import { collectGltf, GeometryCollector, loadGltf, motion, movingPartMotion, namedMeshRule, type Motion } from 'pixel3d-renderer';
+import { collectGltf, GeometryCollector, loadGltf, motion, movingPartMotion, glassMeshRule, namedMeshRule, type Motion } from 'pixel3d-renderer';
 import { BUILDING_IDS, CROP_IDS, CROPS, ITEM_IDS, type BuildingId, type CropId, type ItemId } from '../game/data.ts';
 import { TREE_SPECIES, treeModel, type TreeKind } from './trees.ts';
 import { bar, cropStandIn, frame, GHOST_WIRE, itemShape, NET_COLOURS, rock, ROUTE_COLOURS, standIn, truck } from './shapes.ts';
@@ -37,7 +37,7 @@ export interface Models {
 
 /** Which Blender model draws each building. */
 const FILES: Partial<Record<BuildingId, string>> = {
-  silo: 'silo', garage: 'garage',
+  silo: 'silo', garage: 'garage', greenhouse: 'greenhouse',
   sprinkler: 'sprinkler', coop: 'coop_solar', hive: 'beehive', composter: 'composter',
   mill: 'mill_electric', press: 'oil_press', spinner: 'spinner', loom: 'loom', bakery: 'bakery', cannery: 'cannery',
   solar: 'solar_panel', turbine: 'wind_turbine', wheel: 'water_wheel', battery: 'battery', digester: 'digester', pylon: 'pylon', station: 'weather_station',
@@ -58,7 +58,7 @@ async function load(name: string): Promise<THREE.Group | null> {
  * One geometry from the meshes under `root` that `keep` accepts, in `root`'s space. `mo` gives a mesh its motion; with
  * it, the geometry has motion attributes (a dynamic collector), so the renderer animates it.
  */
-function collect(root: THREE.Object3D, keep: (o: THREE.Object3D) => boolean = () => true, mo?: (mesh: THREE.Mesh) => Motion | undefined, animated = !!mo) {
+function collect(root: THREE.Object3D, keep: (o: THREE.Object3D) => boolean = () => true, mo?: (mesh: THREE.Mesh) => Motion | undefined, animated = !!mo, glass = false) {
   const c = new GeometryCollector(animated);
   root.updateMatrixWorld(true);
   const inverse = root.matrixWorld.clone().invert();
@@ -75,7 +75,7 @@ function collect(root: THREE.Object3D, keep: (o: THREE.Object3D) => boolean = ()
   });
   local.updateMatrixWorld(true);
   collectGltf(local, c, c, (mesh) => {
-    const named = namedMeshRule(mesh.userData.source as THREE.Mesh) ?? {};
+    const named = (glass ? glassMeshRule : namedMeshRule)(mesh.userData.source as THREE.Mesh) ?? {};
     const m = mo?.(mesh.userData.source as THREE.Mesh);
     return m ? { ...named, motion: m } : named;
   });
@@ -100,9 +100,9 @@ function addSmoke(c: GeometryCollector, root: THREE.Object3D, seed: number) {
   for (let i = 0; i < 4; i++) c.add(puff, null, [0.82, 0.8, 0.86], 3, false, motion.smoke(at.toArray(), i / 4, seed + i * 0.17));
 }
 
-function lookFrom(root: THREE.Group, seed: number): { idle: Geo; running: Geo } {
-  const idle = collect(root, not(named('running_'))).build();
-  const c = collect(root, not(named('idle_')), movingPartMotion, true);
+function lookFrom(root: THREE.Group, seed: number, glass = false): { idle: Geo; running: Geo } {
+  const idle = collect(root, not(named('running_')), undefined, false, glass).build();
+  const c = collect(root, not(named('idle_')), glass ? undefined : movingPartMotion, !glass, glass);
   addSmoke(c, root, seed);
   return { idle, running: c.build() };
 }
@@ -120,7 +120,7 @@ export async function loadModels(season: Season): Promise<Models> {
   const buildings = {} as Record<BuildingId, Look>;
   BUILDING_IDS.forEach((id, i) => {
     const file = FILES[id], root = file ? roots.get(file) ?? null : null;
-    const look = root ? lookFrom(root, i * 0.13) : standIn(id);
+    const look = root ? lookFrom(root, i * 0.13, id === 'greenhouse') : standIn(id);
     buildings[id] = { ...look, height: heightOf(look.idle) };
   });
   // Turbines turn, faster in stronger wind: three rotor speeds; a fourth look has the rotor standing still (stopped by a gale).

@@ -91,3 +91,9 @@ flatpak run org.blender.Blender -b --python-exit-code 1 --python "$PWD/assets/wh
 | Solarpunk ceramic/metal | ceramic `#f4f5e9`, copper `#b96c49`, brass `#d4ad60` |
 | Solar/glass | solar `#234c83`, solar_light `#4c85b0`, glass `#8ecac6` |
 | Living roofs/linen/light | moss `#638456`, linen `#dddcc2`, charge `#a7e5b3` |
+
+The greenhouse is a shell only (3×3): `glass_*` panes are drawn with the renderer's
+`glassMeshRule`, split between proud timber bars. No ambient motion on it. The
+field view supplies the soil/crops and switches its `idle_`/`running_` heater
+lanterns for nights receiving heat. Its contact sheet shows unlit/heated rows;
+Workbench previews show the glass's base colour opaque (the game draws glass).

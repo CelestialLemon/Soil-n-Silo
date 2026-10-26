@@ -20,7 +20,6 @@
 .cd-i--silo { background-position: calc(var(--s, 32px) * -8) calc(var(--s, 32px) * -1); }
 .cd-i--garage { background-position: calc(var(--s, 32px) * -9) calc(var(--s, 32px) * -1); }
 .cd-i--field { background-position: calc(var(--s, 32px) * -0) calc(var(--s, 32px) * -2); }
-.cd-i--greenhouse { background-position: calc(var(--s, 32px) * -0) calc(var(--s, 32px) * -2); }
 .cd-i--sprinkler { background-position: calc(var(--s, 32px) * -1) calc(var(--s, 32px) * -2); }
 .cd-i--coop { background-position: calc(var(--s, 32px) * -2) calc(var(--s, 32px) * -2); }
 .cd-i--hive { background-position: calc(var(--s, 32px) * -3) calc(var(--s, 32px) * -2); }
@@ -64,3 +63,4 @@
 .cd-i--trash { background-position: calc(var(--s, 32px) * -1) calc(var(--s, 32px) * -6); }
 .cd-i--menu { background-position: calc(var(--s, 32px) * -2) calc(var(--s, 32px) * -6); }
 .cd-i--station { background-position: calc(var(--s, 32px) * -3) calc(var(--s, 32px) * -6); }
+.cd-i--greenhouse { background-position: calc(var(--s, 32px) * -4) calc(var(--s, 32px) * -6); }

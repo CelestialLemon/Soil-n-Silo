@@ -3,7 +3,7 @@ import { FLAG, type PixelObject, type PixelRenderer } from 'pixel3d-renderer';
 import { DAY_SECONDS } from '../game/data.ts';
 import { TERRAIN, type Land } from '../game/map.ts';
 import { lyingSnow } from '../game/snow.ts';
-import { reliefOf, type GameState } from '../game/state.ts';
+import { layoutOf, reliefOf, type GameState } from '../game/state.ts';
 import { HALO, sheet, Tris, type Lie } from './ground.ts';
 
 // Lying snow on the ground: a sheet of white over the grass (the map and the ring of country drawn with it), faded in as snow falls
@@ -24,6 +24,7 @@ export class SnowView {
   private readonly land: Land;
   private drawn: { o: PixelObject; g: THREE.BufferGeometry } | null = null;
   private relief = -1;
+  private layout = -1;
   private at = -Infinity;
   private game: GameState | null = null;
   private cover_ = 0;
@@ -40,13 +41,18 @@ export class SnowView {
   sync(s: GameState, overlay: boolean) {
     const cover = this.cover(s), opacity = cover < 0.03 ? 0 : Math.min(1, cover * MOST) * (overlay ? UNDER_OVERLAY : 1);
     if (opacity <= 0) { this.drop(); return; }
-    const relief = reliefOf(s);
-    if (!this.drawn || this.relief !== relief) {
+    const relief = reliefOf(s), layout = layoutOf(s);
+    if (!this.drawn || this.relief !== relief || this.layout !== layout) {
       this.drop();
       const t = new Tris();
       t.flag = FLAG.DECOR;
       const { width, height } = s.map, { margin } = this.land;
+      const sheltered = new Set<number>();
+      for (const b of s.buildings) if (b.type === 'greenhouse') {
+        for (let y = b.y; y < b.y + 3; y++) for (let x = b.x; x < b.x + 3; x++) sheltered.add(y * width + x);
+      }
       for (let y = -HALO; y < height + HALO; y++) for (let x = -HALO; x < width + HALO; x++) {
+        if (x >= 0 && y >= 0 && x < width && y < height && sheltered.has(y * width + x)) continue;
         if (this.land.terrain[(y + margin) * this.land.width + x + margin] === TERRAIN.water) continue;
         sheet(t, this.lie, x, y, [0, 0, 1, 1], LIFT, 0xf4f0e0);
       }
@@ -55,6 +61,7 @@ export class SnowView {
       o.tint = WHITE; o.tintStrength = 1; o.castShadow = false;
       this.drawn = { o, g };
       this.relief = relief;
+      this.layout = layout;
     }
     this.drawn.o.opacity = opacity;
   }

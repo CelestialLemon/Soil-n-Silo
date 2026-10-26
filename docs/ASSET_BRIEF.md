@@ -185,3 +185,23 @@ landmark: it stands among fields, sprinklers and pylons, so its silhouette must 
      power or `isRunning` test: `const band = wind < 0.35 ? 0 : wind < 0.7 ? 1 : 2; key += ' ' + band; geo = () => this.m.station[band];`.
 - Tune the three speeds by eye in play: the three cups look identical every 120°, so 6 rad/s shows 3 cycles a second. Slow it down if
   it flickers at the renderer's frame rate.
+
+## Greenhouse (climate phase 4, #151)
+
+| Model | Footprint | Height | Notes |
+| --- | --- | --- | --- |
+| `greenhouse` | 3 × 3 | ~2.34 m | Low timber shell on individual stone shoes, sea-glass panes, copper ridge and two raised vent hoods. Vines climb two opposite corners. A glazed front door has a brass pull. No floor or crops: the game's field view draws all nine growing tiles. |
+
+- The eave is 1.45 m, ridge 2.10 m: low enough to see the beds, with clearance for ripe sunflowers in the outer rows.
+- `glass_*` panes use one shared flat glass material, split at each frame bay. The 0.10–0.11 m bars stand at least
+  0.04 m proud of the pane surfaces (more than the renderer's 2 mm depth tolerance). No ambient motion on the shell.
+- Loaded with the released renderer v0.5.0's `glassMeshRule`, into the **same geometry** as the opaque frame. The renderer
+  draws the tint, rims and roof glints, lets crops and frame shadows show through, casts no glass shadow and picks through panes.
+- The field view adds the shell after its soil/crops. Only the shell takes the normal building snow tint, including its glass
+  roof; the ground snow sheet excludes the greenhouse's nine tiles and rebuilds on placement/removal.
+- Two warm heater lanterns hang inside the gables: `idle_Heater_lantern` is unlit clay, `running_Heater_lantern` is warm
+  `glow` emission 0.8. The game chooses the lit look only at night while the building actually receives heating watts
+  (`wants * shareOf`, with a power network). Partial power still lights them; no draw, no network or flooding leaves them dark.
+  Emissive surfaces signal warmth without adding a light source or changing the crop colours.
+- `assets/greenhouse/build.py` is deterministic, uses the shared palette and validates a 3,000-triangle budget; its contact
+  sheet has idle/heated rows. The greenhouse also has its own generated Clearday icon.
