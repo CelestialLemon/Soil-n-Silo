@@ -6,11 +6,12 @@ import { HISTORY_SECONDS, historyOf, summarize, type Bucket, type History } from
 import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
 import { advance } from '../src/game/sim/step.ts';
 import { newGame, type BuildingOf, type GameState } from '../src/game/state.ts';
+import { PLAIN } from '../src/game/ground.ts';
 
 function flat(): GameState {
   const sc: Scenario = {
     ...SANDBOX, climate: { ...SANDBOX.climate, warmth: { low: 15, high: 15, drift: 0 } }, id: 'test', sandbox: false, credits: 100_000, width: 30, height: 30, goals: [], par: 600,
-    terrain: { soil: 60, soilSpread: 0, water: 'none', forest: 0, rock: 0, relief: 0 },
+    terrain: { ground: PLAIN, water: 'none', forest: 0, rock: 0, relief: 0 },
   };
   const s = newGame(sc);
   s.map.fertility.fill(60);

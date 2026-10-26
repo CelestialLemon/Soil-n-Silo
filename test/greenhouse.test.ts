@@ -23,12 +23,13 @@ import { growsCrops, newGame, type FieldBuilding, type GameState } from '../src/
 import type { CropId } from '../src/game/data.ts';
 import { heatNeed, insideAfter, insideFact, insideNow, insideWarmth, warmthOf } from '../src/game/warmth.ts';
 import type { WeatherEvent } from '../src/game/events.ts';
+import { PLAIN } from '../src/game/ground.ts';
 
 /** A 30 × 30 flat map with a river at x = 2–3 (a shore for anything built at x = 4), in a season with no weather but the events given. */
 function valley(season: Season, events: WeatherEvent[] = [], rain = 0, at = 0): GameState {
   const climate = { ...climateOf(season), conditions: { cloud: 0, rain, calm: 0 } };
   const sc: Scenario = { ...SANDBOX, climate, id: 'test', sandbox: false, credits: 100_000, width: 30, height: 30, goals: [], par: 600, events,
-    terrain: { soil: 60, soilSpread: 0, water: 'river', forest: 0, rock: 0, relief: 0 } };
+    terrain: { ground: PLAIN, water: 'river', forest: 0, rock: 0, relief: 0 } };
   const s = newGame(sc);
   s.map.terrain.fill(TERRAIN.grass);
   s.map.corner.fill(0);

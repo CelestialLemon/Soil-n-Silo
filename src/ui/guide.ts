@@ -17,6 +17,7 @@ import { SEVERE_GALE, TURBINE_LIMIT } from '../game/wind.ts';
 import { isPollinated } from '../game/sim/layout.ts';
 import { fieldFertility } from '../game/sim/soil.ts';
 import { recipeOf } from '../game/sim/goods.ts';
+import { TERRAIN } from '../game/map.ts';
 import { historyOf, summarize } from '../game/history.ts';
 import { dayAt } from '../game/sim/clock.ts';
 import { growsCrops, type GameState } from '../game/state.ts';
@@ -253,10 +254,13 @@ function chainItemOf(id: BuildingId): ItemId | null {
   return recipesFor(id)[0]?.outputs[0]?.item ?? null;
 }
 
+/** The mean fertility of a map's grass, from the ground it lies on. */
+const meanFertility = (m: GameState['map']) => { const grass = m.terrain.map((t, i) => (t === TERRAIN.grass ? m.fertility[i] : -1)).filter((f) => f >= 0); return grass.reduce((a, b) => a + b, 0) / Math.max(1, grass.length); };
+
 /** Topics worth reading for a commission, from what it asks and its conditions. */
 function worthReading(s: GameState): TopicId[] {
   const sc = s.scenario, out: TopicId[] = ['start', 'weather'];
-  if (sc.goals.some((g) => g.kind === 'soil') || sc.terrain.soil < 50) out.push('soil');
+  if (sc.goals.some((g) => g.kind === 'soil') || meanFertility(s.map) < 50) out.push('soil');
   const { sun, wind } = sc.climate;
   if (sun.strength < 1 || sun.set - sun.rise < 12 || wind.mean < 0.4) out.push('power');
   if (sc.goals.some((g) => g.kind !== 'soil' && chainOf(g.item).from?.inputs.length)) out.push('trucks');

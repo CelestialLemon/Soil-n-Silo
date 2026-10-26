@@ -1,7 +1,7 @@
 import { CROPS, DAY_SECONDS, type CropId } from './data.ts';
 import { activeEvents, allowed, endOf, RAMP_HOURS, type Active, type Strength } from './events.ts';
 import { TERRAIN } from './map.ts';
-import { centreLevel } from './relief.ts';
+import { depthBelowRound } from './relief.ts';
 import { runtimeOf } from './runtime.ts';
 import { CAMPAIGN, type Scenario } from './scenarios.ts';
 import { inMap, reliefOf, type FieldBuilding, type GameState } from './state.ts';
@@ -31,24 +31,7 @@ const FIELD_TILES = 5;
 function depths(s: GameState): Float64Array {
   const rt = runtimeOf(s), v = reliefOf(s);
   if (rt.frost && rt.frost.relief === v) return rt.frost.depth;
-  const m = s.map, w = m.width, h = m.height, R = FROST_RADIUS;
-  const level = new Float64Array(w * h), land = new Uint8Array(w * h);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const i = y * w + x;
-    land[i] = m.terrain[i] === TERRAIN.water ? 0 : 1;
-    level[i] = centreLevel(m, x, y);
-  }
-  const depth = new Float64Array(w * h);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const i = y * w + x;
-    if (!land[i]) { depth[i] = NaN; continue; }
-    let sum = 0, n = 0;
-    for (let dy = Math.max(-R, -y); dy <= Math.min(R, h - 1 - y); dy++) for (let dx = Math.max(-R, -x); dx <= Math.min(R, w - 1 - x); dx++) {
-      const j = i + dy * w + dx;
-      if (land[j] && dx * dx + dy * dy <= R * R) { sum += level[j]; n++; }
-    }
-    depth[i] = sum / n - level[i];
-  }
+  const m = s.map, land = m.terrain.map((t) => (t === TERRAIN.water ? 0 : 1)), depth = depthBelowRound(m, land, FROST_RADIUS);
   rt.frost = { relief: v, depth };
   return depth;
 }

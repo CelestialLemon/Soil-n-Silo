@@ -1,5 +1,6 @@
 import { FIELD, ITEMS, POWER, type ItemId } from './data.ts';
 import { eventOn, rollEvents, type WeatherEvent } from './events.ts';
+import { PLAIN, type GroundMix } from './ground.ts';
 import { mulberry32 } from './rng.ts';
 import { charactersOf, climateOf, climateTags, riverTag, SEASON_IDS, seasonName, type Character, type Climate, type Season } from './seasons.ts';
 
@@ -15,8 +16,8 @@ export type Goal =
 export const SILVER_PAR = 1.5;
 
 export interface Terrain {
-  /** Mean and spread of the soil's fertility. */
-  soil: number; soilSpread: number;
+  /** More or less of each kind of ground than a plain valley's (ground.ts); the ground sets the soil's fertility. */
+  ground: GroundMix;
   water: 'river' | 'ponds' | 'lake' | 'none';
   /** Share of the map under forest and rock, roughly. */
   forest: number; rock: number;
@@ -49,14 +50,14 @@ export interface Scenario {
   tags: string[];
 }
 
-const LOAM: Terrain = { soil: 60, soilSpread: 25, water: 'river', forest: 0.12, rock: 0.04, relief: 0.4 };
+const VALLEY: Terrain = { ground: PLAIN, water: 'river', forest: 0.12, rock: 0.04, relief: 0.4 };
 const MIN = 60;
 
 export const CAMPAIGN: Scenario[] = [
   {
     id: 'c1', name: 'First Light', seed: 1101, width: 44, height: 36, credits: 1200, par: 20 * MIN,
     blurb: 'Brightwater needs grain and flour to get through the season. Lay your first fields, a powered mill, and trucks to carry it all.',
-    terrain: { ...LOAM, forest: 0.08, rock: 0.02, relief: 0.2 }, climate: climateOf('spring', 'mild'), events: [...eventOn(2, 6, 'softRain')], tags: ['Gentle'],
+    terrain: { ...VALLEY, forest: 0.08, rock: 0.02, relief: 0.2 }, climate: climateOf('spring', 'mild'), events: [...eventOn(2, 6, 'softRain')], tags: ['Gentle'],
     goals: [{ kind: 'deliver', item: 'wheat', n: 120 }, { kind: 'deliver', item: 'flour', n: 80 }],
     tips: [
       'Place a few fields (F) on rich soil (V shows it). Leave open ground between buildings: trucks drive on it.',
@@ -68,9 +69,9 @@ export const CAMPAIGN: Scenario[] = [
     ],
   },
   {
-    id: 'c2', name: 'Morning Bread', seed: 2202, width: 48, height: 40, credits: 1600, par: 45 * MIN,
+    id: 'c2', name: 'Morning Bread', seed: 2202, width: 48, height: 40, credits: 1600, par: 50 * MIN,
     blurb: 'Fresh bread for the schoolhouse. Chickens need feed, the mill makes bran: close the loop, and keep the soil alive.',
-    terrain: LOAM, climate: climateOf('spring', 'wet'), events: [...eventOn(5, 9, 'thunderstorm')], tags: [],
+    terrain: VALLEY, climate: climateOf('spring', 'wet'), events: [...eventOn(5, 9, 'thunderstorm')], tags: [],
     goals: [{ kind: 'deliver', item: 'bread', n: 150 }, { kind: 'soil', min: 40 }],
     tips: [
       'Bread is flour and an egg. Chickens lay eggs from feed: beans, bran or seed cake, and leave manure.',
@@ -82,7 +83,7 @@ export const CAMPAIGN: Scenario[] = [
   {
     id: 'c3', name: 'Windy Ridge', seed: 3303, width: 48, height: 40, credits: 1100, par: 55 * MIN,
     blurb: 'The ridge co-op cooks with sunflower oil, but the sun is weak up here. The wind never stops, though.',
-    terrain: { ...LOAM, water: 'ponds', rock: 0.12, forest: 0.06, relief: 0.9 }, climate: climateOf('autumn', 'gales'), events: [...eventOn(7, 8, 'gale', 'severe')],
+    terrain: { ...VALLEY, ground: { silt: 0, clay: 0, sand: 0, stony: 0.8 }, water: 'ponds', rock: 0.12, forest: 0.06, relief: 0.9 }, climate: climateOf('autumn', 'gales'), events: [...eventOn(8, 8, 'gale', 'severe')],
     tags: ['Rocky', 'Hilly'],
     goals: [{ kind: 'deliver', item: 'oil', n: 90 }, { kind: 'deliver', item: 'bread', n: 80 }],
     tips: ['Up on the hills a turbine catches more wind. Every level a truck climbs costs it time and battery, so keep the busy routes low.'],
@@ -90,32 +91,32 @@ export const CAMPAIGN: Scenario[] = [
   {
     id: 'c4', name: 'Linen for the Looms', seed: 4404, width: 50, height: 40, credits: 1300, par: 40 * MIN,
     blurb: 'The weavers of Hollin want linen, and a steady supply of yarn for their own looms.',
-    terrain: LOAM, climate: climateOf('summer', 'hot'), events: [...eventOn(4, 8, 'heatWave')], tags: [],
+    terrain: VALLEY, climate: climateOf('summer', 'hot'), events: [...eventOn(4, 8, 'heatWave')], tags: [],
     goals: [{ kind: 'deliver', item: 'linen', n: 50 }, { kind: 'rate', item: 'yarn', perMin: 5 }],
   },
   {
     id: 'c5', name: 'Long Nights', seed: 5505, width: 48, height: 40, credits: 1400, par: 65 * MIN,
     blurb: 'Winter: short days and long nights. The midwinter fair wants honey cake.',
-    terrain: { ...LOAM, water: 'lake', relief: 0.5 }, climate: climateOf('winter'), events: [...eventOn(3, 18, 'coldSnap'), ...eventOn(7, 8, 'warmSpell')], tags: [],
+    terrain: { ...VALLEY, water: 'lake', relief: 0.5 }, climate: climateOf('winter'), events: [...eventOn(3, 18, 'coldSnap'), ...eventOn(7, 8, 'warmSpell')], tags: [],
     goals: [{ kind: 'deliver', item: 'honeycake', n: 100 }],
   },
   {
-    id: 'c6', name: 'Tired Soil', seed: 6606, width: 48, height: 40, credits: 1400, par: 40 * MIN,
+    id: 'c6', name: 'Tired Soil', seed: 6606, width: 48, height: 40, credits: 1400, par: 35 * MIN,
     blurb: 'Years of monoculture left this valley worn out. Make sauce for the cannery town, and leave the soil better than you found it.',
-    terrain: { ...LOAM, soil: 28, soilSpread: 15, forest: 0.05, relief: 0.6 }, climate: climateOf('summer', 'dry'), events: [...eventOn(4, 9, 'dustStorm')], tags: ['Poor soil'],
+    terrain: { ...VALLEY, ground: { silt: 0, clay: 0, sand: 0.9, stony: 0.9 }, forest: 0.05, relief: 0.6 }, climate: climateOf('summer', 'dry'), events: [...eventOn(4, 9, 'dustStorm')], tags: ['Poor soil'],
     goals: [{ kind: 'deliver', item: 'sauce', n: 50 }, { kind: 'soil', min: 55 }],
   },
   {
     id: 'c7', name: 'Riverlands', seed: 7707, width: 52, height: 42, credits: 1600, par: 50 * MIN,
     blurb: 'Three villages along the river put in orders at once. Space is short between the water and the woods.',
-    terrain: { ...LOAM, water: 'river', forest: 0.22, rock: 0.06, relief: 0.3 }, climate: climateOf('spring', 'highRiver'), events: [...eventOn(6, 8, 'flood')], tags: ['Cramped'],
+    terrain: { ...VALLEY, ground: { silt: 1.2, clay: 0, sand: 0, stony: 0 }, water: 'river', forest: 0.22, rock: 0.06, relief: 0.3 }, climate: climateOf('spring', 'highRiver'), events: [...eventOn(6, 8, 'flood')], tags: ['Cramped'],
     tips: ['The river turns a water wheel built on its bank: steady power day and night, the most beside a fall.'],
     goals: [{ kind: 'deliver', item: 'linen', n: 30 }, { kind: 'deliver', item: 'sauce', n: 30 }, { kind: 'deliver', item: 'bread', n: 80 }],
   },
   {
     id: 'c8', name: 'Harvest Festival', seed: 8808, width: 56, height: 44, credits: 1800, par: 50 * MIN,
     blurb: 'The whole valley comes together for the festival. Everything, at once, on healthy soil.',
-    terrain: { ...LOAM, soil: 50, rock: 0.07, forest: 0.14, relief: 0.7 }, climate: climateOf('autumn', 'stormy'), events: [...eventOn(3, 8, 'tropicalStorm', 'ordinary', undefined, 'autumn'), ...eventOn(7, 4, 'fog')], tags: ['Everything'],
+    terrain: { ...VALLEY, ground: { silt: 0, clay: 0, sand: 0.3, stony: 0.3 }, rock: 0.07, forest: 0.14, relief: 0.7 }, climate: climateOf('autumn', 'stormy'), events: [...eventOn(3, 8, 'tropicalStorm', 'ordinary', undefined, 'autumn'), ...eventOn(7, 4, 'fog')], tags: ['Everything'],
     goals: [{ kind: 'deliver', item: 'honeycake', n: 40 }, { kind: 'deliver', item: 'sauce', n: 30 }, { kind: 'deliver', item: 'linen', n: 30 }, { kind: 'soil', min: 60 }],
   },
 ];
@@ -123,7 +124,7 @@ export const CAMPAIGN: Scenario[] = [
 export const SANDBOX: Scenario = {
   id: 'sandbox', name: 'Sandbox', seed: 4242, width: 64, height: 52, credits: 1_000_000, par: 0, sandbox: true,
   blurb: 'A big valley with unlimited credits and no goals, for trying things out.',
-  terrain: { ...LOAM, forest: 0.08, rock: 0.03, relief: 0.5 }, climate: climateOf('spring', 'mild'), events: [], tags: ['No goals', 'Unlimited credits'], goals: [],
+  terrain: { ...VALLEY, forest: 0.08, rock: 0.03, relief: 0.5 }, climate: climateOf('spring', 'mild'), events: [], tags: ['No goals', 'Unlimited credits'], goals: [],
 };
 
 /** Products a random commission can ask for, by difficulty, with a count per difficulty step. */
@@ -145,10 +146,10 @@ const PRODUCTS: { item: ItemId; n: number; level: number }[] = [
  * measurement put a little under a mild one's 1.15 (their storms help the fields as much as they cost), take its factor.
  */
 export const PAR_FACTOR: Record<Season, Partial<Record<Character, number>>> = {
-  spring: { mild: 1.2, wet: 1.25, dry: 1.1, hot: 1.2, gales: 1.2, stormy: 1.25, highRiver: 1.2 },
-  summer: { mild: 1.15, wet: 1.15, dry: 1.3, hot: 1.3, stormy: 1.15 },
-  autumn: { mild: 1.15, wet: 1.25, dry: 1.2, gales: 1.2, stormy: 1.35 },
-  winter: { mild: 2.65, gales: 2.65, hard: 3.35 },
+  spring: { mild: 1.2, wet: 1.25, dry: 1.1, hot: 1.2, gales: 1.25, stormy: 1.3, highRiver: 1.25 },
+  summer: { mild: 1.1, wet: 1.1, dry: 1.25, hot: 1.3, stormy: 1.1 },
+  autumn: { mild: 1.2, wet: 1.25, dry: 1.2, gales: 1.2, stormy: 1.35 },
+  winter: { mild: 2.65, gales: 2.55, hard: 3.2 },
 };
 
 /** The target time (s) of a random commission with `goals` and `difficulty` in `climate`: the base time for a mild spring, times the climate's factor, to 5 minutes. */
@@ -170,11 +171,11 @@ export function randomScenario(seed: number, difficulty: 1 | 2 | 3): Scenario {
   const rs = mulberry32(seed ^ (difficulty * 0x85ebca6b) ^ 0x5ea5);
   const season = SEASON_IDS[Math.floor(rs() * SEASON_IDS.length)], characters = charactersOf(season);
   const climate = climateOf(season, characters[Math.floor(rs() * characters.length)]);
-  const terrain: Terrain = { ...LOAM, water: pick(['river', 'ponds', 'lake', 'river'] as const), relief: 0.25 + 0.15 * difficulty };
+  const terrain: Terrain = { ...VALLEY, water: pick(['river', 'ponds', 'lake', 'river'] as const), relief: 0.25 + 0.15 * difficulty };
   // Up to two ground modifiers.
   const mods = [
-    () => { terrain.soil = 30; terrain.soilSpread = 15; tags.push('Poor soil'); },
-    () => { terrain.rock = 0.12; tags.push('Rocky'); },
+    () => { terrain.ground = { ...terrain.ground, sand: 0.8, stony: 0.8 }; tags.push('Poor soil'); },
+    () => { terrain.rock = 0.12; terrain.ground = { ...terrain.ground, stony: 0.6 }; tags.push('Rocky'); },
     () => { terrain.forest = 0.24; tags.push('Wooded'); },
     () => { const hilly = r() < 0.5; terrain.relief = hilly ? 0.9 : 0; tags.push(hilly ? 'Hilly' : 'Flat'); },
   ];

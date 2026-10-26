@@ -24,6 +24,7 @@ import { advance } from '../src/game/sim/step.ts';
 import { lastPose } from '../src/game/sim/trucks.ts';
 import { fieldPace } from '../src/game/sim/buildings.ts';
 import { buildingAt, newGame, type Building, type BuildingOf, type Dir, type MachineBuilding, type GameState, type Route, type Truck } from '../src/game/state.ts';
+import { PLAIN } from '../src/game/ground.ts';
 
 /** The sandbox's season without everyday conditions: no cloud, rain or calm spells to disturb a count. */
 const CLEAR = { ...SANDBOX.climate, conditions: { cloud: 0, rain: 0, calm: 0 }, warmth: { low: 15, high: 15, drift: 0 } };
@@ -32,7 +33,7 @@ const CLEAR = { ...SANDBOX.climate, conditions: { cloud: 0, rain: 0, calm: 0 }, 
 function flat(extra: Partial<Scenario> = {}): GameState {
   const sc: Scenario = {
     ...SANDBOX, id: 'test', sandbox: false, credits: 100_000, width: 30, height: 30, goals: [], par: 600,
-    terrain: { soil: 60, soilSpread: 0, water: 'none', forest: 0, rock: 0, relief: 0 }, climate: CLEAR, ...extra,
+    terrain: { ground: PLAIN, water: 'none', forest: 0, rock: 0, relief: 0 }, climate: CLEAR, ...extra,
   };
   const s = newGame(sc);
   s.map.fertility.fill(60);

@@ -15,6 +15,7 @@ import { newGame, type BuildingOf, type GameState } from '../src/game/state.ts';
 import { dayAt } from '../src/game/sim/clock.ts';
 import { eventCosts, lostSeconds, NOTICEABLE } from '../src/game/weathercost.ts';
 import type { BuildingId } from '../src/game/data.ts';
+import { PLAIN } from '../src/game/ground.ts';
 
 const HOUR = DAY_SECONDS / 24;
 const NO_CONDITIONS = { cloud: 0, rain: 0, calm: 0 };
@@ -23,7 +24,7 @@ const NO_CONDITIONS = { cloud: 0, rain: 0, calm: 0 };
 function game(season: Season, events: WeatherEvent[], at: number): GameState {
   const climate = { ...climateOf(season), conditions: NO_CONDITIONS };
   const sc: Scenario = { ...SANDBOX, climate, id: 'test', sandbox: false, credits: 100_000, width: 30, height: 30, goals: [], par: 600, events,
-    terrain: { soil: 60, soilSpread: 0, water: 'none', forest: 0, rock: 0, relief: 0 } };
+    terrain: { ground: PLAIN, water: 'none', forest: 0, rock: 0, relief: 0 } };
   const s = newGame(sc);
   s.map.fertility.fill(60);
   s.soilBase.fill(60);

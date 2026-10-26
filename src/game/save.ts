@@ -7,6 +7,7 @@ import type { Scenario } from './scenarios.ts';
 import { endOf, EVENT_KINDS, EVENTS, STRENGTHS, type WeatherEvent } from './events.ts';
 import { CHARACTERS, SEASONS, type Climate } from './seasons.ts';
 import { MAX_LEVEL, spanOf, STEEP } from './relief.ts';
+import { GROUND_IDS } from './ground.ts';
 import { TERRAIN } from './map.ts';
 import { isMachine, type Building, type GameState, type Route, type Truck } from './state.ts';
 
@@ -30,7 +31,7 @@ export function deserialize(json: string | null): Result<GameState> {
   const parsed = tryParseJson(json);
   if (!parsed.ok) return err(`The save isn't JSON: ${parsed.error}`);
   const s = parsed.value as GameState | null;
-  if (s?.version !== 18) return err('The save is from another version (this game reads version 18).');
+  if (s?.version !== 19) return err('The save is from another version (this game reads version 19).');
   if (!complete(s)) return err('The save is broken: its state is incomplete or out of range.');
   if (!validRun(s.run, s.scenario.goals.length, s.scenario.events.length)) return err('The save is broken: its run log is incomplete or out of range.');
   return ok(s);
@@ -76,7 +77,7 @@ function scenario(sc: Scenario): boolean {
     && arr(sc.tags) && sc.tags.every(str) && (sc.tips === undefined || (arr(sc.tips) && sc.tips.every(str)))
     && arr(sc.goals) && sc.goals.every(goal)
     && climate(sc.climate) && arr(sc.events) && sc.events.every(event)
-    && !!t && [t.soil, t.soilSpread, t.forest, t.rock, t.relief].every(num) && t.relief >= 0 && t.relief <= 1 && ['river', 'ponds', 'lake', 'none'].includes(t.water);
+    && !!t && [t.forest, t.rock, t.relief].every(num) && !!t.ground && GROUND_IDS.every((g) => g === 'loam' || num(t.ground[g])) && t.relief >= 0 && t.relief <= 1 && ['river', 'ponds', 'lake', 'none'].includes(t.water);
 }
 
 /** Whether a map's corners are ground the rules allow: no tile steeper than STEEP, water flat. */
@@ -94,6 +95,7 @@ function complete(s: GameState): boolean {
     && !!m && int(m.width) && int(m.height) && m.width > 0 && m.height > 0 && m.width === s.scenario.width && m.height === s.scenario.height
     && arr(m.terrain) && m.terrain.length === m.width * m.height
     && arr(m.fertility) && m.fertility.length === m.width * m.height && m.fertility.every(num)
+    && arr(m.ground) && m.ground.length === m.width * m.height && m.ground.every((g) => int(g) && g >= 0 && g < GROUND_IDS.length)
     && arr(m.corner) && m.corner.length === m.width * m.height * 4 && m.corner.every((c) => int(c) && c >= 0 && c <= MAX_LEVEL)
     && arr(m.current) && m.current.length === m.width * m.height && m.current.every((c) => num(c) && c >= 0)
     && relief(m)

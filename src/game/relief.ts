@@ -147,3 +147,24 @@ export function sheetAt(r: Relief, px: number, py: number, from: { x: number; y:
   }
   return [...seen].map((j) => all[j]);
 }
+
+/**
+ * How far each tile lies below the average of the land within `radius` tiles of it, in levels (negative on a rise, NaN where
+ * `land` is 0): a hollow is deep, a crest negative. Judged against the ground round it, not the whole map, so a real hollow
+ * shows on a map that climbs. The late frost settles by it (frost.ts) and the ground's clay and stony patches follow it (ground.ts).
+ */
+export function depthBelowRound(r: Relief, land: ArrayLike<number>, radius: number): Float64Array {
+  const w = r.width, h = r.height, level = new Float64Array(w * h), depth = new Float64Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (land[y * w + x]) level[y * w + x] = centreLevel(r, x, y);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    if (!land[i]) { depth[i] = NaN; continue; }
+    let sum = 0, n = 0;
+    for (let dy = Math.max(-radius, -y); dy <= Math.min(radius, h - 1 - y); dy++) for (let dx = Math.max(-radius, -x); dx <= Math.min(radius, w - 1 - x); dx++) {
+      const j = i + dy * w + dx;
+      if (land[j] && dx * dx + dy * dy <= radius * radius) { sum += level[j]; n++; }
+    }
+    depth[i] = sum / n - level[i];
+  }
+  return depth;
+}

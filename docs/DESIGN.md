@@ -985,7 +985,7 @@ Each level is generated from a seed: a grid of about 48 × 40 one-metre tiles.
 
 | Tile | Notes |
 | --- | --- |
-| Grass | Buildable. Has a fertility (0–100) from noise, which fields use |
+| Grass | Buildable. Has a kind of ground (below) and a fertility (0–100) from it, which fields use |
 | Water | A river (running, over small falls) or ponds. Not buildable. Sprinklers near water use less power. A field sharing an edge with water at the ground's own level is fully watered without a sprinkler |
 | Rock | Not buildable. Can be cleared for 15 credits |
 | Tree | Not buildable. Slows wind turbines next to it. Can be cleared for 5 credits (soil health drops a little) |
@@ -995,8 +995,28 @@ home area at level 0 round the depot. At relief 0.65 and above, occasional mesas
 cliff rim on the other; sites that would cut off a truck route are skipped. Rivers have a 3-level fall at relief 0.55 and
 above, a second at 0.85. Rock and forest favour high ground and cliff edges, without closing the routes between open grass.
 
-Soil varies locally and is richer near water, poorer uphill. The uphill difference is 2.25 × relief per level; the generator
-centres the grass soil at each quarter-level of centre height to keep the commission's mean, then rounds and clamps it to 5–95.
+**Ground (phase 5.1, `src/game/ground.ts`).** Every tile has one of five kinds of ground, a fixed trait saved with the map
+(`MapData.ground`; the save is version 19): **loam, silt, clay, sand, stony**. It never changes: no earthworks, compost or clearing turn one kind into another.
+The ground is laid in large patches that follow the land, and it sets the tile's starting fertility (`fertilityOf`: the kind's range, placed in it by smooth local noise, so a patch varies
+a little within itself):
+
+| Ground | Where it lies | Starting fertility |
+| --- | --- | --- |
+| Loam | the rest: terraces, gentle slopes, the foot of slopes | 50–70 |
+| Silt | the floodplain: low ground close to the river (within about 2–5 tiles of the water and under about a level above it); a quarter as much beside ponds or a lake, none with no water | 70–90 |
+| Clay | hollows (a tile below the ground within 6 tiles round it, the same depth the late frost settles by, `depthBelowRound`), low wet ground by ponds and a lake, and patches on low ground | 45–65 |
+| Sand | raised banks beside the water, a band just beyond the floodplain (the river's bends and old terraces), patches on terraces | 20–40 |
+| Stony | crests, ridges and high ground (from about level 2, full by 6), steep eroded slopes | 15–35 |
+
+It is laid in `layGround` as a score for each kind (a feature of the land times a noise patch of about 11 tiles, plus the commission's own **mix**), the highest wins, loam's score is a constant 0.5, and two rounds of a majority vote over the
+5 × 5 tiles round a tile rub out lone tiles, so patches hold several fields (under 5% of tiles stand alone). A commission's `terrain.ground` is a mix, `{ silt, clay, sand, stony }`, each 0 (a plain valley) up to about 1.2: a patch layer of that strength for the kind
+(silt: a wider, stronger floodplain), which replaces the old `soil` and `soilSpread` settings. A plain valley is about 55–60% loam, 5–15% silt, 10–15% clay, 10–13% sand and 8% stony with a river, 8–10% more stony and no silt beside still water; a hilly one has about
+three times the stony of a flat one by itself (the height). The country beyond the edge is laid by the same rules, so the ground on the map does not depend on how much country is drawn (the land is always laid with 12 tiles of country, then cropped).
+**Rocks** lie mostly on stony ground (a stony tile adds `ROCK_STONY` to a rock's pull, on top of the hills and cliffs; about 70% of rocks lie on ground that is stony without them), and the ground under a rock is stony: clearing the rock leaves it so.
+Nothing but fertility reads the ground yet (5.2 to 5.4 add its rules).
+
+The mix by commission: **Rocky** (12% rock) adds stony 0.6 (about 30% stony, from 8%); **Poor soil** adds sand 1.0 and stony 0.8 (about 40% loam, 19% sand, 27% stony, mean fertility about 15 lower); **Hilly** is stonier by its height alone; **Wooded** and **Flat** add nothing.
+Tired Soil: sand 0.9, stony 0.9. Riverlands: silt 1.2, a wide floodplain (about 25%). Windy Ridge: stony 0.8 on top of its relief 0.9. Harvest Festival: sand 0.3, stony 0.3. The others are plain valleys. The sandbox is a plain valley.
 
 Beyond the edge the country carries on, a shade duller: the river, a track climbing out from the depot, woods rising
 into higher hills above the map's height limit. It is only scenery. Trees are oak, birch, pine, willow, poplar and apple,
@@ -1400,18 +1420,18 @@ A commission has goals, a target time and modifiers. It ends when every goal is 
 - **Medals:** gold within the target time, silver within 1.5×, bronze any time after. There is no failing.
 - **Season:** a season and perhaps a character (see Seasons), which set the sun and the wind.
 - **Weather events:** a list of events (see Weather events): rolled from the seed for a random commission, placed by hand for a campaign one (see Campaign weather, below).
-- **Modifiers:** soil richness, how much rock, water and forest the map has, relief (0 flat to 1 rugged), starting credits.
+- **Modifiers:** the mix of ground (and so the soil's richness), how much rock, water and forest the map has, relief (0 flat to 1 rugged), starting credits.
 
 **Campaign** (seeds fixed, so each plays the same every time; goals, credits and target times in `src/game/scenarios.ts`):
 
 | # | Name | Goals | Target | Season | Modifiers | Relief |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | First Light | 120 wheat, 80 flour | 20 min | A mild spring | Gentle | 0.2 |
-| 2 | Morning Bread | 150 bread; soil health ≥ 40 | 45 min | A wet spring | | 0.4 |
+| 2 | Morning Bread | 150 bread; soil health ≥ 40 | 50 min | A wet spring | | 0.4 |
 | 3 | Windy Ridge | 90 oil, 80 bread | 55 min | Autumn, gales | Rocky, hilly | 0.9 |
 | 4 | Linen for the Looms | 50 linen; 5 yarn/min | 40 min | A hot summer | | 0.4 |
 | 5 | Long Nights | 100 honey cake | 70 min | Winter | | 0.5 |
-| 6 | Tired Soil | 50 sauce; soil health ≥ 55 | 40 min | A dry summer | Poor soil | 0.6 |
+| 6 | Tired Soil | 50 sauce; soil health ≥ 55 | 35 min | A dry summer | Poor soil | 0.6 |
 | 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 50 min | Spring, high river | Cramped | 0.3 |
 | 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 50 min | A stormy autumn | Everything | 0.7 |
 
@@ -1422,7 +1442,7 @@ none on the first day, one at a time, at least half a day clear between them, al
 | --- | --- | --- | --- |
 | 1 | First Light | a soft rain, day 2 at 06:00 (a day) | seasons exist; rain waters the fields and rests the sprinklers |
 | 2 | Morning Bread | a thunderstorm, day 5 at 09:00 (12 h; no flood follows it here) | a dark, rainy spell for power: batteries carry it, the rain waters the fields |
-| 3 | Windy Ridge | a **severe** gale, day 7 at 08:00 (a day) | shelter for turbines: bare turbines stop, ones with trees, tall buildings or other turbines beside them keep turning (an ordinary gale only fills the turbines, so it would teach nothing) |
+| 3 | Windy Ridge | a **severe** gale, day 8 at 08:00 (a day; day 7 before the ground, 5.1, slowed the bot's farm by minutes) | shelter for turbines: bare turbines stop, ones with trees, tall buildings or other turbines beside them keep turning (an ordinary gale only fills the turbines, so it would teach nothing) |
 | 4 | Linen for the Looms | a heat wave, day 4 at 08:00 (32 h) | flax dislikes heat; sprinklers and shade |
 | 5 | Long Nights | a cold snap, day 3 at 18:00 (36 h), then a warm spell, day 7 at 08:00 (36 h) | the cold, then a break in it; the commission is the greenhouse's: bees and beans under glass, heated through the cold snap (4.6) |
 | 6 | Tired Soil | a dust storm, day 4 at 09:00 (18 h) | trees as windbreaks guard the soil: a sapling or tree beside a field, or a bean field sharing an edge |
@@ -1510,6 +1530,9 @@ are 20, 45, 55, 40, 40, 50 and 50 minutes. Long Nights (about 50 minutes in the 
 its target 70 stands until #86 gives a real time. After phase 1 (2026-10-22) every campaign target is again about 1.4 times the bot's time: First Light 15.5 (20), Morning Bread 32.6 (45), Windy Ridge 39.1 (55), Linen for the Looms 28.2 (40), Tired Soil 28.8 (40), Riverlands 36.8 (50) and Harvest Festival 35.0 (50), so none changed. After phase 2 (2026-10-24), with the authored events and the bot's answers to them (below):
 First Light 15.5 (20), Morning Bread 32.6 (45), Windy Ridge 39.6 (55), Linen for the Looms 29.4 (40), Tired Soil 29.2 (40), Riverlands 36.6 (50) and Harvest Festival 36.9 (50),
 all still about 1.4 times the bot's time, so none changed.)
+Ground (5.1, 2026-10-27): the commission's soil is no longer a setting, so the bot's flat map takes the mean fertility of the commission's own ground within 18 tiles of the depot (where its layout stands; `FARM_REACH` in `tools/bot.ts`): First Light 58, Morning Bread 55, Windy Ridge 57, Linen 57, Long Nights 54, Tired Soil 38 (it was 28), Riverlands 56 and Harvest Festival 50 (it was 50); the rest was 60. The bot's times before and after: First Light 15.5 / 15.8, Morning Bread 32.6 / 38.0 (its neighbours layout 30.1 / 30.5),
+Windy Ridge 39.6 / 41.1, Linen for the Looms 29.4 / 30.3, Long Nights 45.9 / 48.4, Tired Soil 29.5 / 25.9, Riverlands 37.6 / 39.2 and Harvest Festival 37.5 / 37.5. Targets that moved to keep about 1.4 times: Morning Bread 45 to 50 minutes and Tired Soil 40 to 35 (Tired Soil's old soil 28 was poorer than the ground round its depot, which only half-lies on sand and stony); the others stand.
+Windy Ridge's gale moved from day 7 to day 8: with the slower farm the second pair of turbines stood a minute after the first gale. Random commissions' factors were measured again (`PAR_FACTOR`, above): spring gales and high river 1.25 (were 1.2), spring stormy 1.3 (1.25), summer mild and wet and stormy 1.1 (1.15), summer dry 1.25 (1.3), autumn mild 1.2 (1.15), winter gales 2.55 (2.65) and hard 3.2 (3.35).
 Bees in winter (4.4): no bot layout built a greenhouse then, so no bot time or target changed; Long Nights' came in 4.6 (below).
 
 ![The level select](images/menu.png)
@@ -1525,8 +1548,8 @@ run with the same layout and seed in a mild spring with no events. The factor is
 (a commission's goals decide which layout it is like: autumn is quicker for oil and honey cake and slower for linen and bread). The bot's map is flat and has no water, so each
 layout gets a river a couple of tiles beyond the farm's west edge (a flood beside the farm, the worst case; Riverlands' bot has its bank) and, except Tired Soil's, no trees (an unguarded farm for the dust storm):
 the events are measured at their worst, so the factors are on the safe side. The per-event bumps the earlier issues put in (stormy spring 1.3, wet and stormy summer 1.2, dry summer 1.35, wet and gales autumn,
-stormy autumn 1.5) counted a part of the same cost twice; the table is now **spring** mild 1.2, wet 1.25, dry 1.1, hot 1.2, gales 1.2, stormy 1.25, high river 1.2; **summer** mild 1.15, wet 1.15, dry 1.3, hot 1.3,
-stormy 1.15; **autumn** mild 1.15, wet 1.25, dry 1.2, gales 1.2, stormy 1.35; **winter** mild 2.5, gales 2.6, hard 3.75 (the bot needs 1.8 to 2.3 times as long for flour, 2.4 to 3 for bread and 2.7 to 4.3 for linen).
+stormy autumn 1.5) counted a part of the same cost twice; the table is now **spring** mild 1.2, wet 1.25, dry 1.1, hot 1.2, gales 1.25, stormy 1.3, high river 1.25; **summer** mild 1.1, wet 1.1, dry 1.25, hot 1.3,
+stormy 1.1; **autumn** mild 1.2, wet 1.25, dry 1.2, gales 1.2, stormy 1.35; **winter** mild 2.65, gales 2.55, hard 3.2 (the bot needs 1.8 to 2.3 times as long for flour, 2.4 to 3 for bread and 2.7 to 4.3 for linen).
 The ratio (the climate and its events together), averaged over the layouts, is 1.14 in a mild spring, 1.17 in a wet one, 1.19 stormy, 1.07 dry, 1.14 gales; 1.00 in a mild summer (a dry one 1.09, a hot one 1.14: heat hurts wheat and flax, and calm
 days starve solar and wind, but tomato and sunflower love it); 0.97 to 1.10 in an autumn (stormy 1.10); at the 90th percentile of single runs 1.2 to 1.5 times. The worst single runs were 1.8 times (a stormy autumn with a hurricane) and 1.7 (First Light's layout in a hot spring, with a flood and frosts, and in a few autumns). Wet and stormy summers measured a little under a
 mild one (their storms water the fields as much as they cost) and take its factor. Playing each layout against the target of a random commission of its own difficulty and goal count, the bot earns gold in all runs but the 6 to 8 of 96 in a

@@ -1,7 +1,7 @@
 // A scripted commission on the real game rules (src/game/): a bot builds a fixed layout as credits allow, then lets it run,
 // and reports progress every in-game minute and when the commission completes, against its target time. It checks that
 // commissions can be cleared and roughly how long they take (DESIGN.md, "Open questions"). The map is flattened (no
-// water, rock or trees, even soil at the scenario's mean), since the layout is the bot's, not the map's. Run by
+// water, rock or trees, even soil at the mean of the commission's own ground), since the layout is the bot's, not the map's. Run by
 // `npm run sim` (tools/sim.ts), and by the tests for every layout (test/bots.test.ts).
 
 import { addStop, buyTruck, newRoute, place, remove, reshape, setCrop, setTruckRoute, truckPrice } from '../src/game/build.ts';
@@ -15,6 +15,9 @@ import { soilHealth } from '../src/game/sim/soil.ts';
 import { goalDone, medalFor } from '../src/game/sim/stats.ts';
 import { advance } from '../src/game/sim/step.ts';
 import { newGame, type Building, type GameState, type Route } from '../src/game/state.ts';
+
+/** How far from the depot (tiles) the bot's farm reaches: the ground its soil is taken from. */
+const FARM_REACH = 18;
 
 /** How a bot run went: when the commission completed (null if it didn't in the time given), and its target time. */
 export interface BotRun { completedAt: number | null; par: number; /** The game as the run left it. */ state: GameState }
@@ -37,10 +40,16 @@ export function playLayout(id: string, minutes = 60, log: (line: string) => void
 
   const s: GameState = newGame(sc);
   // A flat, open map: the layouts test the economy, not one map's lie of the land (test/height.test.ts covers height).
+  // Its soil is the mean of the commission's own ground round the depot, where the layout stands (a player builds there, on the ground the start gives).
+  const { depot, width, height } = s.map, near: number[] = [];
+  for (let y = Math.max(0, depot.y - FARM_REACH); y < Math.min(height, depot.y + FARM_REACH); y++) for (let x = Math.max(0, depot.x - FARM_REACH); x <= Math.min(width - 1, depot.x + FARM_REACH); x++) {
+    if (s.map.terrain[y * width + x] !== TERRAIN.water) near.push(s.map.fertility[y * width + x]);
+  }
+  const soil = Math.round(near.reduce((a, b) => a + b, 0) / near.length);
   s.map.terrain.fill(TERRAIN.grass);
   s.map.corner.fill(0);
-  s.map.fertility.fill(sc.terrain.soil);
-  s.soilBase.fill(sc.terrain.soil);
+  s.map.fertility.fill(soil);
+  s.soilBase.fill(soil);
   s.initialTrees = 0;
   // The depot in the middle of the south edge, so every layout fits (nothing has looked up the layout yet).
   s.map.depot.x = Math.floor(s.map.width / 2);
