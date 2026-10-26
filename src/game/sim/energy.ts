@@ -19,6 +19,20 @@ export function shareOf(s: GameState, b: Building) {
   return runtimeOf(s).shares?.get(b.id) ?? 0;
 }
 
+/**
+ * The share of its power a sprinkler resting in the rain would get if it ran (a greenhouse built in its reach wakes it: it wants
+ * its watts then), from the network's last step: what it makes plus what its batteries could give, over what it would want.
+ */
+export function shareIfRunning(s: GameState, b: Building): number {
+  const net = networkOf(s, b);
+  if (!net) return 0;
+  const wanted = net.wanted + (wants(s, b) > 0 ? 0 : wattsOf(s, b));
+  if (net.made >= wanted) return 1;
+  const given = net.members.reduce((n, m) => n + (m.type === 'battery' ? Math.min(POWER.battery.rate, m.charge / TICK) : 0), 0);
+  const share = Math.min(1, (net.made + given) / wanted);
+  return share > 0.999 ? 1 : share;
+}
+
 /** Watts a building wants this step. */
 export function wants(s: GameState, b: Building): number {
   const def = BUILDINGS[b.type];

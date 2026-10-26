@@ -8,10 +8,10 @@ import { hourAt, sunAt, windAt } from './sim/clock.ts';
 import { raining } from './sim/weather.ts';
 import { panelShare, panelSnow } from './snow.ts';
 import { linksAt } from './sim/goods.ts';
-import { makes, shareOf, wants } from './sim/energy.ts';
+import { makes, shareIfRunning, shareOf, wants } from './sim/energy.ts';
 import { basisFor, eventsVary, notCounted, readingOf, spread, viewsOf, type Ahead, type Lenses, type Reading } from './ahead.ts';
 import type { Range } from './outlook.ts';
-import { watersGreenhouse, wattsOf } from './sim/layout.ts';
+import { rainWaters, watersGreenhouse, wattsOf } from './sim/layout.ts';
 import { describeLinks } from './sim/describe.ts';
 import { canFlood, floodsAt, isFlooded } from './flood.ts';
 import { dustComes, dustFor } from './dust.ts';
@@ -56,7 +56,7 @@ function soilUnder(s: GameState, x: number, y: number, n: number) {
 /** The sprinklers that would water a field at (x, y), and the most water any gives (the share of power it gets); rain waters every field. */
 function waterAt(s: GameState, type: 'field' | 'greenhouse', x: number, y: number) {
   const sp = s.buildings.filter((b) => b.type === 'sprinkler' && !isFlooded(s, b) && sprinklerWaters(b.x, b.y, { type, x, y }));
-  const shore = touchesWater(s, x, y), share = sp.reduce((m, b) => Math.max(m, shareOf(s, b)), 0), rains = type === 'field' && raining(s.scenario, s.time);
+  const shore = touchesWater(s, x, y), share = sp.reduce((m, b) => Math.max(m, type === 'greenhouse' && rainWaters(s, b) ? shareIfRunning(s, b) : shareOf(s, b)), 0), rains = type === 'field' && raining(s.scenario, s.time);
   // Rain waters every field while it lasts; a sprinkler gives its share of power as it is now.
   return { sprinklers: sp.length, shore, rain: !shore && rains, water: shore || rains ? 1 : share, share };
 }

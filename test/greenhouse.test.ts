@@ -157,3 +157,15 @@ test('tonight counts a sprinkler that waters a greenhouse as running through the
   assert.ok(open && under);
   assert.ok((under.dryAt ?? Infinity) < (open.dryAt ?? Infinity), `greenhouse ${under.dryAt}, field ${open.dryAt}`);
 });
+
+test('the placement card does not count on a sprinkler resting in the rain that a new greenhouse would wake, with no power behind it', () => {
+  const s = valley('spring', [], 1, 0);
+  for (let t = 0; t < 3 * DAY_SECONDS && !raining(s.scenario, s.time); t += 30) s.time = t;
+  place(s, 'pylon', 12, 14, 0);
+  place(s, 'sprinkler', 12, 13, 0);
+  advance(s, 1);
+  const water = (type: 'field' | 'greenhouse') => placement(s, type, 10, 10, { crop: 'wheat' }).facts.find((f) => f.label === 'Water');
+  assert.equal(water('field')?.value, 'rain');
+  assert.notEqual(water('greenhouse')?.sub, 'grows at 100%');
+  assert.match(water('greenhouse')?.sub ?? '', /grows at (\d+)%/);
+});
