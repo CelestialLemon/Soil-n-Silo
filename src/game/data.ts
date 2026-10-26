@@ -299,6 +299,8 @@ export const TRUCK = {
   giveUp: 5,
   /** Stops a route can have. */
   maxStops: 8,
+  /** Mud on clay (mud.ts): the share of its speed a truck keeps there, and the game hours the mud lasts after the rain stops. */
+  mudSpeed: 0.5, mudHours: 6,
   /** Tiles of flat road each level climbed costs on top, in time and battery. */
   climb: 0.6,
 };

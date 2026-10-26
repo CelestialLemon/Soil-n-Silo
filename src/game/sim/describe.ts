@@ -103,6 +103,7 @@ export function cargoText(cargo: ItemId[]) {
 export function describeTruck(s: GameState, t: Truck): string {
   const hold = truckHold(s, t), what = doingOf(s, t);
   if (!hold) return what;
+  if (hold.kind === 'mud') return `${what}, slowed by mud: it drives at ${Math.round(TRUCK.mudSpeed * 100)}% speed on clay in the rain and ${TRUCK.mudHours} hours after it`;
   return hold.effect === 'stopped' ? `Kept in its garage by the ${causeName(hold)} until it eases (${what.charAt(0).toLowerCase()}${what.slice(1)})` : `${what}, slowed by the ${causeName(hold)}`;
 }
 
@@ -149,7 +150,7 @@ function describeHold(s: GameState, b: Building): string {
     case 'wheel': return hold.effect === 'stopped' ? `Stopped: the river is frozen over here by ${cause}; a wheel at a fall keeps turning` : `Slowing: the river is freezing over in ${cause}; a wheel at a fall keeps turning`;
     case 'hive': return `The bees stay in: ${cause} is too wild to fly in`;
     case 'coop':
-      if (EVENTS[hold.kind].push[hold.strength]?.hens !== undefined) {
+      if (hold.kind !== 'mud' && EVENTS[hold.kind].push[hold.strength]?.hens !== undefined) {
         if (hold.effect === 'stopped') return `The hens have stopped laying: they stay in out of ${cause}`;
         const pace = Math.round(coopPace(s, b.x, b.y) * 100);
         return p.warmth < 0 ? `Hens laying at about ${pace}% speed: ${cause} (${Math.round(warmthOf(s))}°C)` : `Laying at about ${pace}% of the pace: ${cause} unsettles the hens`;

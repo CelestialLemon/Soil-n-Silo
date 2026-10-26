@@ -4,6 +4,7 @@ import {
 } from '../game/build.ts';
 import { err, ok } from '../game/result.ts';
 import { BUILDINGS, ITEM_IDS, ITEMS, TRUCK, type ItemId } from '../game/data.ts';
+import { truckHold } from '../game/hold.ts';
 import { routeTiming, truckTime, type StopTiming } from '../game/fleet.ts';
 import { givesGoods, takesGoods } from '../game/sim/goods.ts';
 import { runtimeOf } from '../game/runtime.ts';
@@ -44,6 +45,9 @@ const WAITS = [0, 5, 10, 30, 60];
 export function gapWords(t: StopTiming) {
   return t.gap !== null ? playTime(t.gap) : t.arrivals === 1 ? 'one truck' : 'no truck';
 }
+
+/** How many of a route's trucks mud slows now. */
+const mudTrucks = (s: GameState, r: Route) => trucksOn(s, r).filter((t) => truckHold(s, t)?.kind === 'mud').length;
 
 export class RoutesCard {
   readonly el = h('div', { class: 'cd-card side-card routes-card', hidden: true });
@@ -125,8 +129,12 @@ export class RoutesCard {
 
   /** A route's head line: its colour, name, stops and trucks, and goods a minute. */
   private headLine(s: GameState, r: Route, lines: (() => void)[], name: Node) {
-    const rate = h('b', { class: 'cd-num rate' }), warn = h('span', { class: 'cd-status is-blocked warn', hidden: true });
+    const rate = h('b', { class: 'cd-num rate' }), warn = h('span', { class: 'cd-status is-blocked warn', hidden: true }), mud = h('span', { class: 'cd-small cd-faint', hidden: true });
     lines.push(() => {
+      const slowed = mudTrucks(s, r);
+      mud.hidden = !slowed;
+      set(mud, `${slowed} in mud`);
+      mud.title = `${plural(slowed, 'truck')} on this route ${slowed === 1 ? 'is' : 'are'} slowed by mud now: trucks drive at ${Math.round(TRUCK.mudSpeed * 100)}% speed on clay in the rain and ${TRUCK.mudHours} hours after it.`;
       rebuild(rate, dec(routeRate(s, r)), () => [dec(routeRate(s, r)), h('span', { class: 'cd-faint' }, ' /min')]);
       const ps = routeProblems(s, r);
       warn.hidden = !ps.length;
@@ -134,7 +142,7 @@ export class RoutesCard {
       warn.title = ps.join('\n');
     });
     return h('div', { class: 'route-head' }, h('span', { class: 'swatch', style: `background: ${routeCss(s, r)}` }), name,
-      h('span', { class: 'cd-small' }, `${plural(r.stops.length, 'stop')} · ${plural(trucksOn(s, r).length, 'truck')}`), warn, h('span', { class: 'fill' }), rate);
+      h('span', { class: 'cd-small' }, `${plural(r.stops.length, 'stop')} · ${plural(trucksOn(s, r).length, 'truck')}`), mud, warn, h('span', { class: 'fill' }), rate);
   }
 
   /** Loop time and the gap at the slowest stop. */
