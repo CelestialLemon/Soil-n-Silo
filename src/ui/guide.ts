@@ -15,7 +15,8 @@ import { FALL, SILT } from '../game/flood.ts';
 import { BUILD_HOURS, PANEL_BLOCK } from '../game/snow.ts';
 import { SEVERE_GALE, TURBINE_LIMIT } from '../game/wind.ts';
 import { isPollinated } from '../game/sim/layout.ts';
-import { fieldFertility } from '../game/sim/soil.ts';
+import { fieldFertility, fieldGroundPace, harvestOf } from '../game/sim/soil.ts';
+import { cropGroundWords } from '../game/ground.ts';
 import { recipeOf } from '../game/sim/goods.ts';
 import { TERRAIN } from '../game/map.ts';
 import { historyOf, summarize } from '../game/history.ts';
@@ -89,6 +90,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
       `It can lie on a slope, but not across a cliff (placing it there levels the ground). Its sloping tiles wear faster, up to ${1 + FIELD.erosion} times on a steep bank; a tree or sapling beside it, or a bean field next door, holds the soil (up to ${1 + FIELD.erosionGuarded} times).`,
       'Every harvest wears the soil out, except beans, which restore it. Compost brings it back: a field stop drops compost by itself.',
       `A beehive within ${HIVE.reach} tiles adds 1 to every harvest of a flowering crop.`,
+      `Each crop has its own view of the ground under the field (the Crops table below lists it): a liked ground grows it ×${FIELD.groundLike}, a poor one ×${FIELD.groundPoor}, averaged over the nine tiles; the placement card and the field's card say what the ground does to the crop chosen. Stony ground is thin: soil there never rises above ${FIELD.stonyCap}, and a mostly stony field yields ${FIELD.stonyLoss} less a harvest.`,
       'In spring, tomato and sunflower belong on slopes: a late frost settles in hollows and on the low ground, and takes a tender crop there (the placement card says "Frost hollow" where it would).',
       'In a dry summer a dust storm lifts the soil off a field with no tree, sapling or bean field beside it: the same neighbours that hold it against erosion guard it from the wind.',
     ],
@@ -98,6 +100,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
     how: [
       'Build it on flat ground: it cannot stand on a slope.',
       `Water it like a field: beside a river or pond, or with a sprinkler within ${POWER.sprinklerReach} tiles of its centre. The rain does not reach it, so a sprinkler near it runs in the rain too.`,
+      'The ground under it counts as it does for a field: its likes and dislikes, the stony soil cap and the stony yield.',
       'Select it and choose the crop. It shares the field\'s harvests, store, compost, next-door trading and truck stops.',
     ],
     tips: [
@@ -514,7 +517,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
     const mine = s.buildings.filter((b) => b.type === id);
     // Each building's own good and full-speed rate: a field's current crop, a machine's current recipe.
     const goods = mine.map((b): { item: ItemId; full: number } | null => {
-      if (growsCrops(b)) { const c = CROPS[b.crop]; return { item: b.crop, full: (c.yield + (c.flowers && isPollinated(s, b) ? POLLINATION_BONUS : 0)) * paceOf(1, fieldFertility(s, b)).pace * 60 / c.grow }; } // best case now: watered, pollinated if it is
+      if (growsCrops(b)) { const c = CROPS[b.crop]; return { item: b.crop, full: (harvestOf(s, b) + (c.flowers && isPollinated(s, b) ? POLLINATION_BONUS : 0)) * paceOf(1, fieldFertility(s, b), undefined, undefined, fieldGroundPace(s, b)).pace * 60 / c.grow }; } // best case now: watered, pollinated if it is
       const r = recipeOf(b), o = r?.outputs[0];
       return r && o ? { item: o.item, full: o.n * 60 / r.time } : id === 'hive' ? { item: 'honey', full: 0 } : null;
     });
@@ -642,8 +645,8 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
   function extraTables(id: BuildingId): Node[] {
     if (id !== 'field') return [];
     return [h('div', { class: 'cd-label sec' }, 'Crops'), h('table', { class: 'gtable' },
-      h('tr', null, h('th', null, 'Crop'), h('th', null, 'Grows in'), h('th', null, 'Harvest'), h('th', null, 'Soil a harvest'), h('th', null, 'Flowers'), h('th', null, 'Comfortable'), h('th', null, 'Frost')),
-      ...CROP_IDS.map((c) => { const k = CROPS[c]; return h('tr', null, h('td', null, h('span', { class: 'gname' }, icon(c, 24), k.name)), h('td', null, `${k.grow} s`), h('td', null, String(k.yield)), h('td', null, `${k.soil > 0 ? '+' : ''}${k.soil}`), h('td', null, k.flowers ? 'yes' : '—'), h('td', null, `${k.comfort.low}–${k.comfort.high}°C`), h('td', null, k.tender ? `tender: lost in open fields, stops below ${FIELD.tenderStops}°C` : 'hardy: grows slowly in winter')); }))];
+      h('tr', null, h('th', null, 'Crop'), h('th', null, 'Grows in'), h('th', null, 'Harvest'), h('th', null, 'Soil a harvest'), h('th', null, 'Flowers'), h('th', null, 'Comfortable'), h('th', null, 'Frost'), h('th', null, 'Ground')),
+      ...CROP_IDS.map((c) => { const k = CROPS[c]; return h('tr', null, h('td', null, h('span', { class: 'gname' }, icon(c, 24), k.name)), h('td', null, `${k.grow} s`), h('td', null, String(k.yield)), h('td', null, `${k.soil > 0 ? '+' : ''}${k.soil}`), h('td', null, k.flowers ? 'yes' : '—'), h('td', null, `${k.comfort.low}–${k.comfort.high}°C`), h('td', null, k.tender ? `tender: lost in open fields, stops below ${FIELD.tenderStops}°C` : 'hardy: grows slowly in winter'), h('td', null, cropGroundWords(k))); }))];
   }
 
   // ---- Goods ----
@@ -817,8 +820,9 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
         h('ul', null,
           h('li', null, B('Water:'), ` a dry field grows at ×${FIELD.dry} speed (sunflower ×${waterPace(0, CROPS.sunflower.thirst)}; all but stopped in heat above ${FIELD.heat}°C). A `, bLink('sprinkler'), ' waters fields whose centre is within ', String(POWER.sprinklerReach), ' tiles.'),
           h('li', null, B('Soil:'), ` growth goes from ×${FIELD.poorSoil} on soil 0 to ×${FIELD.richSoil} on soil 100. The Soil view shows fertility everywhere.`),
+          h('li', null, B('Ground:'), ` each tile is loam, silt, clay, sand or stony, and a crop that likes a ground grows ×${FIELD.groundLike} on it, one that is poor on it ×${FIELD.groundPoor}; a field's pace is the average of its nine tiles (the crops on the `, bLink('field'), ` page say which). Stony ground is thin: its fertility never rises above ${FIELD.stonyCap}, even with compost or silt, and a field of mostly stony tiles yields ${FIELD.stonyLoss} less each harvest. A `, bLink('greenhouse'), ' counts its ground the same way.'),
           h('li', null, B('Wearing out:'), ' every harvest takes some soil (see the crops on the ', bLink('field'), ' page). Beans give some back.'),
-          h('li', null, B('Compost:'), ` a field takes compost only while its soil is under ${FIELD.compostBelow}, and spreads each one at once for +${FIELD.compostGain} on every tile; above that, trucks carry it on to the next field. Make it in a `, bLink('composter'), '.'),
+          h('li', null, B('Compost:'), ` a field takes compost only while its soil is under ${FIELD.compostBelow} (and has room to rise: stony ground stops at ${FIELD.stonyCap}), and spreads each one at once for +${FIELD.compostGain} on every tile; above that, trucks carry it on to the next field. Make it in a `, bLink('composter'), '.'),
           h('li', null, B('Resting:'), ` ground without a field slowly recovers (${FIELD.rest * 60} a minute), up to what it started at.`),
           h('li', null, B('Soil health'), ` is the fields' average fertility, nudged up or down (at most ${TREE_HEALTH.cap}) by trees planted or cleared. A soil goal checks it at the end.`),
           h('li', null, B('Clearing:'), ` a tree costs ${CLEAR_COST.tree} credits to remove and a rock ${CLEAR_COST.rock}. `, bLink('sapling'), 's plant new trees.')),

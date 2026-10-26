@@ -1,3 +1,4 @@
+import { FIELD, type CropDef } from './data.ts';
 import { fbm2 } from './rng.ts';
 import { centreLevel, depthBelowRound, spanOf, type Relief } from './relief.ts';
 
@@ -30,6 +31,46 @@ export const groundName = (kind: number): string => GROUND_NAMES[GROUND_IDS[kind
 export function fertilityOf(kind: GroundKind, u: number): number {
   const [lo, hi] = FERTILITY_RANGE[GROUND_IDS[kind]];
   return Math.round(lo + (hi - lo) * Math.min(1, Math.max(0, u)));
+}
+
+/** The highest fertility a tile of `kind` can reach: stony ground is thin, the rest are not capped; a tile's fertility rises (compost, beans, silt) only up to it. */
+export const fertilityCap = (kind: number): number => (kind === GROUND.stony ? FIELD.stonyCap : 100);
+
+/** A crop's growth multiplier on one kind of ground: faster on a kind it likes, slower on one it is poor on, 1 on the rest. */
+export function groundMultiplier(crop: CropDef, kind: number): number {
+  const id = GROUND_IDS[kind];
+  return crop.ground.likes?.includes(id) ? FIELD.groundLike : crop.ground.poor?.includes(id) ? FIELD.groundPoor : 1;
+}
+
+/** A field's growth multiplier from its ground: the average of its tiles' (`counts`: how many tiles of each kind, row by kind). */
+export function groundPace(crop: CropDef, counts: readonly number[]): number {
+  const total = counts.reduce((a, b) => a + b, 0);
+  return total ? counts.reduce((sum, n, kind) => sum + n * groundMultiplier(crop, kind), 0) / total : 1;
+}
+
+/** How much less a harvest yields from ground that is mostly stony: FIELD.stonyLoss when FIELD.stonyMost tiles or more are, else 0. */
+export const stonyLoss = (counts: readonly number[]): number => (counts[GROUND.stony] >= FIELD.stonyMost ? FIELD.stonyLoss : 0);
+
+/** A crop's likes and dislikes of ground in words ("likes clay; poor on sand and stony"), for the guide; "none" for a crop that has neither. */
+export function cropGroundWords(crop: CropDef): string {
+  const list = (ids: readonly GroundId[]) => ids.map((g) => GROUND_NAMES[g].toLowerCase()).join(' and ');
+  const parts = [crop.ground.likes && `likes ${list(crop.ground.likes)}`, crop.ground.poor && `poor on ${list(crop.ground.poor)}`, crop.ground.copes && `copes on ${list(crop.ground.copes)}: deep roots, no penalty`];
+  return parts.filter(Boolean).join('; ') || 'none';
+}
+
+/** What the ground under a field or greenhouse does to the crop it grows, as a placement fact: the ground, in words, and what it does. */
+export function groundFact(crop: CropDef, counts: readonly number[]): { value: string; sub: string; tone?: 'bad' | 'good' } {
+  const kinds = counts.map((n, kind) => ({ n, kind })).filter((k) => k.n > 0).sort((a, b) => b.n - a.n), total = counts.reduce((a, b) => a + b, 0);
+  const name = (kind: number) => GROUND_NAMES[GROUND_IDS[kind]].toLowerCase();
+  const value = !kinds.length ? '–' : kinds[0].n === total ? name(kinds[0].kind) : kinds.length === 2 ? `${kinds[0].n} ${name(kinds[0].kind)}, ${kinds[1].n} ${name(kinds[1].kind)}` : `mixed, mostly ${name(kinds[0].kind)}`;
+  const pace = groundPace(crop, counts), loss = stonyLoss(counts), parts: string[] = [];
+  const on = kinds.filter((k) => groundMultiplier(crop, k.kind) !== 1);
+  const copes = kinds.filter((k) => crop.ground.copes?.includes(GROUND_IDS[k.kind]));
+  if (on.length) parts.push(`${on.map((k) => `${crop.name} on ${name(k.kind)}: grows ${groundMultiplier(crop, k.kind) > 1 ? 'faster' : 'slowly'}`).join('; ')} (×${Math.round(pace * 100) / 100} over the nine tiles)`);
+  else if (copes.length) parts.push(`${crop.name} copes on ${copes.map((k) => name(k.kind)).join(' and ')}: deep roots, no penalty`);
+  else parts.push('no effect on growth');
+  if (counts[GROUND.stony]) parts.push(`stony ground is thin: fertility stays under ${FIELD.stonyCap}${loss ? `, and a harvest yields ${loss} less` : ''}`);
+  return { value, sub: parts.join('; '), tone: pace < 1 || loss ? 'bad' : pace > 1 ? 'good' : undefined };
 }
 
 /** Smoothly 0 at `a` and 1 at `b` (either way round). */

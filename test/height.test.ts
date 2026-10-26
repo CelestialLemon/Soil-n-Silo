@@ -15,7 +15,7 @@ import { advance } from '../src/game/sim/step.ts';
 import { redirect } from '../src/game/sim/trucks.ts';
 import { served } from '../src/game/sim/describe.ts';
 import { buildingAt, newGame, touchRelief, type BuildingOf, type Dir, type GameState } from '../src/game/state.ts';
-import { PLAIN } from '../src/game/ground.ts';
+import { GROUND, PLAIN } from '../src/game/ground.ts';
 
 // Height: corner heights (relief.ts), and what they do to trucks, placing, earthworks, next door, water, wind and soil.
 
@@ -26,7 +26,7 @@ function flat(): GameState {
   };
   const s = newGame(sc);
   s.map.corner.fill(0);
-  s.map.fertility.fill(60);
+  s.map.ground.fill(GROUND.loam); s.map.fertility.fill(60);
   s.soilBase.fill(60);
   touchRelief(s);
   return s;

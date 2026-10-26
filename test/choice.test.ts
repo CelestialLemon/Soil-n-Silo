@@ -6,14 +6,14 @@ import { placement } from '../src/game/forecast.ts';
 import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
 import { deserialize, serialize } from '../src/game/save.ts';
 import { newGame, type GameState } from '../src/game/state.ts';
-import { PLAIN } from '../src/game/ground.ts';
+import { GROUND, PLAIN } from '../src/game/ground.ts';
 
 // Choosing a field's crop or a bakery's recipe while placing it, and the choice remembered for the level.
 
 function flat(): GameState {
   const sc: Scenario = { ...SANDBOX, climate: { ...SANDBOX.climate, warmth: { low: 15, high: 15, drift: 0 } }, id: 'test', sandbox: false, credits: 100_000, width: 30, height: 30, goals: [], terrain: { ground: PLAIN, water: 'none', forest: 0, rock: 0, relief: 0 } };
   const s = newGame(sc);
-  s.map.fertility.fill(60);
+  s.map.ground.fill(GROUND.loam); s.map.fertility.fill(60);
   s.soilBase.fill(60);
   return s;
 }

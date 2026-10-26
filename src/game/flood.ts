@@ -1,4 +1,5 @@
 import { activeEvents, allowed, EVENTS, type Active, type WeatherEvent } from './events.ts';
+import { fertilityCap } from './ground.ts';
 import { TERRAIN } from './map.ts';
 import { centreLevel } from './relief.ts';
 import { runtimeOf } from './runtime.ts';
@@ -173,7 +174,8 @@ export function syncFlood(s: GameState, dt: number) {
   if (now.step < before.step) {
     const f = s.map.fertility, base = s.soilBase, was = before.tiles;
     for (let i = 0; i < was.length; i++) if (was[i] === 1 && now.tiles[i] !== 1) {
-      f[i] = Math.min(100, f[i] + SILT); base[i] = Math.min(100, base[i] + SILT);
+      const cap = fertilityCap(s.map.ground[i]);
+      f[i] = Math.min(cap, f[i] + SILT); base[i] = Math.min(cap, base[i] + SILT);
     }
   }
 }

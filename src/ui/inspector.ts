@@ -12,7 +12,8 @@ import { networkOf, networks, usedBy } from '../game/power.ts';
 import { sunAt, windAt } from '../game/sim/clock.ts';
 import { exposureOf, isPollinated } from '../game/sim/layout.ts';
 import { SPRINKLER_MOST, TURBINE_MOST, coopShade, coopTrees, riverSeason, wheelSite } from '../game/rules.ts';
-import { fieldFertility } from '../game/sim/soil.ts';
+import { fieldFertility, fieldGround, harvestOf } from '../game/sim/soil.ts';
+import { groundFact } from '../game/ground.ts';
 import { givesGoods, linksOf, recipeOf, takesGoods, wantsCompost } from '../game/sim/goods.ts';
 import { makes, shareOf, wants } from '../game/sim/energy.ts';
 import { fieldPace, flowersNear } from '../game/sim/buildings.ts';
@@ -196,14 +197,15 @@ export class Inspector {
         }, icon(c, 18), CROPS[c].name))));
         stat('Growth', () => pct(b.growth)); bar(() => b.growth);
         stat('Soil fertility', () => `${Math.round(fieldFertility(s, b))}`);
-        stat('Growth pace', () => { const p = fieldPace(s, b); return `${pct(p.pace)} · water ${pct(p.water)}, soil ×${p.soil.toFixed(2)}, warmth ${pct(p.byWarmth)}`; });
+        stat('Ground', () => { const g = groundFact(CROPS[b.crop], fieldGround(s, b)); return `${g.value}: ${g.sub}`; });
+        stat('Growth pace', () => { const p = fieldPace(s, b); return `${pct(p.pace)} · water ${pct(p.water)}, soil ×${p.soil.toFixed(2)}, ground ×${p.ground.toFixed(2)}, warmth ${pct(p.byWarmth)}`; });
         if (under) stat('Warmth', () => `${insideFact(insideNow(s, b), warmthOf(s), networkOf(s, b) ? wants(s, b) * shareOf(s, b) : 0)}: heated to ${CROPS[b.crop].comfort.low}°C when the outside is colder, vented above ${CROPS[b.crop].comfort.high}°C. Without the power it cools toward the outside. Frost, gales, dust and heat waves do not reach it; a flood does`);
         else {
           stat('Warmth', () => `${Math.round(warmthOf(s))}°C: ${warmthFact(CROPS[b.crop], warmthOf(s)).text.replace(/^[^:]*: /, '')} (comfortable ${CROPS[b.crop].comfort.low}–${CROPS[b.crop].comfort.high}°C)`);
           if (hollowNote(s, b)) stat('Frost hollow', () => hollowNote(s, b) ?? '');
           if (dustComes(s)) stat('Dust storm', () => dustNote(s, b) ?? '');
         }
-        stat('Harvest', () => `${CROPS[b.crop].yield}${isPollinated(s, b) && foragesOn(s, b) ? ` + ${POLLINATION_BONUS} (bees)` : ''} ${fieldPace(s, b).pace <= 0 ? ', not growing now' : ` every ${Math.round(CROPS[b.crop].grow / fieldPace(s, b).pace)} s`}`);
+        stat('Harvest', () => `${harvestOf(s, b)}${isPollinated(s, b) && foragesOn(s, b) ? ` + ${POLLINATION_BONUS} (bees)` : ''} ${fieldPace(s, b).pace <= 0 ? ', not growing now' : ` every ${Math.round(CROPS[b.crop].grow / fieldPace(s, b).pace)} s`}`);
         stat('Waiting to go', () => `${b.stored} of ${FIELD.store}`);
         stat('Compost', () => `${wantsCompost(s, b) ? 'takes it now' : 'none needed'} · below soil ${FIELD.compostBelow}`);
         break;

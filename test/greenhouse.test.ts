@@ -23,7 +23,7 @@ import { growsCrops, newGame, type FieldBuilding, type GameState } from '../src/
 import type { CropId } from '../src/game/data.ts';
 import { heatNeed, insideAfter, insideFact, insideNow, insideWarmth, warmthOf } from '../src/game/warmth.ts';
 import type { WeatherEvent } from '../src/game/events.ts';
-import { PLAIN } from '../src/game/ground.ts';
+import { GROUND, PLAIN } from '../src/game/ground.ts';
 
 /** A 30 × 30 flat map with a river at x = 2–3 (a shore for anything built at x = 4), in a season with no weather but the events given. */
 function valley(season: Season, events: WeatherEvent[] = [], rain = 0, at = 0): GameState {
@@ -33,7 +33,7 @@ function valley(season: Season, events: WeatherEvent[] = [], rain = 0, at = 0): 
   const s = newGame(sc);
   s.map.terrain.fill(TERRAIN.grass);
   s.map.corner.fill(0);
-  s.map.fertility.fill(60);
+  s.map.ground.fill(GROUND.loam); s.map.fertility.fill(60);
   s.soilBase.fill(60);
   for (let y = 0; y < 30; y++) for (let x = 2; x <= 3; x++) s.map.terrain[y * 30 + x] = TERRAIN.water;
   s.map.depot.x = 25; s.map.depot.y = 25;
