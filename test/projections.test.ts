@@ -174,6 +174,13 @@ test('a card made in the last minutes of the night still tells the heating', () 
   }
 });
 
+test('a greenhouse on a network with no batteries is not blamed for the batteries of another', () => {
+  const sc = SWEEP.find((x) => x.climate.season === 'winter')!, g = rig(sc, timeOf(2, 17), LAYOUTS[0]);
+  assert.ok(place(g, 'pylon', 26, 26, 0).ok && place(g, 'greenhouse', 23, 26, 0).ok);
+  advance(g, 1);
+  assert.equal(tonight(g, USUAL)!.heating, null);
+});
+
 test('the real soil is inside the range at every hour, for every commission', () => {
   let cases = 0, counted = 0;
   for (const sc of SWEEP) for (let h = 6; h < 24 * 6; h += 17) {

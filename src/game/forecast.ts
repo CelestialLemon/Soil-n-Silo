@@ -264,11 +264,11 @@ export function heatingAhead(s: GameState, crop: CropDef, reading: Reading): { t
   const views = viewsOf(s, reading, HEAT_LENSES, Math.max(sunrise + HOUR_SECONDS, end));
   let most = 0;
   const averages = views.map((v) => {
-    let sum = 0;
-    for (let t = now; t < end - 1e-6; t += step) sum += heatNeed(crop, v.warmth(t + Math.min(step, end - t) / 2));
+    let sum = 0, n = 0;
+    for (let t = now; t < end - 1e-6; t += step, n++) sum += heatNeed(crop, v.warmth(t + Math.min(step, end - t) / 2));
     // The night's own steps, the last cut short at sunrise (a card made in the last minutes of the night still sees them).
     for (let t = from; t < sunrise - 1e-6; t += step) most = Math.max(most, heatNeed(crop, v.warmth(t + Math.min(step, sunrise - t) / 2)));
-    return sum / Math.ceil((end - now) / step);
+    return sum / n;
   });
   const snap = reading.kind === 'forecast' && views.some((v) => v.events.some((e) => e.kind === 'coldSnap' && e.start < end && endOf(e) > now));
   return most > 0 || Math.max(...averages) > 0 ? { tonight: most, average: spread(averages), snap } : null;
@@ -374,9 +374,10 @@ export function tonight(s: GameState, reading: Reading = readingOf(s)): Tonight 
       nets.forEach((x, n) => {
         const made = POWER.solar * sun * panelShare(view, mid) * x.solar + x.turbines.reduce((a, b) => a + makes(s, b, 0, wind, mid, view), 0) + x.digesters
           + x.wheels.reduce((a, b) => a + makes(s, b, 0, 0, mid, view), 0); // the river may freeze or thaw before morning
-        const warming = heated ? x.crops.reduce((a, c) => a + heatNeed(c, view.warmth(mid)), 0) : 0;
-        heat += warming;
-        let spare = (made - x.other - warming - (1 - rain) * x.sprinklers) * dt;
+        // (The heating the batteries are asked for: a network without any draws, and is short, on its own.)
+        const warming = x.crops.reduce((a, c) => a + heatNeed(c, view.warmth(mid)), 0), unheated = !heated && x.bats.length > 0;
+        if (x.bats.length) heat += warming;
+        let spare = (made - x.other - (unheated ? 0 : warming) - (1 - rain) * x.sprinklers) * dt;
         for (let i = 0; i < bats[n].length; i++) {
           const move = spare > 0 ? Math.min(spare, POWER.battery.rate * dt, POWER.battery.capacity - bats[n][i]) : Math.max(spare, -POWER.battery.rate * dt, -bats[n][i]);
           bats[n][i] += move; spare -= move;
@@ -399,7 +400,7 @@ export function tonight(s: GameState, reading: Reading = readingOf(s)): Tonight 
   const hard = runs.reduce((a, b) => (b.k[b.k.length - 1] < a.k[a.k.length - 1] - 1e-9 || (Math.abs(b.k[b.k.length - 1] - a.k[a.k.length - 1]) <= 1e-9 && (b.dryAt ?? Infinity) < (a.dryAt ?? Infinity)) ? b : a));
   // Heating: the draw of the hardest night, and whether the greenhouses are why it runs short (the same night without them is no worse than
   // short for the lack of the rest: it holds, or is dry later and for less).
-  const heating = nets.some((x) => x.crops.length) ? (() => {
+  const heating = nets.some((x) => x.bats.length && x.crops.length) ? (() => {
     const bare = run(views[runs.indexOf(hard)], false), nightLength = sunrise - nightFrom;
     return { most: Math.max(...runs.map((r) => r.heat.most)), average: nightLength > 0 ? Math.max(...runs.map((r) => r.heat.sum)) / nightLength : 0, why: hard.dryAt !== null && bare.dryAt === null };
   })() : null;
