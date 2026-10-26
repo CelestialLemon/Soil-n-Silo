@@ -493,7 +493,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
     const d = BUILDINGS[id], r = recipesFor(id)[0];
     const f = (label: string, fig: string, sub: string) => h('div', null, h('div', { class: 'cd-label' }, label), h('div', { class: 'cd-figure' }, fig), h('div', { class: 'cd-small' }, sub));
     const watts = id === 'station' ? [`${d.power} W`, 'all the time'] : id === 'sprinkler' ? [`${POWER.sprinklerNearWater}–${SPRINKLER_MOST} W`, 'near water to far and high'] : id === 'garage' ? [`${TRUCK.chargeRate} W`, 'a truck charging']
-      : d.power ? [`${d.power} W`, 'while working'] : id === 'solar' ? [`${POWER.solar} W`, 'at noon, full sun'] : id === 'turbine' ? [`${POWER.turbine}–${Math.round(TURBINE_MOST)} W`, 'in full wind, low to high']
+      : d.power ? [`${d.power} W`, 'while working'] : d.heated ? [`${GREENHOUSE.loss} W`, 'for each °C the outside is below its crop\'s warmth'] : id === 'solar' ? [`${POWER.solar} W`, 'at noon, full sun'] : id === 'turbine' ? [`${POWER.turbine}–${Math.round(TURBINE_MOST)} W`, 'in full wind, low to high']
         : id === 'wheel' ? [`${POWER.wheel} W`, `at 1 m/s; ×${POWER.wheelFall} beside a fall`]
         : id === 'digester' ? [`${POWER.digester} W`, 'made while burning'] : id === 'battery' ? [`${POWER.battery.capacity} J`, 'stored'] : ['—', 'none'];
     return h('div', { class: 'nums' },

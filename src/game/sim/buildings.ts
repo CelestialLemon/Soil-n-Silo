@@ -50,8 +50,9 @@ export function runMachine(s: GameState, b: MachineBuilding, dt: number) {
  * comfortable warmth; with less it cools toward the outside, with none faster, and with the power back it warms again (see insideAfter).
  * It starts at what full power would hold. Says whether it is short of power while below its crop's warmth.
  */
-function runGreenhouse(s: GameState, f: FieldBuilding, dt: number) {
-  const crop = CROPS[f.crop], outside = warmthOf(s), need = heatNeed(crop, outside), share = shareOf(s, f);
+export function runGreenhouse(s: GameState, f: FieldBuilding, dt: number, flooded = false) {
+  // (A flooded one is stopped and draws nothing, so it cools.)
+  const crop = CROPS[f.crop], outside = warmthOf(s), need = heatNeed(crop, outside), share = flooded ? 0 : shareOf(s, f);
   f.inside = insideAfter(crop, f.inside ?? insideWarmth(crop, outside), outside, need * share, dt);
   return { need, share, short: need > 0 && share < 1 && f.inside < crop.comfort.low - 0.05 };
 }

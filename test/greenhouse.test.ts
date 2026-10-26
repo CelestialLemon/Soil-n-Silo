@@ -277,3 +277,12 @@ test('a greenhouse\'s warmth is saved, and a broken one is a broken save', () =>
   bad.buildings.find((b: { type: string }) => b.type === 'greenhouse').inside = 'cold';
   assert.ok(!deserialize(JSON.stringify(bad)).ok);
 });
+
+test('a flooded greenhouse draws nothing and cools like one with no power', () => {
+  const events = eventOn(3, 6, 'flood', 'severe', undefined, 'winter');
+  const s = valley('winter', events, 0, events[0].start + events[0].length / 2);
+  const g = build(s, 'greenhouse', 4, 4, 'tomato');
+  g.inside = 18;
+  advance(s, 2 * HOUR);
+  assert.ok(insideNow(s, g) < 18 && wants(s, g) === 0);
+});

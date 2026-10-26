@@ -12,7 +12,7 @@ import { soilHealth } from './soil.ts';
 import { rainWaters, wattsOf } from './layout.ts';
 import { feedNeighbours } from './goods.ts';
 import { shareOf, balancePower, countCharging, runGarages } from './energy.ts';
-import { runMachine, runField, runHive } from './buildings.ts';
+import { runMachine, runField, runGreenhouse, runHive } from './buildings.ts';
 import { runTrucks, cutOff } from './trucks.ts';
 import { recordHistory, rest, updateStats, goalDone, updateGoals } from './stats.ts';
 import { blockedGood, served } from './describe.ts';
@@ -45,7 +45,7 @@ export function tick(s: GameState) {
     // Water on its ground stops a building until it drains (the weather's hold, applyHolds, says so): a field loses its growing crop.
     if (floodHolds(s, b)) {
       b.status = 'idle'; b.need = undefined;
-      if (growsCrops(b)) b.growth = 0;
+      if (growsCrops(b)) { b.growth = 0; if (b.type === 'greenhouse') runGreenhouse(s, b, dt, true); }
       continue;
     }
     switch (b.type) {
