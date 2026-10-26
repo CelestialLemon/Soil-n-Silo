@@ -15,6 +15,7 @@ import { advance } from '../src/game/sim/step.ts';
 import { hasStation } from '../src/game/station.ts';
 import { newGame, type GameState } from '../src/game/state.ts';
 import { dryLine, dryWords } from '../src/ui/format.ts';
+import { PLAIN } from '../src/game/ground.ts';
 
 // The projections (3.4): tonight's charge and a field's soil ahead read the weather through a view, never from the seeded weather
 // ahead: the usual weather without a station, the ranges of the forecast with one.
@@ -27,7 +28,7 @@ const LAYOUTS: Layout[] = [{ charge: 0.7, solar: 2, turbines: 2, looms: 2 }, { c
 
 /** A flat game of a commission's climate, seed and events with one network: a battery holding `charge`, panels, turbines, looms with yarn and a sprinkler, set to `time`. */
 function rig(sc: Scenario, time: number, l: Layout): GameState {
-  const g = newGame({ ...sc, credits: 1e6, goals: [], width: 30, height: 30, terrain: { soil: 60, soilSpread: 0, water: 'none', forest: 0, rock: 0, relief: 0 } });
+  const g = newGame({ ...sc, credits: 1e6, goals: [], width: 30, height: 30, terrain: { ground: PLAIN, water: 'none', forest: 0, rock: 0, relief: 0 } });
   g.map.fertility.fill(60); g.soilBase.fill(60);
   const put = (type: BuildingId, x: number, y: number) => { const r = place(g, type, x, y, 0); assert.ok(r.ok, `${type} at ${x},${y}`); return r.ok ? r.value.building : null; };
   const near = (type: BuildingId) => {
@@ -283,7 +284,7 @@ test('the margins and lens sets stay cheap enough to recompute as the ghost move
 
 test('the projections follow the station: none, working, out of date, gone', () => {
   // A calm-free spring valley with a battery on the grid and a station that a turbine runs.
-  const sc: Scenario = { ...SANDBOX, id: 'st', sandbox: false, width: 30, height: 30, credits: 1e6, goals: [], terrain: { soil: 60, soilSpread: 0, water: 'none', forest: 0, rock: 0, relief: 0 },
+  const sc: Scenario = { ...SANDBOX, id: 'st', sandbox: false, width: 30, height: 30, credits: 1e6, goals: [], terrain: { ground: PLAIN, water: 'none', forest: 0, rock: 0, relief: 0 },
     climate: { ...climateOf('spring', 'mild'), conditions: NO_CONDITIONS, warmth: { low: 15, high: 15, drift: 0 } }, events: eventOn(3, 6, 'gale', 'ordinary', 24) };
   const s = newGame(sc);
   s.map.fertility.fill(60); s.soilBase.fill(60);

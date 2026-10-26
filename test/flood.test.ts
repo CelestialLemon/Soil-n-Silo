@@ -21,6 +21,7 @@ import { advance } from '../src/game/sim/step.ts';
 import { deserialize, serialize } from '../src/game/save.ts';
 import { buildingAt, newGame, touchRelief, type Building, type BuildingOf, type Dir, type GameState } from '../src/game/state.ts';
 import type { BuildingId } from '../src/game/data.ts';
+import { PLAIN } from '../src/game/ground.ts';
 
 const CLEAR = { ...climateOf('spring', 'mild'), conditions: { cloud: 0, rain: 0, calm: 0 }, warmth: { low: 15, high: 15, drift: 0 } };
 
@@ -32,7 +33,7 @@ function flooding(kind: EventKind = 'flood', strength: Strength = 'ordinary', at
   const events = eventOn(3, 6, kind, strength, undefined, 'spring');
   const sc: Scenario = {
     ...SANDBOX, id: 'test', sandbox: false, credits: 100_000, width: 30, height: 30, goals: [], par: 600, events,
-    terrain: { soil: 60, soilSpread: 0, water: 'river', forest: 0, rock: 0, relief: 0 }, climate: CLEAR,
+    terrain: { ground: PLAIN, water: 'river', forest: 0, rock: 0, relief: 0 }, climate: CLEAR,
   };
   const s = newGame(sc);
   s.map.terrain.fill(TERRAIN.grass);

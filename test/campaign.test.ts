@@ -17,7 +17,7 @@ const byId = (id: string) => CAMPAIGN.find((c) => c.id === id)!;
 const PLACED: Record<string, [EventKind, Strength, number, number][]> = {
   c1: [['softRain', 'ordinary', 2, 6]],
   c2: [['thunderstorm', 'ordinary', 5, 9]],
-  c3: [['gale', 'severe', 7, 8]],
+  c3: [['gale', 'severe', 8, 8]],
   c4: [['heatWave', 'ordinary', 4, 8]],
   c5: [['coldSnap', 'ordinary', 3, 18], ['warmSpell', 'ordinary', 7, 8]],
   c6: [['dustStorm', 'ordinary', 4, 9]],

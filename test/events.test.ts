@@ -18,6 +18,7 @@ import { advance } from '../src/game/sim/step.ts';
 import { precipAt, raining, weatherAt } from '../src/game/sim/weather.ts';
 import { newGame, type GameState } from '../src/game/state.ts';
 import { warmthOf } from '../src/game/warmth.ts';
+import { PLAIN } from '../src/game/ground.ts';
 
 const HOUR = DAY_SECONDS / 24;
 const dayOf = (t: number) => Math.floor((t / HOUR + START_HOUR) / 24) + 1;
@@ -43,7 +44,7 @@ const CLEAR = { ...SANDBOX.climate, conditions: { cloud: 0, rain: 0, calm: 0 }, 
 
 /** A flat, empty test map (no water, rock or trees) in a clear spring, with the sandbox's rules, in which a test can stage events. */
 function sandbox(): GameState {
-  const s = newGame({ ...SANDBOX, width: 30, height: 30, terrain: { soil: 60, soilSpread: 0, water: 'none', forest: 0, rock: 0, relief: 0 }, climate: CLEAR });
+  const s = newGame({ ...SANDBOX, width: 30, height: 30, terrain: { ground: PLAIN, water: 'none', forest: 0, rock: 0, relief: 0 }, climate: CLEAR });
   s.map.fertility.fill(60);
   s.soilBase.fill(60);
   return s;

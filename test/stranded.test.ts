@@ -7,12 +7,13 @@ import { distanceTo, isOpen, nearestOpen } from '../src/game/roads.ts';
 import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
 import { advance } from '../src/game/sim/step.ts';
 import { newGame, tileIndex, type BuildingOf, type Dir, type GameState } from '../src/game/state.ts';
+import { PLAIN } from '../src/game/ground.ts';
 
 const W = 30;
 
 /** A flat, open 30 × 30 map with the depot at 20,20. */
 function plain(): GameState {
-  const sc: Scenario = { ...SANDBOX, id: 'test', sandbox: false, credits: 100_000, width: W, height: W, goals: [], par: 600, events: [], terrain: { soil: 60, soilSpread: 0, water: 'river', forest: 0, rock: 0, relief: 0 } };
+  const sc: Scenario = { ...SANDBOX, id: 'test', sandbox: false, credits: 100_000, width: W, height: W, goals: [], par: 600, events: [], terrain: { ground: PLAIN, water: 'river', forest: 0, rock: 0, relief: 0 } };
   const s = newGame(sc);
   s.map.terrain.fill(TERRAIN.grass);
   s.map.corner.fill(0);

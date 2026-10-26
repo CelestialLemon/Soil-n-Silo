@@ -11,6 +11,7 @@ import { fieldPace } from '../src/game/sim/buildings.ts';
 import { describeStatus } from '../src/game/sim/describe.ts';
 import { advance } from '../src/game/sim/step.ts';
 import { newGame, touchLayout, type BuildingOf, type GameState } from '../src/game/state.ts';
+import { PLAIN } from '../src/game/ground.ts';
 
 // The placement card and the simulation share their rules (rules.ts): what a building in hand is said to do is what it does
 // once placed. And the words that quote a number take it from data.ts.
@@ -18,7 +19,7 @@ import { newGame, touchLayout, type BuildingOf, type GameState } from '../src/ga
 function flat(): GameState {
   const sc: Scenario = {
     ...SANDBOX, climate: { ...SANDBOX.climate, warmth: { low: 15, high: 15, drift: 0 } }, id: 'test', sandbox: false, credits: 100_000, width: 30, height: 30, goals: [], par: 600,
-    terrain: { soil: 60, soilSpread: 0, water: 'none', forest: 0, rock: 0, relief: 0 },
+    terrain: { ground: PLAIN, water: 'none', forest: 0, rock: 0, relief: 0 },
   };
   const s = newGame(sc);
   s.map.fertility.fill(60);

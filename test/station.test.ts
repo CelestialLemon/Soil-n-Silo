@@ -14,6 +14,7 @@ import { wants } from '../src/game/sim/energy.ts';
 import { advance } from '../src/game/sim/step.ts';
 import { dropForecastIfNone, FAULT_WORDS, hasStation, renewNow, stationFault, stationForecast, stationsOf, stationWorking } from '../src/game/station.ts';
 import { newGame, type BuildingOf, type Dir, type GameState } from '../src/game/state.ts';
+import { PLAIN } from '../src/game/ground.ts';
 
 const HOUR = DAY_SECONDS / 24;
 const CLEAR = { ...climateOf('spring', 'mild'), conditions: { cloud: 0, rain: 0, calm: 0 }, warmth: { low: 15, high: 15, drift: 0 } };
@@ -22,7 +23,7 @@ const CLEAR = { ...climateOf('spring', 'mild'), conditions: { cloud: 0, rain: 0,
 function valley(events: WeatherEvent[] = [], time = 0): GameState {
   const sc: Scenario = {
     ...SANDBOX, id: 'test', sandbox: false, credits: 100_000, width: 30, height: 30, goals: [], par: 600, events,
-    terrain: { soil: 60, soilSpread: 0, water: 'river', forest: 0, rock: 0, relief: 0 }, climate: CLEAR,
+    terrain: { ground: PLAIN, water: 'river', forest: 0, rock: 0, relief: 0 }, climate: CLEAR,
   };
   const s = newGame(sc);
   s.map.terrain.fill(TERRAIN.grass);
@@ -271,7 +272,7 @@ test('the save keeps the hour of the last forecast; saves of the version before 
   const back = deserialize(serialize(s));
   assert.ok(back.ok);
   assert.equal(back.value.forecastIssued, issued);
-  assert.equal(back.value.version, 18);
+  assert.equal(back.value.version, 19);
   assert.deepEqual(stationForecast(back.value)?.forecast, stationForecast(s)?.forecast);
   // Before the first forecast it is null.
   assert.ok(deserialize(serialize(valley())).ok);

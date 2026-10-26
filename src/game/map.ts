@@ -1,3 +1,4 @@
+import { fertilityOf, GROUND, layGround, type GroundKind } from './ground.ts';
 import { fbm2, hash2, mulberry32, noise2 } from './rng.ts';
 import { centreLevel, isGentle, joins, MAX_LEVEL, SIDES } from './relief.ts';
 import type { Scenario } from './scenarios.ts';
@@ -14,8 +15,10 @@ export interface MapData {
   height: number;
   /** TERRAIN per tile, row by row. */
   terrain: TerrainKind[];
-  /** Soil fertility 0–100 per tile (what a field on it starts from). */
+  /** Soil fertility 0–100 per tile (what a field on it starts from): its ground's range, with local noise. */
   fertility: number[];
+  /** The kind of ground (GROUND) per tile, row by row: a fixed trait, never changed (ground.ts). Water tiles hold loam, unread. */
+  ground: GroundKind[];
   /** Each tile's corner heights, four a tile (north-west, north-east, south-east, south-west; 0 the valley floor, at most MAX_LEVEL); see relief.ts. */
   corner: number[];
   /** The speed of the river's current over each tile (m/s, 0 off the river and on still water). */
@@ -36,6 +39,7 @@ export interface Land {
   height: number;
   terrain: TerrainKind[];
   fertility: number[];
+  ground: GroundKind[];
   /** Corner heights as on the map (relief.ts); beyond the edge the land rises higher than MAX_LEVEL into hills. */
   corner: number[];
   /** The depot's north-west tile, in map coordinates. */
@@ -53,9 +57,9 @@ export const DEPOT_SIZE = 3;
 const CLEARING = 8;
 
 export function generateMap(sc: Scenario): MapData {
-  const { width, height, terrain, fertility, corner, depot, flow } = generateLand(sc, 0);
+  const { width, height, terrain, fertility, ground, corner, depot, flow } = generateLand(sc, 0);
   const current = terrain.map((_, i) => Math.round(Math.hypot(flow[i * 2], flow[i * 2 + 1]) * 100) / 100);
-  return { width, height, terrain, fertility, corner, current, depot };
+  return { width, height, terrain, fertility, ground, corner, current, depot };
 }
 
 // Heights are levels; distances are tiles. Keep the landform scale and grade independent of amplitude: a taller landscape
@@ -68,22 +72,52 @@ const BASIN_BANK = 3, BASIN_STRETCH = 1.15, BASIN_GAP = 4, BASIN_ATTEMPTS = 64;
 const RIVER_PERIOD = 9, RIVER_PERIOD_SPREAD = 3, RIVER_SWAY = 2.8, RIVER_RIPPLE = 0.7, RIVER_RIPPLE_PERIOD = 5;
 const RIVER_WIDTH = 3, RIVER_WIDTH_SWAY = 0.65, RIVER_WIDTH_PERIOD = 8, RIVER_STRAIGHT = 2, RIVER_EDGE = 3;
 const TRACK_BEND = 5, TRACK_BEND_START = 6, TRACK_BEND_END = 26, TRACK_HEIGHT = 16, TRACK_REACH = 58;
-const ROCK_BIAS = 0.2, FOREST_BIAS = 0.08, FOREST_THICKEN = 0.012;
-const SOIL_HEIGHT = 2.25, SOIL_WATER = 10, SOIL_REACH = 2, CELL = 4;
+const ROCK_BIAS = 0.2, FOREST_BIAS = 0.12, FOREST_THICKEN = 0.012;
+const CELL = 4;
+/** How far from a map tile the land can change its ground (tiles): the hollows round it, the water beside it, the vote among its neighbours. */
+const GROUND_REACH = 12;
+/** How much a stony tile adds to a rock's pull (in habitat units): rocks lie mostly on stony ground. */
+const ROCK_STONY = 1.5;
 const RIVER_FAST = 1.1, RIVER_SLOW = 0.6;
 const smoothstep = (a: number, b: number, v: number) => { const t = Math.min(1, Math.max(0, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 interface Basin { x: number; y: number; radius: number }
 interface Country { away: Float32Array; height: Float32Array }
 
+/**
+ * The land of a commission with `margin` tiles of country round the map. The ground of a tile depends on the land up to
+ * GROUND_REACH tiles away (hollows, the water's reach), so the land is always laid with at least that much country and
+ * cropped after: the map's ground is the same however little or much country is drawn.
+ */
 export function generateLand(sc: Scenario, margin: number): Land {
+  const wide = lay(sc, Math.max(margin, GROUND_REACH));
+  return wide.margin === margin ? wide : crop(wide, margin);
+}
+
+/** A land with a narrower margin: every array's middle. */
+function crop(land: Land, margin: number): Land {
+  const cut = land.margin - margin, w = land.width - 2 * cut, h = land.height - 2 * cut;
+  const take = <A extends { [i: number]: number }>(a: ArrayLike<number>, n: number, make: (len: number) => A): A => {
+    const out = make(w * h * n);
+    for (let y = 0; y < h; y++) for (let k = 0; k < w * n; k++) out[y * w * n + k] = a[((y + cut) * land.width + cut) * n + k];
+    return out;
+  };
+  const plain = (a: number[], n = 1) => take(a, n, (len) => new Array<number>(len).fill(0));
+  return {
+    ...land, margin, width: w, height: h,
+    terrain: plain(land.terrain) as TerrainKind[], fertility: plain(land.fertility), ground: plain(land.ground) as GroundKind[], corner: plain(land.corner, 4),
+    flow: take(land.flow, 2, (len) => new Float32Array(len)), track: take(land.track, 1, (len) => new Uint8Array(len)), drop: take(land.drop, 1, (len) => new Uint8Array(len)),
+  };
+}
+
+function lay(sc: Scenario, margin: number): Land {
   const { width: w, height: h, seed, terrain: t } = sc, r = mulberry32(seed);
   const M = margin, lw = w + 2 * M, lh = h + 2 * M, size = lw * lh;
-  const terrain = new Array<TerrainKind>(size).fill(TERRAIN.grass), fertility = new Array<number>(size).fill(0);
+  const terrain = new Array<TerrainKind>(size).fill(TERRAIN.grass), fertility = new Array<number>(size).fill(0), ground = new Array<GroundKind>(size).fill(GROUND.loam);
   const corner = new Array<number>(size * 4).fill(0), flow = new Float32Array(size * 2);
   const drop = new Uint8Array(size), track = new Uint8Array(size);
   const depot = { x: Math.floor(w / 2 - 1 + (r() - 0.5) * w * 0.4), y: h - DEPOT_SIZE - 1 };
-  const land: Land = { seed, margin: M, width: lw, height: lh, terrain, fertility, corner, depot, flow, drop, track };
+  const land: Land = { seed, margin: M, width: lw, height: lh, terrain, fertility, ground, corner, depot, flow, drop, track };
   const idx = (x: number, y: number) => (y + M) * lw + x + M;
   const onMap = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h;
   const home = (x: number, y: number) => Math.hypot((x - depot.x - 1.5) / HOME_STRETCH, y - depot.y - 1.5);
@@ -211,9 +245,13 @@ export function generateLand(sc: Scenario, margin: number): Land {
     if (terrain[i] === TERRAIN.water && t.water === 'river') drop[i] = highestRiver - corner[i * 4];
   }
   const cover = coverGuard(sc, land);
-  scatter(sc, land, habitat, country.away, t.rock, 3.5, seed + 37, TERRAIN.rock, 0, cover);
+  layGrounds(sc, land);
+  // Rocks lie mostly on stony ground (the pull is on top of the hills' and cliffs'), and the ground under one stays stony.
+  const rocky = habitat.map((v, i) => v + (ground[i] === GROUND.stony ? ROCK_STONY : 0));
+  scatter(sc, land, rocky, country.away, t.rock, 3.5, seed + 37, TERRAIN.rock, 0, cover);
+  for (let i = 0; i < size; i++) if (terrain[i] === TERRAIN.rock) ground[i] = GROUND.stony;
   scatter(sc, land, habitat, country.away, t.forest, 7, seed + 21, TERRAIN.tree, FOREST_THICKEN, cover);
-  fertilise(sc, land, country);
+  fertilise(sc, land);
   return land;
 }
 
@@ -423,34 +461,20 @@ function scatter(sc: Scenario, land: Land, habitat: Float32Array, away: Float32A
   }
 }
 
-function fertilise(sc: Scenario, land: Land, country: Country) {
-  const { width: w, height: h, seed, terrain: t } = sc;
-  const { margin: M, width: lw, height: lh, terrain, fertility } = land, size = lw * lh;
-  const idx = (x: number, y: number) => (y + M) * lw + x + M;
-  const onMap = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h;
-  const inside = (x: number, y: number) => x >= -M && y >= -M && x < w + M && y < h + M;
-  const wet = new Uint8Array(size);
-  for (let y = -M; y < h + M; y++) for (let x = -M; x < w + M; x++) if (terrain[idx(x, y)] === TERRAIN.water) {
-    for (let dy = -SOIL_REACH; dy <= SOIL_REACH; dy++) for (let dx = -SOIL_REACH; dx <= SOIL_REACH; dx++) {
-      const tx = x + dx, ty = y + dy;
-      if (inside(tx, ty) && (!onMap(tx, ty) || onMap(x, y))) wet[idx(tx, ty)] = 1;
-    }
-  }
-  // Group quarter-level means, retaining both the water bonus and the height penalty without letting a large noise blob
-  // reverse the latter. Centre the grass separately, so relief does not change the commission's requested mean soil.
-  const totals = new Float64Array(MAX_LEVEL * 4 + 1), counts = new Uint32Array(totals.length);
-  let total = 0, count = 0, heightTotal = 0;
+/** Lays the ground of the land (ground.ts); rocks, placed afterwards, make their tiles stony. */
+function layGrounds(sc: Scenario, land: Land) {
+  const { margin: M, width, height, terrain, corner, ground } = land;
+  const kinds = layGround({ kind: sc.terrain.water, mix: sc.terrain.ground, seed: sc.seed, width, height, corner, water: terrain.map((t) => (t === TERRAIN.water ? 1 : 0)), origin: { x: -M, y: -M } });
+  for (let i = 0; i < kinds.length; i++) ground[i] = kinds[i];
+}
+
+/** Fertility from the ground: its kind's range, placed in it by smooth local noise (the country in coarse cells, as the woods thicken). */
+function fertilise(sc: Scenario, land: Land) {
+  const { width: w, height: h, seed } = sc, { margin: M, width: lw, fertility, ground } = land;
   for (let y = -M; y < h + M; y++) for (let x = -M; x < w + M; x++) {
-    const i = idx(x, y), l = country.height[i], map = onMap(x, y);
-    const soil = map ? fbm2(x / 9, y / 9, seed + 51, 3) : fbm2(Math.floor(x / CELL) * CELL / 9, Math.floor(y / CELL) * CELL / 9, seed + 51, 3);
-    const f = t.soil + t.soilSpread * (soil * 2 - 1) * 1.6 - l * t.relief * SOIL_HEIGHT + (wet[i] ? SOIL_WATER : 0);
-    fertility[i] = f;
-    if (map && terrain[i] === TERRAIN.grass) { total += f; count++; heightTotal += l; totals[l * 4] += f; counts[l * 4]++; }
-  }
-  const correction = count ? t.soil - total / count : 0;
-  for (let i = 0; i < size; i++) {
-    const l = country.height[i], n = l * 4 < counts.length ? counts[l * 4] : 0;
-    const offset = n ? t.soil + (heightTotal / count - l) * t.relief * SOIL_HEIGHT - totals[l * 4] / n : correction;
-    fertility[i] = Math.round(Math.max(5, Math.min(95, fertility[i] + offset)));
+    const map = x >= 0 && y >= 0 && x < w && y < h, i = (y + M) * lw + x + M;
+    // The noise's own range is narrow (its octaves average out), so it is stretched to use the whole of the kind's range.
+    const n = map ? fbm2(x / 9, y / 9, seed + 51, 3) : fbm2(Math.floor(x / CELL) * CELL / 9, Math.floor(y / CELL) * CELL / 9, seed + 51, 3);
+    fertility[i] = fertilityOf(ground[i], (n - 0.25) * 2);
   }
 }

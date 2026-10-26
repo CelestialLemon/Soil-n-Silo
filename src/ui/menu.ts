@@ -1,4 +1,5 @@
-import { generateMap, TERRAIN } from '../game/map.ts';
+import { GROUND_IDS } from '../game/ground.ts';
+import { generateMap, TERRAIN, type MapData } from '../game/map.ts';
 import { seedOf } from '../game/rng.ts';
 import type { Progress } from '../game/save.ts';
 import { CAMPAIGN, randomScenario, SANDBOX, sandboxIn, SILVER_PAR, type Scenario } from '../game/scenarios.ts';
@@ -28,10 +29,23 @@ export interface MenuHost {
 const progressOf = (s: GameState) => (s.scenario.goals.length ? s.scenario.goals.reduce((n, _, i) => n + Math.min(1, goalNow(s, i).v), 0) / s.scenario.goals.length : 0);
 
 /** A normal valley's sun, wind and soil, for comparing a commission's conditions. */
-const NORMAL = { daylight: 14, wind: 0.5, soil: 60 };
+const NORMAL = { daylight: 14, wind: 0.5, soil: 58 };
+
+/** A commission's map, generated once for its card (the conditions and the preview). */
+const maps = new Map<string, MapData>();
+const mapOf = (sc: Scenario) => { let m = maps.get(sc.id); if (!m) maps.set(sc.id, (m = generateMap(sc))); return m; };
+
+/** The mean fertility of a map's grass and the kinds of ground (other than loam) that cover a seventh of it or more, most first. */
+function groundOf(m: MapData): { mean: number; kinds: string } {
+  const count = GROUND_IDS.map(() => 0);
+  let n = 0, total = 0;
+  for (let i = 0; i < m.terrain.length; i++) if (m.terrain[i] !== TERRAIN.water) { count[m.ground[i]]++; total += m.fertility[i]; n++; }
+  const kinds = GROUND_IDS.map((id, k) => ({ id, k })).filter(({ id, k }) => id !== 'loam' && count[k] >= n / 7).sort((a, b) => count[b.k] - count[a.k]).map(({ id }) => id);
+  return { mean: total / Math.max(1, n), kinds: kinds.length ? kinds.join(', ') : 'mostly loam' };
+}
 
 function conditions(sc: Scenario) {
-  const { sun, wind, warmth, conditions: { rain } } = sc.climate, t = sc.terrain, day = (sun.set - sun.rise) * sun.strength;
+  const { sun, wind, warmth, conditions: { rain } } = sc.climate, t = sc.terrain, ground = groundOf(mapOf(sc)), day = (sun.set - sun.rise) * sun.strength;
   const word = (k: number, low: string, high: string) => (k < 0.85 ? low : k > 1.15 ? high : 'Normal');
   const cond = (ic: string, label: string, k: number, col: string, value: string, sub: string) => h('div', { class: 'cond' },
     icon(ic, 26), h('span', { class: 'cd-label' }, label),
@@ -43,7 +57,7 @@ function conditions(sc: Scenario) {
     cond('sun', 'Sun', day / NORMAL.daylight, 'var(--ochre)', sun.strength < 0.9 ? 'Weak' : word(day / NORMAL.daylight, 'Short days', 'Long days'),
       `${String(sun.rise).padStart(2, '0')}:00 to ${sun.set}:00${sun.strength !== 1 ? ` · ${pct(sun.strength)}` : ''}`),
     cond('wind', 'Wind', wind.mean / NORMAL.wind, 'var(--tide)', word(wind.mean / NORMAL.wind, 'Still', 'Strong'), `gusts ${pct(wind.gust)}`),
-    cond('soil', 'Soil', t.soil / NORMAL.soil, 'var(--pine)', word(t.soil / NORMAL.soil, 'Poor', 'Rich'), `${t.soil} ± ${t.soilSpread}`),
+    cond('soil', 'Soil', ground.mean / NORMAL.soil, 'var(--pine)', word(ground.mean / NORMAL.soil, 'Poor', 'Rich'), ground.kinds),
     h('div', { class: 'cd-small cd-faint about' }, `Warmth ${Math.round(warmth.low)} to ${Math.round(warmth.high)}°C. A ${pct(rain)} chance of showers in each spell${sc.climate.season === 'winter' ? ' (snow)' : ''}.`),
     h('div', { class: 'cd-small cd-faint about' }, [water, woods, t.rock >= 0.1 ? 'Rocky.' : ''].filter(Boolean).join(' ')),
   ];
@@ -54,7 +68,7 @@ const previews = new Map<string, HTMLCanvasElement>();
 function mapPreview(sc: Scenario) {
   let c = previews.get(sc.id);
   if (c) return c;
-  const m = generateMap(sc), k = 5;
+  const m = mapOf(sc), k = 5;
   c = h('canvas', { class: 'map-preview', width: m.width * k, height: m.height * k, 'aria-label': 'A preview of the valley' });
   const g = c.getContext('2d');
   if (g) {
