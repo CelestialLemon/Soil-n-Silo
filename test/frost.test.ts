@@ -15,7 +15,7 @@ import { describeStatus } from '../src/game/sim/describe.ts';
 import { advance } from '../src/game/sim/step.ts';
 import { newGame, touchRelief, type FieldBuilding, type GameState } from '../src/game/state.ts';
 import { TRUTH } from '../src/game/ahead.ts';
-import { PLAIN } from '../src/game/ground.ts';
+import { GROUND, PLAIN } from '../src/game/ground.ts';
 
 const HOUR = DAY_SECONDS / 24;
 const NO_CONDITIONS = { cloud: 0, rain: 0, calm: 0 };
@@ -29,7 +29,7 @@ function game(season: Season, events: WeatherEvent[], at: number): GameState {
   const sc: Scenario = { ...SANDBOX, climate, id: 'test', sandbox: false, credits: 100_000, width: 40, height: 40, goals: [], par: 600, events,
     terrain: { ground: PLAIN, water: 'none', forest: 0, rock: 0, relief: 0 } };
   const s = newGame(sc);
-  s.map.fertility.fill(60);
+  s.map.ground.fill(GROUND.loam); s.map.fertility.fill(60);
   s.soilBase.fill(60);
   const v = (x: number, y: number) => 0.5 * x + 6 - 3 * Math.max(0, 1 - Math.hypot(x - 12, y - 12) / 5) + 4 * Math.max(0, 1 - Math.hypot(x - 30, y - 30) / 5);
   for (let y = 0; y < 40; y++) for (let x = 0; x < 40; x++) s.map.corner.splice((y * 40 + x) * 4, 4, v(x, y), v(x + 1, y), v(x + 1, y + 1), v(x, y + 1));

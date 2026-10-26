@@ -2,7 +2,8 @@ import { BUILDINGS, CROPS, DAY_SECONDS, FIELD, GREENHOUSE, HIVE, ITEMS, POLLINAT
 import { allowed, endOf, EVENT_KINDS, EVENTS, type EventKind } from './events.ts';
 import { networks, POWERED, pylonsInLink } from './power.ts';
 import { HOUR_SECONDS } from './powerlog.ts';
-import { coopPace, coopTrees, erosionAt, guardedAt, hiveReaches, paceOf, pylonReaches, riverSeason, sprinklerWaters, sprinklerWatts, touchesWater, waterLevelNear, waterPace, wheelSite, windExposure } from './rules.ts';
+import { coopPace, coopTrees, erosionAt, groundUnder, guardedAt, hiveReaches, paceOf, pylonReaches, riverSeason, sprinklerWaters, sprinklerWatts, touchesWater, waterLevelNear, waterPace, wheelSite, windExposure } from './rules.ts';
+import { fertilityCap, groundFact, groundPace, stonyLoss } from './ground.ts';
 import { earthPrice, groundworkFor, levelledFor } from './build.ts';
 import { hourAt, sunAt, windAt } from './sim/clock.ts';
 import { raining } from './sim/weather.ts';
@@ -54,6 +55,13 @@ function soilUnder(s: GameState, x: number, y: number, n: number) {
   return k ? sum / k : 0;
 }
 
+/** The highest the average fertility of an n × n footprint can rise: the average of its tiles' caps (stony ground is thin). */
+function soilCeiling(s: GameState, x: number, y: number, n: number) {
+  let sum = 0, k = 0;
+  for (let ty = y; ty < y + n; ty++) for (let tx = x; tx < x + n; tx++) if (inMap(s, tx, ty)) { sum += fertilityCap(s.map.ground[ty * s.map.width + tx]); k++; }
+  return k ? sum / k : 100;
+}
+
 /** The sprinklers that would water a field at (x, y), and the most water any gives (the share of power it gets); rain waters every field. */
 function waterAt(s: GameState, type: 'field' | 'greenhouse', x: number, y: number) {
   const sp = s.buildings.filter((b) => b.type === 'sprinkler' && !isFlooded(s, b) && sprinklerWaters(b.x, b.y, { type, x, y }));
@@ -79,13 +87,15 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
       case 'field': case 'greenhouse': {
         // A greenhouse grows in its own warmth, and neither rain, frost nor dust reach it.
         const under = type === 'greenhouse', crop = CROPS[set.crop ?? 'wheat'], soil = soilUnder(s, x, y, 3), { sprinklers, shore, rain, water, share } = waterAt(s, type, x, y);
+        // The ground under it: what it does to the crop's pace, the yield (stony is thin) and how high the soil can rise (the stony cap).
+        const kinds = groundUnder(s, x, y, 3), byGround = groundPace(crop, kinds), top = soilCeiling(s, x, y, 3), grain = Math.max(1, crop.yield - stonyLoss(kinds));
         const warmthIn = (w: number) => (under ? insideWarmth(crop, w) : w);
         // A hive within reach of a flowering crop adds a good to every harvest.
         // Too cold outside, the bees forage only in a greenhouse that will be working: powered, if its crop needs heat.
         const forages = !keepingBeesIn(s.scenario, s.time) && (beesFly(warmthOf(s)) || (under && (heatNeed(crop, warmthOf(s)) === 0 || powered(s, type, x, y))));
         const pollinated = crop.flowers && forages && s.buildings.some((b) => b.type === 'hive' && !isFlooded(s, b) && hiveReaches({ type, x, y }, b.x, b.y));
         // Nothing, while a late frost that lies there takes it.
-        const perMin = !under && frostHits(s, set.crop ?? 'wheat', x, y) ? 0 : (crop.yield + (pollinated ? POLLINATION_BONUS : 0)) * 60 * paceOf(water, soil, crop, warmthIn(warmthOf(s))).pace / crop.grow;
+        const perMin = !under && frostHits(s, set.crop ?? 'wheat', x, y) ? 0 : (grain + (pollinated ? POLLINATION_BONUS : 0)) * 60 * paceOf(water, soil, crop, warmthIn(warmthOf(s)), byGround).pace / crop.grow;
         // Sloping tiles under it wear faster (erosion).
         const guarded = guardedAt(s, x, y), blown = !under && !guarded;
         let slopes = 0, wear = 0;
@@ -101,7 +111,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         // soil later: the slowest run's pace is taken at the least soil any run can have, the fastest at the most (worn only by the harvests the slow run makes,
         // built only by the fast run's), and the two are stepped together. Without a forecast the one run is the weather as it is.
         const run = (views: Ahead[]): { later: number }[] => {
-          const delta = crop.soil * (crop.soil < 0 ? wear : 1), clampSoil = (v: number) => Math.max(0, Math.min(100, v)), bounded = views.length > 1;
+          const delta = crop.soil * (crop.soil < 0 ? wear : 1), clampSoil = (v: number) => Math.max(0, Math.min(top, v)), bounded = views.length > 1;
           // `soils` are what each run ends with; `least` and `most` the soil any run can have.
           const soils = views.map(() => soil), growth = views.map(() => 0);
           let least = soil, most = soil;
@@ -115,7 +125,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
               // A late frost on the field takes what has grown (the field starts again) and nothing grows while it bites.
               if (!under && frostHits(s, set.crop ?? 'wheat', x, y, s.time + t, view)) { growth[k] = 0; return 0; }
               const rain = shore ? 1 : under ? 0 : view.hourRain(s.time + t), wet = rain + (1 - rain) * share;
-              const paces = view.warmths(s.time + t).map((w) => paceOf(wet, bounded ? (k ? most : least) : soils[0], crop, warmthIn(w)).pace);
+              const paces = view.warmths(s.time + t).map((w) => paceOf(wet, bounded ? (k ? most : least) : soils[0], crop, warmthIn(w), byGround).pace);
               return Math.min(HOUR, SOIL_AHEAD - t) * (k ? Math.max(...paces) : Math.min(...paces)) / crop.grow;
             });
             grew.forEach((by, k) => {
@@ -142,6 +152,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         facts.push({ label: 'Soil', value: String(Math.round(soil)), then: then.lo === then.hi ? String(then.lo) : `${then.lo}–${then.hi}`, sub: `in ${SOIL_AHEAD / 60} min if harvests are carried off${reading.kind === 'truth' ? '' : `, ${basisFor(reading, s.scenario.climate, s.time, s.time + SOIL_AHEAD).replace(/^for /, 'in ')}`}${skipped ? `; ${skipped}` : ''}` });
         facts.push(shore ? { label: 'Water', value: 'beside water', sub: 'grows at 100%' } : rain ? { label: 'Water', value: 'rain', sub: 'grows at 100% while it rains', tone: 'good' } : sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round(waterPace(water, crop.thirst, warmthIn(warmthOf(s))) * 100)}%` }
           : { label: 'Water', value: 'none', sub: `grows at ${Math.round(waterPace(0, crop.thirst, warmthIn(warmthOf(s))) * 100)}%`, tone: 'bad' });
+        facts.push({ label: 'Ground', ...groundFact(crop, kinds) });
         const warm = warmthFact(crop, warmthIn(warmthOf(s)));
         facts.push(under ? { label: 'Warmth', value: `${Math.round(warmthIn(warmthOf(s)))}°C inside`, sub: `outside ${Math.round(warmthOf(s))}°C; heating ${Math.round(heatNeed(crop, warmthOf(s)))} W now, ${GREENHOUSE.loss} W for each °C the outside is below ${crop.comfort.low}°C`, tone: 'good' }
           : { label: 'Warmth', value: `${Math.round(warmthOf(s))}°C`, sub: warm.text.slice(warm.text.indexOf(': ') + 2), tone: warm.tone === 'bad' ? 'bad' : undefined });

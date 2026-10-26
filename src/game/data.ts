@@ -1,6 +1,8 @@
 // The game's content as data: goods, crops, buildings and recipes, with every number to tune in one place (DESIGN.md has the
 // tables these come from).
 
+import type { GroundId } from './ground.ts';
+
 // ---- Goods ----
 
 export const ITEM_IDS = [
@@ -70,14 +72,16 @@ export interface CropDef {
   tender: boolean;
   /** How much of the growth lost to a lack of water it suffers (1 normally; less for one that copes when dry). */
   thirst: number;
+  /** What it makes of the ground: grows faster on the kinds it likes and slower on those it is poor on (FIELD.groundLike, groundPoor), unmoved on the rest; `copes` is only said (no penalty). */
+  ground: { likes?: readonly GroundId[]; poor?: readonly GroundId[]; copes?: readonly GroundId[] };
 }
 
 export const CROPS: Record<CropId, CropDef> = {
-  wheat: { name: 'Wheat', grow: 40, yield: 3, soil: -1, flowers: false, stages: 4, comfort: { low: 6, high: 24 }, tender: false, thirst: 1 },
-  beans: { name: 'Beans', grow: 50, yield: 2, soil: 2.5, flowers: true, stages: 4, comfort: { low: 6, high: 24 }, tender: false, thirst: 1 },
-  tomato: { name: 'Tomato', grow: 60, yield: 4, soil: -1.5, flowers: true, stages: 4, comfort: { low: 18, high: 30 }, tender: true, thirst: 1 },
-  sunflower: { name: 'Sunflower', grow: 70, yield: 3, soil: -2, flowers: true, stages: 4, comfort: { low: 14, high: 32 }, tender: true, thirst: 0.5 },
-  flax: { name: 'Flax', grow: 55, yield: 3, soil: -1.5, flowers: true, stages: 4, comfort: { low: 6, high: 26 }, tender: false, thirst: 1 },
+  wheat: { name: 'Wheat', grow: 40, yield: 3, soil: -1, flowers: false, stages: 4, comfort: { low: 6, high: 24 }, tender: false, thirst: 1, ground: { likes: ['clay'] } },
+  beans: { name: 'Beans', grow: 50, yield: 2, soil: 2.5, flowers: true, stages: 4, comfort: { low: 6, high: 24 }, tender: false, thirst: 1, ground: { likes: ['clay'], poor: ['sand', 'stony'] } },
+  tomato: { name: 'Tomato', grow: 60, yield: 4, soil: -1.5, flowers: true, stages: 4, comfort: { low: 18, high: 30 }, tender: true, thirst: 1, ground: { poor: ['clay'] } },
+  sunflower: { name: 'Sunflower', grow: 70, yield: 3, soil: -2, flowers: true, stages: 4, comfort: { low: 14, high: 32 }, tender: true, thirst: 0.5, ground: { copes: ['sand', 'stony'] } },
+  flax: { name: 'Flax', grow: 55, yield: 3, soil: -1.5, flowers: true, stages: 4, comfort: { low: 6, high: 26 }, tender: false, thirst: 1, ground: { poor: ['sand', 'stony'] } },
 };
 
 /** Goods a pollinated field of a flowering crop yields on top of its usual yield, every harvest. */
@@ -99,6 +103,10 @@ export const FIELD = {
   dry: 0.4,
   /** Growth multiplier at fertility 0 and 100 (linear between). */
   poorSoil: 0.4, richSoil: 1.4,
+  /** A crop grows this much faster on a tile of ground it likes and slower on one it is poor on (a field's pace is the average over its nine tiles). */
+  groundLike: 1.25, groundPoor: 0.75,
+  /** Stony ground is thin: a tile of it never rises above this fertility (compost, a bean harvest, a flood's silt), and a field or greenhouse most of whose tiles are stony yields stonyLoss less each harvest. */
+  stonyCap: 50, stonyMost: 5, stonyLoss: 1,
   /** Fertility a second that ground without a field regains, up to what it started at. */
   rest: 0.1,
   /** How much more soil a harvest takes from a field's steep tiles (×2 at 1; half as much more on gentle ones), and from those of a field a tree or a bean field guards. */

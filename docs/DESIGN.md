@@ -1013,7 +1013,7 @@ It is laid in `layGround` as a score for each kind (a feature of the land times 
 (silt: a wider, stronger floodplain), which replaces the old `soil` and `soilSpread` settings. A plain valley is about 55–60% loam, 5–15% silt, 10–15% clay, 10–13% sand and 8% stony with a river, 8–10% more stony and no silt beside still water; a hilly one has about
 three times the stony of a flat one by itself (the height). The country beyond the edge is laid by the same rules, so the ground on the map does not depend on how much country is drawn (the land is always laid with 12 tiles of country, then cropped).
 **Rocks** lie mostly on stony ground (a stony tile adds `ROCK_STONY` to a rock's pull, on top of the hills and cliffs; about 70% of rocks lie on ground that is stony without them), and the ground under a rock is stony: clearing the rock leaves it so.
-Nothing but fertility reads the ground yet (5.2 to 5.4 add its rules).
+Fertility reads the ground (5.1) and so do the crop rules (5.2, below, and **Ground in the crop rules** under Farming); the water and weather rules (5.3, 5.4) are still to come.
 
 The mix by commission: **Rocky** (12% rock) adds stony 0.6 (about 30% stony, from 8%); **Poor soil** adds sand 1.0 and stony 0.8 (about 40% loam, 19% sand, 27% stony, mean fertility about 15 lower); **Hilly** is stonier by its height alone; **Wooded** and **Flat** add nothing.
 Tired Soil: sand 0.9, stony 0.9. Riverlands: silt 1.2, a wide floodplain (about 25%). Windy Ridge: stony 0.8 on top of its relief 0.9. Harvest Festival: sand 0.3, stony 0.3. The others are plain valleys. The sandbox is a plain valley.
@@ -1283,6 +1283,7 @@ one helper, `growsCrops(b)` (`state.ts`): crops chosen as it is placed (like a f
 growth, store (`FIELD.store`), harvest, compost, next-door trading, truck stops, history and soil projection. Rules that belong to the open
 field alone test `type === 'field'`. No hotkey (G is the guide). The model is a placeholder until 4.5: a field's soil and crops
 under a timber frame.
+- **Ground under it (5.2):** its tiles' ground counts as a field's does: starting fertility, the stony cap and yield, and the crop's likes and dislikes.
 - **Ground:** flat (`groundOf`), unlike the field (which only needs no cliff). Its soil wears with each harvest, takes compost, and erodes
   by `erosionAt` like a field's; a tree or sapling beside it guards it (a bean *field* beside it does not).
 - **Water:** a sprinkler within reach or a water edge, like a field. Rain and soft rain do not water it, so a sprinkler that waters a
@@ -1347,6 +1348,26 @@ under a timber frame.
   sharing an edge, guards it: use 0.25 instead of 0.5. Gentle slopes lose ×1.25, steep banks ×1.5; guarded, ×1.125 and ×1.25.
   Flat tiles lose the normal amount. Beans restore soil without this multiplier. Eroded soil is lost; it does not yet wash
   onto the ground below.
+- **Ground in the crop rules (5.2).** Season first (what is possible), then ground (about a quarter either way), then fertility (how good a field is).
+  Each crop has a `ground` entry in `CROPS` with at most one like or dislike of its own, and each of a field's nine tiles counts on its own, like fertility:
+  the field's **ground pace** is the average over its tiles of ×`FIELD.groundLike` = 1.25 on a liked kind, ×`FIELD.groundPoor` = 0.75 on a poor one, 1 on the rest.
+
+  | Crop | Ground |
+  | --- | --- |
+  | Wheat | likes clay |
+  | Beans | like clay; poor on sand and stony |
+  | Tomato | poor on clay (cold, wet roots) |
+  | Sunflower | copes on sand and stony: deep roots, no penalty (only said, no multiplier) |
+  | Flax | poor on sand and stony |
+
+  The ground pace is one more factor in `paceOf` (`byGround`) beside water, soil and warmth; it does not touch warmth (clay is not "cold", sand does not "warm early").
+  **Stony is thin:** a stony tile's fertility never rises above `FIELD.stonyCap` = 50 (compost, a bean harvest, a flood's silt and the `soilBase` it recovers to all stop there;
+  `fertilityCap` in `ground.ts`; stony tiles start at 15–35 so the cap only meets what the player adds), and a field or greenhouse with `FIELD.stonyMost` = 5 or more of its nine tiles stony
+  yields `FIELD.stonyLoss` = 1 less per harvest (never below 1; the bees' bonus is on top). A field takes compost only while it has room under the cap (average below the average of its tiles' caps less 1), so a
+  stony field that is as high as it can go takes none, and asks the trucks for only as much as fits. The **greenhouse** counts its ground just the same way (fertility, the stony cap, the yield and the likes and dislikes;
+  not the water). Shown as facts, never advice: the field's and greenhouse's placement card has a **Ground** line (what lies under it and what it does to the crop chosen: "Tomato on clay: grows slowly (×0.75 over the nine tiles)",
+  "stony ground is thin: fertility stays under 50, and a harvest yields 1 less"), its soil projection stops at the cap and its harvest rate counts both; the inspector says the same, and its growth pace shows `ground ×`.
+  The guide's field page lists each crop's ground. No saved state changes (the save stays version 19).
 - A pollinated field (a hive within 4 tiles) yields 1 more of a flowering crop.
 - A harvest waits in the field (up to 6) until a truck picks it up. A full field stops growing.
 - A field holds no compost. It takes one (from a truck or a composter next door) only while its average fertility is under

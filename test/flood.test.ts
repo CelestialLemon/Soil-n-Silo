@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { addStop, buyTruck, newRoute, place, setTruckRoute } from '../src/game/build.ts';
-import { BUILDINGS, POWER } from '../src/game/data.ts';
+import { BUILDINGS, FIELD, POWER } from '../src/game/data.ts';
 import { eventOn, EVENTS, eventsOf, rollEvents, type EventKind, type Strength, type WeatherEvent } from '../src/game/events.ts';
 import { canFlood, FALL, flooded, floodRise, floodsAt, floodStep, isFlooded, isWet, SILT } from '../src/game/flood.ts';
 import { readHold } from '../src/game/hold.ts';
@@ -21,7 +21,7 @@ import { advance } from '../src/game/sim/step.ts';
 import { deserialize, serialize } from '../src/game/save.ts';
 import { buildingAt, newGame, touchRelief, type Building, type BuildingOf, type Dir, type GameState } from '../src/game/state.ts';
 import type { BuildingId } from '../src/game/data.ts';
-import { PLAIN } from '../src/game/ground.ts';
+import { GROUND, PLAIN } from '../src/game/ground.ts';
 
 const CLEAR = { ...climateOf('spring', 'mild'), conditions: { cloud: 0, rain: 0, calm: 0 }, warmth: { low: 15, high: 15, drift: 0 } };
 
@@ -38,7 +38,7 @@ function flooding(kind: EventKind = 'flood', strength: Strength = 'ordinary', at
   const s = newGame(sc);
   s.map.terrain.fill(TERRAIN.grass);
   s.map.corner.fill(0);
-  s.map.fertility.fill(60);
+  s.map.ground.fill(GROUND.loam); s.map.fertility.fill(60);
   s.soilBase.fill(60);
   for (let y = 0; y < 30; y++) for (let x = 2; x <= 3; x++) s.map.terrain[y * 30 + x] = TERRAIN.water;
   s.map.depot.x = 20; s.map.depot.y = 20;
@@ -161,6 +161,16 @@ test('a flooded field loses its growing crop and starts again; what it stored is
   assert.notEqual(field.status, 'weather');
   advance(s, 5);
   assert.ok(field.growth > 0);
+});
+
+test('silt does not lift stony ground past its cap', () => {
+  const { s, events } = flooding();
+  advance(s, 1);
+  const i = 10 * 30 + 6;
+  s.map.ground[i] = GROUND.stony; s.map.fertility[i] = FIELD.stonyCap - 1; s.soilBase[i] = FIELD.stonyCap - 1;
+  while (s.time < events[0].start + events[0].length + 5) advance(s, 5);
+  assert.equal(s.map.fertility[i], FIELD.stonyCap);
+  assert.equal(s.soilBase[i], FIELD.stonyCap);
 });
 
 test('drained ground gains a little silt, never as much as the flood cost', () => {

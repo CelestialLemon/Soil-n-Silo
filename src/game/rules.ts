@@ -1,5 +1,6 @@
 import { pushesAt } from './events.ts';
 import { ANIMALS, BUILDINGS, FIELD, HIVE, POWER, type BuildingId, type CropDef } from './data.ts';
+import { GROUND_IDS } from './ground.ts';
 import { dryPace, henPace, warmthOf, warmthPace } from './warmth.ts';
 import { mapIce } from './ice.ts';
 import { TERRAIN } from './map.ts';
@@ -179,6 +180,13 @@ export function erosionAt(s: GameState, x: number, y: number, guarded: boolean) 
   return 1 + (guarded ? FIELD.erosionGuarded : FIELD.erosion) * spanOf(s.map, x, y) / STEEP;
 }
 
+/** How many tiles of each kind of ground (by `GROUND`) lie under an n × n footprint at (x, y); tiles off the map are not counted. */
+export function groundUnder(s: GameState, x: number, y: number, n = 3): number[] {
+  const counts = GROUND_IDS.map(() => 0);
+  for (let ty = y; ty < y + n; ty++) for (let tx = x; tx < x + n; tx++) if (inMap(s, tx, ty)) counts[s.map.ground[tileIndex(s, tx, ty)]]++;
+  return counts;
+}
+
 /**
  * A field's growth multiplier from water, given the most water any of its sprinklers gives (0–1), how much of the loss a crop
  * suffers (its `thirst`) and, optionally, the warmth (an unwatered field nearly stops in heat).
@@ -187,11 +195,11 @@ export const waterPace = (wet: number, thirst = 1, warmth?: number) => 1 - thirs
 
 /**
  * A field's growth pace as a multiple of its crop's normal pace, from the most water any of its sprinklers gives (0–1), its
- * average fertility (0–100) and, given a crop and a warmth, the warmth; with the parts it's made of.
+ * average fertility (0–100), its ground's multiplier (`byGround`, from groundPace) and, given a crop and a warmth, the warmth; with the parts it's made of.
  */
-export function paceOf(wet: number, fertility: number, crop?: CropDef, warmth?: number) {
+export function paceOf(wet: number, fertility: number, crop?: CropDef, warmth?: number, byGround = 1) {
   const byWater = waterPace(wet, crop?.thirst, warmth);
   const bySoil = FIELD.poorSoil + (FIELD.richSoil - FIELD.poorSoil) * fertility / 100;
   const byWarmth = crop && warmth !== undefined ? warmthPace(crop, warmth) : 1;
-  return { pace: byWater * bySoil * byWarmth, byWater, bySoil, byWarmth };
+  return { pace: byWater * bySoil * byWarmth * byGround, byWater, bySoil, byWarmth, byGround };
 }

@@ -6,7 +6,7 @@ import { HISTORY_SECONDS, historyOf, summarize, type Bucket, type History } from
 import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
 import { advance } from '../src/game/sim/step.ts';
 import { newGame, type BuildingOf, type GameState } from '../src/game/state.ts';
-import { PLAIN } from '../src/game/ground.ts';
+import { GROUND, PLAIN } from '../src/game/ground.ts';
 
 function flat(): GameState {
   const sc: Scenario = {
@@ -14,7 +14,7 @@ function flat(): GameState {
     terrain: { ground: PLAIN, water: 'none', forest: 0, rock: 0, relief: 0 },
   };
   const s = newGame(sc);
-  s.map.fertility.fill(60);
+  s.map.ground.fill(GROUND.loam); s.map.fertility.fill(60);
   s.soilBase.fill(60);
   return s;
 }

@@ -15,7 +15,7 @@ import { hourAt } from '../src/game/sim/clock.ts';
 import { deliver } from '../src/game/sim/goods.ts';
 import { advance } from '../src/game/sim/step.ts';
 import { newGame, type Building, type BuildingOf, type GameState, type Route, type Truck } from '../src/game/state.ts';
-import { PLAIN } from '../src/game/ground.ts';
+import { GROUND, PLAIN } from '../src/game/ground.ts';
 
 // The numbers the HUD shows beyond the rules themselves: goods flows, route timing, power over a day, the run log, the
 // placement and tonight forecasts, what a building waits for, and the guide's chains.
@@ -26,7 +26,7 @@ function flat(extra: Partial<Scenario> = {}): GameState {
     terrain: { ground: PLAIN, water: 'none', forest: 0, rock: 0, relief: 0 }, ...extra,
   };
   const s = newGame(sc);
-  s.map.fertility.fill(60);
+  s.map.ground.fill(GROUND.loam); s.map.fertility.fill(60);
   s.soilBase.fill(60);
   return s;
 }

@@ -11,7 +11,7 @@ import { fieldPace } from '../src/game/sim/buildings.ts';
 import { describeStatus } from '../src/game/sim/describe.ts';
 import { advance } from '../src/game/sim/step.ts';
 import { newGame, touchLayout, type BuildingOf, type GameState } from '../src/game/state.ts';
-import { PLAIN } from '../src/game/ground.ts';
+import { GROUND, PLAIN } from '../src/game/ground.ts';
 
 // The placement card and the simulation share their rules (rules.ts): what a building in hand is said to do is what it does
 // once placed. And the words that quote a number take it from data.ts.
@@ -22,7 +22,7 @@ function flat(): GameState {
     terrain: { ground: PLAIN, water: 'none', forest: 0, rock: 0, relief: 0 },
   };
   const s = newGame(sc);
-  s.map.fertility.fill(60);
+  s.map.ground.fill(GROUND.loam); s.map.fertility.fill(60);
   s.soilBase.fill(60);
   return s;
 }
