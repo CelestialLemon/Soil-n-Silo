@@ -7,7 +7,7 @@ import { noteMade, noteTaken } from '../history.ts';
 import { noteRunUse } from '../runlog.ts';
 import { applySetting, blankBuilding, growsCrops, isMachine, type Building, type Setting, type GameState, type MachineBuilding } from '../state.ts';
 import { derived, besides, handlesGoods, handsTo } from './layout.ts';
-import { fieldFertility, changeSoil, fieldCeiling, soilTakesCompost } from './soil.ts';
+import { changeSoil, compostNeeded, soilTakesCompost } from './soil.ts';
 import { runtimeOf } from '../runtime.ts';
 import { must } from '../result.ts';
 
@@ -54,8 +54,8 @@ function used(s: GameState, item: ItemId) {
 
 /** Whether a field's soil is poor enough to take compost, with room under its ground's cap. */
 export const wantsCompost = soilTakesCompost;
-/** How many compost a field takes now: enough to lift its soil over the line (or as high as its ground lets it go). */
-export const compostWanted = (s: GameState, f: Building) => Math.max(0, Math.ceil((Math.min(FIELD.compostBelow, fieldCeiling(s, f)) - fieldFertility(s, f)) / FIELD.compostGain));
+/** How many compost a field takes now: enough to lift its soil over the line (or as high as its ground lets it go), counted tile by tile. */
+export const compostWanted = compostNeeded;
 
 /** Whether a building takes `item` from a truck right now. Takes it if so: the depot buys it, a silo stores it. */
 export function accept(s: GameState, b: Building, item: ItemId): boolean {

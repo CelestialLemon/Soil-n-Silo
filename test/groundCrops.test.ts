@@ -6,7 +6,7 @@ import { placement } from '../src/game/forecast.ts';
 import { fertilityCap, GROUND, GROUND_IDS, groundFact, groundPace, PLAIN, type GroundId } from '../src/game/ground.ts';
 import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
 import { fieldPace } from '../src/game/sim/buildings.ts';
-import { accept, wantsCompost } from '../src/game/sim/goods.ts';
+import { accept, compostWanted, wantsCompost } from '../src/game/sim/goods.ts';
 import { fieldFertility, harvestOf } from '../src/game/sim/soil.ts';
 import { advance } from '../src/game/sim/step.ts';
 import { newGame, type FieldBuilding, type GameState } from '../src/game/state.ts';
@@ -122,4 +122,23 @@ test('the soil projection counts the stony cap', () => {
   const l = flat();
   l.map.fertility.fill(44); l.soilBase.fill(44);
   assert.ok(Number(card(l, 'field', 'beans', 'Soil').then) > 50, 'on loam the same beans rise past it');
+});
+
+test('on mixed ground the cap holds tile by tile: compost demand and the soil projection follow the real field', () => {
+  const s = flat();
+  lay(s, 'stony', 5);
+  for (let i = 0; i < 9; i++) s.map.fertility[(10 + Math.floor(i / 3)) * 30 + 10 + (i % 3)] = i < 5 ? FIELD.stonyCap : 40;
+  const f = fieldOf(s, 'field', 'beans');
+  // Five stony tiles at their cap and four loam tiles at 40 take compost until the loam is at 100: five, not the three an average would say.
+  assert.equal(compostWanted(s, f), 5);
+  let n = 0;
+  while (accept(s, f, 'compost')) n++;
+  assert.equal(n, 5);
+  // The projection of a bean field follows what the real one does in ten minutes.
+  const t = flat();
+  lay(t, 'stony', 5);
+  for (let i = 0; i < 9; i++) t.map.fertility[(10 + Math.floor(i / 3)) * 30 + 10 + (i % 3)] = i < 5 ? 47 : 40;
+  const said = Number(card(t, 'field', 'beans', 'Soil').then), g = fieldOf(t, 'field', 'beans');
+  for (let i = 0; i < 600; i++) advance(t, 1);
+  assert.ok(Math.abs(fieldFertility(t, g) - said) <= 1, `the field has ${fieldFertility(t, g)}, the card said ${said}`);
 });

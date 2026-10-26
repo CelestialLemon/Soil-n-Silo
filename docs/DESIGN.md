@@ -1364,9 +1364,9 @@ under a timber frame.
   **Stony is thin:** a stony tile's fertility never rises above `FIELD.stonyCap` = 50 (compost, a bean harvest, a flood's silt and the `soilBase` it recovers to all stop there;
   `fertilityCap` in `ground.ts`; stony tiles start at 15–35 so the cap only meets what the player adds), and a field or greenhouse with `FIELD.stonyMost` = 5 or more of its nine tiles stony
   yields `FIELD.stonyLoss` = 1 less per harvest (never below 1; the bees' bonus is on top). A field takes compost only while it has room under the cap (average below the average of its tiles' caps less 1), so a
-  stony field that is as high as it can go takes none, and asks the trucks for only as much as fits. The **greenhouse** counts its ground just the same way (fertility, the stony cap, the yield and the likes and dislikes;
+  stony field that is as high as it can go takes none, and asks the trucks for only as many as it takes, counted tile by tile (`compostNeeded`). The **greenhouse** counts its ground just the same way (fertility, the stony cap, the yield and the likes and dislikes;
   not the water). Shown as facts, never advice: the field's and greenhouse's placement card has a **Ground** line (what lies under it and what it does to the crop chosen: "Tomato on clay: grows slowly (×0.75 over the nine tiles)",
-  "stony ground is thin: fertility stays under 50, and a harvest yields 1 less"), its soil projection stops at the cap and its harvest rate counts both; the inspector says the same, and its growth pace shows `ground ×`.
+  "stony ground is thin: fertility stays under 50, and a harvest yields 1 less"), its soil projection follows the nine tiles one by one, each stopping at its cap, and its harvest rate counts the ground pace and the yield; the inspector says the same, and its growth pace shows `ground ×`.
   The guide's field page lists each crop's ground. No saved state changes (the save stays version 19).
 - A pollinated field (a hive within 4 tiles) yields 1 more of a flowering crop.
 - A harvest waits in the field (up to 6) until a truck picks it up. A full field stops growing.

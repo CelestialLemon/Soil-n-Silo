@@ -55,13 +55,6 @@ function soilUnder(s: GameState, x: number, y: number, n: number) {
   return k ? sum / k : 0;
 }
 
-/** The highest the average fertility of an n × n footprint can rise: the average of its tiles' caps (stony ground is thin). */
-function soilCeiling(s: GameState, x: number, y: number, n: number) {
-  let sum = 0, k = 0;
-  for (let ty = y; ty < y + n; ty++) for (let tx = x; tx < x + n; tx++) if (inMap(s, tx, ty)) { sum += fertilityCap(s.map.ground[ty * s.map.width + tx]); k++; }
-  return k ? sum / k : 100;
-}
-
 /** The sprinklers that would water a field at (x, y), and the most water any gives (the share of power it gets); rain waters every field. */
 function waterAt(s: GameState, type: 'field' | 'greenhouse', x: number, y: number) {
   const sp = s.buildings.filter((b) => b.type === 'sprinkler' && !isFlooded(s, b) && sprinklerWaters(b.x, b.y, { type, x, y }));
@@ -87,8 +80,8 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
       case 'field': case 'greenhouse': {
         // A greenhouse grows in its own warmth, and neither rain, frost nor dust reach it.
         const under = type === 'greenhouse', crop = CROPS[set.crop ?? 'wheat'], soil = soilUnder(s, x, y, 3), { sprinklers, shore, rain, water, share } = waterAt(s, type, x, y);
-        // The ground under it: what it does to the crop's pace, the yield (stony is thin) and how high the soil can rise (the stony cap).
-        const kinds = groundUnder(s, x, y, 3), byGround = groundPace(crop, kinds), top = soilCeiling(s, x, y, 3), grain = Math.max(1, crop.yield - stonyLoss(kinds));
+        // The ground under it: what it does to the crop's pace and the yield (stony is thin).
+        const kinds = groundUnder(s, x, y, 3), byGround = groundPace(crop, kinds), grain = Math.max(1, crop.yield - stonyLoss(kinds));
         const warmthIn = (w: number) => (under ? insideWarmth(crop, w) : w);
         // A hive within reach of a flowering crop adds a good to every harvest.
         // Too cold outside, the bees forage only in a greenhouse that will be working: powered, if its crop needs heat.
@@ -98,11 +91,15 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         const perMin = !under && frostHits(s, set.crop ?? 'wheat', x, y) ? 0 : (grain + (pollinated ? POLLINATION_BONUS : 0)) * 60 * paceOf(water, soil, crop, warmthIn(warmthOf(s)), byGround).pace / crop.grow;
         // Sloping tiles under it wear faster (erosion).
         const guarded = guardedAt(s, x, y), blown = !under && !guarded;
+        // The soil is followed tile by tile (the stony cap holds a tile, not the average): each tile's fertility, its cap and how fast a harvest wears it.
         let slopes = 0, wear = 0;
+        const tiles: { fertility: number; cap: number; wear: number }[] = [];
         for (let ty = y; ty < y + 3; ty++) for (let tx = x; tx < x + 3; tx++) {
           const k = inMap(s, tx, ty) ? erosionAt(s, tx, ty, guarded) : 1;
           wear += k / 9; if (k > 1) slopes++;
+          if (inMap(s, tx, ty)) tiles.push({ fertility: s.map.fertility[ty * s.map.width + tx], cap: fertilityCap(s.map.ground[ty * s.map.width + tx]), wear: k });
         }
+        const mean = (v: number[]) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0);
         // Growth over the next SOIL_AHEAD seconds an hour of play at a time, with the warmth and rain of each hour; each harvest wears the soil and slows the next.
         // The weather ahead is read as `reading` says (ahead.ts): one run, or one for each way the forecast allows (the soil is then a range).
         const HOUR = DAY_SECONDS / 24;
@@ -111,33 +108,36 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         // soil later: the slowest run's pace is taken at the least soil any run can have, the fastest at the most (worn only by the harvests the slow run makes,
         // built only by the fast run's), and the two are stepped together. Without a forecast the one run is the weather as it is.
         const run = (views: Ahead[]): { later: number }[] => {
-          const delta = crop.soil * (crop.soil < 0 ? wear : 1), clampSoil = (v: number) => Math.max(0, Math.min(top, v)), bounded = views.length > 1;
-          // `soils` are what each run ends with; `least` and `most` the soil any run can have.
-          const soils = views.map(() => soil), growth = views.map(() => 0);
-          let least = soil, most = soil;
+          const delta = crop.soil * (crop.soil < 0 ? wear : 1), bounded = views.length > 1;
+          // A harvest changes every tile (a loss by the tile's wear), none above its ground's cap or below 0; the dust takes the same from each tile.
+          const harvest = (v: number[]) => v.map((f, i) => Math.max(0, Math.min(tiles[i].cap, f + crop.soil * (crop.soil < 0 ? tiles[i].wear : 1))));
+          const blow = (v: number[], by: number) => v.map((f) => Math.max(0, f - by));
+          // `soils` are what each run ends with; `least` and `most` the soil any run can have (tile by tile).
+          const start = tiles.map((t) => t.fertility), soils = views.map(() => start), growth = views.map(() => 0);
+          let least = start, most = start;
           for (let t = 0; t < SOIL_AHEAD; t += HOUR) {
             // (Every run's pace is worked out from the soil at the start of the hour, before any run harvests in it.)
             const grew = views.map((view, k) => {
               // A dust storm blowing over an unguarded field takes its soil (the hour's wind, at the hour's middle).
               const dust = !blown ? 0 : (dustFor(view, s.time + t + HOUR / 2)?.rate ?? 0) * Math.min(1, (SOIL_AHEAD - t) / HOUR);
-              soils[k] = Math.max(0, soils[k] - dust);
-              if (k === 0) { least = Math.max(0, least - dust); most = Math.max(0, most - dust); }
+              soils[k] = blow(soils[k], dust);
+              if (k === 0) { least = blow(least, dust); most = blow(most, dust); }
               // A late frost on the field takes what has grown (the field starts again) and nothing grows while it bites.
               if (!under && frostHits(s, set.crop ?? 'wheat', x, y, s.time + t, view)) { growth[k] = 0; return 0; }
               const rain = shore ? 1 : under ? 0 : view.hourRain(s.time + t), wet = rain + (1 - rain) * share;
-              const paces = view.warmths(s.time + t).map((w) => paceOf(wet, bounded ? (k ? most : least) : soils[0], crop, warmthIn(w), byGround).pace);
+              const paces = view.warmths(s.time + t).map((w) => paceOf(wet, mean(bounded ? (k ? most : least) : soils[0]), crop, warmthIn(w), byGround).pace);
               return Math.min(HOUR, SOIL_AHEAD - t) * (k ? Math.max(...paces) : Math.min(...paces)) / crop.grow;
             });
             grew.forEach((by, k) => {
               growth[k] += by;
               while (growth[k] >= 1) {
-                growth[k] -= 1; soils[k] = clampSoil(soils[k] + delta);
+                growth[k] -= 1; soils[k] = harvest(soils[k]);
                 // The slow run's harvest wears the most soil there is (or builds the least); the fast run's, the least (or the most).
-                if ((delta < 0) === (k === 0)) most = clampSoil(most + delta); else least = clampSoil(least + delta);
+                if ((delta < 0) === (k === 0)) most = harvest(most); else least = harvest(least);
               }
             });
           }
-          return soils.map((later) => ({ later }));
+          return soils.map((later) => ({ later: mean(later) }));
         };
         // (The views of a world come together: the least rain, then the most.)
         const views = viewsOf(s, reading, SOIL_LENSES, s.time + SOIL_AHEAD), runs = reading.kind === 'forecast' ? views.flatMap((_, n) => (n % 2 ? [] : run([views[n], views[n + 1]]))) : views.flatMap((v) => run([v]));
