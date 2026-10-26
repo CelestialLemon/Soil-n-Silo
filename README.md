@@ -83,7 +83,7 @@ npm builds the renderer when it installs it from git, which needs the install sc
 (`allowScripts`) names the exact commit, so after changing the tag run:
 
 ```sh
-npm install github:CelestialLemon/pixel3d-renderer#v0.4.0
+npm install github:CelestialLemon/pixel3d-renderer#v0.5.0
 npm install-scripts approve pixel3d-renderer
 ```
 
