@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { place, setCrop } from '../src/game/build.ts';
-import { CROP_IDS, CROPS, DAY_SECONDS, FIELD } from '../src/game/data.ts';
+import { foragableBy, foragesOn, greenhouseWorking, hiveBees } from '../src/game/forage.ts';
+import { isPollinated } from '../src/game/sim/layout.ts';
+import { CROP_IDS, CROPS, DAY_SECONDS, FIELD, HIVE } from '../src/game/data.ts';
 import { eventOn, timeOf } from '../src/game/events.ts';
 import { placement, tonight } from '../src/game/forecast.ts';
 import { groundOf } from '../src/game/rules.ts';
@@ -285,4 +287,63 @@ test('a flooded greenhouse draws nothing and cools like one with no power', () =
   g.inside = 18;
   advance(s, 2 * HOUR);
   assert.ok(insideNow(s, g) < 18 && wants(s, g) === 0);
+});
+
+test('bees in winter: a hive forages in a working greenhouse with a flowering crop, not in the open fields, and says so', () => {
+  const { s, g } = heated('beans', 2);
+  const open = build(s, 'field', 4, 8, 'sunflower');
+  const hive = place(s, 'hive', 8, 3, 0);
+  assert.ok(hive.ok && hive.value.building.type === 'hive');
+  const h = hive.value.building;
+  assert.ok(warmthOf(s) < 10);
+  advance(s, 4 * HOUR);
+  assert.equal(h.status, 'ok');
+  assert.ok(h.stored > 0 || h.growth > 0, 'honey comes while it is too cold outside');
+  assert.ok(isPollinated(s, g) && foragesOn(s, g), 'the greenhouse is pollinated');
+  assert.ok(!foragesOn(s, open), 'the open field is not');
+  assert.equal(hiveBees(s, h.id).text, 'Bees: foraging in the greenhouse: too cold outside');
+  assert.ok(hive.value.building.type === 'hive');
+  // The honey rate is one flowering field's, not two.
+  const before = h.stored + h.growth;
+  advance(s, 60);
+  assert.ok(Math.abs(h.stored + h.growth - before - 60 / HIVE.honeySeconds) < 1e-6);
+  const card = placement(s, 'hive', 8, 0, {}).facts;
+  assert.equal(card.find((f) => f.label === 'Bees')?.value, 'in the greenhouse');
+  assert.equal(card.find((f) => f.label === 'Pollinates')?.value, '1');
+});
+
+test('bees in winter: a greenhouse cooling without power, a wheat one, a gale or a flood stops them', () => {
+  const { s, g } = heated('beans', 2);
+  const hive = place(s, 'hive', 8, 3, 0);
+  assert.ok(hive.ok && hive.value.building.type === 'hive');
+  const h = hive.value.building;
+  advance(s, HOUR);
+  assert.ok(greenhouseWorking(s, g) && h.status === 'ok');
+  // A gale keeps them in (the greenhouse is still working).
+  const gale = valley('winter', [{ kind: 'gale', strength: 'ordinary', start: timeOf(2, 0), length: 20 * HOUR }], 0, timeOf(2, 2));
+  const gg = build(gale, 'greenhouse', 4, 4, 'beans');
+  place(gale, 'pylon', 8, 5, 0);
+  const gb = place(gale, 'battery', 8, 8, 0);
+  if (gb.ok && gb.value.building.type === 'battery') gb.value.building.charge = POWER.battery.capacity;
+  advance(gale, 60);
+  assert.ok(greenhouseWorking(gale, gg) && !foragesOn(gale, gg));
+  // No flowers (wheat): the hive has nothing to forage.
+  setCrop(s, g, 'wheat');
+  assert.ok(!foragableBy(s, h.id).length);
+  setCrop(s, g, 'beans');
+  // Without power it cools; a hive with it dry stops counting once it is no longer at its warmth.
+  for (const b of s.buildings) if (b.type === 'battery') b.charge = 0;
+  advance(s, 12 * HOUR);
+  assert.ok(!greenhouseWorking(s, g));
+  assert.equal(h.status, 'cold');
+  assert.ok(hiveBees(s, h.id).text.includes('staying in'));
+});
+
+test('bees in the warm are as before: every flowering field in reach counts', () => {
+  const s = valley('summer', [], 0, timeOf(2, 14));
+  const f = build(s, 'field', 4, 8, 'sunflower');
+  const hive = place(s, 'hive', 8, 9, 0);
+  assert.ok(hive.ok);
+  assert.ok(warmthOf(s) >= 10 && foragesOn(s, f));
+  assert.equal(foragableBy(s, hive.value.building.id).length, 1);
 });

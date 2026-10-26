@@ -242,7 +242,16 @@ half speed at 36°C. **Trees by the coop shade it:** each tree within 2 tiles of
 Bees stay in below 10°C: a hive makes no honey (status Too cold, "Bees: staying in, 7°C") and a flowering field harvested then gets no
 pollination bonus. Warmth swings over a day, so a hive works in the afternoon of a cool spring day. Winter days top out at 6°C, so in winter
 the bees stay in all day; Long Nights (winter, honey cake) can't be cleared until the greenhouse (#86), and its bot test is skipped.
-The bees also stay in while a gale or a tropical storm blows (see The wind events); bees in a greenhouse come later (phase 4); a warm spell (see Weather events) lets them fly in winter.
+The bees also stay in while a gale or a tropical storm blows (see The wind events); a warm spell (see Weather events) lets them fly in winter.
+**Bees in winter (`forage.ts`).** Too cold outside (below 10°C), a hive whose reach (`hiveReaches`) takes in a **working greenhouse** (dry, powered
+when its crop needs heat, and at its crop's lowest comfortable warmth, `greenhouseWorking`; one cooling without power stops counting at once)
+growing a **flowering crop** (beans, tomato, sunflower, flax) forages there: it makes honey from those greenhouses (up to 3, at the usual rate)
+and pollinates them. The greenhouse's warmth need not reach 10°C (beans and flax are held at 6°C): bees forage under glass whatever its warmth.
+The open fields in reach count for nothing until the outside is warm again (the hive's status stays Too cold if no greenhouse works). A gale or storm
+still keeps them in (hold *stopped*). When it is warm enough outside every flowering field in reach counts, as before. Shown: the inspector's Bees
+line and the hive's placement card ("Foraging in the greenhouse: too cold outside"; "Bees in the greenhouse" on the card, its Honey and Pollinates
+counting only those greenhouses), the ledger's Pollination ring (fields the bees forage on now) and the guide's Hive page. A new greenhouse's
+placement card counts its pollination if it would be powered. No saved state changes, so the save version stands.
 
 Each crop has a **comfortable range**: full speed inside it, and outside it a smooth fall-off of 1 / (1 + (d / 6)²), where d is
 the degrees outside the range: half speed 6°C out, a quarter 10°C out. This is one more factor in a field's pace, with water and
@@ -1279,7 +1288,7 @@ under a timber frame.
 - **Reaches it:** floods (the growing crop is lost, it starts again; what it holds is kept).
   **Does not:** late frost and cold snap (nothing is lost, and the crop keeps its full-speed warmth), gales and storms, dust (no fertility
   lost), heat waves (no slowdown). Snow on its roof is only drawn and changes nothing. Nothing breaks it: weather disrupts, never destroys.
-- **Bees** reach it like a field when they fly (flying in winter is 4.4).
+- **Bees** reach it like a field when they fly; in the cold they forage in it while it works and grows a flowering crop (see Bees in winter).
 - **Cards:** the inspector and hover card are a field's plus "Inside 18°C, outside −3°C, heating 13 W" (the watts it gets); the placement
   card shows the outside warmth, the watts it would need now, and its pylon reach (its soil projection assumes full power: 4.3), with
   no frost hollow or dust line. The guide has a Greenhouse page.
@@ -1483,6 +1492,7 @@ are 20, 45, 55, 40, 40, 50 and 50 minutes. Long Nights (about 50 minutes in the 
 its target 70 stands until #86 gives a real time. After phase 1 (2026-10-22) every campaign target is again about 1.4 times the bot's time: First Light 15.5 (20), Morning Bread 32.6 (45), Windy Ridge 39.1 (55), Linen for the Looms 28.2 (40), Tired Soil 28.8 (40), Riverlands 36.8 (50) and Harvest Festival 35.0 (50), so none changed. After phase 2 (2026-10-24), with the authored events and the bot's answers to them (below):
 First Light 15.5 (20), Morning Bread 32.6 (45), Windy Ridge 39.6 (55), Linen for the Looms 29.4 (40), Tired Soil 29.2 (40), Riverlands 36.6 (50) and Harvest Festival 36.9 (50),
 all still about 1.4 times the bot's time, so none changed.)
+Bees in winter (4.4): no bot layout builds a greenhouse, so no bot time or target changed (the seven bot tests pass at their targets); Long Nights stays skipped until 4.6.
 
 ![The level select](images/menu.png)
 

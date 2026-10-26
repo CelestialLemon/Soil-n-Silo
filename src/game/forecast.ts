@@ -17,9 +17,10 @@ import { canFlood, floodsAt, isFlooded } from './flood.ts';
 import { dustComes, dustFor } from './dust.ts';
 import { frostComes, frostHits, inHollow } from './frost.ts';
 import { centreLevel } from './relief.ts';
-import { beesNow, beesOut, heatNeed, insideWarmth, shadeFact, warmthFact, warmthOf } from './warmth.ts';
-import { canGale, SEVERE_GALE, standsGale, turbineShare } from './wind.ts';
+import { beesFly, beesNow, heatNeed, insideWarmth, shadeFact, warmthFact, warmthOf } from './warmth.ts';
+import { canGale, keepingBeesIn, SEVERE_GALE, standsGale, turbineShare } from './wind.ts';
 import { hasStation } from './station.ts';
+import { foragesOn } from './forage.ts';
 import { growsCrops, inMap, type Building, type FieldBuilding, type GameState, type Setting } from './state.ts';
 
 // Forecasts from what the game already knows: what a building in hand would do on a tile (facts about the tile, no advice),
@@ -80,7 +81,9 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         const under = type === 'greenhouse', crop = CROPS[set.crop ?? 'wheat'], soil = soilUnder(s, x, y, 3), { sprinklers, shore, rain, water, share } = waterAt(s, type, x, y);
         const warmthIn = (w: number) => (under ? insideWarmth(crop, w) : w);
         // A hive within reach of a flowering crop adds a good to every harvest.
-        const pollinated = crop.flowers && beesOut(s) && s.buildings.some((b) => b.type === 'hive' && !isFlooded(s, b) && hiveReaches({ type, x, y }, b.x, b.y));
+        // Too cold outside, the bees forage only in a greenhouse that will be working: powered, if its crop needs heat.
+        const forages = !keepingBeesIn(s.scenario, s.time) && (beesFly(warmthOf(s)) || (under && (heatNeed(crop, warmthOf(s)) === 0 || powered(s, type, x, y))));
+        const pollinated = crop.flowers && forages && s.buildings.some((b) => b.type === 'hive' && !isFlooded(s, b) && hiveReaches({ type, x, y }, b.x, b.y));
         // Nothing, while a late frost that lies there takes it.
         const perMin = !under && frostHits(s, set.crop ?? 'wheat', x, y) ? 0 : (crop.yield + (pollinated ? POLLINATION_BONUS : 0)) * 60 * paceOf(water, soil, crop, warmthIn(warmthOf(s))).pace / crop.grow;
         // Sloping tiles under it wear faster (erosion).
@@ -158,12 +161,15 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
       }
       case 'hive': {
         const near = s.buildings.filter((b): b is FieldBuilding => growsCrops(b) && !isFlooded(s, b) && hiveReaches(b, x, y));
-        const flowers = Math.min(HIVE.maxFlowers, near.filter((f) => CROPS[f.crop].flowers).length), out = beesOut(s);
-        facts.push({ label: 'Honey', value: `+${fmt1((out ? flowers : 0) * 60 / HIVE.honeySeconds)}`, sub: 'a minute', tone: flowers && out ? undefined : 'bad' });
+        const flowering = near.filter((f) => CROPS[f.crop].flowers), forage = flowering.filter((f) => foragesOn(s, f));
+        const flowers = Math.min(HIVE.maxFlowers, flowering.length), foraged = Math.min(HIVE.maxFlowers, forage.length);
+        // Too cold outside, the bees forage only in a working greenhouse with a flowering crop.
+        const glass = !beesFly(warmthOf(s)) && forage.length > 0;
+        facts.push({ label: 'Honey', value: `+${fmt1(foraged * 60 / HIVE.honeySeconds)}`, sub: 'a minute', tone: foraged ? undefined : 'bad' });
         facts.push({ label: 'Flowers', value: `${flowers} field${flowers === 1 ? '' : 's'}`, sub: `flowering within ${HIVE.reach} tiles` });
         const bees = beesNow(s);
-        facts.push({ label: 'Bees', value: bees.text.includes('staying') ? 'staying in' : 'flying', sub: `${Math.round(warmthOf(s))}°C`, tone: bees.tone === 'bad' ? 'bad' : undefined });
-        facts.push({ label: 'Pollinates', value: `${out ? near.filter((f) => CROPS[f.crop].flowers).length : 0}`, sub: 'flowering fields' });
+        facts.push(glass ? { label: 'Bees', value: 'in the greenhouse', sub: 'foraging there: too cold outside' } : { label: 'Bees', value: bees.text.includes('staying') ? 'staying in' : 'flying', sub: `${Math.round(warmthOf(s))}°C`, tone: bees.tone === 'bad' ? 'bad' : undefined });
+        facts.push({ label: 'Pollinates', value: `${forage.length}`, sub: 'flowering fields' });
         break;
       }
       case 'solar': {

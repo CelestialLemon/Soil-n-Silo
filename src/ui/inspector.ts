@@ -19,7 +19,8 @@ import { fieldPace, flowersNear } from '../game/sim/buildings.ts';
 import { dustComes, dustNote } from '../game/dust.ts';
 import { hollowNote } from '../game/frost.ts';
 import { pushesAt } from '../game/events.ts';
-import { beesNow, beesOut, henFact, insideFact, insideNow, shadeFact, warmthFact, warmthOf } from '../game/warmth.ts';
+import { foragesOn, hiveBees } from '../game/forage.ts';
+import { henFact, insideFact, insideNow, shadeFact, warmthFact, warmthOf } from '../game/warmth.ts';
 import { runtimeOf } from '../game/runtime.ts';
 import { FAULT_WORDS, stationForecast, stationFault, stationsOf } from '../game/station.ts';
 import { isStop, routeOf, routesAt } from '../game/sim/trucks.ts';
@@ -202,7 +203,7 @@ export class Inspector {
           if (hollowNote(s, b)) stat('Frost hollow', () => hollowNote(s, b) ?? '');
           if (dustComes(s)) stat('Dust storm', () => dustNote(s, b) ?? '');
         }
-        stat('Harvest', () => `${CROPS[b.crop].yield}${CROPS[b.crop].flowers && isPollinated(s, b) && beesOut(s) ? ` + ${POLLINATION_BONUS} (bees)` : ''} ${fieldPace(s, b).pace <= 0 ? ', not growing now' : ` every ${Math.round(CROPS[b.crop].grow / fieldPace(s, b).pace)} s`}`);
+        stat('Harvest', () => `${CROPS[b.crop].yield}${isPollinated(s, b) && foragesOn(s, b) ? ` + ${POLLINATION_BONUS} (bees)` : ''} ${fieldPace(s, b).pace <= 0 ? ', not growing now' : ` every ${Math.round(CROPS[b.crop].grow / fieldPace(s, b).pace)} s`}`);
         stat('Waiting to go', () => `${b.stored} of ${FIELD.store}`);
         stat('Compost', () => `${wantsCompost(s, b) ? 'takes it now' : 'none needed'} · below soil ${FIELD.compostBelow}`);
         break;
@@ -210,7 +211,7 @@ export class Inspector {
       case 'hive':
         stat('Flowering fields', () => `${flowersNear(s, b)} (up to ${HIVE.maxFlowers})`);
         stat('Next honey', () => pct(b.growth)); bar(() => b.growth);
-        stat('Bees', () => beesNow(s).text.replace(/^Bees: /, ''));
+        stat('Bees', () => hiveBees(s, b.id).text.replace(/^Bees: /, ''));
         stat('Honey waiting', () => `${b.stored} of ${HIVE.store}`);
         break;
       case 'silo': {
