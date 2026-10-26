@@ -6,11 +6,10 @@ import { tickFlows } from '../flows.ts';
 import { TERRAIN } from '../map.ts';
 import { networkOf, networks } from '../power.ts';
 import { noteRun } from '../runlog.ts';
-import { isMachine, removeBuilding, tileIndex, touchLayout, type Building, type GameState } from '../state.ts';
+import { growsCrops, isMachine, removeBuilding, tileIndex, touchLayout, type Building, type GameState } from '../state.ts';
 import { daylight, sunAt, windAt } from './clock.ts';
 import { soilHealth } from './soil.ts';
-import { wattsOf } from './layout.ts';
-import { raining } from './weather.ts';
+import { rainWaters, wattsOf } from './layout.ts';
 import { feedNeighbours } from './goods.ts';
 import { shareOf, balancePower, countCharging, runGarages } from './energy.ts';
 import { runMachine, runField, runHive } from './buildings.ts';
@@ -46,16 +45,16 @@ export function tick(s: GameState) {
     // Water on its ground stops a building until it drains (the weather's hold, applyHolds, says so): a field loses its growing crop.
     if (floodHolds(s, b)) {
       b.status = 'idle'; b.need = undefined;
-      if (b.type === 'field') b.growth = 0;
+      if (growsCrops(b)) b.growth = 0;
       continue;
     }
     switch (b.type) {
       case 'depot': break;
       case 'silo': b.status = 'idle'; break;
-      case 'field': runField(s, b, dt); break;
+      case 'field': case 'greenhouse': runField(s, b, dt); break;
       case 'hive': runHive(s, b, dt); break;
       case 'sprinkler': case 'battery': case 'pylon': case 'solar': case 'turbine': case 'wheel': case 'station': {
-        if (b.type === 'sprinkler' && raining(s.scenario, s.time)) { b.status = 'rain'; break; } // the rain waters the fields, connected or not
+        if (b.type === 'sprinkler' && rainWaters(s, b)) { b.status = 'rain'; break; } // the rain waters the open fields it reaches, connected or not (a greenhouse needs the sprinkler)
         const net = BUILDINGS[b.type].grid === 'link' ? null : networkOf(s, b);
         if (BUILDINGS[b.type].grid !== 'link' && !net) { b.status = 'nolink'; break; }
         if (b.type === 'sprinkler' || b.type === 'station') { const sh = shareOf(s, b); b.status = sh <= 0 ? 'power' : sh < 1 ? 'lowpower' : 'ok'; }

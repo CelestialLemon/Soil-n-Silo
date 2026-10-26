@@ -10,7 +10,7 @@ import { runtimeOf } from '../game/runtime.ts';
 import { trucksOn } from '../game/sim/trucks.ts';
 import { routeRate } from '../game/sim/stats.ts';
 import { cargoText, describeTruck, stopProblems, truckProblems } from '../game/sim/describe.ts';
-import { buildingById, type GameState, type Route } from '../game/state.ts';
+import { buildingById, growsCrops, type GameState, type Route } from '../game/state.ts';
 import { fill, h, icon, rebuild, set, setVar } from './dom.ts';
 import { dec, itemName, pct, playTime, plural } from './format.ts';
 import type { GuidePage } from './guide.ts';
@@ -85,7 +85,7 @@ export class RoutesCard {
     if (!show) { this.key = ''; this.updater = null; return; }
     const s = this.host.state(), tool = this.host.tool(), editing = tool.kind === 'route' ? tool.route : null;
     const key = JSON.stringify([runtimeOf(s).routesVersion, s.routes.map((r) => [r.id, routeGoods(s, r), stopProblems(s, r),
-      r.id === editing ? r.stops.map((st) => { const b = buildingById(s, st.building); return b?.type === 'silo' ? Object.keys(b.store) : b?.type === 'field' ? [b.crop, b.harvest] : null; }) : 0]),
+      r.id === editing ? r.stops.map((st) => { const b = buildingById(s, st.building); return b?.type === 'silo' ? Object.keys(b.store) : b && growsCrops(b) ? [b.crop, b.harvest] : null; }) : 0]),
     s.trucks.filter((t) => t.route === null).length, s.buildings.filter((b) => b.type === 'garage').length, this.filter, editing, [...this.allGoods]]);
     if (key !== this.key && !typingIn(this.el)) {
       this.key = key;

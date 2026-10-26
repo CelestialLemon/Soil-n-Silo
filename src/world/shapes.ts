@@ -35,6 +35,16 @@ const B: Partial<Record<BuildingId, Builder>> = {
   field: (k) => {
     for (const x of [-1, 0, 1]) for (const z of [-1, 0, 1]) k.box(x, -0.05, z, 0.98, 0.08, 0.98, 0x8a6a46).box(x, 0.03, z, 0.3, 0.12, 0.3, C.leafLight);
   },
+  // A greenhouse is drawn from its soil and crops under a timber frame (view.ts); a placeholder until it has a glass model (4.5): this is the frame and its look in the build preview.
+  greenhouse: (k) => {
+    for (const x of [-1, 0, 1]) for (const z of [-1, 0, 1]) k.box(x, -0.05, z, 0.98, 0.08, 0.98, 0x8a6a46).box(x, 0.03, z, 0.3, 0.12, 0.3, C.leafLight);
+    for (const x of [-1.46, -0.5, 0.5, 1.46]) for (const z of [-1.46, 1.46]) k.box(x, 0, z, 0.08, 1.1, 0.08, C.timber);
+    for (const z of [-0.5, 0.5]) for (const x of [-1.46, 1.46]) k.box(x, 0, z, 0.08, 1.1, 0.08, C.timber);
+    for (const x of [-1.46, 1.46]) k.box(x, 1.1, 0, 0.08, 0.06, 2.96, C.timber);
+    for (const z of [-1.46, 1.46]) k.box(0, 1.1, z, 2.96, 0.06, 0.08, C.timber);
+    k.box(0, 1.6, 0, 0.08, 0.06, 2.96, C.timber);
+    for (const z of [-1.46, 1.46]) { k.box(-0.73, 1.34, z, 1.5, 0.05, 0.05, C.cream); k.box(0.73, 1.34, z, 1.5, 0.05, 0.05, C.cream); }
+  },
   silo: (k) => {
     k.box(0, 0, 0, 1.9, 0.14, 1.9, C.stoneLight)
       .cyl(-0.35, 0.14, -0.35, 0.5, 1.7, C.ceramic, { seg: 12 })

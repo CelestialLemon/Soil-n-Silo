@@ -19,7 +19,7 @@ import { fieldFertility } from '../game/sim/soil.ts';
 import { recipeOf } from '../game/sim/goods.ts';
 import { historyOf, summarize } from '../game/history.ts';
 import { dayAt } from '../game/sim/clock.ts';
-import type { GameState } from '../game/state.ts';
+import { growsCrops, type GameState } from '../game/state.ts';
 import { fill, h, icon, svg } from './dom.ts';
 import { clock, clockAt, pct, plural } from './format.ts';
 import { HISTORY_WINDOWS } from './historyView.ts';
@@ -90,6 +90,19 @@ const ENTRIES: Record<BuildingId, Entry> = {
       `A beehive within ${HIVE.reach} tiles adds 1 to every harvest of a flowering crop.`,
       'In spring, tomato and sunflower belong on slopes: a late frost settles in hollows and on the low ground, and takes a tender crop there (the placement card says "Frost hollow" where it would).',
       'In a dry summer a dust storm lifts the soil off a field with no tree, sapling or bean field beside it: the same neighbours that hold it against erosion guard it from the wind.',
+    ],
+  },
+  greenhouse: {
+    what: `A field under glass: grows the chosen crop on its ${BUILDINGS.greenhouse.size} × ${BUILDINGS.greenhouse.size} tiles in any season, and costs ${BUILDINGS.greenhouse.cost} credits. It is held warm for free: inside it is at least as warm as its crop needs for full speed (${CROPS.wheat.comfort.low}°C for wheat, beans and flax, ${CROPS.sunflower.comfort.low}°C for sunflower, ${CROPS.tomato.comfort.low}°C for tomato), or the outside warmth when that is warmer, and vented down above its crop's top comfort.`,
+    how: [
+      'Build it on flat ground: it cannot stand on a slope.',
+      `Water it like a field: beside a river or pond, or with a sprinkler within ${POWER.sprinklerReach} tiles of its centre. The rain does not reach it, so a sprinkler near it runs in the rain too.`,
+      'Select it and choose the crop. It shares the field\'s harvests, store, compost, next-door trading and truck stops.',
+    ],
+    tips: [
+      'Sheltered from a late frost, a cold snap, gales and storms, dust storms and heat waves: nothing in it stops, is lost or slows. A flood still reaches it: the growing crop is lost and it starts again once the water drains.',
+      'Snow settles on its roof, and changes nothing. Nothing breaks it: no weather destroys it.',
+      'Its soil wears with each harvest, takes compost and erodes like a field\'s.',
     ],
   },
   sprinkler: {
@@ -234,7 +247,7 @@ const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
 /** The good a building's chain is drawn for: what it makes first. */
 function chainItemOf(id: BuildingId): ItemId | null {
-  if (id === 'field') return 'wheat';
+  if (id === 'field' || id === 'greenhouse') return 'wheat';
   if (id === 'hive') return 'honey';
   return recipesFor(id)[0]?.outputs[0]?.item ?? null;
 }
@@ -293,7 +306,7 @@ const eventText = (linkOf: (label: string, p: GuidePage) => Node, bLinkOf: (id: 
       lead: 'The river spreads over the low ground beside it for a day or two, then drains. It follows heavy rain in spring.',
       does: [
         NODES(`The river rises ${EVENTS.flood.flood?.ordinary ?? 0} level above its surface and spreads over the ground lower than the water, as far as it can get over ground at or below its own height. A hillside or a bank stops it; the water thins by ${FALL} of a level for every tile it runs, so it doesn't drown a wide plain.`),
-        NODES('A ', bLinkOf('field'), ' under water loses its growing crop and starts again once the water drains. What it already holds is kept.'),
+        NODES('A ', bLinkOf('field'), ' or ', bLinkOf('greenhouse'), ' under water loses its growing crop and starts again once the water drains. What it already holds is kept.'),
         NODES('Any other building with a tile under water stops until it drains: nothing is destroyed and its goods are untouched. A flooded ', bLinkOf('pylon'), ', ', bLinkOf('solar'), ' panel or ', bLinkOf('wheel'), ' is out of the network until then.'),
         NODES('Trucks can\'t drive through water: they go round it, or wait until it drains.'),
         NODES(`Ground the water leaves gains ${SILT} fertility in silt, less than a flood costs a field: the floodplain is good land because it floods.`),
@@ -487,8 +500,8 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
       f('Cost', d.category ? String(d.cost) : '—', d.category ? 'credits · full refund' : 'it is the map\'s'),
       f('Power', watts[0], watts[1]),
       f('Size', `${d.size} × ${d.size}`, `tiles${d.tall ? ' · tall' : ''}`),
-      r ? f('Holds', String(INPUT_BATCHES), `batches in, ${OUTPUT_BATCHES} out`) : id === 'silo' ? f('Holds', String(SILO.perGood), 'of each good') : id === 'field' ? f('Holds', String(FIELD.store), 'harvested goods') : f('Holds', '—', 'nothing'),
-      r ? f('Feeds on', String(r.inputs.reduce((n, i) => n + i.n, 0)), r.inputs.map((i) => ('item' in i ? lc(i.item) : i.group)).join(' + ')) : f('Feeds on', id === 'field' ? '1' : '—', id === 'field' ? 'compost, if given' : 'nothing'));
+      r ? f('Holds', String(INPUT_BATCHES), `batches in, ${OUTPUT_BATCHES} out`) : id === 'silo' ? f('Holds', String(SILO.perGood), 'of each good') : id === 'field' || id === 'greenhouse' ? f('Holds', String(FIELD.store), 'harvested goods') : f('Holds', '—', 'nothing'),
+      r ? f('Feeds on', String(r.inputs.reduce((n, i) => n + i.n, 0)), r.inputs.map((i) => ('item' in i ? lc(i.item) : i.group)).join(' + ')) : f('Feeds on', id === 'field' || id === 'greenhouse' ? '1' : '—', id === 'field' || id === 'greenhouse' ? 'compost, if given' : 'nothing'));
   }
 
   /** Every building of this kind in the valley now, with its status and rate, and a way to go to it. */
@@ -496,7 +509,7 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
     const mine = s.buildings.filter((b) => b.type === id);
     // Each building's own good and full-speed rate: a field's current crop, a machine's current recipe.
     const goods = mine.map((b): { item: ItemId; full: number } | null => {
-      if (b.type === 'field') { const c = CROPS[b.crop]; return { item: b.crop, full: (c.yield + (c.flowers && isPollinated(s, b) ? POLLINATION_BONUS : 0)) * paceOf(1, fieldFertility(s, b)).pace * 60 / c.grow }; } // best case now: watered, pollinated if it is
+      if (growsCrops(b)) { const c = CROPS[b.crop]; return { item: b.crop, full: (c.yield + (c.flowers && isPollinated(s, b) ? POLLINATION_BONUS : 0)) * paceOf(1, fieldFertility(s, b)).pace * 60 / c.grow }; } // best case now: watered, pollinated if it is
       const r = recipeOf(b), o = r?.outputs[0];
       return r && o ? { item: o.item, full: o.n * 60 / r.time } : id === 'hive' ? { item: 'honey', full: 0 } : null;
     });
@@ -528,16 +541,16 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
       for (const o of r.outputs) if (takes.has(o.item)) into(r.building).push(lc(o.item));
       for (const ing of r.inputs) for (const i of 'item' in ing ? [ing.item] : GROUPS[ing.group]) if (gives.has(i)) into(r.building).push(lc(i));
     }
-    for (const c of CROP_IDS) if (takes.has(c) && id !== 'field') into('field').push(lc(c));
+    for (const c of CROP_IDS) if (takes.has(c) && id !== 'field' && id !== 'greenhouse') { into('field').push(lc(c)); into('greenhouse').push(lc(c)); }
     if (takes.has('honey') && id !== 'hive') out.set('hive', ['honey']);
-    if (gives.has('compost')) into('field').push('compost');
+    if (gives.has('compost')) { into('field').push('compost'); into('greenhouse').push('compost'); }
     if (!out.size) return null;
     return h('div', null, h('div', { class: 'cd-label' }, 'Works with'),
       h('div', { class: 'chips' }, ...[...out].map(([b, goods]) => h('button', { class: 'cd-chip', onclick: () => go({ kind: 'building', id: b }) }, icon(b, 24), `${BUILDINGS[b].name} · ${[...new Set(goods)].join(', ')}`))));
   }
 
-  const takesOf = (id: BuildingId): ItemId[] => (id === 'field' ? ['compost'] : [...new Set(recipesFor(id).flatMap((r) => r.inputs.flatMap((i) => ('item' in i ? [i.item] : [...GROUPS[i.group]]))))]);
-  const givesOf = (id: BuildingId): ItemId[] => (id === 'field' ? [...CROP_IDS] : id === 'hive' ? ['honey'] : [...new Set(recipesFor(id).flatMap((r) => r.outputs.map((o) => o.item)))]);
+  const takesOf = (id: BuildingId): ItemId[] => (id === 'field' || id === 'greenhouse' ? ['compost'] : [...new Set(recipesFor(id).flatMap((r) => r.inputs.flatMap((i) => ('item' in i ? [i.item] : [...GROUPS[i.group]]))))]);
+  const givesOf = (id: BuildingId): ItemId[] => (id === 'field' || id === 'greenhouse' ? [...CROP_IDS] : id === 'hive' ? ['honey'] : [...new Set(recipesFor(id).flatMap((r) => r.outputs.map((o) => o.item)))]);
 
   /** Where a good comes from: the chain back to the fields, laid out right to left, with the time each step takes. */
   function chainView(item: ItemId) {
@@ -597,6 +610,11 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
           ['Soil 0 → 100', `×${FIELD.poorSoil} → ×${FIELD.richSoil} speed`], ['Holds', `${FIELD.store} harvested goods`],
           ['Compost', `taken only below soil ${FIELD.compostBelow}: +${FIELD.compostGain} on every tile at once`]);
         break;
+      case 'greenhouse':
+        rows.push(['Grow times are for', 'a watered greenhouse at soil 60'], ['Inside', 'the crop\'s lowest full-speed warmth, or the outside if warmer; vented above its highest'],
+          ['Wheat, beans, flax', `${CROPS.wheat.comfort.low}°C`], ['Sunflower', `${CROPS.sunflower.comfort.low}°C`], ['Tomato', `${CROPS.tomato.comfort.low}°C`],
+          ['Holds', `${FIELD.store} harvested goods`], ['Compost', `taken only below soil ${FIELD.compostBelow}: +${FIELD.compostGain} on every tile at once`]);
+        break;
       case 'sprinkler': rows.push(['Reach', `fields whose centre is within ${POWER.sprinklerReach} tiles`], ['Near water', `within ${POWER.waterNear} tiles`]); break;
       case 'hive':
         rows.push(['Reach', `${HIVE.reach} tiles`], ['Honey', `one every ${HIVE.honeySeconds} s with 1 flowering field, ${HIVE.honeySeconds / HIVE.maxFlowers} s with ${HIVE.maxFlowers}`],
@@ -627,14 +645,14 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
 
   function makers(item: ItemId): BuildingId[] {
     const out = new Set<BuildingId>(RECIPES.filter((r) => r.outputs.some((o) => o.item === item)).map((r) => r.building));
-    if ((CROP_IDS as readonly string[]).includes(item)) out.add('field');
+    if ((CROP_IDS as readonly string[]).includes(item)) { out.add('field'); out.add('greenhouse'); }
     if (item === 'honey') out.add('hive');
     return [...out];
   }
   function users(item: ItemId): BuildingId[] {
     const inGroup = (g: keyof typeof GROUPS) => (GROUPS[g] as readonly ItemId[]).includes(item);
     const out = new Set<BuildingId>(RECIPES.filter((r) => r.inputs.some((i) => ('item' in i ? i.item === item : inGroup(i.group)))).map((r) => r.building));
-    if (item === 'compost') out.add('field');
+    if (item === 'compost') { out.add('field'); out.add('greenhouse'); }
     return [...out];
   }
   const joined = (ids: BuildingId[]) => (ids.length ? ids.flatMap((id, i) => [i ? ', ' : '', bLink(id)]) : ['—']);

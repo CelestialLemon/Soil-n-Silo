@@ -6,7 +6,7 @@ import { networkOf } from '../power.ts';
 import { accessTiles, distanceTo, isOpen, legLength, nearestOpen, pathTo } from '../roads.ts';
 import { centreLevel } from '../relief.ts';
 import {
-  buildingById, layoutOf, routeById, tileIndex, type Building, type GameState, type Route, type Stop, type Truck,
+  buildingById, growsCrops, layoutOf, routeById, tileIndex, type Building, type GameState, type Route, type Stop, type Truck,
 } from '../state.ts';
 import { handlesGoods } from './layout.ts';
 import { wantsCompost, compostWanted, accept, waiting, take, takesGoods, tradesNextDoor } from './goods.ts';
@@ -120,7 +120,7 @@ function compostRoom(s: GameState, r: Route): number {
   for (const st of r.stops) {
     const b = buildingById(s, st.building);
     if (!b || !st.drop.includes('compost')) continue;
-    if (b.type !== 'field') { if (takesGoods(b).includes('compost')) return Infinity; continue; }
+    if (!growsCrops(b)) { if (takesGoods(b).includes('compost')) return Infinity; continue; }
     // A field the route stops at twice still takes its compost once.
     if (!fields.has(b.id)) room += compostWanted(s, b);
     fields.add(b.id);
@@ -137,7 +137,7 @@ const mayPick = (s: GameState, r: Route, item: ItemId) => item !== 'compost' || 
  * is good: waiting won't make it take any), and is full or has nothing it may pick up there.
  */
 const doneAt = (s: GameState, t: Truck, st: Stop, b: Building, r: Route) =>
-  !t.cargo.some((i) => st.drop.includes(i) && !(b.type === 'field' && i === 'compost' && !wantsCompost(s, b)))
+  !t.cargo.some((i) => st.drop.includes(i) && !(growsCrops(b) && i === 'compost' && !wantsCompost(s, b)))
   && (t.cargo.length >= TRUCK.cargo || !st.pick.some((i) => mayPick(s, r, i)));
 
 /** Moves one good at a stop: drops one the building takes, else picks up the next of the stop's goods there is. */

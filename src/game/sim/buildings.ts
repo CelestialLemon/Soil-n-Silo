@@ -1,7 +1,7 @@
 import { BUILDINGS, CROPS, FIELD, HIVE, ITEMS, POLLINATION_BONUS } from '../data.ts';
 import { coopPace, erosionAt, paceOf, touchesWater } from '../rules.ts';
 import { frostTakes } from '../frost.ts';
-import { beesFly, beesOut, frostKills, warmthOf } from '../warmth.ts';
+import { beesFly, beesOut, frostKills, insideWarmth, warmthOf } from '../warmth.ts';
 import { keepingBeesIn } from '../wind.ts';
 import { tileIndex, type FieldBuilding, type GameState, type HiveBuilding, type MachineBuilding } from '../state.ts';
 import { derived, isGuarded, isPollinated, sprinklersOf } from './layout.ts';
@@ -13,11 +13,13 @@ import { raining } from './weather.ts';
 // Buildings: one step of each machine, field and hive.
 
 /** Growth per second of a field as a multiple of its crop's normal pace, and the parts it's made of. */
-export function fieldPace(s: GameState, f: FieldBuilding, warmth = warmthOf(s)) {
-  const wet = touchesWater(s, f.x, f.y) || raining(s.scenario, s.time) ? 1 : sprinklersOf(s, f).reduce((m, sp) => Math.max(m, shareOf(s, sp)), 0);
+export function fieldPace(s: GameState, f: FieldBuilding, outside = warmthOf(s)) {
+  // A greenhouse grows in its own warmth, and the rain does not reach it.
+  const warmth = f.type === 'greenhouse' ? insideWarmth(CROPS[f.crop], outside) : outside;
+  const wet = touchesWater(s, f.x, f.y) || (f.type === 'field' && raining(s.scenario, s.time)) ? 1 : sprinklersOf(s, f).reduce((m, sp) => Math.max(m, shareOf(s, sp)), 0);
   const p = paceOf(wet, fieldFertility(s, f), CROPS[f.crop], warmth);
-  // A late frost on the field takes the crop as fast as it grows: no pace at all while it bites.
-  return { pace: frostTakes(s, f) ? 0 : p.pace, water: wet, soil: p.bySoil, warmth, byWarmth: p.byWarmth };
+  // A late frost on the field takes the crop as fast as it grows: no pace at all while it bites (it does not reach a greenhouse).
+  return { pace: f.type === 'field' && frostTakes(s, f) ? 0 : p.pace, water: wet, soil: p.bySoil, warmth, byWarmth: p.byWarmth };
 }
 
 export function runMachine(s: GameState, b: MachineBuilding, dt: number) {
@@ -48,7 +50,7 @@ export function runField(s: GameState, f: FieldBuilding, dt: number) {
   const bonus = crop.flowers && isPollinated(s, f) && beesOut(s) ? POLLINATION_BONUS : 0;
   // Frost takes a tender crop still growing in the open; the field starts again. What it holds already is untouched.
   // A late frost does the same to the fields it lies on (the status is then set to the weather's, see hold.ts).
-  if (frostKills(crop, warmthOf(s)) || frostTakes(s, f)) { f.growth = 0; f.status = 'frost'; f.need = undefined; return; }
+  if (f.type === 'field' && (frostKills(crop, warmthOf(s)) || frostTakes(s, f))) { f.growth = 0; f.status = 'frost'; f.need = undefined; return; }
   // A harvest of the old crop waits to go before the new one can join it.
   const old = f.stored > 0 && (f.harvest ?? f.crop) !== f.crop;
   if (old || f.stored + crop.yield + bonus > FIELD.store) { f.status = 'blocked'; f.need = CROPS[f.harvest ?? f.crop].name.toLowerCase(); return; }

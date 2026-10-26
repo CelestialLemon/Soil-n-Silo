@@ -5,7 +5,7 @@ import {
 import { noteFlow } from '../flows.ts';
 import { noteMade, noteTaken } from '../history.ts';
 import { noteRunUse } from '../runlog.ts';
-import { applySetting, blankBuilding, isMachine, type Building, type Setting, type GameState, type MachineBuilding } from '../state.ts';
+import { applySetting, blankBuilding, growsCrops, isMachine, type Building, type Setting, type GameState, type MachineBuilding } from '../state.ts';
 import { derived, besides, handlesGoods, handsTo } from './layout.ts';
 import { fieldFertility, changeSoil } from './soil.ts';
 import { runtimeOf } from '../runtime.ts';
@@ -64,7 +64,7 @@ export function accept(s: GameState, b: Building, item: ItemId): boolean {
     if ((b.store[item] ?? 0) >= SILO.perGood) return false;
     b.store[item] = (b.store[item] ?? 0) + 1; return true;
   }
-  if (b.type === 'field') {
+  if (growsCrops(b)) {
     // A field holds no compost: it takes one only while its soil is poor, and spreads it at once.
     if (item !== 'compost' || !wantsCompost(s, b)) return false;
     changeSoil(s, b, FIELD.compostGain); used(s, 'compost'); return true;
@@ -98,14 +98,14 @@ export function made(s: GameState, b: Building, item: ItemId, n: number) {
 
 /** How many of `item` a building has waiting for a truck: a harvest, products, or a silo's stock. */
 export function waiting(b: Building, item: ItemId) {
-  if (b.type === 'field') return (b.harvest ?? b.crop) === item ? b.stored : 0;
+  if (growsCrops(b)) return (b.harvest ?? b.crop) === item ? b.stored : 0;
   if (b.type === 'hive') return item === 'honey' ? b.stored : 0;
   if (b.type === 'silo') return b.store[item] ?? 0;
   return isMachine(b) ? b.outputs[item] ?? 0 : 0;
 }
 export function take(s: GameState, b: Building, item: ItemId) {
   noteTaken(s, b, item);
-  if (b.type === 'field') { b.stored--; if (!b.stored) b.harvest = b.crop; return; }
+  if (growsCrops(b)) { b.stored--; if (!b.stored) b.harvest = b.crop; return; }
   if (b.type === 'hive') { b.stored--; return; }
   const from = b.type === 'silo' ? b.store : isMachine(b) ? b.outputs : null;
   if (!from) return;
@@ -115,7 +115,7 @@ export function take(s: GameState, b: Building, item: ItemId) {
 
 /** The goods a building can take now: its recipe's inputs (any member of a group), or compost for a field. */
 export function inputGoods(b: Building): ItemId[] {
-  if (b.type === 'field') return ['compost'];
+  if (growsCrops(b)) return ['compost'];
   return isMachine(b) ? recipeOf(b).inputs.flatMap((i) => [...members(i)]) : [];
 }
 
@@ -124,7 +124,7 @@ export function inputGoods(b: Building): ItemId[] {
 /** Whether a building hands its goods straight to buildings next door: it grows or makes them. */
 const producer = handlesGoods;
 /** Whether it takes goods straight from buildings next door: a machine its inputs, a field compost. */
-const consumer = (b: Building) => b.type === 'field' || isMachine(b);
+const consumer = (b: Building) => growsCrops(b) || isMachine(b);
 
 /** The goods `from` hands straight to `to`, a building next door, with the crop and recipe each has now. */
 export function passes(from: Building, to: Building): ItemId[] {
@@ -191,7 +191,7 @@ export function feedNeighbours(s: GameState) {
 /** Every good a building could ever take from a truck (for a stop's defaults and choices). */
 export function takesGoods(b: Building): ItemId[] {
   if (BUILDINGS[b.type].stores) return [...ITEM_IDS];
-  if (b.type === 'field') return ['compost'];
+  if (growsCrops(b)) return ['compost'];
   return [...new Set(recipesFor(b.type).flatMap((r) => r.inputs.flatMap((i) => [...members(i)])))];
 }
 
@@ -202,7 +202,7 @@ export const givesNow = (b: Building) => (isMachine(b) ? [...new Set([...recipeO
 /** Every good a building could ever give a truck: a field's crop (and a waiting harvest of another), products, stock. */
 export function givesGoods(b: Building): ItemId[] {
   if (b.type === 'silo') return [...ITEM_IDS];
-  if (b.type === 'field') return [...new Set([b.crop, b.harvest ?? b.crop])];
+  if (growsCrops(b)) return [...new Set([b.crop, b.harvest ?? b.crop])];
   if (b.type === 'hive') return ['honey'];
   return [...new Set(recipesFor(b.type).flatMap((r) => r.outputs.map((o) => o.item)))];
 }

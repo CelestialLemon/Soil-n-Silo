@@ -75,7 +75,7 @@ interface BuildingBase {
 }
 
 export interface FieldBuilding extends BuildingBase {
-  type: 'field';
+  type: 'field' | 'greenhouse';
   crop: CropId;
   /** The crop the stored harvest is (it may differ from `crop` just after the crop was changed). */
   harvest?: CropId;
@@ -117,14 +117,17 @@ export interface SaplingBuilding extends BuildingBase {
 
 /** A building with no state of its own. */
 export interface PlainBuilding extends BuildingBase {
-  type: Exclude<BuildingId, MachineId | 'field' | 'hive' | 'battery' | 'silo' | 'sapling'>;
+  type: Exclude<BuildingId, MachineId | 'field' | 'greenhouse' | 'hive' | 'battery' | 'silo' | 'sapling'>;
 }
 
 export type Building = FieldBuilding | HiveBuilding | MachineBuilding | BatteryBuilding | SiloBuilding | SaplingBuilding | PlainBuilding;
 
 /** The shape of the building of a type (or of a union of types). */
 export type BuildingOf<K extends BuildingId> =
-  K extends MachineId ? MachineBuilding : K extends PlainBuilding['type'] ? PlainBuilding : Extract<Building, { type: K }>;
+  K extends MachineId ? MachineBuilding : K extends 'field' | 'greenhouse' ? FieldBuilding : K extends PlainBuilding['type'] ? PlainBuilding : Extract<Building, { type: K }>;
+
+/** Whether a building grows crops like a field: an open field or a greenhouse. A rule of the open field alone tests `type === 'field'`. */
+export const growsCrops = (b: { type: BuildingId }): b is FieldBuilding => b.type === 'field' || b.type === 'greenhouse';
 
 /** Whether a building works a recipe (the data says which types do). */
 export const isMachine = (b: Building): b is MachineBuilding => isMachineId(b.type);
@@ -145,7 +148,7 @@ export interface Stats {
 export const STAT_BUCKET = 10, STAT_BUCKETS = 7;
 
 export interface GameState {
-  version: 16;
+  version: 17;
   scenario: Scenario;
   map: MapData;
   /**
@@ -186,7 +189,7 @@ export interface GameState {
 export function newGame(sc: Scenario): GameState {
   const map = generateMap(sc);
   const s: GameState = {
-    version: 16, scenario: { ...sc, events: sc.events.map((e) => ({ ...e })) }, map, worked: map.terrain.map(() => 0), soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
+    version: 17, scenario: { ...sc, events: sc.events.map((e) => ({ ...e })) }, map, worked: map.terrain.map(() => 0), soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
     buildings: [], routes: [], trucks: [], nextId: 1, credits: sc.credits, time: 0, carry: 0, delivered: {}, earned: 0,
     stats: { since: 0, made: [{}], delivered: {} }, reached: sc.goals.map(() => false), completedAt: null, made: {}, run: newRunLog(),
     chosen: { crop: 'wheat', recipes: {} }, forecastIssued: null,
@@ -202,7 +205,7 @@ export const makeBuilding = (s: GameState, type: BuildingId, x: number, y: numbe
 export function blankBuilding(id: number, type: BuildingId, x: number, y: number, rot: Dir): Building {
   const base = { id, x, y, rot, status: 'idle' as Status };
   switch (type) {
-    case 'field': return { ...base, type, crop: 'wheat', growth: 0, stored: 0 };
+    case 'field': case 'greenhouse': return { ...base, type, crop: 'wheat', growth: 0, stored: 0 };
     case 'hive': return { ...base, type, growth: 0, stored: 0 };
     case 'battery': return { ...base, type, charge: 0 };
     case 'silo': return { ...base, type, store: {} };
@@ -217,7 +220,7 @@ export interface Setting { crop?: CropId; recipe?: string }
 
 /** Gives a new building what the player chose for it (a setting for another kind of building is a bug, checked by `place`). */
 export function applySetting(b: Building, set: Setting): Building {
-  if (b.type === 'field' && set.crop) b.crop = set.crop;
+  if (growsCrops(b) && set.crop) b.crop = set.crop;
   else if (isMachine(b) && set.recipe) b.recipe = set.recipe;
   return b;
 }

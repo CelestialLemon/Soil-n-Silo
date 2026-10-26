@@ -1,7 +1,7 @@
 import { BUILDINGS, CROPS, HIVE, ITEMS, TRUCK, type ItemId } from '../data.ts';
 import { networkOf, networks } from '../power.ts';
 import { accessTiles, distanceTo, legLength } from '../roads.ts';
-import { buildingById, isMachine, type Building, type GameState, type Route, type Truck } from '../state.ts';
+import { buildingById, growsCrops, isMachine, type Building, type GameState, type Route, type Truck } from '../state.ts';
 import { members, recipeOf, missing, outputsFit, wantsCompost, takesGoods, takesNow, givesNow, passes, neighboursOf, type Link } from './goods.ts';
 import { shareOf } from './energy.ts';
 import { exposureOf, handsTo } from './layout.ts';
@@ -34,7 +34,7 @@ export function describeLinks(links: { from: Link[]; to: Link[] }): string[] {
 
 /** The good a building can't get rid of, if its outputs are full. */
 export function blockedGood(b: Building): ItemId | null {
-  if (b.type === 'field') return b.stored ? b.harvest ?? b.crop : null;
+  if (growsCrops(b)) return b.stored ? b.harvest ?? b.crop : null;
   if (b.type === 'hive') return 'honey';
   return isMachine(b) ? outputsFit(b, recipeOf(b))?.item ?? null : null;
 }
@@ -48,11 +48,11 @@ export function served(s: GameState, b: Building, item: ItemId, how: 'pick' | 'd
 
 /** Whether anything would take a composter's compost now: a field wanting it (next door, or at a stop of a route that picks it up there), or a depot or silo drop. */
 function compostWelcome(s: GameState, b: Building): boolean {
-  if (neighboursOf(s, b).some((n) => n.type === 'field' && handsTo(s, b, n) && wantsCompost(s, n))) return true;
+  if (neighboursOf(s, b).some((n) => growsCrops(n) && handsTo(s, b, n) && wantsCompost(s, n))) return true;
   return s.routes.some((r) => r.stops.some((st) => st.building === b.id && st.pick.includes('compost'))
     && r.stops.some((st) => {
       const d = buildingById(s, st.building);
-      return !!d && st.drop.includes('compost') && (d.type === 'field' ? wantsCompost(s, d) : takesGoods(d).includes('compost'));
+      return !!d && st.drop.includes('compost') && (growsCrops(d) ? wantsCompost(s, d) : takesGoods(d).includes('compost'));
     }));
 }
 
@@ -69,7 +69,7 @@ export function truckProblems(s: GameState, t: Truck): string[] {
   // Full, with nothing a stop takes now: compost for fields whose soil is good. It can pick nothing up, so it may never empty.
   else if (r && t.cargo.length >= TRUCK.cargo && !t.cargo.some((i) => r.stops.some((st) => {
     const b = buildingById(s, st.building);
-    return b && st.drop.includes(i) && takesNow(b).includes(i) && !(b.type === 'field' && !wantsCompost(s, b));
+    return b && st.drop.includes(i) && takesNow(b).includes(i) && !(growsCrops(b) && !wantsCompost(s, b));
   }))) out.push('It is full of compost none of its fields takes now (their soil is good), so it can pick nothing up.');
   return out;
 }
@@ -155,9 +155,9 @@ function describeHold(s: GameState, b: Building): string {
         return p.warmth < 0 ? `Hens laying at about ${pace}% speed: ${cause} (${Math.round(warmthOf(s))}°C)` : `Laying at about ${pace}% of the pace: ${cause} unsettles the hens`;
       }
       return `${henFact(s.scenario, warmthOf(s), coopShade(s, b.x, b.y), p.hens).text} · ${cause} adds ${Math.round(p.warmth)}°C`;
-    case 'field':
+    case 'field': case 'greenhouse':
       if (hold.effect === 'eroded') return `Losing soil to ${cause}: no tree, sapling or bean field beside it breaks the wind. Fertility ${Math.round(fieldFertility(s, b))}`;
-      if (hold.effect === 'lost') return `The growing ${CROPS[b.crop].name.toLowerCase()} is lost to ${cause}: the field starts again when it has passed`;
+      if (hold.effect === 'lost') return `The growing ${CROPS[b.crop].name.toLowerCase()} is lost to ${cause}: the ${BUILDINGS[b.type].name.toLowerCase()} starts again when it has passed`;
       return `Growing ${CROPS[b.crop].name.toLowerCase()} slowly: ${cause} adds ${Math.round(p.warmth)}°C${fieldPace(s, b).water < 1 ? ', and it has no water' : ''}`;
     default: return `${hold.effect[0].toUpperCase()}${hold.effect.slice(1)} by ${cause}`;
   }
@@ -167,7 +167,7 @@ function describeHold(s: GameState, b: Building): string {
 export function describeStatus(s: GameState, b: Building): string {
   const def = BUILDINGS[b.type];
   // Water on its ground (said at once, though its status is the last step's: the water may have just come, or a bank gone).
-  if (floodHolds(s, b)) return b.type === 'field' ? `Under water: the growing ${CROPS[b.crop].name.toLowerCase()} is lost, the field starts again once it drains` : b.type === 'station' ? 'Under water: stopped until it drains. The forecast keeps what it last said' : 'Under water: stopped until it drains. Nothing is lost';
+  if (floodHolds(s, b)) return growsCrops(b) ? `Under water: the growing ${CROPS[b.crop].name.toLowerCase()} is lost, the ${def.name.toLowerCase()} starts again once it drains` : b.type === 'station' ? 'Under water: stopped until it drains. The forecast keeps what it last said' : 'Under water: stopped until it drains. Nothing is lost';
   switch (b.status) {
     case 'input': {
       const lack = isMachine(b) ? missing(b, recipeOf(b)) : null;
@@ -195,14 +195,14 @@ export function describeStatus(s: GameState, b: Building): string {
       if (b.type === 'garage') { const n = s.trucks.filter((t) => t.garage === b.id).length; return n ? `${n} truck${n > 1 ? 's' : ''}, none charging` : 'No trucks yet: buy one'; }
       return 'Idle';
     case 'rain': return 'Resting in rain: the rain waters the fields, so it draws no power';
-    case 'dry': return b.type === 'field' ? `Growing ${CROPS[b.crop].name.toLowerCase()} slowly: no water` : def.name;
+    case 'dry': return growsCrops(b) ? `Growing ${CROPS[b.crop].name.toLowerCase()} slowly: no water` : def.name;
     case 'cold':
       if (b.type === 'hive') return beesFact(warmthOf(s)).text;
-      return b.type === 'field' ? `Not growing ${CROPS[b.crop].name.toLowerCase()}: too cold for it` : def.name;
-    case 'frost': return b.type === 'field' ? `Frost: the growing ${CROPS[b.crop].name.toLowerCase()} is lost, the field starts again` : def.name;
+      return growsCrops(b) ? `Not growing ${CROPS[b.crop].name.toLowerCase()}: too cold for it` : def.name;
+    case 'frost': return growsCrops(b) ? `Frost: the growing ${CROPS[b.crop].name.toLowerCase()} is lost, the field starts again` : def.name;
     case 'weather': return describeHold(s, b);
     case 'ok':
-      if (b.type === 'field') return `Growing ${CROPS[b.crop].name.toLowerCase()}`;
+      if (growsCrops(b)) return `Growing ${CROPS[b.crop].name.toLowerCase()}`;
       if (b.type === 'garage') {
         const mine = s.trucks.filter((t) => t.garage === b.id), k = mine.filter((t) => t.phase === 'parked' || t.phase === 'charge').length;
         return `Charging ${k} of ${mine.length} truck${mine.length > 1 ? 's' : ''}`;

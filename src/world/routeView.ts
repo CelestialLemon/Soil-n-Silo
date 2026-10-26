@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { PixelObject, PixelRenderer } from 'pixel3d-renderer';
 import { legPath } from '../game/roads.ts';
-import { buildingById, layoutOf, sizeOf, type GameState, type Route } from '../game/state.ts';
+import { buildingById, growsCrops, layoutOf, sizeOf, type GameState, type Route } from '../game/state.ts';
 import { standY, type Lie } from './ground.ts';
 import type { Models } from './models.ts';
 import { ROUTE_COLOURS } from './shapes.ts';
@@ -72,7 +72,7 @@ export class RouteView {
         const b = buildingById(s, id);
         if (!b) continue;
         const n = sizeOf(b), h = this.m.buildings[b.type].height;
-        this.shownLabels.push({ x: b.x + n / 2, y: standY(this.lie, s.map, n, b.x, b.y) + (b.type === 'field' ? 0.9 : h) + 0.9, z: b.y + n / 2, colour: ROUTE_COLOURS[c], text: nums.join(' · ') });
+        this.shownLabels.push({ x: b.x + n / 2, y: standY(this.lie, s.map, n, b.x, b.y) + (growsCrops(b) ? 0.9 : h) + 0.9, z: b.y + n / 2, colour: ROUTE_COLOURS[c], text: nums.join(' · ') });
       }
     }
   }

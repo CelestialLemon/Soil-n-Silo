@@ -1,8 +1,9 @@
 import { BUILDINGS, type BuildingId } from '../data.ts';
 import { exposureAt, guardedAt, hiveReaches, meets, sprinklerWaters, sprinklerWatts, wheelSite } from '../rules.ts';
-import { buildingAt, isMachine, layoutOf, tileIndex, type Building, type FieldBuilding, type GameState } from '../state.ts';
+import { buildingAt, growsCrops, isMachine, layoutOf, tileIndex, type Building, type FieldBuilding, type GameState } from '../state.ts';
 import { isFlooded } from '../flood.ts';
 import { runtimeOf } from '../runtime.ts';
+import { raining } from './weather.ts';
 
 // Derived lookups, rebuilt when the layout changes: what stands beside, waters or shades each building.
 
@@ -24,6 +25,8 @@ export interface Derived {
   guarded: Set<number>;
   /** Tiles under a field (the rest of the ground rests). */
   fielded: Set<number>;
+  /** The sprinklers that water a greenhouse (the rain does not do their work). */
+  indoors: Set<number>;
   /** The buildings sharing an edge with each building. */
   neighbours: Map<number, Building[]>;
   /** The neighbours each building can hand goods to (the ground joined between them, not a cliff). */
@@ -35,8 +38,8 @@ export function derived(s: GameState): Derived {
   const rt = runtimeOf(s);
   let d = rt.derived;
   if (d && d.layout === layout) return d;
-  d = { layout, sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), watts: new Map(), runs: new Set(), guarded: new Set(), fielded: new Set(), neighbours: new Map(), joined: new Map() };
-  const fields = s.buildings.filter((b): b is FieldBuilding => b.type === 'field');
+  d = { layout, sprinklers: new Map(), pollinated: new Set(), flowers: new Map(), exposure: new Map(), watts: new Map(), runs: new Set(), guarded: new Set(), fielded: new Set(), indoors: new Set(), neighbours: new Map(), joined: new Map() };
+  const fields = s.buildings.filter(growsCrops);
   // Under flood water a hive pollinates nothing, a sprinkler waters nothing, and a field's flowers feed no hive.
   const hives = s.buildings.filter((b) => b.type === 'hive');
   const sprinklers = s.buildings.filter((b) => b.type === 'sprinkler' && !isFlooded(s, b));
@@ -44,7 +47,9 @@ export function derived(s: GameState): Derived {
   for (const f of fields) {
     for (let y = f.y; y < f.y + 3; y++) for (let x = f.x; x < f.x + 3; x++) d.fielded.add(tileIndex(s, x, y));
     const wet = isFlooded(s, f);
-    d.sprinklers.set(f.id, wet ? [] : sprinklers.filter((sp) => sprinklerWaters(sp.x, sp.y, f)));
+    const watering = wet ? [] : sprinklers.filter((sp) => sprinklerWaters(sp.x, sp.y, f));
+    d.sprinklers.set(f.id, watering);
+    if (f.type === 'greenhouse') for (const sp of watering) d.indoors.add(sp.id);
     if (!wet && dryHives.some((h) => hiveReaches(f, h.x, h.y))) d.pollinated.add(f.id);
     if (guardedAt(s, f.x, f.y)) d.guarded.add(f.id);
   }
@@ -82,6 +87,12 @@ export function besides(s: GameState, b: { type: BuildingId; x: number; y: numbe
 
 /** Whether a building trades goods with trucks: it grows, makes or uses goods. */
 export const handlesGoods = (b: Building) => !!BUILDINGS[b.type].harvests || isMachine(b);
+
+/** Whether the rain does a sprinkler's work now: it is raining and the sprinkler waters no greenhouse (the rain doesn't reach one). */
+export const rainWaters = (s: GameState, sp: Building) => raining(s.scenario, s.time) && !watersGreenhouse(s, sp);
+
+/** Whether a sprinkler waters a greenhouse (so it runs in the rain). */
+export const watersGreenhouse = (s: GameState, sp: Building) => derived(s).indoors.has(sp.id);
 
 export const sprinklersOf = (s: GameState, b: Building) => derived(s).sprinklers.get(b.id) ?? [];
 export const isPollinated = (s: GameState, b: Building) => derived(s).pollinated.has(b.id);
