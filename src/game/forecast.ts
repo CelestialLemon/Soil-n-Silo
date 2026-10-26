@@ -57,7 +57,7 @@ function soilUnder(s: GameState, x: number, y: number, n: number) {
 function waterAt(s: GameState, type: 'field' | 'greenhouse', x: number, y: number) {
   const sp = s.buildings.filter((b) => b.type === 'sprinkler' && !isFlooded(s, b) && sprinklerWaters(b.x, b.y, { type, x, y }));
   // A greenhouse in the rain wakes the sprinklers that rest in it: they get the share they would have with all of them running.
-  const waking = type === 'greenhouse' ? sharesIfRunning(s, sp.filter((b) => rainWaters(s, b))) : new Map<number, number>();
+  const resting = type === 'greenhouse' ? sp.filter((b) => rainWaters(s, b)) : [], waking = resting.length ? sharesIfRunning(s, sp, resting) : new Map<number, number>();
   const shore = touchesWater(s, x, y), share = sp.reduce((m, b) => Math.max(m, waking.get(b.id) ?? shareOf(s, b)), 0), rains = type === 'field' && raining(s.scenario, s.time);
   // Rain waters every field while it lasts; a sprinkler gives its share of power as it is now.
   return { sprinklers: sp.length, shore, rain: !shore && rains, water: shore || rains ? 1 : share, share };

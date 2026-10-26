@@ -22,12 +22,12 @@ export function shareOf(s: GameState, b: Building) {
 /**
  * The share of its power each of the sprinklers resting in the rain would get if they all ran (a greenhouse built in their reach
  * wakes them: they want their watts then), from their networks' last step: what a network makes plus what its batteries could give,
- * over what it wants with all of them. Keyed by sprinkler id.
+ * over what it wants with all of them. Every sprinkler on a network `resting` wakes on shares with them (`sprinklers` are those that reach it, running or not). Keyed by sprinkler id.
  */
-export function sharesIfRunning(s: GameState, resting: readonly Building[]): Map<number, number> {
+export function sharesIfRunning(s: GameState, sprinklers: readonly Building[], resting: readonly Building[]): Map<number, number> {
   const out = new Map<number, number>(), added = new Map<Network, number>();
   for (const b of resting) { const net = networkOf(s, b); if (net) added.set(net, (added.get(net) ?? 0) + wattsOf(s, b)); }
-  for (const b of resting) {
+  for (const b of sprinklers) {
     const net = networkOf(s, b);
     if (!net) { out.set(b.id, 0); continue; }
     const wanted = net.wanted + (added.get(net) ?? 0);
