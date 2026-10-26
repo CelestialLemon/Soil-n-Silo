@@ -128,6 +128,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
       `Place it within ${HIVE.reach} tiles of flowering fields: up to ${HIVE.maxFlowers} of them count. The Bees overlay shows its range.`,
       'Build it beside a bakery making honey cake, or make it a stop on a route, so trucks pick up the honey.',
       `The bees stay in below ${ANIMALS.beesFly}°C: no honey and no pollination, so not in winter or on a cold spring morning. They stay in while a gale or a tropical storm blows too.`,
+      'In the cold they still forage in a greenhouse within reach that is working (powered, at its crop\'s warmth) and grows a flowering crop (beans, tomato, sunflower or flax), however cool it is under the glass. They make honey on it and pollinate it, but leave the open fields alone until the outside warms. A greenhouse cooling without power stops counting.',
     ],
   },
   composter: {
