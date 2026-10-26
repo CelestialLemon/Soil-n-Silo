@@ -5,8 +5,9 @@ import { place, remove } from '../src/game/build.ts';
 import { DAY_SECONDS, POWER, type BuildingId, type CropId } from '../src/game/data.ts';
 import { endOf, eventOn, timeOf, type WeatherEvent } from '../src/game/events.ts';
 import { usualOf } from '../src/game/expected.ts';
-import { NIGHT_LENSES, placement, tonight } from '../src/game/forecast.ts';
+import { heatingAhead, NIGHT_LENSES, placement, tonight } from '../src/game/forecast.ts';
 import { forecastAt, issueTimeOf, type Forecast } from '../src/game/outlook.ts';
+import { CROPS } from '../src/game/data.ts';
 import { CAMPAIGN, randomScenario, SANDBOX, type Scenario } from '../src/game/scenarios.ts';
 import { climateOf } from '../src/game/seasons.ts';
 import { windAt } from '../src/game/sim/clock.ts';
@@ -21,7 +22,7 @@ import { dryLine, dryWords } from '../src/ui/format.ts';
 const HOUR = DAY_SECONDS / 24;
 const NO_CONDITIONS = { cloud: 0, rain: 0, calm: 0 };
 
-type Layout = { charge: number; solar: number; turbines: number; looms: number };
+type Layout = { charge: number; solar: number; turbines: number; looms: number; greenhouses?: number; crop?: CropId };
 const LAYOUTS: Layout[] = [{ charge: 0.7, solar: 2, turbines: 2, looms: 2 }, { charge: 0.4, solar: 3, turbines: 1, looms: 2 }];
 
 /** A flat game of a commission's climate, seed and events with one network: a battery holding `charge`, panels, turbines, looms with yarn and a sprinkler, set to `time`. */
@@ -39,6 +40,7 @@ function rig(sc: Scenario, time: number, l: Layout): GameState {
   for (let i = 0; i < l.turbines; i++) near('turbine');
   for (let i = 0; i < l.looms; i++) (near('loom') as { inputs: Record<string, number> }).inputs = { yarn: 30 };
   near('sprinkler');
+  for (let i = 0; i < (l.greenhouses ?? 0); i++) { const gh = near('greenhouse') as { crop: CropId }; gh.crop = l.crop ?? 'wheat'; }
   advance(g, 1);
   g.time = time; battery.charge = POWER.battery.capacity * l.charge;
   return g;
@@ -122,6 +124,61 @@ test('the real night is inside the range at every hour, for every commission', (
     }
   }
   assert.ok(cases > 500 && banded > cases / 2, `${banded} of ${cases} told a range`);
+});
+
+test('with greenhouses, the real night is inside the range at every hour, for every commission, and the heating is told', () => {
+  const heated: Layout[] = [{ charge: 0.7, solar: 3, turbines: 2, looms: 1, greenhouses: 2, crop: 'wheat' }, { charge: 0.5, solar: 4, turbines: 1, looms: 0, greenhouses: 1, crop: 'tomato' }, { charge: 0.3, solar: 2, turbines: 1, looms: 0, greenhouses: 3, crop: 'tomato' }];
+  let cases = 0, banded = 0, drawing = 0, why = 0;
+  for (const sc of SWEEP) for (let h = 6; h < 24 * 6; h += 13) {
+    const time = h * HOUR + 3;
+    for (const l of heated) {
+      const g = rig(sc, time, l), real = tonight(g, TRUTH)!, told = tonight(g, forecastOf(sc, time))!;
+      cases++; if (told.runs > 1) banded++;
+      assert.ok(told.heating && real.heating, `${sc.id} at ${h}: a greenhouse is on the network and the heating is not told`);
+      if (real.heating.most > 0) drawing++;
+      if (real.heating.why) why++;
+      // The heating the real night draws is no more than the cold end of the range draws, and the charge is inside the band.
+      assert.ok(real.heating.most <= told.heating.most + 1e-6, `${sc.id} at ${h}: it draws ${real.heating.most} W, the range says up to ${told.heating.most} W`);
+      real.points.forEach((p, i) => assert.ok(told.points[i].lo <= p.k + 1e-9 && p.k <= told.points[i].hi + 1e-9, `${sc.id} at ${h}: the charge ${p.k} at step ${i} is outside ${told.points[i].lo}–${told.points[i].hi}`));
+      if (real.dryAt === null) assert.ok(!told.dry?.always, `${sc.id} at ${h}: it holds, but the forecast has it dry in every case`);
+      else assert.ok(told.dry !== null && real.dryAt >= told.dry.from - 1e-6 && real.dryAt <= told.dry.to + 1e-6, `${sc.id} at ${h}: dry at ${real.dryAt}, not in ${told.dry?.from}–${told.dry?.to}`);
+      // A told cold end is no warmer than the usual night's, and the greenhouses are why only where the same night without them holds.
+      if (told.heating.why) assert.ok(told.dry !== null);
+    }
+  }
+  assert.ok(cases > 500 && banded > cases / 2 && drawing > cases / 10 && why > 0, `${banded} of ${cases} told a range; ${drawing} drew; ${why} are why`);
+});
+
+test('the placement card tells what a greenhouse would draw tonight and on average, and the real heating is inside it', () => {
+  let cases = 0, told = 0;
+  for (const sc of SWEEP) for (let h = 6; h < 24 * 6; h += 29) {
+    const time = h * HOUR + 3, g = rig(sc, time, LAYOUTS[0]), reading = forecastOf(sc, time);
+    for (const crop of ['wheat', 'tomato'] as const) {
+      const card = placement(g, 'greenhouse', 20, 20, { crop }, reading).facts.find((f) => f.label === 'Heating'), real = heatingAhead(g, CROPS[crop], TRUTH), range = heatingAhead(g, CROPS[crop], reading);
+      cases++;
+      if (!real) { assert.ok(!range || range.tonight >= 0); continue; }
+      assert.ok(range && card, `${sc.id} at ${h}: the real heating draws and the card does not say`);
+      told++;
+      assert.ok(real.tonight <= range.tonight + 1e-6 && real.average.lo >= range.average.lo - 1e-6 && real.average.lo <= range.average.hi + 1e-6, `${sc.id} at ${h}: ${JSON.stringify(real)} is outside ${JSON.stringify(range)}`);
+      assert.match(card.value, /^up to [\d.]+ W tonight$/);
+    }
+  }
+  assert.ok(told > cases / 10, `${told} of ${cases}`);
+});
+
+test('a card made in the last minutes of the night still tells the heating', () => {
+  const sc = SWEEP.find((x) => x.climate.season === 'winter')!, time = timeOf(2, sc.climate.sun.rise) - 0.5, g = rig(sc, time, LAYOUTS[0]);
+  for (const reading of [USUAL, forecastOf(sc, time)]) {
+    const card = placement(g, 'greenhouse', 20, 20, { crop: 'tomato' }, reading).facts.find((f) => f.label === 'Heating');
+    assert.ok(card && !card.value.startsWith('up to 0 '), `${reading.kind}: ${card?.value}`);
+  }
+});
+
+test('a greenhouse on a network with no batteries is not blamed for the batteries of another', () => {
+  const sc = SWEEP.find((x) => x.climate.season === 'winter')!, g = rig(sc, timeOf(2, 17), LAYOUTS[0]);
+  assert.ok(place(g, 'pylon', 26, 26, 0).ok && place(g, 'greenhouse', 23, 26, 0).ok);
+  advance(g, 1);
+  assert.equal(tonight(g, USUAL)!.heating, null);
 });
 
 test('the real soil is inside the range at every hour, for every commission', () => {

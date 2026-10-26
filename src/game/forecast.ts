@@ -1,5 +1,5 @@
-import { BUILDINGS, CROPS, DAY_SECONDS, FIELD, GREENHOUSE, HIVE, ITEMS, POLLINATION_BONUS, POWER, recipesFor, SAPLING_SECONDS, TREE_HEALTH, type BuildingId } from './data.ts';
-import { EVENT_KINDS, EVENTS, type EventKind } from './events.ts';
+import { BUILDINGS, CROPS, DAY_SECONDS, FIELD, GREENHOUSE, HIVE, ITEMS, POLLINATION_BONUS, POWER, recipesFor, SAPLING_SECONDS, TREE_HEALTH, type BuildingId, type CropDef } from './data.ts';
+import { allowed, endOf, EVENT_KINDS, EVENTS, type EventKind } from './events.ts';
 import { networks, POWERED, pylonsInLink } from './power.ts';
 import { HOUR_SECONDS } from './powerlog.ts';
 import { coopPace, coopTrees, erosionAt, guardedAt, hiveReaches, paceOf, pylonReaches, riverSeason, sprinklerWaters, sprinklerWatts, touchesWater, waterLevelNear, waterPace, wheelSite, windExposure } from './rules.ts';
@@ -13,7 +13,7 @@ import { basisFor, eventsVary, notCounted, readingOf, spread, viewsOf, type Ahea
 import type { Range } from './outlook.ts';
 import { rainWaters, watersGreenhouse, wattsOf } from './sim/layout.ts';
 import { describeLinks } from './sim/describe.ts';
-import { canFlood, floodsAt, isFlooded } from './flood.ts';
+import { canFlood, floodHolds, floodsAt, isFlooded } from './flood.ts';
 import { dustComes, dustFor } from './dust.ts';
 import { frostComes, frostHits, inHollow } from './frost.ts';
 import { centreLevel } from './relief.ts';
@@ -147,7 +147,11 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
           : { label: 'Warmth', value: `${Math.round(warmthOf(s))}°C`, sub: warm.text.slice(warm.text.indexOf(': ') + 2), tone: warm.tone === 'bad' ? 'bad' : undefined });
         if (!under && frostComes(s) && inHollow(s, x, y)) facts.push({ label: 'Frost hollow', value: 'yes', sub: crop.tender ? 'late frost settles here and takes a tender crop' : 'late frost settles here; a hardy crop is unharmed', tone: crop.tender ? 'bad' : undefined });
         if (!under && dustComes(s)) facts.push({ label: 'Dust storm', value: guarded ? 'guarded' : 'exposed', sub: guarded ? 'trees or beans beside it break the wind' : 'a dust storm lifts its soil; a tree, sapling or bean field beside it would guard it', tone: guarded ? 'good' : 'bad' });
-        if (under) facts.push(pylonFact());
+        if (under) {
+          facts.push(pylonFact());
+          const h = heatingAhead(s, crop, reading);
+          if (h) facts.push({ label: 'Heating', value: `up to ${watts(h.tonight)} tonight`, sub: `${h.average.lo === h.average.hi ? watts(h.average.lo) : `${fmt1(h.average.lo)}–${watts(h.average.hi)}`} on average over a day, ${basisFor(reading, s.scenario.climate, s.time, s.time + DAY_SECONDS).replace(/^for /, 'in ')}; ${h.snap ? 'the cold snap it tells is counted' : canSnap(s) ? 'a cold snap told in the forecast would raise it' : 'a colder night raises it'}`, tone: h.tonight > 0 ? undefined : 'good' });
+        }
         if (slopes) facts.push({ label: 'Slope', value: `${slopes} of 9 tiles`, sub: `wear up to ${fmt1(1 + (guarded ? FIELD.erosionGuarded : FIELD.erosion))}× as fast${guarded ? '; trees or beans beside it help' : ''}`, tone: guarded ? undefined : 'bad' });
         break;
       }
@@ -242,6 +246,34 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
   return levelledFor(s, gw.ok ? gw.value.move : null, there);
 }
 
+// ---- Heating ----
+
+/** What the heating of a greenhouse is run over in the forecast's ranges: the warmth, from its cold end (with the wettest showers) to its mild end. */
+const HEAT_LENSES = { together: ['warmth'] } satisfies Lenses;
+
+const canSnap = (s: GameState) => allowed('coldSnap', s.scenario.climate);
+
+/**
+ * What a greenhouse growing `crop` would draw, from the warmth ahead as `reading` says: the most in tonight's cold end (the night now, or the coming one) and the
+ * average over the next day (a range with a forecast: from its cold end to its mild end); `snap` when a cold snap that the forecast tells is in what it counts.
+ * Null where the weather doesn't make it draw.
+ */
+export function heatingAhead(s: GameState, crop: CropDef, reading: Reading): { tonight: number; average: Range; snap: boolean } | null {
+  const w = s.scenario.climate.sun, now = s.time, h = hourAt(now), night = h < w.rise || h >= w.set;
+  const from = night ? now : nextHour(now, w.set), sunrise = nextHour(from, w.rise), end = now + DAY_SECONDS, step = HOUR_SECONDS / 6;
+  const views = viewsOf(s, reading, HEAT_LENSES, Math.max(sunrise + HOUR_SECONDS, end));
+  let most = 0;
+  const averages = views.map((v) => {
+    let sum = 0, n = 0;
+    for (let t = now; t < end - 1e-6; t += step, n++) sum += heatNeed(crop, v.warmth(t + Math.min(step, end - t) / 2));
+    // The night's own steps, the last cut short at sunrise (a card made in the last minutes of the night still sees them).
+    for (let t = from; t < sunrise - 1e-6; t += step) most = Math.max(most, heatNeed(crop, v.warmth(t + Math.min(step, sunrise - t) / 2)));
+    return sum / n;
+  });
+  const snap = reading.kind === 'forecast' && views.some((v) => v.events.some((e) => e.kind === 'coldSnap' && e.start < end && endOf(e) > now));
+  return most > 0 || Math.max(...averages) > 0 ? { tonight: most, average: spread(averages), snap } : null;
+}
+
 // ---- Tonight ----
 
 /** The play time at which the hour of day next reaches `hour` (strictly after `time`). */
@@ -267,6 +299,11 @@ export interface Tonight {
   shortFor: number;
   /** The highest charge before the night, and when. */
   peak: { t: number; k: number };
+  /**
+   * What the greenhouses draw through the night, at the cold end of what the weather allows (null: no greenhouse on a network with batteries): the most in a step and the average,
+   * and whether they are why the batteries run dry (without their heating the same night holds).
+   */
+  heating: { most: number; average: number; why: boolean } | null;
   /** Over all the runs: when they run dry (the earliest, and the latest: sunrise where some runs last the night; null when none does), whether every run does, the shortfall after that and the time short. */
   dry: { from: number; to: number; always: boolean; after: Range; short: Range } | null;
   /** How the weather ahead was read, in words ("for a usual winter", "from the forecast"), and how many runs the range is over (1: one value). */
@@ -279,9 +316,10 @@ export interface Tonight {
 
 /**
  * What tonight is run over in the forecast's ranges (ahead.ts, `Lenses`): the sun, the wind and the rain that rests the sprinklers, all
- * at their lowest and all at their highest. The charge only rises with each, so those two runs bracket every other.
+ * at their lowest and all at their highest, and the warmth (the greenhouses' heating): the cold end with the wettest showers, and the mild end.
+ * The charge only rises with each, so those two runs bracket every other.
  */
-export const NIGHT_LENSES = { together: ['sun', 'wind', 'rain'], fine: true } satisfies Lenses;
+export const NIGHT_LENSES = { together: ['sun', 'wind', 'rain', 'warmth'], fine: true } satisfies Lenses;
 
 /**
  * What the band is widened by, as a share of the capacity, where the forecast leaves room in when an event begins or ends: the worlds stand the event at every
@@ -293,7 +331,7 @@ export const TIMING_SLACK = 0.005;
 const lowered = (r: Range, some: boolean): Range => (some ? { lo: 0, hi: r.hi } : r);
 
 /** One run of the night: the charge at each step, and how it went dry. */
-interface Night { k: number[]; dryAt: number | null; shortSum: number; shortFor: number; shortMost: number; peak: { t: number; k: number } }
+interface Night { k: number[]; dryAt: number | null; shortSum: number; shortFor: number; shortMost: number; peak: { t: number; k: number }; heat: { most: number; sum: number } }
 
 /**
  * How the batteries' charge will go until the morning, if every network keeps using what it uses now (and digesters burning
@@ -310,7 +348,9 @@ export function tonight(s: GameState, reading: Reading = readingOf(s)): Tonight 
     // What the sprinklers want when they run (they rest in rain, except those that water a greenhouse) and what everything else wants now.
     const sprinklers = net.members.filter((b) => b.type === 'sprinkler' && !watersGreenhouse(s, b)).reduce((n, b) => n + wattsOf(s, b), 0);
     const indoor = net.members.filter((b) => b.type === 'sprinkler' && watersGreenhouse(s, b)).reduce((n, b) => n + wattsOf(s, b), 0);
-    return { bats, sprinklers, other: indoor + net.members.reduce((n, b) => n + (b.type === 'sprinkler' ? 0 : wants(s, b)), 0), solar: net.members.filter((b) => b.type === 'solar').length, turbines: net.members.filter((b) => b.type === 'turbine'),
+    // A greenhouse draws by the warmth outside, hour by hour (a flooded one is stopped: as it is now), so it is read through the view with the sun and the wind.
+    const crops = net.members.filter((b) => b.type === 'greenhouse' && !floodHolds(s, b)).map((b) => CROPS[(b as FieldBuilding).crop]);
+    return { bats, sprinklers, crops, other: indoor + net.members.reduce((n, b) => n + (b.type === 'sprinkler' || b.type === 'greenhouse' ? 0 : wants(s, b)), 0), solar: net.members.filter((b) => b.type === 'solar').length, turbines: net.members.filter((b) => b.type === 'turbine'),
       digesters: net.members.filter((b) => b.type === 'digester').reduce((n, b) => n + makes(s, b, 0, 0), 0), wheels: net.members.filter((b) => b.type === 'wheel') };
   });
   const capacity = nets.reduce((n, x) => n + x.bats.length, 0) * POWER.battery.capacity;
@@ -323,18 +363,21 @@ export function tonight(s: GameState, reading: Reading = readingOf(s)): Tonight 
     dt = Math.min(step, end - t, ...[nightFrom, sunrise].filter((b) => b > t + 1e-6).map((b) => b - t));
     steps.push({ t, dt });
   }
-  const run = (view: Ahead): Night => {
+  const run = (view: Ahead, heated = true): Night => {
     const bats = nets.map((x) => [...x.bats]);
     const stored = () => bats.reduce((n, b) => n + b.reduce((a, c) => a + c, 0), 0);
-    let dryAt: number | null = null, shortSum = 0, shortFor = 0, shortMost = 0, peak = { t: now, k: stored() / capacity };
+    let dryAt: number | null = null, shortSum = 0, shortFor = 0, shortMost = 0, peak = { t: now, k: stored() / capacity }, heatMost = 0, heatSum = 0;
     const k = [peak.k];
     for (const { t, dt } of steps) {
       const mid = t + dt / 2, sun = view.sun(mid), wind = view.wind(mid), rain = view.rain(mid);
-      let short = 0;
+      let short = 0, heat = 0;
       nets.forEach((x, n) => {
         const made = POWER.solar * sun * panelShare(view, mid) * x.solar + x.turbines.reduce((a, b) => a + makes(s, b, 0, wind, mid, view), 0) + x.digesters
           + x.wheels.reduce((a, b) => a + makes(s, b, 0, 0, mid, view), 0); // the river may freeze or thaw before morning
-        let spare = (made - x.other - (1 - rain) * x.sprinklers) * dt;
+        // (The heating the batteries are asked for: a network without any draws, and is short, on its own.)
+        const warming = x.crops.reduce((a, c) => a + heatNeed(c, view.warmth(mid)), 0), unheated = !heated && x.bats.length > 0;
+        if (x.bats.length) heat += warming;
+        let spare = (made - x.other - (unheated ? 0 : warming) - (1 - rain) * x.sprinklers) * dt;
         for (let i = 0; i < bats[n].length; i++) {
           const move = spare > 0 ? Math.min(spare, POWER.battery.rate * dt, POWER.battery.capacity - bats[n][i]) : Math.max(spare, -POWER.battery.rate * dt, -bats[n][i]);
           bats[n][i] += move; spare -= move;
@@ -346,19 +389,26 @@ export function tonight(s: GameState, reading: Reading = readingOf(s)): Tonight 
       const inNight = t >= nightFrom - 1e-6 && t + dt <= sunrise + 1e-6;
       if (inNight && dryAt === null && level < 1e-6 && short > 1e-6) dryAt = t + dt;
       k.push(level);
+      if (t >= nightFrom - 1e-6 && t + dt <= sunrise + 1e-6) { heatMost = Math.max(heatMost, heat); heatSum += heat * dt; }
       if ((sunset === null || t + dt <= sunset) && level > peak.k) peak = { t: t + dt, k: level };
       if (inNight && dryAt !== null && short > 1e-6) { shortSum += short * dt; shortFor += dt; shortMost = Math.max(shortMost, short); }
     }
-    return { k, dryAt, shortSum, shortFor, shortMost, peak };
+    return { k, dryAt, shortSum, shortFor, shortMost, peak, heat: { most: heatMost, sum: heatSum } };
   };
-  const runs = viewsOf(s, reading, NIGHT_LENSES, end).map(run);
+  const views = viewsOf(s, reading, NIGHT_LENSES, end), runs = views.map((v) => run(v));
   // The hardest night: the run that ends lowest, going dry the earliest.
   const hard = runs.reduce((a, b) => (b.k[b.k.length - 1] < a.k[a.k.length - 1] - 1e-9 || (Math.abs(b.k[b.k.length - 1] - a.k[a.k.length - 1]) <= 1e-9 && (b.dryAt ?? Infinity) < (a.dryAt ?? Infinity)) ? b : a));
+  // Heating: the draw of the hardest night, and whether the greenhouses are why it runs short (the same night without them is no worse than
+  // short for the lack of the rest: it holds, or is dry later and for less).
+  const heating = nets.some((x) => x.bats.length && x.crops.length) ? (() => {
+    const bare = run(views[runs.indexOf(hard)], false), nightLength = sunrise - nightFrom;
+    return { most: Math.max(...runs.map((r) => r.heat.most)), average: nightLength > 0 ? Math.max(...runs.map((r) => r.heat.sum)) / nightLength : 0, why: hard.dryAt !== null && bare.dryAt === null };
+  })() : null;
   const slack = eventsVary(s, reading, end, EVENT_KINDS) ? TIMING_SLACK : 0;
   const points = [now, ...steps.map((x) => x.t + x.dt)].map((t, i) => ({ t, k: hard.k[i], lo: Math.max(0, Math.min(...runs.map((r) => r.k[i])) - (i ? slack : 0)), hi: Math.min(1, Math.max(...runs.map((r) => r.k[i])) + (i ? slack : 0)) }));
   const dry = runs.filter((r) => r.dryAt !== null);
   return {
-    points, sunset, sunrise, dryAt: hard.dryAt, shortAfter: hard.shortFor ? hard.shortSum / hard.shortFor : 0, shortFor: hard.shortFor, peak: hard.peak,
+    points, sunset, sunrise, dryAt: hard.dryAt, shortAfter: hard.shortFor ? hard.shortSum / hard.shortFor : 0, shortFor: hard.shortFor, peak: hard.peak, heating,
     dry: dry.length ? {
       // When some runs last the night it may be as late as sunrise (or never): the runs in between are only the levels that were tried.
       from: Math.min(...dry.map((r) => r.dryAt as number)), to: dry.length === runs.length ? Math.max(...dry.map((r) => r.dryAt as number)) : sunrise, always: dry.length === runs.length,

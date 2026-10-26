@@ -206,7 +206,8 @@ function viewOf(sc: Scenario, now: number, events: WeatherEvent[], blocks?: read
     warmth(t) {
       const b = block(t);
       if (!b) return eased(warmNow, usualWarm(t), t);
-      return warmAt(b, t, level.warmth ?? 0.5, level.rain ?? 0.5);
+      // (A lens that varies the warmth takes the showers' cooling with it, the most at the lowest level: the cold end is the cold drift and the wettest showers.)
+      return warmAt(b, t, level.warmth ?? 0.5, level.warmth === undefined ? level.rain ?? 0.5 : 1 - level.warmth);
     },
     warmths(t) {
       const b = block(t);

@@ -1282,6 +1282,18 @@ under a timber frame.
   with full power again the growth resumes after about 5 h, 13.5°C after 8 h, 16°C after 12 h, and a 2 h outage costs about 3 hours
   of growth with its tail. Faster recovery would need extra watts or a faster warming than cooling; not done (energy-consistent
   baseline), a call for the design lead.
+- **Heating in the projections (4.3).** The screens that look ahead count a greenhouse's draw hour by hour from the warmth ahead
+  (`view.warmth`, `heatNeed`), not as a constant: **tonight's band** takes it with the sun, the wind and the rain (`NIGHT_LENSES` has
+  `warmth` in `together`): the lowest run is the cold end of the forecast's range, the highest the mild end; without a station it is the
+  season's usual warmth. A lens that varies the warmth takes the showers' cooling with it (the coldest drift with the wettest showers), so
+  the truth is inside even though rain rests sprinklers: the sweep in `test/projections.test.ts` (every commission, 3 heated layouts) holds.
+  The told cold snaps and warm spells ride in the worlds as any event. A flooded greenhouse (as it is now) draws nothing. `Tonight.heating`
+  has the most the greenhouses draw in a step of the night and the average (the cold end), and `why`: the hardest night runs dry and the
+  same night without their heating holds. The Power panel says it under the chart ("The greenhouses draw up to 14 W and 6 W on average
+  through the night… They are why the batteries run dry"). **The placement card** of a greenhouse has a Heating fact for the crop chosen
+  ("up to 14 W tonight", "6 W on average over a day", a range with a station: from the cold end to the mild end) and says a cold snap
+  told in the forecast would raise it (or that the told snap is counted). Not done: the forecast panel's event rows do not say how
+  a cold snap or warm spell changes the heating (the rows are not tied to the player's buildings and a range of watts would crowd them).
 - **Status:** a greenhouse below its target for lack of power shows the existing No power or Low power status, described as "Cooling: not
   enough power"; the history ribbon records it as for any building. Not connected to a pylon, it gets no share and cools too (needs
   nothing in summer, so no shortage then).
@@ -1290,9 +1302,9 @@ under a timber frame.
   lost), heat waves (no slowdown). Snow on its roof is only drawn and changes nothing. Nothing breaks it: weather disrupts, never destroys.
 - **Bees** reach it like a field when they fly; in the cold they forage in it while it works and grows a flowering crop (see Bees in winter).
 - **Cards:** the inspector and hover card are a field's plus "Inside 18°C, outside −3°C, heating 13 W" (the watts it gets); the placement
-  card shows the outside warmth, the watts it would need now, and its pylon reach (its soil projection assumes full power: 4.3), with
+  card shows the outside warmth, the watts it would need now, and its pylon reach (its soil projection assumes full power), and its heating ahead (4.3), with
   no frost hollow or dust line. The guide has a Greenhouse page.
-- **Bot:** not yet (4.6), so no target time changes.
+- **Bot:** not yet (4.6), so no target time changes (nor in 4.3: the projections do not feed the rules).
 
 - **Choosing while placing.** While a field or bakery is in hand, a strip over its dock tile (its pointer on the tile) has a
   chip for each crop or recipe; the one in hand is lit. Click a chip, or press C (Shift+C goes
