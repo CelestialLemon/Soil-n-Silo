@@ -166,6 +166,14 @@ test('the placement card tells what a greenhouse would draw tonight and on avera
   assert.ok(told > cases / 10, `${told} of ${cases}`);
 });
 
+test('a card made in the last minutes of the night still tells the heating', () => {
+  const sc = SWEEP.find((x) => x.climate.season === 'winter')!, time = timeOf(2, sc.climate.sun.rise) - 0.5, g = rig(sc, time, LAYOUTS[0]);
+  for (const reading of [USUAL, forecastOf(sc, time)]) {
+    const card = placement(g, 'greenhouse', 20, 20, { crop: 'tomato' }, reading).facts.find((f) => f.label === 'Heating');
+    assert.ok(card && !card.value.startsWith('up to 0 '), `${reading.kind}: ${card?.value}`);
+  }
+});
+
 test('the real soil is inside the range at every hour, for every commission', () => {
   let cases = 0, counted = 0;
   for (const sc of SWEEP) for (let h = 6; h < 24 * 6; h += 17) {

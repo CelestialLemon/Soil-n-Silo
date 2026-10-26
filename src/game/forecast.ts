@@ -260,16 +260,14 @@ const canSnap = (s: GameState) => allowed('coldSnap', s.scenario.climate);
  */
 export function heatingAhead(s: GameState, crop: CropDef, reading: Reading): { tonight: number; average: Range; snap: boolean } | null {
   const w = s.scenario.climate.sun, now = s.time, h = hourAt(now), night = h < w.rise || h >= w.set;
-  const from = night ? now : nextHour(now, w.set), to = nextHour(from, w.rise) + HOUR_SECONDS, end = now + DAY_SECONDS, step = HOUR_SECONDS / 6;
-  const views = viewsOf(s, reading, HEAT_LENSES, Math.max(to, end));
+  const from = night ? now : nextHour(now, w.set), sunrise = nextHour(from, w.rise), end = now + DAY_SECONDS, step = HOUR_SECONDS / 6;
+  const views = viewsOf(s, reading, HEAT_LENSES, Math.max(sunrise + HOUR_SECONDS, end));
   let most = 0;
   const averages = views.map((v) => {
     let sum = 0;
-    for (let t = now; t < Math.max(end, to) - 1e-6; t += step) {
-      const need = heatNeed(crop, v.warmth(t + step / 2));
-      if (t < end - 1e-6) sum += need;
-      if (t >= from - 1e-6 && t + step <= to - HOUR_SECONDS + 1e-6) most = Math.max(most, need);
-    }
+    for (let t = now; t < end - 1e-6; t += step) sum += heatNeed(crop, v.warmth(t + Math.min(step, end - t) / 2));
+    // The night's own steps, the last cut short at sunrise (a card made in the last minutes of the night still sees them).
+    for (let t = from; t < sunrise - 1e-6; t += step) most = Math.max(most, heatNeed(crop, v.warmth(t + Math.min(step, sunrise - t) / 2)));
     return sum / Math.ceil((end - now) / step);
   });
   const snap = reading.kind === 'forecast' && views.some((v) => v.events.some((e) => e.kind === 'coldSnap' && e.start < end && endOf(e) > now));
