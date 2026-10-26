@@ -76,7 +76,7 @@ Behaviour shared by a kind of building is declared as data, not written as `type
 
 ## The renderer
 
-The game installs the renderer from git, pinned to a release tag, `v0.4.0` (see its `CHANGELOG.md` before moving to a newer
+The game installs the renderer from git, pinned to a release tag, `v0.5.0` (see its `CHANGELOG.md` before moving to a newer
 one). three.js 0.180 sits beside it. Its public API is what its `src/renderer/index.ts` exports; its README explains how a game uses it.
 
 npm builds the renderer when it installs it from git, which needs the install script approved. The approval in `package.json`
