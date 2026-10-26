@@ -94,7 +94,7 @@ export const CAMPAIGN: Scenario[] = [
     goals: [{ kind: 'deliver', item: 'linen', n: 50 }, { kind: 'rate', item: 'yarn', perMin: 5 }],
   },
   {
-    id: 'c5', name: 'Long Nights', seed: 5505, width: 48, height: 40, credits: 1400, par: 70 * MIN,
+    id: 'c5', name: 'Long Nights', seed: 5505, width: 48, height: 40, credits: 1400, par: 65 * MIN,
     blurb: 'Winter: short days and long nights. The midwinter fair wants honey cake.',
     terrain: { ...LOAM, water: 'lake', relief: 0.5 }, climate: climateOf('winter'), events: [...eventOn(3, 18, 'coldSnap'), ...eventOn(7, 8, 'warmSpell')], tags: [],
     goals: [{ kind: 'deliver', item: 'honeycake', n: 100 }],
@@ -141,14 +141,14 @@ const PRODUCTS: { item: ItemId; n: number; level: number }[] = [
  * more than the base time for its floods and frosts (a spring commission nearly always rolls a flood, and one beside the farm cost the
  * bot about a fifth), summer a little less in a mild one but more in a dry (its dust storm and heat wave) and hot one (heat is hard on
  * wheat, flax and beans), autumn about the same with more for the wet, gales and stormy characters (the tropical storm and its flood, the
- * hurricane), and winter 2.5 to 4 times: little grows below 6°C and the hens lay at half rate. Wet and stormy summers, which the
+ * hurricane), and winter 2.65 to 3.35 times (measured with the bot putting up to six fields under glass once its farm stands, and without Long Nights, whose own layout is built round greenhouses): little grows in the open below 6°C, the hens lay at half rate and a greenhouse costs more than a cash-starved start can spend. Wet and stormy summers, which the
  * measurement put a little under a mild one's 1.15 (their storms help the fields as much as they cost), take its factor.
  */
 export const PAR_FACTOR: Record<Season, Partial<Record<Character, number>>> = {
   spring: { mild: 1.2, wet: 1.25, dry: 1.1, hot: 1.2, gales: 1.2, stormy: 1.25, highRiver: 1.2 },
   summer: { mild: 1.15, wet: 1.15, dry: 1.3, hot: 1.3, stormy: 1.15 },
   autumn: { mild: 1.15, wet: 1.25, dry: 1.2, gales: 1.2, stormy: 1.35 },
-  winter: { mild: 2.5, gales: 2.6, hard: 3.75 },
+  winter: { mild: 2.65, gales: 2.65, hard: 3.35 },
 };
 
 /** The target time (s) of a random commission with `goals` and `difficulty` in `climate`: the base time for a mild spring, times the climate's factor, to 5 minutes. */
@@ -183,7 +183,8 @@ export function randomScenario(seed: number, difficulty: 1 | 2 | 3): Scenario {
   while (used.size < nMods) used.add(Math.floor(r() * mods.length));
   for (const i of used) mods[i]();
 
-  // Oil and sauce need sunflower and tomato, which can't grow in a winter's open fields, and honey and honey cake need bees, who stay in below 10°C (greenhouses come later).
+  // A winter commission leaves out the goods that need a greenhouse of heated sunflower or tomato (oil, sauce) or bees under glass (honey, honey cake): the bot's target times for a random winter are measured on farms that grow in the open and under a few
+  // greenhouses, so they would not hold for those chains. Long Nights is the commission that asks for honey cake in a winter.
   const pool = PRODUCTS.filter((p) => p.level <= difficulty && !(season === 'winter' && (p.item === 'oil' || p.item === 'sauce' || p.item === 'honey' || p.item === 'honeycake')));
   // Two to four goals in all: easy 2–3, medium 3–4, hard 4; a soil goal, if any, is one of them.
   const total = Math.min(4, 1 + difficulty + (r() < 0.5 ? 1 : 0));

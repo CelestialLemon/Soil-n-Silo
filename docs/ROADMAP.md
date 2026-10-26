@@ -148,18 +148,17 @@ Six tree species and bushes vary by place, with willows by water and pines up hi
   place of the weather settings, seeded weather events, a weather station selling the forecast, the greenhouse, and five
   ground types. Built in that order; each part writes its rules into `DESIGN.md`, and `CLIMATE.md` is deleted once all of
   it is in.
-- **Climate phase 1, left open after the playtest (2026-10-22):** random winter commissions take 2.6 to 3.85 times as long
-  (the bot needs about 80 minutes for bread and 125 for linen in a hard winter, flax growing at a fifth of its pace), so the
-  greenhouse (#86) should bring winter back toward the others. Long Nights (c5) cannot be cleared until then (its target 70 is a
-  placeholder, its bot test skipped). Hot summers are hard on wheat (pace about 0.5) and beans (0.6): worth a look whether
-  summer wants a cooler wheat range or a summer-crop push. `tools/seasonfactor.ts` should be rerun whenever a season,
-  warmth or crop range changes, and `PAR_FACTOR` updated. Not played by hand: only headless runs (loading, conditions, rain
-  and snow, no NaNs).
+- **Climate phase 1, left open after the playtest (2026-10-22):** settled in phase 4 (2026-10-27, `DESIGN.md`, "Playtest of phase 4"). Long Nights (c5) is cleared under glass:
+  the bot takes 45.9 minutes, target 65. Random winter commissions still take 2.4 to 2.9 times as long as a mild spring for the bot (`PAR_FACTOR` winter mild 2.65, gales 2.65, hard 3.35):
+  putting fields under glass at the start makes the bot slower (150 credits and a turbine each is the first minutes' money), and the hens' half rate in winter limits bread. What would bring winter back
+  toward the others is a design call (a cheaper greenhouse, more winter credits, winter hens). Hot summers are hard on wheat (pace about 0.5) and beans (0.6): worth a look whether
+  summer wants a cooler wheat range or a summer-crop push. `tools/seasonfactor.ts` should be rerun whenever a season, warmth or crop range changes, and `PAR_FACTOR` updated. Not played by hand:
+  only headless runs.
 - **Climate phase 3, left open after the playtest (2026-10-26):** the station, the forecast, its panel, the projections and the forecast's blocks of the day are in
   and were played headless and in a headless browser (`DESIGN.md`, "Playtest of phase 3"): the forecast changes whether, when and with what
   power a player builds, its ranges held in 1.2 million checks, and 80 credits and 3 W stay. Still to do: play every campaign event by hand
   (the hurricane costs the bot a third more and is the likeliest to feel unfair), and random commissions of each season; whether tonight's band wants
-  to be split by the night's rain; Long Nights waits for the greenhouse (#86).
+  to be split by the night's rain; Long Nights was cleared in phase 4.
 - Play the **problems strip** (experimental, off by default, a setting on the pause screen) and decide whether it stays.
   It lists the buildings with a problem now, longest first; the plan was to build it on the history instead (buildings below
   about 70% working over the last few minutes, worst first) and perhaps group it by cause.
@@ -172,7 +171,7 @@ Six tree species and bushes vary by place, with willows by water and pines up hi
   money stops mattering halfway through; worth a look when playing them.
 - Play the trucks and tune them (cargo, speed, battery, waits, one truck at a time per building). The bot's times against
   the targets: First Light 14 (20), Morning Bread 30 and 26 built round neighbours (35), Windy Ridge 32 (45), Linen for the
-  Looms 26 (35), Long Nights 29 (40), Tired Soil 25 (35), Riverlands 34 (50), Harvest Festival 36 (50). `npm test` plays
+  Looms 26 (35), Long Nights 45.9 (65), Tired Soil 25 (35), Riverlands 34 (50), Harvest Festival 36 (50). `npm test` plays
   every layout and fails if one misses its target.
 - Models for the `truck` and the `garage`, and the silo without its drone pads (`ASSET_BRIEF.md`).
 - Drones as automatic helpers beside the trucks (`DESIGN.md`, Open questions), once trucks have been played.
