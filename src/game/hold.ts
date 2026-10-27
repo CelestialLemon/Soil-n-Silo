@@ -1,5 +1,6 @@
 import { activeEvents, EVENT_KINDS, EVENTS, eventName, feltPush, STRENGTHS, type Active, type EventKind, type Lever, type Shape, type Strength } from './events.ts';
 import { dustTakes } from './dust.ts';
+import { mudSpeedOn, muddyAt } from './mud.ts';
 import { floodHolds, floodUnder } from './flood.ts';
 import { frostTakes } from './frost.ts';
 import { coopPace } from './rules.ts';
@@ -11,7 +12,7 @@ import { daylight } from './sim/clock.ts';
 import { runsInFrost } from './sim/layout.ts';
 import { warmthOf } from './warmth.ts';
 import { exposureOf } from './sim/layout.ts';
-import { routeOf } from './sim/trucks.ts';
+import { routeOf, tileOf } from './sim/trucks.ts';
 import { garaging, keepingBeesIn, TURBINE_WEAK, turbineInGale } from './wind.ts';
 
 // Weather holds: a building or truck that weather stops or slows. It carries the status `weather`, whose `need` names the cause
@@ -24,8 +25,14 @@ import { garaging, keepingBeesIn, TURBINE_WEAK, turbineInGale } from './wind.ts'
 export const EFFECTS = ['stopped', 'slowed', 'weak', 'lost', 'eroded'] as const;
 export type Effect = typeof EFFECTS[number];
 
+/** What can hold something: a weather event, or the mud rain leaves on clay (which slows trucks and is no event: it has no strength, `ordinary` stands for it). */
+export type HoldKind = EventKind | 'mud';
+
 /** The cause of a hold. */
-export interface Hold { kind: EventKind; strength: Strength; effect: Effect }
+export interface Hold { kind: HoldKind; strength: Strength; effect: Effect }
+
+/** Whether a hold is the mud's, not an event's. */
+export const isMud = (h: Pick<Hold, 'kind'>): h is { kind: 'mud' } => h.kind === 'mud';
 
 /** The `need` a held building carries: "fog:ordinary:slowed". */
 export const holdNeed = (h: Hold) => `${h.kind}:${h.strength}:${h.effect}`;
@@ -33,15 +40,21 @@ export const holdNeed = (h: Hold) => `${h.kind}:${h.strength}:${h.effect}`;
 /** The hold a `need` names, or null if it isn't one. */
 export function readHold(need: string | undefined): Hold | null {
   const [kind, strength, effect] = typeof need === 'string' ? need.split(':') : [];
-  if (!EVENT_KINDS.includes(kind as EventKind) || !STRENGTHS.includes(strength as Strength) || !EFFECTS.includes(effect as Effect)) return null;
-  return { kind: kind as EventKind, strength: strength as Strength, effect: effect as Effect };
+  if (!(kind === 'mud' || EVENT_KINDS.includes(kind as EventKind)) || !STRENGTHS.includes(strength as Strength) || !EFFECTS.includes(effect as Effect)) return null;
+  return { kind: kind as HoldKind, strength: strength as Strength, effect: effect as Effect };
 }
 
 /** The cause in words, lower case: "gale", "severe fog", "hurricane". */
-export const causeName = (h: Pick<Hold, 'kind' | 'strength'>) => eventName(h.kind, h.strength).toLowerCase();
+export const causeName = (h: Pick<Hold, 'kind' | 'strength'>) => (h.kind === 'mud' ? 'mud' : eventName(h.kind, h.strength).toLowerCase());
 
 /** The shape of the marker for a hold's `need`: its event's own (a diamond where the cause is unknown). */
-export const holdShape = (need: string | undefined): Shape => EVENTS[readHold(need)?.kind ?? 'fog'].shape ?? 'diamond';
+export const holdShape = (need: string | undefined): Shape => {
+  const kind = readHold(need)?.kind ?? 'fog';
+  return kind === 'mud' ? MUD_SHAPE : EVENTS[kind].shape ?? 'diamond';
+};
+
+/** The marker of a truck slowed by mud: the flood's waves, the water on the ground. */
+const MUD_SHAPE: Shape = 'wave';
 
 const WORD: Record<Effect, string> = { stopped: 'Stopped', slowed: 'Slowed', weak: 'Weak', lost: 'Lost', eroded: 'Losing soil' };
 
@@ -147,9 +160,12 @@ export function buildingHold(s: GameState, b: Building, active: readonly Active[
   }
 }
 
-/** What stops or slows a truck now: a driving truck, in fog; a truck with a route, kept in its garage by a hurricane's worst hours. */
+/** What stops or slows a truck now: a driving truck, in fog, or on clay in mud; a truck with a route, kept in its garage by a hurricane's worst hours. */
 export function truckHold(s: GameState, t: Truck, active: readonly Active[] = activeEvents(s.scenario, s.time)): Hold | null {
-  if (t.phase === 'drive' && t.path.length) return holdOfEvent(cutting(active, 'trucks'), 'slowed');
+  if (t.phase === 'drive' && t.path.length) {
+    // An event's hold comes first (it names the weather's doing); else the mud, where the truck stands on clay.
+    return holdOfEvent(cutting(active, 'trucks'), 'slowed') ?? (mudSpeedOn(s, tileOf(s, t), muddyAt(s.scenario, s.time)) < 1 ? { kind: 'mud', strength: 'ordinary', effect: 'slowed' } : null);
+  }
   const kept = (t.phase === 'parked' || t.phase === 'charge') && routeOf(s, t)?.stops.length ? garaging(s.scenario, s.time) : null;
   return kept ? { kind: kept.kind, strength: kept.strength, effect: 'stopped' } : null;
 }
@@ -169,6 +185,7 @@ export function applyHolds(s: GameState) {
  * (the snow on the panels after a blizzard), the latest of its kind to have begun; -1 if none is.
  */
 export function eventIndex(sc: Pick<Scenario, 'events'>, time: number, h: Pick<Hold, 'kind' | 'strength'>): number {
+  if (h.kind === 'mud') return -1;
   const under = activeEvents(sc, time).filter((a) => a.event.kind === h.kind && a.event.strength === h.strength);
   if (under.length) return sc.events.indexOf(under[under.length - 1].event);
   if (!EVENTS[h.kind].lingers) return -1;

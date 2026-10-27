@@ -3,6 +3,7 @@ import { pushesAt } from '../events.ts';
 import { garaging } from '../wind.ts';
 import { noteArrival } from '../fleet.ts';
 import { networkOf } from '../power.ts';
+import { muddyAt, mudSpeedOn } from '../mud.ts';
 import { accessTiles, distanceTo, isOpen, legLength, nearestOpen, pathTo } from '../roads.ts';
 import { centreLevel } from '../relief.ts';
 import {
@@ -176,6 +177,8 @@ function drive(s: GameState, t: Truck, dt: number) {
   const w = s.map.width;
   // `left` is effort (tiles of flat road): climbing a level uses TRUCK.climb more, in time and in battery.
   let left = (t.energy > 0 ? TRUCK.speed : TRUCK.crawl) * pushesAt(s.scenario, s.time).trucks * dt; // weather events can slow the trucks
+  // Mud on clay slows the time a step takes (the tile it drives on), not the battery it uses (the roads' effort is the way's, mud or not).
+  const muddy = t.path.length > 0 && muddyAt(s.scenario, s.time);
   while (left > 1e-9 && t.path.length) {
     const i = t.path[0], tx = i % w + 0.5, ty = Math.floor(i / w) + 0.5;
     const dx = tx - t.x, dy = ty - t.y, d = Math.hypot(dx, dy);
@@ -183,9 +186,9 @@ function drive(s: GameState, t: Truck, dt: number) {
     // The step's effort a tile, as the roads count it: from the tile it set off from to the target.
     const tx0 = i % w, ty0 = Math.floor(i / w), bx = t.from % w, by = Math.floor(t.from / w);
     const len = Math.hypot(tx0 - bx, ty0 - by) || 1, rise = Math.max(0, centreLevel(s.map, tx0, ty0) - centreLevel(s.map, bx, by));
-    const effort = d * (1 + TRUCK.climb * rise / len), step = Math.min(effort, left), k = effort > 1e-9 ? step / effort : 1;
+    const effort = d * (1 + TRUCK.climb * rise / len), grip = mudSpeedOn(s, tileOf(s, t), muddy), step = Math.min(effort, left * grip), k = effort > 1e-9 ? step / effort : 1;
     t.x += dx * k; t.y += dy * k;
-    left -= step;
+    left -= step / grip;
     t.energy = Math.max(0, t.energy - step * TRUCK.joulesPerTile);
     if (k >= 1 - 1e-9) { t.x = tx; t.y = ty; t.from = i; t.path.shift(); }
   }

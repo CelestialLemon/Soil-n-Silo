@@ -15,7 +15,7 @@ import type { Range } from './outlook.ts';
 import { rainWaters, watersGreenhouse, wattsOf } from './sim/layout.ts';
 import { describeLinks } from './sim/describe.ts';
 import { canFlood, floodHolds, floodsAt, isFlooded } from './flood.ts';
-import { dustComes, dustFor } from './dust.ts';
+import { dustComes, dustFor, dustGround, dustShare } from './dust.ts';
 import { frostComes, frostHits, inHollow } from './frost.ts';
 import { centreLevel } from './relief.ts';
 import { beesFly, beesNow, heatNeed, insideWarmth, shadeFact, warmthFact, warmthOf } from './warmth.ts';
@@ -93,11 +93,11 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         const guarded = guardedAt(s, x, y), blown = !under && !guarded;
         // The soil is followed tile by tile (the stony cap holds a tile, not the average): each tile's fertility, its cap and how fast a harvest wears it.
         let slopes = 0, wear = 0;
-        const tiles: { fertility: number; cap: number; wear: number }[] = [];
+        const tiles: { fertility: number; cap: number; wear: number; dust: number }[] = [];
         for (let ty = y; ty < y + 3; ty++) for (let tx = x; tx < x + 3; tx++) {
           const k = inMap(s, tx, ty) ? erosionAt(s, tx, ty, guarded) : 1;
           wear += k / 9; if (k > 1) slopes++;
-          if (inMap(s, tx, ty)) tiles.push({ fertility: s.map.fertility[ty * s.map.width + tx], cap: fertilityCap(s.map.ground[ty * s.map.width + tx]), wear: k });
+          if (inMap(s, tx, ty)) tiles.push({ fertility: s.map.fertility[ty * s.map.width + tx], cap: fertilityCap(s.map.ground[ty * s.map.width + tx]), wear: k, dust: dustShare(s.map.ground[ty * s.map.width + tx]) });
         }
         const mean = (v: number[]) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0);
         // Growth over the next SOIL_AHEAD seconds an hour of play at a time, with the warmth and rain of each hour; each harvest wears the soil and slows the next.
@@ -109,9 +109,9 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         // built only by the fast run's), and the two are stepped together. Without a forecast the one run is the weather as it is.
         const run = (views: Ahead[]): { later: number }[] => {
           const delta = crop.soil * (crop.soil < 0 ? wear : 1), bounded = views.length > 1;
-          // A harvest changes every tile (a loss by the tile's wear), none above its ground's cap or below 0; the dust takes the same from each tile.
+          // A harvest changes every tile (a loss by the tile's wear), none above its ground's cap or below 0; the dust takes from each tile what its ground gives up to the wind.
           const harvest = (v: number[]) => v.map((f, i) => Math.max(0, Math.min(tiles[i].cap, f + crop.soil * (crop.soil < 0 ? tiles[i].wear : 1))));
-          const blow = (v: number[], by: number) => v.map((f) => Math.max(0, f - by));
+          const blow = (v: number[], by: number) => v.map((f, i) => Math.max(0, f - by * tiles[i].dust));
           // `soils` are what each run ends with; `least` and `most` the soil any run can have (tile by tile).
           const start = tiles.map((t) => t.fertility), soils = views.map(() => start), growth = views.map(() => 0);
           let least = start, most = start;
@@ -157,7 +157,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         facts.push(under ? { label: 'Warmth', value: `${Math.round(warmthIn(warmthOf(s)))}°C inside`, sub: `outside ${Math.round(warmthOf(s))}°C; heating ${Math.round(heatNeed(crop, warmthOf(s)))} W now, ${GREENHOUSE.loss} W for each °C the outside is below ${crop.comfort.low}°C`, tone: 'good' }
           : { label: 'Warmth', value: `${Math.round(warmthOf(s))}°C`, sub: warm.text.slice(warm.text.indexOf(': ') + 2), tone: warm.tone === 'bad' ? 'bad' : undefined });
         if (!under && frostComes(s) && inHollow(s, x, y)) facts.push({ label: 'Frost hollow', value: 'yes', sub: crop.tender ? 'late frost settles here and takes a tender crop' : 'late frost settles here; a hardy crop is unharmed', tone: crop.tender ? 'bad' : undefined });
-        if (!under && dustComes(s)) facts.push({ label: 'Dust storm', value: guarded ? 'guarded' : 'exposed', sub: guarded ? 'trees or beans beside it break the wind' : 'a dust storm lifts its soil; a tree, sapling or bean field beside it would guard it', tone: guarded ? 'good' : 'bad' });
+        if (!under && dustComes(s)) facts.push({ label: 'Dust storm', value: guarded ? 'guarded' : 'exposed', sub: guarded ? 'trees or beans beside it break the wind' : `a dust storm lifts its soil${dustGround(s, x, y) ? ` (${dustGround(s, x, y)})` : ''}; a tree, sapling or bean field beside it would guard it`, tone: guarded ? 'good' : 'bad' });
         if (under) {
           facts.push(pylonFact());
           const h = heatingAhead(s, crop, reading);
