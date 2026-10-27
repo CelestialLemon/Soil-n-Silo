@@ -18,7 +18,7 @@ import { baseLevel, centreLevel } from '../game/relief.ts';
 import { hash } from './kit.ts';
 import { treeAt, wetAt } from './trees.ts';
 import type { Models } from './models.ts';
-import { GROUND_TINT, SOIL, soilBand, TRUCK_BED } from './shapes.ts';
+import { GROUND_TINT, soilBand, soilOf, TRUCK_BED } from './shapes.ts';
 import { GROUND_IDS } from '../game/ground.ts';
 
 // Shows the game state with renderer objects. Every frame it adds, swaps and removes objects so the world matches the state:
@@ -182,8 +182,8 @@ export class WorldView {
     // The ground under a field can move when earthworks nearby are fitted in (ground.ts, Lie).
     const lie = reliefOf(s);
     for (let y = f.y; y < f.y + 3; y++) for (let x = f.x; x < f.x + 3; x++) {
-      const band = soilBand(s.map.fertility[y * s.map.width + x]);
-      list[i] = this.show(list[i], `soil ${x} ${y} ${band} ${lie}`, () => this.soil(x, y, band), f.id, (o) => o.setTransform(v.set(0, 0, 0), e.set(0, 0, 0)), true);
+      const band = soilBand(s.map.fertility[y * s.map.width + x]), kind = s.map.ground[y * s.map.width + x];
+      list[i] = this.show(list[i], `soil ${x} ${y} ${band} ${lie}`, () => this.soil(x, y, band, kind), f.id, (o) => o.setTransform(v.set(0, 0, 0), e.set(0, 0, 0)), true);
       i++;
       const turn = Math.floor(hash(x, y) * 4) * Math.PI / 2;
       list[i] = this.show(list[i], `crop ${x} ${y} ${f.crop} ${stage} ${lie}`, () => this.m.crops[f.crop][stage], f.id,
@@ -199,10 +199,10 @@ export class WorldView {
     this.parts.set(f.id, list);
   }
 
-  /** A field's soil on a tile, by fertility band: a raised bed over the ground, with three furrows across it. */
-  private soil(x: number, y: number, band: number) {
-    const t = new Tris(this.paint), furrow = SOIL[Math.max(0, band - 1)];
-    sheet(t, this.lie, x, y, [0.01, 0.01, 0.99, 0.99], SOIL_TOP, SOIL[band], true);
+  /** A field's soil on a tile, by fertility band and the tile's ground (which tints it): a raised bed over the ground, with three furrows across it. */
+  private soil(x: number, y: number, band: number, kind: number) {
+    const t = new Tris(this.paint), furrow = soilOf(Math.max(0, band - 1), kind);
+    sheet(t, this.lie, x, y, [0.01, 0.01, 0.99, 0.99], SOIL_TOP, soilOf(band, kind), true);
     for (const z of [0.2, 0.5, 0.8]) sheet(t, this.lie, x, y, [0.05, z - 0.04, 0.95, z + 0.04], SOIL_TOP + 0.015, furrow, true);
     return t.geometry();
   }

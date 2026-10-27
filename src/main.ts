@@ -46,9 +46,10 @@ import { CURSOR_GRID, TileCursor, type CursorPatch } from './world/tileCursor.ts
 import { buildWorld, COUNTRY } from './world/terrain.ts';
 import { fallIntensity, greyLook } from './world/greyLook.ts';
 import { detailColours, GroundDetail } from './world/detail.ts';
+import { muddyAt } from './game/mud.ts';
 import { Lie, LEVEL_HEIGHT, MapGround, standY } from './world/ground.ts';
 import { WorldView, type Overlay } from './world/view.ts';
-import { SOIL } from './world/shapes.ts';
+import { SOILS } from './world/shapes.ts';
 import './ui/clearday/tokens.css';
 import './ui/clearday/clearday.css';
 import './ui/clearday/icons.css';
@@ -127,8 +128,9 @@ async function play(initial: GameState) {
   const { season } = state.scenario.climate;
   const models = await loadModels(season);
   const land = generateLand(state.scenario, COUNTRY);
-  const lie = new Lie(state, land), world = buildWorld(map, land, lie, models, season), ground = new MapGround(state, land, lie, world.halo, [...SOIL, ...detailColours(season), ...detailColours(season).map(world.halo.tone)]);
-  quantizePalette([...world.geometries, ...ground.geometries, ...allGeometries(models)], 160);
+  const lie = new Lie(state, land), world = buildWorld(map, land, lie, models, season), ground = new MapGround(state, land, lie, world.halo, [...SOILS, ...detailColours(season), ...detailColours(season).map(world.halo.tone)]);
+  // 240 colours: the five grounds' turf, each with its dryness and hillshade steps, is about 500 distinct colours before the merge.
+  quantizePalette([...world.geometries, ...ground.geometries, ...allGeometries(models)], 240);
   const renderer = new PixelRenderer(canvas, world.scene, { shadowMapSize: 2048, warmHighlight: true });
   ground.show(renderer);
   const detail = new GroundDetail(renderer, state, land, lie, ground, world.halo.tone);
@@ -686,6 +688,7 @@ async function play(initial: GameState) {
       renderer.setLook(greyLook(lookAt(hour), weather)); lookHour = hour; lookCloud = weather.cloud; lookPrecip = weather.precip; lookHeat = weather.heat;
     }
 
+    ground.mud(muddyAt(state.scenario, state.time));
     ground.sync();
     // The grid and the contour lines show while building or doing earthworks.
     ground.showLines(tool.kind === 'build' || tool.kind === 'earth');

@@ -5,9 +5,11 @@ import { TERRAIN, type Land } from '../game/map.ts';
 import { joins } from '../game/relief.ts';
 import { BUILDINGS } from '../game/data.ts';
 import { layoutOf, reliefOf, type GameState } from '../game/state.ts';
+import { GROUND } from '../game/ground.ts';
 import { grassOf, HALO, isBank, LEVEL_HEIGHT as H, Tris, tuftOf, type Lie, type MapGround } from './ground.ts';
 
-// Small things in the grass: tufts, a few wildflowers, small stones. Only decoration: they never count for farming,
+// Small things in the grass: tufts, a few wildflowers, small stones; sparser grass on sand and stony ground, which has many
+// more stones and now and then an outcrop. Only decoration: they never count for farming,
 // clearing or routes, and they leave the ground's lines and overlays clear (hidden while those show).
 
 /**
@@ -19,10 +21,12 @@ const FLOWERS: Record<Season, number[]> = {
 };
 const FLOWER_SHARE: Record<Season, number> = { spring: 1.5, summer: 1, autumn: 0.3, winter: 0 };
 const PEBBLE = 0xa19c80;
+/** The stones of stony ground are grey, its outcrops darker. */
+const STONY_PEBBLE = 0x9a9488, OUTCROP = 0x7c776d;
 /** Where the flower patches' field (`patch`) is cream below: 70% of the land (the field's 70th percentile). */
 const CREAM = 0.63;
 /** Every colour drawn besides the grass's own tufts (for the palette). */
-export const detailColours = (season: Season) => [...FLOWERS[season], PEBBLE];
+export const detailColours = (season: Season) => [...FLOWERS[season], PEBBLE, STONY_PEBBLE, OUTCROP];
 
 /** How many tiles of country past the map have them (further out they would hardly be seen), thinning out over the last FADE. */
 const REACH = 12, FADE = 3;
@@ -31,14 +35,16 @@ const CHUNK = 8;
 /** The least distance (m) between two of them, and how far they keep from a cliff's edge. */
 const SPACING = 0.65, LIP = 0.2;
 /** How far (m) from its foot each reaches, with a little to spare: no part of it may stand where it may not. */
-const REACHES: Record<Kind, number> = { tuft: 0.2, flower: 0.27, pebble: 0.2 };
+const REACHES: Record<Kind, number> = { tuft: 0.2, flower: 0.27, pebble: 0.2, outcrop: 0.2 };
+/** How much grass and how many flowers each ground has against loam's, and the share of stones (against 0.02 + 0.05 × dryness) and outcrops it has. */
+const GRASSES = [1, 1.25, 1, 0.4, 0.5], FLOWERING = [1, 1.2, 1, 0.5, 0.3], STONES = [1, 1, 1, 1.3, 3.5], OUTCROPS = [0, 0, 0, 0, 0.012];
 /** How far (m) a tuft's smaller clump stands from it. */
 const PAIR = 0.2;
 /** How far (m) their feet sink, so the drawn ground (within a centimetre of the fitted one) never shows under them. */
 const SINK = 0.02;
 const UP = [0, 1, 0];
 
-type Kind = 'tuft' | 'flower' | 'pebble';
+type Kind = 'tuft' | 'flower' | 'pebble' | 'outcrop';
 /**
  * One placed: where (world x, z), what, its ground's height (m) there, its colour and its leaves' (a tuft's colour, a step
  * darker than the turf), its own turn and size, whether a tuft has a smaller one beside it, and the ground's height (m)
@@ -49,7 +55,7 @@ interface Thing { x: number; z: number; kind: Kind; y: number; hex: number; gree
 /** Where a tuft's smaller clump, a flower's other blossoms, or a stone's corners stand from its foot (world x, z offsets). */
 function parts(kind: Kind, yaw: number, s: number, pair: boolean): number[][] {
   if (kind === 'tuft') return pair ? [[Math.cos(yaw) * PAIR, Math.sin(yaw) * PAIR]] : [];
-  if (kind === 'pebble') return Array.from({ length: 5 }, (_, k) => {
+  if (kind === 'pebble' || kind === 'outcrop') return Array.from({ length: 5 }, (_, k) => {
     const a = yaw + k * Math.PI * 2 / 5, r = 0.16 * s * (0.8 + 0.4 * ((k * 0.37 + s) % 1));
     return [Math.cos(a) * r, Math.sin(a) * r];
   });
@@ -181,17 +187,21 @@ export class GroundDetail {
     const [hx, hz] = this.lie.surface.slope(lx, ly, u, v), slope = Math.hypot(hx, hz) * H, bank = isBank(this.lie.relief, lx, ly);
     const steep = slope < 0.25 ? 1 : slope < 0.5 ? 1 - 3 * (slope - 0.25) : 0.25;
     const d = Math.min(1, Math.max(0, this.ground.dryness[ly * this.land.width + lx])), lush = 0.35 + 1.3 * patch(x, z, 6, 4);
-    const tuft = 0.34 * (1 - 0.45 * d), flower = slope < 0.5 && !bank ? 0.06 * FLOWER_SHARE[this.season] * (1 - d) ** 2 : 0, pebble = 0.02 + 0.05 * d;
-    const all = (tuft + flower + pebble) * lush * steep * fade;
+    const ground = this.land.ground[ly * this.land.width + lx];
+    const tuft = 0.34 * (1 - 0.45 * d) * GRASSES[ground], flower = slope < 0.5 && !bank ? 0.06 * FLOWER_SHARE[this.season] * (1 - d) ** 2 * FLOWERING[ground] : 0;
+    const pebble = (0.02 + 0.05 * d) * STONES[ground], outcrop = OUTCROPS[ground], total = tuft + flower + pebble + outcrop;
+    // Stones and outcrops lie as thick on stony ground however lush the patch.
+    const all = ((tuft + flower) * lush + (pebble + outcrop) * (ground === GROUND.stony ? 1 : lush)) * steep * fade;
     if (rand(cx, cy, 5) >= all) return null;
-    const pick = rand(cx, cy, 6) * (tuft + flower + pebble), kind: Kind = pick < tuft ? 'tuft' : pick < tuft + flower ? 'flower' : 'pebble';
-    const yaw = rand(cx, cy, 8) * Math.PI * 2, size = 0.85 + 0.3 * rand(cx, cy, 9);
+    const pick = rand(cx, cy, 6) * total, kind: Kind = pick < tuft ? 'tuft' : pick < tuft + flower ? 'flower' : pick < tuft + flower + pebble ? 'pebble' : 'outcrop';
+    const yaw = rand(cx, cy, 8) * Math.PI * 2, size = (0.85 + 0.3 * rand(cx, cy, 9)) * (kind === 'outcrop' ? 2 : 1);
     if (!this.fits(lx, ly, x, z, REACHES[kind] * size, busy)) return null;
     const pair = rand(cx, cy, 10) < 0.5 && (kind !== 'tuft' || this.fits(lx, ly, x + Math.cos(yaw) * PAIR, z + Math.sin(yaw) * PAIR, REACHES.tuft * size * 0.8, busy));
     const feet = parts(kind, yaw, size, pair).map(([dx, dz]) => this.lie.y(x + dx, z + dz) - SINK);
     const p = this.lie.point(lx, ly, u, v), dull = this.lie.onMap(lx, ly) ? (c: number) => c : this.tone;
-    const green = tuftOf(dull(grassOf(this.season, d, bank)), p.s);
-    const hex = kind === 'tuft' ? green : kind === 'pebble' ? dull(PEBBLE) : dull(FLOWERS[this.season][patch(x, z, 4, 7) < CREAM ? 0 : 1]);
+    const green = tuftOf(dull(grassOf(this.season, d, bank, ground)), p.s);
+    const stone = ground === GROUND.stony ? STONY_PEBBLE : PEBBLE;
+    const hex = kind === 'tuft' ? green : kind === 'pebble' ? dull(stone) : kind === 'outcrop' ? dull(OUTCROP) : dull(FLOWERS[this.season][patch(x, z, 4, 7) < CREAM ? 0 : 1]);
     return { x, z, kind, y: p.p[1] - SINK, hex, green, yaw, size, pair, feet };
   }
 
@@ -270,7 +280,7 @@ function draw(t: Tris, th: Thing) {
     });
   } else {
     // A low, five-sided stone seated on the ground under its corners, its top a little smaller than its foot.
-    const r = 0.16 * s, top = th.feet.reduce((a, b) => a + b, 0) / 5 + SINK + 0.08 * s;
+    const r = 0.16 * s, top = th.feet.reduce((a, b) => a + b, 0) / 5 + SINK + (th.kind === 'outcrop' ? 0.1 : 0.08) * s;
     const foot = parts('pebble', yaw, s, false).map(([dx, dz], k) => [x + dx, th.feet[k], z + dz]);
     const cap = foot.map(([fx, , fz]) => { const a = 0.2, dx = fx - x, dz = fz - z; return [x + (dx * Math.cos(a) - dz * Math.sin(a)) * 0.6, top, z + (dx * Math.sin(a) + dz * Math.cos(a)) * 0.6]; });
     for (let k = 0; k < 5; k++) {

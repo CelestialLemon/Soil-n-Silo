@@ -1,8 +1,9 @@
 import { FLAG, motion } from 'pixel3d-renderer';
 import type { BuildingId, CropId, ItemId } from '../game/data.ts';
 import { ITEMS } from '../game/data.ts';
-import type { GroundId } from '../game/ground.ts';
+import { GROUND_IDS, type GroundId } from '../game/ground.ts';
 import { Kit } from './kit.ts';
+import { onGround } from './ground.ts';
 
 // Stand-in models built in code: every building, crop and good the game shows, in local space (origin on the
 // ground at the footprint centre, front facing +z). Blender models in public/models/
@@ -304,3 +305,8 @@ export const GROUND_TINT: Record<GroundId, number> = { loam: 0x7e5a34, silt: 0x5
 export const SOIL_BANDS = 6;
 export const SOIL = [0xb89a6a, 0xa08058, 0x8a6a46, 0x735638, 0x5e442c, 0x4a3422];
 export const soilBand = (f: number) => Math.min(SOIL_BANDS - 1, Math.floor(f / (100 / SOIL_BANDS)));
+/** How much of its ground's tint (ground.ts, `onGround`) a field's soil takes: more than turf, since tilled earth shows its ground. */
+const SOIL_TINT = 1.25;
+/** A band's soil on a ground, and every one (for the palette). */
+export const soilOf = (band: number, kind: number) => onGround(SOIL[band], kind, SOIL_TINT);
+export const SOILS = GROUND_IDS.flatMap((_, kind) => SOIL.map((_c, band) => soilOf(band, kind)));
