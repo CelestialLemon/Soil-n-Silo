@@ -996,7 +996,7 @@ cliff rim on the other; sites that would cut off a truck route are skipped. Rive
 above, a second at 0.85. Rock and forest favour high ground and cliff edges, without closing the routes between open grass.
 
 **Ground (phase 5.1, `src/game/ground.ts`).** Every tile has one of five kinds of ground, a fixed trait saved with the map
-(`MapData.ground`; the save is version 19): **loam, silt, clay, sand, stony**. It never changes: no earthworks, compost or clearing turn one kind into another.
+(`MapData.ground`; the save is version 20): **loam, silt, clay, sand, stony**. It never changes: no earthworks, compost or clearing turn one kind into another.
 The ground is laid in large patches that follow the land, and it sets the tile's starting fertility (`fertilityOf`: the kind's range, placed in it by smooth local noise, so a patch varies
 a little within itself):
 
@@ -1417,7 +1417,7 @@ digester.
 | Battery | 2 × 2 | 150 | Stores 2.4 kJ, charges and discharges at up to 40 W |
 | Digester | 2 × 2 | 180 | Burns one manure, bran or seed cake every 10 s for a steady 30 W |
 | Pylon | 1 × 1 | 10 | Powers buildings with any tile within 3 tiles; links to pylons within 8 tiles |
-| Weather station | 1 × 1 | 80 | Draws 3 W all the time; gives the forecast (see "The weather station") |
+| Weather station | 2 × 2 | 80 | Draws 3 W all the time; gives the forecast (see "The weather station") |
 
 A wheel uses the strongest current touching its bank at the same level, times the season's **flow** (the `river` section of
 `seasons.ts`): spring 1.5, summer 0.6, autumn 0.9, winter 0.5; a high river adds 0.3, a dry season takes off 0.1. So a spring
@@ -1598,7 +1598,7 @@ Early on, raw goods are the way to afford the first machines; products pay far b
 ## Saving
 
 The game saves the commission in progress (one at a time) in the browser every 30 s and when the page is hidden, and remembers
-each commission's best medal and time. Saves are version 17 (the commission's events are saved with it, and the hour of the weather station's last forecast; the run log keeps what the weather held and the valley's output). A save from an older version of the game is refused.
+each commission's best medal and time. Saves are version 20 (the commission's events are saved with it, and the hour of the weather station's last forecast; the run log keeps what the weather held and the valley's output). A save from an older version of the game is refused.
 
 ## Open questions
 

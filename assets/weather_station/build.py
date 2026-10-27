@@ -1,85 +1,68 @@
-"""A little weather station: a white slatted instrument screen (a Stevenson screen) on timber legs, a copper mast with a
-wind vane and a three-cup anemometer, and a copper-funnelled rain gauge. About a metre and a bit tall, so it reads among the
-fields next to a sprinkler and a pylon without sheltering a turbine (not `tall`).
+"""A small weather observatory: a louvred shelter, wind mast and rain gauge.
 
-The cups are `move_spin_anemometer` (local X vertical, `speed = 2.5`): they turn with the wind, powered or not. The game sets
-the speed per wind band, the way it does for the turbine's rotor."""
+The anemometer spins around its vertical local X axis independently of power.
+"""
 import sys
 sys.dont_write_bytecode = True
 from pathlib import Path
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from solarpunk import *
 reset(231)
-SX, SY = -.11, -.04            # the screen's centre
-BODY_W, BODY_D = .46, .34
-LEG_Z, BODY_TOP = .30, .62     # the screen's floor and its top
-MAST = (.27,.25)               # the mast, in the back-right corner
-HUB_Z = 1.04
 
-# Four timber legs on small stone feet, braced by a ceramic floor board.
-for dx in [-1,1]:
-    for dy in [-1,1]:
-        x,y = SX+dx*(BODY_W/2-.04),SY+dy*(BODY_D/2-.04)
-        cylinder('Station_stone_foot',(x,y,.04),.065,.08,'stone',6,top=.055)
-        rounded_box('Station_timber_leg',(x,y,.18),(.06,.06,.28),'wood',.015)
-box('Station_floor_board',(SX,SY,LEG_Z+.02),(BODY_W+.02,BODY_D+.02,.04),'lightwood')
-
-# The screen: a linen core, wrapped in tilted ceramic louvres on all four sides, and a front door catch.
-box('Station_linen_core',(SX,SY,(LEG_Z+BODY_TOP)/2+.02),(BODY_W-.06,BODY_D-.06,BODY_TOP-LEG_Z-.04),'linen')
-tilt = .55
-for z in [LEG_Z+.075,LEG_Z+.15,LEG_Z+.225,LEG_Z+.30]:
+# A raised, white instrument shelter, framed in warm timber. Broad slats read
+# at the game's distant zooms; the open legs keep the silhouette light.
+sx, sy = -.30, .05
+for dx in [-.40, .40]:
+    for dy in [-.29, .29]:
+        cylinder('Stone_foot', (sx+dx, sy+dy, .05), .09, .10, 'stone', 8)
+        rounded_box('Timber_leg', (sx+dx, sy+dy, .28), (.09,.09,.46), 'wood', .015)
+box('Shelter_floor', (sx,sy,.52), (.96,.74,.10), 'lightwood')
+box('Shelter_core', (sx,sy,.86), (.77,.55,.60), 'linen')
+for z in [.62,.76,.90,1.04]:
     for side in [-1,1]:
-        box('Station_ceramic_louvre',(SX,SY+side*(BODY_D/2-.015),z),(BODY_W,.07,.045),'ceramic',rot=(side*tilt,0,0))
-        box('Station_ceramic_louvre',(SX+side*(BODY_W/2-.015),SY,z),(.07,BODY_D,.045),'ceramic',rot=(0,-side*tilt,0))
-for dx in [-1,1]:
-    for dy in [-1,1]:
-        box('Station_timber_corner',(SX+dx*(BODY_W/2-.01),SY+dy*(BODY_D/2-.01),(LEG_Z+BODY_TOP)/2+.02),(.045,.045,BODY_TOP-LEG_Z),'wood')
-sphere('Station_brass_knob',(SX+.12,SY-BODY_D/2-.03,(LEG_Z+BODY_TOP)/2),(.032,.032,.032),'brass',6,3)
+        box('Ceramic_louvre', (sx,sy+side*.30,z), (.84,.10,.085), 'ceramic', rot=(side*.35,0,0))
+        box('Ceramic_louvre', (sx+side*.40,sy,z), (.10,.62,.085), 'ceramic', rot=(0,-side*.35,0))
+for dx in [-.42,.42]:
+    for dy in [-.31,.31]:
+        box('Timber_corner', (sx+dx,sy+dy,.84), (.08,.08,.68), 'wood')
+# The deep roof and green cap give the station a distinctive, friendly profile.
+rounded_box('Roof_eave', (sx,sy,1.21), (1.08,.84,.12), 'ceramic', .025)
+rounded_box('Moss_roof', (sx,sy,1.30), (.99,.75,.10), 'moss', .035)
+sphere('decor_Roof_plant', (sx-.20,sy+.06,1.37), (.20,.16,.09), 'leaf', 6, 3)
+box('Door_frame', (sx,sy-.365,.85), (.09,.04,.59), 'wood')
+sphere('Door_catch', (sx+.14,sy-.38,.86), (.06,.04,.06), 'brass', 6, 3)
 
-# A shallow lid of living moss on a ceramic roof plate, with a copper rim.
-rounded_box('Station_ceramic_lid',(SX,SY,BODY_TOP+.04),(BODY_W+.08,BODY_D+.08,.06),'ceramic',.02)
-rounded_box('Station_moss_lid',(SX,SY,BODY_TOP+.095),(BODY_W+.02,BODY_D+.02,.06),'moss',.03)
-box('Station_copper_lid_rim',(SX,SY-BODY_D/2-.05,BODY_TOP+.025),(BODY_W+.09,.03,.03),'copper')
-sphere('decor_Station_lid_sedum',(SX-.10,SY+.03,BODY_TOP+.14),(.09,.07,.04),'leaf',6,3)
+# A tall copper mast and a bold vane make its purpose visible above the roof.
+mx,my = .59,.34
+cylinder('Mast_foot', (mx,my,.07), .14,.14, 'stone', 8, top=.11)
+cylinder('Copper_mast', (mx,my,.86), .045,1.58, 'copper', 8)
+for z in [.25,1.35]:
+    cylinder('Mast_collar', (mx,my,z), .075,.07, 'brass', 8)
+vz = 1.48
+cylinder('Vane_hub', (mx,my,vz), .07,.08, 'brass', 8)
+beam('Vane_boom', (mx-.23,my,vz), (mx+.23,my,vz), .06, 'copper')
+extrude_xz('Vane_arrow', [(mx-.32,vz),(mx-.18,vz-.09),(mx-.18,vz+.09)], my, .055, 'copper')
+extrude_xz('Vane_tail', [(mx+.14,vz-.04),(mx+.30,vz-.14),(mx+.27,vz),(mx+.30,vz+.14),(mx+.14,vz+.04)], my, .05, 'brass')
 
-# The mast: a copper pole on a stone foot, with brass collars, a vane and the cups on top.
-mx,my = MAST
-cylinder('Station_mast_foot',(mx,my,.05),.085,.10,'stone',8,top=.065)
-cylinder('Station_copper_mast',(mx,my,.55),.027,1.0,'copper',6)
-for z in [.16,.74]:
-    cylinder('Station_brass_collar',(mx,my,z),.045,.04,'brass',6)
-box('Station_mast_brace',(mx-.07,my-.07,.14),(.04,.04,.04),'wood')
-# Vane: a boom along X, a diamond head on the −X end and a broad tail fin on the +X end.
-VZ = .90
-cylinder('Station_vane_hub',(mx,my,VZ),.04,.05,'brass',6)
-beam('Station_vane_boom',(mx-.13,my,VZ),(mx+.13,my,VZ),.035,'copper')
-extrude_xz('Station_vane_head',[(mx-.20,VZ),(mx-.12,VZ-.045),(mx-.10,VZ),(mx-.12,VZ+.045)],my,.04,'copper')
-extrude_xz('Station_vane_tail',[(mx+.10,VZ-.012),(mx+.22,VZ-.085),(mx+.19,VZ),(mx+.22,VZ+.085),(mx+.10,VZ+.012)],my,.035,'brass')
-
-# The anemometer: three copper cups on a brass hub, turning about the mast's axis.
-hub = Vector((mx,my,HUB_Z))
-cups = [cylinder('Anemometer_brass_hub',hub,.04,.07,'brass',6),
-        cylinder('Anemometer_copper_cap',hub+Vector((0,0,.05)),.022,.04,'copper',6,top=.01)]
+hub = Vector((mx,my,1.72))
+cups = [cylinder('Anemometer_hub',hub,.065,.10,'brass',8)]
 for i in range(3):
     a = i*math.tau/3+.4
     d = Vector((math.cos(a),math.sin(a),0))
-    t = Vector((-math.sin(a),math.cos(a),0))
-    cups.append(beam('Anemometer_copper_arm',hub,hub+d*.14,.03,'copper'))
-    # A cup: a half-sphere-ish bowl at the arm's end, facing round the circle.
-    cup = sphere('Anemometer_cup',hub+d*.165+t*.0+Vector((0,0,-.01)),(.06,.06,.055),'ceramic',6,3)
-    cups.append(cup)
+    cups.append(beam('Anemometer_arm',hub,hub+d*.23,.045,'copper'))
+    cups.append(sphere('Anemometer_cup',hub+d*.25,(.105,.105,.09),'ceramic',8,4))
 spinner = join(cups,'move_spin_anemometer',hub)
 orient_x(spinner,(0,0,1))
 spinner['speed'] = 2.5
 
-# The rain gauge: a ceramic cylinder with a copper funnel and a brass band, at the front right.
-gx,gy = .30,-.27
-cylinder('Gauge_ceramic_body',(gx,gy,.13),.075,.26,'ceramic',8)
-cylinder('Gauge_brass_band',(gx,gy,.20),.082,.04,'brass',8)
-cylinder('Gauge_copper_funnel',(gx,gy,.30),.10,.07,'copper',8,top=.045)
-cylinder('Gauge_stone_foot',(gx,gy,.015),.09,.03,'stone',8)
-
-grass(-.38,-.34)
-grass(-.36,.30)
-grass(.07,.38)
-build_complete('weather_station',1)
+# A separate funnel and graduated vessel signal rainfall measurements.
+gx,gy = .48,-.55
+cylinder('Gauge_foot',(gx,gy,.05),.13,.10,'stone',8)
+cylinder('Gauge_body',(gx,gy,.30),.105,.42,'ceramic',8)
+cylinder('Gauge_band',(gx,gy,.38),.12,.06,'brass',8)
+cylinder('Gauge_funnel',(gx,gy,.56),.17,.14,'copper',8,top=.08)
+for z in [.18,.25,.32]:
+    box('Gauge_mark',(gx,gy-.106,z),(.10,.025,.025),'copper')
+grass(-.78,-.55)
+grass(-.75,.58)
+build_complete('weather_station',2)

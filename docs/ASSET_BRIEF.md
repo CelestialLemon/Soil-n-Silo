@@ -159,14 +159,10 @@ landmark: it stands among fields, sprinklers and pylons, so its silhouette must 
 
 | Model | Footprint | Height | Notes |
 | --- | --- | --- | --- |
-| `weather_station` | 1 × 1 | ~1.1 | A white slatted instrument screen (a Stevenson screen) with tilted ceramic louvres, a linen core, a brass door catch and a living-moss lid, on four timber legs with stone feet. Beside it a thin copper mast with a wind vane and a three-cup anemometer, and a small ceramic rain gauge with a copper funnel. Grass tufts. Not `tall`: it must not shelter a turbine |
+| `weather_station` | 2 × 2 | ~1.8 | A raised white louvred shelter with a moss roof, a copper wind mast and a separate rain gauge. Not `tall`: it must not shelter a turbine |
 
-- **Silhouette.** A sprinkler is a squat copper riser with a brass head (0.82 m); a pylon is a slim brown timber pole (1.47 m) with a white
-  insulator and a copper cap. The station is a wide white box on legs with a thin mast beside it, 1.1 m tall. The comparison with a sprinkler and a pylon
-  at the game's camera is in the PR for #137.
-- **Moving part.** `move_spin_anemometer` is the three cups and their arms, joined, with its origin at the hub on the mast axis and
-  its local X axis vertical (as the sprinkler's head), so the cups turn about the mast. Custom property `speed = 2.5` rad/s is only
-  the default; the game sets the speed (below). Its swept disc (radius 0.23 m) stays inside the 1 × 1 footprint and above the screen's roof.
+- **Silhouette.** A broad white shelter on timber legs and a taller wind mast distinguish it from sprinklers and pylons.
+- **Moving part.** `move_spin_anemometer` joins the three cups and arms at the mast hub, with local X vertical and `speed = 2.5` rad/s. Its swept disc stays within the 2 × 2 footprint.
 - **How the game wires it.** Not in the model, in `src/world/`; the station building does the same as the turbine, with faster speeds
   for the smaller cups, and not tied to the building's power:
   1. `FILES` in `models.ts`: `station: 'weather_station'` (whatever id the building has), so its `idle`/`running` looks (the build

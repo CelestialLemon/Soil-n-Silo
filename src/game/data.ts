@@ -183,7 +183,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   wheel: { name: 'Water wheel', size: 2, cost: 200, category: 'power', grid: 'source', onBank: true, get hint() { return `Steady power from a river's current: ${POWER.wheel} W at 1 m/s, ${POWER.wheelFall} times that beside a fall.`; } },
   digester: { name: 'Digester', size: 2, cost: 180, category: 'power', grid: 'source', get hint() { return `Burns ${anyOf('organic')} for a steady ${POWER.digester} W.`; } },
   pylon: { name: 'Pylon', size: 1, cost: 10, category: 'power', inert: true, grid: 'link', onWater: true, key: 'P', get hint() { return `Powers buildings within ${POWER.pylon.reach} tiles; links to pylons within ${POWER.pylon.link}.`; } },
-  station: { name: 'Weather station', short: 'Station', size: 1, cost: 80, category: 'power', power: 3, hint: 'Forecasts the weather three days ahead, renewed every hour while it has power. One is enough.' },
+  station: { name: 'Weather station', short: 'Station', size: 2, cost: 80, category: 'power', power: 3, hint: 'Forecasts the weather three days ahead, renewed every hour while it has power. One is enough.' },
   sapling: { name: 'Sapling', size: 1, cost: 5, category: 'ecology', inert: true, hint: 'Grows into a tree.' },
   depot: { name: 'Freight depot', size: 3, cost: 0, category: null, inert: true, stores: true, hint: 'Deliver goods here.' },
 };

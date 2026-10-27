@@ -45,16 +45,16 @@ function put<K extends BuildingId>(s: GameState, type: K, x: number, y: number, 
 function powered(events: WeatherEvent[] = [], time = 0) {
   const s = valley(events, time);
   const station = put(s, 'station', 10, 10);
-  const pylon = put(s, 'pylon', 11, 10);
+  const pylon = put(s, 'pylon', 12, 10);
   const turbine = put(s, 'turbine', 12, 12);
   return { s, station, pylon, turbine };
 }
 
 const hour = (s: GameState, n: number) => advance(s, n * HOUR);
 
-test('the station is a 1 × 1 powered building of 80 credits and 3 W, in the Power category', () => {
+test('the station is a 2 × 2 powered building of 80 credits and 3 W, in the Power category', () => {
   const d = BUILDINGS.station;
-  assert.deepEqual([d.size, d.cost, d.power, d.category], [1, 80, 3, 'power']);
+  assert.deepEqual([d.size, d.cost, d.power, d.category], [2, 80, 3, 'power']);
   assert.ok(!d.tall, 'it must not shelter a turbine');
   const s = valley();
   const before = s.credits;
@@ -62,6 +62,15 @@ test('the station is a 1 × 1 powered building of 80 credits and 3 W, in the Pow
   assert.equal(before - s.credits, 80);
   assert.ok(hasStation(s));
   assert.deepEqual(stationsOf(s), [b]);
+});
+
+test('the station occupies all four tiles of its footprint', () => {
+  const s = valley();
+  put(s, 'station', 10, 10);
+  for (const [x, y] of [[10, 10], [11, 10], [10, 11], [11, 11]]) {
+    assert.equal(place(s, 'pylon', x, y, 0).ok, false);
+  }
+  assert.equal(place(s, 'pylon', 12, 10, 0).ok, true);
 });
 
 test('its placement card says the valley already has a station, once one stands, and says nothing before', () => {
@@ -187,7 +196,7 @@ test('a station under flood water stops renewing and keeps the last forecast', (
   const events = eventOn(2, 6, 'flood', 'ordinary', undefined, 'spring');
   const flood = events.find((e) => e.kind === 'flood') as WeatherEvent;
   const s = valley(events, flood.start - 3 * HOUR);
-  put(s, 'station', 5, 10); put(s, 'pylon', 6, 10); put(s, 'turbine', 8, 12);
+  put(s, 'station', 5, 10); put(s, 'pylon', 7, 10); put(s, 'turbine', 8, 12);
   hour(s, 0.5);
   const last = s.forecastIssued;
   assert.ok(last !== null);
@@ -272,12 +281,11 @@ test('the save keeps the hour of the last forecast; saves of the version before 
   const back = deserialize(serialize(s));
   assert.ok(back.ok);
   assert.equal(back.value.forecastIssued, issued);
-  assert.equal(back.value.version, 19);
+  assert.equal(back.value.version, 20);
   assert.deepEqual(stationForecast(back.value)?.forecast, stationForecast(s)?.forecast);
   // Before the first forecast it is null.
   assert.ok(deserialize(serialize(valley())).ok);
-  const old = { ...JSON.parse(serialize(s)), version: 15 };
-  delete old.forecastIssued;
+  const old = { ...JSON.parse(serialize(s)), version: 19 };
   assert.ok(!deserialize(JSON.stringify(old)).ok);
   for (const bad of ['"x"', '-5', String(s.time + 1000), 'true', 'undefined']) {
     const o = JSON.parse(serialize(s)); o.forecastIssued = bad === 'undefined' ? undefined : JSON.parse(bad);
