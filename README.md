@@ -9,6 +9,7 @@ byproducts have to go somewhere, and the sun sets every few minutes. A 3D world 
 - Plan: [`docs/ROADMAP.md`](docs/ROADMAP.md), including the renderer gaps
 - How to work here: [`AGENTS.md`](AGENTS.md)
 - Models: [`docs/ASSET_BRIEF.md`](docs/ASSET_BRIEF.md)
+- Frame cost: [`docs/BENCHMARK.md`](docs/BENCHMARK.md)
 - The interface's design system: [`src/ui/clearday/`](src/ui/clearday/README.md)
 
 ![Morning Bread at 13:00 on day 4: the commission card with its goals as gauges, the readouts and the dial, a field in hand with its placement card, and the dock](docs/screenshot.png)
@@ -18,6 +19,7 @@ npm install
 npm run dev          # http://127.0.0.1:5190
 npm test             # the game rules (src/game/), and the bot clearing each commission it has a layout for, in Node
 npm run sim -- c2     # a bot plays a commission on the real rules (c1, c2, c2:next, c4), to check it can be cleared and how fast
+npm run bench         # the frame-cost benchmark in headless Chromium (docs/BENCHMARK.md); `-- --structural --no-gpu` is CI's cheap check
 npm run typecheck
 npm run lint         # ESLint: errors fail, warnings are known debt to clear (see eslint.config.js)
 npm run build        # typecheck, then the game into dist/
@@ -56,7 +58,7 @@ src/
   ui/           the HTML HUD and menus over the canvas, and the item icons
     clearday/   the design system (tokens, components, icons, the bundled font)
 assets/         Blender build scripts for the models (the source of truth), exported to public/models/
-tools/          the commission bot (npm run sim) and its layouts
+tools/          the commission bot (npm run sim) and its layouts, the frame-cost benchmark (npm run bench)
   clearday/     generators for the Clearday tokens and icons (Python 3)
 test/           unit tests (Node's test runner)
 docs/           design, roadmap, asset brief

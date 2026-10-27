@@ -26,3 +26,18 @@ jobs:
       - run: npm run lint          # ESLint; warnings are known debt and don't fail
       - run: npm test              # the game rules and the bot's layouts, in Node
       - run: npm run build         # typecheck, then the game
+
+  # What the game asks three.js to draw (draws, submissions, triangles, shadow redraws) on the bot's farms, against
+  # tools/bench/baselines/structural.json; growth over 5% fails. Software GL: only the counts mean anything, not the times (docs/BENCHMARK.md).
+  bench:
+    runs-on: ubuntu-latest
+    name: bench (structural)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npx playwright-core install --with-deps chromium
+      - run: npm run bench -- --structural --no-gpu --no-lock
