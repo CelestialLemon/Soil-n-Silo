@@ -20,7 +20,7 @@ const { default: js } = await import('@eslint/js');
 const { default: tseslint } = await import('typescript-eslint');
 
 export default tseslint.config(
-  { ignores: ['dist/', 'public/'] },
+  { ignores: ['dist/', 'out/', 'public/'] },
   js.configs.recommended,
   {
     files: ['**/*.ts'],
