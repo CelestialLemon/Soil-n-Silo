@@ -10,7 +10,9 @@ import { hasStation, stationForecast } from '../game/station.ts';
 import { warmthOf } from '../game/warmth.ts';
 import type { GameState } from '../game/state.ts';
 import { must } from '../game/result.ts';
+import { GROUND_ABOUT, GROUND_IDS, GROUND_NAMES } from '../game/ground.ts';
 import type { Overlay } from '../world/view.ts';
+import { GROUND_TINT } from '../world/shapes.ts';
 import { fill, h, icon, set, setVar } from './dom.ts';
 import { clock, num, pct, playTime, watts } from './format.ts';
 import { soonRows } from './forecastWords.ts';
@@ -270,12 +272,18 @@ export class TopRight {
   }
 }
 
-const VIEWS: [Overlay, string, string | null][] = [['none', 'Off', null], ['fertility', 'Soil', 'soil'], ['height', 'Height', 'earth'], ['water', 'Water', 'water'], ['power', 'Power', 'bolt'], ['roads', 'Roads', 'road'], ['bees', 'Bees', 'bee']];
+const VIEWS: [Overlay, string, string | null][] = [['none', 'Off', null], ['fertility', 'Soil', 'soil'], ['ground', 'Ground', 'field'], ['height', 'Height', 'earth'], ['water', 'Water', 'water'], ['power', 'Power', 'bolt'], ['roads', 'Roads', 'road'], ['bees', 'Bees', 'bee']];
 
 export class ViewBar {
   readonly el = h('div', { class: 'cd-viewbar hud-view' });
   private readonly buttons = new Map<Overlay, HTMLButtonElement>();
   private readonly host: PlayHost;
+  /** What the Ground view's colours are: shown above the view bar while it is on. */
+  readonly legend = h('div', { class: 'cd-card hud-legend', hidden: true },
+    h('div', { class: 'cd-label' }, 'Ground'),
+    ...GROUND_IDS.map((id) => h('div', { class: 'row' },
+      h('i', { style: `background: #${GROUND_TINT[id].toString(16).padStart(6, '0')}` }),
+      h('b', null, GROUND_NAMES[id]), h('span', { class: 'cd-small' }, `${GROUND_ABOUT[id].where}: ${GROUND_ABOUT[id].does}`))));
 
   constructor(host: PlayHost) {
     this.host = host;
@@ -289,7 +297,7 @@ export class ViewBar {
     }
   }
 
-  update() { const o = this.host.overlay(); for (const [k, b] of this.buttons) b.classList.toggle('is-on', k === o); }
+  update() { const o = this.host.overlay(); for (const [k, b] of this.buttons) b.classList.toggle('is-on', k === o); this.legend.hidden = o !== 'ground'; }
 }
 
 /** Turning the view, zooming and the menu: every key works too. */

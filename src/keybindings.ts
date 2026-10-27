@@ -41,7 +41,7 @@ export const ACTIONS: readonly ActionDef[] = [
   { id: 'turnRight', label: 'Turn the view right', group: 'view', keys: ['KeyE'] },
   { id: 'zoomIn', label: 'Zoom in', group: 'view', keys: ['KeyZ', 'Equal'], note: 'With Shift, a letter key zooms out.' },
   { id: 'zoomOut', label: 'Zoom out', group: 'view', keys: ['Minus'] },
-  { id: 'overlay', label: 'Next overlay', group: 'view', keys: ['KeyV'], note: 'Soil, height, water, power, roads, bees.' },
+  { id: 'overlay', label: 'Next overlay', group: 'view', keys: ['KeyV'], note: 'Soil, ground, height, water, power, roads, bees.' },
   { id: 'panLeft', label: 'Pan left', group: 'view', keys: ['ArrowLeft'] },
   { id: 'panRight', label: 'Pan right', group: 'view', keys: ['ArrowRight'] },
   { id: 'panUp', label: 'Pan up', group: 'view', keys: ['ArrowUp'] },

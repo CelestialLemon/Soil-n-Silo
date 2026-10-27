@@ -128,7 +128,7 @@ export class Hud {
     this.problems = new ProblemsStrip((id) => host.focus(id));
     this.dock = new Dock({ state: () => host.state(), tool: () => host.tool(), setTool: (t) => host.setTool(t), choose: (c) => host.choose(c), tip: (id) => this.showTip(id) });
     this.perf = new PerfOverlay(host.settings);
-    this.hud.append(this.perf.el, this.commission.el, this.commission.pill, this.top.el, this.view.el, this.controls, this.dock.el, this.side.el, this.routes.el, this.problems.el, this.problems.popover,
+    this.hud.append(this.perf.el, this.commission.el, this.commission.pill, this.top.el, this.view.el, this.view.legend, this.controls, this.dock.el, this.side.el, this.routes.el, this.problems.el, this.problems.popover,
       this.above);
     this.ui.append(this.world.el, this.hud, this.sheets);
     root.append(this.ui);

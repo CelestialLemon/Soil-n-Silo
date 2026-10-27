@@ -16,7 +16,7 @@ import { BUILD_HOURS, PANEL_BLOCK } from '../game/snow.ts';
 import { SEVERE_GALE, TURBINE_LIMIT } from '../game/wind.ts';
 import { isPollinated } from '../game/sim/layout.ts';
 import { fieldFertility, fieldGroundPace, harvestOf } from '../game/sim/soil.ts';
-import { cropGroundWords } from '../game/ground.ts';
+import { cropGroundWords, FERTILITY_RANGE, GROUND_ABOUT, GROUND_IDS, GROUND_NAMES } from '../game/ground.ts';
 import { recipeOf } from '../game/sim/goods.ts';
 import { TERRAIN } from '../game/map.ts';
 import { historyOf, summarize } from '../game/history.ts';
@@ -239,10 +239,10 @@ const ENTRIES: Record<BuildingId, Entry> = {
   },
 };
 
-export type TopicId = 'start' | 'trucks' | 'power' | 'soil' | 'weather' | 'land' | 'markers' | 'keys';
+export type TopicId = 'start' | 'trucks' | 'power' | 'soil' | 'ground' | 'weather' | 'land' | 'markers' | 'keys';
 const TOPICS: { id: TopicId; name: string; chip: string }[] = [
   { id: 'start', name: 'First steps', chip: 'First steps' }, { id: 'trucks', name: 'Trucks and routes', chip: 'Routes' }, { id: 'power', name: 'Power', chip: 'Power' },
-  { id: 'soil', name: 'Soil and water', chip: 'Soil' }, { id: 'weather', name: 'Seasons and weather', chip: 'Weather' }, { id: 'land', name: 'Height and earthworks', chip: 'Height' }, { id: 'markers', name: 'Statuses and markers', chip: 'Statuses' }, { id: 'keys', name: 'Keys', chip: 'Keys' },
+  { id: 'soil', name: 'Soil and water', chip: 'Soil' }, { id: 'ground', name: 'Ground', chip: 'Ground' }, { id: 'weather', name: 'Seasons and weather', chip: 'Weather' }, { id: 'land', name: 'Height and earthworks', chip: 'Height' }, { id: 'markers', name: 'Statuses and markers', chip: 'Statuses' }, { id: 'keys', name: 'Keys', chip: 'Keys' },
 ];
 
 /** The weather events that have a page, in the order of the index: their rules are in. */
@@ -263,7 +263,7 @@ const meanFertility = (m: GameState['map']) => { const grass = m.terrain.map((t,
 
 /** Topics worth reading for a commission, from what it asks and its conditions. */
 function worthReading(s: GameState): TopicId[] {
-  const sc = s.scenario, out: TopicId[] = ['start', 'weather'];
+  const sc = s.scenario, out: TopicId[] = ['start', 'weather', 'ground'];
   if (sc.goals.some((g) => g.kind === 'soil') || meanFertility(s.map) < 50) out.push('soil');
   const { sun, wind } = sc.climate;
   if (sun.strength < 1 || sun.set - sun.rise < 12 || wind.mean < 0.4) out.push('power');
@@ -828,6 +828,22 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
           h('li', null, B('Resting:'), ` ground without a field slowly recovers (${FIELD.rest * 60} a minute), up to what it started at.`),
           h('li', null, B('Soil health'), ` is the fields' average fertility, nudged up or down (at most ${TREE_HEALTH.cap}) by trees planted or cleared. A soil goal checks it at the end.`),
           h('li', null, B('Clearing:'), ` a tree costs ${CLEAR_COST.tree} credits to remove and a rock ${CLEAR_COST.rock}. `, bLink('sapling'), 's plant new trees.')),
+      ];
+      case 'ground': return [
+        ...head('Ground', 'Every grass tile is loam, silt, clay, sand or stony: a trait of the tile, laid in large patches that follow the land, and it never changes. Earthworks, compost and clearing do not turn one kind into another.'),
+        h('ul', null, ...GROUND_IDS.map((g) => {
+          const [lo, hi] = FERTILITY_RANGE[g];
+          const does: Record<typeof g, (Node | string)[]> = {
+            loam: [`Soil starts at ${lo}–${hi}. Nothing else to know: it is the baseline the other kinds are measured against.`],
+            silt: [`Soil starts at ${lo}–${hi}, the richest of all. It is the ground a flood covers first, and the ground it leaves richer (see `, link('Flood', { kind: 'event', id: 'flood' }), ').'],
+            clay: [`Soil starts at ${lo}–${hi}. Trucks drive at ${pct(TRUCK.mudSpeed)} speed on it while it rains and for ${TRUCK.mudHours} hours after (mud); frozen clay is firm.`],
+            sand: [`Soil starts at ${lo}–${hi}, poor. It is firm, never muddy, and a dust storm blows it twice as hard as loam (see `, link('Dust storm', { kind: 'event', id: 'dustStorm' }), ').'],
+            stony: [`Soil starts at ${lo}–${hi}, and never rises above ${FIELD.stonyCap}, even with compost or silt. A field or greenhouse with ${FIELD.stonyMost} stony tiles or more yields ${FIELD.stonyLoss} less each harvest. Rocks lie mostly on it, and the ground under a rock stays stony when the rock is cleared.`],
+          };
+          return h('li', null, B(`${GROUND_NAMES[g]}:`), ` ${GROUND_ABOUT[g].where}. `, ...does[g]);
+        })),
+        P(`A crop grows ×${FIELD.groundLike} on a ground it likes and ×${FIELD.groundPoor} on one it is poor on, and a few crops cope on thin ground; each crop's ground is listed on the `, bLink('field'), ' page, and the card over a field says what its tiles do to the crop. A field or greenhouse takes the average of its nine tiles. In a ', bLink('greenhouse'), ' ground counts for soil, the stony cap and what the crop likes.'),
+        P('The Ground view, beside the Soil view in the bar at the bottom left, colours every grass tile by its kind, with a legend. Pointing at a tile says its ground; pointing at a field says what lies under it.'),
       ];
       case 'weather': return [
         ...head('Seasons and weather', 'A commission happens in one season, which does not change while you play. The season sets the days, the wind, the warmth, the rain and the river; a character such as wet, hot or hard shifts them.'),

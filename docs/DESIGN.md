@@ -102,6 +102,7 @@ The build preview is see-through, green where it fits and red where it doesn't.
   It shows while building and doing earthworks, under the grid and contour lines, unless the building in hand has a view of
   its own (silos the roads, sprinklers the water, hives the bees, anything that makes, stores or uses power the power).
 - The roads overlay shows the open ground trucks can drive on, and the buildings they can't reach.
+- The Ground view colours each grass tile by its kind of ground, with a legend (see The map's Ground).
 - The inspector keeps each building's history over the last 1, 5 or 10 minutes of play (5 by default, the choice kept from
   building to building), so a problem noticed late can be traced: a ribbon of its statuses in time (problems hatched, so they
   don't rely on colour), pointing at it says what happened then and for how long, and below it the share of the time in each
@@ -1040,6 +1041,12 @@ Tired Soil: sand 0.9, stony 0.9. Riverlands: silt 1.2, a wide floodplain (about 
 - **Projections** (the soil ahead, `forecast.ts`) keep when it last rained, hour by hour: the slow run (least rain) takes the rain at the start of each hour and ended as soon as it can have, the fast run (most rain) any time in it and lasting to its end; the rain
   known so far comes from the seeded past (the player has seen it). Heat is read from the view's events at the middle of the hour. Checked by `test/groundWater.test.ts` against the sim (a card made at any hour of a clay field's hold, or a heat wave's end, tells the soil the sim leaves it with, and a
   forecast's range holds it).
+
+**Where the ground shows (5.5, 2026-10-27).** Ground is a fact the player can see, not only a number under a card.
+- **The Ground view** is on the view bar between Soil and Height (`Overlay` `'ground'`, `src/world/view.ts`; V cycles through it): one colour per kind over every grass tile (`GROUND_TINT` in `src/world/shapes.ts`: loam brown, silt slate blue, clay terracotta, sand pale yellow, stony grey; chosen to differ in hue and in lightness, and to be none of the Soil view's red to green). Water, trees and rocks are left clear, as in the Soil view. A **legend** card over the bar names the five colours with where each lies and what it does in a few words (`GROUND_ABOUT`, `src/game/ground.ts`). It is a view of its own: no tool turns it on.
+- **The placement card** of a field or greenhouse already lists its ground with the crop's fact (5.2: "6 silt, 3 clay", then what that does to the crop, `groundFact`). **The hover card** over a field or greenhouse says "ground 6 silt, 3 clay · soil 63" (`groundWords`), the one over bare grass "Silt ground, soil fertility 74", and the inspector's **Ground** line is the same fact as the card's.
+- **The guide** has a **Ground** page in the topics (`src/ui/guide.ts`, always worth reading): the five kinds, where each lies, its starting fertility and its one rule, with the numbers read from `FERTILITY_RANGE`, `FIELD` and `TRUCK`; each crop's ground is in the field page's crop table (5.2), and the Soil and water page's Ground bullet links to it.
+- **The letters** say the ground where it is the story, as plain facts: Windy Ridge's stony ridges and clay hollows, Tired Soil's sand and stones, Riverlands' silt that the river covers first. Random commissions name theirs in their tags ("Poor soil", "Rocky").
 
 Beyond the edge the country carries on, a shade duller: the river, a track climbing out from the depot, woods rising
 into higher hills above the map's height limit. It is only scenery. Trees are oak, birch, pine, willow, poplar and apple,
