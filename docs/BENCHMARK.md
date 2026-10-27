@@ -64,9 +64,9 @@ and write down the power mode; the timings differ between a plugged-in laptop an
 | c4-farm | 61.35 | 16.3 | 32.1 | 15.5 | 13.291 | 489 | 2198 | 1709 | 1289508 |
 | c7-river | 64.516 | 15.5 | 34.4 | 14.7 | 13.443 | 632 | 2709 | 2078 | 1308724 |
 | c1-farm-pointer | 34.014 | 29.4 | 47.4 | 10.4 | 12.279 | 466 | 1988 | 1527 | 879054 |
-| c1-farm-camera | 90.909 | 11 | 61 | 9.1 | 12.408 | 466 | 1988 | 1527 | 879174 |
+| c1-farm-camera | 80 | 12.5 | 52.1 | 9.3 | 12.393 | 466 | 1988 | 1527 | 879126 |
 
-The pointer fixture runs at about half the fps of the still one: the blocking `pick` (#187). The camera fixture's median fps is higher than the still ones' and not yet explained (its p95 is the worst, 61 ms): read its tail, not its median.
+The pointer fixture runs at about half the fps of the still one: the blocking `pick` (#187). The camera fixture varies between repeats (61–83 fps: the keys and wheel arrive with the browser's own timing) and its p95 is the worst; read its tail, and compare it with a wider margin than the still ones.
 
 The `emptyVisits` column is the empty-mesh waste: three.js resolves programs and bindings for about three
 quarters of its `renderBufferDirect` calls and draws nothing.

@@ -113,8 +113,8 @@ const ready = (page: Page) => page.waitForFunction('window.__bench.ready()', und
 /** Runs an expression in the page (tools/bench/probe.js's `window.__bench`, the game's `window.game`). */
 const inPage = <T>(page: Page, expr: string): Promise<T> => page.evaluate<T>(expr);
 
-/** Plays the fixture's script for `ms` of wall time, or until `done` says so (frames counted). */
-async function play(page: Page, script: Script, until: () => Promise<boolean>, seconds: number, { width: W, height: H }: { width: number; height: number }) {
+/** Plays the fixture's script until `until` says so; the camera's moves are spread over the `seconds` after the `warmup`, the part that is measured. */
+async function play(page: Page, script: Script, until: () => Promise<boolean>, seconds: number, warmup: number, { width: W, height: H }: { width: number; height: number }) {
   const t0 = Date.now();
   const elapsed = () => (Date.now() - t0) / 1000;
   if (script === 'still') { while (!(await until())) await page.waitForTimeout(100); return; }
@@ -140,7 +140,7 @@ async function play(page: Page, script: Script, until: () => Promise<boolean>, s
   ];
   let next = 0;
   while (!(await until())) {
-    while (next < steps.length && elapsed() >= steps[next][0] * seconds) await steps[next++][1]();
+    while (next < steps.length && elapsed() >= warmup + steps[next][0] * seconds) await steps[next++][1]();
     await page.waitForTimeout(20);
   }
   for (const k of ['ArrowRight', 'ArrowDown', 'ArrowLeft']) await page.keyboard.up(k);
@@ -198,10 +198,10 @@ async function main() {
         await inPage(page, '__bench.start()');
         const frames = await (async () => {
           const target = structural ? STRUCTURAL_WARMUP_FRAMES + STRUCTURAL_FRAMES : 0;
-          if (structural) { await play(page, f.script, async () => (await frameCount()) >= target, seconds, viewport); }
+          if (structural) { await play(page, f.script, async () => (await frameCount()) >= target, seconds, 0, viewport); }
           else {
             const start = Date.now();
-            await play(page, f.script, () => Promise.resolve(Date.now() - start >= (warmup + seconds) * 1000), seconds, viewport);
+            await play(page, f.script, () => Promise.resolve(Date.now() - start >= (warmup + seconds) * 1000), seconds, warmup, viewport);
           }
           return await inPage<Frame[]>(page, '__bench.stop()');
         })();
