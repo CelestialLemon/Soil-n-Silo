@@ -89,7 +89,7 @@ export const CAMPAIGN: Scenario[] = [
     tips: ['Up on the hills a turbine catches more wind. Every level a truck climbs costs it time and battery, so keep the busy routes low.'],
   },
   {
-    id: 'c4', name: 'Linen for the Looms', seed: 4404, width: 50, height: 40, credits: 1300, par: 40 * MIN,
+    id: 'c4', name: 'Linen for the Looms', seed: 4404, width: 50, height: 40, credits: 1300, par: 45 * MIN,
     blurb: 'The weavers of Hollin want linen, and a steady supply of yarn for their own looms.',
     terrain: VALLEY, climate: climateOf('summer', 'hot'), events: [...eventOn(4, 8, 'heatWave')], tags: [],
     goals: [{ kind: 'deliver', item: 'linen', n: 50 }, { kind: 'rate', item: 'yarn', perMin: 5 }],
@@ -101,7 +101,7 @@ export const CAMPAIGN: Scenario[] = [
     goals: [{ kind: 'deliver', item: 'honeycake', n: 100 }],
   },
   {
-    id: 'c6', name: 'Tired Soil', seed: 6606, width: 48, height: 40, credits: 1400, par: 35 * MIN,
+    id: 'c6', name: 'Tired Soil', seed: 6606, width: 48, height: 40, credits: 1400, par: 40 * MIN,
     blurb: 'Years of monoculture left this valley worn out. Make sauce for the cannery town, and leave the soil better than you found it.',
     terrain: { ...VALLEY, ground: { silt: 0, clay: 0, sand: 0.9, stony: 0.9 }, forest: 0.05, relief: 0.6 }, climate: climateOf('summer', 'dry'), events: [...eventOn(4, 9, 'dustStorm')], tags: ['Poor soil'],
     goals: [{ kind: 'deliver', item: 'sauce', n: 50 }, { kind: 'soil', min: 55 }],
@@ -114,7 +114,7 @@ export const CAMPAIGN: Scenario[] = [
     goals: [{ kind: 'deliver', item: 'linen', n: 30 }, { kind: 'deliver', item: 'sauce', n: 30 }, { kind: 'deliver', item: 'bread', n: 80 }],
   },
   {
-    id: 'c8', name: 'Harvest Festival', seed: 8808, width: 56, height: 44, credits: 1800, par: 50 * MIN,
+    id: 'c8', name: 'Harvest Festival', seed: 8808, width: 56, height: 44, credits: 1800, par: 55 * MIN,
     blurb: 'The whole valley comes together for the festival. Everything, at once, on healthy soil.',
     terrain: { ...VALLEY, ground: { silt: 0, clay: 0, sand: 0.3, stony: 0.3 }, rock: 0.07, forest: 0.14, relief: 0.7 }, climate: climateOf('autumn', 'stormy'), events: [...eventOn(3, 8, 'tropicalStorm', 'ordinary', undefined, 'autumn'), ...eventOn(7, 4, 'fog')], tags: ['Everything'],
     goals: [{ kind: 'deliver', item: 'honeycake', n: 40 }, { kind: 'deliver', item: 'sauce', n: 30 }, { kind: 'deliver', item: 'linen', n: 30 }, { kind: 'soil', min: 60 }],
@@ -142,14 +142,14 @@ const PRODUCTS: { item: ItemId; n: number; level: number }[] = [
  * more than the base time for its floods and frosts (a spring commission nearly always rolls a flood, and one beside the farm cost the
  * bot about a fifth), summer a little less in a mild one but more in a dry (its dust storm and heat wave) and hot one (heat is hard on
  * wheat, flax and beans), autumn about the same with more for the wet, gales and stormy characters (the tropical storm and its flood, the
- * hurricane), and winter 2.65 to 3.35 times (measured with the bot putting up to six fields under glass once its farm stands, and without Long Nights, whose own layout is built round greenhouses): little grows in the open below 6°C, the hens lay at half rate and a greenhouse costs more than a cash-starved start can spend. Wet and stormy summers, which the
+ * hurricane), and winter 2.5 to 3.25 times (measured with the bot putting up to six fields under glass once its farm stands, and without Long Nights, whose own layout is built round greenhouses): little grows in the open below 6°C, the hens lay at half rate and a greenhouse costs more than a cash-starved start can spend. Wet and stormy summers, which the
  * measurement put a little under a mild one's 1.15 (their storms help the fields as much as they cost), take its factor.
  */
 export const PAR_FACTOR: Record<Season, Partial<Record<Character, number>>> = {
-  spring: { mild: 1.2, wet: 1.25, dry: 1.1, hot: 1.2, gales: 1.25, stormy: 1.3, highRiver: 1.25 },
-  summer: { mild: 1.1, wet: 1.1, dry: 1.25, hot: 1.3, stormy: 1.1 },
-  autumn: { mild: 1.2, wet: 1.25, dry: 1.2, gales: 1.2, stormy: 1.35 },
-  winter: { mild: 2.65, gales: 2.55, hard: 3.2 },
+  spring: { mild: 1.2, wet: 1.25, dry: 1.1, hot: 1.2, gales: 1.2, stormy: 1.25, highRiver: 1.2 },
+  summer: { mild: 1.15, wet: 1.1, dry: 1.3, hot: 1.3, stormy: 1.1 },
+  autumn: { mild: 1.2, wet: 1.25, dry: 1.15, gales: 1.2, stormy: 1.35 },
+  winter: { mild: 2.6, gales: 2.5, hard: 3.25 },
 };
 
 /** The target time (s) of a random commission with `goals` and `difficulty` in `climate`: the base time for a mild spring, times the climate's factor, to 5 minutes. */

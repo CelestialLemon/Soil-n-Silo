@@ -28,10 +28,11 @@ few minutes and the wind comes and goes, so power needs storage and a mix of sou
 - Pylon power networks, each with its own balance
 - Rolling hills, steep banks and occasional cliffs; paid earthworks and levelling on placement
 - Soil fertility, slope erosion, sprinklers, compost and pollination
+- Four seasons with weather events, a weather station and forecast, heated greenhouses, and five kinds of ground
 - 8 campaign commissions, random commissions from any seed, a sandbox
 - A soft timer: the commission always finishes; gold, silver or bronze by how long it took
 
-**Not in v0.1:** research or unlocks (every building is available from the start), pipes and fluids, weather events, trains,
+**Not in v0.1:** research or unlocks (every building is available from the start), pipes and fluids, trains,
 blueprints and copy-paste, sound, multiple saves per level.
 
 ## Camera, presentation and controls
@@ -163,6 +164,21 @@ The wind follows a smooth seeded curve around the season's mean, swinging up to 
 full strength.
 
 ## Seasons
+
+**The climate feature's principles** (designed 2026-10-21, shipped in phases 1 to 5; its design draft is gone, these are what stands). *Climate changes what
+the best layout is; weather tests how well that layout copes.* Without them every commission runs on the same conditions, so a good layout, once found, works everywhere; with them each commission, above all a random
+one (the mode played most once the campaign is done), wants a layout at least partly tailored to its conditions. **Every rule must change where or what the player builds, or it is cut.**
+
+- **One season per commission,** never changing during it; it replaces the weather settings, and tags like "Short days" or "Strong wind" only describe a season. Random commissions roll a season and a character, named in the briefing, in place of the old weather
+  modifiers (the ground modifiers stay).
+- **Weather is seeded:** a commission's weather is the same every time it is played, like its map, so it can be learnt, a better medal chased, and the bot can play it.
+- **Weather disrupts, never destroys:** it slows or stops things and ruins a crop still growing in a field (the field starts again). It never destroys buildings, harms animals or touches stored goods. Bad weather costs time, and so the medal; there is still no failing.
+- **Machines are indoors and don't care,** the digester and batteries included (real ones suffer in the cold, but winter already presses power through weak sun, greenhouses and the frozen river, and one more cold effect would make it a pile of penalties instead of a different puzzle).
+- **A weather event tests the layout** (its storage, batteries and slack); it does not ask for quick reactions: the farm runs itself and pausing is free. Every event has an answer you can build ahead, mostly from what the game already has; none is required.
+- **Crops have short profiles** (one or two likes and dislikes), not a table of multipliers by crop, season and ground; screens state the result as a fact ("Tomato, clay, spring: grows slowly"), never as advice.
+- **Season, then ground, then fertility:** the season decides what is possible (no tomatoes outdoors in winter); ground shifts growth by about a quarter either way; fertility says how good a given field is.
+- **One valley, for now.** A temperate valley with four seasons. **Regions** are a later idea (a mountain land where even summer is cold, winters are hard and the ground is rocky; a desert short of water with barren ground), so nothing should assume there is only one valley. A °F option may go in Settings.
+- **Erosion is unchanged:** rain washing soil downhill stays its own roadmap item; slopes already cost soil per harvest and the dust storm adds weather's share.
 
 A commission happens in one **season**: spring, summer, autumn or winter. It never changes during the commission. The season
 replaces the old per-commission weather settings: the sun's hours and strength and the wind come from the season, and a
@@ -1500,11 +1516,11 @@ A commission has goals, a target time and modifiers. It ends when every goal is 
 | 1 | First Light | 120 wheat, 80 flour | 20 min | A mild spring | Gentle | 0.2 |
 | 2 | Morning Bread | 150 bread; soil health ≥ 40 | 50 min | A wet spring | | 0.4 |
 | 3 | Windy Ridge | 90 oil, 80 bread | 55 min | Autumn, gales | Rocky, hilly | 0.9 |
-| 4 | Linen for the Looms | 50 linen; 5 yarn/min | 40 min | A hot summer | | 0.4 |
-| 5 | Long Nights | 100 honey cake | 70 min | Winter | | 0.5 |
-| 6 | Tired Soil | 50 sauce; soil health ≥ 55 | 35 min | A dry summer | Poor soil | 0.6 |
+| 4 | Linen for the Looms | 50 linen; 5 yarn/min | 45 min | A hot summer | | 0.4 |
+| 5 | Long Nights | 100 honey cake | 65 min | Winter | | 0.5 |
+| 6 | Tired Soil | 50 sauce; soil health ≥ 55 | 40 min | A dry summer | Poor soil | 0.6 |
 | 7 | Riverlands | 30 linen, 30 sauce, 80 bread | 50 min | Spring, high river | Cramped | 0.3 |
-| 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 50 min | A stormy autumn | Everything | 0.7 |
+| 8 | Harvest Festival | 40 honey cake, 30 sauce, 30 linen; soil health ≥ 60 | 55 min | A stormy autumn | Everything | 0.7 |
 
 **Campaign weather (2.10).** Each commission has the events that teach what it means to, placed by hand (`eventOn(day, hour, kind, strength?)`, in `src/game/scenarios.ts`):
 none on the first day, one at a time, at least half a day clear between them, all inside the target time. Day 1 starts at 07:00 and a day is 4 minutes of play.
@@ -1620,8 +1636,8 @@ run with the same layout and seed in a mild spring with no events. The factor is
 (a commission's goals decide which layout it is like: autumn is quicker for oil and honey cake and slower for linen and bread). The bot's map is flat and has no water, so each
 layout gets a river a couple of tiles beyond the farm's west edge (a flood beside the farm, the worst case; Riverlands' bot has its bank) and, except Tired Soil's, no trees (an unguarded farm for the dust storm):
 the events are measured at their worst, so the factors are on the safe side. The per-event bumps the earlier issues put in (stormy spring 1.3, wet and stormy summer 1.2, dry summer 1.35, wet and gales autumn,
-stormy autumn 1.5) counted a part of the same cost twice; the table is now **spring** mild 1.2, wet 1.25, dry 1.1, hot 1.2, gales 1.25, stormy 1.3, high river 1.25; **summer** mild 1.1, wet 1.1, dry 1.25, hot 1.3,
-stormy 1.1; **autumn** mild 1.2, wet 1.25, dry 1.2, gales 1.2, stormy 1.35; **winter** mild 2.65, gales 2.55, hard 3.2 (the bot needs 1.8 to 2.3 times as long for flour, 2.4 to 3 for bread and 2.7 to 4.3 for linen).
+stormy autumn 1.5) counted a part of the same cost twice; the table is now **spring** mild 1.2, wet 1.25, dry 1.1, hot 1.2, gales 1.2, stormy 1.25, high river 1.2; **summer** mild 1.15, wet 1.1, dry 1.3, hot 1.3,
+stormy 1.1; **autumn** mild 1.2, wet 1.25, dry 1.15, gales 1.2, stormy 1.35; **winter** mild 2.6, gales 2.5, hard 3.25 (measured again with all of phase 5's ground in, 5.7; the bot needs 1.8 to 2.3 times as long for flour, 2.4 to 3 for bread and 2.7 to 4.3 for linen).
 The ratio (the climate and its events together), averaged over the layouts, is 1.14 in a mild spring, 1.17 in a wet one, 1.19 stormy, 1.07 dry, 1.14 gales; 1.00 in a mild summer (a dry one 1.09, a hot one 1.14: heat hurts wheat and flax, and calm
 days starve solar and wind, but tomato and sunflower love it); 0.97 to 1.10 in an autumn (stormy 1.10); at the 90th percentile of single runs 1.2 to 1.5 times. The worst single runs were 1.8 times (a stormy autumn with a hurricane) and 1.7 (First Light's layout in a hot spring, with a flood and frosts, and in a few autumns). Wet and stormy summers measured a little under a
 mild one (their storms water the fields as much as they cost) and take its factor. Playing each layout against the target of a random commission of its own difficulty and goal count, the bot earns gold in all runs but the 6 to 8 of 96 in a
@@ -1640,7 +1656,7 @@ Early on, raw goods are the way to afford the first machines; products pay far b
 ## Saving
 
 The game saves the commission in progress (one at a time) in the browser every 30 s and when the page is hidden, and remembers
-each commission's best medal and time. Saves are version 17 (the commission's events are saved with it, and the hour of the weather station's last forecast; the run log keeps what the weather held and the valley's output). A save from an older version of the game is refused.
+each commission's best medal and time. Saves are version 19 (the commission's events are saved with it, the ground is saved with the map, and the hour of the weather station's last forecast; the run log keeps what the weather held and the valley's output). A save from an older version of the game is refused.
 
 ## Open questions
 
@@ -1688,3 +1704,11 @@ and the guide's text were read in code, not played by hand in a browser.
   runs dry at night, which the bot's early layouts do. Not retuned; a player will feel it when a battery runs out (a call for the design lead).
 - **Left open.** (1) Playing winter by hand, start to finish, in a browser. (2) What would bring winter toward the other seasons: a cheaper greenhouse (say 90) or more starting credits in winter, hens
   that lay in winter at a higher rate, or a heated coop; each changes how winter feels, and none was done here. (3) Whether random winter commissions should ask for honey cake now that Long Nights proves it.
+
+**Playtest of the whole climate feature and of ground (5.7, 2026-10-27).** The last issue of the climate feature. Driven headless on the real rules (the bot, `npm run sim`, `tools/seasonfactor.ts`, scripts outside the repo) and in headless Chromium on the dev server (software WebGL, 960 × 600): the game boots from `vite`, and the sandbox in spring, summer and winter, Tired Soil (a dry summer), Riverlands (a rainy spring) and two random commissions load, draw their ground, the Ground view and its legend, and the hover card ("Loam ground, soil fertility 57") with no console error (only WebGL's own warnings). It was not played by hand, start to finish.
+- **Targets and factors.** The bot (`npm run sim`, every layout, ground and mud in) takes First Light 13.5 minutes, Morning Bread 38.0 (its neighbours layout 30.5), Windy Ridge 41.7, Linen 31.3, Long Nights 48.4, Tired Soil 28.1, Riverlands 37.7 and Harvest Festival 39.0: every layout clears its commission, at 1.25 to 1.5 times its target. The ground, water and mud rules had moved the bot's times up a tenth or so while the targets stood, so the three below 1.3 times moved to keep about 1.4: **Linen 40 to 45 minutes, Tired Soil 35 to 40, Harvest Festival 50 to 55** (Morning Bread, Windy Ridge, Riverlands and Long Nights stand at 1.3 to 1.35: one step up would be 1.4 to 1.5). `tools/seasonfactor.ts` was run in full (4 seeds, difficulties 1 to 3, 7 layouts) and `PAR_FACTOR` follows its suggestion where it differed: spring gales 1.25 to 1.2, stormy 1.3 to 1.25, high river 1.25 to 1.2; summer mild 1.1 to 1.15, dry 1.25 to 1.3; autumn dry 1.2 to 1.15; winter mild 2.65 to 2.6, gales 2.55 to 2.5, hard 3.2 to 3.25. (Every difference is one step of 0.05, within what a rerun moves.) Winter is still 2.3 to 2.8 times a mild spring for the bot: still a design call, on the roadmap.
+- **Does ground change where the player builds?** Where the ground varies, yes; on a good part of the maps it hardly varies where the farm stands. A field wholly on one ground, over four days of weather (`groundpace`: pace = water × soil × warmth × ground, the field's mean), wheat in spring: loam 0.59 with the rain alone and 0.98 with a sprinkler; silt 0.71 / 1.18 (fertility 80); **clay 1.05 / 1.16** (liked, and rain held); sand 0.41 / 0.68; stony 0.38 / 0.63 (and a harvest yields one less). Beans on clay 1.14 / 1.26, tomato on clay 0.30 / 0.36 (against 0.29 / 0.50 on loam: clay is no help to a tomato and worth a sprinkler less), sunflower 0.54 / 0.58 on clay against 0.48 / 0.62 on loam, flax 0.83 / 0.92 on clay. So wheat, beans and flax go on clay and silt, tomato and sunflower on loam and silt, and the ground decides where each crop goes without ruling any out (sand with a sprinkler, 0.68, beats unwatered loam, 0.59). Sprinklers are what clay saves: an unsprinklered clay wheat field (1.05) is about a sprinklered loam one (0.98); in a mild summer 0.69 against 0.39 for loam with the rain alone (0.86 with a sprinkler), and in a heat wave half the water is what the others lack. **But the land near the depot is mostly loam:** within 18 tiles of the depot the campaign maps are 48 to 86% loam in all but Linen (48%), Tired Soil (21%) and Riverlands (51%), and 70 to 92% of the field sites (3 × 3, seven tiles of one ground) there are loam in First Light, Morning Bread, Windy Ridge, Long Nights and Harvest Festival; ten random commissions (difficulty 2) had 32 to 98% loam. In the maps with a river, silt and clay lie by the water and in the hollows, which is where the ground makes the player choose: Riverlands puts its depot on clay, silt beside the river that floods, loam on the far side.
+- **Is any ground a field nobody wants, or one that is always right?** *Sand and stony ground are fields nobody wants:* about two thirds of loam's pace for every crop, and stony ground yields one less and tops out at fertility 50; nothing in a field gives either a reason (sunflower's "copes" is only said: it gets no bonus, so a sunflower on sand is 0.43 against 0.62 on loam). They are good for what stands on them (a turbine, a machine, a garage) and the map puts rocks there, so the rule is "build on them, not farm them"; Tired Soil, whose depot has sand and stones round it, is where that bites, and is the commission where a sand field wants compost first (sand has no cap, so compost makes it as good as loam). *Clay is nearly always right for wheat, beans and flax* wherever there is enough of it (liked ×1.25, rain held a day, half water in a heat wave: the rule of thumb for these crops is "clay, then silt"), and what it costs is mud on the routes (63% of a spring is muddy on clay, 39% of an autumn, 21% of a mild summer, 6% of a dry one, none in winter; a truck is held to half speed on it) and a tomato's poor growth. The hold helps least where it matters most: in a dry summer clay has had rain in the last day only 17% of the time (50% in a mild one, 90% in a wet one), so only the heat wave's half water is left. *Silt* is the best land (80 fertility, +20% pace) and costs the flood: in the bots' Riverlands and Harvest Festival 96% and 66% of the flooded land is silt. No ground is never right; the stony one is the nearest to it.
+- **Mud.** Mud costs the bot nothing measurable (the bot's layouts stand on whatever ground its map has: Windy Ridge 41.9 to 41.7 with the water rule on, Riverlands 37.6 to 37.7), so the weight of mud is the player's: a truck crossing clay in a wet spring drives at half speed for most of the month. Not tuned.
+- **Look.** The grounds read in the normal view in spring (sand is paler, stony grey with stones, clay redder, silt darker) and the Ground view is clear in every season, snow dithering over it in winter. **In summer the golden turf nearly hides the tints** (a sand patch is only a little paler than loam): the Ground view is needed there. Under snow the ground is not seen at all in the normal view (the stones stand through it). Not changed.
+- **Left open** (on the roadmap): winter's length; hot summers on wheat and beans; playing the whole feature by hand; sand and stony fields: whether they want a reason (a crop that likes them, or a ground that gains from compost); the near-depot loam; summer's faint ground tints; a "high river" random commission on a map with ponds.
