@@ -90,7 +90,7 @@ const bakery = (dx: number, dy: number, recipe?: string): Step[] => [
  * nothing: the station is only its cost. It goes up once the first loop runs, a few minutes before the first event, as a player
  * would (placed at the start it costs Harvest Festival a minute, since credits are what the bot is short of then).
  */
-const station = (dx: number, dy: number): Step => ({ type: 'station', x: dx - 5, y: dy - 10 });
+const station = (dx: number, dy: number): Step => ({ type: 'station', x: dx - 5, y: dy - 13 });
 
 /**
  * The river a commission's bot plays beside (tiles east of the depot, west if negative), for the commissions whose weather is a flood: the bot's
