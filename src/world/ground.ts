@@ -3,6 +3,7 @@ import { FLAG, linearColor as lin, thin, type PixelObject, type PixelRenderer } 
 import { BUILDINGS } from '../game/data.ts';
 import { TERRAIN, type Land } from '../game/map.ts';
 import { baseLevel, centreLevel, corners, inRelief, joins, SIDES, spanOf, splitsNwSe, STEEP, type Relief } from '../game/relief.ts';
+import { GROUND, GROUND_IDS, type GroundId } from '../game/ground.ts';
 import { groundOf } from '../game/rules.ts';
 import { reliefOf, type GameState } from '../game/state.ts';
 import { type Season } from '../game/seasons.ts';
@@ -247,11 +248,49 @@ function shadeStep(hex: number, k: number): number {
 /** Every shade the hillshade can give a colour. */
 const allShades = (hexes: number[]) => hexes.flatMap((h) => Array.from({ length: 2 * SHADE_STEPS + 1 }, (_, k) => k === SHADE_STEPS ? h : shadeStep(h, k - SHADE_STEPS)));
 
-/** A season's grass colour by how dry the ground lies (`geography`, 0 lush to 1 dry); a steep bank is worn turf. */
-export const grassOf = (season: Season, dry: number, steep = false) => {
-  const { grass, bank } = TURF[season];
-  return steep ? bank : grass[Math.round(Math.min(1, Math.max(0, dry)) * (grass.length - 1))];
+/**
+ * How each kind of ground tints what lies on it, in OKLab: its chroma is scaled by `chroma`, its hue and chroma move `mix` of the
+ * way towards `toward`'s, its lightness `light` of the way towards `toward`'s and then `lift` lighter. Subtle, so the season's own
+ * colour (the turf, a field's soil) still leads. Loam, the baseline, is untouched.
+ */
+interface Look { toward: number; mix: number; lift: number; chroma?: number; light?: number }
+const LOOK: Record<GroundId, Look | null> = {
+  loam: null,
+  silt: { toward: 0x54401c, mix: 0.14, lift: -0.05, chroma: 1.08 },
+  clay: { toward: 0xa4603c, mix: 0.3, lift: -0.02 },
+  sand: { toward: 0xe0cc94, mix: 0.3, lift: 0.04 },
+  stony: { toward: 0x8a8a82, mix: 0.3, lift: 0, light: 0.35 },
 };
+const tinted = new Map<number, number>();
+/** A colour as the ground `kind` tints it, `k` of the full look (1 for turf; a field's soil, being tilled, takes less or more). */
+export function onGround(hex: number, kind: number, k = 1): number {
+  const look = LOOK[GROUND_IDS[kind]];
+  if (!look) return hex;
+  const key = (hex * 8 + kind) * 8 + Math.round(k * 4);
+  let out = tinted.get(key);
+  if (out === undefined) {
+    const [L, a0, b0] = hexToLab(hex), [tl, ta, tb] = hexToLab(look.toward), m = look.mix * k, c = 1 + ((look.chroma ?? 1) - 1) * k;
+    out = labToHex([L + (tl - L) * (look.light ?? 0) * k + look.lift * k, a0 * c + (ta - a0 * c) * m, b0 * c + (tb - b0 * c) * m]);
+    tinted.set(key, out);
+  }
+  return out;
+}
+
+/** A season's grass colour by how dry the ground lies (`geography`, 0 lush to 1 dry), as the ground's kind tints it; a steep bank is worn turf. */
+export const grassOf = (season: Season, dry: number, steep = false, kind: number = GROUND.loam) => {
+  const { grass, bank } = TURF[season];
+  return onGround(steep ? bank : grass[Math.round(Math.min(1, Math.max(0, dry)) * (grass.length - 1))], kind);
+};
+/** Wet clay (`MapGround.mud`): the clay's turf darker and redder, as wet clay is. A shine would need the renderer, which draws no gloss on the ground. */
+const MUD_LIFT = -0.07, MUD_CHROMA = 1.15;
+const muddied = new Map<number, number>();
+export const mudOf = (hex: number) => {
+  let out = muddied.get(hex);
+  if (out === undefined) { const [L, a, b] = hexToLab(hex); out = labToHex([L + MUD_LIFT, a * MUD_CHROMA, b * MUD_CHROMA]); muddied.set(hex, out); }
+  return out;
+};
+/** Every colour the turf can be, whatever the ground (clay too when wet). */
+const turfColours = (season: Season) => GROUND_IDS.flatMap((_, kind) => [...TURF[season].grass, TURF[season].bank].map((c) => onGround(c, kind))).concat([...TURF[season].grass, TURF[season].bank].map((c) => mudOf(onGround(c, GROUND.clay))));
 
 /**
  * How dry each tile of the land is by where it lies (0 lush to 1 dry), indexed like the land: high ground and ground far from
@@ -298,7 +337,7 @@ const LINE_LIFT = 0.04;
 /** Every fourth level's contour is drawn darker. */
 const INDEX_EVERY = 4;
 /** Every colour the map's ground can use, so the palette can be chosen with them (MapGround's swatch). */
-const paletteOf = (season: Season) => [...new Set([...allShades([...TURF[season].grass, TURF[season].bank]), ...EARTH, ...STONE, TURF[season].lip, GRID, CONTOUR, INDEX])];
+const paletteOf = (season: Season) => [...new Set([...allShades(turfColours(season)), ...EARTH, ...STONE, TURF[season].lip, GRID, CONTOUR, INDEX])];
 
 const OUT: readonly (readonly [number, number])[] = SIDES;
 type Vec = readonly number[];
@@ -609,6 +648,9 @@ export class MapGround {
   /** How dry each land tile is by where it lies (`geography`). */
   private dry: Float32Array;
   private linesShown = false;
+  /** Whether the clay is muddy now (drawn wet), and the chunks with map clay in them. */
+  private muddy = false;
+  private readonly clay = new Set<number>();
 
   private readonly halo: Halo;
   private readonly season: Season;
@@ -622,7 +664,9 @@ export class MapGround {
     this.s = s; this.land = land; this.lie = lie; this.halo = halo; this.season = s.scenario.climate.season;
     this.across = s.map.width + 2 * HALO; this.down = s.map.height + 2 * HALO; this.cols = Math.ceil(this.across / CHUNK);
     this.dry = geography(land, lie.relief);
-    const country = [...allShades([...new Set([...halo.colour.values(), ...[...TURF[this.season].grass, TURF[this.season].bank].map(halo.tone)])]), ...[...EARTH, ...STONE, TURF[this.season].lip].map(halo.tone)];
+    const wetChunk = (mx: number, my: number) => Math.floor((my + HALO) / CHUNK) * this.cols + Math.floor((mx + HALO) / CHUNK);
+    s.map.ground.forEach((kind, i) => { if (kind === GROUND.clay && s.map.terrain[i] !== TERRAIN.water) this.clay.add(wetChunk(i % s.map.width, Math.floor(i / s.map.width))); });
+    const country = [...allShades([...new Set([...halo.colour.values(), ...turfColours(this.season).map(halo.tone)])]), ...[...EARTH, ...STONE, TURF[this.season].lip].map(halo.tone)];
     this.colours = [...new Set([...paletteOf(this.season), ...country, ...extra])];
     const sw = new Tris();
     this.colours.forEach((c, i) => sw.tri([i, -50, 0], [i + 1, -50, 0], [i, -50, 1], c, [0, 1, 0]));
@@ -686,14 +730,27 @@ export class MapGround {
     const was = this.dry, M = this.land.margin;
     this.dry = geography(this.land, this.lie.relief);
     for (let y = M; y < M + m.height; y++) for (let x = M; x < M + m.width; x++) {
-      if (grassOf(this.season, was[y * lw + x]) !== grassOf(this.season, this.dry[y * lw + x])) dirty.add(chunk(x, y));
+      const kind = this.land.ground[y * lw + x];
+      if (grassOf(this.season, was[y * lw + x], false, kind) !== grassOf(this.season, this.dry[y * lw + x], false, kind)) dirty.add(chunk(x, y));
     }
-    for (const k of dirty) {
+    this.redraw(dirty);
+  }
+
+  /** Draws the chunks in `which` again. */
+  private redraw(which: Iterable<number>) {
+    for (const k of which) {
       const old = this.chunks[k];
       if (old) for (const c of [old.top, old.lines]) if (c) { c.o.remove(); c.g.dispose(); }
       const g = this.build(k % this.cols, Math.floor(k / this.cols));
       this.chunks[k] = g && this.add(g);
     }
+  }
+
+  /** Whether the clay is muddy now (`muddyAt`): its map tiles are drawn wet while it is, and the chunks with any are drawn again when that changes. */
+  mud(on: boolean) {
+    if (on === this.muddy) return;
+    this.muddy = on;
+    if (this.r) this.redraw(this.clay);
   }
 
   private build(cx: number, cy: number): { top: THREE.BufferGeometry; lines: THREE.BufferGeometry | null } | null {
@@ -702,9 +759,10 @@ export class MapGround {
     lines.flag = thin(FLAG.DECOR);
     for (let y = cy * CHUNK; y < Math.min(this.down, (cy + 1) * CHUNK); y++) for (let x = cx * CHUNK; x < Math.min(this.across, (cx + 1) * CHUNK); x++) {
       const lx = x + o, ly = y + o, mx = lx - M, my = ly - M, onMap = lie.onMap(lx, ly);
-      const hex = onMap ? m.terrain[my * m.width + mx] === TERRAIN.water ? undefined : grassOf(this.season, this.dry[ly * land.width + lx], isBank(m, mx, my))
+      let hex = onMap ? m.terrain[my * m.width + mx] === TERRAIN.water ? undefined : grassOf(this.season, this.dry[ly * land.width + lx], isBank(m, mx, my), m.ground[my * m.width + mx])
         : this.halo.colour.get(ly * land.width + lx);
       if (hex === undefined) continue;
+      if (this.muddy && onMap && m.ground[my * m.width + mx] === GROUND.clay) hex = mudOf(hex);
       top(t, lie, lx, ly, hex);
       if (onMap) tileLines(lines, lie, mx, my, corners(m, mx, my));
       for (let side = 0; side < 4; side++) {

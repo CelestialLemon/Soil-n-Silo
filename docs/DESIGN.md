@@ -971,6 +971,26 @@ The trees are the seasonal models (not tinted), the far woods' crowns and floor 
 ambient life drawn on the grass: spring has half as many again as summer (cream and lilac), summer's turn gold, autumn keeps
 a few late amber ones (0.3 of summer's), winter has none. The game draws no butterflies or birds yet.
 
+**How each ground looks (5.6, `onGround` and `LOOK` in `src/world/ground.ts`).** The five grounds can be told apart on the ground itself, in every
+season, without the Ground view. Each kind tints the season's turf a little (in OKLab: its chroma, its hue and lightness moved towards a colour; the
+season's colour still leads, a tint moves the turf by under half the gap from spring's grass to autumn's), and loam is the baseline, untouched:
+
+| Ground | Turf | A field's soil (1.25× the tint) | Small things in the grass |
+| --- | --- | --- | --- |
+| Loam | the season's own | the browns of `SOIL` | as before |
+| Silt | darker (−0.05 L) and a little richer, drawn towards a dark brown | darkest | lusher: 1.25× the tufts, 1.2× the flowers |
+| Clay | drawn 30% towards a red-brown, a touch darker | red-brown | as before; **wet while muddy** (below) |
+| Sand | drawn 30% towards pale sand, +0.04 L | palest, sandy | sparse: 0.4× the tufts, 0.5× the flowers |
+| Stony | drawn 30% towards a cool grey, a third of the way to its lightness | grey-brown | 0.5× the tufts, 0.3× the flowers; **3.5× the stones** (grey, not tan) and an **outcrop** (a low boulder, twice a stone's size, 1 in 80 tiles) |
+
+A field's raised soil takes its tile's ground (`soilOf`, `shapes.ts`), 1.25 times as strongly as turf does, so a field on sand is plainly sandy and one
+on silt plainly dark; its fertility band still sets how dark within that. The stones and outcrops stand through the snow's sheet, so stony ground reads
+under snow where the snow is thin or gone. **Mud:** while clay is muddy (`muddyAt`: it rains and for `TRUCK.mudHours` after, not frozen) the map's clay tiles are drawn **darker and redder** (`mudOf`: −0.07 lightness,
+1.15× chroma on the clay's turf; `MapGround.mud` draws the chunks with clay again when the weather turns, so it changes at once rather than fading). A tinted tile sheet like
+the rime's was tried first and dropped: the renderer fades a sheet by dithering, which showed as a noisy checkerboard. The renderer has no gloss on the ground, so a "sheen" is
+a darker tone, not a shine (no renderer gap: nothing filed). **The palette** is 240 colours, not 160 (`quantizePalette` in `main.ts`): the ground's
+five kinds, each with its dryness and hillshade steps, are about 500 distinct colours before the merge (about 245 before this change, merged to 160), so the palette is raised to keep the tints and the shading steps apart.
+
 **Grey days**: the look for the hour (`lookAt`) is blended by the weather now (`greyLook`, `src/world/greyLook.ts`), so the
 change glides with the spells. Full cloud takes 60% off the sun's light, 12% off the exposure and 40% off the colour, fades
 the warm and cool tints by 70% and pulls the sky 65% to its own grey and a little darker; rain takes a further 20% of the sun,
