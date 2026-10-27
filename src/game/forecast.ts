@@ -3,10 +3,11 @@ import { allowed, endOf, EVENT_KINDS, EVENTS, type EventKind } from './events.ts
 import { networks, POWERED, pylonsInLink } from './power.ts';
 import { HOUR_SECONDS } from './powerlog.ts';
 import { coopPace, coopTrees, erosionAt, groundUnder, guardedAt, hiveReaches, paceOf, pylonReaches, riverSeason, sprinklerWaters, sprinklerWatts, touchesWater, waterLevelNear, waterPace, wheelSite, windExposure } from './rules.ts';
-import { fertilityCap, groundFact, groundPace, stonyLoss } from './ground.ts';
+import { fertilityCap, GROUND, groundFact, groundPace, stonyLoss } from './ground.ts';
 import { earthPrice, groundworkFor, levelledFor } from './build.ts';
 import { hourAt, sunAt, windAt } from './sim/clock.ts';
 import { raining } from './sim/weather.ts';
+import { CLAY_HEAT, clayHourWet, groundWaterNote, heatWaveAt, rainKnown, waterOf } from './wet.ts';
 import { panelShare, panelSnow } from './snow.ts';
 import { linksAt } from './sim/goods.ts';
 import { makes, sharesIfRunning, shareOf, wants } from './sim/energy.ts';
@@ -61,8 +62,8 @@ function waterAt(s: GameState, type: 'field' | 'greenhouse', x: number, y: numbe
   // A greenhouse in the rain wakes the sprinklers that rest in it: they get the share they would have with all of them running.
   const resting = type === 'greenhouse' ? sp.filter((b) => rainWaters(s, b)) : [], waking = resting.length ? sharesIfRunning(s, sp, resting) : new Map<number, number>();
   const shore = touchesWater(s, x, y), share = sp.reduce((m, b) => Math.max(m, waking.get(b.id) ?? shareOf(s, b)), 0), rains = type === 'field' && raining(s.scenario, s.time);
-  // Rain waters every field while it lasts; a sprinkler gives its share of power as it is now.
-  return { sprinklers: sp.length, shore, rain: !shore && rains, water: shore || rains ? 1 : share, share };
+  // Rain waters every field while it lasts (clay holds it a day, half in a heat wave: wet.ts); a sprinkler gives its share of power as it is now.
+  return { sprinklers: sp.length, shore, rain: !shore && rains, water: shore ? 1 : waterOf(s, type === 'field', x, y, share), share };
 }
 
 /** Whether a pylon (one not under flood water) would reach a footprint at (x, y). */
@@ -81,7 +82,7 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         // A greenhouse grows in its own warmth, and neither rain, frost nor dust reach it.
         const under = type === 'greenhouse', crop = CROPS[set.crop ?? 'wheat'], soil = soilUnder(s, x, y, 3), { sprinklers, shore, rain, water, share } = waterAt(s, type, x, y);
         // The ground under it: what it does to the crop's pace and the yield (stony is thin).
-        const kinds = groundUnder(s, x, y, 3), byGround = groundPace(crop, kinds), grain = Math.max(1, crop.yield - stonyLoss(kinds));
+        const kinds = groundUnder(s, x, y, 3), clay = under ? 0 : kinds[GROUND.clay], byGround = groundPace(crop, kinds), grain = Math.max(1, crop.yield - stonyLoss(kinds));
         const warmthIn = (w: number) => (under ? insideWarmth(crop, w) : w);
         // A hive within reach of a flowering crop adds a good to every harvest.
         // Too cold outside, the bees forage only in a greenhouse that will be working: powered, if its crop needs heat.
@@ -109,6 +110,8 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         // built only by the fast run's), and the two are stepped together. Without a forecast the one run is the weather as it is.
         const run = (views: Ahead[]): { later: number }[] => {
           const delta = crop.soil * (crop.soil < 0 ? wear : 1), bounded = views.length > 1;
+          // Clay holds the rain it gets for a day: each run keeps when it last rained (known up to now, then what its own rain gives).
+          const known = rainKnown(s.scenario, s.time), rainEnd = views.map((_, k) => (bounded && k ? known.hi : known.lo));
           // A harvest changes every tile (a loss by the tile's wear), none above its ground's cap or below 0; the dust takes from each tile what its ground gives up to the wind.
           const harvest = (v: number[]) => v.map((f, i) => Math.max(0, Math.min(tiles[i].cap, f + crop.soil * (crop.soil < 0 ? tiles[i].wear : 1))));
           const blow = (v: number[], by: number) => v.map((f, i) => Math.max(0, f - by * tiles[i].dust));
@@ -122,9 +125,18 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
               const dust = !blown ? 0 : (dustFor(view, s.time + t + HOUR / 2)?.rate ?? 0) * Math.min(1, (SOIL_AHEAD - t) / HOUR);
               soils[k] = blow(soils[k], dust);
               if (k === 0) { least = blow(least, dust); most = blow(most, dust); }
+              const rain = shore ? 1 : under ? 0 : view.hourRain(s.time + t);
+              let wet = rain + (1 - rain) * share;
+              // A clay tile is watered as long as it holds the rain of the last day, and half in a heat wave; the field's water is the mean over its tiles.
+              if (clay && !shore && !under) {
+                const held = clayHourWet(rain, rainEnd[k], s.time + t, bounded && k === 1);
+                rainEnd[k] = held.end;
+                const heat = heatWaveAt(view, s.time + t + HOUR / 2) ? CLAY_HEAT : 0, onClay = held.wet + (1 - held.wet) * Math.max(share, heat);
+                wet = (clay * onClay + (9 - clay) * wet) / 9;
+              }
+              // (The rain is kept in the history before this, so clay holds it through a frost too.)
               // A late frost on the field takes what has grown (the field starts again) and nothing grows while it bites.
               if (!under && frostHits(s, set.crop ?? 'wheat', x, y, s.time + t, view)) { growth[k] = 0; return 0; }
-              const rain = shore ? 1 : under ? 0 : view.hourRain(s.time + t), wet = rain + (1 - rain) * share;
               const paces = view.warmths(s.time + t).map((w) => paceOf(wet, mean(bounded ? (k ? most : least) : soils[0]), crop, warmthIn(w), byGround).pace);
               return Math.min(HOUR, SOIL_AHEAD - t) * (k ? Math.max(...paces) : Math.min(...paces)) / crop.grow;
             });
@@ -150,8 +162,13 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
         facts.push({ label: crop.name, value: `+${fmt1(perMin)}`, sub: 'a minute, at this warmth' });
         const skipped = notCounted(s.scenario, reading, s.time, s.time + SOIL_AHEAD);
         facts.push({ label: 'Soil', value: String(Math.round(soil)), then: then.lo === then.hi ? String(then.lo) : `${then.lo}–${then.hi}`, sub: `in ${SOIL_AHEAD / 60} min if harvests are carried off${reading.kind === 'truth' ? '' : `, ${basisFor(reading, s.scenario.climate, s.time, s.time + SOIL_AHEAD).replace(/^for /, 'in ')}`}${skipped ? `; ${skipped}` : ''}` });
-        facts.push(shore ? { label: 'Water', value: 'beside water', sub: 'grows at 100%' } : rain ? { label: 'Water', value: 'rain', sub: 'grows at 100% while it rains', tone: 'good' } : sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `grows at ${Math.round(waterPace(water, crop.thirst, warmthIn(warmthOf(s))) * 100)}%` }
-          : { label: 'Water', value: 'none', sub: `grows at ${Math.round(waterPace(0, crop.thirst, warmthIn(warmthOf(s))) * 100)}%`, tone: 'bad' });
+        // The ground's part: clay holds the rain for a day, sand drains (neither matters beside water, or in a greenhouse).
+        const note = shore ? null : groundWaterNote(s, !under, x, y), more = note ? `; ${note}` : '';
+        const asked = `grows at ${Math.round(waterPace(water, crop.thirst, warmthIn(warmthOf(s))) * 100)}%`;
+        facts.push(shore ? { label: 'Water', value: 'beside water', sub: 'grows at 100%' } : rain ? { label: 'Water', value: 'rain', sub: `grows at 100% while it rains${more}`, tone: 'good' }
+          : sprinklers ? { label: 'Water', value: `${sprinklers} sprinkler${sprinklers > 1 ? 's' : ''}`, sub: `${asked}${more}` }
+          : water > 0 ? { label: 'Water', value: `${Math.round(water * 100)}%`, sub: `${asked}${more}`, tone: water >= 1 ? 'good' : undefined }
+          : { label: 'Water', value: 'none', sub: `${asked}${more}`, tone: 'bad' });
         facts.push({ label: 'Ground', ...groundFact(crop, kinds) });
         const warm = warmthFact(crop, warmthIn(warmthOf(s)));
         facts.push(under ? { label: 'Warmth', value: `${Math.round(warmthIn(warmthOf(s)))}°C inside`, sub: `outside ${Math.round(warmthOf(s))}°C; heating ${Math.round(heatNeed(crop, warmthOf(s)))} W now, ${GREENHOUSE.loss} W for each °C the outside is below ${crop.comfort.low}°C`, tone: 'good' }

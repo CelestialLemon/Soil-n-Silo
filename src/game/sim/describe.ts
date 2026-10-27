@@ -159,10 +159,13 @@ function describeHold(s: GameState, b: Building): string {
     case 'field': case 'greenhouse':
       if (hold.effect === 'eroded') return `Losing soil to ${cause}: no tree, sapling or bean field beside it breaks the wind. Fertility ${Math.round(fieldFertility(s, b))}`;
       if (hold.effect === 'lost') return `The growing ${CROPS[b.crop].name.toLowerCase()} is lost to ${cause}: the ${BUILDINGS[b.type].name.toLowerCase()} starts again when it has passed`;
-      return `Growing ${CROPS[b.crop].name.toLowerCase()} slowly: ${cause} adds ${Math.round(p.warmth)}°C${fieldPace(s, b).water < 1 ? ', and it has no water' : ''}`;
+      return `Growing ${CROPS[b.crop].name.toLowerCase()} slowly: ${cause} adds ${Math.round(p.warmth)}°C${waterWords(fieldPace(s, b).water)}`;
     default: return `${hold.effect[0].toUpperCase()}${hold.effect.slice(1)} by ${cause}`;
   }
 }
+
+/** What a field short of water says of it: none, or the share it has (clay in a heat wave is half watered). */
+const waterWords = (water: number, lead = ', and it has ') => (water <= 0 ? `${lead}no water` : water < 1 ? `${lead}only ${Math.round(water * 100)}% of its water` : '');
 
 /** One line on what a building is doing, for the hover and the inspector. */
 export function describeStatus(s: GameState, b: Building): string {
@@ -199,7 +202,7 @@ export function describeStatus(s: GameState, b: Building): string {
       if (b.type === 'garage') { const n = s.trucks.filter((t) => t.garage === b.id).length; return n ? `${n} truck${n > 1 ? 's' : ''}, none charging` : 'No trucks yet: buy one'; }
       return 'Idle';
     case 'rain': return 'Resting in rain: the rain waters the fields, so it draws no power';
-    case 'dry': return growsCrops(b) ? `Growing ${CROPS[b.crop].name.toLowerCase()} slowly: no water` : def.name;
+    case 'dry': return growsCrops(b) ? `Growing ${CROPS[b.crop].name.toLowerCase()} slowly: ${waterWords(fieldPace(s, b).water, '').trim() || 'no water'}` : def.name;
     case 'cold':
       if (b.type === 'hive') return beesFact(warmthOf(s)).text;
       return growsCrops(b) ? `Not growing ${CROPS[b.crop].name.toLowerCase()}: too cold for it` : def.name;

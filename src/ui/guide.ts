@@ -85,6 +85,7 @@ const ENTRIES: Record<BuildingId, Entry> = {
       'Select it and choose the crop. Wheat is the default.',
       'Build it beside the machine that uses its crop (a mill for wheat), and the machine takes the harvest itself. Or make it a stop on a route: trucks pick up the harvest. A full field stops growing.',
       `Put it beside water at its own level, or a sprinkler within ${POWER.sprinklerReach} tiles of its centre: dry fields grow at ×${FIELD.dry} speed (sunflower copes better: ×${waterPace(0, CROPS.sunflower.thirst)}), and in heat above ${FIELD.heat}°C nearly stop.`,
+      `Rain waters every field while it falls. Clay holds that water for a day after the rain stops, and is half watered in a heat wave; sand drains, and is watered only while it rains. A field's water is the share of its nine tiles that are watered. Under glass the ground does nothing for water.`,
     ],
     tips: [
       `It can lie on a slope, but not across a cliff (placing it there levels the ground). Its sloping tiles wear faster, up to ${1 + FIELD.erosion} times on a steep bank; a tree or sapling beside it, or a bean field next door, holds the soil (up to ${1 + FIELD.erosionGuarded} times).`,
