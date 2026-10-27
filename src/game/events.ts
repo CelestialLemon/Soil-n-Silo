@@ -147,7 +147,7 @@ export interface EventInfo {
 }
 
 /**
- * Every weather event. Seasons and characters follow `docs/CLIMATE.md` (the table in #84); the odds are first sketches.
+ * Every weather event. Seasons and characters follow the table in DESIGN.md, "Weather events"; the odds are first sketches.
  * `push` is where an event's effects go (2.3–2.8); an event with it empty so far changes the sky, the HUD chip and the forecast's
  * list but not the rules.
  */

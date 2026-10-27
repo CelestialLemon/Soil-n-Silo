@@ -144,21 +144,22 @@ Six tree species and bushes vary by place, with willows by water and pines up hi
 
 ## Next
 
-- **Seasons, weather and ground types**, designed on 2026-10-21 in [`CLIMATE.md`](CLIMATE.md): one season per level in
-  place of the weather settings, seeded weather events, a weather station selling the forecast, the greenhouse, and five
-  ground types. Built in that order; each part writes its rules into `DESIGN.md`, and `CLIMATE.md` is deleted once all of
-  it is in.
-- **Climate phase 1, left open after the playtest (2026-10-22):** settled in phase 4 (2026-10-27, `DESIGN.md`, "Playtest of phase 4"). Long Nights (c5) is cleared under glass:
-  the bot takes 45.9 minutes, target 65. Random winter commissions still take 2.4 to 2.9 times as long as a mild spring for the bot (`PAR_FACTOR` winter mild 2.65, gales 2.65, hard 3.35):
-  putting fields under glass at the start makes the bot slower (150 credits and a turbine each is the first minutes' money), and the hens' half rate in winter limits bread. What would bring winter back
-  toward the others is a design call (a cheaper greenhouse, more winter credits, winter hens). Hot summers are hard on wheat (pace about 0.5) and beans (0.6): worth a look whether
-  summer wants a cooler wheat range or a summer-crop push. `tools/seasonfactor.ts` should be rerun whenever a season, warmth or crop range changes, and `PAR_FACTOR` updated. Not played by hand:
-  only headless runs.
-- **Climate phase 3, left open after the playtest (2026-10-26):** the station, the forecast, its panel, the projections and the forecast's blocks of the day are in
-  and were played headless and in a headless browser (`DESIGN.md`, "Playtest of phase 3"): the forecast changes whether, when and with what
-  power a player builds, its ranges held in 1.2 million checks, and 80 credits and 3 W stay. Still to do: play every campaign event by hand
-  (the hurricane costs the bot a third more and is the likeliest to feel unfair), and random commissions of each season; whether tonight's band wants
-  to be split by the night's rain; Long Nights was cleared in phase 4.
+- **Climate feature: done (2026-10-27).** Seasons, weather events, the weather station and forecast, the greenhouse and five kinds of ground are in
+  (`DESIGN.md`: "Seasons", "Weather events", "The weather station", "Farming", "The map"; playtest notes under "Playtest of phase 4" and "Playtest of the whole climate feature and of ground (5.7)").
+  What it left for later, each its own item:
+  - **Winter's length** (a design call). Random winter commissions take the bot 2.3 to 2.8 times as long as a mild spring (`PAR_FACTOR` winter mild 2.6, gales 2.5, hard 3.25): the first
+    sale comes late and a greenhouse (150 credits and a turbine) is the first minutes' money, and the hens lay at half rate. Options: a cheaper greenhouse (about 90), more winter credits, winter hens or a
+    heated coop. Long Nights is cleared under glass (the bot 48.4 minutes, target 65).
+  - **Hot summers on wheat and beans:** pace about 0.5 and 0.6 in a hot summer. Does summer want a cooler wheat range or a summer-crop push? Rerun `tools/seasonfactor.ts` whenever a season,
+    warmth or a crop's range changes, and update `PAR_FACTOR`.
+  - **Playing it by hand.** Phases 1 to 5 were played headless and in a headless browser (the dev build boots, every season and the Ground view draw, no console errors); nobody has played a
+    whole commission by hand. Above all: every campaign event (the hurricane costs the bot a third more and is the likeliest to feel unfair), and random commissions of each season.
+  - **Tonight's band in the forecast:** whether it wants to be split by the night's rain.
+  - **Ground, from the 5.7 playtest:** sand and stony fields have no reason (about two thirds of loam's pace; a crop that likes them, or a gain for compost, would give them one); the land near the
+    depot is mostly loam on most campaign maps, so the ground rarely makes the player choose (more variety round the depot?); summer's golden turf hides the ground's tints (the Ground view
+    shows them); clay's hold helps least in a dry summer; a "high river" random commission can roll on a map with ponds.
+  - **The playtest note (5.7):** tuned: the targets of Linen (45), Tired Soil (40) and Harvest Festival (55) and nine `PAR_FACTOR` steps of 0.05, from the bot with ground in. Not tuned, left to the design lead: the
+    items above.
 - Play the **problems strip** (experimental, off by default, a setting on the pause screen) and decide whether it stays.
   It lists the buildings with a problem now, longest first; the plan was to build it on the history instead (buildings below
   about 70% working over the last few minutes, worst first) and perhaps group it by cause.
@@ -170,8 +171,8 @@ Six tree species and bushes vary by place, with willows by water and pines up hi
   bot's best time (`DESIGN.md`, "Commissions"). The bot ends the later commissions with thousands of spare credits, so
   money stops mattering halfway through; worth a look when playing them.
 - Play the trucks and tune them (cargo, speed, battery, waits, one truck at a time per building). The bot's times against
-  the targets: First Light 14 (20), Morning Bread 30 and 26 built round neighbours (35), Windy Ridge 32 (45), Linen for the
-  Looms 26 (35), Long Nights 45.9 (65), Tired Soil 25 (35), Riverlands 34 (50), Harvest Festival 36 (50). `npm test` plays
+  the targets: First Light 13.5 (20), Morning Bread 38 and 30.5 built round neighbours (50), Windy Ridge 41.7 (55), Linen for the
+  Looms 31.3 (45), Long Nights 48.4 (65), Tired Soil 28.1 (40), Riverlands 37.7 (50), Harvest Festival 39 (55), with ground in (5.7). `npm test` plays
   every layout and fails if one misses its target.
 - Models for the `truck` and the `garage`, and the silo without its drone pads (`ASSET_BRIEF.md`).
 - Drones as automatic helpers beside the trucks (`DESIGN.md`, Open questions), once trucks have been played.

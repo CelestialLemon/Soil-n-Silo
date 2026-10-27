@@ -154,7 +154,7 @@ Trucks on routes carry the goods, and the silo only stores them.
 
 ## Needed for the weather station (climate phase 3, #137; built 2026-10-25)
 
-The weather station is the building that gives a forecast (`CLIMATE.md`). Its model is a small piece of valley furniture, not a
+The weather station is the building that gives a forecast (`DESIGN.md`, "The weather station"). Its model is a small piece of valley furniture, not a
 landmark: it stands among fields, sprinklers and pylons, so its silhouette must not be mistaken for either of them.
 
 | Model | Footprint | Height | Notes |
