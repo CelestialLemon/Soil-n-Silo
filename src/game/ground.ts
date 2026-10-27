@@ -24,6 +24,15 @@ export type GroundMix = Record<Exclude<GroundId, 'loam'>, number>;
 /** A plain valley's ground: whatever its river, hollows and hills give. */
 export const PLAIN: GroundMix = { silt: 0, clay: 0, sand: 0, stony: 0 };
 
+/** Where each kind lies and, in a few words, what it does: the legend of the Ground view (the guide says the rest, with the numbers). */
+export const GROUND_ABOUT: Record<GroundId, { where: string; does: string }> = {
+  loam: { where: 'terraces and gentle slopes', does: 'the baseline' },
+  silt: { where: 'the floodplain, by the river', does: 'richest, and floods first' },
+  clay: { where: 'hollows and wet ground', does: 'holds rain; muddy for trucks' },
+  sand: { where: 'river bends and raised banks', does: 'drains; poor; dust blows it worst' },
+  stony: { where: 'ridges and high ground', does: 'thin; where rocks lie' },
+};
+
 /** The kind of ground a map index holds, as a name. */
 export const groundName = (kind: number): string => GROUND_NAMES[GROUND_IDS[kind]];
 
@@ -58,11 +67,18 @@ export function cropGroundWords(crop: CropDef): string {
   return parts.filter(Boolean).join('; ') || 'none';
 }
 
-/** What the ground under a field or greenhouse does to the crop it grows, as a placement fact: the ground, in words, and what it does. */
-export function groundFact(crop: CropDef, counts: readonly number[]): { value: string; sub: string; tone?: 'bad' | 'good' } {
+/** The ground under a field or greenhouse in words ("silt", "6 silt, 3 clay", "mixed, mostly sand"); "–" for none (`counts`: how many tiles of each kind). */
+export function groundWords(counts: readonly number[]): string {
   const kinds = counts.map((n, kind) => ({ n, kind })).filter((k) => k.n > 0).sort((a, b) => b.n - a.n), total = counts.reduce((a, b) => a + b, 0);
   const name = (kind: number) => GROUND_NAMES[GROUND_IDS[kind]].toLowerCase();
-  const value = !kinds.length ? '–' : kinds[0].n === total ? name(kinds[0].kind) : kinds.length === 2 ? `${kinds[0].n} ${name(kinds[0].kind)}, ${kinds[1].n} ${name(kinds[1].kind)}` : `mixed, mostly ${name(kinds[0].kind)}`;
+  return !kinds.length ? '–' : kinds[0].n === total ? name(kinds[0].kind) : kinds.length === 2 ? `${kinds[0].n} ${name(kinds[0].kind)}, ${kinds[1].n} ${name(kinds[1].kind)}` : `mixed, mostly ${name(kinds[0].kind)}`;
+}
+
+/** What the ground under a field or greenhouse does to the crop it grows, as a placement fact: the ground, in words, and what it does. */
+export function groundFact(crop: CropDef, counts: readonly number[]): { value: string; sub: string; tone?: 'bad' | 'good' } {
+  const kinds = counts.map((n, kind) => ({ n, kind })).filter((k) => k.n > 0).sort((a, b) => b.n - a.n);
+  const name = (kind: number) => GROUND_NAMES[GROUND_IDS[kind]].toLowerCase();
+  const value = groundWords(counts);
   const pace = groundPace(crop, counts), loss = stonyLoss(counts), parts: string[] = [];
   const on = kinds.filter((k) => groundMultiplier(crop, k.kind) !== 1);
   const copes = kinds.filter((k) => crop.ground.copes?.includes(GROUND_IDS[k.kind]));

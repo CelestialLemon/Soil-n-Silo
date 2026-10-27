@@ -18,7 +18,8 @@ import { baseLevel, centreLevel } from '../game/relief.ts';
 import { hash } from './kit.ts';
 import { treeAt, wetAt } from './trees.ts';
 import type { Models } from './models.ts';
-import { SOIL, soilBand, TRUCK_BED } from './shapes.ts';
+import { GROUND_TINT, SOIL, soilBand, TRUCK_BED } from './shapes.ts';
+import { GROUND_IDS } from '../game/ground.ts';
 
 // Shows the game state with renderer objects. Every frame it adds, swaps and removes objects so the world matches the state:
 // buildings (idle or running), fields' soil and crops, trucks (with their cargo in the bed, queuing in line behind the one
@@ -35,6 +36,8 @@ const v = new THREE.Vector3(), e = new THREE.Euler();
 
 /** Overlay colours: soil from poor (red) to rich (green), roads (and buildings trucks can't reach), sprinkler water, bee range (power: powerView.ts). */
 const FERT = [0xb03020, 0xd07020, 0xd8b020, 0x98c030, 0x50a030, 0x207a30].map((c) => new THREE.Color(c));
+/** The Ground view's colour per kind of ground, by the map's index (`GROUND_IDS`). */
+const GROUND_COLOURS = GROUND_IDS.map((id) => new THREE.Color(GROUND_TINT[id]));
 const ROADS = new THREE.Color(0xd8d0b0), CUT_OFF = new THREE.Color(0xff5040), WATER = new THREE.Color(0x60a8e8), BEES = new THREE.Color(0xf09030);
 /** The tint of the buildings and trucks linked to what is focused: a truck's stops, a garage's trucks. */
 export const LINK = 0x7ee060;
@@ -52,7 +55,7 @@ interface TruckShown { obj: PixelObject; bx: number; bz: number; phase: Truck['p
 /** How far a field's soil stands over the ground (m). */
 const SOIL_TOP = 0.03;
 
-export type Overlay = 'none' | 'fertility' | 'height' | 'power' | 'roads' | 'water' | 'bees';
+export type Overlay = 'none' | 'fertility' | 'ground' | 'height' | 'power' | 'roads' | 'water' | 'bees';
 
 /** The height view: tints from low to high, a band every HEIGHT_BAND levels (blended between), steep banks darker. */
 const LEVELS = [0x3a8a5a, 0x8ab84a, 0xd8c050, 0xd88a3a, 0xb04a3a].map((c) => new THREE.Color(c));
@@ -374,12 +377,12 @@ export class WorldView {
   }
 
   /**
-   * Coloured tiles over the map: soil fertility, roads (the open ground trucks drive on, and red under the buildings they
+   * Coloured tiles over the map: soil fertility, the kind of ground, roads (the open ground trucks drive on, and red under the buildings they
    * can't reach), sprinkler water or bee range. Power is PowerView's.
    */
   overlay(s: GameState, kind: Overlay) {
     if (kind === 'power') kind = 'none';
-    const key = kind === 'none' ? 'none' : `${kind} ${reliefOf(s)} ${kind === 'fertility' ? s.map.fertility.map((f) => Math.floor(f / 17)).join('') : ''} ${s.buildings.length} ${networks(s).layout} ${layoutOf(s)}${kind === 'roads' ? ` ${s.buildings.filter((b) => cutOff(s, b)).map((b) => b.id).join(',')}` : ''}`;
+    const key = kind === 'none' ? 'none' : `${kind} ${reliefOf(s)} ${kind === 'fertility' ? s.map.fertility.map((f) => Math.floor(f / 17)).join('') : kind === 'ground' ? s.scenario.seed : ''} ${s.buildings.length} ${networks(s).layout} ${layoutOf(s)}${kind === 'roads' ? ` ${s.buildings.filter((b) => cutOff(s, b)).map((b) => b.id).join(',')}` : ''}`;
     if (key === this.overlayKey) return;
     this.overlayKey = key;
     for (const { o, g } of this.overlayObjs) { o.remove(); g.dispose(); }
@@ -408,6 +411,10 @@ export class WorldView {
     }
     if (kind === 'fertility') {
       for (const [tint, list] of by((i) => (s.map.terrain[i] === TERRAIN.grass ? FERT[Math.min(5, Math.floor(s.map.fertility[i] / 17))] : null))) this.tiles(s, list, 0.02, tint);
+      return;
+    }
+    if (kind === 'ground') {
+      for (const [tint, list] of by((i) => (s.map.terrain[i] === TERRAIN.grass ? GROUND_COLOURS[s.map.ground[i]] : null))) this.tiles(s, list, 0.02, tint);
       return;
     }
     if (kind === 'roads') {

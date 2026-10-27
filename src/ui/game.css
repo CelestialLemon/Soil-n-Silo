@@ -61,6 +61,10 @@ button { font: inherit; }
 
 /* ---- View bar, bottom left; view controls, bottom right ---- */
 .hud-view { position: absolute; left: 28px; bottom: 28px; }
+.hud-legend { position: absolute; left: 28px; bottom: 84px; display: grid; gap: 8px; max-width: 340px; pointer-events: none; }
+.hud-legend[hidden] { display: none; }
+.hud-legend .row { display: grid; grid-template-columns: 14px auto 1fr; gap: 8px; align-items: baseline; }
+.hud-legend i { width: 14px; height: 14px; border-radius: 4px; align-self: center; box-shadow: inset 0 0 0 1px rgba(20, 30, 25, 0.25); }
 .hud-view.is-compact button { padding: 0 8px; }
 .hud-view.is-compact button span:not(.cd-i) { display: none; }
 .hud-controls { position: absolute; right: 28px; bottom: 28px; }

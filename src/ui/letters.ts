@@ -42,7 +42,7 @@ const LETTERS: Record<string, Written> = {
     from: 'Marta Vell', role: 'Cook, the Ridge co-op', place: 'The long kitchen, Windy Ridge', day: 'Thursday', greeting: 'To whoever reads this at the co-op,',
     body: [
       'Up here we cook everything in sunflower oil, and we have run out. Ninety flasks would fill the larder, and eighty loaves would fill the people who eat at my tables.',
-      'You will find the sun thin on the ridge, and the rock close under the grass. But the wind has not stopped blowing since my grandmother\'s day, and I do not expect it to start now.',
+      'You will find the sun thin on the ridge, and the rock close under the grass. The ridges are stony ground, pale and thin, and the clay lies down in the hollows. But the wind has not stopped blowing since my grandmother\'s day, and I do not expect it to start now.',
     ],
     signoff: 'Yours, with an empty pan,', asks: 'What she asks',
     season: ['Autumn on the ridge means gales. The wind comes early and stays, and the sun is thinner than it was in summer.'],
@@ -69,7 +69,7 @@ const LETTERS: Record<string, Written> = {
   c6: {
     from: 'Jonah Fairweather', role: 'Cannery foreman', place: 'Stillwater cannery', day: 'Wednesday', greeting: 'To the co-op,',
     body: [
-      'This valley grew one crop for twenty years until it would grow nothing much at all. The families who farmed it moved to the cannery town, and the cannery needs sauce: fifty jars.',
+      'This valley grew one crop for twenty years until it would grow nothing much at all. What is left is sand along the old banks and stones over most of the rest, and the wind lifts what little soil there is. The families who farmed it moved to the cannery town, and the cannery needs sauce: fifty jars.',
       'But they would like to go home one day. If you can leave the ground healthier than you found it, at fifty-five or better, I will make sure they hear it was you.',
     ],
     signoff: 'Respectfully,', asks: 'What he asks',
@@ -80,6 +80,7 @@ const LETTERS: Record<string, Written> = {
     body: [
       'Three villages, one river, and for once we agree on something: we all want our orders filled, and soon. Upriver wants thirty bolts of linen, Midford thirty jars of sauce, Rushmouth eighty loaves.',
       'The land is narrow between the water and the woods. We are sorry for that; it was narrow when we got here too.',
+      'What there is of it is silt, the best earth in the country. It is also the earth the river covers first.',
     ],
     signoff: 'Yours, in rare agreement,', asks: 'What they ask',
     season: ['The river is high this spring, higher than any of us remember, and fast. The rain has not finished with us yet.'],

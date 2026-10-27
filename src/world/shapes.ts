@@ -1,6 +1,7 @@
 import { FLAG, motion } from 'pixel3d-renderer';
 import type { BuildingId, CropId, ItemId } from '../game/data.ts';
 import { ITEMS } from '../game/data.ts';
+import type { GroundId } from '../game/ground.ts';
 import { Kit } from './kit.ts';
 
 // Stand-in models built in code: every building, crop and good the game shows, in local space (origin on the
@@ -295,6 +296,9 @@ export function rock(v: number) {
   k.ball(0.15, 0.03, 0.3, 0.12, C.moss, { sy: 0.3 });
   return k.build();
 }
+
+/** The Ground view's colour for each kind (view.ts tints the tiles, the legend swatches them): apart in hue and in lightness, and none of them the soil view's red to green. */
+export const GROUND_TINT: Record<GroundId, number> = { loam: 0x7e5a34, silt: 0x5f88a8, clay: 0xc4603a, sand: 0xe8d37a, stony: 0xa8a8a8 };
 
 /** Soil under a field, by fertility band (pale to dark): view.ts lays it on the ground. */
 export const SOIL_BANDS = 6;

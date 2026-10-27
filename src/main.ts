@@ -13,7 +13,8 @@ import { wheelSite } from './game/rules.ts';
 import { deserialize, readProgress, recordResult, saveKey, serialize } from './game/save.ts';
 import { scenarioById } from './game/scenarios.ts';
 import { hourAt } from './game/sim/clock.ts';
-import { fieldFertility } from './game/sim/soil.ts';
+import { fieldFertility, fieldGround } from './game/sim/soil.ts';
+import { groundName, groundWords } from './game/ground.ts';
 import { linksAt, linksOf } from './game/sim/goods.ts';
 import { isStop, routeOf, routesAt } from './game/sim/trucks.ts';
 import { medalFor } from './game/sim/stats.ts';
@@ -532,7 +533,7 @@ async function play(initial: GameState) {
       case 'forecast': hud.toggleForecast(); break;
       case 'routes': hud.toggleRoutes(); break;
       case 'guide': hud.openGuide(); hud.refresh(); return;
-      case 'overlay': { const order: Overlay[] = ['none', 'fertility', 'height', 'water', 'power', 'roads', 'bees']; overlay = order[(order.indexOf(overlay) + 1) % order.length]; break; }
+      case 'overlay': { const order: Overlay[] = ['none', 'fertility', 'ground', 'height', 'water', 'power', 'roads', 'bees']; overlay = order[(order.indexOf(overlay) + 1) % order.length]; break; }
       case 'choice':
         if (tool.kind === 'build') choose(stepSetting(tool.type, tool, e.shiftKey ? -1 : 1));
         else if (tool.kind === 'earth') { tool = { ...tool, how: EARTHWORKS[(EARTHWORKS.indexOf(tool.how) + (e.shiftKey ? 2 : 1)) % 3] }; repick = 2; }
@@ -574,7 +575,7 @@ async function play(initial: GameState) {
       return {
         title: BUILDINGS[b.type].name, icon: b.type, status: { status: b.status, label, need: b.need },
         text: removing ? (b.type === 'depot' ? 'The depot stays.' : `Click to remove it (refund ${priceOf(state, b.type)}).`)
-          : [line === label ? '' : line, growsCrops(b) ? `soil ${Math.round(fieldFertility(state, b))}` : '', growsCrops(b) && !removing ? (b.type === 'greenhouse' ? insideFact(insideNow(state, b), warmthOf(state)) : warmthFact(CROPS[b.crop], warmthOf(state)).text) : '', b.type === 'field' && !removing && frostComes(state) && inHollow(state, b.x, b.y) ? HOLLOW_FACT : ''].filter(Boolean).join(' · ') || undefined,
+          : [line === label ? '' : line, growsCrops(b) ? `ground ${groundWords(fieldGround(state, b))} · soil ${Math.round(fieldFertility(state, b))}` : '', growsCrops(b) && !removing ? (b.type === 'greenhouse' ? insideFact(insideNow(state, b), warmthOf(state)) : warmthFact(CROPS[b.crop], warmthOf(state)).text) : '', b.type === 'field' && !removing && frostComes(state) && inHollow(state, b.x, b.y) ? HOLLOW_FACT : ''].filter(Boolean).join(' · ') || undefined,
       };
     }
     if (!hoverTile) return null;
@@ -582,7 +583,7 @@ async function play(initial: GameState) {
     if (t === TERRAIN.water) return { title: 'Water', icon: 'water', text: 'Pylons can stand in it; trucks drive round it.' };
     if (t === TERRAIN.tree) return { title: 'A tree', icon: 'sapling', text: `Shelters wind turbines nearby; counts towards soil health. ${clear('tree')}` };
     if (t === TERRAIN.rock) return { title: 'Rock', text: clear('rock') };
-    return tool.kind === 'remove' ? null : { title: 'Grass', icon: 'soil', text: `Soil fertility ${state.map.fertility[hoverTile.y * map.width + hoverTile.x]}.${frostComes(state) && isHollow(state, hoverTile.x, hoverTile.y) ? ` ${HOLLOW_FACT}.` : ''}` };
+    return tool.kind === 'remove' ? null : { title: 'Grass', icon: 'soil', text: `${groundName(state.map.ground[hoverTile.y * map.width + hoverTile.x])} ground, soil fertility ${state.map.fertility[hoverTile.y * map.width + hoverTile.x]}.${frostComes(state) && isHollow(state, hoverTile.x, hoverTile.y) ? ` ${HOLLOW_FACT}.` : ''}` };
   }
   /**
    * The routes to draw: the one being edited, a focused truck's, those of a focused garage's trucks or stopping at a focused
