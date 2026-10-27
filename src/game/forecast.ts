@@ -125,8 +125,6 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
               const dust = !blown ? 0 : (dustFor(view, s.time + t + HOUR / 2)?.rate ?? 0) * Math.min(1, (SOIL_AHEAD - t) / HOUR);
               soils[k] = blow(soils[k], dust);
               if (k === 0) { least = blow(least, dust); most = blow(most, dust); }
-              // A late frost on the field takes what has grown (the field starts again) and nothing grows while it bites.
-              if (!under && frostHits(s, set.crop ?? 'wheat', x, y, s.time + t, view)) { growth[k] = 0; return 0; }
               const rain = shore ? 1 : under ? 0 : view.hourRain(s.time + t);
               let wet = rain + (1 - rain) * share;
               // A clay tile is watered as long as it holds the rain of the last day, and half in a heat wave; the field's water is the mean over its tiles.
@@ -136,6 +134,9 @@ export function placement(s: GameState, type: BuildingId, x: number, y: number, 
                 const heat = heatWaveAt(view, s.time + t + HOUR / 2) ? CLAY_HEAT : 0, onClay = held.wet + (1 - held.wet) * Math.max(share, heat);
                 wet = (clay * onClay + (9 - clay) * wet) / 9;
               }
+              // (The rain is kept in the history before this, so clay holds it through a frost too.)
+              // A late frost on the field takes what has grown (the field starts again) and nothing grows while it bites.
+              if (!under && frostHits(s, set.crop ?? 'wheat', x, y, s.time + t, view)) { growth[k] = 0; return 0; }
               const paces = view.warmths(s.time + t).map((w) => paceOf(wet, mean(bounded ? (k ? most : least) : soils[0]), crop, warmthIn(w), byGround).pace);
               return Math.min(HOUR, SOIL_AHEAD - t) * (k ? Math.max(...paces) : Math.min(...paces)) / crop.grow;
             });

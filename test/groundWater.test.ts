@@ -2,17 +2,18 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { TRUTH } from '../src/game/ahead.ts';
 import { place } from '../src/game/build.ts';
-import { DAY_SECONDS } from '../src/game/data.ts';
+import { DAY_SECONDS, type CropId } from '../src/game/data.ts';
 import { endOf, eventOn, timeOf, type WeatherEvent } from '../src/game/events.ts';
 import { placement } from '../src/game/forecast.ts';
 import { GROUND, PLAIN, type GroundKind } from '../src/game/ground.ts';
 import { forecastAt, issueTimeOf } from '../src/game/outlook.ts';
 import { SANDBOX, type Scenario } from '../src/game/scenarios.ts';
 import { climateOf, type Season } from '../src/game/seasons.ts';
+import { frostHits } from '../src/game/frost.ts';
 import { fieldPace } from '../src/game/sim/buildings.ts';
 import { advance } from '../src/game/sim/step.ts';
 import { raining } from '../src/game/sim/weather.ts';
-import { newGame, type FieldBuilding, type GameState } from '../src/game/state.ts';
+import { newGame, touchRelief, type FieldBuilding, type GameState } from '../src/game/state.ts';
 import { dryPace } from '../src/game/warmth.ts';
 import { CLAY_HEAT, CLAY_HOLD, groundWaterNote, soaked, waterOf } from '../src/game/wet.ts';
 
@@ -32,7 +33,7 @@ function rig(season: Season, events: WeatherEvent[], kinds: GroundKind | GroundK
 }
 
 const rain = () => eventOn(3, 8, 'softRain')[0];
-const field = (s: GameState) => { const r = place(s, 'field', 8, 8, 0); assert.ok(r.ok); return r.ok ? r.value.building : assert.fail(); };
+const field = (s: GameState, crop?: CropId) => { const r = place(s, 'field', 8, 8, 0, crop ? { crop } : {}); assert.ok(r.ok); return r.ok ? r.value.building : assert.fail(); };
 
 test('clay stays watered for a day after the rain stops; every other ground is watered only while it rains', () => {
   const e = rain(), stop = endOf(e);
@@ -156,4 +157,24 @@ test('the soil ahead counts the heat wave\'s half watering of clay, and a wave t
     differ ||= soils[0] < soils[1];
   }
   assert.ok(differ, 'the ground shows in the soil ahead');
+});
+
+test('the soil ahead keeps the rain clay is given while a late frost holds the crop', () => {
+  // Showers fall in the frost's night (the frost is cold enough to stop the tomatoes in any season); the tomatoes cannot grow until it lifts, but the clay is still wet from the rain.
+  const frost: WeatherEvent = { kind: 'lateFrost', strength: 'ordinary', start: timeOf(3, 4), length: 12 * HOUR }, e: WeatherEvent = { ...eventOn(3, 6, 'softRain')[0], length: 4 * HOUR };
+  for (const kind of [GROUND.clay, GROUND.loam]) {
+    const s = rig('summer', [frost, e], kind);
+    // A bowl dug round the field, so that the frost lies on it.
+    const v = (x: number, y: number) => 6 - 3 * Math.max(0, 1 - Math.hypot(x - 9.5, y - 9.5) / 5);
+    for (let y = 0; y < s.map.height; y++) for (let x = 0; x < s.map.width; x++) s.map.corner.splice((y * s.map.width + x) * 4, 4, v(x, y), v(x + 1, y), v(x + 1, y + 1), v(x, y + 1));
+    touchRelief(s);
+    s.map.fertility.fill(60); s.soilBase.fill(60);
+    const f = field(s, 'tomato');
+    assert.ok(frostHits(s, 'tomato', 8, 8, frost.start + HOUR), 'the frost lies on the field');
+    s.time = frost.start - 2 * HOUR;
+    const told = soilAhead(s, f), [lo, hi] = told.includes('–') ? told.split('–').map(Number) : [Number(told), Number(told)];
+    for (let t = 0; t < 600; t += 1) { advance(s, 1); f.stored = 0; }
+    const real = Math.round(s.map.fertility[8 * s.map.width + 8]);
+    assert.ok(Math.abs(real - (lo + hi) / 2) <= 1, `${kind}: sim ${real}, card ${told}`);
+  }
 });
