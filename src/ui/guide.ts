@@ -16,6 +16,7 @@ import { BUILD_HOURS, PANEL_BLOCK } from '../game/snow.ts';
 import { SEVERE_GALE, TURBINE_LIMIT } from '../game/wind.ts';
 import { isPollinated } from '../game/sim/layout.ts';
 import { fieldFertility, fieldGroundPace, harvestOf } from '../game/sim/soil.ts';
+import { CLAY_HEAT } from '../game/wet.ts';
 import { cropGroundWords, FERTILITY_RANGE, GROUND_ABOUT, GROUND_IDS, GROUND_NAMES } from '../game/ground.ts';
 import { recipeOf } from '../game/sim/goods.ts';
 import { TERRAIN } from '../game/map.ts';
@@ -836,8 +837,8 @@ export function guidePanel(start: GuidePage, host: GuideHost | null, close: () =
           const does: Record<typeof g, (Node | string)[]> = {
             loam: [`Soil starts at ${lo}–${hi}. Nothing else to know: it is the baseline the other kinds are measured against.`],
             silt: [`Soil starts at ${lo}–${hi}, the richest of all. It is the ground a flood covers first, and the ground it leaves richer (see `, link('Flood', { kind: 'event', id: 'flood' }), ').'],
-            clay: [`Soil starts at ${lo}–${hi}. Trucks drive at ${pct(TRUCK.mudSpeed)} speed on it while it rains and for ${TRUCK.mudHours} hours after (mud); frozen clay is firm.`],
-            sand: [`Soil starts at ${lo}–${hi}, poor. It is firm, never muddy, and a dust storm blows it twice as hard as loam (see `, link('Dust storm', { kind: 'event', id: 'dustStorm' }), ').'],
+            clay: [`Soil starts at ${lo}–${hi}. It holds water: a clay tile stays watered for a day after the rain stops, and is ${pct(CLAY_HEAT)} watered in a heat wave, when other ground is dry. Trucks drive at ${pct(TRUCK.mudSpeed)} speed on it while it rains and for ${TRUCK.mudHours} hours after (mud); frozen clay is firm.`],
+            sand: [`Soil starts at ${lo}–${hi}, poor. It drains: watered only while it rains, with no wetness left after. It is firm, never muddy, and a dust storm blows it twice as hard as loam (see `, link('Dust storm', { kind: 'event', id: 'dustStorm' }), ').'],
             stony: [`Soil starts at ${lo}–${hi}, and never rises above ${FIELD.stonyCap}, even with compost or silt. A field or greenhouse with ${FIELD.stonyMost} stony tiles or more yields ${FIELD.stonyLoss} less each harvest. Rocks lie mostly on it, and the ground under a rock stays stony when the rock is cleared.`],
           };
           return h('li', null, B(`${GROUND_NAMES[g]}:`), ` ${GROUND_ABOUT[g].where}. `, ...does[g]);

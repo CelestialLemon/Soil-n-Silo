@@ -28,7 +28,7 @@ export const PLAIN: GroundMix = { silt: 0, clay: 0, sand: 0, stony: 0 };
 export const GROUND_ABOUT: Record<GroundId, { where: string; does: string }> = {
   loam: { where: 'terraces and gentle slopes', does: 'the baseline' },
   silt: { where: 'the floodplain, by the river', does: 'richest, and floods first' },
-  clay: { where: 'hollows and wet ground', does: 'holds water; muddy for trucks' },
+  clay: { where: 'hollows and wet ground', does: 'holds rain; muddy for trucks' },
   sand: { where: 'river bends and raised banks', does: 'drains; poor; dust blows it worst' },
   stony: { where: 'ridges and high ground', does: 'thin; where rocks lie' },
 };
