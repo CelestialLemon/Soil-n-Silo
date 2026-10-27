@@ -18,7 +18,7 @@
     "bench": "node tools/bench.ts"
   },
   "dependencies": {
-    "pixel3d-renderer": "github:CelestialLemon/pixel3d-renderer#v0.5.0",
+    "pixel3d-renderer": "github:CelestialLemon/pixel3d-renderer#v0.5.1",
     "three": "^0.180.0"
   },
   "devDependencies": {
@@ -33,7 +33,7 @@
     "vite": "^8.3.3"
   },
   "allowScripts": {
-    "github:CelestialLemon/pixel3d-renderer#c8082f477b03fa6cd65318b8db5c186b6d994888": true
+    "github:CelestialLemon/pixel3d-renderer#864888136c50a846a3f943b892a10704a0c741b3": true
   },
   "overrides": {
     "typescript-eslint": {

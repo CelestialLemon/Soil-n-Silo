@@ -71,4 +71,17 @@ The pointer fixture runs at about half the fps of the still one: the blocking `p
 The `emptyVisits` column is the empty-mesh waste: three.js resolves programs and bindings for about three
 quarters of its `renderBufferDirect` calls and draws nothing.
 
+## After v0.5.1 (empty-mesh filter #57, resolve rewrite #58)
+
+Same machine and method as above (game `dev` at `7db7d01`, median of 3 repeats). The timing baseline file above is still the v0.5.0 one, so later PRs quote their difference from it. The structural baseline was rewritten: `emptyVisits` is now 0.
+
+| Fixture | fps | frame ms | p95 ms | JS geometry ms | GPU geometry ms | visits | empty visits |
+|---|---|---|---|---|---|---|---|
+| c1-fresh | 99.01 | 10.1 | 19.3 | 9.2 | 7.715 | 254 | 0 |
+| c1-farm | 105.263 | 9.5 | 17.1 | 7.5 | 7.514 | 466 | 0 |
+| c4-farm | 92.593 | 10.8 | 16.6 | 8.4 | 8.185 | 489 | 0 |
+| c7-river | 92.593 | 10.8 | 28.4 | 9.4 | 8.206 | 632 | 0 |
+| c1-farm-pointer | 63.291 | 15.8 | 34.5 | 4.3 | 7.134 | 466 | 0 |
+| c1-farm-camera | 135.135 | 7.4 | 38.9 | 3.0 | 7.318 | 466 | 0 |
+
 Laptop numbers (Windows Core Ultra 7 265H, MacBook Air M4) come from the owner running this on those machines (#189).
