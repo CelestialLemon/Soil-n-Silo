@@ -159,9 +159,9 @@ landmark: it stands among fields, sprinklers and pylons, so its silhouette must 
 
 | Model | Footprint | Height | Notes |
 | --- | --- | --- | --- |
-| `weather_station` | 2 × 2 | ~1.8 | A raised white louvred shelter with a moss roof, a copper wind mast and a separate rain gauge. Not `tall`: it must not shelter a turbine |
+| `weather_station` | 2 × 2 | ~2.1 | A tilted blue forecast dial with sun, cloud and pointer on a ceramic pedestal, beneath a timber-framed solar canopy with wind cups and a rain collector. A planter and timber feet soften the base. Not `tall`: it must not shelter a turbine |
 
-- **Silhouette.** A broad white shelter on timber legs and a taller wind mast distinguish it from sprinklers and pylons.
+- **Silhouette.** A large round blue dial on a tapered pedestal, under an open solar canopy, distinguishes it from sprinklers and pylons.
 - **Moving part.** `move_spin_anemometer` joins the three cups and arms at the mast hub, with local X vertical and `speed = 2.5` rad/s. Its swept disc stays within the 2 × 2 footprint.
 - **How the game wires it.** Not in the model, in `src/world/`; the station building does the same as the turbine, with faster speeds
   for the smaller cups, and not tied to the building's power:

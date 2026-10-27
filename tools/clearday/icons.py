@@ -152,10 +152,18 @@ icon('trash', 'clay', '<rect x="14" y="18" width="36" height="40" rx="4" fill="@
   '<path class="ln" d="M24 26 V50 M32 26 V50 M40 26 V50" stroke="@c" stroke-width="3"/>')
 icon('menu', 'ui', '<rect x="10" y="14" width="44" height="7" rx="3.5" fill="@a"/>', '<rect x="10" y="29" width="44" height="7" rx="3.5" fill="@a"/>', '<rect x="10" y="44" width="44" height="7" rx="3.5" fill="@a"/>')
 
-icon('station', 'white', '<path class="ln" d="M16 50 V60 M38 50 V60" stroke="#8c5f34" stroke-width="4"/>', '<rect x="8" y="28" width="38" height="22" rx="2" fill="@a"/>',
-  '<path class="ln" d="M12 35 H42 M12 40 H42 M12 45 H42" stroke="@b" stroke-width="2.5"/>', '<rect x="6" y="23" width="42" height="6" rx="2" fill="#78a94a"/>',
-  '<path class="ln" d="M54 60 V18" stroke="#c9673f" stroke-width="3"/>', '<circle cx="54" cy="12" r="3" fill="#c9673f"/>',
-  '<ellipse cx="46" cy="12" rx="4.5" ry="3" fill="@a"/>', '<ellipse cx="62" cy="12" rx="4.5" ry="3" fill="@a"/>', '<ellipse cx="54" cy="5" rx="3" ry="3" fill="@b"/>')
+# A forecast dial on its pedestal, framed by the solar canopy and wind cups.
+icon('station', 'white',
+  '<path d="M23 45 L20 59 H44 L41 45 Z" fill="@a"/>',
+  '<path class="ln" d="M11 52 V16 H53 V52" stroke="#8c5f34" stroke-width="4"/>',
+  '<rect x="7" y="14" width="50" height="7" rx="2" fill="#234c83"/>',
+  '<circle cx="32" cy="36" r="19" fill="#c9673f"/>',
+  '<circle cx="32" cy="36" r="15" fill="#234c83"/>',
+  '<circle cx="26" cy="31" r="4" fill="#ddba57"/>',
+  '<path d="M36 31 C36 27 42 27 43 31 C48 31 48 36 43 36 H36 C32 36 32 32 36 31 Z" fill="@a"/>',
+  '<path class="ln" d="M31 39 L36 44" stroke="#ddba57" stroke-width="3"/>',
+  '<path class="ln" d="M32 14 V7 M22 7 H42" stroke="#c9673f" stroke-width="3"/>',
+  '<circle cx="21" cy="7" r="3" fill="@a"/>', '<circle cx="43" cy="7" r="3" fill="@a"/>')
 
 # A low glazed shell, copper ridge and living corner; the crop remains visible through it.
 icon('greenhouse', 'teal',

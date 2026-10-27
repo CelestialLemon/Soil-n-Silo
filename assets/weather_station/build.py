@@ -1,6 +1,6 @@
-"""A small weather observatory: a louvred shelter, wind mast and rain gauge.
+"""A weather observatory: a tilted forecast dial under a solar canopy.
 
-The anemometer spins around its vertical local X axis independently of power.
+The wind cups turn about their vertical local X axis, independent of power.
 """
 import sys
 sys.dont_write_bytecode = True
@@ -9,60 +9,66 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from solarpunk import *
 reset(231)
 
-# A raised, white instrument shelter, framed in warm timber. Broad slats read
-# at the game's distant zooms; the open legs keep the silhouette light.
-sx, sy = -.30, .05
-for dx in [-.40, .40]:
-    for dy in [-.29, .29]:
-        cylinder('Stone_foot', (sx+dx, sy+dy, .05), .09, .10, 'stone', 8)
-        rounded_box('Timber_leg', (sx+dx, sy+dy, .28), (.09,.09,.46), 'wood', .015)
-box('Shelter_floor', (sx,sy,.52), (.96,.74,.10), 'lightwood')
-box('Shelter_core', (sx,sy,.86), (.77,.55,.60), 'linen')
-for z in [.62,.76,.90,1.04]:
-    for side in [-1,1]:
-        box('Ceramic_louvre', (sx,sy+side*.30,z), (.84,.10,.085), 'ceramic', rot=(side*.35,0,0))
-        box('Ceramic_louvre', (sx+side*.40,sy,z), (.10,.62,.085), 'ceramic', rot=(0,-side*.35,0))
-for dx in [-.42,.42]:
-    for dy in [-.31,.31]:
-        box('Timber_corner', (sx+dx,sy+dy,.84), (.08,.08,.68), 'wood')
-# The deep roof and green cap give the station a distinctive, friendly profile.
-rounded_box('Roof_eave', (sx,sy,1.21), (1.08,.84,.12), 'ceramic', .025)
-rounded_box('Moss_roof', (sx,sy,1.30), (.99,.75,.10), 'moss', .035)
-sphere('decor_Roof_plant', (sx-.20,sy+.06,1.37), (.20,.16,.09), 'leaf', 6, 3)
-box('Door_frame', (sx,sy-.365,.85), (.09,.04,.59), 'wood')
-sphere('Door_catch', (sx+.14,sy-.38,.86), (.06,.04,.06), 'brass', 6, 3)
+# A compact octagonal pedestal, with curved-looking, tapered ceramic tiers.
+cylinder('Stone_foundation', (0,0,.08), .53,.16, 'stone_light', 8, top=.49)
+cylinder('Copper_plinth', (0,0,.18), .43,.08, 'copper', 8, top=.40)
+cylinder('Ceramic_pedestal', (0,0,.51), .33,.60, 'ceramic', 8, top=.23)
+cylinder('Brass_neck', (0,0,.83), .29,.08, 'brass', 8)
+# Three broad timber feet and small plants soften the machine's base.
+for a in [math.pi/2, math.pi/2+math.tau/3, math.pi/2+2*math.tau/3]:
+    d = Vector((math.cos(a),math.sin(a),0))
+    beam('Timber_foot', d*.30+Vector((0,0,.16)), d*.68+Vector((0,0,.13)), .12, 'wood')
 
-# A tall copper mast and a bold vane make its purpose visible above the roof.
-mx,my = .59,.34
-cylinder('Mast_foot', (mx,my,.07), .14,.14, 'stone', 8, top=.11)
-cylinder('Copper_mast', (mx,my,.86), .045,1.58, 'copper', 8)
-for z in [.25,1.35]:
-    cylinder('Mast_collar', (mx,my,z), .075,.07, 'brass', 8)
-vz = 1.48
-cylinder('Vane_hub', (mx,my,vz), .07,.08, 'brass', 8)
-beam('Vane_boom', (mx-.23,my,vz), (mx+.23,my,vz), .06, 'copper')
-extrude_xz('Vane_arrow', [(mx-.32,vz),(mx-.18,vz-.09),(mx-.18,vz+.09)], my, .055, 'copper')
-extrude_xz('Vane_tail', [(mx+.14,vz-.04),(mx+.30,vz-.14),(mx+.27,vz),(mx+.30,vz+.14),(mx+.14,vz+.04)], my, .05, 'brass')
+# An oversized, inclined dial faces the camera and catches light from above.
+# The surface is a blue enamel disc with a brass rim, a sun, a cloud and an
+# arrow. These are deliberately chunky enough to survive pixel-art rendering.
+angle = .48
+rot = Matrix.Rotation(angle, 4, 'X')
+centre = Vector((0,-.12,1.04))
+def dial(x,y,z):
+    return centre + rot @ Vector((x,y,z))
+cylinder('Dial_outer', centre, .59,.13, 'copper', 12, rot=(angle,0,0))
+cylinder('Dial_face', dial(0,0,.075), .52,.045, 'solar', 12, rot=(angle,0,0))
+ring('Dial_rim', dial(0,0,.105), .51,.035, 'brass', (angle,0,0))
+# Gold sun at one side of the face, and a white cloud at the other.
+cylinder('Dial_sun', dial(-.23,.12,.11), .105,.045, 'gold', 8, rot=(angle,0,0))
+for a in [0,math.pi/2,math.pi,3*math.pi/2]:
+    p = Vector((-.23+math.cos(a)*.16,.12+math.sin(a)*.16,0))
+    beam('Sun_ray', dial(p.x,p.y,.12), dial(p.x+math.cos(a)*.065,p.y+math.sin(a)*.065,.12), .035, 'gold')
+for x,y,r in [(.15,.15,.09),(.25,.18,.12),(.34,.13,.08)]:
+    sphere('Dial_cloud', dial(x,y,.12), (r,r,.055), 'ceramic', 8, 4)
+# A bold copper pointer and hub, distinct from the weather symbols.
+beam('Forecast_pointer', dial(0,-.14,.14), dial(.10,-.36,.14), .07, 'copper')
+cylinder('Pointer_hub', dial(0,-.14,.15), .065,.055, 'brass', 8, rot=(angle,0,0))
+for a in [math.pi*1.12,math.pi*1.33,math.pi*1.55,math.pi*1.77,math.pi*1.96]:
+    d = Vector((math.cos(a),math.sin(a),0))
+    beam('Dial_tick', dial(d.x*.40,d.y*.40,.12), dial(d.x*.46,d.y*.46,.12), .04, 'ceramic')
 
-hub = Vector((mx,my,1.72))
-cups = [cylinder('Anemometer_hub',hub,.065,.10,'brass',8)]
+# Two timber uprights support a blue solar awning behind the dial. Their
+# outward taper and the shallow roof form a distinct, open silhouette.
+for side in [-1,1]:
+    beam('Canopy_upright', (side*.39,.34,.17), (side*.57,.39,1.66), .10, 'wood')
+    sphere('Upright_cap', (side*.57,.39,1.66), (.10,.10,.10), 'brass', 6, 3)
+solar_tile('Solar_canopy', (0,.39,1.67), (1.35,.49), tilt=-.16)
+# A little hanging droplet marks the rain collector on the right of the arch.
+beam('Collector_arm', (.52,.38,1.50), (.68,.38,1.50), .06, 'copper')
+cylinder('Rain_collector', (.68,.38,1.37), .10,.22, 'ceramic', 8)
+cylinder('Collector_funnel', (.68,.38,1.51), .14,.08, 'copper', 8, top=.07)
+
+# Wind cups rise from the centre of the canopy, rotating about the mast.
+cylinder('Sensor_stem', (0,.39,1.84), .045,.25, 'copper', 8)
+hub = Vector((0,.39,2.00))
+cups = [cylinder('Wind_hub', hub,.065,.09,'brass',8)]
 for i in range(3):
     a = i*math.tau/3+.4
     d = Vector((math.cos(a),math.sin(a),0))
-    cups.append(beam('Anemometer_arm',hub,hub+d*.23,.045,'copper'))
-    cups.append(sphere('Anemometer_cup',hub+d*.25,(.105,.105,.09),'ceramic',8,4))
-spinner = join(cups,'move_spin_anemometer',hub)
-orient_x(spinner,(0,0,1))
+    cups.append(beam('Wind_arm', hub, hub+d*.24, .045, 'copper'))
+    cups.append(sphere('Wind_cup', hub+d*.26, (.10,.10,.09), 'ceramic', 8, 4))
+spinner = join(cups, 'move_spin_anemometer', hub)
+orient_x(spinner, (0,0,1))
 spinner['speed'] = 2.5
 
-# A separate funnel and graduated vessel signal rainfall measurements.
-gx,gy = .48,-.55
-cylinder('Gauge_foot',(gx,gy,.05),.13,.10,'stone',8)
-cylinder('Gauge_body',(gx,gy,.30),.105,.42,'ceramic',8)
-cylinder('Gauge_band',(gx,gy,.38),.12,.06,'brass',8)
-cylinder('Gauge_funnel',(gx,gy,.56),.17,.14,'copper',8,top=.08)
-for z in [.18,.25,.32]:
-    box('Gauge_mark',(gx,gy-.106,z),(.10,.025,.025),'copper')
-grass(-.78,-.55)
-grass(-.75,.58)
-build_complete('weather_station',2)
+# Low living details frame the base, not the dial.
+planter(-.67,.36, radius=.17)
+grass(.60,-.55)
+build_complete('weather_station', 2)
