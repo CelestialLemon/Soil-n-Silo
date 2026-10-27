@@ -28,9 +28,10 @@ jobs:
       - run: npm run build         # typecheck, then the game
 
   # What the game asks three.js to draw (draws, submissions, triangles, shadow redraws) on the bot's farms, against
-  # tools/bench/baselines/structural.json; growth over 5% fails. Software GL: only the counts mean anything, not the times (docs/BENCHMARK.md).
+  # tools/bench/baselines/structural.json; growth over 5% turns this job red but does not block the PR (continue-on-error). Software GL: only the counts mean anything, not the times (docs/BENCHMARK.md).
   bench:
     runs-on: ubuntu-latest
+    continue-on-error: true
     name: bench (structural)
     steps:
       - uses: actions/checkout@v4

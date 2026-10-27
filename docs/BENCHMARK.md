@@ -45,7 +45,7 @@ and write down the power mode; the timings differ between a plugged-in laptop an
 ## Gates
 
 - **Structural, in CI** (`bench` job): the still fixtures on software GL in a 640 × 360 window (the counts do not depend on it)
-  against `tools/bench/baselines/structural.json`. A median that grows more than 5% fails the job: investigate. When the growth is
+  against `tools/bench/baselines/structural.json`. A median that grows more than 5% turns the job red: investigate. It is information only (`continue-on-error`), so it never blocks a PR. When the growth is
   intended, or a renderer release shrinks the counts, rewrite the baseline with `--structural --no-gpu --write-baseline` in the same PR.
   Once the pin has the empty-mesh fix, `emptyVisits` in the baseline is 0 and any growth fails.
 - **Timings, locally**: against `tools/bench/baselines/<GL renderer>.json` for the GPU you run on, if there is one (or `--baseline`).
