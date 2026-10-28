@@ -71,7 +71,8 @@ interface Placed { spot: Spot; fit: Result<Groundwork>; price: number; built: bo
 // Each art pixel is drawn as a square of `pixelSize` screen pixels (a setting, 2 by default), whatever the zoom; zooming
 // changes how many metres of ground fit on the screen, so models are drawn with more art pixels close up and fewer far out.
 
-const REPICK_FRAMES = 6;
+/** How near a moving truck must be to the pointer (px) for it to be picked again: the truck may have moved under, or out from under, it. */
+const TRUCK_NEAR_PX = 64;
 const AUTOSAVE_SECONDS = 30;
 const MAX_STEPS_PER_FRAME = 80;
 /** How long the pointer rests before the card about what is under it shows (ms). */
@@ -236,6 +237,17 @@ async function play(initial: GameState) {
     hoverPoint = pointAt(input.pointer.x, input.pointer.y, hoverTile);
     hoverBuilding = view.buildingOf(p?.object ?? null);
     if (hoverBuilding === null && hoverTile) hoverBuilding = buildingAt(state, hoverTile.x, hoverTile.y)?.id ?? null;
+  }
+
+  /** Whether a truck is moving within reach of a page point, so what is under it may have changed. */
+  function trucksNearPointer(p: { x: number; y: number }) {
+    for (const t of state.trucks) {
+      const at = view.truckAt(t.id);
+      if (!at) continue;
+      const s = camera.toScreen(at.x, groundAt(at.x, at.z) + 0.9, at.z);
+      if (Math.hypot(s.sx - p.x, s.sy - p.y) < TRUCK_NEAR_PX) return true;
+    }
+    return false;
   }
 
   function highlight(ids: number[]) {
@@ -488,9 +500,9 @@ async function play(initial: GameState) {
     pan: (dx, dy) => camera.pan(dx, dy),
     zoom: (steps, at) => camera.zoomStep(steps, at),
     repick: () => { repick = 2; },
-    click: act,
+    click: (x, y) => { act(x, y); repick = 2; },
     secondary: () => { if (tool.kind !== 'select') setTool({ kind: 'select' }); else selected = null; hud.refresh(); },
-    drag: applyDrag,
+    drag: (from, to) => { applyDrag(from, to); repick = 2; },
     key: onKey,
   });
 
@@ -649,7 +661,7 @@ async function play(initial: GameState) {
   }
 
   // ---- Loop ----
-  let last = performance.now(), time = 0, frameNo = 0, lookHour = Number.NaN, lookCloud = 0, lookPrecip = 0, lookHeat = 0, sinceSave = 0;
+  let last = performance.now(), time = 0, lookHour = Number.NaN, lookCloud = 0, lookPrecip = 0, lookHeat = 0, sinceSave = 0;
   let wasComplete = state.completedAt !== null;
   let skyEased: { cloud: number; wind: number; precip: number; haze: number; hazeTop: number } | null = null;
   /** The colour of the haze last drawn, kept while it thins out. */
@@ -663,7 +675,7 @@ async function play(initial: GameState) {
     hud.perf.frame(now);
     if (hud.perf.timing) hud.perf.begin();
     const dt = Math.min((now - last) / 1000, 0.1);
-    last = now; time += dt; frameNo++;
+    last = now; time += dt;
 
     if (!paused && !hud.modal) advance(state, dt * speed, MAX_STEPS_PER_FRAME);
     if (!wasComplete && state.completedAt !== null) {
@@ -718,7 +730,9 @@ async function play(initial: GameState) {
     view.sync(state);
     floodView.sync(state);
     toolOverlay = 'none';
-    if (input.pointer && frameNo % REPICK_FRAMES === 0) repick = Math.max(repick, 1);
+    // Picked again only on a change: the pointer, camera, tool or a placement (each sets `repick`), or a truck driving
+    // near the pointer (the rest of the world holds still under it).
+    if (input.pointer && !paused && repick === 0 && trucksNearPointer(input.pointer)) repick = 1;
     if (repick > 0) { repick--; pickHover(); }
     showGhosts();
     // Editing a route shows the roads. Building shows the roads, the sprinklers' water or the bees' range; anything that
