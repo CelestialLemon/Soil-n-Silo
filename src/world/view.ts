@@ -67,6 +67,11 @@ const heightTint = (level: number, steep: boolean) => {
 };
 
 export class WorldView {
+  /**
+   * Counts the objects shown or taken away (a building placed, removed or swapped for another look, a tree cleared, a truck
+   * bought): what is under the pointer may have changed. Trucks driving on are not counted.
+   */
+  changes = 0;
   private readonly targets = new Map<PixelObject, number>();
   private readonly shown = new Map<number, Shown>();
   private readonly parts = new Map<number, Shown[]>();
@@ -119,12 +124,13 @@ export class WorldView {
   }
 
   private add(g: THREE.BufferGeometry, id: number | null) {
+    this.changes++;
     const o = this.r.addObject(g);
     if (id !== null) this.targets.set(o, id);
     return o;
   }
 
-  private drop(o: PixelObject) { this.targets.delete(o); o.remove(); }
+  private drop(o: PixelObject) { this.changes++; this.targets.delete(o); o.remove(); }
 
   /** Shows `key` in a slot, replacing what it showed; `own` when the geometry is made for it (and goes with it). */
   private show(slot: Shown | undefined, key: string, g: () => THREE.BufferGeometry, id: number | null, place: (o: PixelObject) => void, own = false): Shown {
