@@ -178,13 +178,17 @@ export class WorldView {
     const crop = CROPS[f.crop];
     // Every tile shows the field's stage; a harvest waiting shows ripe until a truck picks it up.
     const stage = f.stored >= crop.yield ? crop.stages - 1 : Math.min(crop.stages - 1, Math.floor(f.growth * crop.stages));
-    let i = 0;
     // The ground under a field can move when earthworks nearby are fitted in (ground.ts, Lie).
     const lie = reliefOf(s);
+    // The nine tiles' soil is one geometry: keyed on each tile's fertility band and ground (which tint it) and on the relief.
+    const tiles: string[] = [];
     for (let y = f.y; y < f.y + 3; y++) for (let x = f.x; x < f.x + 3; x++) {
-      const band = soilBand(s.map.fertility[y * s.map.width + x]), kind = s.map.ground[y * s.map.width + x];
-      list[i] = this.show(list[i], `soil ${x} ${y} ${band} ${lie}`, () => this.soil(x, y, band, kind), f.id, (o) => o.setTransform(v.set(0, 0, 0), e.set(0, 0, 0)), true);
-      i++;
+      const at = y * s.map.width + x;
+      tiles.push(`${soilBand(s.map.fertility[at])}:${s.map.ground[at]}`);
+    }
+    list[0] = this.show(list[0], `soil ${f.x} ${f.y} ${tiles.join(',')} ${lie}`, () => this.soil(s, f), f.id, (o) => o.setTransform(v.set(0, 0, 0), e.set(0, 0, 0)), true);
+    let i = 1;
+    for (let y = f.y; y < f.y + 3; y++) for (let x = f.x; x < f.x + 3; x++) {
       const turn = Math.floor(hash(x, y) * 4) * Math.PI / 2;
       list[i] = this.show(list[i], `crop ${x} ${y} ${f.crop} ${stage} ${lie}`, () => this.m.crops[f.crop][stage], f.id,
         (o) => o.setTransform(v.set(x + 0.5, this.lie.y(x + 0.5, y + 0.5) + SOIL_TOP, y + 0.5), e.set(0, turn, 0)));
@@ -199,11 +203,14 @@ export class WorldView {
     this.parts.set(f.id, list);
   }
 
-  /** A field's soil on a tile, by fertility band and the tile's ground (which tints it): a raised bed over the ground, with three furrows across it. */
-  private soil(x: number, y: number, band: number, kind: number) {
-    const t = new Tris(this.paint), furrow = soilOf(Math.max(0, band - 1), kind);
-    sheet(t, this.lie, x, y, [0.01, 0.01, 0.99, 0.99], SOIL_TOP, soilOf(band, kind), true);
-    for (const z of [0.2, 0.5, 0.8]) sheet(t, this.lie, x, y, [0.05, z - 0.04, 0.95, z + 0.04], SOIL_TOP + 0.015, furrow, true);
+  /** A field's soil, by each tile's fertility band and ground (which tint it): on every tile a raised bed over the ground, with three furrows across it. */
+  private soil(s: GameState, f: FieldBuilding) {
+    const t = new Tris(this.paint);
+    for (let y = f.y; y < f.y + 3; y++) for (let x = f.x; x < f.x + 3; x++) {
+      const at = y * s.map.width + x, band = soilBand(s.map.fertility[at]), kind = s.map.ground[at], furrow = soilOf(Math.max(0, band - 1), kind);
+      sheet(t, this.lie, x, y, [0.01, 0.01, 0.99, 0.99], SOIL_TOP, soilOf(band, kind), true);
+      for (const z of [0.2, 0.5, 0.8]) sheet(t, this.lie, x, y, [0.05, z - 0.04, 0.95, z + 0.04], SOIL_TOP + 0.015, furrow, true);
+    }
     return t.geometry();
   }
 

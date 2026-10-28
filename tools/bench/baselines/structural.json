@@ -1,6 +1,6 @@
 {
-  "when": "2026-10-27T19:45:11.256Z",
-  "commit": "7db7d01",
+  "when": "2026-10-28T08:21:26.081Z",
+  "commit": "fc2fd98",
   "pin": "github:CelestialLemon/pixel3d-renderer#v0.5.1",
   "mode": "structural",
   "browser": "156.0.8078.4",
@@ -49,8 +49,8 @@
       "script": "still",
       "median": {
         "frames": 9,
-        "draws": 461,
-        "visits": 461,
+        "draws": 317,
+        "visits": 317,
         "emptyVisits": 0,
         "triangles": 887502,
         "passes": 7,
@@ -59,8 +59,8 @@
       "repeats": [
         {
           "frames": 9,
-          "draws": 461,
-          "visits": 461,
+          "draws": 317,
+          "visits": 317,
           "emptyVisits": 0,
           "triangles": 887502,
           "passes": 7,
@@ -72,8 +72,8 @@
       "script": "still",
       "median": {
         "frames": 9,
-        "draws": 491,
-        "visits": 491,
+        "draws": 347,
+        "visits": 347,
         "emptyVisits": 0,
         "triangles": 1233380,
         "passes": 7,
@@ -82,8 +82,8 @@
       "repeats": [
         {
           "frames": 9,
-          "draws": 491,
-          "visits": 491,
+          "draws": 347,
+          "visits": 347,
           "emptyVisits": 0,
           "triangles": 1233380,
           "passes": 7,
@@ -95,8 +95,8 @@
       "script": "still",
       "median": {
         "frames": 9,
-        "draws": 630,
-        "visits": 630,
+        "draws": 414,
+        "visits": 414,
         "emptyVisits": 0,
         "triangles": 1297012,
         "passes": 7,
@@ -105,8 +105,8 @@
       "repeats": [
         {
           "frames": 9,
-          "draws": 630,
-          "visits": 630,
+          "draws": 414,
+          "visits": 414,
           "emptyVisits": 0,
           "triangles": 1297012,
           "passes": 7,
