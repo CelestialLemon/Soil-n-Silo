@@ -86,3 +86,21 @@ Same machine and method as above (game `dev` at `7db7d01`, median of 3 repeats).
 | c1-farm-camera | 135.135 | 7.4 | 38.9 | 3.0 | 7.318 | 466 | 0 |
 
 Laptop numbers (Windows Core Ultra 7 265H, MacBook Air M4) come from the owner running this on those machines (#189).
+
+## After v0.5.2 and re-picking only on change (#187)
+
+The game now asks what is under the pointer only when something changed (the pointer, the camera, the tool, an object shown or
+taken away, a truck driving under it), through the renderer's non-blocking `requestPick`. Same machine, game `dev` at `40e1716`
+before and this change after, median of 3 repeats, **with `--vsync`** (60 Hz, as a player sees it):
+
+| Fixture | frame p90 ms | p95 ms | p99 ms | picks per frame | pick ms per frame | JS rest ms |
+|---|---|---|---|---|---|---|
+| c1-farm (no pointer) | 16.7 → 16.7 | 16.7 → 16.8 | 16.8 → 16.8 | 0 → 0 | 0 → 0 | 0.5 → 0.6 |
+| c1-farm-rest | 16.7 → 16.7 | 16.7 → 16.8 | 16.8 → 16.8 | 0.167 → 0.016 | 0.51 → 0.007 | 1.1 → 1.0 |
+| c1-farm-pointer | 33.3 → 16.7 | 33.3 → 16.8 | 33.4 → 16.8 | 0.84 → 0.42 | 10.24 → 0.25 | 13.5 → 1.0 |
+| c1-farm-camera | 16.8 → 16.7 | 33.3 → 16.7 | 33.4 → 16.8 | 0.50 → 0.22 | 4.96 → 0.08 | 2.1 → 1.3 |
+
+With the pointer resting or moving over the map, the frame-time tail is now that of the no-pointer case. Uncapped (the
+default), the frame intervals of the pointer and camera fixtures are not comparable any more: with no blocking read to hold it
+back, the browser appears to queue frames far ahead of the GPU (2.9 ms intervals against 7.3 ms of GPU geometry), and a requested pick then
+takes ~60 frames to come back. Compare those fixtures with `--vsync`, where a requested pick comes back in 1–2 frames.
