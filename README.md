@@ -58,7 +58,7 @@ src/
   ui/           the HTML HUD and menus over the canvas, and the item icons
     clearday/   the design system (tokens, components, icons, the bundled font)
 assets/         Blender build scripts for the models (the source of truth), exported to public/models/
-tools/          the commission bot (npm run sim) and its layouts, the frame-cost benchmark (npm run bench)
+tools/          the commission bot (npm run sim) and its layouts, the frame-cost benchmark (npm run bench), performance probes (tools/probes)
   clearday/     generators for the Clearday tokens and icons (Python 3)
 test/           unit tests (Node's test runner)
 docs/           design, roadmap, asset brief

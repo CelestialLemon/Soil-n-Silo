@@ -26,7 +26,7 @@ export interface Settings {
 /** The pixel size setting's choices: screen pixels per art pixel. */
 export const PIXEL_SIZES = [1, 2, 3, 4] as const;
 /** The frame rate setting's choices. */
-export const FRAME_STATS_MODES = ['off', 'minimal', 'full'] as const;
+export const FRAME_STATS_MODES = ['off', 'minimal', 'full', 'report'] as const;
 export type FrameStatsMode = typeof FRAME_STATS_MODES[number];
 export const UI_SIZES = { min: 0.9, max: 1.3, step: 0.05 };
 

@@ -228,7 +228,9 @@ async function play(initial: GameState) {
 
   function pickHover() {
     if (!input.pointer) { hoverTile = null; hoverPoint = null; hoverBuilding = null; return; }
+    if (hud.perf.timing) hud.perf.mark();
     const p = renderer.pick(input.pointer.x, input.pointer.y);
+    if (hud.perf.timing) hud.perf.lap('pick');
     // A tree or rock under the input.pointer is its own tile (the ground point behind it is another tile).
     hoverTile = view.terrainOf(p?.object ?? null) ?? camera.tileAt(input.pointer.x, input.pointer.y, pickGround, TOP);
     hoverPoint = pointAt(input.pointer.x, input.pointer.y, hoverTile);
@@ -627,6 +629,25 @@ async function play(initial: GameState) {
     return { type, x: a.x, y: a.y, count: spots.length, price, crop: tool.crop, recipe: tool.recipe, ...camera.toScreen(a.x + n / 2, standY(lie, state.map, n, a.x, a.y) + models.buildings[type].height + 0.3, a.y + n / 2) };
   }
 
+  // The frame rate readout's report mode: where the machine and the renderer's setup are read from, only when a report is made.
+  {
+    const three = renderer.renderer, gl = three.getContext();
+    hud.perf.attach({
+      env: () => {
+        const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+        return {
+          glRenderer: String(gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER)), glVendor: String(gl.getParameter(dbg ? dbg.UNMASKED_VENDOR_WEBGL : gl.VENDOR)),
+          userAgent: navigator.userAgent, viewport: [window.innerWidth, window.innerHeight], devicePixelRatio: window.devicePixelRatio,
+          art: [renderer.width, renderer.height], supersample: renderer.supersample, shadowMapSize: renderer.shadowMapSize, pixelSize: settings.get().pixelSize,
+          timerQueries: !!gl.getExtension('EXT_disjoint_timer_query_webgl2'),
+        };
+      },
+      counts: () => ({ draws: three.info.render.calls, triangles: three.info.render.triangles }),
+      // three.js counts a draw call per render() and resets at each one; held across the frame's passes while the report is on.
+      resetCounts: (on) => { three.info.autoReset = !on; if (on) three.info.reset(); },
+    });
+  }
+
   // ---- Loop ----
   let last = performance.now(), time = 0, frameNo = 0, lookHour = Number.NaN, lookCloud = 0, lookPrecip = 0, lookHeat = 0, sinceSave = 0;
   let wasComplete = state.completedAt !== null;
@@ -640,6 +661,7 @@ async function play(initial: GameState) {
 
   function frame(now: number) {
     hud.perf.frame(now);
+    if (hud.perf.timing) hud.perf.begin();
     const dt = Math.min((now - last) / 1000, 0.1);
     last = now; time += dt; frameNo++;
 
@@ -747,10 +769,14 @@ async function play(initial: GameState) {
     hud.world.setPlacement(state, placeSpot());
     hud.update();
 
+    if (hud.perf.timing) hud.perf.mark();
     renderer.renderGeometry(time);
+    if (hud.perf.timing) hud.perf.lap('geometry');
     renderer.renderStyle(time);
+    if (hud.perf.timing) hud.perf.lap('style');
     cursor.draw(marks, renderer.camera, renderer.width, renderer.height);
     refused.draw(refusedMarks, renderer.camera, renderer.width, renderer.height);
+    if (hud.perf.timing) hud.perf.end();
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

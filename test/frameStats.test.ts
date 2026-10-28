@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { FrameTimes, STATS_WINDOW } from '../src/ui/frameStats.ts';
+import { Telemetry } from '../src/ui/telemetry.ts';
 import { readSettings } from '../src/ui/settings.ts';
 
 test('no frames, no summary', () => {
@@ -46,4 +47,17 @@ test('the frame rate setting falls back to off', () => {
   assert.equal(readSettings(null).frameStats, 'off');
   assert.equal(readSettings('{"frameStats":"full"}').frameStats, 'full');
   assert.equal(readSettings('{"frameStats":"lots"}').frameStats, 'off');
+});
+
+test('a report holds only the last 30 seconds, with percentiles of each cost', () => {
+  const t = new Telemetry();
+  const sample = (interval: number, geometry: number) => ({ interval, geometry, style: 1, pick: 0.5, rest: 2, draws: 100, triangles: 5000 });
+  t.add(0, sample(500, 9)); // too old by the time of the report
+  for (let i = 1; i <= 100; i++) t.add(STATS_WINDOW - 100 + i, sample(i, 3));
+  const r = t.report(STATS_WINDOW + 100, { glRenderer: 'GPU', glVendor: 'V', userAgent: 'UA', viewport: [1, 2], devicePixelRatio: 2, art: [3, 4], supersample: 3, shadowMapSize: 2048, pixelSize: 2, power: 'battery', timerQueries: false });
+  assert.equal(r.frames, 100);
+  assert.deepEqual(r.frameIntervalMs, { p50: 51, p95: 96, p99: 100 });
+  assert.equal(r.jsMs.renderGeometry?.p99, 3);
+  assert.equal(r.env.power, 'battery');
+  assert.equal(new Telemetry().report(0, r.env).frameIntervalMs, null);
 });
