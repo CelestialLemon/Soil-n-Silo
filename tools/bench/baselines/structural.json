@@ -1,7 +1,7 @@
 {
   "when": "2026-10-28T08:21:26.081Z",
   "commit": "fc2fd98",
-  "pin": "github:CelestialLemon/pixel3d-renderer#v0.5.1",
+  "pin": "github:CelestialLemon/pixel3d-renderer#v0.5.2",
   "mode": "structural",
   "browser": "156.0.8078.4",
   "env": {
