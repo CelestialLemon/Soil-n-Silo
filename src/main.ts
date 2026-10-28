@@ -508,6 +508,8 @@ async function play(initial: GameState) {
       if (built) hud.toast(`Built ${built} × ${BUILDINGS[tool.type].name.toLowerCase()}${what ? ` (${what})` : ''}`, true, tool.type);
       else if (last) hud.toast(last, false);
     } else if (tool.kind === 'earth') {
+      // The tile the drag ends on, now: the hover's may be a frame or two behind the pointer.
+      pickNow();
       if (!hoverTile) return;
       const r = reshape(state, { how: tool.how, from, to, at: hoverTile });
       if (r.ok) hud.toast(`${EARTHWORK_NAMES[tool.how]}: ${r.value.steps} step${r.value.steps > 1 ? 's' : ''} · −${earthPrice(state, r.value.steps)} credits`, true, 'earth');

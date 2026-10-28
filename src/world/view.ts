@@ -69,7 +69,8 @@ const heightTint = (level: number, steep: boolean) => {
 export class WorldView {
   /**
    * Counts the objects shown or taken away (a building placed, removed or swapped for another look, a tree cleared, a truck
-   * bought): what is under the pointer may have changed. Trucks driving on are not counted.
+   * bought, a good loaded or handed to another truck): what is under the pointer may have changed. Trucks driving on are not
+   * counted.
    */
   changes = 0;
   private readonly targets = new Map<PixelObject, number>();
@@ -284,7 +285,7 @@ export class WorldView {
     }
     for (const [id, o] of this.trucks) if (!alive.has(id)) { this.drop(o.obj); this.trucks.delete(id); }
     this.syncHandoffs(s);
-    for (const p of this.pools.values()) for (let i = p.used; i < p.objs.length; i++) p.objs[i].visible = false;
+    for (const p of this.pools.values()) for (let i = p.used; i < p.objs.length; i++) if (p.objs[i].visible) { p.objs[i].visible = false; this.changes++; }
   }
 
   /** Goods handed to a building next door, each hopping over the edge the two share. */
@@ -308,6 +309,8 @@ export class WorldView {
     let o = p.objs[p.used];
     if (!o) { o = this.add(this.m.items[item], null); o.castShadow = false; p.objs.push(o); }
     p.used++;
+    // Handed to another truck, or shown again: picking it now picks something else.
+    if ((this.targets.get(o) ?? null) !== owner || !o.visible) this.changes++;
     if (owner === null) this.targets.delete(o); else this.targets.set(o, owner);
     o.visible = true;
     o.setTransform(v.set(x, y, z), e.set(0, yaw, 0), scale);
