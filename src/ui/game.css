@@ -82,6 +82,12 @@ button { font: inherit; }
 .hud-perf .perf-card { display: grid; gap: 10px; width: 272px; padding: 14px 16px; }
 .hud-perf .graph { display: grid; gap: 4px; }
 .hud-perf canvas { display: block; width: 240px; height: 64px; border-bottom: 1px solid var(--chalk-3); }
+.hud-perf.is-report .perf-card { pointer-events: auto; width: 288px; }
+.hud-perf .report { display: grid; gap: 8px; }
+.hud-perf .costs { display: grid; gap: 4px; }
+.hud-perf .report .row { display: flex; justify-content: space-between; gap: 12px; font: 600 12px/1.2 var(--font-ui); }
+.hud-perf .report .cd-btn { height: 36px; }
+.hud-perf .paste { width: 100%; box-sizing: border-box; font: 11px/1.3 monospace; resize: none; }
 .hud-perf .stats { display: grid; gap: 4px; }
 .hud-perf .stats .row { display: flex; justify-content: space-between; font: 600 13px/1.3 var(--font-ui); color: var(--ink-2); }
 .hud-perf .stats .row b { color: var(--ink); }

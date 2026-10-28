@@ -42,7 +42,7 @@ function gameRows(store: SettingsStore) {
     yes('problemsStrip', 'Problems strip', 'Experimental. A strip on the right edge listing problems. Off: find them on the map.'),
     yes('fastSpeeds', 'Fast speeds', 'For testing. Adds 8× and 16× to the speed buttons.'),
     h('div', { class: 'set is-seg' }, h('b', null, 'Frame rate'), frames,
-      h('span', { class: 'cd-small' }, 'Top left while you play. Minimal: the frame rate, once a second. Full: a frame time graph, the average and the 1% and 0.1% lows.')),
+      h('span', { class: 'cd-small' }, 'Top left while you play. Minimal: the frame rate, once a second. Full: a frame time graph, the average and the 1% and 0.1% lows. Report: that, where a frame goes, and a button that copies the last 30 seconds as JSON for a bug report.')),
   ];
 }
 
