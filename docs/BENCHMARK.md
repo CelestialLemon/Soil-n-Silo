@@ -15,6 +15,7 @@ Each fixture is a save, a view and a script, run at 1920 × 1080, `pixelSize 2` 
 | `c1-farm` | c1, the bot's layout after 15 minutes | still |
 | `c4-farm` | c4, the bot's layout after 20 minutes | still |
 | `c7-river` | c7, 20 minutes, looking at the river | still |
+| `c1-farm-rest` | as `c1-farm` | the pointer resting over the middle of the map |
 | `c1-farm-pointer` | as `c1-farm` | a repeatable pointer path over the window |
 | `c1-farm-camera` | as `c1-farm` | pan, zoom, turn, pan, zoom, turn, pan |
 

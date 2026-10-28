@@ -1,7 +1,7 @@
 // The frame-cost benchmark (docs/BENCHMARK.md): bot-built saves loaded into the built game in headless Chromium, scripted
-// through a still view, a pointer path and a camera pan/zoom/turn, with what three.js is asked to draw each frame counted
-// (the structural metrics, which do not depend on the machine) and what it costs in JS and GPU ms (which do). Compares against a
-// baseline: structural growth over 5% fails, a median more than 10% slower on the same machine is flagged.
+// through a still view, a resting pointer, a pointer path and a camera pan/zoom/turn, with what three.js is asked to draw each
+// frame counted (the structural metrics, which do not depend on the machine) and what it costs in JS and GPU ms (which do).
+// Compares against a baseline: structural growth over 5% fails, a median more than 10% slower on the same machine is flagged.
 //
 // Run: npm run bench -- [--structural] [--seconds 30] [--repeats 3] [--fixture name] [--baseline file] [--write-baseline file]
 //   --structural   CI's check: the game paused, a few frames of each still fixture, no timings, exit 1 on growth. Software GL is fine.
@@ -32,7 +32,7 @@ const STRUCTURAL_GROWTH = 0.05, TIMING_GROWTH = 0.10;
 /** The structural run's sample: frames counted after the warm-up frames. */
 const STRUCTURAL_FRAMES = 8, STRUCTURAL_WARMUP_FRAMES = 4;
 
-type Script = 'still' | 'pointer' | 'camera';
+type Script = 'still' | 'rest' | 'pointer' | 'camera';
 /** A fixture: a commission's bot layout run for `minutes` of play (0 is the fresh start), then viewed through `script`. */
 interface Fixture { name: string; layout: string; minutes: number; script: Script; /** Where to look (tiles east of the depot), when not at the depot. */ lookEast?: number }
 const FIXTURES: Fixture[] = [
@@ -40,6 +40,7 @@ const FIXTURES: Fixture[] = [
   { name: 'c1-farm', layout: 'c1', minutes: 15, script: 'still' },
   { name: 'c4-farm', layout: 'c4', minutes: 20, script: 'still' },
   { name: 'c7-river', layout: 'c7', minutes: 20, script: 'still', lookEast: RIVER_AT.c7 },
+  { name: 'c1-farm-rest', layout: 'c1', minutes: 15, script: 'rest' },
   { name: 'c1-farm-pointer', layout: 'c1', minutes: 15, script: 'pointer' },
   { name: 'c1-farm-camera', layout: 'c1', minutes: 15, script: 'camera' },
 ];
@@ -118,6 +119,12 @@ async function play(page: Page, script: Script, until: () => Promise<boolean>, s
   const t0 = Date.now();
   const elapsed = () => (Date.now() - t0) / 1000;
   if (script === 'still') { while (!(await until())) await page.waitForTimeout(100); return; }
+  if (script === 'rest') {
+    // The pointer resting over the middle of the map, as while reading a hover card.
+    await page.mouse.move(W / 2, H / 2);
+    while (!(await until())) await page.waitForTimeout(100);
+    return;
+  }
   if (script === 'pointer') {
     // A slow Lissajous over the window: the same path whatever the machine, at one move for each 16 ms or so.
     while (!(await until())) {

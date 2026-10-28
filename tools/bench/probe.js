@@ -84,11 +84,14 @@
       const t = performance.now();
       try { return timed('gpuStyle', () => style.apply(this, a)); } finally { current.style = performance.now() - t; }
     };
-    const pick = px.pick;
-    px.pick = function (...a) {
-      const t = performance.now();
-      try { return pick.apply(this, a); } finally { if (current) { current.picks++; current.pickMs += performance.now() - t; } }
-    };
+    // A pick waits for the GPU; a requested one costs its request here, and its delivery inside the next renderGeometry or renderStyle.
+    for (const name of ['pick', 'requestPick']) {
+      const f = px[name];
+      px[name] = function (...a) {
+        const t = performance.now();
+        try { return f.apply(this, a); } finally { if (current) { current.picks++; current.pickMs += performance.now() - t; } }
+      };
+    }
   }
 
   window.__bench = {
