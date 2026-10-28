@@ -147,13 +147,26 @@ export class Camera {
     return { sx: rect.left + (this.projected.x + 1) / 2 * rect.width, sy: rect.top + (1 - this.projected.y) / 2 * rect.height };
   }
 
-  /** The point on the ground plane under a point of the page. */
-  groundAt(x: number, y: number): THREE.Vector3 | null {
+  /** Aims the raycaster through a point of the page, and returns its ray. */
+  private aim(x: number, y: number): THREE.Ray {
     const rect = this.canvas.getBoundingClientRect();
     this.ndc.set((x - rect.left) / rect.width * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
     this.renderer.camera.updateMatrixWorld();
     this.raycaster.setFromCamera(this.ndc, this.renderer.camera);
-    return this.raycaster.ray.intersectPlane(this.ground, this.hit) ? this.hit.clone() : null;
+    return this.raycaster.ray;
+  }
+
+  /** The point on the ground plane under a point of the page. */
+  groundAt(x: number, y: number): THREE.Vector3 | null {
+    return this.aim(x, y).intersectPlane(this.ground, this.hit) ? this.hit.clone() : null;
+  }
+
+  /**
+   * The line of sight through a point of the page. The view is orthographic, so a world point's distance from it (m) is how
+   * far from that point it is drawn on the screen.
+   */
+  sightAt(x: number, y: number): THREE.Ray {
+    return this.aim(x, y).clone();
   }
   /**
    * The map tile under a point of the page, on the ground (whatever stands there): the first place the line of sight meets
