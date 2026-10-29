@@ -228,14 +228,59 @@ async function play(initial: GameState) {
   let hoverBuilding: number | null = null;
   let highlighted: PixelObject[] = [];
 
-  /** What is under page point `at`, from what the renderer drew there (`p`, from a pick); nothing without a point. */
-  function hoverFrom(p: PickResult | null, at: { x: number; y: number } | null) {
-    if (!at) { hoverTile = null; hoverPoint = null; hoverBuilding = null; return; }
-    // A tree or rock under the pointer is its own tile (the ground point behind it is another tile).
-    hoverTile = view.terrainOf(p?.object ?? null) ?? camera.tileAt(at.x, at.y, pickGround, TOP);
+  /** The art pixel under page point `at`, counted as the renderer's pick counts it, and the picture's size. */
+  function artPixel(at: { x: number; y: number }) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: Math.floor((at.x - rect.left) / rect.width * renderer.width), y: Math.floor((at.y - rect.top) / rect.height * renderer.height), w: renderer.width, h: renderer.height };
+  }
+  /** The camera as drawn (placed and snapped to the pixel grid), to tell whether the picture under a still pointer moved. */
+  const cameraNow = (into = new THREE.Matrix4()) => into.multiplyMatrices(renderer.camera.projectionMatrix, renderer.camera.matrixWorldInverse);
+  const cameraScratch = new THREE.Matrix4();
+
+  /**
+   * What a pick found under the pointer, and where the pointer (`px`, an art pixel) and the camera were when it was asked.
+   * `ground` is the tile the ground showed there then, `terrain` a tree's or rock's tile, `building` a building or truck.
+   */
+  interface Seen {
+    object: PixelObject | null; terrain: { x: number; y: number } | null; building: number | null;
+    ground: { x: number; y: number } | null; px: ReturnType<typeof artPixel>; camera: THREE.Matrix4;
+  }
+  /** The last pick's answer, kept while the pointer is on the canvas. */
+  let seen: Seen | null = null;
+  /** The tile of ground under the pointer this frame, for the next pick's answer. */
+  let groundTile: { x: number; y: number } | null = null;
+
+  /** Keeps a pick's answer `p` for page point `at`, asked with the camera as now and `ground` the tile under it then. */
+  function keep(p: PickResult | null, at: { x: number; y: number }, ground: { x: number; y: number } | null, camera: THREE.Matrix4) {
+    const object = p?.object ?? null;
+    seen = { object, terrain: view.terrainOf(object), building: view.buildingOf(object), ground, px: artPixel(at), camera };
+  }
+
+  /**
+   * What is under the pointer now. The tile and the point of the ground come from the pointer and the camera as they are,
+   * so the cursor keeps up with the pointer; what stands there (a building, a truck, a tree) comes from the last pick, which
+   * can be a frame or two old.
+   */
+  function hoverNow() {
+    const at = input.pointer;
+    if (!at) { hoverTile = hoverPoint = groundTile = null; hoverBuilding = null; seen = null; return; }
+    groundTile = camera.tileAt(at.x, at.y, pickGround, TOP);
+    hoverTile = groundTile;
+    // A tree or rock is its own tile (the ground behind it is another), while the pick still shows what is under the pointer:
+    // the same art pixel, the camera not moved, and the tree still there.
+    if (seen?.terrain) {
+      const px = artPixel(at), was = seen.px, now = view.terrainOf(seen.object);
+      if (px.x === was.x && px.y === was.y && px.w === was.w && px.h === was.h && now && now.x === seen.terrain.x && now.y === seen.terrain.y
+        && cameraNow(cameraScratch).equals(seen.camera)) hoverTile = now;
+    }
     hoverPoint = pointAt(at.x, at.y, hoverTile);
-    hoverBuilding = view.buildingOf(p?.object ?? null);
-    if (hoverBuilding === null && hoverTile) hoverBuilding = buildingAt(state, hoverTile.x, hoverTile.y)?.id ?? null;
+    // A building's or truck's own object, if it still stands for it; else the building on the tile the pick looked at.
+    if (!seen) hoverBuilding = null;
+    else if (seen.building !== null) hoverBuilding = view.buildingOf(seen.object) === seen.building ? seen.building : null;
+    else {
+      const t = seen.terrain ?? seen.ground;
+      hoverBuilding = t ? buildingAt(state, t.x, t.y)?.id ?? null : null;
+    }
   }
 
   /** The number of the last pick asked for: an answer that comes after a newer pick is dropped. */
@@ -246,7 +291,9 @@ async function play(initial: GameState) {
   /** What is under the pointer now, waiting for the GPU: for a click, which acts on what it lands on. */
   function pickNow() {
     pickNo++;
-    hoverFrom(input.pointer && renderer.pick(input.pointer.x, input.pointer.y), input.pointer);
+    const at = input.pointer;
+    if (at) keep(renderer.pick(at.x, at.y), at, camera.tileAt(at.x, at.y, pickGround, TOP), cameraNow());
+    hoverNow();
   }
 
   /**
@@ -254,13 +301,13 @@ async function play(initial: GameState) {
    * or two later. With a pick still on its way it waits for that one; with no pointer there is nothing under it.
    */
   function repickHover() {
-    if (!input.pointer) { pickNo++; hoverFrom(null, null); repick = false; return; }
+    if (!input.pointer) { pickNo++; seen = null; repick = false; return; }
     if (picking) return;
     repick = false; picking = true;
-    const no = ++pickNo, at = { ...input.pointer };
+    const no = ++pickNo, at = { ...input.pointer }, ground = groundTile, drawn = cameraNow();
     void renderer.requestPick(at.x, at.y).then((p) => {
       picking = false;
-      if (no === pickNo) hoverFrom(p, at);
+      if (no === pickNo && input.pointer) keep(p, at, ground, drawn);
     });
   }
 
@@ -508,7 +555,7 @@ async function play(initial: GameState) {
       if (built) hud.toast(`Built ${built} × ${BUILDINGS[tool.type].name.toLowerCase()}${what ? ` (${what})` : ''}`, true, tool.type);
       else if (last) hud.toast(last, false);
     } else if (tool.kind === 'earth') {
-      // The tile the drag ends on, now: the hover's may be a frame or two behind the pointer.
+      // The tile the drag ends on, from the pointer as it is now.
       pickNow();
       if (!hoverTile) return;
       const r = reshape(state, { how: tool.how, from, to, at: hoverTile });
@@ -770,6 +817,7 @@ async function play(initial: GameState) {
     // Something new shown or taken away, or a truck driving under the pointer, may change what is under it.
     if (view.changes !== viewSeen) { viewSeen = view.changes; repick = true; }
     if (input.pointer && truckMovedUnder(input.pointer)) repick = true;
+    hoverNow();
     showGhosts();
     // Editing a route shows the roads. Building shows the roads, the sprinklers' water or the bees' range; anything that
     // makes, stores or uses power shows the power networks, and anything else the height under the contour lines.
