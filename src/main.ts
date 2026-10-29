@@ -250,10 +250,10 @@ async function play(initial: GameState) {
   /** The tile of ground under the pointer this frame, for the next pick's answer. */
   let groundTile: { x: number; y: number } | null = null;
 
-  /** Keeps a pick's answer `p` for page point `at`, asked with the camera as now and `ground` the tile under it then. */
-  function keep(p: PickResult | null, at: { x: number; y: number }, ground: { x: number; y: number } | null, camera: THREE.Matrix4) {
+  /** Keeps a pick's answer `p`, asked at art pixel `px` with `camera` and `ground` the tile under the pointer then. */
+  function keep(p: PickResult | null, px: ReturnType<typeof artPixel>, ground: { x: number; y: number } | null, camera: THREE.Matrix4) {
     const object = p?.object ?? null;
-    seen = { object, terrain: view.terrainOf(object), building: view.buildingOf(object), ground, px: artPixel(at), camera };
+    seen = { object, terrain: view.terrainOf(object), building: view.buildingOf(object), ground, px, camera };
   }
 
   /**
@@ -292,7 +292,7 @@ async function play(initial: GameState) {
   function pickNow() {
     pickNo++;
     const at = input.pointer;
-    if (at) keep(renderer.pick(at.x, at.y), at, camera.tileAt(at.x, at.y, pickGround, TOP), cameraNow());
+    if (at) keep(renderer.pick(at.x, at.y), artPixel(at), camera.tileAt(at.x, at.y, pickGround, TOP), cameraNow());
     hoverNow();
   }
 
@@ -304,10 +304,10 @@ async function play(initial: GameState) {
     if (!input.pointer) { pickNo++; seen = null; repick = false; return; }
     if (picking) return;
     repick = false; picking = true;
-    const no = ++pickNo, at = { ...input.pointer }, ground = groundTile, drawn = cameraNow();
+    const no = ++pickNo, at = { ...input.pointer }, px = artPixel(at), ground = groundTile, drawn = cameraNow();
     void renderer.requestPick(at.x, at.y).then((p) => {
       picking = false;
-      if (no === pickNo && input.pointer) keep(p, at, ground, drawn);
+      if (no === pickNo && input.pointer) keep(p, px, ground, drawn);
     });
   }
 
