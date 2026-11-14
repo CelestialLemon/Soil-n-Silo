@@ -2,6 +2,15 @@
 
 Who this is for: whoever builds the 3D models. To change a rule, edit this file in the same PR as the work that needs the change.
 
+> **The models now come from brush3d** (epic #212, #203): its 28 solarpunk models, made for the painted look at 4 m a tile,
+> replace the ones below. Their brief, style, palette, scale, names and build scripts are in
+> [`brush3d/docs/MODELS.md`](../brush3d/docs/MODELS.md) (scripts in `brush3d/tools/blender/`), and a new model or a change
+> to one goes there. Which model draws which building is `src/world/brush/catalog.ts`. The game names its pieces as below
+> (`move_spin_*`, `running_*`, `charge_<n>`, `smoke_emitter`), and brush3d's set follows them.
+>
+> This file and the models it lists (`assets/<name>/build.py`, `public/models/`) stay only for the pixel3d renderer, until it
+> goes at the swap (#211), when they go with it.
+
 ## Style
 
 The game is set in a **solarpunk** valley (`DESIGN.md`): technology grown together with nature. Think timber frames, white
