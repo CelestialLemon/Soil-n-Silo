@@ -1,7 +1,8 @@
 name: CI
 
-# Lint, the tests (with the bot playing every layout) and the build, on every PR to dev or main and every push to them. On the
-# oldest Node the game supports (package.json "engines") and on the one the deploy uses.
+# Lint, the tests (with the bot playing every layout, and the renderer's wind and water checks) and the build (the game and the
+# renderer's demo), on every PR to dev or main and every push to them. On the oldest Node the game supports (package.json
+# "engines") and on the one the deploy uses. The renderer's cloud recipe is checked in a browser, its own job.
 
 on:
   push:
@@ -24,8 +25,26 @@ jobs:
           cache: npm
       - run: npm ci                # also builds the renderer package from its git tag (its "prepare" script)
       - run: npm run lint          # ESLint; warnings are known debt and don't fail
-      - run: npm test              # the game rules and the bot's layouts, in Node
-      - run: npm run build         # typecheck, then the game
+      - run: npm test              # the game rules, the bot's layouts and the renderer's wind and water, in Node
+      - run: npm run build         # typecheck (the game, its tests and tools, the renderer and its tools), then the game and the demo
+
+  # The cloud recipe the game reads (brush3d/src/renderer/clouds.ts) against its GLSL twin and the renderer's cloud map, drawn
+  # in headless Chromium on the CPU (SwiftShader): the demo from the dev server, as brush3d/tools/browser.ts expects.
+  clouds:
+    runs-on: ubuntu-latest
+    name: renderer (cloud recipe)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npx playwright-core install --with-deps chromium
+      - run: |
+          npx vite > vite.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://127.0.0.1:5190/brush3d/ && break; sleep 1; done
+          GL_BACKEND=swiftshader npm run render:test:clouds || { cat vite.log; exit 1; }
 
   # What the game asks three.js to draw (draws, submissions, triangles, shadow redraws) on the bot's farms, against
   # tools/bench/baselines/structural.json; growth over 5% turns this job red but does not block the PR (continue-on-error). Software GL: only the counts mean anything, not the times (docs/BENCHMARK.md).

@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# Publishes the demo to the gh-pages branch, which GitHub Pages serves:
-#   main/   the demo as on main
+# Publishes the game to the gh-pages branch, which GitHub Pages serves (https://celestiallemon.github.io/Soil-n-Silo/), each
+# build with the renderer's demo beside it in brush3d/:
+#   main/   the game as on main (the site's root sends players here)
+#   dev/    the game as on dev
 #   pr-<n>/ a preview of each open pull request
+# Any other folder on the site is left as it is.
 #
 #   pages.sh <folder> <built dir>   puts a build in a folder
 #   pages.sh <folder>               takes a folder away (a closed pull request)
@@ -11,14 +14,14 @@
 # history: each run replaces it with one commit holding the site as it is now, pushed with a lease and retried if another run
 # got there first.
 #
-# Runs can start out of order, so before each attempt it checks the change is still wanted, and skips it if not: main/ only
-# takes main's head (GITHUB_SHA), a preview only the pull request's head (PR_SHA) while it is open, and a preview is only taken
+# Runs can start out of order, so before each attempt it checks the change is still wanted, and skips it if not: main/ and dev/
+# only take their branch's head (GITHUB_SHA), a preview only the pull request's head (PR_SHA) while it is open, and a preview is only taken
 # away once its pull request is closed. Writes `done=true` to GITHUB_OUTPUT when the site has the change.
 # Needs GH_TOKEN, GITHUB_REPOSITORY, GITHUB_SHA and an `origin` that can push.
 set -euo pipefail
 
 folder="${1:-}" built="${2:-}"
-case "$folder" in ''|main|pr-[0-9]*) ;; *) echo "Not a folder this site has: $folder"; exit 1 ;; esac
+case "$folder" in ''|main|dev|pr-[0-9]*) ;; *) echo "Not a folder this site has: $folder"; exit 1 ;; esac
 if [ -n "$built" ]; then built="$(cd "$built" && pwd)"; fi
 if [[ "$folder" == pr-* && -n "$built" && -z "${PR_SHA:-}" ]]; then echo "A preview needs PR_SHA"; exit 1; fi
 
@@ -38,7 +41,7 @@ closed() { case "${1%% *}" in CLOSED|MERGED) return 0 ;; *) return 1 ;; esac; }
 # Whether this run's change is still the one wanted.
 wanted() {
   case "$folder" in
-    main) [ "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA" ] || { echo "main has moved on; skipping"; return 1; } ;;
+    main|dev) [ "$(git ls-remote origin "refs/heads/$folder" | cut -f1)" = "$GITHUB_SHA" ] || { echo "$folder has moved on; skipping"; return 1; } ;;
     pr-*)
       local state; state="$(pr_state "${folder#pr-}")" || exit 1
       if [ -n "$built" ]; then
@@ -81,9 +84,10 @@ for attempt in 1 2 3 4 5; do
   cat > "$site/index.html" <<'HTML'
 <!doctype html>
 <meta charset="utf-8">
-<title>brush3d-renderer</title>
+<title>Soil n Silo</title>
 <meta http-equiv="refresh" content="0; url=./main/">
-<p><a href="./main/">The brush3d-renderer demo</a>. Each open pull request has a preview at <code>./pr-&lt;number&gt;/</code>.</p>
+<p><a href="./main/">Soil n Silo</a> (the <a href="./dev/">dev</a> build is here, and each open pull request has a preview at
+<code>./pr-&lt;number&gt;/</code>; the renderer's demo is in each one's <code>brush3d/</code>).</p>
 HTML
 
   # One commit with no parent: the branch only ever holds the site as it is now.
