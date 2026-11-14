@@ -369,12 +369,12 @@ export class PaintedLand {
     }
     if (t > end) return null;
     const step = 0.5, above = (s: number) => o.y + dy * s - this.heightAt(o.x + dx * s, o.z + dz * s);
-    // Under the land where it comes in (from under it, or through the world's side, which has no wall): it meets nothing
-    // drawn, which is seen only from above.
-    if (above(t) < 0) return null;
+    // Under the land where it comes in (from under it, or through the world's side, which has no wall), it meets nothing
+    // drawn until it's out over it (the land is seen only from above), so only a crossing from over it to under counts.
+    let over = above(t) >= 0;
     for (let last = t; last < end;) {
-      const s = Math.min(last + step, end);
-      if (above(s) > 0) { last = s; continue; }
+      const s = Math.min(last + step, end), h = above(s);
+      if (h > 0 || !over) { over ||= h > 0; last = s; continue; }
       // Narrowed down between the last step above the land and this one.
       let a = last, b = s;
       for (let k = 0; k < 24; k++) { const m = (a + b) / 2; if (above(m) > 0) a = m; else b = m; }

@@ -150,6 +150,17 @@ check('one straight down far past everything drawn misses', land.hit({ origin: n
   const graze = flat.hit({ origin: new THREE.Vector3(-33, 4, -31.9 + 1), direction: new THREE.Vector3(1, 0, -1) });
   check('one grazing a corner of what\'s drawn meets it inside it, or not at all', !graze || (graze.x >= -32 && graze.z >= -32), `${graze?.x}, ${graze?.z}`);
   check('one coming in under the country through the world\'s side misses (it has no wall)', flat.hit({ origin: new THREE.Vector3(-33, 3, 10), direction: new THREE.Vector3(1, -0.1, 0) }) === null);
+  // Country falling from 16 m at its outer edge to the land, 0 m: a line of sight coming in under the high edge, out over
+  // the slope, then down onto the land.
+  const fall = new Float32Array(49);
+  for (let j = 0; j < 7; j++) for (let i = 0; i < 7; i++) fall[j * 7 + i] = i === 0 ? 16 : 0;
+  const low = new PaintedLand(new Adder(), {
+    width: 8, height: 8, tile: 4, level: 1, x0: 0, z0: 0, corners: new Float32Array(256), worked: new Uint8Array(64).fill(1),
+    cover: new Uint8Array(64), ground: new Uint8Array(64), map: { x: 0, y: 0, width: 8, height: 8 },
+    beyond: { nx: 7, nz: 7, cell: 16, x0: -32, z0: -32, height: fall },
+  });
+  const far = low.hit({ origin: new THREE.Vector3(-40, 14, 8), direction: new THREE.Vector3(1, -0.3, 0) });
+  check('one coming in under a high edge, then down onto the land beyond it, meets the land', !!far && Math.abs(far.y - low.heightAt(far.x, far.z)) < 1e-3 && far.x > -16, `${far?.x}, ${far?.y}`);
 }
 const overCountry = land.hit({ origin: new THREE.Vector3(X0 - 40, 100, Z0 + 20), direction: new THREE.Vector3(0, -1, 0) });
 check('one straight down on the country beyond meets it', !!overCountry && Math.abs(overCountry.y - land.heightAt(X0 - 40, Z0 + 20)) < 1e-3);
