@@ -37,7 +37,8 @@ export class PlainLand {
   sync(s: GameState) {
     const v = reliefOf(s);
     if (v === this.relief) return;
-    if (this.mesh) { this.lie.update(); this.r.remove(this.mesh); this.mesh.geometry.dispose(); }
+    // (Its tiles are the renderer's, which remove() frees.)
+    if (this.mesh) { this.lie.update(); this.r.remove(this.mesh); }
     this.relief = v;
     // The square the land covers: brush3d lays its cloud map (the clouds' shadows, their mirror in the water) over it.
     const m = s.map, side = (Math.max(m.width, m.height) + 2 * this.land.margin) * TILE;

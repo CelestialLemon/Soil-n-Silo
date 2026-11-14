@@ -389,6 +389,8 @@ export class BrushRenderer {
       if (turned) colour.array.set(turned);
       const tiles = cut.map((g) => this.addOne(g, kind, options, true));
       tiles[0].userData.tiles = tiles;
+      // The tiles cut here are the renderer's own, so remove() frees them; the geometry given stays the caller's.
+      for (const t of tiles) t.userData.cut = t.geometry !== geometry;
       return tiles[0];
     }
     return this.addOne(geometry, kind, options, false);
@@ -434,12 +436,16 @@ export class BrushRenderer {
     return mesh;
   }
 
-  /** Takes out a mesh added before (a building removed): from the scene, the sun's shadow, the silhouettes and the shelter. */
+  /**
+   * Takes out a mesh added before (a building removed): from the scene, the sun's shadow, the silhouettes and the shelter.
+   * A mesh cut into tiles goes whole, its tiles' geometry freed; a geometry the caller gave is the caller's to dispose.
+   */
   remove(mesh: THREE.Mesh) {
     // A mesh cut into tiles goes whole.
     const tiles = mesh.userData.tiles as THREE.Mesh[] | undefined;
     if (tiles) { for (const t of tiles) { t.userData.tiles = undefined; this.remove(t); } return; }
     this.scene.remove(mesh);
+    if (mesh.userData.cut) mesh.geometry.dispose();
     if (mesh.userData.seasonal) this.unseason(mesh.geometry);
     this.casters = this.casters.filter((m) => m !== mesh);
     const i = this.twins.findIndex(([m]) => m === mesh);

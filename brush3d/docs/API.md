@@ -414,6 +414,7 @@ above, the game stops using it and it becomes the renderer's own.
 
 - `r.add(geometry, kind, options)` and `r.remove(mesh)`: a mesh of one kind (`'ground'`, `'grass'`, `'crop'`,
   `'foliage'`, `'paint'`, `'ink'`, `'water'`), with how it casts shadows, shelters, reflects and turns with the season.
+  `remove` frees the tiles it cut a mesh into (`tile`); a geometry the caller gave stays the caller's to dispose.
   Give the ground its square (`fields`) even when its brush isn't baked: the clouds' map is laid over it, and without it
   covers only 128 m round the origin, the clouds' shadows smeared in streaks past it (#201).
   `r.setFields(kind, size)` bakes a kind's brush once the scene is built; `r.shelter.changed()` after moving cover.

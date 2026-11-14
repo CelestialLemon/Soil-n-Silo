@@ -13,6 +13,7 @@ import { BrushLens } from './lens.ts';
 import { RISE, TILE } from './scale.ts';
 import { BrushSky } from './sky.ts';
 import { standInHeight, StandIns } from './things.ts';
+import { Wild } from './wild.ts';
 
 // The game drawn by brush3d (epic #212), behind `?renderer=brush3d` until the swap (#211): the Scene (../scene.ts) the
 // game's loop draws through, over brush3d's API (brush3d/src/index.ts, brush3d/docs/API.md). The loop is the same as the
@@ -22,8 +23,9 @@ import { standInHeight, StandIns } from './things.ts';
 //   scale.ts   4 m a tile, how high a level stands (#201), the units' conversions
 //   lens.ts    the game's camera placing brush3d's view (#201)
 //   land.ts    the land, plainly: #202 replaces it with the renderer's own land from the map (setLand)
-//   things.ts  grey stand-ins for buildings, trucks, trees and rocks: #203 (the models), #213 (crops and trees), #204 (a
-//              world that changes without stutter) and #205 (moving parts, building states, the markers) replace them
+//   things.ts  grey stand-ins for the buildings and trucks: #203 (the models), #204 (a world that changes without a
+//              stutter) and #205 (moving parts, building states, the markers) replace them
+//   wild.ts    grey stand-ins for the trees and rocks: #213 (the crops and trees in paint) replaces them
 //   sky.ts     the season, the hour and the weather, plainly: #207 (the game's weather, ground and water), #208 (the wind
 //              and clouds the rules share)
 //   (tools)    picking, highlights, the build preview, overlays, routes and power lines are #206's: the picker, preview,
@@ -39,7 +41,8 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, _setting
   const r = new BrushRenderer(canvas, { shadowFollow: true, shadowMapSize: 4096 });
   r.maxPixels = 1920 * 1080;
   const land = generateLand(state.scenario, COUNTRY), lie = new Lie(state, land);
-  const ground = new PlainLand(r, land, lie), things = new StandIns(r, lie, land, state), sky = new BrushSky(r, state);
+  const ground = new PlainLand(r, land, lie), sky = new BrushSky(r, state);
+  const things = new StandIns(r, lie), wild = new Wild(r, lie, land, state);
   const lens = new BrushLens(r, canvas);
   const camera = new Camera(lens, canvas, map, start, changed);
   const cursor = new TileCursor(canvas, 0xfff0c0), refused = new TileCursor(canvas, 0xe8705a);
@@ -71,6 +74,7 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, _setting
       sky.sync(s, f.hour);
       ground.sync(s);
       things.sync(s);
+      wild.sync(s);
     },
     // Until #206: no overlays, links, highlights, routes or power lines.
     show: () => {},
