@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {
-  addCanopy, addStone, CropPatch, dressFor, groundOf, Grove, MeshBuilder, rng, speciesTree, type BrushRenderer, type CropStage, type Dress,
-  type Ground, type Species,
+  addCanopy, addStone, CropPatch, dressFor, groundOf, Grove, growSpecies, MeshBuilder, PLANT_LOOKS, rng, speciesTree, type BrushRenderer,
+  type CropStage, type Dress, type Ground, type PlantLooks, type Species,
 } from '../../../brush3d/src/index.ts';
 import { CROPS, SAPLING_SECONDS } from '../../game/data.ts';
 import { TERRAIN, type Land } from '../../game/map.ts';
@@ -68,14 +68,16 @@ export class Wild {
   private readonly land: Land;
   private readonly dress: Dress | null;
   private readonly ground: Ground;
+  /** Which of #213's look candidates each plant is drawn as (plantChoice.ts). */
+  private readonly looks: PlantLooks;
   private readonly blocks = new Map<number, Block>();
   private readonly fields = new Map<number, Shown>();
   private readonly saplings = new Map<number, Shown>();
   private layout = -1;
   private relief = -1;
 
-  constructor(r: BrushRenderer, lie: Lie, land: Land, s: GameState) {
-    this.r = r; this.lie = lie; this.land = land;
+  constructor(r: BrushRenderer, lie: Lie, land: Land, s: GameState, looks: PlantLooks = PLANT_LOOKS) {
+    this.r = r; this.lie = lie; this.land = land; this.looks = looks;
     const M = land.margin;
     this.ground = groundOf((x, z) => lie.y(x / TILE, z / TILE) * RISE * TILE);
     // Fallen leaves and petals lie on the land, not on the water.
@@ -191,7 +193,7 @@ export class Wild {
     const n = hash(x * 1.3 + 7, y * 0.9 - 3);
     const tx = (x + 0.5) * TILE + (hash(x + 11, y) - 0.5) * JITTER, tz = (y + 0.5) * TILE + (hash(x, y + 11) - 0.5) * JITTER;
     const seed = Math.floor(n * 1e9);
-    grove.grow(this.ground, { ...speciesTree(species, tx, tz, size, seed), stroke: STROKE, fill: FILL }, rng(seed));
+    growSpecies(grove, this.ground, species, { ...speciesTree(species, tx, tz, size, seed), stroke: STROKE, fill: FILL }, rng(seed), this.looks);
     return [tx, tz];
   }
 
@@ -214,7 +216,7 @@ export class Wild {
       const key = `${b.crop} ${stage} ${b.x} ${b.y} ${y.toFixed(3)}`, was = this.fields.get(b.id);
       if (was?.key === key) continue;
       if (was) this.drop(was.meshes);
-      const patch = new CropPatch();
+      const patch = new CropPatch(this.looks.crops);
       for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) {
         // The field's tiles join into one crop: each carries on to its neighbours inside the field.
         const joins = (j > 0 ? 1 : 0) | (i < 2 ? 2 : 0) | (j < 2 ? 4 : 0) | (i > 0 ? 8 : 0);
