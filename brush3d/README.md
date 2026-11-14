@@ -28,7 +28,7 @@ npm install
 npm run dev                  # the game at http://127.0.0.1:5190/, the demo at http://127.0.0.1:5190/brush3d/:
                              # drag to pan, wheel to zoom, Q/E to turn, 1-5 for the hour, L for lines
 npm run typecheck            # the game and the renderer, their tests and tools, and that the demo uses only the API
-npm test                     # the game's tests, and the renderer's wind and water checks (brush3d/tools/wind.ts, water.ts)
+npm test                     # the game's tests, and the renderer's wind, water and view checks (brush3d/tools/wind.ts, water.ts, view.ts)
 npm run render:test:clouds   # the cloud recipe against its GLSL twin, in a browser (needs the dev server)
 npm run render:shot -- out "hour=12" "hour=17.5&view=2"   # headless frames as PNGs (needs the dev server)
 npm run render:motion -- out "zoom=40"                    # how steady the picture is under sub-pixel pans

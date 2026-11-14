@@ -45,7 +45,9 @@ import { BrushRenderer, TILE, type Weather } from '../../brush3d/src/index.ts';
 - **Tile (x, y) on the map is the square of ground from (4x, 4y) to (4x + 4, 4y + 4)**: the map's columns run along x,
   its rows along z, its corner at the origin. So a building of n × n tiles at (x, y) stands at the middle of its
   footprint, (4x + 2n, 4y + 2n). Heights are metres too; how tall one of the game's terrain levels stands at 4 m a tile
-  (1 m, or something else) is #201's choice.
+  is the developer's look choice, put to them on #201's look PR; until they pick, the game's world layer works at 1 m a
+  level (`LEVEL` in `src/world/brush/scale.ts`), the rules' levels as they are, so the land keeps the proportions the
+  pixel world gave it.
 - **Turns** are radians. A thing's `yaw` turns it about the vertical; the wind's `direction` is where it blows towards,
   from +x towards +z. Which yaw the game's four facings (`Dir` 0..3) map to is the world layer's.
 - **Colours** in calls are sRGB hex numbers (`0xcfd6d8`), as a designer would pick them.
@@ -69,7 +71,7 @@ function frame(now: number) {
   r.setGround(groundFromGame(game));                              // when it changes (today; #207)
   r.setWater(waterFromGame(game));                                // when it changes (today; #202, #207)
   world.sync(game);                                               // things added, moved, swapped, removed (#204)
-  r.view.place(camera.now());                                     // (#201; today r.view)
+  r.view.place(camera.now());                                     // (today, #201)
   r.setHour(game.hour);                                           // (today)
   r.render(now / 1000);                                           // (today)
 }
@@ -89,7 +91,7 @@ is cheap: its looks ease towards whatever was asked last.
 | Draw fewer pixels than a high-DPI screen has (the MacBook) | `r.maxPixels = 1920 * 1080` (before `resize`) | today |
 | Follow the window | `r.resize(cssWidth, cssHeight)` | today |
 | Change the quality from the settings panel without a reload | `r.setQuality(preset)`, with presets for the three machines in `QUALITY` | #209 |
-| Leave a level (free the GPU's memory, or clear for the next commission) | `r.dispose()` | #201 |
+| Leave a level (free the GPU's memory, or clear for the next commission) | `r.dispose()` | not needed: the game reloads the page for each commission (#201) |
 
 The canvas is the renderer's: it draws every pixel at the screen's resolution. The HUD sits over it in HTML, as now.
 
@@ -228,21 +230,30 @@ pointer, keeping the view over the map) and tells the renderer where it is each 
 
 | What the game does | Call | Stands |
 |---|---|---|
-| Where the camera is: the ground point in the middle of the screen, which way it looks from, how close (zoom in CSS pixels a metre, as the game's) | `r.view.place({ x, y, z, heading, zoom })` | #201 |
+| Where the camera is: the ground point in the middle of the screen, which way it looks from, how close (zoom in CSS pixels a metre, as the game's) | `r.view.place({ x, y, z, heading, zoom })` | today (#201) |
 | (The demo's own camera: target, `view` 0..3, `zoom`, `turn`, `pan`, `update`) | `r.view` (`ViewCamera`) | today |
-| Where a point of the world is on the page (for the HUD's markers, labels and the cursor) | `r.view.toScreen(x, y, z)` | #201 |
-| The line of sight under the pointer (to find the tile under it: `r.landHit(ray)`, above) | `r.view.rayAt(clientX, clientY)` | #201 |
+| Where a point of the world is on the page (for the HUD's markers, labels and the cursor), as `{ x, y }` | `r.view.toScreen(x, y, z)` | today (#201) |
+| The line of sight under the pointer (to find the tile under it: `r.landHit(ray)`, above), into a ray if given | `r.view.rayAt(clientX, clientY, into?)` | today (#201) |
 | The pitch, and the zoom range the demo uses | `PITCH`, `MIN_ZOOM`, `MAX_ZOOM` | today |
 
 - `heading` is where the camera looks from, radians: 45° + 90° × the view at rest, eased by the game in between.
 - `zoom` in `place` is **CSS pixels per metre**, as the game counts it, so a high-DPI screen (the MacBook) shows the same
-  tiles as any other. (Today's `r.view.zoom` counts the screen's device pixels; `place` converts, and `toScreen` and
-  `rayAt` take and give CSS pixels, as pointer events do.)
+  tiles as any other. (`r.view.zoom` counts the screen's device pixels; `place` converts, and `toScreen` and `rayAt` take
+  and give CSS pixels, as pointer events do.) Place the view each frame before asking `toScreen` or `rayAt`, and don't
+  call `r.view.update` (the demo's own controller) with it.
+- The camera sits back from its target as far as the view needs (`r.view.distance`): at the game's widest zoom the view
+  is hundreds of metres tall, so it sits back far enough to see the land's top (`r.view.landTop`, which the renderer keeps
+  from the ground it's given) and what stands on it at the bottom of the screen, and sees far enough past the land at the
+  top. At the demo's zooms it stays where it was (120 m).
 - **At 4 m a tile the game's zoom range becomes 4 to 24 px per metre** (16 to 96 px per tile, starting at 8), well below
   the 16 to 192 brush3d was tuned at (the demo's views are 22 to 40). So the game's
   widest view shows much more land than brush3d has drawn, with smaller brush marks and thinner lines on screen. #201
   checks how the paint holds there (the brush marks' size on screen, shimmer under a pan, the lines), and #210 what the
   extra land costs; anything that changes the look comes to the developer as options.
+  **What #201 found** (the game's first light on the RX 570, stills and a slow pan at 4 px a metre): the paint holds. The
+  ground's brush marks shrink to a soft colour wash (two strokes a metre is two pixels a stroke) rather than shimmering;
+  outlines and shadows stay put under a pan, with slightly stepped edges on the shadows; the clouds' shadows read as
+  big soft patches across the whole map. Nothing there needs a fix before the real land (#202) and models (#203).
 
 ## Picking: what's under the pointer (#206)
 
@@ -403,6 +414,9 @@ above, the game stops using it and it becomes the renderer's own.
 
 - `r.add(geometry, kind, options)` and `r.remove(mesh)`: a mesh of one kind (`'ground'`, `'grass'`, `'crop'`,
   `'foliage'`, `'paint'`, `'ink'`, `'water'`), with how it casts shadows, shelters, reflects and turns with the season.
+  `remove` frees the tiles it cut a mesh into (`tile`); a geometry the caller gave stays the caller's to dispose.
+  Give the ground its square (`fields`) even when its brush isn't baked: the clouds' map is laid over it, and without it
+  covers only 128 m round the origin, the clouds' shadows smeared in streaks past it (#201).
   `r.setFields(kind, size)` bakes a kind's brush once the scene is built; `r.shelter.changed()` after moving cover.
 - `MeshBuilder` and `Paint`: geometry in the renderer's format (colours, normals, the brush per vertex, tree ids).
 - `growTree`, `Grove`, `dressFor`, `addStone`, `addTuft`, `addReeds`, `addMound`, `addFlowers`, `groundOf`, `MapLine`:

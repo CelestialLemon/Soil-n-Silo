@@ -5,8 +5,12 @@ import type { SettingsStore } from '../ui/settings.ts';
 // The camera: where the view looks, how far in it is, which of the four views it turns to, and the maths between the page and
 // the ground. It is orthographic at a 30° pitch, turns between four views 90° apart, zooms towards the pointer and pans. It
 // knows the map only by its size (to keep the target on it); the game state is not its business.
+//
+// It works in the game's world units: a tile is 1 across (x along the map's columns, z its rows) and heights are as the
+// pixel world draws them (ground.ts's LEVEL_HEIGHT a level). Each renderer's `Lens` puts that on its own camera: the pixel
+// renderer draws in those units, brush3d in metres at 4 m a tile (brush/lens.ts).
 
-/** The zoom range, as screen pixels per metre of ground, and where a commission starts. */
+/** The zoom range, as screen pixels per tile of ground (per metre in the pixel world), and where a commission starts. */
 const MIN_ZOOM = 16, MAX_ZOOM = 96, START_ZOOM = 32;
 /** How much one wheel notch or key press zooms. */
 const ZOOM_STEP = 1.25;
@@ -15,12 +19,68 @@ const HOME_YAW = THREE.MathUtils.degToRad(45);
 const ZOOM_RATE = 14;               // how fast the zoom eases towards its level (per second, in log space)
 const TURN_SECONDS = 0.3;
 
+/**
+ * How the camera reaches a renderer: it fits the drawing to the window, places the renderer's view each frame, and maps
+ * between world points (in the game's units, above) and the page.
+ */
+export interface Lens {
+  /** Sizes the drawing for the window, and lays the canvas out over it; then calls onFit. */
+  fit(): void;
+  /** Called after each fit (the window resized, or a setting changed the drawing): the camera's, set as it is made. */
+  onFit: () => void;
+  /** Places the view: the ground point in the middle of the screen, which way it looks from, its pitch and zoom (CSS px per tile). */
+  place(target: THREE.Vector3, yaw: number, pitch: number, zoom: number): void;
+  /** A world point, as drawn last placed, to normalised device coordinates (x and y −1..1), in place. */
+  project(p: THREE.Vector3): THREE.Vector3;
+  /** The line of sight through normalised device coordinates, in world units, into `ray`. */
+  aim(ndc: THREE.Vector2, ray: THREE.Ray): THREE.Ray;
+}
+
+/** The pixel renderer's lens: art pixels `pixelSize` screen pixels square (a setting), the canvas centred on the window. */
+export class PixelLens implements Lens {
+  private readonly renderer: PixelRenderer;
+  private readonly canvas: HTMLCanvasElement;
+  /** Screen pixels per art pixel: the pixel size setting. */
+  private pixelSize: number;
+  private readonly raycaster = new THREE.Raycaster();
+  /** Called when the drawing is refitted (the window or the pixel size changed). */
+  onFit = () => {};
+
+  constructor(renderer: PixelRenderer, canvas: HTMLCanvasElement, settings: SettingsStore) {
+    this.renderer = renderer; this.canvas = canvas;
+    this.pixelSize = settings.get().pixelSize;
+    settings.listen((st) => { if (st.pixelSize !== this.pixelSize) { this.pixelSize = st.pixelSize; this.fit(); } });
+  }
+
+  /** Sizes the art (render target) for the window at the pixel size, and lays the canvas out centred on the window. */
+  fit() {
+    const { renderer, canvas, pixelSize } = this;
+    const w = Math.max(1, Math.ceil(innerWidth / pixelSize)), h = Math.max(1, Math.ceil(innerHeight / pixelSize));
+    if (renderer.width !== w || renderer.height !== h) renderer.resize(w, h);
+    const cw = w * pixelSize, ch = h * pixelSize;
+    canvas.style.width = `${cw}px`; canvas.style.height = `${ch}px`;
+    canvas.style.left = `${Math.floor((innerWidth - cw) / 2)}px`; canvas.style.top = `${Math.floor((innerHeight - ch) / 2)}px`;
+    this.onFit();
+  }
+
+  place(target: THREE.Vector3, yaw: number, pitch: number, zoom: number) {
+    // The view is as tall as the art at the zoom's screen pixels per metre.
+    this.renderer.placeCamera(target, yaw, pitch, this.renderer.height * this.pixelSize / zoom);
+  }
+
+  project(p: THREE.Vector3) { return p.project(this.renderer.camera); }
+
+  aim(ndc: THREE.Vector2, ray: THREE.Ray) {
+    this.renderer.camera.updateMatrixWorld();
+    this.raycaster.setFromCamera(ndc, this.renderer.camera);
+    return ray.copy(this.raycaster.ray);
+  }
+}
+
 export class Camera {
   private readonly target: THREE.Vector3;
   private view4 = 0;
-  /** Screen pixels per art pixel: the pixel size setting. */
-  private pixelSize: number;
-  /** The zoom, as screen pixels per metre of ground: `zoom` eases towards `zoomGoal`. */
+  /** The zoom, as screen pixels per tile of ground: `zoom` eases towards `zoomGoal`. */
   private zoom = START_ZOOM;
   private zoomGoal = START_ZOOM;
   /** While zooming towards the pointer: the ground point that stays under it, and where the pointer is from the centre. */
@@ -34,29 +94,27 @@ export class Camera {
   private readonly right = new THREE.Vector3();
   /** A world point's place on the page. */
   private readonly projected = new THREE.Vector3();
-  private readonly raycaster = new THREE.Raycaster();
+  private readonly ray = new THREE.Ray();
   private readonly ndc = new THREE.Vector2();
   private readonly ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private readonly hit = new THREE.Vector3();
 
-  private readonly renderer: PixelRenderer;
+  private readonly lens: Lens;
   private readonly canvas: HTMLCanvasElement;
   private readonly map: { width: number; height: number };
   private readonly changed: () => void;
 
   /** `start` is the ground point first looked at; `changed` is called whenever what is under a point of the page may have changed. */
   constructor(
-    renderer: PixelRenderer,
+    lens: Lens,
     canvas: HTMLCanvasElement,
-    settings: SettingsStore,
     map: { width: number; height: number },
     start: { x: number; z: number },
     changed: () => void,
   ) {
-    this.renderer = renderer; this.canvas = canvas; this.map = map; this.changed = changed;
+    this.lens = lens; this.canvas = canvas; this.map = map; this.changed = changed;
     this.target = new THREE.Vector3(start.x, 0, start.z);
-    this.pixelSize = settings.get().pixelSize;
-    settings.listen((st) => { if (st.pixelSize !== this.pixelSize) { this.pixelSize = st.pixelSize; this.fit(); } });
+    lens.onFit = () => this.changed();
     addEventListener('resize', () => this.fit());
     this.fit();
   }
@@ -120,40 +178,29 @@ export class Camera {
     if (this.zoom === this.zoomGoal) this.zoomAnchor = null;
     this.changed();
   }
-  /** Sizes the art (render target) for the window at the pixel size, and lays the canvas out centred on the window. */
-  fit() {
-    const { renderer, canvas, pixelSize } = this;
-    const w = Math.max(1, Math.ceil(innerWidth / pixelSize)), h = Math.max(1, Math.ceil(innerHeight / pixelSize));
-    if (renderer.width !== w || renderer.height !== h) renderer.resize(w, h);
-    const cw = w * pixelSize, ch = h * pixelSize;
-    canvas.style.width = `${cw}px`; canvas.style.height = `${ch}px`;
-    canvas.style.left = `${Math.floor((innerWidth - cw) / 2)}px`; canvas.style.top = `${Math.floor((innerHeight - ch) / 2)}px`;
-    this.changed();
-  }
+  /** Sizes the drawing for the window (the lens's way). */
+  fit() { this.lens.fit(); }
 
   /** One frame: the turn and the zoom ease on (`time` is the loop's, `dt` the frame's seconds) and the renderer's camera is placed. */
   update(time: number, dt: number) {
     this.time = time;
     this.turning();
     this.zooming(dt);
-    // The view is as tall as the art at the zoom's screen pixels per metre.
-    this.renderer.placeCamera(this.target, this.yaw, ELEVATION, this.renderer.height * this.pixelSize / this.zoom);
+    this.lens.place(this.target, this.yaw, ELEVATION, this.zoom);
   }
 
   /** A world point's place on the page. */
   toScreen(x: number, y: number, z: number) {
     const rect = this.canvas.getBoundingClientRect();
-    this.projected.set(x, y, z).project(this.renderer.camera);
+    this.lens.project(this.projected.set(x, y, z));
     return { sx: rect.left + (this.projected.x + 1) / 2 * rect.width, sy: rect.top + (1 - this.projected.y) / 2 * rect.height };
   }
 
-  /** Aims the raycaster through a point of the page, and returns its ray. */
+  /** Aims the line of sight through a point of the page, and returns it. */
   private aim(x: number, y: number): THREE.Ray {
     const rect = this.canvas.getBoundingClientRect();
     this.ndc.set((x - rect.left) / rect.width * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
-    this.renderer.camera.updateMatrixWorld();
-    this.raycaster.setFromCamera(this.ndc, this.renderer.camera);
-    return this.raycaster.ray;
+    return this.lens.aim(this.ndc, this.ray);
   }
 
   /** The point on the ground plane under a point of the page. */
@@ -184,7 +231,7 @@ export class Camera {
    */
   pointOnGround(x: number, y: number, ground: (x: number, z: number) => number = () => 0, top = 0): { x: number; y: number } | null {
     if (!this.groundAt(x, y)) return null;
-    const ray = this.raycaster.ray, o = ray.origin, d = ray.direction;
+    const ray = this.ray, o = ray.origin, d = ray.direction;
     if (d.y > -1e-6) return null;
     // From where the ray is at `top`, in steps a tenth of a tile across the ground, to where it meets it; then halve in on it.
     const k = (t: number) => o.y + d.y * t - ground(o.x + d.x * t, o.z + d.z * t);

@@ -110,6 +110,17 @@ only, never saved, the map itself unchanged): the river runs on out of sight, a 
 thicken and the ground rises into wooded hills, with an apron of distant woods beyond them. Everything past the edge is a
 shade duller, so where you can build still reads at a glance. Height on the map itself followed on 2026-10-17, below.
 
+## First light: the game drawn by brush3d (2026-11-14)
+
+The game can now be drawn by brush3d, behind `?renderer=brush3d` (#201, epic #212); players still see pixel3d until the swap
+(#211). A tile is 4 m. `main.ts` draws through a `Scene` (`src/world/scene.ts`): the pixel world moved whole into
+`pixelScene.ts` (its frames byte-identical), and the brush3d world is `src/world/brush/`, one piece a file, so the epic's tasks
+each replace their own: the land (`land.ts`, #202), the buildings and trucks (`things.ts`, #203–#205), the trees and rocks
+(`wild.ts`, #213), the season, hour and weather (`sky.ts`, #207, #208), with the tools (#206) and settings (#209) still to
+add. Today it's plain: the ground one painted meadow green, everything built a grey stand-in. The paint holds at the
+game's widest zoom (4 px a metre: the ground's strokes become a soft wash, no shimmer). How high a terrain level stands
+is the developer's pick on #220 (0.5, 1 or 2 m; 1 m until then).
+
 ## brush3d moves in (2026-11-14)
 
 The painterly renderer, brush3d, moved here from its own repo (#200, epic #212), with its history (`git log -- brush3d/`), into
