@@ -1,9 +1,9 @@
 import index from './index.json';
+import { TILE } from './tile.ts';
 
 // The models (docs/MODELS.md): what tools/blender/build.py wrote about each, and where its file is.
 
-/** One game tile in this renderer's metres: the models are built on the game's footprints at this size. */
-export const TILE = 4;
+export { TILE };
 
 export interface ModelInfo {
   name: string; url: string; title: string; about: string;

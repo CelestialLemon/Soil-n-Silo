@@ -3,7 +3,9 @@
 //   npm run render:test:wind
 //
 // 1. Replay: the same obstacles and goals (with a turn and a change of rhythm) give the same wind, bit for bit.
-// 2. Save and restore: a restored wind carries on bit for bit as the one it was saved from.
+// 2. Save and restore: a restored wind carries on bit for bit as the one it was saved from, through obstacles changed in
+//    play. And the gusts on their own (WindRecipe, which the game's rules step): the same state as the wind's, and their
+//    free air (gustAt, freeAt) the engine's at every cell, bit for bit, through turns and new sets of gusts.
 // 3. Steady: gustiness 0 in open air settles to the goal everywhere, and stays there.
 // 4. The average: in open air the ground wind averages to the game's speed (Sol's calibration of the gusts, #36), for the
 //    rhythm's ends and middle at 6 m/s, and at a light wind, a strong one and a hurricane.
@@ -16,7 +18,7 @@
 // 8. Speed: a tick of the farm at 1 m, in a breeze and in a hurricane, the cost the game pays in its worker (reported,
 //    and failed only if far too slow, or if the air hit its safety bounds).
 // Exits with 1 if any of them is off by more than its tolerance.
-import { DRAG, TICK, WindSim, windAt, type Obstacle, type WindGoal, type WindGrid, type WindSnapshot } from '../src/wind/sim.ts';
+import { DRAG, TICK, WindRecipe, WindSim, windAt, type Obstacle, type WindGoal, type WindGrid, type WindSnapshot } from '../src/wind/sim.ts';
 import { WindWorker, type WindPort } from '../src/wind/client.ts';
 import { windHost, type WindReply } from '../src/wind/host.ts';
 
@@ -67,6 +69,51 @@ console.log('Replay and saves (the farm, gusty, with a turn)');
   script(d, 150, 260);
   check('a restored wind carries on the same', identical(d.snapshot(), c.snapshot()) && identical(c.snapshot(), a.snapshot()),
     `${110 * TICK} s on, through a change of speed and rhythm`);
+}
+
+// 2, continued: obstacles changed in play, then saved and restored.
+{
+  const shed: Obstacle = { box: { x: -20, z: 10, hx: 4, hz: 3, turn: 0.2 }, solid: true, height: 5 };
+  const script = (sim: WindSim, from: number, to: number) => {
+    for (let t = from; t < to; t++) {
+      if (t === 40) sim.setObstacles([...FARM, shed]);
+      if (t === 120) sim.setObstacles(FARM.slice(1));
+      sim.step();
+    }
+  };
+  const a = new WindSim(GRID, FARM, GUSTY), b = new WindSim(GRID, FARM, GUSTY);
+  script(a, 0, 160); script(b, 0, 80);
+  const save = structuredClone(b.save()), c = new WindSim(GRID, FARM, { speed: 2, direction: 3 });
+  c.restore(save); script(c, 80, 160);
+  check('obstacles changed in play replay, and a save keeps them', identical(a.snapshot(), c.snapshot()),
+    `a shed put up after ${40 * TICK} s, the shed and the old shed taken down after ${120 * TICK} s, saved between`);
+}
+{
+  // The gusts alone, as the rules step them, beside the whole wind (the replay's turn and change of speed and rhythm).
+  const grid: WindGrid = { nx: 96, nz: 80, cell: 2, x0: -90, z0: -70 };
+  const sim = new WindSim(grid, FARM, GUSTY, { seed: 7 }), gusts = new WindRecipe(grid, GUSTY, { seed: 7 });
+  let cells = 0, off = 0, steady = true;
+  for (let t = 0; t < 600; t++) {
+    const goal = t >= 300 ? { ...GUSTY, direction: -2, speed: 3, rhythm: 0 } : t >= 100 ? { ...GUSTY, direction: 1.4, speed: 11, rhythm: 0.2 } : GUSTY;
+    sim.setGoal(goal); gusts.setGoal(goal);
+    sim.step(); gusts.step();
+    if (t % 9) continue;
+    const snap = sim.snapshot();
+    for (let j = 0; j < grid.nz; j++) for (let i = 0; i < grid.nx; i++) {
+      const k = j * grid.nx + i, x = grid.x0 + (i + 0.5) * grid.cell, z = grid.z0 + (j + 0.5) * grid.cell, [u, v] = gusts.freeAt(x, z);
+      cells++;
+      if (!Object.is(u, snap.fu[k]) || !Object.is(v, snap.fv[k])) off++;
+      const f = Math.fround;
+      if (f(f(f(snap.speed) * gusts.gustAt(x, z)) * f(snap.dirX)) !== u) steady = false;
+    }
+  }
+  check('the gusts alone step as the wind does', JSON.stringify(gusts.state) === JSON.stringify(sim.state), `after ${600 * TICK} s, through two turns`);
+  check('their free air is the engine\'s, bit for bit', off === 0 && steady, `${off} of ${cells} cells off`);
+  // Started from the gusts' state, a wind (and the gusts taken up afresh) force from that state as it stands.
+  const from = new WindSim(grid, [], GUSTY, { state: gusts.state }), again = new WindRecipe(grid, GUSTY, { state: gusts.state });
+  const k = 500, [u] = again.freeAt(grid.x0 + (k % grid.nx + 0.5) * grid.cell, grid.z0 + (Math.floor(k / grid.nx) + 0.5) * grid.cell);
+  check('a wind started from the gusts\' state carries it', JSON.stringify(from.state) === JSON.stringify(gusts.state) && Object.is(from.snapshot().fu[k], u),
+    `tick ${from.state.tick}, the free air as the gusts have it`);
 }
 
 /**
