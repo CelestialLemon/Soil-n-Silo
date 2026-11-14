@@ -6,6 +6,7 @@ import { RAIN_VEIL_GLSL } from './rain';
 import { SHELTER_GLSL } from './shelter';
 import { SNOW_VEIL_GLSL, WHITEOUT } from './snowfall';
 import { STREAK_STRETCH, WIND_GLSL } from './wind';
+import { MARKS_POST_GLSL } from './marks';
 
 // The post pass: the heat's shimmer, lines on inked things, the fog or dust lying on the land, the distance's haze, the sky,
 // a grade, and out to sRGB.
@@ -73,6 +74,7 @@ varying vec2 vUv;
 ${NOISE}
 ${OKLAB}
 ${WIND_GLSL}
+${MARKS_POST_GLSL}
 
 const float FAR = 1e4;
 float depthOf(vec4 a) { return a.z <= 0.0 ? FAR : a.z; }
@@ -280,6 +282,8 @@ void main() {
   c = oklabToLinFit(lab);
 
   vec3 o = toSrgb(c);
+  // The game's marks on its things (#206, marks.ts): tints and highlights, over the graded picture.
+  if (uMarksOn > 0.5) o = marksOver(o, vUv);
   // A faint canvas tooth, and a gentle vignette.
   o += (hash12(gl_FragCoord.xy) - 0.5) * uGrain;
   vec2 v = vUv - 0.5;

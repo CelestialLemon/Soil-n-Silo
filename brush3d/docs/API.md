@@ -165,8 +165,8 @@ truck.place({ x, y, z, yaw, pitch, scale });             // a truck tipped up a 
 mill.show({ running: true });                            // its `running_*` look; also `charge` (0..4), `stage`, `variant`
 mill.spin(0.4);                                          // its `move_spin_*` parts, turns a second (#205)
 mill.status = 'working';                                 // 'working' | 'idle' | 'unpowered' | 'weather' | 'building' (#205)
-mill.highlight = true;                                   // under the pointer, or selected (#206)
-mill.tint = { color: 0x90ff90, strength: 0.45 };         // or null (#206)
+mill.highlight = true;                                   // under the pointer, or selected (today on meshes: r.setMark, #206)
+mill.tint = { color: 0x90ff90, strength: 0.45 };         // or null (today on meshes: r.setMark, #206)
 mill.visible = false;
 mill.remove();
 ```
@@ -186,8 +186,8 @@ mill.remove();
   its lights dimmed, its scaffold). So the game says each: a mill with no power gets `spin(0)`, `show({ running: false })`
   and `status = 'unpowered'`; an anemometer turns in the wind whatever its power, because the game keeps its spin.
 - **Markers.** A building with a problem also gets a small marker over it, to spot from afar. The marker is the game's
-  HUD (HTML, as now); the renderer says where it goes: `thing.anchor` is the point over the thing's model, in metres
-  (#206), which `r.view.toScreen` puts on the page.
+  HUD (HTML, as now), placed with `r.view.toScreen`: today over the model's top as the game's catalogue gives its height
+  (`thingHeight`, #206); `thing.anchor` once things are handles (#204).
 - **Spinning parts** turn at the rate the game gives (it knows the wind at a turbine, the river's flow at the wheel); the
   renderer turns the part, its ink and its shadow smoothly.
 - **Goods** in a truck's bed are things too, placed by the game as the truck moves (a call per good per frame is cheap).
@@ -256,34 +256,48 @@ pointer, keeping the view over the map) and tells the renderer where it is each 
   outlines and shadows stay put under a pan, with slightly stepped edges on the shadows; the clouds' shadows read as
   big soft patches across the whole map. Nothing there needs a fix before the real land (#202) and models (#203).
 
-## Picking: what's under the pointer (#206)
+## Picking: what's under the pointer (today, #206)
 
 ```ts
+r.add(geometry, 'ink', { tag: building.id });       // a mesh the game tags (ModelSet.addTo(r, tag) tags a model's meshes)
 const hit = r.pick(clientX, clientY);              // at once (waits for the GPU): for a click
 r.requestPick(clientX, clientY).then((hit) => {});  // a frame or two later, never stalling: for hovering
-// hit: { tag, what: 'thing' | 'plant' | 'land' | 'water', point: { x, y, z } } | null
+// hit: { tag, what: 'thing' | 'plant' | 'land' | 'water', point: Vector3 (m) } | null (the sky, or off the canvas)
 ```
 
-- `tag` is the game's id given with the thing or plant (null for the land and the water); `point` is where the pointer
-  meets what's drawn there, so the game finds the tile from it (`Math.floor(point.x / TILE)`).
-- A build preview is never picked: the pick sees through it, to what's behind.
+- How: the G-buffer already holds every pixel's depth as drawn (leaves, wind and all), so a pick copies the 3 × 3 pixels
+  round the pointer into a tiny float target and reads them back, at once or without stalling (a frame or two later),
+  and takes the nearest. What stands at that point is told apart on the CPU: a tagged mesh whose box (as placed) holds
+  the point (the smallest, if several) is a `thing` with its tag; else the land where the line of sight meets it
+  (`land`, its point exact), the water's surface (`water`), or anything else on the land (`plant`: trees, crops, rocks;
+  the game finds a tree from its own map, near the point).
+- The pick sees the frame last drawn, as its camera saw it: `point` is where the pointer met what's drawn there, so the
+  game finds the tile from it (`Math.floor(point.x / TILE)`).
+- A build preview, a route or a wire is drawn over the finished picture, never into the G-buffer: never picked.
 - Like pixel3d's `pick` and `requestPick`, so the game's hover logic carries over.
 
-## The game's tools on the picture (#206)
+## The game's tools on the picture (today, #206)
 
-Each of these is the developer's pick of a few looks, readable in any weather and at any hour; the calls are just what
-the game wants shown.
+How each looks is the developer's pick of a few options (#206's look PR); the calls are just what the game wants shown.
+The looks here are plain until then.
 
 | What the game shows | Call |
 |---|---|
-| A thing or plant under the pointer or selected | `thing.highlight = true` (a field: each of its tiles) |
-| A thing or plant tinted for what's in focus (a truck's stops, the buildings next door that would trade) | `thing.tint = { color, strength }` |
-| The building being placed, see-through, green where it fits or red where it doesn't (never picked, casts no shadow) | `r.addThing(model, place, { preview: 'fits' })`, then `thing.preview = 'blocked'` |
-| A colour per tile washed over the land: fertility, ground, height, water, power, roads, bees | `r.setOverlay({ width, height, color: Uint32Array, strength })` (a colour per tile, sRGB; `NONE` leaves the tile clear) or `null` |
-| Routes on the ground, the power networks' wires between pylon tops (sagging), a range's dashed ring | `r.setLines([{ points: [{ x, y?, z }, ...], color, style: 'route' \| 'wire' \| 'dashed' }])`: a point with no `y` lies on the land |
-| The tile grid and the contour lines while building or doing earthworks | `r.setGrid(true)` |
-| The tile cursor and the marks of an earthwork | the game's own canvas over the view, as now, placed with `r.view.toScreen` |
-| The HUD's markers, labels and tags | HTML, as now, placed with `r.view.toScreen` (a marker at `thing.anchor`) |
+| A thing under the pointer or selected: an outline round what shows of it, and it a little brighter | `r.setMark(mesh, { highlight: true })` on each of its meshes |
+| A thing tinted for what's in focus (a truck's stops, the buildings next door that would trade) | `r.setMark(mesh, { tint: { color, strength } })` (both at once is fine); `null` takes the marks off |
+| The highlight's look | `r.setHighlightLook({ color, width })` (CSS pixels; `HIGHLIGHT_LOOK` by default) |
+| The building or crop being placed, see-through, tinted green where it fits or red where it doesn't (never picked, casts no shadow, hidden behind what stands in front of it) | `const m = r.addPreview(geometry, 'fits')`, placed with `m.position` / `m.rotation`; `r.setPreview(m, 'blocked')`; `r.removePreview(m)` |
+| A colour per tile washed over the land in its light: fertility, the ground's kinds, height, water, power, roads, bees | `r.setOverlay({ width, height, color: Uint32Array, strength })` (a colour per tile, sRGB; `OVERLAY_NONE` leaves a tile clear) or `null` |
+| Routes and frames on the ground, the power networks' wires between pylon tops (sagging), a range's dashed ring, the tile cursor | `r.setLines([{ points: [{ x, y?, z }, ...], color, style: 'route' \| 'wire' \| 'dashed', width?, opacity?, closed? }], group)` or `null`: a point with no `y` lies on the land; each `group` (say `'routes'`, `'power'`) is replaced on its own |
+| The tile grid and the contour lines while building or doing earthworks | `r.setGrid({ width, height, level })` (a contour each `level` m) or `null` |
+| The HUD's markers, labels and tags | HTML, as now, placed with `r.view.toScreen` |
+
+- **Where each is drawn.** The marks and the overlay are part of the picture: the marks are laid over it after the
+  main view (a thing's tint and outline only where it shows), the overlay and grid in the ground's own paint, so they
+  sit on the land as it's lit, under what stands on it. Previews and lines are drawn over the finished picture, after
+  the fog, the grade and the lightning, hidden only where something stands in front: interface, not world, so night and
+  a blizzard keep the renderer's mood and the tools stay readable.
+- **The units** are the renderer's, metres; a line's or frame's `width` is metres too, with a few screen pixels' minimum.
 
 ## The hour and the season (today)
 
@@ -457,13 +471,13 @@ The game's pixel3d calls and what replaces each:
 | `new PixelRenderer(canvas, bakedScene)`, `quantizePalette` | `new BrushRenderer(canvas, options)`, `setLand`: no palette, no baked scene |
 | `addObject(geometry)`, `setTransform`, `visible`, `remove()` | `addThing(model, place)`, `place`, `visible`, `remove()` |
 | The idle / running / turbine speed / battery level geometries swapped | `thing.show({ running, charge })`, `thing.spin(rate)` |
-| `highlight`, `tint`, `tintStrength`, `opacity` (the build preview) | `highlight`, `tint`, `preview` |
+| `highlight`, `tint`, `tintStrength`, `opacity` (the build preview) | `setMark(mesh, { highlight, tint })`, `addPreview` / `setPreview` (#206; on thing handles with #204) |
 | `pick`, `requestPick` returning an object to look up | `pick`, `requestPick` returning the game's `tag` |
 | `placeCamera(target, azimuth, elevation, viewHeight)`, `camera` | `r.view.place({ x, y, z, heading, zoom })`, `r.view.toScreen` |
 | `setLook(greyLook(lookAt(hour), weather))` | `setHour(hour)` and `setWeather(...)`: the renderer greys the day itself |
 | `setWeather({ precipitation, intensity, cloudCover, wind, gusts, haze... })` | `setWeather({ cloud, rain, snow, haze... })`, `setWind(...)` |
 | The game's own snow, rime, flood and ice views, `greyLook` | `setGround`, `setWater`, `setWeather`: gone from the game (#207, #211) |
-| Overlays, routes and power lines as objects on the ground | `setOverlay`, `setLines` (#206) |
+| Overlays, routes and power lines as objects on the ground, the tile cursor's own canvas | `setOverlay`, `setGrid`, `setLines` (#206) |
 | `renderGeometry(time)`, `renderStyle(time)` | `render(seconds)` |
 | Art pixel size, supersampling, the palette size | gone: the picture is drawn at the screen's resolution |
 

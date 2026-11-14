@@ -8,6 +8,12 @@ export { QUALITY, type Quality, type QualityName } from './renderer/quality';
 export type { MaterialKind } from './renderer/materials';
 export type { Cover } from './renderer/shelter';
 
+// ---- The game's tools on the picture (Soil-n-Silo#206) ----
+export { OVERLAY_NONE, type Grid, type Overlay } from './renderer/overlay';
+export { HIGHLIGHT_LOOK, type HighlightLook, type Mark } from './renderer/marks';
+export type { Line, LinePoint, PreviewState } from './renderer/ontop';
+export type { PickHit } from './renderer/pick';
+
 // ---- The camera ----
 export { MAX_ZOOM, MIN_ZOOM, PITCH, ViewCamera } from './renderer/camera';
 
