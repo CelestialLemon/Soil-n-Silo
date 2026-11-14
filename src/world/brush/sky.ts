@@ -29,9 +29,8 @@ export class BrushSky {
   private readonly r: BrushRenderer;
   private sent = '';
   private wind = -1;
-  /** The game time and the real time (s) the lightning was last looked for to. */
+  /** The game time the lightning was last looked for to. */
   private struck = NaN;
-  private real = NaN;
 
   constructor(r: BrushRenderer, s: GameState) {
     this.r = r;
@@ -40,7 +39,7 @@ export class BrushSky {
     r.setSeason({ season, character, sunrise: sun.rise, sunset: sun.set });
   }
 
-  sync(s: GameState, hour: number) {
+  sync(s: GameState, hour: number, speed: number) {
     const r = this.r, sc = s.scenario, w = weatherNow(s), fall = w.precip, q = (v: number) => Math.round(v * 100) / 100;
     const weather: Weather = {
       cloud: w.cloud, cloudSeed: sc.seed, heat: w.heat,
@@ -54,17 +53,17 @@ export class BrushSky {
     const wind = Math.round(Math.max(windAt(sc, s.time), lookAt(sc, s.time).wind) * 50) / 50;
     if (wind !== this.wind) { this.wind = wind; const snap = steadyWind(wind * FULL_WIND, WIND_DIRECTION); r.setWind(snap, snap, 0); }
     r.setHour(hour);
-    this.lightning(s);
+    this.lightning(s, speed);
   }
 
-  /** Strikes and flickers the lightning of the game minutes since the last frame. */
-  private lightning(s: GameState) {
-    const now = performance.now() / 1000, from = this.struck, real = now - this.real;
-    if (s.time === from) return;
-    this.struck = s.time; this.real = now;
+  /** Strikes and flickers the lightning of the game minutes since the last frame, at the game's speed `speed`. */
+  private lightning(s: GameState, speed: number) {
+    const from = this.struck;
+    this.struck = s.time;
     if (!(s.time > from) || s.time - from > LIGHTNING_JUMP) return;
-    // At 1× a game second is a real one; faster, a seeded share of the lightning is kept, so it comes as often a real second.
-    const keep = Math.min(1, real / (s.time - from));
+    // At 1× a game second is a real one; faster, a seeded share of the lightning is kept (the same share at the same speed,
+    // whatever the frame rate), so it comes as often a real second.
+    const keep = Math.min(1, 1 / Math.max(1, speed));
     const { strikes, flickers } = lightningIn(s.scenario, from, s.time, s.map.width, s.map.height, keep);
     for (const b of strikes.slice(0, LIGHTNING_FRAME)) this.r.strike({ x: (b.x + 0.5) * TILE, z: (b.y + 0.5) * TILE, strength: b.strength, seed: b.seed });
     for (const f of flickers.slice(0, LIGHTNING_FRAME)) this.r.flicker({ strength: f.strength, bearing: f.bearing });
