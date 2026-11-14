@@ -78,6 +78,8 @@ export interface SyncFrame {
   dt: number; hour: number;
   /** Whether the grid and the contour lines show (building, or doing earthworks). */
   lines: boolean;
+  /** The game's speed the player picked (1, 2, 4…), paused or not. */
+  speed: number;
 }
 
 /** What the tools show this frame. */

@@ -645,7 +645,7 @@ async function play(initial: GameState) {
     camera.update(time, dt);
 
     // The hour, the weather, the ground and the world, before anything is picked or the tools run.
-    scene.sync(state, { dt, hour: hourAt(state.time), lines: tool.kind === 'build' || tool.kind === 'earth' });
+    scene.sync(state, { dt, hour: hourAt(state.time), lines: tool.kind === 'build' || tool.kind === 'earth', speed });
     toolOverlay = 'none';
     // Something new shown or taken away, or a truck driving under the pointer, may change what is under it.
     if (picker.moved(state, input.pointer)) repick = true;

@@ -76,7 +76,7 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, _setting
     camera, heights, picker, preview,
     heightOf: (type) => thingHeight(type) / TILE,
     sync(s, f) {
-      sky.sync(s, f.hour);
+      sky.sync(s, f.hour, f.speed);
       ground.sync(s);
       cover.sync(s);
       water.sync(s);
