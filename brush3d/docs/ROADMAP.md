@@ -26,6 +26,10 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      camera (`view.place`, `toScreen`, `rayAt`), a camera that sits back far enough for the game's widest zoom (`landTop`,
      from `measureGround`, which was `setHazeGround`), and `remove()` freeing the tiles `add()` cut. The paint holds at 4 px a
      metre. How high a level stands is the developer's pick (Soil-n-Silo#220; 1 m until then).
+  4. Soil-n-Silo#207 the weather from the game (done 2026-11-14, Soil-n-Silo#223 and Soil-n-Silo#224): every weather call
+     is driven by the game's state. That covers `setWeather` (with `storm` and `sunUnder`), `setGround` (snow, frost, wet
+     and mud, a cell a tile over the whole land), `setWater` (the river, floods, ice and muddy water) and `strike`/`flicker`
+     (seeded by game time). The renderer didn't change; the game's side is `src/world/brush/` and `src/game/looks.ts`.
 - **Weather, epic #3** (planned 2026-10-30): season, weather and hour change the whole picture. The decisions are in #3; in
   short, the game owns the weather's state and logic and the renderer only draws it. The order:
   1. #6 performance: measure the frame and set the weather's budget (done 2026-10-30: the farm 17.5 ms on the laptop,
