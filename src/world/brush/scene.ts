@@ -27,7 +27,7 @@ import { Wild } from './wild.ts';
 //   land.ts    the land, plainly: #202 replaces it with the renderer's own land from the map (setLand)
 //   things.ts  the buildings and trucks as brush3d's solarpunk models (#203); #204 (a world that changes without a
 //              stutter) and #205 (moving parts, building states, the markers) build on it
-//   wild.ts    grey stand-ins for the trees and rocks: #213 (the crops and trees in paint) replaces them
+//   wild.ts    what grows, painted: the trees by species, the rocks, the open fields' crops and the saplings (#213)
 //   sky.ts     the season, the hour and the sky from the game's weather (#207); #208 brings the wind and clouds the rules
 //              share
 //   cover.ts   what lies on the land from the game's: snow, frost, wet and mud (#207)
