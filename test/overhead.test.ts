@@ -129,7 +129,7 @@ test('a save whose wind or clouds are broken is refused', () => {
     (o) => { o.wind.speed = -1; }, (o) => { o.wind.speed = 1e9; }, (o) => { o.wind.fade = 2; },
     (o) => { (o.wind as unknown as Record<string, unknown>).gusts = null; }, (o) => { o.wind.gusts.speed = 0; },
     (o) => { o.wind.tick = 1.5; }, (o) => { o.wind.tick = 1e30; }, (o) => { o.wind.gusts.p = 1e40; }, (o) => { o.wind.gusts.o = 1e40; },
-    (o) => { o.wind.gusts.k = 2 ** 40; }, (o) => { (o.clouds as unknown as Record<string, unknown>).x = 'x'; },
+    (o) => { o.wind.gusts.k = 2 ** 40; }, (o) => { o.wind.sets = 1e308; }, (o) => { (o.clouds as unknown as Record<string, unknown>).x = 'x'; },
     (o) => { delete (o as Partial<GameState>).clouds; }, (o) => { delete (o as Partial<GameState>).wind; },
   ];
   assert.ok(deserialize(serialize(s)).ok);

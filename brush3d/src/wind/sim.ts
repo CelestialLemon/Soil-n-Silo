@@ -261,9 +261,9 @@ export class WindSim {
 
   /**
    * Carries on the gusts from a state (WindRecipe's, as the game's rules step it), keeping the air as it is: for a picture
-   * that fell behind the rules' wind and catches up at once.
+   * that fell behind the rules' wind and catches up at once. The free air above is the new state's straight away.
    */
-  setState(state: WindState) { this.recipe.restore(state); }
+  setState(state: WindState) { this.recipe.restore(state); this.force(this.recipe.last); }
 
   /** What a save holds of the engine: the air (density, momentum), the shelter memory, and the free air above as last
    * forced (so a snapshot straight after a restore is the same as one without it). */

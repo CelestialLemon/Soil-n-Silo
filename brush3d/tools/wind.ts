@@ -114,6 +114,12 @@ console.log('Replay and saves (the farm, gusty, with a turn)');
   const k = 500, [u] = again.freeAt(grid.x0 + (k % grid.nx + 0.5) * grid.cell, grid.z0 + (Math.floor(k / grid.nx) + 0.5) * grid.cell);
   check('a wind started from the gusts\' state carries it', JSON.stringify(from.state) === JSON.stringify(gusts.state) && Object.is(from.snapshot().fu[k], u),
     `tick ${from.state.tick}, the free air as the gusts have it`);
+  // A wind jumped to the gusts' state (setState) keeps its air and has their free air at once, before another step.
+  const behind = new WindSim(grid, [], { ...GUSTY, gustiness: 0 }), ground = behind.snapshot().u[k];
+  behind.setState(gusts.state);
+  const jumped = behind.snapshot();
+  check('a wind set to the gusts\' state keeps its air and takes their free air at once', Object.is(jumped.fu[k], u) && Object.is(jumped.u[k], ground),
+    `${jumped.fu[k].toFixed(3)} m/s free air (the gusts' ${u.toFixed(3)}), the ground air as it was`);
 }
 
 /**

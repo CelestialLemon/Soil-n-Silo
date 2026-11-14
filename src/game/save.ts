@@ -121,7 +121,7 @@ function validWind(w: GameState['wind']): boolean {
   const count = (v: number) => int(v) && v >= 0 && v < 2 ** 31;
   const gusts = (g: WindState['gusts']) => !!g && unit(g.hx) && unit(g.hz) && num(g.o) && g.o >= 0 && g.o < 101 && num(g.p) && g.p >= 0 && g.p < 1
     && speed(g.speed) && g.speed >= 2 && share(g.rhythm) && count(g.k);
-  return !!w && count(w.tick) && int(w.seed) && int(w.sets) && w.sets >= 0
+  return !!w && count(w.tick) && int(w.seed) && count(w.sets)
     && !!w.goal && speed(w.goal.speed) && num(w.goal.direction) && share(w.goal.gustiness) && share(w.goal.rhythm)
     && speed(w.speed) && unit(w.dirX) && unit(w.dirZ) && share(w.gustiness) && share(w.rhythm) && share(w.fade)
     && gusts(w.gusts) && (w.next === null || gusts(w.next));
