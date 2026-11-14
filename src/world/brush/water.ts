@@ -1,7 +1,9 @@
 import type { BrushRenderer, WaterMap } from '../../../brush3d/src/index.ts';
+import { DAY_SECONDS } from '../../game/data.ts';
 import { pushesAt } from '../../game/events.ts';
 import { flooded, floodUnder } from '../../game/flood.ts';
 import { iceAt, iceOf, type Ice } from '../../game/ice.ts';
+import { groundLooksAt } from '../../game/looks.ts';
 import { TERRAIN, type Land } from '../../game/map.ts';
 import { reliefOf, type GameState } from '../../game/state.ts';
 import type { Lie } from '../ground.ts';
@@ -12,11 +14,13 @@ import { LEVEL } from './scale.ts';
 // sent with `setWater` whenever the game's water changes (brush3d/docs/WATER.md). It holds:
 // - the river and the ponds, at their levels, the river running with its current (the map's, times the season's river);
 // - a flood (flood.ts): the river spread over the tiles the rules cover, at the surface they give, and the river risen with
-//   it; silty while it lasts (the pixel world's flood water is brown too). The water meets the land where the drawn ground
+//   it. The water meets the land where the drawn ground
 //   rises out of it, so its shore follows the land rather than the tiles (a hump of a covered tile may stand dry);
 // - the river's ice in a cold snap (ice.ts): the rules' grid, frozen from the banks inward as the cold snap's cover rises,
 //   a fall and the water just below it left open, so what is drawn open is what runs. Ponds freeze over with it (still
-//   water; no rule reads them).
+//   water; no rule reads them);
+// - how muddy it runs (looks.ts, a look only): browner in heavy rain (a thunderstorm, a tropical storm) and a flood, clearing
+//   slowly over the day after; a flood's water as brown as the flood is high while it lasts (the pixel world's is brown too).
 // Nothing here changes a rule: it reads the game's state and draws it.
 //
 // #202 owns how the river and ponds sit in the land (their beds, the falls, the banks): it may change where the river's
@@ -33,6 +37,8 @@ const SPREAD_FLOW = 0.25;
 const FLOOD_MUD = 0.85;
 /** The ice and the mud are sent in steps this fine (a map is laid out again with each change: brush3d/docs/WATER.md). */
 const STEPS = 32;
+/** How muddy the river runs is looked at again when the game's clock has moved this far (game seconds: a game minute). */
+const LOOK = DAY_SECONDS / 24 / 60;
 
 export class BrushWater {
   private readonly r: BrushRenderer;
@@ -46,6 +52,8 @@ export class BrushWater {
   private readonly flowZ: Float32Array;
   private readonly pond: Uint8Array;
   private readonly send = new Sender();
+  private at = NaN;
+  private riverMud = 0;
 
   constructor(r: BrushRenderer, land: Land, lie: Lie) {
     this.r = r; this.land = land; this.lie = lie;
@@ -65,10 +73,12 @@ export class BrushWater {
   sync(s: GameState) {
     const sc = s.scenario, f = flooded(s), cover = iceAt(sc, s.time), flood = floodUnder(sc, s.time);
     const speed = sc.climate.river.flow * pushesAt(sc, s.time).river;
-    const iceStep = Math.round(cover * STEPS), mudStep = Math.round((flood ? flood.intensity : 0) * STEPS);
+    if (!(Math.abs(s.time - this.at) < LOOK)) { this.at = s.time; this.riverMud = groundLooksAt(sc, s.time).riverMud; }
+    const mud = Math.max(flood ? flood.intensity * FLOOD_MUD : 0, this.riverMud);
+    const iceStep = Math.round(cover * STEPS), mudStep = Math.round(mud * STEPS);
     // The map changes only when one of these does: the flood's step (and the land it covers), the ice's and the mud's.
     if (!this.send.due(`${f.step}:${reliefOf(s)}:${iceStep}:${mudStep}:${speed}`)) return;
-    this.r.setWater(this.build(s, f, iceStep / STEPS, (mudStep / STEPS) * FLOOD_MUD, speed), this.send.first ? 0 : undefined);
+    this.r.setWater(this.build(s, f, iceStep / STEPS, mudStep / STEPS, speed), this.send.first ? 0 : undefined);
   }
 
   private build(s: GameState, f: ReturnType<typeof flooded>, cover: number, mud: number, speed: number): WaterMap {

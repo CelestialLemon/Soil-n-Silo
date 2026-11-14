@@ -99,9 +99,10 @@ export const FOG_HAZE = 0xcfd6d8, DUST_HAZE = 0xc49a62;
 /**
  * How an event looks in the sky, apart from its effects: the cover and the rain or snow drawn, how warm the light is (0–1), its
  * haze, and how windy it looks (a share of a full wind, for the drawn wind only: a blizzard is heavy snow in a strong wind as
- * brush3d draws it, though the rules' wind is no stronger; #207). None of it is a rule.
+ * brush3d draws it, though the rules' wind is no stronger; #207). For brush3d's storms (#207, looks.ts): how stormy the sky looks
+ * (0–1), and how many lightning strikes and distant flickers it brings a game hour at its height. None of it is a rule.
  */
-export interface Look { cloud?: number; precip?: number; heat?: number; haze?: Haze; wind?: number }
+export interface Look { cloud?: number; precip?: number; heat?: number; haze?: Haze; wind?: number; storm?: number; bolts?: number; far?: number }
 
 export interface EventInfo {
   name: string;
@@ -158,7 +159,7 @@ export interface EventInfo {
 export const EVENTS: Record<EventKind, EventInfo> = {
   thunderstorm: {
     name: 'Thunderstorm', hours: [10, 14], seasons: { spring: 1, summer: 1 }, severe: true,
-    odds: { stormy: 2.5, wet: 1.5, hot: 1.2, mild: 0.7, dry: 0.4 }, heavyRain: true, look: { cloud: 1, precip: 0.9 },
+    odds: { stormy: 2.5, wet: 1.5, hot: 1.2, mild: 0.7, dry: 0.4 }, heavyRain: true, look: { cloud: 1, precip: 0.9, storm: 1, bolts: 2, far: 3 },
     shape: 'bolt', holds: 'solar panels weak under the cloud',
     // In spring heavy rain swells the river: a flood follows the storm (at its strength). In summer the ground drinks it.
     then: 'flood', thenIn: ['spring'],
@@ -201,7 +202,7 @@ export const EVENTS: Record<EventKind, EventInfo> = {
   },
   gale: {
     name: 'Gale', hours: [20, 28], seasons: { autumn: 1 }, severe: true,
-    odds: { gales: 3, stormy: 2, mild: 0.4 }, look: { cloud: 0.5 },
+    odds: { gales: 3, stormy: 2, mild: 0.4 }, look: { cloud: 0.5, storm: 0.45 },
     shape: 'chevron', holds: 'turbines too exposed stopped, sheltered ones turning slowly, bees kept in',
     // A strong wind (the wind push is a full wind's worth, so no calm spell dims it and turbines make all they can) and the bees stay in. In a severe one the wind is past what an exposed turbine stands
     // (`gale`, over the limit once exposure is above about three quarters): sheltered turbines furl and keep turning, unsteadily.
@@ -209,7 +210,7 @@ export const EVENTS: Record<EventKind, EventInfo> = {
   },
   tropicalStorm: {
     name: 'Tropical storm', severeName: 'Hurricane', hours: [24, 48], seasons: { summer: 0.15, autumn: 0.3 }, severe: true, then: 'flood',
-    odds: { stormy: 3, wet: 1.5, gales: 1.2, mild: 0.3, dry: 0.1, hot: 0.5 }, heavyRain: true, look: { cloud: 1, precip: 0.8 },
+    odds: { stormy: 3, wet: 1.5, gales: 1.2, mild: 0.3, dry: 0.1, hot: 0.5 }, heavyRain: true, look: { cloud: 1, precip: 0.8, storm: 0.85, bolts: 0.6, far: 2 },
     shape: 'swirl', holds: 'solar panels weak; in a hurricane every turbine, hen and bee stopped and the trucks kept in their garages',
     // Days of heavy rain and wind, and the flood after it. The bees stay in. A hurricane (the severe one) is wind no turbine stands (`gale`
     // over the limit even for a turbine in deep shelter), almost no sun, hens that stop laying, trucks that stay home through its worst
