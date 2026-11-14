@@ -1,5 +1,5 @@
 // Looks for swatch pops in the wind: a dab or blade changing colour all at once between frames, rather than moving.
-//   node tools/pops.ts [out-dir] [query ...]      e.g.  node tools/pops.ts out "wind=storm" "scene=meadow&wind=hurricane"
+//   node brush3d/tools/pops.ts [out-dir] [query ...]      e.g.  node brush3d/tools/pops.ts out "wind=storm" "scene=meadow&wind=hurricane"
 //
 // The camera stays still and the clock runs. At many moments it draws two frames a short step apart (1/240 s) and finds
 // the pixels whose colour changed a lot. Anything moving smoothly moves under a pixel in that time, so it changes only a thin

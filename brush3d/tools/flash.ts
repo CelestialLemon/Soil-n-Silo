@@ -1,5 +1,5 @@
 // Measures the lightning against the flash limits (#12): what's on the screen, not what the code means to do.
-//   W=960 H=540 node tools/flash.ts [out.json]        (about 10 minutes; ONLY=gentle: just the runs with that in the name)
+//   W=960 H=540 node brush3d/tools/flash.ts [out.json]        (about 10 minutes; ONLY=gentle: just the runs with that in the name)
 //
 // It runs lightning through the demo on a made-up clock, strikes and flickers as a game might and as a game never should
 // (every frame), at each flash setting, by day and at night. Every frame is drawn twice, with the lightning and without, and
@@ -66,8 +66,8 @@ try {
     const m = await page.evaluate(measure, { ...r, limit: limit.most, sliver: limit.sliver } as never) as Record<string, number | number[]>;
     const problems: string[] = [];
     if (Number(m.areaOver3) > 0.25) problems.push(`${pct(m.areaOver3)} of a field of view flashing over 3 times a second`);
-    if (Number(m.perSecond) > limit.flashes) problems.push(`${m.perSecond} flashes/s`);
-    if (Number(m.quarterPerSecond) > limit.flashes) problems.push(`${m.quarterPerSecond} flashes/s in a quarter`);
+    if (Number(m.perSecond) > limit.flashes) problems.push(`${String(m.perSecond)} flashes/s`);
+    if (Number(m.quarterPerSecond) > limit.flashes) problems.push(`${String(m.quarterPerSecond)} flashes/s in a quarter`);
     if (Number(m.sliverShare) > 0.0005) problems.push(`${(Number(m.sliverShare) * 100).toFixed(3)}% of pixels over ${limit.sliver}`);
     if (Number(m.overShare) > 0.03) problems.push(`${(Number(m.overShare) * 100).toFixed(1)}% over the lift`);
     // Off lights nothing but its bolt and glow, and those fill more of the screen close in.
@@ -75,7 +75,7 @@ try {
     if (Number(m.govPerSecond) > 2 || Number(m.govPerTen) > 2 || Number(m.govGap) < 0.6) problems.push('the governor let too many through');
     failed += problems.length ? 1 : 0;
     results.push({ ...r, ...m, problems });
-    console.log(`${problems.length ? 'FAIL' : 'pass'}  ${r.name.padEnd(38)} flashes/s ${m.perSecond} quarter ${m.quarterPerSecond} per10s ${m.perTen}  area>3/s ${pct(m.areaOver3)}  lift ${fix(m.worstPixel)} mean ${fix(m.meanLift)} over ${pct(m.overShare)}  rises ${m.rises}${problems.length ? '  ' + problems.join('; ') : ''}`);
+    console.log(`${problems.length ? 'FAIL' : 'pass'}  ${r.name.padEnd(38)} flashes/s ${String(m.perSecond)} quarter ${String(m.quarterPerSecond)} per10s ${String(m.perTen)}  area>3/s ${pct(m.areaOver3)}  lift ${fix(m.worstPixel)} mean ${fix(m.meanLift)} over ${pct(m.overShare)}  rises ${String(m.rises)}${problems.length ? '  ' + problems.join('; ') : ''}`);
   }
 } finally { await browser.close(); }
 await writeFile(out, JSON.stringify(results, null, 1));

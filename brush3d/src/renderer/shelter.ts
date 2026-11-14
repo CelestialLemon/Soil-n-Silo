@@ -98,8 +98,11 @@ export class ShelterMap {
   private overlayScene = new THREE.Scene();
   private box = new THREE.Box3();
 
+  readonly size: number;
+
   /** `size`: texels across (docs/PERFORMANCE.md: 1024 full quality, 512 reduced). */
-  constructor(readonly size = 1024) {
+  constructor(size = 1024) {
+    this.size = size;
     const target = () => {
       // Only the depth is read; the colour it must have is the smallest there is, a byte a texel.
       const t = new THREE.WebGLRenderTarget(size, size, { depthBuffer: true, format: THREE.RedFormat });
@@ -198,9 +201,9 @@ export class ShelterMap {
   drawOverlay(gl: THREE.WebGLRenderer, aux: THREE.Texture, camera: THREE.OrthographicCamera, width: number, height: number) {
     const u = this.overlay.uniforms;
     u.tAux.value = aux;
-    u.uCameraWorld.value.copy(camera.matrixWorld);
-    u.uHalf.value.set(camera.right, camera.top);
-    u.uResolution.value.set(width, height);
+    (u.uCameraWorld.value as THREE.Matrix4).copy(camera.matrixWorld);
+    (u.uHalf.value as THREE.Vector2).set(camera.right, camera.top);
+    (u.uResolution.value as THREE.Vector2).set(width, height);
     gl.render(this.overlayScene, this.camera);
   }
 

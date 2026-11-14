@@ -17,7 +17,7 @@ export interface ModelInfo {
   parts: string[];
 }
 
-const urls = import.meta.glob('./*.glb', { query: '?url', import: 'default', eager: true }) as Record<string, string>;
+const urls = import.meta.glob<string>('./*.glb', { query: '?url', import: 'default', eager: true });
 export const MODELS: Record<string, ModelInfo> = Object.fromEntries(Object.entries(index as unknown as Record<string, Omit<ModelInfo, 'name' | 'url'>>)
   .map(([name, info]) => [name, { ...info, name, url: urls[`./${name}.glb`] }]));
 

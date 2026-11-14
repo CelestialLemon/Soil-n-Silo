@@ -1,6 +1,6 @@
 // Checks the living wind (src/wind, #36): the game steps it, reads it and saves it, so it must be repeatable, keep the
 // game's average, and shelter what it should. Runs the engine in Node, no browser.
-//   npm run test:wind
+//   npm run render:test:wind
 //
 // 1. Replay: the same obstacles and goals (with a turn and a change of rhythm) give the same wind, bit for bit.
 // 2. Save and restore: a restored wind carries on bit for bit as the one it was saved from.

@@ -87,7 +87,7 @@ const loaded = (farmScene ?? galleryScene)?.ready ?? Promise.resolve();
 /** Where the scene shows each model (docs/MODELS.md): the tour's stops. */
 const stands: Stand[] = (farmScene ?? galleryScene)?.stands ?? [];
 let isLoaded = false;
-loaded.then(() => { isLoaded = true; });
+void loaded.then(() => { isLoaded = true; });
 // The water (#18), standing in for the game's: a map made from the scene's stream and the water's state (a preset, the
 // controls or the timeline), sent whenever it changes.
 const WATER_PRESETS: Record<string, WaterState> = {
@@ -663,7 +663,7 @@ if (params.has('shot')) {
     for (let i = 0; i < 2; i++) renderer.render(time);
     renderer.settings.grain = grain;
   };
-  loaded.then(() => Object.assign(window, {
+  void loaded.then(() => Object.assign(window, {
     __renderer: renderer,
     __draw: draw,
     __profile: (cases?: ProfileCase[]) => profile(cases),

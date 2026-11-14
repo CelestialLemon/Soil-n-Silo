@@ -24,8 +24,11 @@ export class WindView {
   private readonly info = document.createElement('div');
   private mask: HTMLCanvasElement | null = null;
 
+  private readonly living: () => WindWorker;
+
   /** `living`: the wind to show (the demo may start a new one). */
-  constructor(private readonly living: () => WindWorker) {
+  constructor(living: () => WindWorker) {
+    this.living = living;
     this.el = document.createElement('div');
     this.el.id = 'wind-view';
     this.canvas.width = this.canvas.height = 360;

@@ -1,7 +1,7 @@
 // What a frame costs, pass by pass: the GPU's time for each (the sun's shadow, under the water, the reflection, the main
 // view, the post pass), the CPU's for the whole frame, and the frame drawn uncapped, at 720p, 1080p, 1440p and 4K, calm and
 // in a storm, and at 1080p in a storm with each kind of mesh left out (what it saves is that kind's share).
-//   node tools/profile.ts [out-dir] [query ...]      e.g.  node tools/profile.ts out "scene=farm" "scene=farm&samples=2"
+//   node brush3d/tools/profile.ts [out-dir] [query ...]      e.g.  node brush3d/tools/profile.ts out "scene=farm" "scene=farm&samples=2"
 // Queries are demo URLs (see src/demo/main.ts); by default both scenes. Writes <out-dir>/profile.json.
 // CPU=2 slows the page's own CPU work by that factor (Chrome's throttling, in this browser only: nothing outside it
 // changes), a stand-in for a laptop's slower, hotter processor. It doesn't slow the GPU.

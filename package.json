@@ -11,11 +11,21 @@
     "dev": "vite",
     "build": "npm run typecheck && vite build",
     "preview": "vite preview",
-    "typecheck": "node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json && node node_modules/typescript/bin/tsc -p test",
+    "typecheck": "node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json && node node_modules/typescript/bin/tsc -p test && node node_modules/typescript/bin/tsc -p brush3d/tools && node brush3d/tools/demo-imports.ts",
     "test": "node --test 'test/**/*.test.ts'",
     "lint": "eslint .",
     "sim": "node tools/sim.ts",
-    "bench": "node tools/bench.ts"
+    "bench": "node tools/bench.ts",
+    "render:shot": "node brush3d/tools/shot.ts",
+    "render:video": "node brush3d/tools/video.ts",
+    "render:motion": "node brush3d/tools/motion.ts",
+    "render:pops": "node brush3d/tools/pops.ts",
+    "render:profile": "node brush3d/tools/profile.ts",
+    "render:flash": "node brush3d/tools/flash.ts",
+    "render:test:clouds": "node brush3d/tools/clouds.ts",
+    "render:test:wind": "node brush3d/tools/wind.ts",
+    "render:test:water": "node brush3d/tools/water.ts",
+    "render:build:wind": "node brush3d/tools/wind-build.ts"
   },
   "dependencies": {
     "pixel3d-renderer": "github:CelestialLemon/pixel3d-renderer#v0.5.2",
@@ -28,6 +38,7 @@
     "@typescript/typescript6": "^6.0.2",
     "eslint": "^10.12.0",
     "playwright-core": "^1.64.1",
+    "puppeteer-core": "^25.17.0",
     "typescript": "^7.0.2",
     "typescript-eslint": "^8.71.2",
     "vite": "^8.3.3"

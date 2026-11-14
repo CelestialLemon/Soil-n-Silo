@@ -1,12 +1,13 @@
 // Headless Chromium for the tools: the demo drawn on the GPU, with its console errors passed through.
-// DEMO_URL picks the dev server, CHROME_PATH the browser, GL_BACKEND how it draws: vulkan (the GPU, default on Linux),
-// metal (the GPU, default on a Mac) or swiftshader (CPU, slow). W and H set the frame size.
+// DEMO_URL picks the demo (default: the game's dev server, `npm run dev`, which serves it at /brush3d), CHROME_PATH the
+// browser, GL_BACKEND how it draws: vulkan (the GPU, default on Linux), metal (the GPU, default on a Mac) or swiftshader (CPU,
+// slow). W and H set the frame size.
 import puppeteer, { type Browser, type Page } from 'puppeteer-core';
 import { existsSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-export const BASE = process.env.DEMO_URL || 'http://127.0.0.1:5190';
+export const BASE = (process.env.DEMO_URL || 'http://127.0.0.1:5190/brush3d').replace(/\/$/, '');
 export const WIDTH = Number(process.env.W || 1280), HEIGHT = Number(process.env.H || 720);
 const BACKENDS: Record<string, string[]> = {
   swiftshader: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],

@@ -86,7 +86,10 @@ export class SunMemory {
   /** Whether the map was cleared for the night and nothing has been added since. */
   private blank = false;
 
-  constructor(shared: Record<string, THREE.IUniform>, readonly size = 512) {
+  readonly size: number;
+
+  constructor(shared: Record<string, THREE.IUniform>, size = 512) {
+    this.size = size;
     const target = () => new THREE.WebGLRenderTarget(size, size, {
       type: THREE.HalfFloatType, format: THREE.RGFormat, depthBuffer: false,
       minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false,
@@ -155,7 +158,7 @@ export class SunMemory {
     }
     if (day) this.blank = false;
     const mu = this.material.uniforms;
-    mu.uUnmap.value.copy(hollowsMap).invert();
+    (mu.uUnmap.value as THREE.Matrix3).copy(hollowsMap).invert();
     mu.tPrev.value = this.targets[0].texture;
     mu.uAdd.value = add / SUN_CLEARS;
     mu.uFresh.value = this.fresh ? 1 : 0;

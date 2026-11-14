@@ -1,9 +1,9 @@
 // Builds the living wind's engine (src/wind/sim.c, #36) into WebAssembly, written out as src/wind/engine.ts (the module's
 // bytes in base64, so the game and the demo load it the same way, in a browser, a worker or Node, with no bundler setup).
-//   npm run build:wind
+//   npm run render:build:wind
 // The compiler is clang itself compiled to WebAssembly (@yowasp/clang), so it runs in Node on any machine. It's big
 // (about 100 MB), so it isn't one of the repo's dependencies: the first build installs it under node_modules/.cache.
-// The built engine is checked in; only a change to sim.c needs a rebuild (and `npm run test:wind`).
+// The built engine is checked in; only a change to sim.c needs a rebuild (and `npm run render:test:wind`).
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -11,13 +11,13 @@ import { fileURLToPath } from 'node:url';
 
 const CLANG = '@yowasp/clang@22.0.0-git20542-10';
 const root = fileURLToPath(new URL('..', import.meta.url));
-const cache = `${root}node_modules/.cache/wind-clang`;
+const cache = fileURLToPath(new URL('../../node_modules/.cache/wind-clang', import.meta.url));  // the repo's node_modules
 if (!existsSync(`${cache}/node_modules/@yowasp/clang`)) {
   console.log(`Installing ${CLANG} into ${cache} (once)…`);
   execFileSync('npm', ['install', '--prefix', cache, '--no-save', '--no-audit', '--no-fund', CLANG], { stdio: 'inherit' });
 }
 const { runClang } = (await import(createRequire(`${cache}/`).resolve('@yowasp/clang'))) as {
-  runClang(args: string[], files: Record<string, string>): Promise<Record<string, Uint8Array>>;
+  runClang: (args: string[], files: Record<string, string>) => Promise<Record<string, Uint8Array>>;
 };
 
 const source = readFileSync(`${root}src/wind/sim.c`, 'utf8');

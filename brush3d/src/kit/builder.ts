@@ -20,7 +20,10 @@ export class MeshBuilder {
   private readonly extraName: string | null;
   private readonly extraSize: number;
 
-  constructor(readonly kind: MaterialKind) {
+  readonly kind: MaterialKind;
+
+  constructor(kind: MaterialKind) {
+    this.kind = kind;
     this.extraName = kind === 'foliage' ? 'aCard' : kind === 'grass' ? 'aBlade' : null;
     this.extraSize = kind === 'foliage' || kind === 'grass' ? 4 : 0;
     this.tree = kind === 'paint' || kind === 'foliage' ? [] : null;

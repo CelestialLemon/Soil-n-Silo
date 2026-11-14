@@ -153,9 +153,9 @@ export class Lightning {
   private governor = new FlashGovernor();
   private flash: Pulse | null = null;
   private farSwell: Pulse | null = null;
-  private bolts: (Bolt | null)[] = new Array(MAX_BOLTS).fill(null);
+  private bolts: (Bolt | null)[] = new Array<Bolt | null>(MAX_BOLTS).fill(null);
   private nextBolt = 0;
-  private glows: (Glow | null)[] = new Array(MAX_GLOWS).fill(null);
+  private glows: (Glow | null)[] = new Array<Glow | null>(MAX_GLOWS).fill(null);
   private nextGlow = 0;
   private lastBolt = -Infinity;
   private lastGlow = -Infinity;
@@ -383,7 +383,7 @@ export class Lightning {
     const trunk = zigzag(new THREE.Vector3(x, y, z), top, TRUNK, shape.jag, shape.most, heading, rng);
     write(trunk, 1, 0, 1);
     for (let j = 0; j < BRANCHES; j++) {
-      if (j >= shape.branches) { write(new Array(BRANCH).fill(trunk[0]), 0, 0, 0); continue; }
+      if (j >= shape.branches) { write(new Array<THREE.Vector3>(BRANCH).fill(trunk[0]), 0, 0, 0); continue; }
       // Forking off low enough to be seen, and short: sideways, and down towards the land.
       const i0 = 6 + Math.floor(rng() * 16);
       const from = trunk[i0], side = rng() < 0.5 ? -1 : 1;

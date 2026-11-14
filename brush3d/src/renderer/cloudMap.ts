@@ -47,12 +47,16 @@ export class CloudMap {
   private camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   /** What it was last drawn for: the field and the shape are often still (no wind, a screenshot). */
   private drawn = '';
+  readonly uniforms: { uCloudMap: { value: THREE.Texture | null }; uCloudRect: { value: THREE.Vector4 } };
+  readonly size: number;
 
   /**
    * `uniforms` are the materials' (CLOUD_MAP_GLSL's): the map's texture is put in uCloudMap, and its square is
    * uCloudRect's (see setArea).
    */
-  constructor(readonly uniforms: { uCloudMap: { value: THREE.Texture | null }; uCloudRect: { value: THREE.Vector4 } }, readonly size = 512) {
+  constructor(uniforms: { uCloudMap: { value: THREE.Texture | null }; uCloudRect: { value: THREE.Vector4 } }, size = 512) {
+    this.uniforms = uniforms;
+    this.size = size;
     this.target = new THREE.WebGLRenderTarget(size, size, {
       type: THREE.HalfFloatType, format: THREE.RedFormat, depthBuffer: false,
       minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false,

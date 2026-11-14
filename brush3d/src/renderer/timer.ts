@@ -18,7 +18,10 @@ export class PassTimer {
   private frame: { cpu: Record<string, number>; queries: [string, WebGLQuery][] } = { cpu: {}, queries: [] };
   private waiting: { times: FrameTimes; queries: [string, WebGLQuery][] }[] = [];
 
-  constructor(private gl: WebGL2RenderingContext) {
+  private gl: WebGL2RenderingContext;
+
+  constructor(gl: WebGL2RenderingContext) {
+    this.gl = gl;
     this.ext = gl.getExtension('EXT_disjoint_timer_query_webgl2') as TimerExt | null;
     this.gpu = this.ext !== null;
   }
@@ -35,7 +38,7 @@ export class PassTimer {
     }
     this.current = name === null ? null : { name, cpu: now, gpu };
     if (name !== null && ext && gpu) {
-      const q = this.pool.pop() ?? gl.createQuery()!;
+      const q = this.pool.pop() ?? gl.createQuery();
       gl.beginQuery(ext.TIME_ELAPSED_EXT, q);
       this.frame.queries.push([name, q]);
     }

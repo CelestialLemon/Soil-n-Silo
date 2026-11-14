@@ -240,7 +240,10 @@ export class HollowMap {
   private quadScene = new THREE.Scene();
   private material: THREE.ShaderMaterial;
 
-  constructor(readonly size = 1024) {
+  readonly size: number;
+
+  constructor(size = 1024) {
+    this.size = size;
     this.heights = new THREE.WebGLRenderTarget(size, size, { depthBuffer: true, format: THREE.RedFormat });
     this.heights.depthTexture = new THREE.DepthTexture(size, size, THREE.UnsignedIntType);
     this.dips = new THREE.WebGLRenderTarget(size, size, {
@@ -308,8 +311,8 @@ export class HollowMap {
     const mu = this.material.uniforms;
     Object.assign(mu, shelter);
     mu.uSide.value = area.side;
-    mu.uRange.value.set(top, top - bottom);
-    mu.uUnmap.value.copy(u.uHollowsMap.value).invert();
+    (mu.uRange.value as THREE.Vector2).set(top, top - bottom);
+    (mu.uUnmap.value as THREE.Matrix3).copy(u.uHollowsMap.value).invert();
     gl.setRenderTarget(this.dips);
     gl.render(this.quadScene, this.camera);
     gl.setRenderTarget(null);

@@ -247,7 +247,9 @@ export class Grove {
   /** Leaves and petals on the ground. */
   private readonly litter = new MeshBuilder('foliage');
 
-  constructor(private readonly dress: Dress | null) {}
+  private readonly dress: Dress | null;
+
+  constructor(dress: Dress | null) { this.dress = dress; }
 
   grow(ground: Ground, t: Tree, rand: () => number) {
     const dress = this.dress;
@@ -261,12 +263,12 @@ export class Grove {
     // A summer tree's worth of the stream, so what's placed after this tree stays where it was.
     growTree(SINK, SINK, ground, t, rand);
     const own = rng(Math.imul(Math.round(t.x * 311), 0x2c1b3c6d) ^ Math.imul(Math.round(t.z * 317), 0x85ebca6b));
-    if (dress.season === 'winter') this.winter(ground, t, own, dress);
+    if (dress.season === 'winter') this.winter(ground, t, own);
     else this.leafy(ground, t, own, dress);
   }
 
   /** Winter's tree: its whole limbs, and its twigs (or, for a hedge's bush, a dense bulk of twigs). */
-  private winter(ground: Ground, t: Tree, r: () => number, dress: Dress) {
+  private winter(ground: Ground, t: Tree, r: () => number) {
     const s = t.scale ?? 1, y0 = ground.height(t.x, t.z) - 0.05, base = new THREE.Vector3(t.x, y0, t.z);
     const wood0 = this.wood.vertexCount, twigs0 = this.twigs.vertexCount, dabScale = Math.pow(s, 0.45);
     if (twigMass(t)) {

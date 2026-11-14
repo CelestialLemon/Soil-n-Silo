@@ -231,7 +231,10 @@ export class BrushRenderer {
   /** The clouds' shape (clouds.ts): the game's, the same one it reads its solar panels by. */
   cloudShape: CloudShape = CLOUD_SHAPE;
 
-  constructor(readonly canvas: HTMLCanvasElement, options: RendererOptions = {}) {
+  readonly canvas: HTMLCanvasElement;
+
+  constructor(canvas: HTMLCanvasElement, options: RendererOptions = {}) {
+    this.canvas = canvas;
     this.gl = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: true });
     this.gl.autoClear = false;
     this.screenRatio = options.pixelRatio ?? Math.min(window.devicePixelRatio || 1, 2);
@@ -381,7 +384,7 @@ export class BrushRenderer {
       const turned = own && Float32Array.from(colour.array as Float32Array);
       if (own) (colour.array as Float32Array).set(own);
       const cut = cutIntoTiles(geometry, options.tile);
-      if (turned) (colour!.array as Float32Array).set(turned);
+      if (turned) colour.array.set(turned);
       const tiles = cut.map((g) => this.addOne(g, kind, options, true));
       tiles[0].userData.tiles = tiles;
       return tiles[0];
@@ -725,8 +728,8 @@ export class BrushRenderer {
       { shadeHue: look.shadeHue + s.uCloudBands.value.x * 180 / Math.PI, litHue: look.litHue + s.uCloudTint.value.x * 180 / Math.PI, sky: s.uCloudOvercast.value.x, sunColor: s.uCloudSunColor.value, skyColor: look.skyColor },
     );
     const u = this.post.uniforms;
-    u.uHazeColor.value.copy(grade.hazeColor); u.uHazeDensity.value = grade.hazeDensity; u.uHazeMax.value = grade.hazeMax; u.uHazeFloor.value = grade.hazeFloor;
-    u.uSkyTop.value.copy(grade.skyTop); u.uSkyBottom.value.copy(grade.skyBottom);
+    (u.uHazeColor.value as THREE.Color).copy(grade.hazeColor); u.uHazeDensity.value = grade.hazeDensity; u.uHazeMax.value = grade.hazeMax; u.uHazeFloor.value = grade.hazeFloor;
+    (u.uSkyTop.value as THREE.Color).copy(grade.skyTop); (u.uSkyBottom.value as THREE.Color).copy(grade.skyBottom);
     s.uSkyTop.value.copy(grade.skyTop); s.uSkyBottom.value.copy(grade.skyBottom);
     // The sky the water and the solar glass mirror: the gaps', and the clouds in it, lit by the hour (dimly by the moon),
     // thickening into the overcast sky as it closes.
@@ -744,7 +747,7 @@ export class BrushRenderer {
     this.lightning.light(s);
     if (this.lightning.aiming) this.shadowDir.copy(this.lightning.boltLight);
     this.applyFog();
-    u.uShimmer.value.set(heatShare(look, w.heat) * HEAT.shimmer, this.shared.uTime.value);
+    (u.uShimmer.value as THREE.Vector2).set(heatShare(look, w.heat) * HEAT.shimmer, this.shared.uTime.value);
     this.updateSunCamera();
   }
 
@@ -755,25 +758,25 @@ export class BrushRenderer {
    */
   private applyFog() {
     const w = this.weather, wind = this.wind, u = this.post.uniforms, s = this.shared;
-    litFog(u.uFogColor.value, w.hazeColor, s.uSunColor.value, s.uSkyColor.value);
+    litFog(u.uFogColor.value as THREE.Color, w.hazeColor, s.uSunColor.value, s.uSkyColor.value);
     // A fog thins in the wind; dust is what the wind lifts.
     const thin = THREE.MathUtils.lerp(1 / (1 + Math.max(0, wind.speed - 5) / 20), 1, w.dust);
     // It thins over most of its depth, measured from its base or else the water (the valley's floor).
     const floor = Math.max(w.hazeBase, this.water.floor ?? w.hazeTop - 4);
-    u.uFog.value.set(w.haze * thin, w.hazeBase, w.hazeTop, Math.max(0.5, 0.7 * (w.hazeTop - floor)));
+    (u.uFog.value as THREE.Vector4).set(w.haze * thin, w.hazeBase, w.hazeTop, Math.max(0.5, 0.7 * (w.hazeTop - floor)));
     // The patches drift downwind and are drawn out along it, dust's faster and further (WindState); dust's streaks blow
     // by faster still, stronger as the wind rises, and the gusts sweep it in in waves.
     const a = wind.haze, b = wind.hazeNext ?? a;
-    u.uFogFrame.value.set(a.hx, a.hz, a.stretch, a.drift);
-    u.uFogNext.value.set(b.hx, b.hz, b.stretch, b.drift);
+    (u.uFogFrame.value as THREE.Vector4).set(a.hx, a.hz, a.stretch, a.drift);
+    (u.uFogNext.value as THREE.Vector4).set(b.hx, b.hz, b.stretch, b.drift);
     u.uFogFade.value = wind.hazeNext ? wind.hazeFade : 0;
-    u.uFogStreak.value.set(a.streak, b.streak);
-    u.uDust.value.set(w.dust, 0.25 + 0.5 * Math.min(wind.speed / 25, 1), DUST_GUST);
+    (u.uFogStreak.value as THREE.Vector2).set(a.streak, b.streak);
+    (u.uDust.value as THREE.Vector3).set(w.dust, 0.25 + 0.5 * Math.min(wind.speed / 25, 1), DUST_GUST);
     // Fresh dust: the earth's colour, or a dusty air's where there is one, lit as the fog is.
     const f = this.dust;
     u.tDustA.value = f.a; u.tDustB.value = f.b; u.uDustBlend.value = f.blend; u.uDustOn.value = f.any ? 1 : 0;
     u.uDustReach.value = f.look.top + 0.5;
-    litFog(u.uDustColor.value, FRESH_DUST.clone().lerp(w.hazeColor, w.dust), s.uSunColor.value, s.uSkyColor.value);
+    litFog(u.uDustColor.value as THREE.Color, FRESH_DUST.clone().lerp(w.hazeColor, w.dust), s.uSunColor.value, s.uSkyColor.value);
     this.rain.setVeilColor((out, base) => litFog(out, base, s.uSunColor.value, s.uSkyColor.value));
     this.snowfall.setVeilColor((out, base) => litFog(out, base, s.uSunColor.value, s.uSkyColor.value));
   }
@@ -918,7 +921,7 @@ export class BrushRenderer {
     const cover = this.scene.children.filter((o): o is THREE.Mesh => (o as THREE.Mesh).isMesh && o.userData.cover !== undefined)
       .map((mesh) => ({
         mesh, cover: mesh.userData.kind === 'ground' ? 'land' as const : mesh.userData.cover as Cover,
-        depth: this.materials.get(mesh.userData.kind)!.depth,
+        depth: this.materials.get(mesh.userData.kind as MaterialKind)!.depth,
       }));
     const s = this.shared;
     this.shelter.draw(this.gl, this.scene, cover, this.groundSquare(), () => {
@@ -1012,7 +1015,7 @@ export class BrushRenderer {
     this.applyLook(this.look);
     const grounded: THREE.Object3D[] = [];
     if (!this.settings.falling) {
-      for (const o of this.scene.children) if (o.visible && FALLING.includes(o.userData.kind)) { o.visible = false; grounded.push(o); }
+      for (const o of this.scene.children) if (o.visible && FALLING.includes(o.userData.kind as DrawnKind)) { o.visible = false; grounded.push(o); }
     }
     // Framed by the screen's pixels, not the pixels drawn: drawing fewer (maxPixels) makes the frame softer, not nearer.
     const toScreen = this.screenRatio / this.pixelRatio;
@@ -1023,10 +1026,10 @@ export class BrushRenderer {
     if (this.shadowFollow) this.updateSunCamera();
     // Where each pixel is in the world, for the fog: the camera's frame, scaled to half the view.
     const cam = this.view.camera, pu = this.post.uniforms;
-    pu.uCamPos.value.copy(cam.position);
-    pu.uCamRight.value.setFromMatrixColumn(cam.matrixWorld, 0).multiplyScalar(cam.right);
-    pu.uCamUp.value.setFromMatrixColumn(cam.matrixWorld, 1).multiplyScalar(cam.top);
-    pu.uCamFwd.value.setFromMatrixColumn(cam.matrixWorld, 2).negate();
+    (pu.uCamPos.value as THREE.Vector3).copy(cam.position);
+    (pu.uCamRight.value as THREE.Vector3).setFromMatrixColumn(cam.matrixWorld, 0).multiplyScalar(cam.right);
+    (pu.uCamUp.value as THREE.Vector3).setFromMatrixColumn(cam.matrixWorld, 1).multiplyScalar(cam.top);
+    (pu.uCamFwd.value as THREE.Vector3).setFromMatrixColumn(cam.matrixWorld, 2).negate();
     // The rain, with the weather as drawn and the view as it is now.
     this.rain.update(time, this.weather.rain, this.view.zoom, this.pixelRatio / this.screenRatio, this.settings.fallingShare,
       this.settings.falling && this.rainShown, this.windNowVector.copy(s.uWindDir.value).multiplyScalar(s.uWindSpeed.value),
@@ -1059,7 +1062,7 @@ export class BrushRenderer {
       const saved = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
       const hidden: THREE.Object3D[] = [];
       for (const o of this.scene.children) if (!this.casters.includes(o as THREE.Mesh) && o.visible) { o.visible = false; hidden.push(o); }
-      for (const m of this.casters) { saved.set(m, m.material); m.material = this.materials.get(m.userData.kind)!.depth; }
+      for (const m of this.casters) { saved.set(m, m.material); m.material = this.materials.get(m.userData.kind as MaterialKind)!.depth; }
       gl.render(this.scene, this.sunCamera);
       for (const [m, mat] of saved) m.material = mat;
       for (const o of hidden) o.visible = true;
@@ -1082,7 +1085,7 @@ export class BrushRenderer {
       // top (the banks above it keep theirs, as the ripples' nudge shows them through the water's edge).
       const ground = this.ground.uniforms.uGroundOn, on = ground.value;
       if (on > 0.5) ground.value = 2;
-      this.drawOnly(this.underTarget, (m) => m.userData.under, this.waterRect(water, this.underTarget, nudge, 0));
+      this.drawOnly(this.underTarget, (m) => m.userData.under as boolean, this.waterRect(water, this.underTarget, nudge, 0));
       ground.value = on;
     }
     t?.mark('reflect');
@@ -1093,8 +1096,8 @@ export class BrushRenderer {
       this.silhouettes.visible = pre;
       if (pre) {
         for (const [mesh, twin] of this.twins) {
-          twin.visible = mesh.visible && mesh.userData.reflect;
-          twin.material = this.materials.get(mesh.userData.kind)!.mirrorPrepass;
+          twin.visible = mesh.visible && (mesh.userData.reflect as boolean);
+          twin.material = this.materials.get(mesh.userData.kind as MaterialKind)!.mirrorPrepass;
         }
       }
       // Nearer-or-equal here, not equal: on the laptop's Intel GPU equal depth made this pass slower, 1.9 → 3.1 ms (#6).
@@ -1103,7 +1106,7 @@ export class BrushRenderer {
       const flipped = [...this.materials.values()].flatMap((m) => [m.main, m.mirrorPrepass]).filter((m) => m.side === THREE.FrontSide);
       for (const m of flipped) m.side = THREE.BackSide;
       const rect = this.waterRect(water, this.reflectTarget, nudge * WATER_REACH.reflectNudge, WATER_REACH.blurPx, this.mirrorShift());
-      this.drawOnly(this.reflectTarget, (m) => m.userData.reflect || m === this.silhouettes, rect);
+      this.drawOnly(this.reflectTarget, (m) => (m.userData.reflect as boolean) || m === this.silhouettes, rect);
       for (const m of flipped) m.side = THREE.FrontSide;
       this.shared.uMirror.value = 0;
     }
@@ -1117,7 +1120,7 @@ export class BrushRenderer {
     if (pre) {
       for (const [mesh, twin] of this.twins) {
         twin.visible = mesh.visible;
-        twin.material = this.materials.get(mesh.userData.kind)!.prepass;
+        twin.material = this.materials.get(mesh.userData.kind as MaterialKind)!.prepass;
       }
     }
     // The leaves gain most from equal depth; for the rest it made no difference worth the risk of a GPU's depths not
@@ -1137,7 +1140,7 @@ export class BrushRenderer {
     gl.render(this.postScene, this.postCamera);
     if (this.settings.shelterDebug) this.shelter.drawOverlay(gl, this.gbuffer.textures[1], this.view.camera, this.width, this.height);
     t?.mark('bolt', this.lightning.active);
-    this.lightning.draw(gl, cam, u.uHazeColor.value);
+    this.lightning.draw(gl, cam, u.uHazeColor.value as THREE.Color);
     for (const o of grounded) o.visible = true;
     t?.endFrame();
   }
@@ -1152,8 +1155,11 @@ class LandHeights {
   static readonly TALL = 16;
   static readonly CELL = 2;
   static readonly FLAT = new LandHeights(0, 0, 0, 0, new Float32Array(0), 0, 0);
-  constructor(readonly x0: number, readonly z0: number, readonly nx: number, readonly nz: number, readonly max: Float32Array,
-    readonly lo: number, readonly hi: number) {}
+  readonly x0: number; readonly z0: number; readonly nx: number; readonly nz: number; readonly max: Float32Array;
+  readonly lo: number; readonly hi: number;
+  constructor(x0: number, z0: number, nx: number, nz: number, max: Float32Array, lo: number, hi: number) {
+    this.x0 = x0; this.z0 = z0; this.nx = nx; this.nz = nz; this.max = max; this.lo = lo; this.hi = hi;
+  }
 
   static from(scene: THREE.Scene): LandHeights | null {
     const box = new THREE.Box3();

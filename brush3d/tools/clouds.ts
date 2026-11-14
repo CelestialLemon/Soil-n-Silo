@@ -1,6 +1,6 @@
 // Checks the cloud recipe (src/renderer/clouds.ts, #8): the game reads its TypeScript for its solar panels and the
 // renderer draws its GLSL twin, so the two must give the same shade everywhere.
-//   npm run test:clouds        (needs the dev server: it runs the GLSL in the browser; see tools/browser.ts)
+//   npm run render:test:clouds        (needs the dev server: it runs the GLSL in the browser; see tools/browser.ts)
 //
 // 1. The TypeScript alone: the shaded share of the ground is the cover; the field repeats every period; no cover is no
 //    shade and full cover is all shade.
@@ -81,7 +81,7 @@ try {
   console.log('\nThe renderer\'s cloud map, against the TypeScript');
   // Over the scene's land, and over land a thousand kilometres out (a game whose world sits far from the origin).
   const far: [number, number, number] = [1e6 - 48.3, -1e6 + 17.9, 96];
-  const mapCases = cases.flatMap((c, i) => (i % 4 === 1 || i % 4 === 2 ? [{ ...c, area: null }] : i % 4 === 3 ? [{ ...c, area: far }] : []));
+  const mapCases = cases.flatMap((c, i) => (i % 4 === 1 || i % 4 === 2 ? [{ ...c, area: null as typeof far | null }] : i % 4 === 3 ? [{ ...c, area: far }] : []));
   for (const c of mapCases) {
     const map = await page.evaluate(readMap, c.shape, { cover: c.cover, x: c.x, z: c.z, seed: c.seed }, c.area);
     let texel = 0, between = 0;
@@ -126,7 +126,7 @@ function runTwin(glsl: string, uniforms: ({ uCloudSeed: number } & Record<string
     if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) ?? 'compile');
     return s;
   };
-  const program = gl.createProgram()!;
+  const program = gl.createProgram();
   gl.attachShader(program, shader(gl.VERTEX_SHADER, `#version 300 es
 in vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }`));
   gl.attachShader(program, shader(gl.FRAGMENT_SHADER, `#version 300 es

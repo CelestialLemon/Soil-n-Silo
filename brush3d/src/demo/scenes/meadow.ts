@@ -62,7 +62,7 @@ export function height(x: number, z: number) {
 }
 
 const ground = groundOf(height);
-const normalAt = ground.normal;
+const normalAt = (x: number, z: number) => ground.normal(x, z);
 
 export interface Meadow {
   center: THREE.Vector3; radius: number;

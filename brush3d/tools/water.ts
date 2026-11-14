@@ -1,6 +1,6 @@
 // Checks the water map (#18): how the renderer lays out the game's map (src/renderer/water.ts), the demo's stand-in for
 // the game's flood rule (src/demo/water.ts), and the easing between maps. No browser needed.
-//   npm run test:water
+//   npm run render:test:water
 // 1. Laying out: wet cells as sent; the sheet runs on flat for one cell past the last wet one, then dives under the land
 //    (DIVE a cell, at most MAX_DIVE), carrying the nearest water's flow and mud; with no water it lies far under everything.
 // 2. The stand-in's rule: water reaches lower ground it can get to and nothing else (a hollow behind a ridge stays dry
