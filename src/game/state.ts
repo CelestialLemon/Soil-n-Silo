@@ -2,7 +2,9 @@ import { BUILDINGS, isMachineId, recipesFor, type BuildingId, type CropId, type 
 import { generateMap, TERRAIN, type MapData } from './map.ts';
 import { newRunLog, type RunLog } from './runlog.ts';
 import type { Scenario } from './scenarios.ts';
+import { newOverhead } from './overhead.ts';
 import { nextVersion, runtimeOf } from './runtime.ts';
+import type { WindState } from '../../brush3d/src/shared.ts';
 
 // The state of a commission in progress: plain data, so it saves as JSON. Lookups that only speed things up (which building
 // is on a tile, the power networks) live in a cache beside it and are rebuilt when the layout changes.
@@ -150,7 +152,7 @@ export interface Stats {
 export const STAT_BUCKET = 10, STAT_BUCKETS = 7;
 
 export interface GameState {
-  version: 19;
+  version: 20;
   scenario: Scenario;
   map: MapData;
   /**
@@ -171,6 +173,10 @@ export interface GameState {
   time: number;
   /** Time left over from the last frame, less than a step. */
   carry: number;
+  /** The wind's gusts as they stand, stepped once a step (overhead.ts): which way and how hard each passes over the valley. */
+  wind: WindState;
+  /** How far the clouds have drifted on the wind since the start, in metres (overhead.ts): where their shadows fall. */
+  clouds: { x: number; z: number };
   delivered: Partial<Record<ItemId, number>>;
   earned: number;
   stats: Stats;
@@ -191,10 +197,10 @@ export interface GameState {
 export function newGame(sc: Scenario): GameState {
   const map = generateMap(sc);
   const s: GameState = {
-    version: 19, scenario: { ...sc, events: sc.events.map((e) => ({ ...e })) }, map, worked: map.terrain.map(() => 0), soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
+    version: 20, scenario: { ...sc, events: sc.events.map((e) => ({ ...e })) }, map, worked: map.terrain.map(() => 0), soilBase: [...map.fertility], initialTrees: map.terrain.filter((t) => t === TERRAIN.tree).length,
     buildings: [], routes: [], trucks: [], nextId: 1, credits: sc.credits, time: 0, carry: 0, delivered: {}, earned: 0,
     stats: { since: 0, made: [{}], delivered: {} }, reached: sc.goals.map(() => false), completedAt: null, made: {}, run: newRunLog(),
-    chosen: { crop: 'wheat', recipes: {} }, forecastIssued: null,
+    chosen: { crop: 'wheat', recipes: {} }, forecastIssued: null, ...newOverhead(sc, map.width, map.height),
   };
   s.buildings.push(makeBuilding(s, 'depot', map.depot.x, map.depot.y, 0));
   return s;
