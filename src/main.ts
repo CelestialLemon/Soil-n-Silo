@@ -1,5 +1,3 @@
-import * as THREE from 'three';
-import { DEFAULT_WEATHER, lookAt, MAX_HIGHLIGHTS, PixelRenderer, quantizePalette, type PickResult, type PixelObject } from 'pixel3d-renderer';
 import {
   addStop, canPlace, canReshape, type Groundwork, digArea, levelledFor, type Dig, clearPrice, earthPrice, EARTHWORK_NAMES, EARTHWORKS, messageOf, place, placePrice, priceOf, remember, remove, removeAt, reshape, settingFor, settingName, stepSetting, type Setting,
 } from './game/build.ts';
@@ -7,8 +5,8 @@ import { BUILDINGS, CROPS, drawsPower, POWER, type BuildingId } from './game/dat
 import { holdNeed, truckHold } from './game/hold.ts';
 import { frostComes, HOLLOW_FACT, inHollow, isHollow } from './game/frost.ts';
 import { insideFact, insideNow, warmthFact, warmthOf } from './game/warmth.ts';
-import { generateLand, TERRAIN } from './game/map.ts';
-import { aroundPoint, corners, MAX_LEVEL, sheetAt } from './game/relief.ts';
+import { TERRAIN } from './game/map.ts';
+import { aroundPoint, corners, sheetAt } from './game/relief.ts';
 import { wheelSite } from './game/rules.ts';
 import { deserialize, readProgress, recordResult, saveKey, serialize } from './game/save.ts';
 import { scenarioById } from './game/scenarios.ts';
@@ -32,24 +30,10 @@ import { SettingsStore } from './ui/settings.ts';
 import { truckName } from './ui/routing.ts';
 import { statusLabel } from './ui/widgets.ts';
 import type { Hover, MarkerSpot } from './ui/world.ts';
-import { windAt } from './game/sim/clock.ts';
-import { weatherNow } from './game/sim/weather.ts';
-import { allGeometries, loadModels } from './world/models.ts';
-import { FloodView } from './world/floodView.ts';
-import { IceView } from './world/iceView.ts';
-import { PowerView } from './world/powerView.ts';
-import { Rime } from './world/rime.ts';
-import { SnowView } from './world/snowView.ts';
-import { RouteView } from './world/routeView.ts';
-import { Camera } from './world/camera.ts';
-import { CURSOR_GRID, TileCursor, type CursorPatch } from './world/tileCursor.ts';
-import { buildWorld, COUNTRY } from './world/terrain.ts';
-import { fallIntensity, greyLook } from './world/greyLook.ts';
-import { detailColours, GroundDetail } from './world/detail.ts';
-import { muddyAt } from './game/mud.ts';
-import { Lie, LEVEL_HEIGHT, MapGround, standY } from './world/ground.ts';
-import { WorldView, type Overlay } from './world/view.ts';
-import { SOILS } from './world/shapes.ts';
+import { CURSOR_GRID, type CursorPatch } from './world/tileCursor.ts';
+import { type Overlay } from './world/view.ts';
+import { pixelScene } from './world/pixelScene.ts';
+import type { Scene } from './world/scene.ts';
 import './ui/clearday/tokens.css';
 import './ui/clearday/clearday.css';
 import './ui/clearday/icons.css';
@@ -64,15 +48,13 @@ interface Spot { x: number; y: number; rot: Dir }
  */
 interface Placed { spot: Spot; fit: Result<Groundwork>; price: number; built: boolean; site: { rot: Dir } | null; stand: number; tiles: number[] }
 
-// The game: owns the loop, the state, input and the camera, and each frame tells the renderer where everything is. It is
+// The game: owns the loop, the state, input and the camera, and each frame tells the scene where everything is. It is
 // build-only: the player places, configures and removes buildings and the simulation runs on its own. The camera
 // is orthographic at a 30° pitch, turns between four views 90° apart, zooms towards the pointer and pans with the mouse.
 //
-// Each art pixel is drawn as a square of `pixelSize` screen pixels (a setting, 2 by default), whatever the zoom; zooming
-// changes how many metres of ground fit on the screen, so models are drawn with more art pixels close up and fewer far out.
-
-/** How near the line of sight through the pointer a truck must drive (m) to change what is under the pointer. */
-const TRUCK_REACH = 0.8;
+// It draws through a Scene (world/scene.ts), never a renderer: the pixel world (world/pixelScene.ts) by default, brush3d's
+// (world/brush/) with `?renderer=brush3d` until the swap (epic #212). Work on the brush3d world goes in world/brush/; this
+// file only changes when the loop itself does.
 const AUTOSAVE_SECONDS = 30;
 const MAX_STEPS_PER_FRAME = 80;
 /** How long the pointer rests before the card about what is under it shows (ms). */
@@ -92,6 +74,17 @@ followKeys(settings);
 const loaded = deserialize(localStorage.getItem(SAVE_KEY));
 const saved = loaded.ok ? loaded.value : null;
 const params = new URLSearchParams(location.search);
+/**
+ * Whether the game is drawn by brush3d (`?renderer=brush3d`) rather than the pixel renderer, until the swap (#211). Players
+ * don't see it before then (epic #212): it's only reachable through the URL, and kept across the game's own reloads (`page`).
+ */
+const BRUSH = params.get('renderer') === 'brush3d';
+/** The game's page again, with `query` (`?menu`), keeping the renderer switch. */
+const page = (query = '') => {
+  const q = new URLSearchParams(query);
+  if (BRUSH) q.set('renderer', 'brush3d');
+  return `${location.pathname}${q.size ? `?${q}` : ''}`;
+};
 /** A commission to start straight away (`?play=<id>`); an unknown id falls through to the menu or the saved game. */
 const startId = params.get('play');
 const startSc = startId ? scenarioById(startId) : null;
@@ -105,7 +98,7 @@ function startNew(id: string) {
   if (!sc) return;
   leaving = true;
   localStorage.setItem(SAVE_KEY, serialize(newGame(sc)));
-  location.href = location.pathname;
+  location.href = page();
 }
 
 if (startId && startSc) startNew(startId);
@@ -114,7 +107,7 @@ else if (!saved || params.has('menu')) {
   showMenu(document.body, {
     saved, settings,
     progress: readProgress(localStorage.getItem(PROGRESS_KEY)),
-    resume: () => { location.href = location.pathname; },
+    resume: () => { location.href = page(); },
     start: startNew,
   });
 } else {
@@ -126,33 +119,20 @@ watchScrollHints();
 async function play(initial: GameState) {
   let state = initial;
   const map = state.map;
-  const { season } = state.scenario.climate;
-  const models = await loadModels(season);
-  const land = generateLand(state.scenario, COUNTRY);
-  const lie = new Lie(state, land), world = buildWorld(map, land, lie, models, season), ground = new MapGround(state, land, lie, world.halo, [...SOILS, ...detailColours(season), ...detailColours(season).map(world.halo.tone)]);
-  // 240 colours: the five grounds' turf, each with its dryness and hillshade steps, is about 500 distinct colours before the merge.
-  quantizePalette([...world.geometries, ...ground.geometries, ...allGeometries(models)], 240);
-  const renderer = new PixelRenderer(canvas, world.scene, { shadowMapSize: 2048, warmHighlight: true });
-  ground.show(renderer);
-  const detail = new GroundDetail(renderer, state, land, lie, ground, world.halo.tone);
-  /** The ground's height (m) at a point of the map, for picking a tile; nothing on the map stands above TOP. */
-  const groundAt = (x: number, z: number) => lie.y(x, z), TOP = (MAX_LEVEL + 1) * LEVEL_HEIGHT;
+  /** What is under the pointer may have changed (the pointer, the camera, the tool or the world moved): ask again. */
+  let repick = true;
+  const start = { x: map.depot.x + 1.5, z: map.depot.y - 4 }, changed = () => { repick = true; };
+  // brush3d comes in its own chunk, so the pixel game never loads it.
+  const scene: Scene = BRUSH ? (await import('./world/brush/scene.ts')).brushScene(state, canvas, settings, start, changed)
+    : await pixelScene(state, canvas, settings, start, changed);
+  const { camera, heights, picker, preview } = scene;
+  /** The ground's height at a point of the map, for picking a tile; nothing on the map stands above heights.top. */
+  const groundAt = (x: number, z: number) => heights.at(x, z), TOP = heights.top;
   /** The same for picking: no ground off the map, so a line of sight from beyond meets the map's edge, or its cliff. */
   const pickGround = (x: number, z: number) => (x >= 0 && z >= 0 && x < map.width && z < map.height ? groundAt(x, z) : -Infinity);
-  const view = new WorldView(renderer, models, lie, ground.paint, world.halo.things);
-  const floodView = new FloodView(renderer, lie);
-  const power = new PowerView(renderer, models, lie);
-  const rime = new Rime(renderer, lie);
-  const ice = new IceView(renderer, land), snow = new SnowView(renderer, lie, land);
-  const routeView = new RouteView(renderer, models, lie);
-  const cursor = new TileCursor(canvas, 0xfff0c0), refused = new TileCursor(canvas, 0xe8705a);
   /** The marks on the ground the cursor draws: the tile pointed at, the points earthworks would move; those refused in red. */
   let marks: CursorPatch[] = [], refusedMarks: CursorPatch[] = [];
   loading.remove();
-
-  /** What is under the pointer may have changed (the pointer, the camera, the tool or the world moved): ask again. */
-  let repick = true;
-  const camera = new Camera(renderer, canvas, settings, map, { x: map.depot.x + 1.5, z: map.depot.y - 4 }, () => { repick = true; });
 
   let speed = 1, paused = false, overlay: Overlay = 'none';
   // Switching the testing speeds off while at one drops to the top normal speed.
@@ -181,7 +161,7 @@ async function play(initial: GameState) {
     turn: (d) => camera.turn(d),
     zoom: (d) => camera.zoomStep(d),
     settings,
-    menu: () => { save(); location.href = `${location.pathname}?menu`; },
+    menu: () => { save(); location.href = page('menu'); },
     restart: () => startNew(state.scenario.id),
     start: (id) => { save(); startNew(id); },
     previewRoute: (id) => { previewRoute = id; },
@@ -226,35 +206,8 @@ async function play(initial: GameState) {
   }
   /** The building or truck under the pointer (their ids are one count). */
   let hoverBuilding: number | null = null;
-  let highlighted: PixelObject[] = [];
-
-  /** The art pixel under page point `at`, counted as the renderer's pick counts it, and the picture's size. */
-  function artPixel(at: { x: number; y: number }) {
-    const rect = canvas.getBoundingClientRect();
-    return { x: Math.floor((at.x - rect.left) / rect.width * renderer.width), y: Math.floor((at.y - rect.top) / rect.height * renderer.height), w: renderer.width, h: renderer.height };
-  }
-  /** The camera as drawn (placed and snapped to the pixel grid), to tell whether the picture under a still pointer moved. */
-  const cameraNow = (into = new THREE.Matrix4()) => into.multiplyMatrices(renderer.camera.projectionMatrix, renderer.camera.matrixWorldInverse);
-  const cameraScratch = new THREE.Matrix4();
-
-  /**
-   * What a pick found under the pointer, and where the pointer (`px`, an art pixel) and the camera were when it was asked.
-   * `ground` is the tile the ground showed there then, `terrain` a tree's or rock's tile, `building` a building or truck.
-   */
-  interface Seen {
-    object: PixelObject | null; terrain: { x: number; y: number } | null; building: number | null;
-    ground: { x: number; y: number } | null; px: ReturnType<typeof artPixel>; camera: THREE.Matrix4;
-  }
-  /** The last pick's answer, kept while the pointer is on the canvas. */
-  let seen: Seen | null = null;
   /** The tile of ground under the pointer this frame, for the next pick's answer. */
   let groundTile: { x: number; y: number } | null = null;
-
-  /** Keeps a pick's answer `p`, asked at art pixel `px` with `camera` and `ground` the tile under the pointer then. */
-  function keep(p: PickResult | null, px: ReturnType<typeof artPixel>, ground: { x: number; y: number } | null, camera: THREE.Matrix4) {
-    const object = p?.object ?? null;
-    seen = { object, terrain: view.terrainOf(object), building: view.buildingOf(object), ground, px, camera };
-  }
 
   /**
    * What is under the pointer now. The tile and the point of the ground come from the pointer and the camera as they are,
@@ -263,36 +216,18 @@ async function play(initial: GameState) {
    */
   function hoverNow() {
     const at = input.pointer;
-    if (!at) { hoverTile = hoverPoint = groundTile = null; hoverBuilding = null; seen = null; return; }
+    if (!at) { hoverTile = hoverPoint = groundTile = null; hoverBuilding = null; picker.forget(); return; }
     groundTile = camera.tileAt(at.x, at.y, pickGround, TOP);
-    hoverTile = groundTile;
-    // A tree or rock is its own tile (the ground behind it is another), while the pick still shows what is under the pointer:
-    // the same art pixel, the camera not moved, and the tree still there.
-    if (seen?.terrain) {
-      const px = artPixel(at), was = seen.px, now = view.terrainOf(seen.object);
-      if (px.x === was.x && px.y === was.y && px.w === was.w && px.h === was.h && now && now.x === seen.terrain.x && now.y === seen.terrain.y
-        && cameraNow(cameraScratch).equals(seen.camera)) hoverTile = now;
-    }
+    const under = picker.under(state, at, groundTile);
+    hoverTile = under.tile;
     hoverPoint = pointAt(at.x, at.y, hoverTile);
-    // A building's or truck's own object, if it still stands for it; else the building on the tile the pick looked at.
-    if (!seen) hoverBuilding = null;
-    else if (seen.building !== null) hoverBuilding = view.buildingOf(seen.object) === seen.building ? seen.building : null;
-    else {
-      const t = seen.terrain ?? seen.ground;
-      hoverBuilding = t ? buildingAt(state, t.x, t.y)?.id ?? null : null;
-    }
+    hoverBuilding = under.building;
   }
-
-  /** The number of the last pick asked for: an answer that comes after a newer pick is dropped. */
-  let pickNo = 0;
-  /** A hover pick is on its way: the next waits for it, so there is at most one. */
-  let picking = false;
 
   /** What is under the pointer now, waiting for the GPU: for a click, which acts on what it lands on. */
   function pickNow() {
-    pickNo++;
     const at = input.pointer;
-    if (at) keep(renderer.pick(at.x, at.y), artPixel(at), camera.tileAt(at.x, at.y, pickGround, TOP), cameraNow());
+    if (at) picker.now(at, camera.tileAt(at.x, at.y, pickGround, TOP));
     hoverNow();
   }
 
@@ -301,65 +236,15 @@ async function play(initial: GameState) {
    * or two later. With a pick still on its way it waits for that one; with no pointer there is nothing under it.
    */
   function repickHover() {
-    if (!input.pointer) { pickNo++; seen = null; repick = false; return; }
-    if (picking) return;
-    repick = false; picking = true;
-    const no = ++pickNo, at = { ...input.pointer }, px = artPixel(at), ground = groundTile, drawn = cameraNow();
-    void renderer.requestPick(at.x, at.y).then((p) => {
-      picking = false;
-      if (no === pickNo && input.pointer) keep(p, px, ground, drawn);
-    });
-  }
-
-  /** Where each truck was drawn when the pointer last looked, to tell when one moves under it. */
-  const trucksSeen = new Map<number, { x: number; z: number }>();
-  const near = new THREE.Vector3();
-  /** Whether a truck has driven under the pointer, or out from under it, since the last frame. */
-  function truckMovedUnder(p: { x: number; y: number }) {
-    let under = false, sight: THREE.Ray | null = null;
-    for (const t of state.trucks) {
-      const at = view.truckAt(t.id), was = trucksSeen.get(t.id);
-      if (!at || (was && was.x === at.x && was.z === at.z)) continue;
-      trucksSeen.set(t.id, at);
-      if (under) continue;
-      sight ??= camera.sightAt(p.x, p.y);
-      // Measured from the middle of the truck, where it is now and where it was.
-      for (const q of was ? [at, was] : [at]) if (sight.distanceToPoint(near.set(q.x, groundAt(q.x, q.z) + 0.25, q.z)) < TRUCK_REACH) under = true;
-    }
-    return under;
-  }
-  /** The world view's count of changes when the pointer last looked. */
-  let viewSeen = view.changes;
-
-  function highlight(ids: number[]) {
-    const next = ids.flatMap((id) => view.objectsOf(id)).slice(0, MAX_HIGHLIGHTS);
-    for (const o of highlighted) if (!next.includes(o)) o.highlight = false;
-    for (const o of next) o.highlight = true;
-    highlighted = next;
+    if (!input.pointer) { picker.forget(); repick = false; return; }
+    if (picker.request({ ...input.pointer }, groundTile, () => !!input.pointer)) repick = false;
   }
 
   // ---- Ghosts: what would be built ----
-  const ghostPool = new Map<string, PixelObject[]>();
-  let ghostUsed = new Map<string, number>();
-  const GOOD = new THREE.Color(0x90ff90), BAD = new THREE.Color(0xff5040);
-  /** Shows a preview object; `fits` draws it see-through and tinted green (fits) or red (doesn't). */
-  function ghost(key: string, g: THREE.BufferGeometry, x: number, y: number, z: number, yaw = 0, fits?: boolean) {
-    const list = ghostPool.get(key) ?? [];
-    ghostPool.set(key, list);
-    const i = ghostUsed.get(key) ?? 0;
-    ghostUsed.set(key, i + 1);
-    let o = list[i];
-    if (!o) { o = renderer.addObject(g); o.castShadow = false; list.push(o); }
-    o.visible = true;
-    if (fits !== undefined) { o.opacity = 0.6; o.tint = fits ? GOOD : BAD; o.tintStrength = 0.45; }
-    o.setTransform(new THREE.Vector3(x, y, z), new THREE.Euler(0, yaw, 0));
-  }
   function clearGhosts() {
-    for (const list of ghostPool.values()) for (const o of list) o.visible = false;
-    ghostUsed = new Map();
+    preview.clear();
     pylonGhosts = [];
   }
-  const YAW = [Math.PI, Math.PI / 2, 0, -Math.PI / 2];
 
   /** The north-west tile for a building of size n centred under the pointer's tile. */
   const anchor = (t: { x: number; y: number }, n: number) => ({ x: t.x - Math.floor((n - 1) / 2), y: t.y - Math.floor((n - 1) / 2) });
@@ -397,18 +282,18 @@ async function play(initial: GameState) {
         if (type === 'pylon') pylonGhosts.push({ x: sp.x, y: sp.y, ok: okHere });
         // It stands where the ground would be levelled to, or on the ground as it lies.
         const cx = sp.x + n / 2, cz = sp.y + n / 2;
-        ghost(`frame ${okHere} ${n}`, (okHere ? models.frames.ok : models.frames.bad)[n - 1], cx, base + 0.03, cz);
+        preview.frame(n, okHere, cx, base, cz);
         // A water wheel turns to face the river, as it will once placed.
-        ghost(`b ${type}`, models.buildings[type].idle, cx, base + 0.04, cz, YAW[site ? site.rot : sp.rot], okHere);
+        preview.building(type, cx, base, cz, site ? site.rot : sp.rot, okHere);
         // A field or a greenhouse shows its crop, grown enough to tell apart.
         if (growsCrops({ type }) && tool.crop) {
-          const crop = tool.crop, stages = models.crops[crop], g = stages[Math.min(2, stages.length - 1)];
-          tiles.forEach((h, i) => ghost(`crop ${crop}`, g, sp.x + (i % n) + 0.5, h + 0.06, sp.y + Math.floor(i / n) + 0.5, 0, okHere));
+          const crop = tool.crop;
+          tiles.forEach((h, i) => preview.crop(crop, sp.x + (i % n) + 0.5, h, sp.y + Math.floor(i / n) + 0.5, okHere));
         }
       }
     } else if (tool.kind === 'remove' && input.press?.mode === 'paint' && input.press.from && input.press.to) {
       const x0 = Math.min(input.press.from.x, input.press.to.x), x1 = Math.max(input.press.from.x, input.press.to.x), y0 = Math.min(input.press.from.y, input.press.to.y), y1 = Math.max(input.press.from.y, input.press.to.y);
-      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) ghost('frame false 1', models.frames.bad[0], x + 0.5, groundAt(x + 0.5, y + 0.5) + 0.03, y + 0.5);
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) preview.frame(1, false, x + 0.5, groundAt(x + 0.5, y + 0.5), y + 0.5);
     } else if (tool.kind === 'earth') {
       // The points the dig would move (or the tiles it would level, framed), marked in the cursor's colour if it can be
       // done, else red where it was asked.
@@ -470,8 +355,8 @@ async function play(initial: GameState) {
       const price = fit.ok ? placePrice(s, type, fit.value) : priceOf(s, type), level = fit.ok ? fit.value.level : null;
       const site = BUILDINGS[type].onBank && fit.ok ? levelledFor(s, fit.value.move, () => wheelSite(s, spot.x, spot.y)) : null;
       // Where it and its tiles would stand: on the level its ground is levelled to, or on the ground as the ones before leave it.
-      const stand = level !== null ? level * LEVEL_HEIGHT : standY(lie, s.map, n, spot.x, spot.y);
-      const tiles = Array.from({ length: n * n }, (_, i) => (level !== null ? level * LEVEL_HEIGHT : lie.y(spot.x + (i % n) + 0.5, spot.y + Math.floor(i / n) + 0.5)));
+      const stand = level !== null ? heights.level(level) : heights.stand(s.map, n, spot.x, spot.y);
+      const tiles = Array.from({ length: n * n }, (_, i) => (level !== null ? heights.level(level) : groundAt(spot.x + (i % n) + 0.5, spot.y + Math.floor(i / n) + 0.5)));
       const built = fit.ok && s.credits >= price && (s === state || place(s, type, spot.x, spot.y, spot.rot, set).ok);
       return { spot, fit, price, built, site, stand, tiles };
     });
@@ -481,7 +366,7 @@ async function play(initial: GameState) {
   let placedFor: { key: string; out: Placed[] } | null = null;
   /** The cursor's marks on a tile: a frame along its sides `edges` (CursorPatch), and dots at its corners `dots`. */
   const patch = (x: number, y: number, edges: number, dots: number[]): CursorPatch =>
-    ({ x, y, heights: Array.from({ length: (CURSOR_GRID + 1) ** 2 }, (_, i) => lie.tileY(x, y, (i % (CURSOR_GRID + 1)) / CURSOR_GRID, Math.floor(i / (CURSOR_GRID + 1)) / CURSOR_GRID)), edges, dots });
+    ({ x, y, heights: Array.from({ length: (CURSOR_GRID + 1) ** 2 }, (_, i) => heights.tile(x, y, (i % (CURSOR_GRID + 1)) / CURSOR_GRID, Math.floor(i / (CURSOR_GRID + 1)) / CURSOR_GRID)), edges, dots });
   /** The dig the earthworks in hand would do: over the drag's points, or at the point pointed at. */
   function digHere(): Dig | null {
     if (tool.kind !== 'earth' || !hoverTile) return null;
@@ -722,38 +607,14 @@ async function play(initial: GameState) {
     const spots = input.press?.mode === 'paint' && input.press.from && input.press.to ? plan(type, input.press.from, input.press.to, tool.rot) : [{ ...a, rot: tool.rot }];
     // What they cost with the earthworks each needs, as placing them would charge.
     const price = placed(type, spots).reduce((sum, p) => sum + p.price, 0);
-    return { type, x: a.x, y: a.y, count: spots.length, price, crop: tool.crop, recipe: tool.recipe, ...camera.toScreen(a.x + n / 2, standY(lie, state.map, n, a.x, a.y) + models.buildings[type].height + 0.3, a.y + n / 2) };
+    return { type, x: a.x, y: a.y, count: spots.length, price, crop: tool.crop, recipe: tool.recipe, ...camera.toScreen(a.x + n / 2, heights.stand(state.map, n, a.x, a.y) + scene.heightOf(type) + 0.3, a.y + n / 2) };
   }
 
-  // The frame rate readout's report mode: where the machine and the renderer's setup are read from, only when a report is made.
-  {
-    const three = renderer.renderer, gl = three.getContext();
-    hud.perf.attach({
-      env: () => {
-        const dbg = gl.getExtension('WEBGL_debug_renderer_info');
-        return {
-          glRenderer: String(gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER)), glVendor: String(gl.getParameter(dbg ? dbg.UNMASKED_VENDOR_WEBGL : gl.VENDOR)),
-          userAgent: navigator.userAgent, viewport: [window.innerWidth, window.innerHeight], devicePixelRatio: window.devicePixelRatio,
-          art: [renderer.width, renderer.height], supersample: renderer.supersample, shadowMapSize: renderer.shadowMapSize, pixelSize: settings.get().pixelSize,
-          timerQueries: !!gl.getExtension('EXT_disjoint_timer_query_webgl2'),
-        };
-      },
-      counts: () => ({ draws: three.info.render.calls, triangles: three.info.render.triangles }),
-      // three.js counts a draw call per render() and resets at each one; held across the frame's passes while the report is on.
-      resetCounts: (on) => { three.info.autoReset = !on; if (on) three.info.reset(); },
-    });
-  }
+  hud.perf.attach(scene.report);
 
   // ---- Loop ----
-  let last = performance.now(), time = 0, lookHour = Number.NaN, lookCloud = 0, lookPrecip = 0, lookHeat = 0, sinceSave = 0;
+  let last = performance.now(), time = 0, sinceSave = 0;
   let wasComplete = state.completedAt !== null;
-  let skyEased: { cloud: number; wind: number; precip: number; haze: number; hazeTop: number } | null = null;
-  /** The colour of the haze last drawn, kept while it thins out. */
-  let hazeColor = DEFAULT_WEATHER.hazeColor;
-  /** What fell last, so a fading shower keeps its kind while it thins out. */
-  let fallKind: 'rain' | 'snow' = 'rain';
-  /** Seconds the drawn cloud and wind take to follow the game's; the lean the game's full wind gives the trees (renderer 0 to 3); the gusts in still air and what the wind adds. */
-  const EASE_SECONDS = 3, WIND_LEAN = 2, GUSTS_CALM = 0.5, GUSTS_PER_WIND = 1;
 
   function frame(now: number) {
     hud.perf.frame(now);
@@ -779,44 +640,11 @@ async function play(initial: GameState) {
     // The camera is placed before anything is picked or put on the page from it, so the tags and markers keep up as it moves.
     camera.update(time, dt);
 
-    const hour = hourAt(state.time);
-    // The sky's cloud cover and the wind in the trees follow the weather now, eased over a few seconds (a wind change applies
-    // at once in the renderer). Rain and snow fall on the same easing, thickening and thinning with the spell.
-    const sky = weatherNow(state), windNow = windAt(state.scenario, state.time), ease = 1 - Math.exp(-dt / EASE_SECONDS);
-    const hazeNow = sky.haze, hazeAmount = hazeNow?.amount ?? 0, hazeTopNow = hazeNow?.top ?? skyEased?.hazeTop ?? DEFAULT_WEATHER.hazeTop;
-    if (!skyEased) { skyEased = { cloud: sky.cloud, wind: windNow, precip: sky.precip, haze: hazeAmount, hazeTop: hazeTopNow }; } else {
-      skyEased.precip += (sky.precip - skyEased.precip) * ease; skyEased.cloud += (sky.cloud - skyEased.cloud) * ease; skyEased.wind += (windNow - skyEased.wind) * ease;
-      skyEased.haze += (hazeAmount - skyEased.haze) * ease; skyEased.hazeTop += (hazeTopNow - skyEased.hazeTop) * ease;
-    }
-    if (hazeNow) hazeColor = hazeNow.color;
-    if (sky.sky === 'rain' || sky.sky === 'snow') fallKind = sky.sky;
-    const fall = fallIntensity(skyEased.precip);
-    renderer.setWeather({
-      precipitation: fall > 0 ? fallKind : 'none',
-      intensity: fall,
-      cloudCover: Math.min(1, Math.max(0, skyEased.cloud)),
-      wind: Math.min(3, Math.max(0, skyEased.wind * WIND_LEAN)),
-      gusts: Math.min(3, Math.max(0, GUSTS_CALM + skyEased.wind * GUSTS_PER_WIND)),
-      // A fog or a dust storm lies on the ground (the thickness eases with the event's ramp; a fog thins as the morning lifts it, events.ts).
-      haze: Math.min(1, Math.max(0, skyEased.haze)), hazeColor, hazeTop: skyEased.hazeTop,
-    });
-    // The hour's look, greyed by the weather now; set again when the hour or the weather has moved enough to show.
-    const weather = sky;
-    if (!(Math.abs(hour - lookHour) <= 0.02) || Math.abs(weather.cloud - lookCloud) > 0.01 || Math.abs(weather.precip - lookPrecip) > 0.01 || Math.abs(weather.heat - lookHeat) > 0.01) {
-      renderer.setLook(greyLook(lookAt(hour), weather)); lookHour = hour; lookCloud = weather.cloud; lookPrecip = weather.precip; lookHeat = weather.heat;
-    }
-
-    ground.mud(muddyAt(state.scenario, state.time));
-    ground.sync();
-    // The grid and the contour lines show while building or doing earthworks.
-    ground.showLines(tool.kind === 'build' || tool.kind === 'earth');
-    detail.sync();
-    view.sync(state);
-    floodView.sync(state);
+    // The hour, the weather, the ground and the world, before anything is picked or the tools run.
+    scene.sync(state, { dt, hour: hourAt(state.time), lines: tool.kind === 'build' || tool.kind === 'earth' });
     toolOverlay = 'none';
     // Something new shown or taken away, or a truck driving under the pointer, may change what is under it.
-    if (view.changes !== viewSeen) { viewSeen = view.changes; repick = true; }
-    if (input.pointer && truckMovedUnder(input.pointer)) repick = true;
+    if (picker.moved(state, input.pointer)) repick = true;
     hoverNow();
     showGhosts();
     // Editing a route shows the roads. Building shows the roads, the sprinklers' water or the bees' range; anything that
@@ -827,56 +655,48 @@ async function play(initial: GameState) {
       toolOverlay = type === 'silo' ? 'roads' : type === 'sprinkler' ? 'water' : type === 'hive' ? 'bees' : usesPower(type) ? 'power' : 'height';
     }
     const shownOverlay = overlay !== 'none' ? overlay : toolOverlay;
-    view.overlay(state, shownOverlay);
-    rime.sync(state, shownOverlay !== 'none');
-    ice.sync(state);
-    snow.sync(state, shownOverlay !== 'none');
-    // The small things in the grass stand aside for the ground's lines and the overlays.
-    detail.show(shownOverlay === 'none' && tool.kind !== 'build' && tool.kind !== 'earth');
     const focus = selected ?? (tool.kind === 'select' ? hoverBuilding : null);
     const shown = shownRoutes(focus, shownOverlay === 'roads');
-    view.links(linkedTo(focus));
-    view.snow(state, snow.cover(state));
-    routeView.sync(state, shown.routes, shown.numbers);
+    // Power shows only while you work with it: its overlay, placing something that uses power, selecting a building on a
+    // network, or pointing at a pylon or something that makes or stores power.
+    const hovered = tool.kind === 'select' && hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;
+    const hi: number[] = [];
+    if (selected !== null) hi.push(selected);
+    if (hoverBuilding !== null && hoverBuilding !== selected && (tool.kind === 'select' || tool.kind === 'remove')) hi.push(hoverBuilding);
+    scene.show(state, {
+      overlay: shownOverlay,
+      // The small things in the grass stand aside for the ground's lines and the overlays.
+      details: shownOverlay === 'none' && tool.kind !== 'build' && tool.kind !== 'earth',
+      links: linkedTo(focus), highlight: hi, routes: shown,
+      power: {
+        all: shownOverlay === 'power' || (tool.kind === 'build' && usesPower(tool.type)), tiles: shownOverlay === 'power',
+        focus: selected ?? (hovered && BUILDINGS[hovered.type].grid ? hovered.id : null), ghosts: pylonGhosts,
+      },
+    });
     // Tags over the trucks of the one route being edited or pointed at.
     const tagged = shown.numbers && (tool.kind === 'route' || previewRoute !== null) ? shown.routes[0] : null;
     hud.world.setTruckTags(tagged ? state.trucks.filter((t) => t.route === tagged.id).map((t) => {
       const to = t.target !== null ? buildingById(state, t.target) : null;
       const where = t.phase === 'drive' && to ? `to the ${BUILDINGS[to.type].name.toLowerCase()}` : t.phase === 'dock' || t.phase === 'queue' ? `at the ${to ? BUILDINGS[to.type].name.toLowerCase() : 'stop'}` : t.phase === 'charge' || t.phase === 'parked' ? 'charging' : 'stuck';
-      const at = view.truckAt(t.id) ?? { x: t.x, z: t.y };
+      const at = scene.truckAt(t.id) ?? { x: t.x, z: t.y };
       return { id: t.id, name: truckName(state, t), what: `${where}${t.cargo.length ? ` · ${cargoText(t.cargo)}` : ''}`, ...camera.toScreen(at.x, groundAt(at.x, at.z) + 0.9, at.z) };
     }) : []);
-    hud.world.setStopLabels(routeView.labels().map((l) => ({ ...l, ...camera.toScreen(l.x, l.y, l.z) })));
-    // Power shows only while you work with it: its overlay, placing something that uses power, selecting a building on a
-    // network, or pointing at a pylon or something that makes or stores power.
-    const hovered = tool.kind === 'select' && hoverBuilding !== null ? buildingById(state, hoverBuilding) : null;
-    power.sync(state, {
-      all: shownOverlay === 'power' || (tool.kind === 'build' && usesPower(tool.type)), tiles: shownOverlay === 'power',
-      focus: selected ?? (hovered && BUILDINGS[hovered.type].grid ? hovered.id : null), ghosts: pylonGhosts,
-    });
-    hud.world.setNetLabels(power.labels().map((l) => ({ ...l, ...camera.toScreen(l.x, l.y, l.z) })));
+    hud.world.setStopLabels(scene.stopLabels().map((l) => ({ ...l, ...camera.toScreen(l.x, l.y, l.z) })));
+    hud.world.setNetLabels(scene.netLabels().map((l) => ({ ...l, ...camera.toScreen(l.x, l.y, l.z) })));
     // Trucks slowed by weather carry a marker too.
-    const slowed = state.trucks.flatMap((t) => { const hold = truckHold(state, t), at = hold ? view.truckAt(t.id) : null; return hold && at ? [{ id: t.id, status: 'weather' as const, need: holdNeed(hold), x: at.x, y: groundAt(at.x, at.z) + 1.3, z: at.z }] : []; });
-    hud.world.setMarkers([...view.markerSpots(state), ...slowed].map((m): MarkerSpot => ({ id: m.id, status: m.status, need: m.need, ...camera.toScreen(m.x, m.y, m.z) })));
-    const hi: number[] = [];
-    if (selected !== null) hi.push(selected);
-    if (hoverBuilding !== null && hoverBuilding !== selected && (tool.kind === 'select' || tool.kind === 'remove')) hi.push(hoverBuilding);
-    highlight(hi);
+    const slowed = state.trucks.flatMap((t) => { const hold = truckHold(state, t), at = hold ? scene.truckAt(t.id) : null; return hold && at ? [{ id: t.id, status: 'weather' as const, need: holdNeed(hold), x: at.x, y: groundAt(at.x, at.z) + 1.3, z: at.z }] : []; });
+    hud.world.setMarkers([...scene.markerSpots(state), ...slowed].map((m): MarkerSpot => ({ id: m.id, status: m.status, need: m.need, ...camera.toScreen(m.x, m.y, m.z) })));
     const resting = !!input.pointer && !input.press && (performance.now() - input.movedAt > HOVER_REST || tool.kind === 'route');
     hud.world.setHover(resting ? describeHover() : null, input.pointer);
     hud.world.setPlacement(state, placeSpot());
     hud.update();
 
     if (hud.perf.timing) hud.perf.mark();
-    renderer.renderGeometry(time);
-    if (hud.perf.timing) hud.perf.lap('geometry');
-    // Picked from the picture just drawn, so it shows this frame's camera, pointer and world.
-    if (repick) repickHover();
-    if (hud.perf.timing) hud.perf.lap('pick');
-    renderer.renderStyle(time);
-    if (hud.perf.timing) hud.perf.lap('style');
-    cursor.draw(marks, renderer.camera, renderer.width, renderer.height);
-    refused.draw(refusedMarks, renderer.camera, renderer.width, renderer.height);
+    scene.render(time, {
+      pick: () => { if (repick) repickHover(); },
+      lap: (part) => { if (hud.perf.timing) hud.perf.lap(part); },
+      marks, refused: refusedMarks,
+    });
     if (hud.perf.timing) hud.perf.end();
     requestAnimationFrame(frame);
   }
@@ -884,7 +704,7 @@ async function play(initial: GameState) {
 
   // For checks in the browser console and scripted playtests.
   Object.assign(window, { game: {
-    get state() { return state; }, set state(s: GameState) { state = s; }, renderer, view, hud, sizeOf,
+    get state() { return state; }, set state(s: GameState) { state = s; }, ...scene.debug, scene, hud, sizeOf,
     /** Runs the simulation on by `seconds` of play at once. */
     advance: (seconds: number) => advance(state, seconds),
     /** Points the camera at a ground point, optionally at a zoom (screen pixels per metre). */
