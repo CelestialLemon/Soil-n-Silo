@@ -81,7 +81,7 @@ export class BrushWater {
       flowX[i] = this.flowX[i] * speed; flowZ[i] = this.flowZ[i] * speed;
     }
     // A flood: the rules' surface over each tile it covers, and the river risen to it. Flood water out of the river runs on
-    // the way the river beside it does, slower (breadth first from the river, as the rules spread it).
+    // the way the river beside it does, slower once it leaves the channel (breadth first from the river, as the rules spread it).
     if (f.step > 0) {
       const queue: number[] = [];
       for (let y = 0; y < m.height; y++) for (let x = 0; x < m.width; x++) {
@@ -97,7 +97,8 @@ export class BrushWater {
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
           const j = (y + dy) * W + x + dx, mx = x + dx - M, my = y + dy - M;
           if (mx < 0 || my < 0 || mx >= m.width || my >= m.height || reached[j] || !f.tiles[my * m.width + mx]) continue;
-          reached[j] = 1; flowX[j] = flowX[k] * SPREAD_FLOW; flowZ[j] = flowZ[k] * SPREAD_FLOW;
+          const slow = land.terrain[k] === TERRAIN.water ? SPREAD_FLOW : 1;
+          reached[j] = 1; flowX[j] = flowX[k] * slow; flowZ[j] = flowZ[k] * slow;
           queue.push(j);
         }
       }
