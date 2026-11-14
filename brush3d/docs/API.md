@@ -219,8 +219,10 @@ crop.remove(); oak.remove(); rock.remove();
   set once per level, so the game never says it again), with its own spring in the wind.
 - Crowns keep some rain and snow off what's under them and everything casts its shadow, as the renderer sees fit. What
   stops the wind is the game's to say: it gives the wind simulation its obstacles (hedges, crowns, buildings; below).
-- **Today** the painting kit grows them at load: `growTree` and `Grove` (trees with their season's dress), `addStone`,
-  `addTuft`, `addMound`, `addFlowers`, the demo's wheat. They are baked into a few big meshes and can't change after.
+- **Today** the painting kit grows them: `growTree` and `Grove` (trees with their season's dress), `addStone`,
+  `addTuft`, `addMound`, `addFlowers`, the demo's wheat, and the plant kit below (#213's groundwork). They are baked
+  into meshes the caller keeps, takes out with `r.remove` and makes anew when something changes (the game's wild.ts
+  does this per field, per sapling and per 8 × 8 tiles of trees); the handles above replace that (#204).
 
 ## The camera
 
@@ -420,7 +422,13 @@ above, the game stops using it and it becomes the renderer's own.
   `r.setFields(kind, size)` bakes a kind's brush once the scene is built; `r.shelter.changed()` after moving cover.
 - `MeshBuilder` and `Paint`: geometry in the renderer's format (colours, normals, the brush per vertex, tree ids).
 - `growTree`, `Grove`, `dressFor`, `addStone`, `addTuft`, `addReeds`, `addMound`, `addFlowers`, `groundOf`, `MapLine`:
-  the demo's pieces.
+  the demo's pieces. `Grove.addTo(r, options)` adds its meshes with the given options and returns them. A `Tree`'s
+  `stroke` (broader, fewer strokes) and `fill` (the share of a crown's outer strokes) thin it for a crowd; 1 is the demo's.
+- The plant kit (`kit/plants.ts`, #213): `CropPatch` (a field's crop, one `CropTile` a tile with which neighbours it
+  joins, at its stage 0–3; `addTo(r)` returns its meshes), `speciesTree(species, x, z, size, seed)` and `speciesHeight`
+  (a `Tree` for each of `SPECIES`: the game's six and its bush), `addCanopy` (a far wood's crown, a few broad strokes in
+  the species' colour for the season), `CROP_NAMES`. The groundwork paints every crop as the demo's wheat and pine,
+  willow and poplar on the kit's shapes; #213's look work gives each its own.
 - `loadModel` and `ModelSet`: the models, merged into the inked and planted meshes; `MODELS`, `TILE`, `blocksWind`,
   `wheelRace` from the catalogue.
 
