@@ -114,6 +114,26 @@ export class BrushWater {
       level[i] = riverSurface(corner[i * 4]);
       flowX[i] = this.flowX[i] * speed; flowZ[i] = this.flowZ[i] * speed;
     }
+    // Beside a fall, the banks below it (#202): the water's sheet runs from cell to cell at their surfaces, and on flat a
+    // cell past the last wet one, so beside a fall it would slope from the water above down over the bank below, standing
+    // out of the land there like a sail. Those banks are given the water below's surface (under them, so they hide it):
+    // the sheet beside the fall then runs down the bank's own cliff, out of sight.
+    // (Read from the river's cells as they were, so a bank given a surface here doesn't count as river for the next.)
+    const river = level.slice();
+    for (let i = 0; i < n; i++) {
+      if (Number.isNaN(river[i])) continue;
+      const x = i % W, y = (i - x) / W;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const ux = x + dx, uy = y + dy, u = uy * W + ux;
+        if (ux < 0 || uy < 0 || ux >= W || uy >= H || !(river[u] > river[i] + 0.01)) continue;
+        for (const s of [-1, 1]) {
+          const bx = x + dy * s, by = y + dx * s, k = by * W + bx;
+          if (bx < 0 || by < 0 || bx >= W || by >= H || land.terrain[k] === TERRAIN.water || !Number.isNaN(river[k])) continue;
+          // The lowest fall beside it wins, if two are.
+          if (Math.min(corner[k * 4], corner[k * 4 + 1], corner[k * 4 + 2], corner[k * 4 + 3]) * LEVEL >= river[i] && !(level[k] <= river[i])) level[k] = river[i];
+        }
+      }
+    }
     // A flood: the rules' surface over each tile it covers, and the river risen to it. Flood water out of the river runs on
     // the way the river beside it does, slower once it leaves the channel (breadth first from the river, as the rules spread it).
     if (f.step > 0) {
