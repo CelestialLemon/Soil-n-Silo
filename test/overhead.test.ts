@@ -112,6 +112,11 @@ test('a save in the middle of a run plays on as the run does: the gusts, the clo
   const back = deserialize(serialize(s));
   assert.ok(back.ok, back.ok ? '' : back.error);
   const t = back.value;
+  // Straight after the load, before a step: each turbine and panel reads what it read in the game that saved.
+  for (const [b, c] of s.buildings.map((b, i) => [b, t.buildings[i]] as const)) {
+    assert.equal(gustOver(t, c), gustOver(s, b), `${b.type}'s gust`);
+    assert.equal(lightOver(t, c), lightOver(s, b), `${b.type}'s light`);
+  }
   for (let i = 0; i < 6; i++) { advance(s, 100.05); advance(t, 100.05); }
   assert.equal(serialize(t), serialize(s));
   assert.ok(s.clouds.x > 0 && s.clouds.z > 0, 'the clouds drift with the wind');
@@ -123,7 +128,8 @@ test('a save whose wind or clouds are broken is refused', () => {
   const breaks: ((o: GameState) => void)[] = [
     (o) => { o.wind.speed = -1; }, (o) => { o.wind.speed = 1e9; }, (o) => { o.wind.fade = 2; },
     (o) => { (o.wind as unknown as Record<string, unknown>).gusts = null; }, (o) => { o.wind.gusts.speed = 0; },
-    (o) => { o.wind.tick = 1.5; }, (o) => { (o.clouds as unknown as Record<string, unknown>).x = 'x'; },
+    (o) => { o.wind.tick = 1.5; }, (o) => { o.wind.tick = 1e30; }, (o) => { o.wind.gusts.p = 1e40; }, (o) => { o.wind.gusts.o = 1e40; },
+    (o) => { o.wind.gusts.k = 2 ** 40; }, (o) => { (o.clouds as unknown as Record<string, unknown>).x = 'x'; },
     (o) => { delete (o as Partial<GameState>).clouds; }, (o) => { delete (o as Partial<GameState>).wind; },
   ];
   assert.ok(deserialize(serialize(s)).ok);

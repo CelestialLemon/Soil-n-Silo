@@ -163,14 +163,15 @@ export class WindRecipe {
   restore(state: WindState) { this.state = structuredClone(state); this.forced = this.forcing(); }
 
   /**
-   * Advances one tick (TICK seconds): the wind eases towards the goal, the gusts where they are now make this tick's
-   * forcing (handed to `engine`, for the air under it), and the gusts travel on.
+   * Advances one tick (TICK seconds): the wind eases towards the goal, the gusts travel on, and where they are then makes
+   * this tick's forcing (handed to `engine`, for the air under it). The forcing is the state's as the tick ends, so a
+   * recipe made from a saved state has the same forcing as the one that saved it (`gustAt` reads the same after a load).
    */
   step(engine?: (forcing: Forcing) => void) {
     this.ease();
+    this.travel();
     this.forced = this.forcing();
     engine?.(this.forced);
-    this.travel();
   }
 
   /** The first part of a tick: the wind eases towards the goal. */
@@ -187,7 +188,7 @@ export class WindRecipe {
     s.dirX = Math.cos(a); s.dirZ = Math.sin(a);
   }
 
-  /** What the engine is given for the tick being stepped, between `ease` and `travel`: the gusts where they are now. */
+  /** What the engine is given for the tick just stepped (after `ease` and `travel`): the gusts where they are now. */
   private forcing(): Forcing {
     const s = this.state, swell = spellAt(s.tick * TICK, s.seed);
     return {
@@ -197,7 +198,7 @@ export class WindRecipe {
     };
   }
 
-  /** The last part of a tick: the gusts travel on, a new set fades in, and the clock moves on. */
+  /** The second part of a tick: the gusts travel on, a new set fades in, and the clock moves on. */
   private travel() {
     const s = this.state;
     // The gusts travel with the wind, each set along its own heading at its own pace.

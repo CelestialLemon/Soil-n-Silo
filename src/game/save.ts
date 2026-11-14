@@ -117,8 +117,11 @@ const int = (v: unknown) => Number.isInteger(v);
 /** The wind's gusts (overhead.ts, brush3d's WindState): what it's easing towards, how it blows and where its gusts are, each in its range. */
 function validWind(w: GameState['wind']): boolean {
   const share = (v: number) => num(v) && v >= 0 && v <= 1, unit = (v: number) => num(v) && Math.abs(v) <= 1, speed = (v: number) => num(v) && v >= 0 && v <= MAX_WIND;
-  const gusts = (g: WindState['gusts']) => !!g && unit(g.hx) && unit(g.hz) && num(g.o) && num(g.p) && speed(g.speed) && g.speed >= 2 && share(g.rhythm) && int(g.k) && g.k >= 0;
-  return !!w && int(w.tick) && w.tick >= 0 && int(w.seed) && int(w.sets) && w.sets >= 0
+  // Counts stay below 2^31, where the gusts' sums keep their precision (k is the gust it's at, tick the wind's clock).
+  const count = (v: number) => int(v) && v >= 0 && v < 2 ** 31;
+  const gusts = (g: WindState['gusts']) => !!g && unit(g.hx) && unit(g.hz) && num(g.o) && g.o >= 0 && g.o < 101 && num(g.p) && g.p >= 0 && g.p < 1
+    && speed(g.speed) && g.speed >= 2 && share(g.rhythm) && count(g.k);
+  return !!w && count(w.tick) && int(w.seed) && int(w.sets) && w.sets >= 0
     && !!w.goal && speed(w.goal.speed) && num(w.goal.direction) && share(w.goal.gustiness) && share(w.goal.rhythm)
     && speed(w.speed) && unit(w.dirX) && unit(w.dirZ) && share(w.gustiness) && share(w.rhythm) && share(w.fade)
     && gusts(w.gusts) && (w.next === null || gusts(w.next));
