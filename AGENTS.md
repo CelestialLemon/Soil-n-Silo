@@ -53,7 +53,7 @@
   look's rules, `API.md`, `ROADMAP.md`, and the notes on models, performance, wind, water and ground). `brush3d/README.md` has
   how it draws and its layout. One `package.json` for both: the renderer's scripts are `render:*` (`render:shot`, `render:video`,
   `render:motion`, `render:pops`, `render:profile`, `render:flash`, `render:test:clouds`, `render:test:wind`,
-  `render:test:water`, `render:build:wind`); `npm test`, `npm run typecheck`, lint and the build cover it.
+  `render:test:water`, `render:test:view`, `render:build:wind`); `npm test`, `npm run typecheck`, lint and the build cover it.
 - The renderer only draws. The game owns the state and the rules (weather, ground, water, wind, lightning, and anything they
   cause); the renderer draws what it's given.
 - The game (and the demo) use it only through `brush3d/src/index.ts`, and the game's rules and tests through
