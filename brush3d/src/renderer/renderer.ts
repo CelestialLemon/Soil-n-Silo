@@ -235,10 +235,12 @@ export class BrushRenderer {
 
   constructor(canvas: HTMLCanvasElement, options: RendererOptions = {}) {
     this.canvas = canvas;
+    this.view.screen.canvas = canvas;
     this.gl = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: true });
     this.gl.autoClear = false;
     this.screenRatio = options.pixelRatio ?? Math.min(window.devicePixelRatio || 1, 2);
     this.pixelRatio = this.screenRatio;
+    this.view.screen.ratio = this.screenRatio;
     const samples = options.samples ?? 4;
     this.gbuffer = new THREE.WebGLRenderTarget(1, 1, {
       count: 2, samples, type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: true,
@@ -420,7 +422,7 @@ export class BrushRenderer {
     if (mesh.userData.cover !== 'none' || kind === 'ground') this.shelter.changed();
     if (kind === 'ground') this.cloudArea = false;
     this.scene.add(mesh);
-    if (kind === 'ground') { this.setHazeGround(); this.land = null; this.hollows.changed(); }
+    if (kind === 'ground') { this.measureGround(); this.land = null; this.hollows.changed(); }
     if (options.castShadow ?? kind !== 'water') this.casters.push(mesh);
     const twin = new THREE.Mesh(geometry, this.materials.get(kind)!.prepass);
     twin.frustumCulled = cull;
@@ -443,7 +445,7 @@ export class BrushRenderer {
     const i = this.twins.findIndex(([m]) => m === mesh);
     if (i >= 0) { this.silhouettes.remove(this.twins[i][1]); this.twins.splice(i, 1); }
     if (mesh.userData.cover !== 'none' || mesh.userData.kind === 'ground') this.shelter.changed();
-    if (mesh.userData.kind === 'ground') { this.setHazeGround(); this.cloudArea = false; this.land = null; this.hollows.changed(); }
+    if (mesh.userData.kind === 'ground') { this.measureGround(); this.cloudArea = false; this.land = null; this.hollows.changed(); }
   }
 
   /**
@@ -574,7 +576,7 @@ export class BrushRenderer {
       this.waterMesh = this.water.geometry ? this.add(this.water.geometry, 'water') : null;
     }
     if (this.waterMesh) this.waterMesh.visible = this.water.any && this.waterShown;
-    this.setHazeGround();
+    this.measureGround();
   }
   /** Whether the water is shown (setVisible), apart from whether there is any. */
   private waterShown = true;
@@ -591,24 +593,28 @@ export class BrushRenderer {
 
 
   /**
-   * A haze on the ground starts just under the lowest land: the ground's lowest point (it's laid in world space, its brush
-   * baked by place), or the water's bed if lower.
+   * The land's lowest and highest points. A haze on the ground starts just under the lowest land: the ground's lowest
+   * point (it's laid in world space, its brush baked by place), or the water's bed if lower. The view sits back far enough
+   * to see the highest (ViewCamera.landTop).
    */
-  private setHazeGround() {
-    let low = this.water.floor === null ? Infinity : this.water.floor - 1;
+  private measureGround() {
+    let low = this.water.floor === null ? Infinity : this.water.floor - 1, top = -Infinity;
     for (const o of this.scene.children) {
       if (o.userData.kind !== 'ground') continue;
       const g = (o as THREE.Mesh).geometry;
       if (!g.boundingBox) g.computeBoundingBox();
       low = Math.min(low, g.boundingBox!.min.y);
+      top = Math.max(top, g.boundingBox!.max.y);
     }
     if (Number.isFinite(low)) this.weather.setGround(low - 0.5);
+    this.view.landTop = top;
   }
 
   resize(cssWidth: number, cssHeight: number) {
     this.pixelRatio = Math.min(this.screenRatio, Math.sqrt(this.maxPixels / Math.max(1, cssWidth * cssHeight)));
     this.gl.setPixelRatio(this.pixelRatio);
     this.gl.setSize(cssWidth, cssHeight, false);
+    this.view.screen.width = cssWidth; this.view.screen.height = cssHeight;
     // The canvas's own size (three rounds a fractional ratio down).
     this.width = this.canvas.width;
     this.height = this.canvas.height;
@@ -1022,6 +1028,8 @@ export class BrushRenderer {
     this.view.apply(this.width * toScreen, this.height * toScreen);
     s.uViewBack.value.copy(this.view.backward());
     s.uViewTarget.value.copy(this.view.target);
+    // The haze thickens past the target: as far back as the camera sits now (a wide view sits further).
+    this.post.uniforms.uTargetDepth.value = this.view.distance;
     // The shadow's window, for the view as it is now (the look set it for the last).
     if (this.shadowFollow) this.updateSunCamera();
     // Where each pixel is in the world, for the fog: the camera's frame, scaled to half the view.
