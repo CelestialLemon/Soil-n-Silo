@@ -28,7 +28,7 @@ npm install
 npm run dev                  # the game at http://127.0.0.1:5190/, the demo at http://127.0.0.1:5190/brush3d/:
                              # drag to pan, wheel to zoom, Q/E to turn, 1-5 for the hour, L for lines
 npm run typecheck            # the game and the renderer, their tests and tools, and that the demo uses only the API
-npm test                     # the game's tests, and the renderer's wind, water and view checks (brush3d/tools/wind.ts, water.ts, view.ts)
+npm test                     # the game's tests, and the renderer's wind, water, view and land checks (brush3d/tools/wind.ts, water.ts, view.ts, land.ts)
 npm run render:test:clouds   # the cloud recipe against its GLSL twin, in a browser (needs the dev server)
 npm run render:shot -- out "hour=12" "hour=17.5&view=2"   # headless frames as PNGs (needs the dev server)
 npm run render:motion -- out "zoom=40"                    # how steady the picture is under sub-pixel pans
@@ -92,12 +92,14 @@ The farm's buildings and props are a set of 28 solarpunk models made for the gam
 ## Layout
 
 Paths here are inside `brush3d/`. The game (and the demo) use the renderer through one door, `src/index.ts`
-(`brush3d/src/index.ts` from the game; `src/shared.ts` for what the game's rules read in Node, the wind and the cloud
-recipe); [docs/API.md](docs/API.md) has the API, in the game's terms, and what later tasks add to it.
+(`brush3d/src/index.ts` from the game; `src/shared.ts` for what the game's rules read in Node: the wind, the cloud
+recipe and the land's smooth fit); [docs/API.md](docs/API.md) has the API, in the game's terms, and what later tasks add to it.
 
 - `src/index.ts`: the API. The demo imports nothing else.
 - `src/renderer/`: the renderer (`renderer.ts`), its materials and GLSL, the camera, the time-of-day looks, and the tiles big
   meshes are cut into so each pass draws only what it sees (`tiles.ts`).
+- `src/land/`: the land painted from the game's map: what the game sends (`map.ts`), the smooth fit (`surface.ts`) and
+  the painting and earthworks (`paint.ts`) (`docs/LAND.md`).
 - `src/wind/`: the living wind's simulation, which the game's rules read too (`docs/WIND.md`).
 - `src/kit/`: the painting kit the scenes are built with: `MeshBuilder` (`builder.ts`), the pieces (`kit.ts`: trees,
   stones, grass, reeds, lines on the map, water), the trees' season dress (`seasonTrees.ts`) and the models' importer
@@ -109,9 +111,9 @@ recipe); [docs/API.md](docs/API.md) has the API, in the game's terms, and what l
 - `index.html`: the demo's page (the game's Vite build makes it `dist/brush3d/`).
 - `tools/`: headless capture (`shot.ts`), motion measurement (`motion.ts`), pops in the wind (`pops.ts`), videos
   (`video.ts`), the frame's cost (`profile.ts`) and the lightning's flash check (`flash.ts`), on `browser.ts`; the wind's,
-  water's and clouds' checks (`wind.ts`, `water.ts`, `clouds.ts`), the wind engine's build (`wind-build.ts`), and the check
+  water's, clouds' and land's checks (`wind.ts`, `water.ts`, `clouds.ts`, `land.ts`), the wind engine's build (`wind-build.ts`), and the check
   that the demo imports only the API (`demo-imports.ts`).
 - `tools/blender/`: the scripts that make the models (`build.py`, the shared `kit.py`, one script a model in `models/`).
 - `docs/`: the look's rules (`DIRECTION.md`), the renderer's roadmap (`ROADMAP.md`), the API, and the notes on models,
-  performance, wind, water and ground.
+  performance, wind, water, ground and the land.
 - `reference/`: how to pull frames from the reference film (kept out of git: they're copyrighted).

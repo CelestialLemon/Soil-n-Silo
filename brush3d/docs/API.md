@@ -28,7 +28,7 @@ plain code with no drawing in them, so the game's rules and tests can use them w
 
 Everything the game uses comes from one file, `src/index.ts` (in the game's repo, since the move, #200:
 `brush3d/src/index.ts`). The demo is just another user of it: it imports nothing else. One part of it also stands on
-its own: `src/shared.ts`, the wind simulation and the cloud recipe (below), which loads in Node with no bundler, for the
+its own: `src/shared.ts`, the wind simulation, the cloud recipe and the land's data and smooth fit (below), which loads in Node with no bundler, for the
 rules' tests and bots (the rest needs Vite, for the models and the wind's worker). Anything not exported there is
 the renderer's own business and can change without notice: its shaders, materials, passes, uniforms and maps.
 
@@ -97,50 +97,49 @@ The canvas is the renderer's: it draws every pixel at the screen's resolution. T
 
 ## The level
 
-### The land (#202)
+### The land (today, #202)
 
-Today the demo builds its ground as a mesh and hands it over (`r.add(geometry, 'ground', { fields, tile })`, then
-`r.setFields('ground', size)` bakes its brush). That's the painting kit's level (below), not the game's.
-
-The game hands over its map instead, and the renderer paints it:
+The game hands over its map, and the renderer paints it (`docs/LAND.md` has how):
 
 ```ts
 r.setLand({
-  width, height,                 // the map, in tiles
-  level,                         // how high one of the rules' levels stands, metres (the smooth fit strays under half one)
-  // Each tile's own four corners (metres; north-west, north-east, south-east, south-west, tile by tile along a row, rows
-  // in order: 4 × width × height values). Neighbours' corners needn't meet: where they don't, the edge between them is a
-  // cliff face from one to the other. Where they do, the land runs on smoothly (a bank is a steep slope inside a tile).
+  width, height,                 // the land in tiles: the map and the country the game draws round it in tiles too
+  tile, level,                   // a tile's width and one of the rules' levels' height (metres)
+  x0, z0,                        // where the land's north-west corner is (metres)
+  // Each tile's own four corners (metres, each a whole number of levels; north-west, north-east, south-east, south-west,
+  // tile by tile along a row, rows in order: 4 × width × height values). Where two neighbours' corners along their side
+  // meet, the land runs on smoothly; where they don't, the side is a cliff face from one to the other.
   corners: Float32Array,
-  // The tiles drawn exactly at their corners' level, flat (width × height, 1 or 0): worked ground, a building's pad,
-  // water's edge. Elsewhere the land is drawn smoothed (below).
+  // The tiles drawn exactly at their corners' level, flat (width × height, 1 or 0): worked ground, a building's pad, the
+  // water's tiles. Elsewhere the land is drawn smoothed (below).
   worked: Uint8Array,
-  // What covers each tile, and what the ground is (width × height each): the paint (grass, bare soil, track, rock) and
-  // its subtle tint (clay, sand, stony), as the game's map has them.
+  // What covers each tile (LAND_COVER: grass, bare, track, rock, woods, water) and what ground it is (LAND_GROUND: loam,
+  // silt, clay, sand, stony; a subtle tint), width × height each.
   cover: Uint8Array, ground: Uint8Array,
-  // The country past the map's edge (so the camera never sees the end of the world): a coarser height grid round it,
-  // a corner at (x0, z0), nx by nz cells of `cell` metres, x fastest.
+  map: { x, y, width, height },  // the map the player builds on, in the land's tiles; the country round it is drawn duller
+  // The country past the tiles, so the camera never sees the end of the world: a coarse grid of heights (metres), a
+  // corner at (x0, z0), nx by nz points `cell` metres apart, x fastest. Drawn as distant woods' floor.
   beyond: { nx, nz, cell, x0, z0, height: Float32Array },
-});
+}, look?);                        // LandLook: how strong the ground kinds' tint, how dull the country (LAND_LOOK until picked)
 r.updateLand({ x, y, width, height }, { corners, worked, cover, ground });   // an earthwork: the new values for just these tiles
 ```
 
-- The game's world layer gives its levels, cliffs and banks as the corners (it knows where a level drops, and keeps the
-  two heights of a cliff apart, as `src/world/ground.ts` does today); the renderer paints the cliff faces and the slopes.
-  Their look is the developer's pick in #202.
-- The renderer copies what it's given: changing an array after the call does nothing until `updateLand` sends the new
-  values for the tiles that changed. Only that patch is re-painted, without a hitch.
-- The grass grows where the cover says grass, round whatever stands on it (the renderer reads the things it's been given).
-- **Two surfaces, as today.** The rules keep their own heights (the game's `relief.ts`: two triangles a tile, split
-  along the diagonal `splitsNwSe` picks), unchanged. The land as drawn is the game's smooth reading of them
-  (`src/world/surface.ts`: within half a level of the rules' height, exactly level on worked tiles and at the water,
-  sharp at cliffs), which #202 moves into the renderer as it is, so the hills look the same shape. The drawn land also
-  has the cuts that models need where they stand (the water wheel's race in its bank, `wheelRace` today); a thing that
-  needs one says so in its model, and the renderer cuts it.
+- The game's world layer gives its levels, cliffs and banks as the corners (`src/world/brush/landMap.ts` in the game).
+- Both copy what they're given, and check it: a corner that isn't a whole number of levels, or an array of the wrong
+  size, throws (a bug, not the player's doing).
+- `updateLand` returns how many tiles really changed (0 when nothing did), and paints the change over the next few frames,
+  3 ms a frame at most, then swaps it in all at once: the land never shows half an earthwork and no frame waits for all
+  of one. Only the ground round the change is painted again.
+- **Two surfaces.** The rules keep their own heights (the game's `relief.ts`: two triangles a tile), unchanged. The land
+  as drawn is the smooth reading of them the game had (`src/land/surface.ts`, exported from `shared.ts` so the game's
+  `Lie` fits the same tiles: within half a level of the rules' height, exactly level on worked tiles and at the water,
+  sharp at cliffs), so the hills are the same shape. Under the water's tiles the land sinks into a bed; the game lays its
+  water (below) a little under the tiles' level, over it.
 - **The drawn surface is the game's to query**, so a truck, a dropped good and the tile cursor sit on what the player
-  sees: `r.landAt(x, z)` gives the land's height there (metres, cuts included), and `r.landHit(ray)` where a line of
-  sight (from `r.view.rayAt`) first meets it, or null, on the CPU with no wait for the GPU. The rules go on asking
-  `relief.ts`, as now.
+  sees: `r.landAt(x, z)` gives the land's height there (metres), and `r.landHit(ray)` where a line of sight (from
+  `r.view.rayAt`) first meets it, or null, on the CPU with no wait for the GPU. The rules go on asking `relief.ts`.
+- Not yet: grass tufts where the cover says grass, and the cuts models need where they stand (the water wheel's race in
+  its bank, `wheelRace` in the catalogue).
 
 ### Water (today; the game's river in #202, floods, ice and mud in #207)
 
@@ -456,13 +455,14 @@ The game's pixel3d calls and what replaces each:
 | Folder | What | Whose |
 |---|---|---|
 | `src/index.ts` | The API: everything above that exists | the game's door in |
-| `src/shared.ts` | The wind simulation and the cloud recipe, loadable in Node on their own (the index exports them too) | shared with the rules |
+| `src/shared.ts` | The wind simulation, the cloud recipe and the land's data and smooth fit, loadable in Node on their own (the index exports them too) | shared with the rules |
 | `src/renderer/` | The renderer: its passes, materials, shaders and looks | the renderer's own |
+| `src/land/` | The land painted from the game's map: what the game sends (`map.ts`), the smooth fit (`surface.ts`), the painting and earthworks (`paint.ts`) | the renderer's own (`map.ts` and `surface.ts` shared with the rules) |
 | `src/wind/` | The wind simulation (no drawing; a worker host) | shared with the rules |
 | `src/kit/` | The painting kit: `MeshBuilder`, trees, stones, tufts, the models' loader | below the API (see above) |
 | `src/models/` | The solarpunk models (`*.glb`, written by `tools/blender/`) and their catalogue | the game's models |
 | `src/demo/` | The demo viewer and its scenes (farm, meadow, water patch, gallery), the scripted weather | one user of the API |
-| `tools/` | Stills, videos, profiles, the shimmer, pop and flash checks, the wind, cloud and water tests | the renderer's tests |
+| `tools/` | Stills, videos, profiles, the shimmer, pop and flash checks, the wind, cloud, water and land tests | the renderer's tests |
 
 The tools are tests of the renderer's insides, so they may reach past the API (the cloud test reads the cloud map back,
 the flash check watches the flash limiter); the demo may not (`npm run typecheck` fails if it does).
