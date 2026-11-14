@@ -41,18 +41,24 @@ country the game draws round it in tiles too, then `beyond`, a coarse grid of he
 ## Earthworks without a hitch
 
 `r.updateLand(rect, patch)` takes only the changed tiles' new values and returns how many tiles really changed (0: nothing
-to do). Nothing on screen changes in that call. Over the next frames, at most `STEP_BUDGET` (3 ms) each:
+to do). Nothing on screen changes in that call. Over the next frames, about `STEP_BUDGET` (3 ms) each:
 
 1. The first frame waits, so the game's own reading of the land (its `Lie`, which it refits in the same frame) and the
-   drawn land move together.
-2. The next fits the ground again within 8 tiles of the change (further out it hardly moves), works out how dry the
-   ground lies round it (all of it, if the water moved), and finds the chunks whose ground or paint moved.
+   drawn land don't both fall in one frame.
+2. The ground is fitted again within 8 tiles of the change (further out it hardly moves): set up in one frame, its 128
+   sweeps of the solver eight at a time over the next, then finished, with how dry the ground lies round it (all of it,
+   if the water moved) and the chunks whose ground or paint moved. The sweeps run in the same order however they're
+   spread, so the ground fits exactly as if it were done at once.
 3. The following frames paint those chunks again, a few a frame.
 4. Once all are painted, they're swapped in at once, so the land never shows half an earthwork. The things that read the
    ground (the shelter's map, the hollows where thin snow lies, the clouds' map, `landAt`'s grid) are refreshed once for
-   the whole swap, over the changed area only where they can be.
+   the whole swap, over the changed area only where they can be. If the land's outer edge moved, the country beyond's mesh
+   is made again to meet it.
 
-A second earthwork during the first's painting is folded in; the chunks already painted for the first are painted again.
+No piece of work is cut short, so a frame goes over 3 ms by the piece it ends on: the longest, one chunk painted or the
+fit set up or finished, take 2 to 5 ms once warm (commission 8's land, in Node). The first earthwork of a session takes
+longer while the code warms up. An earthwork given while another is under way waits its turn, and each is swapped in on
+its own. Old chunks are freed when they're swapped out.
 
 ## Asking where the land is
 
@@ -64,5 +70,5 @@ at their level, which is where a boat or a dropped good on the water belongs.
 
 - Grass tufts where the cover says grass (the meadow's), round what stands on it.
 - The cuts models need where they stand: the water wheel's race in its bank (`wheelRace` in the catalogue).
-- The game fits the same tiles a second time for its `Lie` (about 10 ms an earthwork); one fit shared between them would
-  halve that.
+- The game fits the same tiles a second time for its `Lie` (about 10 ms an earthwork, all in one frame); one fit shared
+  between them would take that away.

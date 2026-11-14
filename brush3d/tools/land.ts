@@ -47,15 +47,20 @@ function makeLand(): LandMap {
   };
 }
 
-/** An adder standing for the renderer: keeps the meshes in, counts what's added and taken out, and when. */
+/** An adder standing for the renderer: keeps the meshes in, counts what's added and taken out, and when, and the meshes'
+ * geometries freed (the land's to free: the renderer frees only those it cut). */
 class Adder implements LandAdder {
   readonly live = new Set<THREE.Mesh>();
-  added = 0; removed = 0; changes = 0;
-  add(geometry: THREE.BufferGeometry) { const m = new THREE.Mesh(geometry); this.live.add(m); this.added++; return m; }
+  added = 0; removed = 0; changes = 0; freed = 0;
+  add(geometry: THREE.BufferGeometry) {
+    const m = new THREE.Mesh(geometry); this.live.add(m); this.added++;
+    geometry.addEventListener('dispose', () => this.freed++);
+    return m;
+  }
   remove(mesh: THREE.Mesh) { this.live.delete(mesh); this.removed++; }
   changeGround(_area: THREE.Box3 | null, change: () => void) { this.changes++; change(); }
   prepare() {}
-  reset() { this.added = 0; this.removed = 0; this.changes = 0; }
+  reset() { this.added = 0; this.removed = 0; this.changes = 0; this.freed = 0; }
 }
 
 /** Every triangle drawn: its corners, and its vertices' normal (the first's). */
@@ -134,6 +139,9 @@ check('straight down, at heightAt', !!down && Math.abs(down.y - land.heightAt(dx
 const [sx, sz] = world(20, 10), slant = land.hit({ origin: new THREE.Vector3(sx, 30, sz), direction: new THREE.Vector3(1, -0.6, 0.2) });
 check('slanting, on the land', !!slant && Math.abs(slant.y - land.heightAt(slant.x, slant.z)) < 0.02, `${slant?.y} for ${slant && land.heightAt(slant.x, slant.z)}`);
 check('a line of sight up and away misses', land.hit({ origin: new THREE.Vector3(0, 50, 0), direction: new THREE.Vector3(0.3, 1, 0) }) === null);
+check('one straight down far past everything drawn misses', land.hit({ origin: new THREE.Vector3(10000, 100, 10000), direction: new THREE.Vector3(0, -1, 0) }) === null);
+const overCountry = land.hit({ origin: new THREE.Vector3(X0 - 40, 100, Z0 + 20), direction: new THREE.Vector3(0, -1, 0) });
+check('one straight down on the country beyond meets it', !!overCountry && Math.abs(overCountry.y - land.heightAt(X0 - 40, Z0 + 20)) < 1e-3);
 
 // 2. An earthwork: a 3 x 3 raised two levels and worked, a tile of the river filled in, sand turned to clay.
 console.log('An earthwork');
@@ -148,9 +156,11 @@ for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) {
 const hBefore = land.heightAt(...world(17.5, 14.5)), changed = land.update(rect, patch);
 check('the tiles that changed', changed === 9, `${changed}`);
 check('nothing changes until it\'s stepped, drawn or answered', adder.added === 0 && adder.removed === 0 && land.heightAt(...world(17.5, 14.5)) === hBefore);
-let steps = 0, swappedEarly = false;
-while (!land.step(0)) { steps++; if (adder.added > 0) swappedEarly = true; }
+let steps = 0, fitSteps = 0, swappedEarly = false;
+while (!land.step(0)) { steps++; if ((land as unknown as { fitting: unknown }).fitting) fitSteps++; if (adder.added > 0) swappedEarly = true; }
+check('fitted over several steps', fitSteps > 4, `${fitSteps} steps`);
 check('painted over several steps, swapped in together at the last', steps > 2 && !swappedEarly && adder.changes === 1, `${steps} steps, ${adder.changes} swaps`);
+check('the chunks swapped out freed', adder.freed === adder.removed, `${adder.freed} freed of ${adder.removed}`);
 check('only chunks near it painted again', adder.removed > 0 && adder.removed <= 16 && adder.live.size === meshes, `${adder.removed} of ${meshes} chunks`);
 const C = 8 * TILE, [cx, cz] = world(17.5, 14.5);
 const far = [...before].filter((m) => !adder.live.has(m)).filter((m) => { m.geometry.computeBoundingBox(); const b = m.geometry.boundingBox!; return b.min.x > cx + 2 * C || b.max.x < cx - 2 * C || b.min.z > cz + 2 * C || b.max.z < cz - 2 * C; });
@@ -176,13 +186,14 @@ for (let py = 0.5; py < H; py += 1) for (let px = 0.5; px < W; px += 1) {
 }
 check('its heights within a few centimetres of built afresh', drift < 0.05, `${drift.toFixed(4)} m apart at most`);
 
-// Another earthwork given while one is being painted: the chunks painted for the first are painted again, and what's
-// drawn is both.
+// Another earthwork given while one is being fitted and painted: it waits its turn, and what's drawn is both.
 const second = { x: 30, y: 20, width: 2, height: 2 }, raised = new Float32Array(16).fill(9 * LEVEL);
 land.update({ x: 4, y: 4, width: 2, height: 2 }, { corners: new Float32Array(16).fill(2 * LEVEL), worked: new Uint8Array(4).fill(1) });
 land.step(0); land.step(0);
+adder.reset();
 land.update(second, { corners: raised, worked: new Uint8Array(4).fill(1) });
 while (!land.step(0));
+check('each swapped in on its own', adder.changes === 2, `${adder.changes} swaps`);
 for (const [r, h] of [[{ x: 4, y: 4 }, 2], [second, 9]] as const) for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) { const t = (r.y + j) * W + r.x + i; now.corners.fill(h * LEVEL, t * 4, t * 4 + 4); now.worked[t] = 1; }
 const fresh2 = new PaintedLand(new Adder(), now) as unknown as Record<string, Float32Array>;
 check('two earthworks, the second given while the first is painted: both drawn', Math.abs(land.heightAt(...world(5, 5)) - 2) < 1e-9 && Math.abs(land.heightAt(...world(31, 21)) - 9) < 1e-9);
@@ -196,6 +207,23 @@ const edgeX = X0 + W * TILE, mid = Z0 + 10 * TILE;
 check('it meets the land\'s edge', Math.abs(land.heightAt(edgeX + 1e-6, mid) - land.heightAt(edgeX - 1e-6, mid)) < 1e-3);
 const b = map.beyond!, gx = b.x0 + 18 * b.cell, gz = b.z0 + 2 * b.cell;
 check('further out, the grid\'s heights', Math.abs(land.heightAt(gx, gz) - b.height[2 * b.nx + 18]) < 1e-5, `${land.heightAt(gx, gz)} for ${b.height[2 * b.nx + 18]}`);
+
+// The land's edge raised: the country beyond made again to meet it.
+const apronAt = () => {
+  const g = (land as unknown as { apronGeometry: THREE.BufferGeometry }).apronGeometry, pos = g.getAttribute('position');
+  for (let i = 0; i < pos.count; i++) if (Math.abs(pos.getX(i) - X0) < 1e-6 && Math.abs(pos.getZ(i) - (Z0 + 48)) < 1e-6) return pos.getY(i);
+  return NaN;
+};
+const edgeRect = { x: 0, y: 8, width: 2, height: 6 }, edgeLevel = Math.round(land.heightAt(X0, Z0 + 48) / LEVEL) + 4;
+land.update(edgeRect, { corners: new Float32Array(48).fill(edgeLevel * LEVEL), worked: new Uint8Array(12).fill(1) });
+while (!land.step(0));
+check('an earthwork at the land\'s edge: the country beyond meets it still', Math.abs(apronAt() - land.heightAt(X0, Z0 + 48)) < 1e-6 && Math.abs(apronAt() - edgeLevel * LEVEL) < 1e-6, `${apronAt()} for ${land.heightAt(X0, Z0 + 48)}`);
+
+// The land taken away: everything it made freed.
+adder.reset();
+const live = adder.live.size;
+land.dispose();
+check('taken away, every mesh out and freed', adder.live.size === 0 && adder.removed === live && adder.freed === live, `${adder.live.size} left, ${adder.freed} of ${live} freed`);
 
 // 4. Refused: corners that aren't whole levels.
 let threw = false;

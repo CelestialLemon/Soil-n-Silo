@@ -128,8 +128,8 @@ r.updateLand({ x, y, width, height }, { corners, worked, cover, ground });   // 
 - Both copy what they're given, and check it: a corner that isn't a whole number of levels, or an array of the wrong
   size, throws (a bug, not the player's doing).
 - `updateLand` returns how many tiles really changed (0 when nothing did), and paints the change over the next few frames,
-  3 ms a frame at most, then swaps it in all at once: the land never shows half an earthwork and no frame waits for all
-  of one. Only the ground round the change is painted again.
+  about 3 ms a frame (5 at most once warm), then swaps it in all at once: the land never shows half an earthwork and no
+  frame waits for all of one. Only the ground round the change is painted again.
 - **Two surfaces.** The rules keep their own heights (the game's `relief.ts`: two triangles a tile), unchanged. The land
   as drawn is the smooth reading of them the game had (`src/land/surface.ts`, exported from `shared.ts` so the game's
   `Lie` fits the same tiles: within half a level of the rules' height, exactly level on worked tiles and at the water,

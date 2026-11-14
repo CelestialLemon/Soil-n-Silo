@@ -25,6 +25,8 @@ const PULL = 0.002;
  * fewer from the last fit after earthworks.
  */
 const OMEGA = 1.7, SWEEPS = 256, REFIT_SWEEPS = 128;
+/** How many sweeps a refit spread over frames runs between looks at the clock (Refit.sweep). */
+const SWEEP_BATCH = 8;
 /** How far (tiles) past the ground it moves a refit reckons, so the window's edge never shows in it. */
 const WINDOW = 8;
 /** How many times the hillshade's slopes are blurred, each time towards the neighbouring points'. */
@@ -42,6 +44,17 @@ export interface Ground {
   water(x: number, y: number): boolean;
   /** Whether a tile is worked: drawn exactly at its corners' levels. */
   worked(x: number, y: number): boolean;
+}
+
+/**
+ * A refit under way (Surface.refitting), so it can be spread over frames: its sweeps run a few at a time (`sweep`), then
+ * `finish` writes the new ground in. The ground fits the same however its sweeps are spread: they run in the same order.
+ */
+export interface Refit {
+  /** Runs sweeps until `until` (performance.now(), ms; at least a few) or all are done; whether they are. */
+  sweep(until?: number): boolean;
+  /** Writes the new ground in (all the sweeps run first, if they aren't yet): the tiles whose patch or shade moved. */
+  finish(): number[];
 }
 
 /**
@@ -85,19 +98,39 @@ export class Surface {
    * side of it still meet, smooth, and the edge's shade is kept as it was. Worked out over a window a little larger, so
    * the ground round it is reckoned as before.
    */
-  refit(x0: number, y0: number, x1: number, y1: number): number[] {
+  refit(x0: number, y0: number, x1: number, y1: number): number[] { return this.refitting(x0, y0, x1, y1).finish(); }
+
+  /**
+   * The same refit, to be run a little at a time (Refit): the relief and the ground's water and worked tiles are read now,
+   * and the ground as it was is kept (cornerAt, on and the rest answer for it) until `finish`.
+   */
+  refitting(x0: number, y0: number, x1: number, y1: number): Refit {
     const P = WINDOW, wx = Math.max(0, x0 - P), wy = Math.max(0, y0 - P), ww = Math.min(this.width, x1 + P) - wx, wh = Math.min(this.height, y1 + P) - wy;
     const corner = new Array<number>(ww * wh * 4), f = new Float64Array(ww * wh * 4);
     for (let y = 0; y < wh; y++) for (let x = 0; x < ww; x++) for (let k = 0; k < 4; k++) {
       const from = ((y + wy) * this.width + x + wx) * 4 + k, to = (y * ww + x) * 4 + k;
       corner[to] = this.relief.corner[from]; f[to] = this.f[from];
     }
-    const inside = (x: number, y: number) => x + wx >= x0 && y + wy >= y0 && x + wx < x1 && y + wy < y1;
     const free = (x: number, y: number) => x + wx > x0 && y + wy > y0 && x + wx < x1 - 1 && y + wy < y1 - 1;
     const fans = new Fans({ width: ww, height: wh, corner }, { water: (x, y) => this.ground.water(x + wx, y + wy), worked: (x, y) => this.ground.worked(x + wx, y + wy) }, free);
     fans.start(f);
-    fans.solve(REFIT_SWEEPS);
+    const solve = fans.system();
+    let done = 0;
+    const sweep = (until = Infinity) => {
+      while (done < REFIT_SWEEPS) {
+        const n = Math.min(SWEEP_BATCH, REFIT_SWEEPS - done);
+        solve(n); done += n;
+        if (until !== Infinity && performance.now() >= until) break;
+      }
+      return done >= REFIT_SWEEPS;
+    };
+    return { sweep, finish: () => { sweep(); return this.settle(fans, f, x0, y0, x1, y1, wx, wy, ww, wh); } };
+  }
+
+  /** A refit's sweeps all run: the window's patches and shade, and those inside written in (refitting). */
+  private settle(fans: Fans, f: Float64Array, x0: number, y0: number, x1: number, y1: number, wx: number, wy: number, ww: number, wh: number): number[] {
     fans.write(f);
+    const inside = (x: number, y: number) => x + wx >= x0 && y + wy >= y0 && x + wx < x1 && y + wy < y1;
     const net = new Float64Array(ww * wh * 16), flat = new Uint8Array(ww * wh), shade = new Float64Array(ww * wh * 8);
     patches(fans, f, ww, wh, net, flat, shade);
     const changed: number[] = [];
@@ -340,7 +373,10 @@ class Fans {
    * one neighbour either side on that axis, and twice the twist across each tile; solved by `sweeps` sweeps of projected
    * Gauss–Seidel, over-relaxed, over the energy's rows for the free fans.
    */
-  solve(sweeps: number) {
+  solve(sweeps: number) { this.system()(sweeps); }
+
+  /** The fit's equations set up once (solve): sweeps of them, as many at a time as asked, each from where the last left. */
+  system(): (sweeps: number) => void {
     const free = this.free, slot = new Int32Array(this.count).fill(-1);
     free.forEach((node, i) => { slot[node] = i; });
     // Each free fan's row: the fans it touches, and their coefficients.
@@ -376,15 +412,17 @@ class Fans {
     }
     const h = this.h, q = this.q, lo = new Float64Array(free.length), hi = new Float64Array(free.length), pull = new Float64Array(free.length);
     for (let i = 0; i < free.length; i++) { lo[i] = this.lo[free[i]]; hi[i] = this.hi[free[i]]; pull[i] = q[free[i]]; }
-    for (let sweep = 0; sweep < sweeps; sweep++) {
-      for (let i = 0; i < free.length; i++) {
-        // The bending's rows each sum to nothing, so it is taken on differences: exactly nothing on flat ground.
-        const node = free[i], here = h[node];
-        let g = PULL * (here - pull[i]);
-        for (let k = start[i]; k < start[i + 1]; k++) g += val[k] * (h[col[k]] - here);
-        const next = here - OMEGA * g / diag[i];
-        h[node] = next < lo[i] ? lo[i] : next > hi[i] ? hi[i] : next;
+    return (sweeps) => {
+      for (let sweep = 0; sweep < sweeps; sweep++) {
+        for (let i = 0; i < free.length; i++) {
+          // The bending's rows each sum to nothing, so it is taken on differences: exactly nothing on flat ground.
+          const node = free[i], here = h[node];
+          let g = PULL * (here - pull[i]);
+          for (let k = start[i]; k < start[i + 1]; k++) g += val[k] * (h[col[k]] - here);
+          const next = here - OMEGA * g / diag[i];
+          h[node] = next < lo[i] ? lo[i] : next > hi[i] ? hi[i] : next;
+        }
       }
-    }
+    };
   }
 }

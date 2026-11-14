@@ -639,8 +639,9 @@ export class BrushRenderer {
   /**
    * An earthwork (or anything else that changes the land's tiles): the new values for the tiles in `rect` (LandPatch, each
    * array over the rectangle alone). Only the ground round them is fitted and painted again, over the next few frames
-   * (a few milliseconds each): the ground fitted again in the first (landAt and landHit answer for the new ground from
-   * then), its chunks painted in the next and swapped in together once they're all painted. Returns how many tiles changed.
+   * (a few milliseconds each): the ground fitted again first (landAt and landHit answer for the new ground from then), then
+   * its chunks painted and swapped in together once they're all painted. Earthworks given meanwhile wait their turn.
+   * Returns how many tiles changed.
    */
   updateLand(rect: LandRect, patch: LandPatch): number { return this.painted?.update(rect, patch) ?? 0; }
 

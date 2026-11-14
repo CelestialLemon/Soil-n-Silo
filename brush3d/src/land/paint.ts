@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { MeshBuilder, noise2, type Paint } from '../kit/builder.ts';
 import type { MaterialKind } from '../renderer/materials.ts';
 import { checkLand, checkPatch, LAND_COVER, LAND_GROUND, type LandMap, type LandPatch, type LandRect } from './map.ts';
-import { Surface } from './surface.ts';
+import { Surface, type Refit } from './surface.ts';
 
 // The land painted from the game's map (Soil-n-Silo#202, docs/LAND.md): the renderer's own ground, in place of a mesh the
 // game builds. Each tile's top is the game's smooth reading of the rules' levels (surface.ts, moved here as it was: within
@@ -10,10 +10,10 @@ import { Surface } from './surface.ts';
 // need; where neighbours' corners don't meet, a cliff face runs from one to the other; the water's tiles are hollowed into
 // a bed under the game's water. The country past the tiles (`beyond`) is a coarse floor of distant woods round them.
 //
-// It's drawn in chunks of CHUNK tiles a side, each one ground mesh. An earthwork (updateLand) fits the ground again round
-// what changed at once, then paints only the chunks whose ground or paint moved, a few each frame within STEP_BUDGET
-// (step), and swaps them in all together once they're all painted, so the land never shows half an earthwork and no frame
-// waits for the whole of one.
+// It's drawn in chunks of CHUNK tiles a side, each one ground mesh. An earthwork (updateLand) is worked on a little each
+// frame, within STEP_BUDGET (step): the ground fitted again round what changed (its sweeps spread over frames), then only
+// the chunks whose ground or paint moved painted again, and swapped in all together once they're all painted, so the land
+// never shows half an earthwork and no frame waits for the whole of one. Earthworks given meanwhile wait their turn.
 //
 // Its height anywhere (heightAt, the renderer's landAt) and where a line of sight first meets it (hit, landHit) are worked
 // out from the same fit on the CPU, so what the game stands on the land sits on what's drawn.
@@ -37,7 +37,10 @@ const BED = 1.2, BANK = 0.75;
 const LIP = 0.3, STRATUM = 2, STONE_FROM = 8;
 /** How far (m) the land's outer edge is skirted down, so no crack shows between it and the country beyond. */
 const SKIRT = 3;
-/** How long (ms) a frame may spend painting an earthwork's chunks again (step). */
+/**
+ * How long (ms) a frame spends on an earthwork (step). It stops at the first piece of work that ends past it, and no piece
+ * is cut short: the longest, painting one chunk or setting up or finishing the fit, take about 2 to 5 ms once warm.
+ */
 export const STEP_BUDGET = 3;
 /** The four sides as tile steps (north, east, south, west), as the game's relief.ts has them. */
 const SIDES = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const;
@@ -126,17 +129,23 @@ export class PaintedLand {
   private readonly wet: Float32Array;
   private readonly raw: Float32Array;
   private readonly rowDry: Float32Array;
+  /** The chunks' meshes, and the geometry each was made of (the land's own, to free when it's swapped out). */
   private readonly chunks: (THREE.Mesh | null)[];
-  /** An earthwork's chunks still to paint, and those painted and waiting to be swapped in together (step). */
+  private readonly geometries: (THREE.BufferGeometry | null)[];
+  /** The earthwork being fitted (step), its chunks still to paint, and those painted and waiting to be swapped in together. */
+  private fitting: { change: Change; refit: Refit | null } | null = null;
   private readonly pending = new Set<number>();
   private readonly built = new Map<number, THREE.BufferGeometry | null>();
-  /** The earthworks given since the ground was last fitted (step does it), and the tiles as they'll be once it is. */
+  /** Whether the land's outer edge moved, so the country beyond's mesh, which meets it, is made again at the swap. */
+  private apronMoved = false;
+  /** The earthworks given since the last was taken up (step does them in turn), and the tiles as they'll be once it is. */
   private change: Change | null = null;
   /** Whether one was given since the last step: it's fitted a step later, not in the frame the game fitted its own. */
   private given = false;
   private readonly next: { corner: Float64Array; worked: Uint8Array; cover: Uint8Array; ground: Uint8Array };
   private readonly cols: number;
   private apron: THREE.Mesh | null = null;
+  private apronGeometry: THREE.BufferGeometry | null = null;
   private readonly beyond: LandMap['beyond'];
   private readonly fields: { x: number; z: number; side: number; turn: number };
   /** The lowest and highest the land is drawn (m), for tracing a line of sight. */
@@ -165,28 +174,28 @@ export class PaintedLand {
     this.cols = Math.ceil(m.width / CHUNK);
     const rows = Math.ceil(m.height / CHUNK);
     this.chunks = new Array<THREE.Mesh | null>(this.cols * rows).fill(null);
-    const apron = this.apronMesh();
+    this.geometries = new Array<THREE.BufferGeometry | null>(this.cols * rows).fill(null);
     adder.changeGround(null, () => {
-      for (let k = 0; k < this.chunks.length; k++) this.chunks[k] = this.addChunk(this.chunkGeometry(k));
-      this.apron = apron && adder.add(apron, 'ground', { under: true, tile: 64, fields: this.fields });
+      for (let k = 0; k < this.chunks.length; k++) this.setChunk(k, this.chunkGeometry(k));
+      this.addApron();
     });
   }
 
-  /** Takes the land's meshes out of the scene. */
+  /** Takes the land's meshes out of the scene, and frees them. */
   dispose() {
     this.adder.changeGround(null, () => {
-      for (const c of this.chunks) if (c) this.adder.remove(c);
-      if (this.apron) this.adder.remove(this.apron);
+      for (let k = 0; k < this.chunks.length; k++) this.setChunk(k, null);
+      this.addApron(false);
     });
-    this.chunks.fill(null);
-    this.apron = null;
-    this.pending.clear(); this.built.clear(); this.change = null;
+    for (const g of this.built.values()) g?.dispose();
+    this.pending.clear(); this.built.clear(); this.change = null; this.fitting = null;
   }
 
   /**
    * An earthwork, or anything else that changes tiles: the new values for the tiles in `rect`, lined up to be made over
    * the next frames (step): the ground fitted again round them, and the chunks whose ground or paint that moves painted
-   * again. Until then the land is drawn, and answers (heightAt, hit), as it was. Returns how many tiles changed.
+   * again. Until it's fitted the land answers (heightAt, hit) as it was; until it's swapped in it's drawn as it was.
+   * Returns how many tiles changed.
    */
   update(rect: LandRect, p: LandPatch): number {
     checkPatch({ width: this.width, height: this.height, level: this.level }, rect, p);
@@ -211,60 +220,62 @@ export class PaintedLand {
     }
     if (changed === 0) return 0;
     this.change = change; this.given = true;
-    // Those painted for an earlier earthwork and not yet swapped in are painted again too: they're out of date now.
-    for (const [k, g] of this.built) { g?.dispose(); this.pending.add(k); }
-    this.built.clear();
     return changed;
   }
 
   /**
-   * Works on the earthworks lined up (update) for up to `budget` ms: fits the ground again round them (heightAt and hit
-   * answer for the new ground from then), then paints their chunks, at least one a frame, and once they're all painted
-   * swaps them in together. Whether there's nothing left to do (Infinity: all of it, now).
+   * Works on the earthworks lined up (update) for up to `budget` ms, at least a little each frame: fits the ground again
+   * round the first (heightAt and hit answer for the new ground from then), paints its chunks, and once they're all
+   * painted swaps them in together; then the next. Whether there's nothing left to do (Infinity: all of it, now).
    */
   step(budget = STEP_BUDGET): boolean {
-    if (!this.change && this.pending.size === 0) return true;
-    if (this.given && budget !== Infinity) { this.given = false; return false; }
+    const end = performance.now() + budget, fresh = this.given;
     this.given = false;
-    const end = performance.now() + budget;
     let busy = false;
-    if (this.change) { this.settle(this.change); this.change = null; busy = true; }
-    for (const k of this.pending) {
-      if (busy && performance.now() >= end) break;
-      this.built.set(k, this.chunkGeometry(k));
-      this.pending.delete(k);
+    for (;;) {
+      if (!this.fitting && this.pending.size === 0 && this.built.size === 0 && !this.apronMoved && !this.change) return true;
+      if (busy && performance.now() >= end) return false;
       busy = true;
-    }
-    if (this.pending.size > 0) return false;
-    const area = new THREE.Box3(), C = CHUNK * this.tile;
-    for (const k of this.built.keys()) {
-      const x = this.x0 + (k % this.cols) * C, z = this.z0 + Math.floor(k / this.cols) * C;
-      area.union(new THREE.Box3(new THREE.Vector3(x, -Infinity, z), new THREE.Vector3(x + C, Infinity, z + C)));
-    }
-    this.adder.changeGround(area, () => {
-      for (const [k, g] of this.built) {
-        const old = this.chunks[k];
-        if (old) this.adder.remove(old);
-        this.chunks[k] = this.addChunk(g);
+      if (this.fitting) {
+        const { change, refit } = this.fitting;
+        if (refit && !refit.sweep(end)) continue;
+        this.fitting = null;
+        this.settle(change, refit);
+      } else if (this.pending.size > 0) {
+        const k = this.pending.values().next().value!;
+        this.pending.delete(k);
+        this.built.set(k, this.chunkGeometry(k));
+      } else if (this.built.size > 0 || this.apronMoved) {
+        this.swap();
+      } else if (this.change) {
+        // Not in the frame it was given: the game fits its own reading of the land (its Lie) in that one.
+        if (fresh && budget !== Infinity) return false;
+        this.begin(this.change);
+        this.change = null;
       }
-    });
-    this.built.clear();
-    return true;
+    }
   }
 
-  /** The earthworks' change made: the ground fitted again round it, its paint and detail, and its chunks lined up. */
-  private settle({ dirty, fit, paint: given, watered }: Change) {
-    const W = this.width, H = this.height, c = this.relief.corner, next = this.next;
-    for (const t of dirty) {
+  /** An earthwork taken up: its tiles made the land's, and the ground's refit round them started (step runs its sweeps). */
+  private begin(change: Change) {
+    const c = this.relief.corner, next = this.next, W = this.width, H = this.height, fit = change.fit;
+    for (const t of change.dirty) {
       for (let k = 0; k < 4; k++) c[t * 4 + k] = next.corner[t * 4 + k];
       this.worked[t] = next.worked[t]; this.cover[t] = next.cover[t]; this.ground[t] = next.ground[t];
       // How low and high the land is drawn, for a line of sight: only ever further out (it's only a bound).
       this.low = Math.min(this.low, Math.min(c[t * 4], c[t * 4 + 1], c[t * 4 + 2], c[t * 4 + 3]) * this.level - BED - 1);
       this.high = Math.max(this.high, (Math.max(c[t * 4], c[t * 4 + 1], c[t * 4 + 2], c[t * 4 + 3]) + 1) * this.level);
     }
+    const refit = fit && this.surface.refitting(Math.max(0, fit.x0 - SPREAD), Math.max(0, fit.y0 - SPREAD), Math.min(W, fit.x1 + SPREAD), Math.min(H, fit.y1 + SPREAD));
+    this.fitting = { change, refit };
+  }
+
+  /** The earthwork's ground fitted: its paint and detail, and the chunks to paint again lined up. */
+  private settle({ dirty, fit, paint: given, watered }: Change, refit: Refit | null) {
+    const W = this.width, H = this.height;
     let win = given ?? { x0: 0, y0: 0, x1: 0, y1: 0 };
-    if (fit) {
-      for (const t of this.surface.refit(Math.max(0, fit.x0 - SPREAD), Math.max(0, fit.y0 - SPREAD), Math.min(W, fit.x1 + SPREAD), Math.min(H, fit.y1 + SPREAD))) dirty.add(t);
+    if (fit && refit) {
+      for (const t of refit.finish()) dirty.add(t);
       // How dry the ground lies follows its height (blurred over a few tiles) and the water (all of it, if that moved):
       // the tiles whose paint may change grow by those whose dryness did.
       const d = this.dryness(watered ? null : fit);
@@ -291,8 +302,30 @@ export class PaintedLand {
       if (S !== this.detail[i]) { this.detail[i] = S; dirty.add(i); }
     });
     // What's drawn changes up to two tiles round each tile that did: its sides' steps and faces (its neighbours'), the
-    // water's bed, its paint (blended over the next tile and a little more).
-    for (const t of dirty) near(t, 2, (x, y) => this.pending.add(Math.floor(y / CHUNK) * this.cols + Math.floor(x / CHUNK)));
+    // water's bed, its paint (blended over the next tile and a little more). The country beyond meets the land's edge.
+    for (const t of dirty) {
+      near(t, 2, (x, y) => this.pending.add(Math.floor(y / CHUNK) * this.cols + Math.floor(x / CHUNK)));
+      const x = t % W, y = (t - x) / W;
+      if (this.beyond && (x === 0 || y === 0 || x === W - 1 || y === H - 1)) this.apronMoved = true;
+    }
+  }
+
+  /** The chunks painted for an earthwork, swapped in together (and the country beyond made again, if the edge moved). */
+  private swap() {
+    const C = CHUNK * this.tile;
+    let area: THREE.Box3 | null = new THREE.Box3();
+    for (const k of this.built.keys()) {
+      const x = this.x0 + (k % this.cols) * C, z = this.z0 + Math.floor(k / this.cols) * C;
+      area.union(new THREE.Box3(new THREE.Vector3(x, -Infinity, z), new THREE.Vector3(x + C, Infinity, z + C)));
+    }
+    // The country beyond reaches out of sight: everywhere.
+    if (this.apronMoved) area = null;
+    this.adder.changeGround(area, () => {
+      for (const [k, g] of this.built) this.setChunk(k, g);
+      if (this.apronMoved) { this.addApron(false); this.addApron(); }
+    });
+    this.built.clear();
+    this.apronMoved = false;
   }
 
   /** The land's height (m) at a point of the world (x, z in metres), as drawn: the beds and cliffs too. */
@@ -311,11 +344,24 @@ export class PaintedLand {
     if (len === 0) return null;
     const dx = d.x / len, dy = d.y / len, dz = d.z / len;
     // Along the ray from where it comes down past the land's top to where it passes under its bottom (or a long way).
-    const t = dy < 0 ? Math.max(0, (this.high + 1 - o.y) / dy) : 0;
-    const end = dy < 0 ? (this.low - 1 - o.y) / dy : t + 4 * (this.width + this.height) * this.tile;
+    let t = dy < 0 ? Math.max(0, (this.high + 1 - o.y) / dy) : 0;
+    let end = dy < 0 ? (this.low - 1 - o.y) / dy : t + 4 * (this.width + this.height) * this.tile;
+    // Only over what's drawn: the land's tiles and the country beyond's grid round them.
+    const b = this.beyond, lx1 = this.x0 + this.width * this.tile, lz1 = this.z0 + this.height * this.tile;
+    const box: [number, number, number, number][] = [
+      [o.x, dx, Math.min(this.x0, b ? b.x0 : Infinity), Math.max(lx1, b ? b.x0 + (b.nx - 1) * b.cell : -Infinity)],
+      [o.z, dz, Math.min(this.z0, b ? b.z0 : Infinity), Math.max(lz1, b ? b.z0 + (b.nz - 1) * b.cell : -Infinity)],
+    ];
+    for (const [from, along, lo, hi] of box) {
+      if (Math.abs(along) < 1e-12) { if (from < lo || from > hi) return null; continue; }
+      const p = (lo - from) / along, q = (hi - from) / along;
+      t = Math.max(t, Math.min(p, q)); end = Math.min(end, Math.max(p, q));
+    }
+    if (t > end) return null;
     const step = 0.5, above = (s: number) => o.y + dy * s - this.heightAt(o.x + dx * s, o.z + dz * s);
     if (above(t) < 0) return into.set(o.x + dx * t, o.y + dy * t, o.z + dz * t);
-    for (let s = t + step; s <= end + step; s += step) {
+    for (let s0 = t + step; s0 < end + step; s0 += step) {
+      const s = Math.min(s0, end);
       if (above(s) > 0) continue;
       // Narrowed down between the last step above the land and this one.
       let a = s - step, b = s;
@@ -505,8 +551,21 @@ export class PaintedLand {
 
   // ---- The mesh ----
 
-  private addChunk(g: THREE.BufferGeometry | null): THREE.Mesh | null {
-    return g && this.adder.add(g, 'ground', { under: true, tile: CHUNK * this.tile, fields: this.fields });
+  /** A chunk's mesh made of `g` (none: taken out), in place of the one it had, which is freed. */
+  private setChunk(k: number, g: THREE.BufferGeometry | null) {
+    const old = this.chunks[k];
+    if (old) this.adder.remove(old);
+    this.geometries[k]?.dispose();
+    this.geometries[k] = g;
+    this.chunks[k] = g && this.adder.add(g, 'ground', { under: true, tile: CHUNK * this.tile, fields: this.fields });
+  }
+
+  /** The country beyond's mesh made and added (`make` false: only the one it had taken out, and freed). */
+  private addApron(make = true) {
+    if (this.apron) this.adder.remove(this.apron);
+    this.apronGeometry?.dispose();
+    this.apronGeometry = make ? this.apronMesh() : null;
+    this.apron = this.apronGeometry && this.adder.add(this.apronGeometry, 'ground', { under: true, tile: 64, fields: this.fields });
   }
 
   /** A chunk's mesh, null if it has none (the land is narrower than its chunks). */
