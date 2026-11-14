@@ -96,8 +96,12 @@ export interface Haze { amount: number; color: number; top: number; thins?: numb
 /** The hazes the catalogue uses: a cool grey for a fog, a warm brown for dust. */
 export const FOG_HAZE = 0xcfd6d8, DUST_HAZE = 0xc49a62;
 
-/** How an event looks in the sky, apart from its effects: the cover and the rain or snow drawn, how warm the light is (0–1), and its haze. */
-export interface Look { cloud?: number; precip?: number; heat?: number; haze?: Haze }
+/**
+ * How an event looks in the sky, apart from its effects: the cover and the rain or snow drawn, how warm the light is (0–1), its
+ * haze, and how windy it looks (a share of a full wind, for the drawn wind only: a blizzard is heavy snow in a strong wind as
+ * brush3d draws it, though the rules' wind is no stronger; #207). None of it is a rule.
+ */
+export interface Look { cloud?: number; precip?: number; heat?: number; haze?: Haze; wind?: number }
 
 export interface EventInfo {
   name: string;
@@ -240,7 +244,7 @@ export const EVENTS: Record<EventKind, EventInfo> = {
   },
   blizzard: {
     name: 'Blizzard', hours: [24, 48], seasons: { winter: 1 }, only: ['hard'], severe: true, lingers: 16,
-    look: { cloud: 1, precip: 1 }, shape: 'slash', holds: 'solar panels dark and under snow, trucks slowed by snow',
+    look: { cloud: 1, precip: 1, wind: 1 }, shape: 'slash', holds: 'solar panels dark and under snow, trucks slowed by snow',
     // No sun and trucks slowed by the snow; the snow it leaves on the panels melts off slowly afterwards (snow.ts). A severe one is deeper.
     push: { ordinary: { sun: 0, trucks: 0.5 }, severe: { sun: 0, trucks: 0.3 } },
   },
@@ -353,14 +357,15 @@ export function pushesOf(active: readonly Active[]): Pushes {
 /** The levers at a time. The rules read the sun, wind, rain, warmth, river and trucks through this. */
 export const pushesAt = (sc: Pick<Scenario, 'events'>, time: number): Pushes => pushesOf(activeEvents(sc, time));
 
-/** How the sky looks because of the events under way: the most cloud, the hardest rain and the warmest light any of them gives, felt as strongly as they are, and the thickest haze. */
-export function lookAt(sc: Pick<Scenario, 'events'>, time: number): { cloud: number; precip: number; heat: number; haze: Haze | null } {
-  let cloud = 0, precip = 0, heat = 0, haze: Haze | null = null;
+/** How the sky looks because of the events under way: the most cloud, the hardest rain, the warmest light and the windiest look any of them gives, felt as strongly as they are, and the thickest haze. */
+export function lookAt(sc: Pick<Scenario, 'events'>, time: number): { cloud: number; precip: number; heat: number; wind: number; haze: Haze | null } {
+  let cloud = 0, precip = 0, heat = 0, wind = 0, haze: Haze | null = null;
   for (const { event, intensity } of activeEvents(sc, time)) {
     const look = EVENTS[event.kind].look, k = intensity * (event.strength === 'severe' ? 1.15 : 1);
     cloud = Math.max(cloud, Math.min(1, (look.cloud ?? 0) * k));
     precip = Math.max(precip, Math.min(1, (look.precip ?? 0) * k));
     heat = Math.max(heat, Math.min(1, (look.heat ?? 0) * k));
+    wind = Math.max(wind, (look.wind ?? 0) * k);
     if (look.haze) {
       // A haze that lifts is thickest at the start and thins toward the end, on top of the ramp in and out.
       const lift = 1 - (1 - (look.haze.thins ?? 1)) * Math.min(1, Math.max(0, (time - event.start) / event.length));
@@ -368,7 +373,7 @@ export function lookAt(sc: Pick<Scenario, 'events'>, time: number): { cloud: num
       if (!haze || amount > haze.amount) haze = { ...look.haze, amount };
     }
   }
-  return { cloud, precip, heat, haze };
+  return { cloud, precip, heat, wind, haze };
 }
 
 // ---- Building events ----
