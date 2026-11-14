@@ -79,10 +79,14 @@ const params = new URLSearchParams(location.search);
  * don't see it before then (epic #212): it's only reachable through the URL, and kept across the game's own reloads (`page`).
  */
 const BRUSH = params.get('renderer') === 'brush3d';
-/** The game's page again, with `query` (`?menu`), keeping the renderer switch. */
+/**
+ * The game's page again, with `query` (`?menu`). Drawn by brush3d, it keeps the page's other options too (the switch, and
+ * a look PR's candidates, `?level=` and the like, which the brush3d world reads only once it loads), all but the game's
+ * own `play` and `menu`.
+ */
 const page = (query = '') => {
   const q = new URLSearchParams(query);
-  if (BRUSH) q.set('renderer', 'brush3d');
+  if (BRUSH) for (const [k, v] of params) if (k !== 'play' && k !== 'menu' && !q.has(k)) q.set(k, v);
   return `${location.pathname}${q.size ? `?${q}` : ''}`;
 };
 /** A commission to start straight away (`?play=<id>`); an unknown id falls through to the menu or the saved game. */
