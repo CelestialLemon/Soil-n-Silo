@@ -26,14 +26,15 @@ plain code with no drawing in them, so the game's rules and tests can use them w
 
 ## One door in
 
-Everything the game uses comes from one file, `src/index.ts` (after the move, #200, from the renderer's folder in the game,
-say `src/render/index.ts`). The demo is just another user of it: it imports nothing else. One part of it also stands on
+Everything the game uses comes from one file, `src/index.ts` (in the game's repo, since the move, #200:
+`brush3d/src/index.ts`). The demo is just another user of it: it imports nothing else. One part of it also stands on
 its own: `src/shared.ts`, the wind simulation and the cloud recipe (below), which loads in Node with no bundler, for the
 rules' tests and bots (the rest needs Vite, for the models and the wind's worker). Anything not exported there is
 the renderer's own business and can change without notice: its shaders, materials, passes, uniforms and maps.
 
 ```ts
-import { BrushRenderer, TILE, type Weather } from '../render';
+// in the game's src/world/, which keeps the .ts in its imports (tsconfig.json)
+import { BrushRenderer, TILE, type Weather } from '../../brush3d/src/index.ts';
 ```
 
 ## Units: metres, and a tile is 4 m

@@ -137,5 +137,5 @@ channel it runs at a quarter of the stream's speed.
   under clearing skies (17 game hours, about a minute at 3x).
 - `?timeline&spell=freeze-thaw&season=winter` (#14): the stream freezes over from its banks, holds, and thaws (8 game
   hours, all in daylight, about 27 s at 3x).
-- `npm run test:water` checks the layout, the rule and the easing. `tools/video.ts` has `flood`, `flood-meadow`
+- `npm run render:test:water` checks the layout, the rule and the easing. `tools/video.ts` has `flood`, `flood-meadow`
   (`QUERY=scene=meadow`), `stream-spate`, `stream-usual` and `river-freeze` (#14, `QUERY=season=winter`).

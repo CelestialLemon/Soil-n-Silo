@@ -67,7 +67,7 @@ wind.restore(save);                                      // carries on from it, 
 
 ## How it's built
 
-`src/wind/sim.c` is the engine, compiled to WebAssembly with SIMD by `npm run build:wind` (clang compiled to
+`src/wind/sim.c` is the engine, compiled to WebAssembly with SIMD by `npm run render:build:wind` (clang compiled to
 WebAssembly, fetched once into `node_modules/.cache`). The result is checked in as `src/wind/engine.ts`, so only a change
 to `sim.c` needs a rebuild. `sim.ts` holds the recipe, the easing and the turns, the obstacles' rasterising and the
 queries. `worker.ts` runs it off the main thread, and `client.ts` is the game's side of the worker.
@@ -128,7 +128,7 @@ slapped in under half a second). The ground air takes its own time to pick a gus
 build reads as 2–3 s on the ground, and a 0.3 s slap is hardly quicker than an ordinary gust there; above about 15 m/s
 the slaps stand out (Sol's round 2).
 
-## Calibration (Sol's rounds 4–6, and the gusts' fit, checked by `npm run test:wind`)
+## Calibration (Sol's rounds 4–6, and the gusts' fit, checked by `npm run render:test:wind`)
 
 | What | Value |
 |---|---|

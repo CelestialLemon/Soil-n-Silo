@@ -93,9 +93,9 @@ always gives the same file, and a change is a diff anyone can review.
 
 ```sh
 # all of them (Blender is a Flatpak here), about half a minute
-flatpak run org.blender.Blender -b --factory-startup --python-exit-code 1 --python $PWD/tools/blender/build.py -- $PWD/src/models
+flatpak run org.blender.Blender -b --factory-startup --python-exit-code 1 --python $PWD/brush3d/tools/blender/build.py -- $PWD/brush3d/src/models
 # or just some
-flatpak run org.blender.Blender -b --factory-startup --python-exit-code 1 --python $PWD/tools/blender/build.py -- $PWD/src/models bakery mill
+flatpak run org.blender.Blender -b --factory-startup --python-exit-code 1 --python $PWD/brush3d/tools/blender/build.py -- $PWD/brush3d/src/models bakery mill
 ```
 
 - `tools/blender/kit.py` is the shared kit: the palette, and the parts the set is built from (`hut`, `pillow` and `vault`
@@ -106,7 +106,7 @@ flatpak run org.blender.Blender -b --factory-startup --python-exit-code 1 --pyth
 - The build **checks** each model: it must stay inside its footprint, above the ground, and under its triangle budget. A
   model that fails stops the build, and the index is only written when all pass.
 - To add one: copy a script that's close, change it, build it, then look at it in the gallery from the front and the
-  back (`node tools/shot.ts out "scene=gallery&focus=<name>" "scene=gallery&focus=<name>&view=2"`). It joins the gallery
+  back (`node brush3d/tools/shot.ts out "scene=gallery&focus=<name>" "scene=gallery&focus=<name>&view=2"`). It joins the gallery
   and the tour by itself; to stand it on the farm, add a `place(...)` line to `BUILDINGS` in `src/demo/scenes/farm.ts`.
 
 ## The set
@@ -169,7 +169,7 @@ trees keep off footprints and the race.
 ## Cost
 
 About 48 000 triangles of models on the farm (63 of them stand there). On the RX 570 at 1080p in a storm, the farm's frame
-is 14.5 ms of GPU time with the new set against 14.5 on `main` before it (`node tools/profile.ts`, 2026-11-14): no
+is 14.5 ms of GPU time with the new set against 14.5 on `main` before it (`node brush3d/tools/profile.ts`, 2026-11-14): no
 measurable change, and all the inked things together are about 0.3 ms of it. See `docs/PERFORMANCE.md`.
 
 ## Not done, and known gaps

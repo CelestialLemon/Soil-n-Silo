@@ -14,6 +14,13 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      (`src/kit`) and models (`src/models`) stand apart from the demo; the demo's frames are unchanged. Open for later
      tasks: the game's zoom at 4 m a tile is 4–24 px/m, under the 16–192 brush3d was tuned at (#201, #210); the wind
      grid's 256 cells may need 2 m cells past the map (#208); moving obstacles and the sub-tick clock in wind saves (#208).
+  2. Soil-n-Silo#200 the move (done 2026-11-14): this folder of the game's repo, with brush3d-renderer's history rewritten
+     under `brush3d/` so `git log` and `git blame` follow it. One `package.json` (the tools are `npm run render:*`), checked by
+     the game's typecheck (now with `erasableSyntaxOnly`: the constructors' parameter properties became plain fields), lint
+     and CI (the wind and water checks in `npm test`, the clouds' in a browser job). The demo is a second page of the game's
+     Vite build, served at `/brush3d/` and deployed beside the game in each Pages folder, pull request previews included.
+     The demo's frames are byte-identical to brush3d-renderer's. brush3d-renderer is archived; its open issues moved to the
+     game (brush3d-renderer#25, brush3d-renderer#56).
 - **Weather, epic #3** (planned 2026-10-30): season, weather and hour change the whole picture. The decisions are in #3; in
   short, the game owns the weather's state and logic and the renderer only draws it. The order:
   1. #6 performance: measure the frame and set the weather's budget (done 2026-10-30: the farm 17.5 ms on the laptop,
@@ -54,7 +61,9 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
   - Still to do, when wanted: the moving parts turning and the `running_*` looks switching in the demo; the models going
     into the game (the game repo's work).
 - **The demo on GitHub Pages** (#15, shipped 2026-10-30): https://celestiallemon.github.io/brush3d-renderer/main/, and a preview
-  of every open pull request from this repo at `.../pr-<number>/`, removed when it closes.
+  of every open pull request from this repo at `.../pr-<number>/`, removed when it closes. Since the move (#200) it is
+  deployed beside the game instead, in each build's `brush3d/` folder (`https://celestiallemon.github.io/Soil-n-Silo/dev/brush3d/`,
+  and `.../pr-<number>/brush3d/` for a pull request's preview).
 - **Wind, issue #2** (2026-10-30, shipped in #5): `renderer.setWind({ speed, direction, gust })`, eased, from calm to a
   hurricane (0, 5, 17, 25, 35 m/s), with a slider and direction in the demo and a `tools/video.ts` move per strength plus
   `wind-ramp`.
@@ -158,7 +167,7 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
   reflected grass is about two fifths of it and the bed's pass about as much; the ripples and glints next to nothing. A
   full-size, 4x multisampled reflection with no blur measured steadier still and sharper (0.13 on the meadow; 0.17 against
   0.24 over the farm's stream at `zoom=80`): worth trying once the extra passes are profiled (see Performance). All of these
-  are `AB=2 node tools/motion.ts` on the RX 570, `scene=meadow&zoom=32&t=3` and `x=0&z=24&zoom=40&t=3` (or `zoom=80`), the
+  are `AB=2 node brush3d/tools/motion.ts` on the RX 570, `scene=meadow&zoom=32&t=3` and `x=0&z=24&zoom=40&t=3` (or `zoom=80`), the
   one-pixel pan's full-frame mean; the shares come from leaving one thing out at a time (grass from the reflection; a
   constant bed), so they overlap rather than add up.
 
@@ -384,4 +393,4 @@ RX 570. `docs/PERFORMANCE.md` has the budget.
   4.9 here.
   Done (#6, part 6): at most 1080p's pixel count drawn, scaled up to a high-DPI screen (the MacBook's), so it costs what
   it does at 1080p (the developer's pick over 1440p's and the screen's own).
-  `node tools/profile.ts` measures here, `?profile` on any machine.
+  `node brush3d/tools/profile.ts` measures here, `?profile` on any machine.

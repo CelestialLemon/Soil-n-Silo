@@ -31,9 +31,9 @@ Decided with the developer on 2026-10-30 (#6). The game is played by the develop
 ## Measuring
 
 ```sh
-node tools/profile.ts out                       # both scenes, on this machine's GPU (needs the dev server)
-node tools/profile.ts out "scene=farm&samples=2" "scene=farm&shadowMap=2048"
-CPU=3 node tools/profile.ts out                 # the page's CPU work 3x slower (Chrome's throttling, that browser only)
+node brush3d/tools/profile.ts out                       # both scenes, on this machine's GPU (needs the dev server)
+node brush3d/tools/profile.ts out "scene=farm&samples=2" "scene=farm&shadowMap=2048"
+CPU=3 node brush3d/tools/profile.ts out                 # the page's CPU work 3x slower (Chrome's throttling, that browser only)
 ```
 
 On any other machine, open the demo with `?profile` (on `main` or a PR's preview), press Run and then Copy: the same cases,
@@ -55,7 +55,7 @@ they aren't a windowed browser's displayed fps.
 
 ## The frame today (2026-10-30)
 
-RX 570, 1080p, the demo's default view, a storm; GPU ms (`node tools/profile.ts`):
+RX 570, 1080p, the demo's default view, a storm; GPU ms (`node brush3d/tools/profile.ts`):
 
 | | shadow | under water | reflection | main | post | frame | fps |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -125,7 +125,7 @@ clear (the farm at 1080p in a storm, 11.64 ms clear, 11.65 overcast, here).
 The cloud field (src/renderer/clouds.ts) is drawn into a 512² texture over the land, a half-float shade a texel (0.5 MB),
 and every surface reads its shade there with one lookup. The map is redrawn only when the clouds have moved (the game's
 drift, every frame while they drift) or the cover has changed; never on a clear or fully overcast sky. RX 570, 1080p storm,
-GPU ms, at 45% cover (`clouds` is the map's own pass in `node tools/profile.ts` and `?profile`):
+GPU ms, at 45% cover (`clouds` is the map's own pass in `node brush3d/tools/profile.ts` and `?profile`):
 
 | | the map | frame, before → with clouds |
 |---|---:|---:|
@@ -153,7 +153,7 @@ at rest) and the ground itself, where a drop in the open lands (#11). Rain and s
 map adds the ground's draw to a redraw, a few hundred thousand triangles at most (the numbers below are from before it).
 Nothing in them moves, so they're drawn only when cover changes (a building placed or removed, a kind shown or hidden):
 **no cost on an ordinary frame**. RX 570, 1080p storm, GPU ms, the map drawn every frame to time it
-(`1080p storm, shelter every frame` in `node tools/profile.ts` and `?profile`):
+(`1080p storm, shelter every frame` in `node brush3d/tools/profile.ts` and `?profile`):
 
 | | shelter, when redrawn | frame |
 |---|---:|---:|
@@ -221,7 +221,7 @@ storm, a strike at its brightest". A strike's own work on the CPU is about 1 to 
 ### A storm, as a whole (#12)
 
 The storm look is the light's numbers (worked out on the CPU each frame) and a vignette uniform: no pass, no texture.
-RX 570, 1080p, GPU ms (`node tools/profile.ts`, wind at storm strength in each): the farm in a full storm 14.01 with the
+RX 570, 1080p, GPU ms (`node brush3d/tools/profile.ts`, wind at storm strength in each): the farm in a full storm 14.01 with the
 look, 13.95 at `storm=0`, the noise. The whole storm (`weather=storm`: full cover, rain 0.9, `storm` 1) against the same wind
 under a clear sky: the meadow 5.23 → 5.57 (the rain and its veil; post 0.22 → 0.29, the main view 3.71 → 3.97), and 5.93
 at a strike's brightest (post 0.50): about 0.7 ms in all, about 1.3 on the laptop at ×1.9, inside the 4 a storm is
@@ -234,7 +234,7 @@ In the post pass: each pixel's place in the world rebuilt from its depth, and th
 path out of the layer, reading drifting noise at each. The noise is baked once into a 256² texture (64 KB) that repeats;
 worked out in every pixel it cost 0.8 ms here, twice the line's budget. Skipped where there's no fog, and above its top.
 Then the trace of the paint's colour given back under it (the 'tint' look): a turn through OKLab, about 0.09 ms.
-RX 570, 1080p storm, GPU ms (`1080p storm, fog` in `node tools/profile.ts` and `?profile`):
+RX 570, 1080p storm, GPU ms (`1080p storm, fog` in `node brush3d/tools/profile.ts` and `?profile`):
 
 | | post, clear | post, fog | frame |
 |---|---:|---:|---:|
@@ -263,7 +263,7 @@ land's hollows (with the pattern a thin snow breaks along, how far the ground fa
 into a map, rather than in every pixel; together those took it from 0.95 ms to 0.37. Snow on the river's banks is
 painted in the bed's pass too, which brought it to about 0.45. While the ground is bare the materials skip it all.
 
-RX 570, the farm at 1080p in a storm, snow lying 0.6 everywhere (`1080p storm, snow lying` in `node tools/profile.ts`
+RX 570, the farm at 1080p in a storm, snow lying 0.6 everywhere (`1080p storm, snow lying` in `node brush3d/tools/profile.ts`
 and `?profile`): **11.03 → 11.48 ms**, about 0.45, a little over the line's 0.4 (shared with the wet ground and frost
 still to come). Crawl (`AB=2 tools/motion.ts`, a 1 px pan): 0.108 → 0.193, all of the rise at dark branch edges against
 the white, the open snow steady; pops (`tools/pops.ts`): none.
@@ -286,7 +286,7 @@ is looked up). Each traces the path it has come down through the roof and crown 
 24 reads of each in a blizzard's long slant, one straight down.
 
 RX 570, 1080p, snow lying 0.6 everywhere, against the same frame without the falling snow (the main view and the post
-pass, medians of 90 frames; `1080p blizzard` and `1080p heavy snow, calm` in `node tools/profile.ts` and `?profile`):
+pass, medians of 90 frames; `1080p blizzard` and `1080p heavy snow, calm` in `node brush3d/tools/profile.ts` and `?profile`):
 
 | | the farm | the meadow |
 |---|---:|---:|
@@ -316,7 +316,7 @@ over what faces up. Its grain is each material's own brushwork and its breakup t
 not noise of its own: a first version with five noise lookups a pixel cost 2.0 ms, most of it in the grass. The sun's
 memory is added to a few times a second while the clock runs (six shadow taps a texel), only while there's frost.
 
-RX 570, the farm at 1080p in a storm, frost 0.6 everywhere at 10:00 (`1080p storm, frost` in `node tools/profile.ts`
+RX 570, the farm at 1080p in a storm, frost 0.6 everywhere at 10:00 (`1080p storm, frost` in `node brush3d/tools/profile.ts`
 and `?profile`), medians of three: **11.40 → 12.00 ms, +0.60** (the meadow 5.09 → 5.74, +0.65). Of that, 0.29 is
 reading the ground's map and what shelters it, which lying snow and wet ground pay too (the same frame with snow lying
 0.6: +0.60), and **0.30 is the frost's own**: its paint about 0.17, the grass's tips 0.07, the sun's memory read 0.06.
@@ -340,7 +340,7 @@ the open water the floes (two cracked patterns, crossfaded). The milky ice by th
 snow two more. No pass of its own; the water's other passes draw as before.
 
 RX 570, 1080p in a storm, snow lying 0.3, against the same frame with open water, two runs each (`1080p storm, stream
-thawing` in `node tools/profile.ts` and `?profile`, which sends the stream at 0.5 and falling, at the demo's camera):
+thawing` in `node brush3d/tools/profile.ts` and `?profile`, which sends the stream at 0.5 and falling, at the demo's camera):
 
 | | the farm, its stream across the screen (`x=-14&z=20&zoom=40`) | the meadow |
 |---|---:|---:|
@@ -397,13 +397,13 @@ materials skip it all.
 
 RX 570, 1080p in a storm, the land soaked (the demo's own map: its tracks and yard muddy), wet against dry, medians of
 three: **the farm +0.33 ms, the meadow +0.31**, under the line's 0.4 (shared with the snow: rain and lying snow seldom
-come together, and the snow on wet ground is drawn over it). `1080p storm, wet ground` in `node tools/profile.ts` and
+come together, and the snow on wet ground is drawn over it). `1080p storm, wet ground` in `node brush3d/tools/profile.ts` and
 `?profile` is the dearest case, mud everywhere rather than only on the bare earth.
 
 Measured with the first of the candidate sheens ('streaks'). Not yet re-timed: the picked glaze (it reads the sky's
 clouds on what people build, a small share of the screen), the review's fixes since (the shelter in the water's
 reflection; the mud's earth test moved from every pixel to the ground's vertices, a saving), and the laptop (Arc 140T).
-The GPU was busy on 2026-11-12; a run of `node tools/profile.ts` settles it.
+The GPU was busy on 2026-11-12; a run of `node brush3d/tools/profile.ts` settles it.
 
 What it cost at first, and what took it down (Sol measured most of it, #11):
 
@@ -462,7 +462,7 @@ The savings are from Sol's chain of experiments, each cut on top of the ones abo
 The renderer's own numbers for the done cuts are below; the frame with them is 23.1 ms, so the two still to do would
 bring it to about 18.
 
-The two done (#6, part 2), measured by `node tools/profile.ts` at 1080p in a storm, both off against both on: the farm
+The two done (#6, part 2), measured by `node brush3d/tools/profile.ts` at 1080p in a storm, both off against both on: the farm
 37.5 → **23.1 ms**, the meadow 14.1 → **13.1**. The silhouettes are drawn in the same render as the painting, so the
 multisampled frame is resolved once, not twice (worth about 0.8 ms on each scene here, more on the laptop's shared
 memory). On the meadow they save less (it has few trees, and its stream crosses most of the screen); drawing silhouettes for only the leaves and grass came out no better on
@@ -499,7 +499,7 @@ it apart from the stones and wood (`paint`).
 **Decided** (the developer, on #23, 2026-10-30): **2048²**. Flipping between live and 2048 on the preview, no difference
 showed; 4096² looked and ran the same, at four times the memory (64 MB against 16).
 
-RX 570, 1080p, storm, GPU ms (`node tools/profile.ts`):
+RX 570, 1080p, storm, GPU ms (`node brush3d/tools/profile.ts`):
 
 | | live | baked 4096² (64 MB) | baked 2048² (16 MB) | the frame without the ground |
 |---|---:|---:|---:|---:|
