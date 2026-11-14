@@ -240,7 +240,7 @@ export class Grove {
   readonly wood = new MeshBuilder('paint');
   readonly leaves = new MeshBuilder('foliage');
   /** Winter's fine twigs and bare hedges, and the leaves still clinging to them: not cover from the rain, no shadow. */
-  private readonly twigs = new MeshBuilder('foliage');
+  readonly twigs = new MeshBuilder('foliage');
   /** A leafy tree's limbs, which cast no shadow: its crown's shadow covers theirs, and a thin limb's own shadow, rocking in
    * the wind, flickers where it crosses the crops. A bare tree's limbs are its shadow, so winter's stay in `wood`. */
   private readonly limbs = new MeshBuilder('paint');
@@ -250,6 +250,9 @@ export class Grove {
   private readonly dress: Dress | null;
 
   constructor(dress: Dress | null) { this.dress = dress; }
+
+  /** The season it's dressed for (summer with no dress), for trees grown into it from outside (plants.ts's species). */
+  get season(): Season { return this.dress?.season ?? 'summer'; }
 
   /**
    * Grows a tree into the grove. Everything it adds goes with it (its wood, its leaves, the leaves fallen round it), so one

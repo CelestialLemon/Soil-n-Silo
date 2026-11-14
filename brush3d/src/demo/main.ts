@@ -9,6 +9,7 @@ import { buildMeadow } from './scenes/meadow';
 import { buildFarm } from './scenes/farm';
 import { buildWaterPatch } from './scenes/waterPatch';
 import { buildGallery } from './scenes/gallery';
+import { buildPlants } from './scenes/plants';
 import { defaultCases } from './profile';
 import { SPEEDS, SPELLS, TICK, timelineAt, timelineClock, timelineFrost, timelineLightning, timelineLying, timelinePhase, timelineWater, timelineWet, timelineWind, type SpellName } from './timeline';
 import { DemoWater, USUAL_WATER, type WaterState } from './water';
@@ -23,7 +24,7 @@ import { WindView } from './windView';
 //   season=spring|summer|autumn|winter (#13; none by default: the looks' own day, sun up 6 to 20)  character (the
 //     game's: mild|wet|dry|hot|gales|stormy|hard|highRiver)  sunrise, sunset (the game's clock hours; the season's by default)
 //   The scene is built in the season (summer's with none): its crops, flowers and hay stand in for the game's.
-//   scene=farm|gallery|meadow|water (gallery: every model on its own plot, docs/MODELS.md; water: the water's test patch, #19: a pond, a slow bend, a fast run, a flooded meadow)  lines=0  shadows=0  still (hide the buttons)  dpr (pixel ratio)
+//   scene=farm|gallery|meadow|water|plants (gallery: every model on its own plot, docs/MODELS.md; water: the water's test patch, #19: a pond, a slow bend, a fast run, a flooded meadow; plants: the game's crops at every stage, laid both ways, and its trees, Soil-n-Silo#213)  lines=0  shadows=0  still (hide the buttons)  dpr (pixel ratio)
 //   wind (m/s, or calm|breeze|gale|storm|hurricane)  windDir (degrees the wind blows towards, from +x towards +z)  gust (0..1)
 //   rhythm (how the gusts come: 0 rare and strong, 1 frequent and mild)  windMap (the living wind from above, #36)
 //   windSeed (which gusts: a whole number)
@@ -61,9 +62,9 @@ const params = new URLSearchParams(location.search);
 const num = (k: string, d: number) => (params.has(k) ? Number(params.get(k)) : d);
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 const sceneName = params.get('scene') ?? 'farm';
-const farm = sceneName === 'farm', gallery = sceneName === 'gallery';
+const farm = sceneName === 'farm', gallery = sceneName === 'gallery', plants = sceneName === 'plants';
 const renderer = new BrushRenderer(canvas, {
-  shadowRadius: 34, shadowFollow: farm || gallery, shadowMapSize: num('shadowMap', farm || gallery ? 4096 : 2048),
+  shadowRadius: 34, shadowFollow: farm || gallery || plants, shadowMapSize: num('shadowMap', farm || gallery || plants ? 4096 : 2048),
   pixelRatio: params.has('dpr') ? num('dpr', 1) : params.has('profile') ? 1 : undefined,
   samples: params.has('samples') ? num('samples', 4) : undefined,
   shelterSize: num('shelterSize', 1024),
@@ -85,7 +86,7 @@ if (season) {
 }
 const farmScene = farm ? buildFarm(renderer, season ?? 'summer') : null;
 const galleryScene = gallery ? buildGallery(renderer) : null;
-const scene = farmScene ?? galleryScene ?? (sceneName === 'water' ? buildWaterPatch : buildMeadow)(renderer, season ?? 'summer');
+const scene = farmScene ?? galleryScene ?? (sceneName === 'water' ? buildWaterPatch : plants ? buildPlants : buildMeadow)(renderer, season ?? 'summer');
 /** Settles once the scene's models are in. */
 const loaded = (farmScene ?? galleryScene)?.ready ?? Promise.resolve();
 /** Where the scene shows each model (docs/MODELS.md): the tour's stops. */
