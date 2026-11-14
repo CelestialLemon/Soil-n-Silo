@@ -133,7 +133,7 @@ export class PaintedLand {
   private readonly chunks: (THREE.Mesh | null)[];
   private readonly geometries: (THREE.BufferGeometry | null)[];
   /** The earthwork being fitted (step), its chunks still to paint, and those painted and waiting to be swapped in together. */
-  private fitting: { change: Change; refit: Refit | null } | null = null;
+  private fitting: { change: Change; refit: Refit | null; taken: Taken } | null = null;
   private readonly pending = new Set<number>();
   private readonly built = new Map<number, THREE.BufferGeometry | null>();
   /** Whether the land's outer edge moved, so the country beyond's mesh, which meets it, is made again at the swap. */
@@ -161,7 +161,10 @@ export class PaintedLand {
     this.relief = { width: m.width, height: m.height, corner: Float64Array.from(m.corners, (c) => Math.round(c / m.level)) };
     this.worked = Uint8Array.from(m.worked); this.cover = Uint8Array.from(m.cover); this.ground = Uint8Array.from(m.ground);
     this.next = { corner: this.relief.corner.slice(), worked: this.worked.slice(), cover: this.cover.slice(), ground: this.ground.slice() };
-    this.surface = new Surface(this.relief, { water: (x, y) => this.cover[y * this.width + x] === LAND_COVER.water, worked: (x, y) => this.worked[y * this.width + x] === 1 });
+    // (The fit reads the water and worked tiles as they're to be: it's set up as an earthwork's taken up, and the land
+    // answers as it was until it's done, settle. When nothing's under way, those are the land's own.)
+    const next = this.next;
+    this.surface = new Surface(this.relief, { water: (x, y) => next.cover[y * this.width + x] === LAND_COVER.water, worked: (x, y) => next.worked[y * this.width + x] === 1 });
     this.detail = new Uint8Array(n);
     for (let i = 0; i < n; i++) this.detail[i] = this.cut(i % this.width, Math.floor(i / this.width));
     this.dry = new Float32Array(n); this.wet = new Float32Array(n); this.raw = new Float32Array(n); this.rowDry = new Float32Array(n);
@@ -237,10 +240,10 @@ export class PaintedLand {
       if (busy && performance.now() >= end) return false;
       busy = true;
       if (this.fitting) {
-        const { change, refit } = this.fitting;
+        const { change, refit, taken } = this.fitting;
         if (refit && !refit.sweep(end)) continue;
         this.fitting = null;
-        this.settle(change, refit);
+        this.settle(change, refit, taken);
       } else if (this.pending.size > 0) {
         const k = this.pending.values().next().value!;
         this.pending.delete(k);
@@ -256,23 +259,30 @@ export class PaintedLand {
     }
   }
 
-  /** An earthwork taken up: its tiles made the land's, and the ground's refit round them started (step runs its sweeps). */
+  /**
+   * An earthwork taken up: its corners made the fit's, and the ground's refit round them started (step runs its sweeps).
+   * Its cover and the rest are the land's once it's fitted (settle), so it answers as it was until then. (The relief's
+   * corners are only the fit's: what's drawn and answered is the fit.)
+   */
   private begin(change: Change) {
     const c = this.relief.corner, next = this.next, W = this.width, H = this.height, fit = change.fit;
+    // Its tiles' other values as they are now (a later earthwork may change them again before this one's fitted).
+    const taken: Taken = { tiles: [...change.dirty], values: new Uint8Array(change.dirty.size * 3) };
+    taken.tiles.forEach((t, i) => taken.values.set([next.worked[t], next.cover[t], next.ground[t]], i * 3));
     for (const t of change.dirty) {
       for (let k = 0; k < 4; k++) c[t * 4 + k] = next.corner[t * 4 + k];
-      this.worked[t] = next.worked[t]; this.cover[t] = next.cover[t]; this.ground[t] = next.ground[t];
       // How low and high the land is drawn, for a line of sight: only ever further out (it's only a bound).
       this.low = Math.min(this.low, Math.min(c[t * 4], c[t * 4 + 1], c[t * 4 + 2], c[t * 4 + 3]) * this.level - BED - 1);
       this.high = Math.max(this.high, (Math.max(c[t * 4], c[t * 4 + 1], c[t * 4 + 2], c[t * 4 + 3]) + 1) * this.level);
     }
     const refit = fit && this.surface.refitting(Math.max(0, fit.x0 - SPREAD), Math.max(0, fit.y0 - SPREAD), Math.min(W, fit.x1 + SPREAD), Math.min(H, fit.y1 + SPREAD));
-    this.fitting = { change, refit };
+    this.fitting = { change, refit, taken };
   }
 
   /** The earthwork's ground fitted: its paint and detail, and the chunks to paint again lined up. */
-  private settle({ dirty, fit, paint: given, watered }: Change, refit: Refit | null) {
+  private settle({ dirty, fit, paint: given, watered }: Change, refit: Refit | null, { tiles, values }: Taken) {
     const W = this.width, H = this.height;
+    tiles.forEach((t, i) => { this.worked[t] = values[i * 3]; this.cover[t] = values[i * 3 + 1]; this.ground[t] = values[i * 3 + 2]; });
     let win = given ?? { x0: 0, y0: 0, x1: 0, y1: 0 };
     if (fit && refit) {
       for (const t of refit.finish()) dirty.add(t);
@@ -359,12 +369,14 @@ export class PaintedLand {
     }
     if (t > end) return null;
     const step = 0.5, above = (s: number) => o.y + dy * s - this.heightAt(o.x + dx * s, o.z + dz * s);
-    if (above(t) < 0) return into.set(o.x + dx * t, o.y + dy * t, o.z + dz * t);
-    for (let s0 = t + step; s0 < end + step; s0 += step) {
-      const s = Math.min(s0, end);
-      if (above(s) > 0) continue;
+    // Under the land where it comes in (from under it, or through the world's side, which has no wall): it meets nothing
+    // drawn, which is seen only from above.
+    if (above(t) < 0) return null;
+    for (let last = t; last < end;) {
+      const s = Math.min(last + step, end);
+      if (above(s) > 0) { last = s; continue; }
       // Narrowed down between the last step above the land and this one.
-      let a = s - step, b = s;
+      let a = last, b = s;
       for (let k = 0; k < 24; k++) { const m = (a + b) / 2; if (above(m) > 0) a = m; else b = m; }
       return into.set(o.x + dx * b, o.y + dy * b, o.z + dz * b);
     }
@@ -726,6 +738,8 @@ interface Window { x0: number; y0: number; x1: number; y1: number }
 /** An earthwork's change, given and not yet fitted: the tiles it changed, those round which the ground is fitted again
  * (none: only its paint changed), those whose paint did, and whether the water moved. */
 interface Change { dirty: Set<number>; fit: Window | null; paint: Window | null; watered: boolean }
+/** An earthwork's tiles as they were when it was taken up: worked, cover and ground, three values a tile (begin). */
+interface Taken { tiles: number[]; values: Uint8Array }
 /** A window grown to take in a tile (from nothing, if null). */
 const grown = (w: Window | null, x: number, y: number): Window => w
   ? { x0: Math.min(w.x0, x), y0: Math.min(w.y0, y), x1: Math.max(w.x1, x + 1), y1: Math.max(w.y1, y + 1) }

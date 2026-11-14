@@ -140,6 +140,17 @@ const [sx, sz] = world(20, 10), slant = land.hit({ origin: new THREE.Vector3(sx,
 check('slanting, on the land', !!slant && Math.abs(slant.y - land.heightAt(slant.x, slant.z)) < 0.02, `${slant?.y} for ${slant && land.heightAt(slant.x, slant.z)}`);
 check('a line of sight up and away misses', land.hit({ origin: new THREE.Vector3(0, 50, 0), direction: new THREE.Vector3(0.3, 1, 0) }) === null);
 check('one straight down far past everything drawn misses', land.hit({ origin: new THREE.Vector3(10000, 100, 10000), direction: new THREE.Vector3(0, -1, 0) }) === null);
+{
+  // A small flat land 4 m up, its corner at the origin, and flat country 4 m up round it from -32 m.
+  const flat = new PaintedLand(new Adder(), {
+    width: 8, height: 8, tile: 4, level: 1, x0: 0, z0: 0, corners: new Float32Array(256).fill(4), worked: new Uint8Array(64).fill(1),
+    cover: new Uint8Array(64), ground: new Uint8Array(64), map: { x: 0, y: 0, width: 8, height: 8 },
+    beyond: { nx: 7, nz: 7, cell: 16, x0: -32, z0: -32, height: new Float32Array(49).fill(4) },
+  });
+  const graze = flat.hit({ origin: new THREE.Vector3(-33, 4, -31.9 + 1), direction: new THREE.Vector3(1, 0, -1) });
+  check('one grazing a corner of what\'s drawn meets it inside it, or not at all', !graze || (graze.x >= -32 && graze.z >= -32), `${graze?.x}, ${graze?.z}`);
+  check('one coming in under the country through the world\'s side misses (it has no wall)', flat.hit({ origin: new THREE.Vector3(-33, 3, 10), direction: new THREE.Vector3(1, -0.1, 0) }) === null);
+}
 const overCountry = land.hit({ origin: new THREE.Vector3(X0 - 40, 100, Z0 + 20), direction: new THREE.Vector3(0, -1, 0) });
 check('one straight down on the country beyond meets it', !!overCountry && Math.abs(overCountry.y - land.heightAt(X0 - 40, Z0 + 20)) < 1e-3);
 
@@ -207,6 +218,14 @@ const edgeX = X0 + W * TILE, mid = Z0 + 10 * TILE;
 check('it meets the land\'s edge', Math.abs(land.heightAt(edgeX + 1e-6, mid) - land.heightAt(edgeX - 1e-6, mid)) < 1e-3);
 const b = map.beyond!, gx = b.x0 + 18 * b.cell, gz = b.z0 + 2 * b.cell;
 check('further out, the grid\'s heights', Math.abs(land.heightAt(gx, gz) - b.height[2 * b.nx + 18]) < 1e-5, `${land.heightAt(gx, gz)} for ${b.height[2 * b.nx + 18]}`);
+
+// A tile turned to water: until it's fitted, the land answers as it was (not the new bed on the old ground).
+const pondAt = world(26.5, 4.5), pondBefore = land.heightAt(...pondAt), pondTile = 4 * W + 26;
+land.update({ x: 26, y: 4, width: 1, height: 1 }, { corners: map.corners.slice(pondTile * 4, pondTile * 4 + 4).map((c) => Math.round(c / LEVEL) * LEVEL), worked: new Uint8Array([1]), cover: new Uint8Array([LAND_COVER.water]) });
+let midFit = true;
+for (let k = 0; k < 40 && !land.step(0); k++) if ((land as unknown as { fitting: unknown }).fitting && land.heightAt(...pondAt) !== pondBefore) midFit = false;
+while (!land.step(0));
+check('a tile turned to water: as it was until fitted, then its bed', midFit && land.heightAt(...pondAt) < pondBefore - 0.3, `${pondBefore} then ${land.heightAt(...pondAt)}`);
 
 // The land's edge raised: the country beyond made again to meet it.
 const apronAt = () => {
