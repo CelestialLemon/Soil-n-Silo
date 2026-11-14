@@ -1,0 +1,605 @@
+# Performance
+
+What a frame costs, what it may cost, and how to measure it. Set in #6 (2026-10-30), before the weather (#3) goes in; every
+weather task checks itself against the budget here.
+
+## Targets
+
+Decided with the developer on 2026-10-30 (#6). The game is played by the developer, on three machines:
+
+| Machine | GPU |
+|---|---|
+| The development PC | AMD RX 570 (Ryzen 5 1600) |
+| A work laptop | Intel Arc 140T, integrated (a 2025 Core Ultra) |
+| A MacBook Air | Apple M4, 16 GB |
+
+- **At least 45 fps at 1080p on all three**, weather included. Below that isn't good enough.
+- **The laptop is the floor**: the weakest of the three, so its 22 ms a frame is the budget. Measured there with `?profile`
+  when the developer has the time (it's a work laptop, 2026-11-13): an occasional check on Windows and Intel graphics,
+  not a step any PR waits for. Day to day the RX 570 stands in for it, and the MacBook Air is read when convenient.
+- **The RX 570 stands in for it day to day.** A millisecond here costs up to 1.9 on the laptop (see "On integrated
+  graphics"), so the laptop's 22 ms is about **12 ms here**.
+- **The MacBook Air** is faster than the laptop: the farm takes 15 ms at 1080p there (#27, Chrome; its GPU timers don't
+  work, so only the uncapped frame counts). Its screen is high-DPI: at full sharpness the game draws two to three times
+  1080p's pixels (21 ms at 1440p's, 37 at 4K's). So the game draws at most 1080p's pixel count (`renderer.maxPixels`),
+  scaled up to the screen (#6, part 6): the MacBook's 2940×1800 window draws at 1840×1126. At 1080p and below nothing
+  changes. The developer's pick (#28): on the MacBook 1440p's count looked no sharper than 1080p's; the screen's own was
+  noticeably sharper, but about 27 ms a frame there, below 45 fps before the weather.
+- If the floor needs it, the look may change, but only as the developer chooses: each change built behind a button on the
+  PR's preview, to flip between in any scene, hour and weather.
+
+## Measuring
+
+```sh
+node tools/profile.ts out                       # both scenes, on this machine's GPU (needs the dev server)
+node tools/profile.ts out "scene=farm&samples=2" "scene=farm&shadowMap=2048"
+CPU=3 node tools/profile.ts out                 # the page's CPU work 3x slower (Chrome's throttling, that browser only)
+```
+
+On any other machine, open the demo with `?profile` (on `main` or a PR's preview), press Run and then Copy: the same cases,
+in that browser. Plug a laptop in and close other apps first.
+
+Each case draws the frame at a set size, showing the same piece of the world at every size (the zoom scales with the
+height, as on a high-DPI screen), for 90 frames with the clock running. It reports each pass's median GPU time (WebGL
+timer queries, where the browser has them: Chromium on desktop, not Safari), the CPU's time for the whole frame, and the
+uncapped frame (frames drawn back to back, which is what the GPU or CPU, whichever is slower, allows). Frames are drawn in
+short bursts so the GPU never idles partway through a pass waiting for the page, which a timer would count as work, and
+into an off-screen target, not the canvas: on the MacBook the canvas held each frame to the screen's next refresh, so its
+times came out in steps of 16.7 ms. Where the GPU timers add up to far more than the uncapped frame (the MacBook's do:
+each pass about as long as the whole frame), they're counting waits, and the table says to read the uncapped column. The
+cases: calm and storm at 720p, 1080p, 1440p and 4K, then the stormy 1080p frame with each kind of mesh left out.
+
+Sol checked the method on the RX 570 (#6): the timers' total agrees with the uncapped frame within a millisecond at every
+size, and bursts of 1, 6 or 30 frames give the same numbers. They measure what drawing costs, through ANGLE on Vulkan;
+they aren't a windowed browser's displayed fps.
+
+## The frame today (2026-10-30)
+
+RX 570, 1080p, the demo's default view, a storm; GPU ms (`node tools/profile.ts`):
+
+| | shadow | under water | reflection | main | post | frame | fps |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| farm | 3.4 | 1.6 | 5.6 | 26.5 | 0.3 | **37.4** | 27 |
+| meadow | 0.3 | 1.7 | 1.4 | 10.6 | 0.2 | **14.1** | 68 |
+
+- **Over budget, the farm three times over.** Calm and storm cost the same within a millisecond; the flying leaves are
+  almost free.
+- **The GPU paints pixels; the CPU is idle.** Under 1 ms of CPU a frame, and still under 1 ms with the CPU three times
+  slower. Antialiasing off saves 2 ms; geometry is modest (60k leaf cards, 200k grass triangles on the farm).
+- **What costs**, on the farm (the frame without each kind): the trees 18 ms (in all three views of the world: main,
+  shadow, reflection), the ground 9 ms, the grass 6 ms, everything else 0–2 ms each.
+- **Why** (Sol's experiments, #6): each pixel's paint is expensive (the brush dabs are worked out afresh in every pixel,
+  every frame), and the trees' leaf cards overlap about 17 deep where they cover the screen, each one painted in full
+  before the nearest hides it. The same leaves drawn near-first cost 30 ms a frame, far-first 49.
+
+### On integrated graphics
+
+The developer's laptop, through `?profile` on #21's preview (2026-10-30): an **Intel Arc 140T** (a 2025 Core Ultra laptop,
+16 GB shared; Windows, Chrome 150, ANGLE on Direct3D 11), plugged in. Two runs of each scene agreed within about 3%. The
+full tables are on #21.
+
+| 1080p, storm, GPU ms | RX 570 | Arc 140T | ratio |
+|---|---:|---:|---:|
+| farm | 37.4 | 47.3 | ×1.26 |
+| meadow | 14.1 | 26.4 | ×1.87 |
+| the ground's paint (saved without it), farm / meadow | 9.1 / 8.0 | 13.6 / 15.4 | ×1.5 / ×1.9 |
+| the trees (saved without them), farm | 18.2 | 15.9 | ×0.9 |
+
+- **No single ratio.** The ground's brush recipe, a lot of arithmetic in every pixel, runs about twice as slowly on the
+  laptop; the trees' layered leaf cards about as fast. So on integrated graphics the ground costs the most, and cuts to
+  the per-pixel paint count for more than on the RX 570.
+- **The CPU stays idle there too**: 0.1–0.2 ms a frame.
+- **The rule:** a millisecond on the RX 570 costs ×1.3 to ×1.9 on the laptop, the most where the work is per-pixel paint.
+  Plan with ×1.9, and check on the laptop.
+
+## The budget
+
+GPU ms a frame at 1080p: the laptop's (the floor), and the RX 570's at ×1.9 less (what to check against day to day). Weather
+pieces that never run together (rain and snow) share a line; a storm, the heaviest weather, adds up to about 4 ms on the
+laptop.
+
+| | laptop | RX 570 |
+|---|---:|---:|
+| The scene (shadow, water, main view, post) | 17.0 | 9.0 |
+| Clouds (#8): a cloud texture, read where the sun's light is, and a coarser one for the water and glass to mirror | 0.5 | 0.3 |
+| Mist, fog, dust and haze (#9), in the post pass | 0.8 | 0.4 |
+| The shelter map (#10): buildings from above, redrawn only when they change | 0.2 | 0.1 |
+| Rain or snow falling (#11, #14) | 1.5 | 0.8 |
+| Wet ground, puddles, frost, snow cover (#11, #13, #14), in the materials; ice, in the water (#14) | 0.8 | 0.4 |
+| Lightning (#12): a flash and a bolt | 0.3 | 0.15 |
+| Spare | 1.1 | 0.55 |
+| **The frame** | **22.2** (45 fps) | **11.7** |
+
+Before the cuts, the scene was 47 ms on the laptop on the farm and 26 on the meadow (37 and 14 here); here it is now 23 and
+13. The scene's 17 ms is the target for the cuts below.
+
+## The weather, piece by piece
+
+### The overcast light (#7)
+
+No line in the budget: it changes the light's numbers and two shader terms, with no new pass, and measures the same as
+clear (the farm at 1080p in a storm, 11.64 ms clear, 11.65 overcast, here).
+
+### Cloud shadows (#8)
+
+The cloud field (src/renderer/clouds.ts) is drawn into a 512² texture over the land, a half-float shade a texel (0.5 MB),
+and every surface reads its shade there with one lookup. The map is redrawn only when the clouds have moved (the game's
+drift, every frame while they drift) or the cover has changed; never on a clear or fully overcast sky. RX 570, 1080p storm,
+GPU ms, at 45% cover (`clouds` is the map's own pass in `node tools/profile.ts` and `?profile`):
+
+| | the map | frame, before → with clouds |
+|---|---:|---:|
+| farm | 0.24 | 11.67 → 11.91 |
+| meadow | 0.24 | 4.87 → 5.21 |
+
+The map is 262,000 texels of noise whatever is on them, so it costs the same on any scene: 0.12 under a light cover
+(below 30%) or near full (above 85%), where it's one layer of cloud, and 0.24 between, where the light clouds turn into
+the heavy ones and both layers are worked out. With the reads, about 0.35 a frame at worst, a little over the 0.3 set
+aside, which the developer accepted for the clouds' look (#8). The laptop's numbers come from `?profile` on #8's preview.
+
+The water and the solar glass mirror the clouds from a second map (`MIRROR` in src/renderer/cloudMap.ts): 256², covering
+the land and 80 m round it (how far a mirrored ray reaches the clouds), drawn in the same pass whenever the first is. It
+adds 0.06 to the map (0.30 at 45% cover), and the frame goes 11.91 → 11.96 on the farm, 5.21 → 5.27 on the meadow: about
+0.4 a frame at worst for the clouds altogether.
+
+Golden-hour light under a deck (#49) changes only the light's numbers, set once a frame: no new pass and no shader
+change, so it costs nothing measurable. With `sunUnder` 0 (the default) frames are byte-for-byte what they were.
+
+### The shelter map (#10)
+
+Three depth maps of the land from straight above, 1024² each (15 MB, with the byte a texel of colour a target must have):
+the highest roof over each point (the inked things, solar panels among them), the highest crown (the leaves, drawn
+at rest) and the ground itself, where a drop in the open lands (#11). Rain and snow stop at them (#11, #14). The third
+map adds the ground's draw to a redraw, a few hundred thousand triangles at most (the numbers below are from before it).
+Nothing in them moves, so they're drawn only when cover changes (a building placed or removed, a kind shown or hidden):
+**no cost on an ordinary frame**. RX 570, 1080p storm, GPU ms, the map drawn every frame to time it
+(`1080p storm, shelter every frame` in `node tools/profile.ts` and `?profile`):
+
+| | shelter, when redrawn | frame |
+|---|---:|---:|
+| farm | 0.58 | 11.62 → 12.19 |
+| meadow | 0.06 | 4.83 → 4.91 |
+
+Nearly all of the farm's 0.58 is its 60,000 leaf cards. On the laptop that's a little over a millisecond in the one frame
+cover changes, against the budget's 0.2 a frame: well within it. On the MacBook Air (`?profile` on #31's preview; read by
+the uncapped frame, its GPU timers count waiting): the farm's 1080p storm 14.99 → 15.66 ms with the map drawn every frame,
+0.67. Reading the map costs its readers (rain, wetness, snow),
+counted in their own lines.
+
+### The season's look (#13)
+
+No line in the budget: nothing a frame. The season turns the greens' colours once, when the level sets it
+(`renderer.setSeason`), on the vertices of what grows (src/renderer/seasonLook.ts), and its light is a tint on the hour's
+look's numbers. That turn is a load cost: on the farm, 1.47 million vertices of ground and grass in 0.30 s on the RX 570's
+desktop's CPU (a run of one colour, a tuft's blades, is turned once), and the meadow's 182,000 in 0.05 s; their colours as
+the game sent them are kept beside them (12 bytes a vertex, about 18 MB on the farm), only once a season has been set.
+Crawl (`AB=2 tools/motion.ts`, farm noon) is the same in every season as today's (soft 0.50 to 0.55, 0.53 today), and no
+pops in a gale (`tools/pops.ts`, 0 patches).
+
+The trees' seasons (#13, part 3) are models built once at level load: a spring, autumn or winter level builds its own
+in place of summer's (load about 5% longer on the farm in autumn, slightly shorter in winter), and nothing is added per
+frame. A frame at 1080p in a storm on the RX 570 (GPU ms): 14.3 with no season, spring 13.3, autumn 14.2, winter 10.7
+(no leaves to draw in the sun's shadow). A leafy tree's thin limbs cast no shadow: the crown's covers theirs, and a thin
+limb's shadow rocking in the wind flickered on the crops.
+
+Steadiness, against main in the same season (`AB=2 tools/motion.ts`, `>8` share at a 1 px pan, farm): zoom 40, main
+spring 1.81% against 1.57%, autumn 1.80% against 1.76%, winter 1.74% against 0.60%; zoom 16, spring 2.25%, autumn 2.59%,
+winter 1.88% (main's winter 2.32%, no season 2.62%). Three things keep it there, all flags on a foliage dab read by its
+shader (materials.ts): `CRISP_EDGE`, a crisper edge on the seasons' strokes, whose brighter colours shimmer more than
+greens along a part-covered edge; `STIFF_STROKE`, for winter's twigs and the fallen leaves, which then move only with
+their tree (if any) and never flutter or turn over; and fallen leaves a little larger and fewer than petals for the same
+cover. At a quarter-pixel pan the seasons count higher (farm zoom 40: main's winter 6.1% against 14.6%, spring 6.9%
+against 9.1%): that test also counts every sharp edge it shifts by part of a pixel, and bare limbs and pale blossom are
+many sharp edges; making the twigs thicker raised it. Pops (`tools/pops.ts`, 40 moments): none at the short step on the
+farm in a gale (every season) and a hurricane (autumn, winter), the meadow's spring in a gale and autumn in a storm.
+
+### Falling rain (#11)
+
+The budget's 1.5 ms line. The strokes are one instanced draw in the main view (a quad each for the stroke and its
+splash), see-through paint into the colour target that leaves the depth and normals alone, so the post pass draws no
+ink lines round them and needs nothing new; the veil and the rings are a few lines more in the post pass and the water's
+shader. Not in the shadow, reflection, under-water or silhouette passes. The drops belong to 8 m cells of the world and
+only the cells the view can see (and a margin the wind can slant a stroke across) are drawn: a few thousand drops at
+any zoom. How many a cell shows follows how hard it rains and the zoom (about as many strokes on screen at any zoom),
+and `settings.fallingShare` cuts it (the quality knob: 1 full, about a third reduced) without changing a stroke's look.
+In a wind, each drop traces its slanted path through the roof and crown maps (a read about every metre across the land,
+9 to 28 of each, in the vertex shader); straight down it's one. On the MacBook Air (M4, uncapped frame, the farm at 1080p in a storm): 19.23
+ms with the rain against 18.97 without, about the noise. Still to read on the laptop: `?profile&weather=storm` on the
+PR's preview, the `no rain` line.
+Crawl (`AB=2 tools/motion.ts`, the farm in a storm, 1 px pan): the same with the rain and without (soft 0.168 against
+0.169); pops in a gale at the shed (`tools/pops.ts`): none.
+
+### Lightning (#12)
+
+A strike adds no pass and compiles nothing when it lands: the bolt's program is compiled on the first frame, the flash and the
+glow are a branch in the post pass, and a frame with no lightning is byte for byte what it was. On the RX 570 at 1080p in a
+storm, at the flash's brightest, with the bolt and a glow: the farm's frame 14.33 ms to 14.53, the meadow's 5.23 to 5.39 (post
++0.13, the bolt 0.014: 0.14 added), inside the line's 0.15. It's on every pixel for the third of a second a flash lasts, and on nothing
+but the glow's few metres while the glow fades. The laptop's numbers are the developer's to take: `?profile`, the case "1080p
+storm, a strike at its brightest". A strike's own work on the CPU is about 1 to 2 ms, once (`strike()`, building the bolt).
+
+### A storm, as a whole (#12)
+
+The storm look is the light's numbers (worked out on the CPU each frame) and a vignette uniform: no pass, no texture.
+RX 570, 1080p, GPU ms (`node tools/profile.ts`, wind at storm strength in each): the farm in a full storm 14.01 with the
+look, 13.95 at `storm=0`, the noise. The whole storm (`weather=storm`: full cover, rain 0.9, `storm` 1) against the same wind
+under a clear sky: the meadow 5.23 → 5.57 (the rain and its veil; post 0.22 → 0.29, the main view 3.71 → 3.97), and 5.93
+at a strike's brightest (post 0.50): about 0.7 ms in all, about 1.3 on the laptop at ×1.9, inside the 4 a storm is
+allowed. The farm's 14.31 → 14.01; it's over the scene's own 9 ms with or without weather. Still to take on the laptop:
+`?profile&weather=storm` on a preview of the demo.
+
+### Mist and fog (#9)
+
+In the post pass: each pixel's place in the world rebuilt from its depth, and the fog summed in four steps up the view's
+path out of the layer, reading drifting noise at each. The noise is baked once into a 256² texture (64 KB) that repeats;
+worked out in every pixel it cost 0.8 ms here, twice the line's budget. Skipped where there's no fog, and above its top.
+Then the trace of the paint's colour given back under it (the 'tint' look): a turn through OKLab, about 0.09 ms.
+RX 570, 1080p storm, GPU ms (`1080p storm, fog` in `node tools/profile.ts` and `?profile`):
+
+| | post, clear | post, fog | frame |
+|---|---:|---:|---:|
+| farm | 0.26 | 0.47 | 11.81 → 12.15 |
+| meadow | 0.20 | 0.44 | 4.95 → 5.21 |
+
+About 0.23 ms here, so about 0.45 on the laptop: the rest of the line's 0.8 is left for dust and the heat wave. With no
+haze the frame is byte-for-byte what it was.
+
+Dust is the same layer, with fine streaks and the gusts' waves read once a pixel from the baked noise (read at each step
+up the layer, or worked out as the grass's gusts are, each cost half again), and usually deeper; the heat wave's shimmer re-reads the frame a fraction of a pixel aside. They come one at a time with fog
+(a haze is one or the other). RX 570, 1080p storm, the post pass, GPU ms (`1080p storm, dust` and `heat wave`):
+
+| | clear | fog | dust | heat wave |
+|---|---:|---:|---:|---:|
+| farm | 0.26 | 0.47 | 0.56 | 0.31 |
+| meadow | 0.20 | 0.44 | 0.51 | 0.25 |
+
+Dust is the dearest at 0.3 ms here (the preset's warmth and shimmer included), about 0.6 on the laptop, inside the line's 0.8.
+
+### Lying snow (#14)
+
+In the materials, from the ground's map (docs/GROUND.md): each one reads the snow lying where it is, and what shelters
+it, and lays the snow's paint over what it covers. The snow's colours are worked out once a frame on the CPU, and the
+land's hollows (with the pattern a thin snow breaks along, how far the ground faces up and how sheltered it is) once,
+into a map, rather than in every pixel; together those took it from 0.95 ms to 0.37. Snow on the river's banks is
+painted in the bed's pass too, which brought it to about 0.45. While the ground is bare the materials skip it all.
+
+RX 570, the farm at 1080p in a storm, snow lying 0.6 everywhere (`1080p storm, snow lying` in `node tools/profile.ts`
+and `?profile`): **11.03 → 11.48 ms**, about 0.45, a little over the line's 0.4 (shared with the wet ground and frost
+still to come). Crawl (`AB=2 tools/motion.ts`, a 1 px pan): 0.108 → 0.193, all of the rise at dark branch edges against
+the white, the open snow steady; pops (`tools/pops.ts`): none.
+
+On the MacBook Air (`?profile` on #58's preview, uncapped): 19.47 → 24.17 ms, but that run warmed as it went: the rows
+before it, fog, dust and the heat wave (0.2, 0.3 and 0.05 ms here), read 3.0 to 3.6 ms over the storm there, and
+`no rain` read slower than the storm with the rain. So most of the 4.7 is the machine slowing, not the snow; its own
+share there is still to read. On the MacBook Air (`?profile` on main after #63, 2026-11-13, uncapped, the farm at 1080p): 20.10 → 20.87 ms with snow
+lying 0.6, about 0.8, at the edge of that run's noise (`no snow`, the storm with nothing to leave out, read 0.5 under
+the storm). The laptop: when there's time.
+
+### Falling snow and the blizzard (#14)
+
+The budget's 1.5 ms line, shared with the rain (they don't fall together: sleet is both, light). One instanced draw in
+the main view, see-through paint as the rain's, and two functions in the post pass: the blizzard's whiteout
+(`snowVeil`) and the wisps blowing over lying snow (`snowDrifting`). Not in the shadow, reflection, under-water or
+silhouette passes. A flake belongs to an 8 m cell of the air the wind carries, and the cells over the view are drawn
+(the air above the land in view reaches well past the screen's edges, so most are dropped first thing, before anything
+is looked up). Each traces the path it has come down through the roof and crown maps for where a roof stopped it: up to
+24 reads of each in a blizzard's long slant, one straight down.
+
+RX 570, 1080p, snow lying 0.6 everywhere, against the same frame without the falling snow (the main view and the post
+pass, medians of 90 frames; `1080p blizzard` and `1080p heavy snow, calm` in `node tools/profile.ts` and `?profile`):
+
+| | the farm | the meadow |
+|---|---:|---:|
+| A blizzard: snow 1 in a storm wind, its flakes, streaks, whiteout and wisps | +0.84 | +0.79 |
+| Heavy snow (1) in still air | +0.38 | +0.23 |
+
+About 0.16 of the blizzard's is the post pass (the whiteout's sheets and the wisps), the rest the flakes. Keeping the
+wisps off sheltered ground (found in review: one read of the hollows map) added 0.04 after this table was measured. The flakes'
+cost is nearly all in the vertex shader, not in painting them (drawn a pixel across they cost the same): the roof trace
+was 0.9 ms of a first version's 1.45, tracing the whole path with up to 40 reads, and a blizzard's flakes thickened to
+2.5 times. Tracing only the path already fallen, at most 24 reads, and thickening to 1.75 times (the whiteout does the
+rest of the thickening) took it to 0.84. If it needs to come down further, the next step is a small pass working out each
+flake once (where it is, whether a roof stopped it) into a texture the quads read: each flake's work is now done four
+times, once for each corner of its quad.
+
+Crawl (`AB=2 tools/motion.ts`, winter, snow lying 0.6, `falling=0`, both scenes): the same as main to the third
+decimal, with each of the roof-shade candidates (A, as it was, was picked). Pops in a gale (`tools/pops.ts`): the same as main, none at the short step.
+On the MacBook Air (`?profile` on main after #63, 2026-11-13, uncapped, the farm at 1080p): the blizzard 20.60 ms and heavy snow in still
+air 20.23 against 20.87 for the snow lying alone (both cases lay it too): the falling snow doesn't show above that run's
+noise, about 0.5. The laptop: when there's time.
+
+### Frost (#14)
+
+In the materials, from the ground's map, as the snow: each reads the frost where it is (with the snow, one read), what
+shelters it, and the sun that spot has had since dawn (one read of the sun's memory, a 512² map), and lays a pale rime
+over what faces up. Its grain is each material's own brushwork and its breakup the land's pattern from the hollows map,
+not noise of its own: a first version with five noise lookups a pixel cost 2.0 ms, most of it in the grass. The sun's
+memory is added to a few times a second while the clock runs (six shadow taps a texel), only while there's frost.
+
+RX 570, the farm at 1080p in a storm, frost 0.6 everywhere at 10:00 (`1080p storm, frost` in `node tools/profile.ts`
+and `?profile`), medians of three: **11.40 → 12.00 ms, +0.60** (the meadow 5.09 → 5.74, +0.65). Of that, 0.29 is
+reading the ground's map and what shelters it, which lying snow and wet ground pay too (the same frame with snow lying
+0.6: +0.60), and **0.30 is the frost's own**: its paint about 0.17, the grass's tips 0.07, the sun's memory read 0.06.
+That's double its aim of 0.15: the overrun comes from the spare (0.55 → 0.40 here). Frost and snow together cost no
+more than snow alone plus the 0.3, since they share the read.
+
+Crawl (`AB=2 tools/motion.ts`, a 1 px pan, winter at 10:00, frost 0.75, `falling=0`): the ground's own steady (without
+the trees, 0.026 → 0.033); with the trees, 0.096 → 0.125 (the meadow 0.088 → 0.095), all at the bare branches' edges against the paler ground, as
+with lying snow (0.108 → 0.193): with the branches' own rime turned off it reads the same. Pops in a gale
+(`tools/pops.ts`, with the glittering candidate, the most likely to pop; matte was picked): none at the short step, as
+without frost.
+On the MacBook Air (`?profile` on main after #63, 2026-11-13, uncapped, the farm at 1080p): 20.10 → 20.63 ms with frost 0.6, about 0.5,
+within that run's noise. The laptop: when there's time.
+
+### Ice on the water (#14)
+
+In the water's shader only, and only while some of the water is frozen (`WaterField.iced`): per pixel of water, two
+noise lookups to break the ice's edge, its paint where there's ice (a calm mirror of the reflection already drawn, a
+cracked pattern where the cells are bigger than a few pixels), and while it thaws, the leads (one noise lookup) and in
+the open water the floes (two cracked patterns, crossfaded). The milky ice by the banks adds two noise lookups, lying
+snow two more. No pass of its own; the water's other passes draw as before.
+
+RX 570, 1080p in a storm, snow lying 0.3, against the same frame with open water, two runs each (`1080p storm, stream
+thawing` in `node tools/profile.ts` and `?profile`, which sends the stream at 0.5 and falling, at the demo's camera):
+
+| | the farm, its stream across the screen (`x=-14&z=20&zoom=40`) | the meadow |
+|---|---:|---:|
+| **Thawing**, ice 0.5 (leads and floes) | +0.21 ms | +0.13 ms |
+| **Frozen over**, ice 1 | +0.18 ms | +0.13 ms |
+
+Timed with the picked look (milky by the banks, dark over the channel); the black-only candidate cost 0.03 to 0.04 less.
+
+It shares the materials' line with the frost and the snow (ice comes with them; wet ground and rain don't), so it
+comes from the spare too: 0.40 → about 0.20 with the stream across the screen. (A first version, painting every look
+and pattern everywhere on the water, cost +0.27; guarding each part to where it shows took it to this.)
+
+Crawl (`AB=2 tools/motion.ts`, a 1 px pan, winter at 11:00, `falling=0`, the farm's stream): the water's share of it
+0.135 open, 0.06 with the picked look (ice 0.6); of the other candidates, 0.17 to 0.19 black all over (ice 0.3 and 1),
+0.03 milky all over. The meadow 0.067 open, 0.072 frozen. Black ice mirrors the banks and trees whole, with no ripples to break up the reflection's
+half-size texels, so a little more of that resampling shows; its mirror is blurred a little wider than open water's to
+keep it down. Pops in a gale (`tools/pops.ts`): none new (2 at the short step, as with open water and without water).
+On the MacBook Air (`?profile` on main after #63, 2026-11-13, uncapped, the farm at 1080p): 20.10 → 19.75 ms thawing, within that run's noise; but the
+farm's camera there shows little of the stream, so it says little. Still to read: the meadow's line (`?scene=meadow`, where
+the stream crosses the screen). The laptop: when there's time.
+
+### The water's look (#19)
+
+In the water's shader only: the clear water's colour and its light on the bed (two noise lookups, where the sun reaches
+a shallow, clear bed), the ripples and glints laid at fixed turns and the two nearest blended (twice the pattern work
+where a bend's angle falls between two turns), and in the evening the warm sky and gold glints. No pass of its own.
+
+RX 570, 1080p, the farm with its stream across the screen (`x=-14&z=20&zoom=40`), against main before #64, two runs:
+
+| | main pass | frame |
+|---|---:|---:|
+| Calm | +0.15 to +0.17 ms | +0.14 to +0.22 |
+| Storm | +0.14 to +0.17 ms | +0.16 to +0.24 |
+
+(At `zoom=64`, the stream filling more of the screen, +0.21.) A first version cost +0.19 at this camera (+0.26 at
+`zoom=64`): the light on the bed read the shadow map eight more times a pixel than it needed, and the warm sky and the
+sparkle were worked out where they couldn't show. Skipping the second turn where one takes it alone saved nothing on
+this GPU (neighbouring pixels run together, and take both whenever any of them does), so it was left out.
+
+It comes out of the spare: about 0.20 → 0.03 with the stream across the screen, the worst framing; less of the screen
+is water in most views. Full-size reflections, for sharper mirrors, would cost about 2.4 ms more and don't fit.
+
+Crawl (`AB=2 tools/motion.ts`, a 1 px pan over the farm's stream, `falling=0`): the water's share 0.133 → 0.096 at 11:00,
+0.135 → 0.145 at the golden hour facing the sun (the gold glints). Pops in a gale at the golden hour (`tools/pops.ts`):
+none, before or after.
+Still to read: the laptop and the MacBook (`?profile`, the meadow's line, where the stream crosses the screen), when
+there's time.
+
+### Wet ground (#11)
+
+In the materials, from the ground's map, as the snow: each reads how wet and muddy it is where it is, less what shelters
+it; a painted one is darkened and made richer once it's lit, an inked one takes its glaze. While the land is dry the
+materials skip it all.
+
+RX 570, 1080p in a storm, the land soaked (the demo's own map: its tracks and yard muddy), wet against dry, medians of
+three: **the farm +0.33 ms, the meadow +0.31**, under the line's 0.4 (shared with the snow: rain and lying snow seldom
+come together, and the snow on wet ground is drawn over it). `1080p storm, wet ground` in `node tools/profile.ts` and
+`?profile` is the dearest case, mud everywhere rather than only on the bare earth.
+
+Measured with the first of the candidate sheens ('streaks'). Not yet re-timed: the picked glaze (it reads the sky's
+clouds on what people build, a small share of the screen), the review's fixes since (the shelter in the water's
+reflection; the mud's earth test moved from every pixel to the ground's vertices, a saving), and the laptop (Arc 140T).
+The GPU was busy on 2026-11-12; a run of `node tools/profile.ts` settles it.
+
+What it cost at first, and what took it down (Sol measured most of it, #11):
+
+- **0.45 ms on the farm, 0.56 on the meadow**, first.
+- **The dry edge's wobble** under a roof, worked out by noise in every pixel of the ground: 0.3 of it. A few sine waves
+  draw the same edge for almost nothing.
+- **The colours a screen can't show.** Darkened and made richer before it's lit, a wet colour's shade (darker, with
+  the hour's teal mixed in) fell past the colours a screen can show, on nearly half the screen (44% on the meadow,
+  against 1.4% dry), and the paint pulled each back by a six-step search. Darkened and made richer once lit, the same
+  look in the stills, the paint sees the dry colours: 0.15 ms.
+- **The map read once** for the wet and the snow at a point, not twice: 0.03 or so.
+- Not worth it: working the wet out at the vertices (it moves the dry edges and saved little), a flag for each value the
+  map holds (0.02).
+
+## The farm valley
+
+The farm grew from a 68 m square to a 176 m valley (2026-11-03). Measured on the RX 570 at 1080p:
+
+| | GPU ms | shadow | reflection | main view | CPU ms |
+|---|---:|---:|---:|---:|---:|
+| before, the default view | 11.9 | 3.4 | 1.4 | 6.7 | 0.6 |
+| the valley, the default view | 13.9 | 4.9 | 2.0 | 6.3 | 3 to 5 |
+| the valley, the widest zoom (16) | 23.0 | 8.8 | 3.6 | 9.6 | 7 |
+
+What keeps it near: the big meshes are cut into 24 m tiles, each drawn only in the passes that can see it (16 m tiles saved
+0.6 ms of GPU but cost 2 ms of CPU); the ground is tiled too (1.5 ms off the shadow pass); and the sun's shadow map covers
+only the ground on screen, traced down to the land, instead of a fixed square (a little off, and sharper). What's left is
+mostly the trees throwing shadows (4.3 ms of the shadow pass), and on the CPU the draw calls and the tree springs (1 ms).
+Not tuned further yet: thinner woods, fewer dabs in the shadow pass or merged meshes would bring it back.
+
+## Quality settings
+
+One look on every machine for now. These are the knobs a weather task builds in, so a machine that misses its 45 fps can
+drop detail without changing the look:
+
+| | full | reduced |
+|---|---|---|
+| Raindrops, snowflakes on screen | all | about a third |
+| Shelter map size | 1024² | 512² |
+| Shadow map | 4096² (farm) | 2048² |
+| Weather seen in the reflection | rain rings, fog | fog only |
+
+## The cuts
+
+The farm's frame has to drop to the scene's 17 ms on the laptop (about 9 here) before the weather goes in. Sol's experiments
+(#6, throwaway code on the RX 570, the farm at 1080p) measured these first; the ones marked done are in the renderer.
+
+| Cut | Picture | Saves, in Sol's experiments |
+|---|---|---:|
+| **Done:** the main view's silhouettes first (a depth pre-pass), then paint only what shows (`prepass=0` turns it off) | the same | 9.5 |
+| **Done:** the water's two passes only round the water on screen (a scissor padded by how far the water's lookups reach, `WATER_REACH`; `scissor=0` turns it off) | the same | 4.7 |
+| A 2048² shadow map on the farm, not 4096² | to compare | 2.3 |
+| **Done:** bake the ground's brush fields into a 2048² texture at load; the light stays live (`ground=live` turns it off) | the same to the eye | 2.7 |
+
+The savings are from Sol's chain of experiments, each cut on top of the ones above it: 37.3 ms before, 18.0 with all four.
+The renderer's own numbers for the done cuts are below; the frame with them is 23.1 ms, so the two still to do would
+bring it to about 18.
+
+The two done (#6, part 2), measured by `node tools/profile.ts` at 1080p in a storm, both off against both on: the farm
+37.5 → **23.1 ms**, the meadow 14.1 → **13.1**. The silhouettes are drawn in the same render as the painting, so the
+multisampled frame is resolved once, not twice (worth about 0.8 ms on each scene here, more on the laptop's shared
+memory). On the meadow they save less (it has few trees, and its stream crosses most of the screen); drawing silhouettes for only the leaves and grass came out no better on
+either scene. Frames with them on and off are byte-for-byte the same in both scenes, all four views, zoomed in and out,
+at noon, dusk and dawn and in a storm.
+
+On the laptop (`?profile` on #22's preview, 2026-10-30), at 1080p in a storm, GPU ms:
+
+| | cuts off | cuts on | saved |
+|---|---:|---:|---:|
+| farm | 49.6 | **28.6** (35 fps) | 21.0 |
+| meadow | 26.9 | **23.3** (42 fps) | 3.6 |
+
+The cuts save more there than here (the farm's 14 ms here is 21 there): the stacked leaf cards cost more on the laptop
+than this machine's numbers suggested. Both scenes are now within about 6 ms of the laptop's 22 ms, but the weather
+still needs its 5 ms on top of that.
+
+- **The pre-pass's saving may shrink.** With the painting made cheap it saves nothing here (10.5 ms with it, 10.4
+  without), so check it again, on the laptop too, as the shaders change. It costs nothing to the laptop today.
+- **9 ms here may not come from tidying alone.** From the 18 ms frame, removing all the leaves' and the grass's painting (a
+  ceiling, not a cut) still leaves 10.5 ms. The rest may take changes that show (fewer leaf cards far off, a cheaper paint
+  recipe, a softer ground up close); the developer chooses from side-by-side comparisons.
+- **On the laptop the ground's paint costs the most**, now more than ever: with the cuts in, the frame without the
+  paint (the ground, with the stones and wood) is 9.6 ms on the meadow (of 23.3) and 21.3 on the farm (of 28.6). So
+  baking the ground's brush fields may save much more there than the 2.7 ms measured here.
+
+### The ground's brush, baked (#6, part 3)
+
+The ground's brush (its dabs, strokes, fine strokes and the colour's drift) depends only on where a point of the ground
+is, so it's worked out once at load, into a texture laid over the ground's square, and read from there. The light,
+shadows and the fine strokes' fading with zoom stay live. The ground is now its own kind (`ground`), so the profile shows
+it apart from the stones and wood (`paint`).
+
+**Decided** (the developer, on #23, 2026-10-30): **2048²**. Flipping between live and 2048 on the preview, no difference
+showed; 4096² looked and ran the same, at four times the memory (64 MB against 16).
+
+RX 570, 1080p, storm, GPU ms (`node tools/profile.ts`):
+
+| | live | baked 4096² (64 MB) | baked 2048² (16 MB) | the frame without the ground |
+|---|---:|---:|---:|---:|
+| farm | 23.1 | 20.2 | 20.2 | 18.4 |
+| meadow | 13.1 | **7.8** | 7.7 | 6.0 |
+
+- **Most of the ground's cost goes.** On the meadow, where the ground fills the screen, the frame nearly halves.
+- **Both sizes cost the same** to draw: the choice between them is the look and the memory. Baking took Sol's prototype about
+  10 ms (2048) to 30 ms (4096) of GPU time at load here.
+- **The picture is nearly the same**: the mean difference is under 0.2 of 255, and at most about one pixel in 2,000 differs by
+  more than 8 (single texels on the edges of brush marks), in both scenes, every view, zoomed in and out. 2048 is a little
+  further off than 4096, but neither shows at the closest zoom. With `ground=live` the frame is today's but for a few
+  pixels (the shader's arithmetic in a different order).
+- **The ground must be a heightfield** (one surface over each point), which both scenes' are; stones and wood stay live.
+
+On the laptop (`?profile` on #23's preview, two runs each, 1080p storm): the farm 28.7 → **26.6 ms** (37 fps). There the
+frame without the ground at all is 22.5 ms, so the ground has little more to give on the farm; the trees (about 6.5 ms)
+and the grass (about 5) are what's left, with the shadow pass's 3.4.
+
+
+### Painting over the silhouettes (#6, part 4)
+
+Sol's second round of experiments (#6) found that the silhouettes weren't yet saving all they could. The painting still
+wrote depth, which the silhouettes had already written, and on most GPUs a pass that writes depth from a shader that can
+discard pixels (the leaves') must paint a pixel before it knows whether it's hidden. So now:
+
+- **The main view only reads depth** after its silhouettes, and the **leaves paint only at their silhouette's exact
+  depth** (`equal=0` turns that part off: nearer-or-equal instead, the same picture, slower).
+- **The reflection has silhouettes too** (leaving out what's under the water, as its painting does), and paints at
+  nearer-or-equal depth (equal was slower there on the laptop, below).
+- **The sun's shadow pass writes no colour**: only its depth is read.
+
+Frames are byte-for-byte main's, with `equal` on and off, in 11 views (both scenes, all four views, zoomed in and out,
+dawn, noon, dusk, night, a storm). RX 570, 1080p, storm, GPU ms:
+
+| | shadow | under | reflect | main | post | frame |
+|---|---:|---:|---:|---:|---:|---:|
+| farm, before | 3.43 | 0.27 | 2.66 | 13.52 | 0.26 | 20.1 |
+| farm, after | 3.29 | 0.27 | 1.72 | 8.20 | 0.26 | **13.7** |
+| farm, after, `equal=0` | 3.30 | 0.27 | 1.73 | 9.77 | 0.26 | 15.3 |
+| meadow, after (before: 7.7) | 0.18 | 0.38 | 0.90 | 4.65 | 0.19 | **6.3** |
+
+On the laptop (`?profile` on #26's preview, 1080p storm, GPU ms), the farm went from 26.6 to **about 20 ms** (scaled from
+this machine, about 18 was expected), and the leaves look the same with `equal` on and off:
+
+| | shadow | under | reflect | main | post | frame |
+|---|---:|---:|---:|---:|---:|---:|
+| equal depth in the reflection and the leaves | 2.64 | 0.43 | 3.09 | 14.59 | 0.65 | 21.4 |
+| `equal=0`: neither | 2.66 | 0.40 | 1.94 | 14.86 | 0.48 | 20.4 |
+
+Intel's GPU paints the reflection slower at equal depth (here it was a little faster), so the reflection now paints at
+nearer-or-equal, and only the main view's leaves at equal: about 20.1 ms there, 0.1 more here.
+
+### The grass's and the crops' brush, baked by place (#6, part 5)
+
+The grass and the crops worked their brush out in every pixel every frame, as the ground did. On the flat it depends only
+on where it is (x and z), the brush's scale and its angle, and the brush only ever blends two of seven fixed angles (0°,
+30°, ... 180°). So at load, for each brush scale the grass and the crops use, seven layers are baked over the ground's
+square, one per angle: the dabs, the strokes, the fine strokes and the colour's drift. A blade or a crop's top reads the
+two layers either side of its own angle and blends them as the live brush does (Sol's design, #6). The light, the
+shadows and the wind stay live.
+
+- **By place, not by mesh**, unlike the ground's: in the game a field is built anywhere, its crop changes stage every few
+  seconds and goes back to bare soil at harvest, so a bake of the crop's shape would be stale at once. This one holds for
+  any field, at any stage, anywhere on the map, and needs re-baking only for a new brush scale. A crop's sides (its edges,
+  whatever their height) are worked out live.
+- **1024² a layer**: 28 MB a brush scale; the farm uses three (two for the grass, one for the wheat), 84 MB.
+- **The picture is nearly the same:** in 11 views the mean difference is under 0.08 of 255, and at most about one pixel
+  in 700 differs by more than 8. Those sit on the edges of light and shade bands (most on the wheat in the panels'
+  shadows), which a small change in the brush moves by a pixel. `grass=live` and `crop=live` put back the live brush;
+  both together give main's frame exactly.
+
+RX 570, 1080p, storm, GPU ms:
+
+| | shadow | under | reflect | main | post | frame |
+|---|---:|---:|---:|---:|---:|---:|
+| farm, before (live) | 3.30 | 0.27 | 1.74 | 8.21 | 0.26 | 13.8 |
+| farm, the wheat baked | 3.30 | 0.27 | 1.70 | 7.52 | 0.26 | 13.1 |
+| farm, the grass baked | 3.30 | 0.27 | 1.41 | 7.15 | 0.26 | 12.4 |
+| farm, both | 3.29 | 0.27 | 1.37 | 6.46 | 0.26 | **11.7** |
+| meadow, both (before: 6.5) | 0.18 | 0.38 | 0.68 | 3.44 | 0.19 | **4.9** |
+
+On the laptop (`?profile` on #27's preview, 1080p storm, GPU ms), the farm went from 20.3 to **17.5 ms** (56 fps),
+within half a millisecond of the scene's 17:
+
+| | shadow | under | reflect | main | post | frame |
+|---|---:|---:|---:|---:|---:|---:|
+| `grass=live&crop=live` | 2.83 | 0.44 | 2.01 | 14.49 | 0.50 | 20.3 |
+| both baked | 2.66 | 0.40 | 1.89 | 12.04 | 0.47 | **17.5** |
+
+On the MacBook Air (`?profile` on #27's preview, Chrome, uncapped ms; its GPU timers don't work), the farm at 1080p in a
+storm: **19.0 live → 15.0 baked**. At 1440p 26.7 → 21.0, at 4K 46.9 → 36.9.
+
+**Tried and dropped:**
+- shadows of still things kept between frames: with a 3-to-10-minute day the sun moves a texel every frame or two, so
+  it saved nothing and its held shadows stepped;
+- octagonal leaf cards: slower;
+- tighter rectangular cards: change edge pixels, deferred;
+- leaving kinds out of the reflection: visible, and the reflection's silhouettes save more.
+
+**Visible, if still needed:** a 2048² shadow map about 2.3 ms on the laptop, 2× MSAA about 1.5, a quarter-size
+reflection about 1.2.
+- Each cut is measured on the laptop too, with `?profile` on its PR's preview.
