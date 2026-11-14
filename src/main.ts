@@ -67,18 +67,18 @@ const usesPower = (t: BuildingId) => !!BUILDINGS[t].grid || drawsPower(t);
 const canvas = must(document.querySelector<HTMLCanvasElement>('#view'), '#view canvas');
 const loading = must(document.querySelector<HTMLElement>('#loading'), '#loading');
 const SAVE_KEY = saveKey(location.pathname), PROGRESS_KEY = `${SAVE_KEY}:progress`;
-/** The settings. */
-const settings = new SettingsStore(`${SAVE_KEY}:settings`);
-followKeys(settings);
-
-const loaded = deserialize(localStorage.getItem(SAVE_KEY));
-const saved = loaded.ok ? loaded.value : null;
 const params = new URLSearchParams(location.search);
 /**
  * Whether the game is drawn by brush3d (`?renderer=brush3d`) rather than the pixel renderer, until the swap (#211). Players
  * don't see it before then (epic #212): it's only reachable through the URL, and kept across the game's own reloads (`page`).
  */
 const BRUSH = params.get('renderer') === 'brush3d';
+/** The settings (the panel shows the pixel renderer's or brush3d's, whichever draws). */
+const settings = new SettingsStore(`${SAVE_KEY}:settings`, BRUSH ? 'brush3d' : 'pixel');
+followKeys(settings);
+
+const loaded = deserialize(localStorage.getItem(SAVE_KEY));
+const saved = loaded.ok ? loaded.value : null;
 /**
  * The game's page again, with `query` (`?menu`). Drawn by brush3d, it keeps the page's other options too (the switch, and
  * a look PR's candidates, `?level=` and the like, which the brush3d world reads only once it loads), all but the game's

@@ -1,5 +1,5 @@
 import {
-  hoursOf, type HourName, CHARACTERS, clockHour, SEASONS, type Character, type Season, BrushRenderer, type DrawnKind,
+  hoursOf, type HourName, CHARACTERS, clockHour, SEASONS, type Character, type Season, BrushRenderer, type DrawnKind, QUALITY, type QualityName,
   TOUR, type Stand, MAX_ZOOM, MIN_ZOOM, cloudDriftSpeed, WEATHER_PRESETS, type CloudDrift, type Haze, type HazeKind,
   type Weather, type WeatherName, steadyWind, WIND_SCALE, windName, type WindStrength, startWind, WIND_TICK,
   type WindGoal, type WindSave,
@@ -53,6 +53,8 @@ import { WindView } from './windView';
 //   ground=live, crop=live, grass=live (that kind's brush worked out in every pixel, as before it was baked at load)
 //   shelter (show the shelter map over the frame: what's under a roof, under a crown, the roofs' tops; the map in the corner)
 //   shelterSize (its texels across: 1024, or 512 reduced)
+//   quality=high|medium|low (the game's graphics presets, QUALITY, #209: over samples, shadowMap and shelterSize, and the
+//     pixels drawn, also with profile)
 //   profile: time the frame pass by pass, on whatever machine opens it (see profile.ts)
 
 const params = new URLSearchParams(location.search);
@@ -69,6 +71,8 @@ const renderer = new BrushRenderer(canvas, {
 // On a high-DPI screen the frame is drawn at 1080p's pixel count and scaled up: the budget's, and to the developer's eye
 // on the MacBook no softer than 1440p's (#6, #28). Not with dpr or profile, which set the pixels themselves.
 if (!params.has('dpr') && !params.has('profile')) renderer.maxPixels = 1920 * 1080;
+const qualityParam = params.get('quality');
+if (qualityParam && qualityParam in QUALITY) renderer.setQuality(QUALITY[qualityParam as QualityName]);
 // The season (#13): the game sets it once per level, and the scene's contents are the game's for it (the demo's stand in).
 const seasonParam = params.get('season'), characterParam = params.get('character');
 const season: Season | null = SEASONS.includes(seasonParam as Season) ? seasonParam as Season : null;
