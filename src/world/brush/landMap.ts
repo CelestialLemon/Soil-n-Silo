@@ -6,7 +6,7 @@ import { groundOf } from '../../game/rules.ts';
 import type { GameState } from '../../game/state.ts';
 
 // The game's land in brush3d's terms (#202): what `r.setLand` takes, from the map and the country the game generates round
-// it. Plain data, so the tests check it in Node; land.ts sends it. (The water is #207's water.ts, at waterSurface.)
+// it. Plain data, so the tests check it in Node; land.ts sends it. (The water is #207's water.ts, WATER_DOWN under its tiles' level.)
 //
 // The country is drawn as the pixel world drew it (terrain.ts): the river and the track running off under the woods near
 // the country's edge, woods' floor far out (the woods' trees are wild.ts's), and past the country an apron of distant
@@ -20,12 +20,12 @@ const RIM = 10, NEAR = 12;
 /** How far past the country the apron of distant woods goes (tiles), its cells (tiles), and how much it rises and falls (levels). */
 const APRON = 120, APRON_CELL = 4, APRON_ROLL = 6.4;
 /**
- * Where the river's and the ponds' surface stands (levels) over their tiles at `level`: about half a level under it, so
- * the banks stand a little over the water, as the pixel world's do, and the water's edge is where the bed (brush3d cuts
- * it under the water's tiles, land/paint.ts) rises through it, a little in from the tile's side rather than on it. #207's
- * water map (water.ts) lays the river and the ponds at this.
+ * How far (m) the river's and the ponds' surface stands under their tiles' level: the banks stand a little over the
+ * water, as the pixel world's do, and the water's edge is where the bed (brush3d cuts it under the water's tiles, 1.2 m
+ * at its deepest, brush3d/docs/LAND.md) rises through it, a little in from the tile's side rather than on it. In metres,
+ * not levels, so it stays inside the bed whatever a level's height (#220). The water map (water.ts) lays them at this.
  */
-export const waterSurface = (level: number) => level - 0.48;
+export const WATER_DOWN = 0.48;
 
 /** The game's kinds of ground as brush3d's. */
 const GROUND_OF: Record<number, number> = {

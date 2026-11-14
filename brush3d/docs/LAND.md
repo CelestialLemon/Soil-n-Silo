@@ -27,7 +27,7 @@ country the game draws round it in tiles too, then `beyond`, a coarse grid of he
   at the top and bands of earth (stone from level 8 up) every two levels. The look is a developer's pick (the look PR).
 - **The water's beds.** Under each water tile the ground sinks into a bed, 1.2 m at its deepest, rising to the bank over
   the last three quarters of a tile where dry ground is beside it. The water itself is the game's water map (`setWater`,
-  `WATER.md`); the game lays it a little under its tiles' level (Soil-n-Silo's `waterSurface`), so the banks stand over
+  `WATER.md`); the game lays it a little under its tiles' level (Soil-n-Silo's `WATER_DOWN`, 0.48 m), so the banks stand over
   it and the shore is where the bed rises through it.
 - **The paint.** Grass runs from lush, low and near water, to dry, high and far from it (blurred over a few tiles, so it
   follows the land rather than the tile grid), with the meadow's drifts of colour. Bare earth, tracks, rock and woods'

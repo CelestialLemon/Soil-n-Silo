@@ -5,7 +5,7 @@ import { levelling } from '../src/game/build.ts';
 import { generateLand, TERRAIN } from '../src/game/map.ts';
 import { CAMPAIGN, SANDBOX } from '../src/game/scenarios.ts';
 import { newGame } from '../src/game/state.ts';
-import { landMapOf, patchOf, tilesOf, waterSurface } from '../src/world/brush/landMap.ts';
+import { landMapOf, patchOf, tilesOf, WATER_DOWN } from '../src/world/brush/landMap.ts';
 
 // The game's land as brush3d's (src/world/brush/landMap.ts, #202): what the brush3d world sends to r.setLand and
 // r.updateLand. How brush3d paints it is checked in brush3d/tools/land.ts.
@@ -29,9 +29,8 @@ for (const sc of [...CAMPAIGN, SANDBOX]) {
   });
 }
 
-test('the water stands under its tiles\' level, over the bed brush3d cuts under it', () => {
-  // (Half a level down: the banks over it, the bed, 1.2 m deep at its deepest, under it.)
-  assert.ok(waterSurface(3) < 3 && waterSurface(3) > 3 - 1.2 / SCALE.level);
+test('the water stands under its tiles\' level, over the bed brush3d cuts under it (1.2 m at its deepest)', () => {
+  assert.ok(WATER_DOWN > 0 && WATER_DOWN < 1.2);
 });
 
 test('an earthwork is sent as the tiles it changed, nothing when nothing did', () => {
