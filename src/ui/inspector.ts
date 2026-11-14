@@ -16,7 +16,7 @@ import { SPRINKLER_MOST, TURBINE_MOST, coopShade, coopTrees, riverSeason, wheelS
 import { fieldFertility, fieldGround, harvestOf } from '../game/sim/soil.ts';
 import { groundFact } from '../game/ground.ts';
 import { givesGoods, linksOf, recipeOf, takesGoods, wantsCompost } from '../game/sim/goods.ts';
-import { makes, shareOf, wants } from '../game/sim/energy.ts';
+import { makesNow, shareOf, wants } from '../game/sim/energy.ts';
 import { fieldPace, flowersNear } from '../game/sim/buildings.ts';
 import { dustComes, dustNote } from '../game/dust.ts';
 import { hollowNote } from '../game/frost.ts';
@@ -230,7 +230,7 @@ export class Inspector {
       case 'garage': out.push(...this.garageTrucks(s, b, lines)); break;
       case 'battery': stat('Charge', () => `${pct(b.charge / POWER.battery.capacity)} · ${Math.round(b.charge)} of ${POWER.battery.capacity} J`); bar(() => b.charge / POWER.battery.capacity); break;
       case 'solar': case 'turbine': case 'wheel':
-        stat('Making', () => watts(networkOf(s, b) ? makes(s, b, sunAt(s.scenario, s.time), windAt(s.scenario, s.time)) : 0));
+        stat('Making', () => watts(networkOf(s, b) ? makesNow(s, b, sunAt(s.scenario, s.time), windAt(s.scenario, s.time)) : 0));
         if (b.type === 'turbine') stat('Wind', () => `${pct(exposureOf(s, b))} of the wind${exposureOf(s, b) > 1 ? ', up high' : ' reaches it'}`);
         if (b.type === 'wheel') { const site = wheelSite(s, b.x, b.y); stat('River', () => (site ? `${site.current.toFixed(1)} m/s${site.fall ? ', beside a fall' : ''}` : 'no current'));
           if (site) { const flow = s.scenario.climate.river.flow; stat('Season', () => `${riverSeason(flow)}, ×${flow.toFixed(1)} current`); } }

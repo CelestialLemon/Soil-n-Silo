@@ -11,6 +11,7 @@ import { runtimeOf } from '../runtime.ts';
 import { turbineShare, type View } from '../wind.ts';
 import { heatNeed, warmthOf } from '../warmth.ts';
 import { daylight } from './clock.ts';
+import { hereShare } from '../overhead.ts';
 
 // Power: what each building wants and makes, how each network balances, and the watts garages want for charging.
 
@@ -68,6 +69,16 @@ export function makes(s: GameState, b: Building, sun: number, wind: number, time
   }
 }
 
+/**
+ * Watts a generator makes now, where it stands: what `makes` gives for the valley's sun and wind, times the gust passing over a
+ * turbine or the cloud's shadow over a panel (overhead.ts), 1 on average, so a day's and a season's power are the valley's.
+ * Forecasts and plans read `makes`, the valley's; this is what the step balances.
+ */
+export const makesNow = (s: GameState, b: Building, sun: number, wind: number) => {
+  const w = makes(s, b, sun, wind);
+  return w > 0 ? w * hereShare(s, b) : w;
+};
+
 export function balancePower(s: GameState, sun: number, wind: number, dt: number) {
   const map = new Map<number, number>();
   const step: PowerStep = { solar: 0, wind: 0, water: 0, digester: 0, given: 0, taken: 0, wanted: 0, used: 0, short: 0, stored: 0, capacity: 0, night: !daylight(s.scenario, s.time) }; // not `sun <= 0`: a blizzard darkens the day, it isn't night
@@ -76,7 +87,7 @@ export function balancePower(s: GameState, sun: number, wind: number, dt: number
     let made = 0, wanted = 0, capacity = 0;
     const batteries: BatteryBuilding[] = [], want = new Map<Building, number>();
     for (const b of net.members) {
-      const w = makes(s, b, sun, wind), u = wants(s, b);
+      const w = makesNow(s, b, sun, wind), u = wants(s, b);
       made += w;
       if (b.type === 'solar' || b.type === 'turbine' || b.type === 'wheel' || b.type === 'digester') step[b.type === 'turbine' ? 'wind' : b.type === 'wheel' ? 'water' : b.type] += w;
       wanted += u;

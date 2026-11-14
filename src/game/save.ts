@@ -10,6 +10,7 @@ import { MAX_LEVEL, spanOf, STEEP } from './relief.ts';
 import { GROUND_IDS } from './ground.ts';
 import { TERRAIN } from './map.ts';
 import { isMachine, type Building, type GameState, type Route, type Truck } from './state.ts';
+import { MAX_WIND, type WindState } from '../../brush3d/src/shared.ts';
 
 // Saving: the commission in progress (one at a time) and each commission's best result. The game state is plain data, so a
 // save is its JSON.
@@ -31,7 +32,7 @@ export function deserialize(json: string | null): Result<GameState> {
   const parsed = tryParseJson(json);
   if (!parsed.ok) return err(`The save isn't JSON: ${parsed.error}`);
   const s = parsed.value as GameState | null;
-  if (s?.version !== 19) return err('The save is from another version (this game reads version 19).');
+  if (s?.version !== 20) return err('The save is from another version (this game reads version 20).');
   if (!complete(s)) return err('The save is broken: its state is incomplete or out of range.');
   if (!validRun(s.run, s.scenario.goals.length, s.scenario.events.length)) return err('The save is broken: its run log is incomplete or out of range.');
   return ok(s);
@@ -106,12 +107,25 @@ function complete(s: GameState): boolean {
     && stock(s.delivered) && stock(s.made) && arr(s.reached) && s.reached.length === s.scenario.goals.length
     && !!st && num(st.since) && arr(st.made) && st.made.length > 0 && st.made.every(counts)
     && !!st.delivered && typeof st.delivered === 'object' && Object.entries(st.delivered).every(([k, v]) => item(k) && arr(v) && v.every(num))
-    && validChosen(s.chosen)
+    && validChosen(s.chosen) && validWind(s.wind) && !!s.clouds && num(s.clouds.x) && num(s.clouds.z)
     && arr(s.buildings) && s.buildings.every((b) => validBuilding(b, m.width, m.height))
     && arr(s.routes) && s.routes.every(validRoute) && stopsExist(s) && arr(s.trucks) && s.trucks.every((t) => validTruck(s, t)) && docksFit(s) && uniqueIds(s);
 }
 
 const int = (v: unknown) => Number.isInteger(v);
+
+/** The wind's gusts (overhead.ts, brush3d's WindState): what it's easing towards, how it blows and where its gusts are, each in its range. */
+function validWind(w: GameState['wind']): boolean {
+  const share = (v: number) => num(v) && v >= 0 && v <= 1, unit = (v: number) => num(v) && Math.abs(v) <= 1, speed = (v: number) => num(v) && v >= 0 && v <= MAX_WIND;
+  // Counts stay below 2^31, where the gusts' sums keep their precision (k is the gust it's at, tick the wind's clock).
+  const count = (v: number) => int(v) && v >= 0 && v < 2 ** 31;
+  const gusts = (g: WindState['gusts']) => !!g && unit(g.hx) && unit(g.hz) && num(g.o) && g.o >= 0 && g.o < 101 && num(g.p) && g.p >= 0 && g.p < 1
+    && speed(g.speed) && g.speed >= 2 && share(g.rhythm) && count(g.k);
+  return !!w && count(w.tick) && int(w.seed) && count(w.sets)
+    && !!w.goal && speed(w.goal.speed) && num(w.goal.direction) && share(w.goal.gustiness) && share(w.goal.rhythm)
+    && speed(w.speed) && unit(w.dirX) && unit(w.dirZ) && share(w.gustiness) && share(w.rhythm) && share(w.fade)
+    && gusts(w.gusts) && (w.next === null || gusts(w.next));
+}
 
 /** The choices remembered for placing: a crop, and for each building a recipe it works. */
 function validChosen(c: GameState['chosen']): boolean {

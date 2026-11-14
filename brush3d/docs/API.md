@@ -324,52 +324,58 @@ of one cell covers the whole land, so the game can start with one value for the 
 per-tile maps when #207 adds them. None settles under a roof, and less under a crown: that's the renderer's, from what
 it draws. `docs/GROUND.md` has the detail.
 
-## The wind, for the rules and the picture (today; the game's wind in #208)
+## The wind, for the rules and the picture (today; the game's turbines since #208)
 
-The game owns the wind simulation, steps it on its own clock and reads it for its rules; the renderer draws the same
-snapshots. `docs/WIND.md` has the contract.
+The game owns the wind. Its rules step the **gusts** (`WindRecipe`) on their own clock, one of the wind's ticks a game step,
+and read them at each turbine; the picture steps the **air under them** (`WindSim`, in a worker) from the same gusts and
+draws it. `docs/WIND.md` has the contract.
 
 ```ts
-const wind = startWind({ nx, nz, cell, x0, z0 }, obstacles, { speed, direction, gustiness, rhythm }, { seed });
+// The rules (the game's src/game/overhead.ts): the gusts alone, a tick a step, saved with the game as plain data.
+const gusts = new WindRecipe({ nx, nz, cell, x0, z0 }, goal, { seed });   // or { state: saved } to carry on
+gusts.setGoal(goal); gusts.step();  // each game step (TICK, 0.1 s)
+gusts.gustAt(x, z);                 // the free air's speed there, as a share of the wind's (1 on average): a turbine's
+gusts.state;                        // plain data for the save
+// The picture: the air under the same gusts, in a worker.
+const wind = startWind({ nx, nz, cell, x0, z0 }, obstacles, goal, { state: gusts.state });   // starts on the rules' gusts
 // Its first snapshot comes from the worker a moment later: wind.cur is null until then (wait with `await wind.idle()`,
 // or draw a steadyWind meanwhile).
-wind.setObstacles(obstacles);       // a building placed, a hedge planted, a tree cleared (#208)
 wind.setGoal(goal);                 // what the weather wants; eases there over a few seconds
 wind.advance(gameSeconds);          // each frame, by game time (nothing while paused)
-wind.onTick((snap) => { if (snap.tick > rules.windTick) rules.wind(snap); });   // the rules: each new tick, in order
-windAt(snap, x, z, height);         // in the rules, at that tick: m/s along x and z for a turbine, a gale, shelter
 wind.at(x, z, height);              // between the last two ticks, as the frame sees it: for the picture only
-const save = await wind.save();     // with the game's save; wind.restore(save) carries on from that tick
 if (wind.cur) r.setWind(wind.prev!, wind.cur, wind.alpha);
 r.restartWind();                    // a new wind, not a continuation (a level loading): the trees and dust start at rest
 ```
 
 | Piece | Stands |
 |---|---|
+| `WindRecipe`: the gusts without the air, stepped by the rules; `gustAt`, `freeAt` (the free air, bit for bit the engine's); its `state` plain data | today (#208) |
 | `WindWorker` (the simulation in a worker; today the caller makes the worker from `wind/worker.ts`) | today |
 | `startWind(...)`: the same, making its own worker, so the game never names the worker's file | today |
-| `wind.onTick(f)`, `snap.tick`, `windAt(snap, ...)`: each tick for the rules | today |
-| `WindSim` and `windAt(snapshot, x, z, height)`: the same simulation with no worker, for the game's tests and bots | today |
-| Obstacles: a circle, a strip or a turned box in metres, `solid` with a height (a building) or with a `drag` (`DRAG.hedge`, `DRAG.crown`), given once at the start | today |
+| `options.state`: a wind (`WindSim`, the worker) or gusts started from a `WindRecipe`'s or a save's state, the air steady under it | today (#208) |
+| `wind.onTick(f)`, `snap.tick`, `windAt(snap, ...)`: each tick of the air, in order | today |
+| `WindSim` and `windAt(snapshot, x, z, height)`: the same simulation with no worker, for tests and tools | today |
+| Obstacles: a circle, a strip or a turned box in metres, `solid` with a height (a building) or with a `drag` (`DRAG.hedge`, `DRAG.crown`) | today |
+| `WindSim.setObstacles(list)` and `setState(state)`: the obstacles change in play, the gusts jump to the rules'; a save (version 3) keeps the obstacles | today (#208) |
+| The same through the worker, `wind.setObstacles(list)` and `wind.setState(state)`, queued against the ticks | #208, its picture PR |
 | `steadyWind(speed, direction)`: one even wind, for a scene with no simulation | today |
-| `wind.setObstacles(list)`: the obstacles change in play; queued against the ticks like a goal (so the same calls replay the same wind) and kept in the save | #208 |
 | `r.restartWind()` | today |
-| The game's turbines, gales and shelter reading it | #208 |
+| The game's turbines reading the gusts (and the panels the clouds' shadows, below) | today (#208) |
 
-- **The rules read whole ticks.** `wind.at` blends the last two snapshots by how far the frame is past the latest, and
-  what has arrived from the worker depends on the machine, so it's for drawing only. The rules take each tick's
-  snapshot as `onTick` hands it over (every tick, in order, numbered by `snap.tick`; it also hands over the first
-  snapshot, tick 0, and after a restore the saved tick again, which the guard above skips), and query it with
-  `windAt(snap, ...)`: a turbine's output for tick n is the same on the Arc laptop as on the developer's machine, however
-  far behind the worker runs. #208 ties the game's own rule clock to those ticks.
-- **A save is as of a tick.** `wind.save()` keeps the state as of the last tick due, and a restore carries on bit for bit
-  from it; the part of a tick the clock had run past it (under 0.1 s) isn't kept today, so a restored game's next tick
-  comes up to 0.1 s later than it would have. #208 puts that fraction in the save.
+- **Why the rules need only the gusts.** By the height rule (`docs/WIND.md`), from 8 m up the wind is the free air alone,
+  the gusts' own, and a turbine's rotor stands 14.4 m up. So the rules step `WindRecipe`, a few microseconds a step, with
+  no worker, no WebAssembly and no 960 KB of air in the save, and every machine gets the same power for the same step,
+  however slow its worker. The air under the gusts is what the grass, the trees and the dust show; the shelter a turbine
+  gets is still the rules' own number (what stands round it), which the placement card shows.
+- **One clock.** The gusts step once a game step, so the wind's tick is the game's step: a save keeps them exactly
+  (nothing of a tick is lost), and the picture's worker is fed the same goals, tick for tick, from the same state.
+- **Both sides lay the gusts from the grid's centre** (`x0 + nx·cell/2`), not from its cells, so the rules and the picture
+  must share the centre; the cell size can differ (the rules never step the air at all).
 
-The simulation covers up to 256 by 256 cells; at a metre a cell that's 256 m, a little more than a commission's map at
-4 m a tile, so the country past the edge may need 2 m cells (#208).
+The simulation covers up to 256 by 256 cells; the game uses 2 m cells, so its world reaches past a commission's map by
+about 32 m (the game's `windGrid`).
 
-## The clouds, for the rules and the picture (today; the panels in #208 and CelestialLemon/Soil-n-Silo#198)
+## The clouds, for the rules and the picture (today; the panels since #208 and CelestialLemon/Soil-n-Silo#198)
 
 ```ts
 const shade = cloudShade(x, z, { cover, x: drift.x, z: drift.z, seed });   // 0 in the sun .. 1 in full cloud shadow
@@ -380,6 +386,10 @@ const speed = cloudDriftSpeed(windAloft);                                   // h
 `cloudDriftSpeed` and sends it with `setWeather({ cloud, drift: { x, z, vx, vz }, cloudSeed })`: the position exactly, and
 the speed the renderer carries them on at between updates, so each panel sees the clouds exactly where they're drawn
 (paused, the speed is 0). The shaded share of the land matches the cover on average, so the solar balance holds.
+
+The game's rule (#198): a panel under a cloud's shadow loses the share of its sun the valley's cloud takes, one in the sun
+loses none, `(1 − 0.65·cloud·shade/cover) / (1 − 0.65·cloud)` of the valley's sun (the game's `lightOver`), so across the
+land and over the days it makes the valley's power. The rules sample the shade at the middle of a panel's footprint.
 
 ## Settings (today; in the game's settings panel in #209)
 
@@ -455,7 +465,7 @@ The game's pixel3d calls and what replaces each:
 | Folder | What | Whose |
 |---|---|---|
 | `src/index.ts` | The API: everything above that exists | the game's door in |
-| `src/shared.ts` | The wind simulation, the cloud recipe and the land's data and smooth fit, loadable in Node on their own (the index exports them too) | shared with the rules |
+| `src/shared.ts` | The wind simulation, its gusts (`WindRecipe`), the cloud recipe, the land's data and smooth fit, and `TILE`, loadable in Node on their own (the index exports them too) | shared with the rules |
 | `src/renderer/` | The renderer: its passes, materials, shaders and looks | the renderer's own |
 | `src/land/` | The land painted from the game's map: what the game sends (`map.ts`), the smooth fit (`surface.ts`), the painting and earthworks (`paint.ts`) | the renderer's own (`map.ts` and `surface.ts` shared with the rules) |
 | `src/wind/` | The wind simulation (no drawing; a worker host) | shared with the rules |

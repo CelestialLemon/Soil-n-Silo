@@ -18,6 +18,7 @@ import { recordHistory, rest, updateStats, goalDone, updateGoals } from './stats
 import { blockedGood, served } from './describe.ts';
 import { applyHolds } from '../hold.ts';
 import { renewForecast } from '../station.ts';
+import { stepOverhead } from '../overhead.ts';
 
 // The simulation: one fixed step of TICK seconds at a time. Each step balances power, runs every building, hands goods to
 // the buildings next door that take them, drives the trucks along their routes (docking, moving goods, charging), then
@@ -35,6 +36,7 @@ export function advance(s: GameState, seconds: number, maxSteps = Infinity) {
 export function tick(s: GameState) {
   const dt = TICK;
   s.time += dt;
+  stepOverhead(s); // the gusts and the clouds' drift, before anything reads them
   syncFlood(s, dt);
   blowDust(s, dt);
   const sun = sunAt(s.scenario, s.time), wind = windAt(s.scenario, s.time);

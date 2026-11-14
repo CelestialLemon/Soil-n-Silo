@@ -55,9 +55,9 @@ wind.restore(save);                                      // carries on from it, 
 - **Snapshots** hold the grid, the tick, the ground air's velocity (`u`, `v`), the shelter memory (`k`) and the free air
   at ground scale (`fu`, `fv`), cell by cell with x fastest. `windAt(snap, x, z, height)` reads one in the game's own
   code, with no worker, for example in a test.
-- **Saves.** `WindSim.save()` holds the eased state, the seed, where each set of gusts is in its sequence, and the air
-  (about 960 KB over 200 m at 1 m). The gusty and quiet spells run on the wind's own clock (its tick), so they need
-  nothing more.
+- **Saves.** `WindSim.save()` (version 3) holds the eased state, the seed, where each set of gusts is in its sequence,
+  the obstacles and the air (about 960 KB over 200 m at 1 m). The gusty and quiet spells run on the wind's own clock (its
+  tick), so they need nothing more.
   `restore` carries on bit for bit as if it had never stopped. Through the worker: `WindWorker.save()` and `restore()`
   (a restore drops the ticks not yet stepped).
 - **Determinism.** The same obstacles, goals and ticks give the same wind, bit for bit. The engine (`sim.c`, WebAssembly,
@@ -65,12 +65,30 @@ wind.restore(save);                                      // carries on from it, 
   the wind are exact within one JavaScript engine (V8: Chrome, Electron, Node) but aren't specified to the last bit
   across engines.
 
+- **Changing in play.** `WindSim.setObstacles(list)` takes a new list of obstacles (a building put up, a tree felled):
+  the air carries on round them. `setState(state)` jumps the gusts to a state (a `WindRecipe`'s), keeping the air.
+
+## For the rules: the gusts alone (#208)
+
+The gusts are plain TypeScript in `src/wind/recipe.ts`, `WindRecipe`, apart from the air: the eased state, the turns, the
+sets of gusts and their travel, and a twin of the engine's recipe (`freeAt`, operation for operation in float32, checked
+bit for bit against the engine at every cell by `render:test:wind`). `WindSim` steps one and hands its forcing to the
+engine each tick; the game's rules step one on their own, a tick a game step, and read `gustAt(x, z)` at each turbine.
+
+That is all a turbine needs: from 8 m up the wind is the free air alone (the height rule above), and a rotor stands
+14.4 m up. So the rules run no air, need no worker and no WebAssembly (Chrome refuses to compile a module over 4 KB
+synchronously on the main thread, where the rules run without waiting), save only the plain state, and give every machine the same power for the same
+step. The picture runs the air, started from the rules' state (`options.state`) and given the same goals, so the grass
+shows the gusts the turbines feel. Both lay the gusts from the grid's centre, so they must share it; the cells can
+differ. The gusts average 1 over time at a point (2000 s at 6 m/s: 1.0000), and the game's turbines make their day's
+and season's power within 0.3% of the steady wind's (the game's #208).
+
 ## How it's built
 
 `src/wind/sim.c` is the engine, compiled to WebAssembly with SIMD by `npm run render:build:wind` (clang compiled to
 WebAssembly, fetched once into `node_modules/.cache`). The result is checked in as `src/wind/engine.ts`, so only a change
-to `sim.c` needs a rebuild. `sim.ts` holds the recipe, the easing and the turns, the obstacles' rasterising and the
-queries. `worker.ts` runs it off the main thread, and `client.ts` is the game's side of the worker.
+to `sim.c` needs a rebuild. `recipe.ts` holds the gusts (the recipe, the easing and the turns) and `sim.ts` the engine's
+side: the obstacles' rasterising and the queries. `worker.ts` runs it off the main thread, and `client.ts` is the game's side of the worker.
 
 Per tick:
 

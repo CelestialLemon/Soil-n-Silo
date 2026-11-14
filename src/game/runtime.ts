@@ -1,3 +1,4 @@
+import type { WindRecipe } from '../../brush3d/src/shared.ts';
 import type { Fleet } from './fleet.ts';
 import type { Flooded } from './flood.ts';
 import type { Flows } from './flows.ts';
@@ -54,6 +55,10 @@ export interface Runtime {
   flooded?: { relief: number; value: Flooded };
   /** How far below the ground round it each tile lies, for the ground's current levels (frost.ts). */
   frost?: { relief: number; depth: Float64Array };
+  /** The gusts, stepped on the saved wind state (`s.wind` is its state) (overhead.ts). */
+  gusts?: WindRecipe;
+  /** The rules' and the drawn cloud cover at the time of the step they were worked out for (overhead.ts). */
+  cloudNow?: { time: number; rules: number; drawn: number };
   /** Bumped whenever earthworks change the ground's levels, so the view redraws it (state.ts, `touchRelief`). */
   relief?: number;
   /** Bumped whenever a route, a stop or a truck's assignment changes, so the interface knows to redraw its panels. Numbered across games (see nextVersion). */
