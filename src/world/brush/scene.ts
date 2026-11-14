@@ -8,11 +8,13 @@ import { Lie, LEVEL_HEIGHT, standY } from '../ground.ts';
 import type { Heights, Picker, Preview, Scene } from '../scene.ts';
 import { COUNTRY } from '../terrain.ts';
 import { TileCursor } from '../tileCursor.ts';
+import { BrushCover } from './cover.ts';
 import { PlainLand } from './land.ts';
 import { BrushLens } from './lens.ts';
 import { RISE, TILE } from './scale.ts';
 import { BrushSky } from './sky.ts';
 import { thingHeight, Things } from './things.ts';
+import { BrushWater } from './water.ts';
 import { Wild } from './wild.ts';
 
 // The game drawn by brush3d (epic #212), behind `?renderer=brush3d` until the swap (#211): the Scene (../scene.ts) the
@@ -26,8 +28,11 @@ import { Wild } from './wild.ts';
 //   things.ts  the buildings and trucks as brush3d's solarpunk models (#203); #204 (a world that changes without a
 //              stutter) and #205 (moving parts, building states, the markers) build on it
 //   wild.ts    grey stand-ins for the trees and rocks: #213 (the crops and trees in paint) replaces them
-//   sky.ts     the season, the hour and the weather, plainly: #207 (the game's weather, ground and water), #208 (the wind
-//              and clouds the rules share)
+//   sky.ts     the season, the hour and the sky from the game's weather (#207); #208 brings the wind and clouds the rules
+//              share
+//   cover.ts   what lies on the land from the game's: snow, frost, wet and mud (#207)
+//   water.ts   the river and ponds, floods, ice and muddy water from the game's (#207; how the river sits in its bed is #202's)
+//   grid.ts    the grid cover.ts and water.ts send their maps on
 //   (tools)    picking, highlights, the build preview, overlays, routes and power lines are #206's: the picker, preview,
 //              show() and the labels below are stubs it fills (a tools.ts here)
 //   (settings) brush3d's settings and quality presets in the game's settings panel are #209's (a settings.ts here)
@@ -41,7 +46,7 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, _setting
   const r = new BrushRenderer(canvas, { shadowFollow: true, shadowMapSize: 4096 });
   r.maxPixels = 1920 * 1080;
   const land = generateLand(state.scenario, COUNTRY), lie = new Lie(state, land);
-  const ground = new PlainLand(r, land, lie), sky = new BrushSky(r, state);
+  const ground = new PlainLand(r, land, lie), sky = new BrushSky(r, state), cover = new BrushCover(r, land), water = new BrushWater(r, land, lie);
   const things = new Things(r, lie), wild = new Wild(r, lie, land, state);
   const lens = new BrushLens(r, canvas);
   const camera = new Camera(lens, canvas, map, start, changed);
@@ -73,6 +78,8 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, _setting
     sync(s, f) {
       sky.sync(s, f.hour);
       ground.sync(s);
+      cover.sync(s);
+      water.sync(s);
       things.sync(s);
       wild.sync(s);
     },
