@@ -72,7 +72,7 @@ const renderer = new BrushRenderer(canvas, {
 // on the MacBook no softer than 1440p's (#6, #28). Not with dpr or profile, which set the pixels themselves.
 if (!params.has('dpr') && !params.has('profile')) renderer.maxPixels = 1920 * 1080;
 const qualityParam = params.get('quality');
-if (qualityParam && qualityParam in QUALITY) renderer.setQuality(QUALITY[qualityParam as QualityName]);
+if (qualityParam && Object.hasOwn(QUALITY, qualityParam)) renderer.setQuality(QUALITY[qualityParam as QualityName]);
 // The season (#13): the game sets it once per level, and the scene's contents are the game's for it (the demo's stand in).
 const seasonParam = params.get('season'), characterParam = params.get('character');
 const season: Season | null = SEASONS.includes(seasonParam as Season) ? seasonParam as Season : null;
