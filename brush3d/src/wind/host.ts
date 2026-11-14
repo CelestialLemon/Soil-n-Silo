@@ -1,4 +1,4 @@
-import { WindSim, type WindGoal, type WindGrid, type Obstacle, type WindOptions, type WindSave, type WindSnapshot } from './sim.ts';
+import { WindSim, type WindGoal, type WindGrid, type Obstacle, type WindOptions, type WindSave, type WindSnapshot, type WindState } from './sim.ts';
 
 // What the wind's worker does with each message (#36), apart from the worker itself so it can be run without one (the
 // checks in tools/wind.ts do). Messages are taken in order: the same messages give the same wind.
@@ -6,13 +6,15 @@ import { WindSim, type WindGoal, type WindGrid, type Obstacle, type WindOptions,
 export type WindRequest =
   | { type: 'init'; grid: WindGrid; obstacles: Obstacle[]; goal: WindGoal; options?: WindOptions }
   | { type: 'goal'; goal: WindGoal }
+  | { type: 'setObstacles'; obstacles: Obstacle[] }
+  | { type: 'state'; state: WindState }
   | { type: 'step'; ticks: number }
   | { type: 'save' }
   | { type: 'restore'; save: WindSave };
 
 export type WindReply =
   | { type: 'obstacles'; solid: Float32Array; drag: Float32Array }
-  /** One per tick stepped (and one after init and restore, `restored` after a restore). `ms`: how long it took. */
+  /** One per tick stepped (and one after init, a restore and a new state, `restored` after either). `ms`: how long it took. */
   | { type: 'snapshot'; snap: WindSnapshot; ms: number; safetyHits: number; restored?: boolean }
   | { type: 'save'; save: WindSave };
 
@@ -34,6 +36,11 @@ export function windHost(post: (reply: WindReply, transfer: Transferable[]) => v
     }
     if (!sim) return;
     if (m.type === 'goal') sim.setGoal(m.goal);
+    else if (m.type === 'setObstacles') {
+      sim.setObstacles(m.obstacles);
+      const o = sim.obstacles();
+      post({ type: 'obstacles', ...o }, [o.solid.buffer, o.drag.buffer]);
+    } else if (m.type === 'state') { sim.setState(m.state); send(0, true); }
     else if (m.type === 'step') {
       for (let i = 0; i < m.ticks; i++) {
         const t0 = performance.now();
