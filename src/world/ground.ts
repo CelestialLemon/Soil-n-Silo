@@ -7,9 +7,9 @@ import { GROUND, GROUND_IDS, type GroundId } from '../game/ground.ts';
 import { groundOf } from '../game/rules.ts';
 import { reliefOf, type GameState } from '../game/state.ts';
 import { type Season } from '../game/seasons.ts';
-import { Surface } from './surface.ts';
+import { Surface } from '../../brush3d/src/shared.ts';
 
-// The ground: each land tile's top, drawn as the smooth reading of the rules' levels that surface.ts fits (worked ground and
+// The ground: each land tile's top, drawn as the smooth reading of the rules' levels that brush3d's surface.ts fits (worked ground and
 // water exactly at their levels), lit by a light fixed to the land so its slopes read; and the cliff faces where a tile
 // stands above a neighbour it doesn't join, banded like strata under a lip of turf. The country beyond the map is built once
 // into the static scene (terrain.ts); the map's own ground is drawn as objects in chunks (`MapGround`), so earthworks can

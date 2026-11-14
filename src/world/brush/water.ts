@@ -8,6 +8,7 @@ import { TERRAIN, type Land } from '../../game/map.ts';
 import { reliefOf, type GameState } from '../../game/state.ts';
 import type { Lie } from '../ground.ts';
 import { LandGrid, Sender } from './grid.ts';
+import { WATER_DOWN } from './landMap.ts';
 import { LEVEL } from './scale.ts';
 
 // The water, as brush3d draws it (#207): one map over the whole land (the map and the country round it), a cell a tile,
@@ -27,10 +28,10 @@ import { LEVEL } from './scale.ts';
 // surface stands against its tile's level (`riverSurface`), and how the river's own cells are laid out, but the flood, the
 // ice and the mud stay here.
 
-/** How far over its tile's level a river's or pond's surface stands (m): a hair over the plain land's flat water tiles. #202 cuts the beds. */
+/** How far over the land a flood's surface stands (m), so it covers the tiles it floods. */
 const RIVER_LIFT = 0.03;
-/** Where the river's or a pond's surface stands over a tile at `level` (m). */
-export const riverSurface = (level: number) => level * LEVEL + RIVER_LIFT;
+/** Where the river's or a pond's surface stands over a tile at `level` (m): in the bed brush3d cuts under it (#202). */
+export const riverSurface = (level: number) => level * LEVEL - WATER_DOWN;
 /** Flood water spread out of the river runs this much slower than the river beside it (the demo's, brush3d/src/demo/water.ts). */
 const SPREAD_FLOW = 0.25;
 /** How muddy a flood's water is at its height (0 clear .. 1 brown): the demo's flood at its peak. */

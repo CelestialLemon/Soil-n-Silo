@@ -9,7 +9,7 @@ import type { Heights, Picker, Preview, Scene } from '../scene.ts';
 import { COUNTRY } from '../terrain.ts';
 import { TileCursor } from '../tileCursor.ts';
 import { BrushCover } from './cover.ts';
-import { PlainLand } from './land.ts';
+import { BrushLand } from './land.ts';
 import { BrushLens } from './lens.ts';
 import { RISE, TILE } from './scale.ts';
 import { BrushSky } from './sky.ts';
@@ -24,7 +24,7 @@ import { Wild } from './wild.ts';
 //
 //   scale.ts   4 m a tile, how high a level stands (#201), the units' conversions
 //   lens.ts    the game's camera placing brush3d's view (#201)
-//   land.ts    the land, plainly: #202 replaces it with the renderer's own land from the map (setLand)
+//   land.ts    the land from the map: levels, cliffs, the water's beds, the country round it, earthworks (#202)
 //   things.ts  the buildings and trucks as brush3d's solarpunk models (#203); #204 (a world that changes without a
 //              stutter) and #205 (moving parts, building states, the markers) build on it
 //   wild.ts    what grows, painted: the trees by species, the rocks, the open fields' crops and the saplings (#213)
@@ -46,7 +46,7 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, _setting
   const r = new BrushRenderer(canvas, { shadowFollow: true, shadowMapSize: 4096 });
   r.maxPixels = 1920 * 1080;
   const land = generateLand(state.scenario, COUNTRY), lie = new Lie(state, land);
-  const ground = new PlainLand(r, land, lie), sky = new BrushSky(r, state), cover = new BrushCover(r, land), water = new BrushWater(r, land, lie);
+  const ground = new BrushLand(r, state, land, lie), sky = new BrushSky(r, state), cover = new BrushCover(r, land), water = new BrushWater(r, land, lie);
   const things = new Things(r, lie), wild = new Wild(r, lie, land, state);
   const lens = new BrushLens(r, canvas);
   const camera = new Camera(lens, canvas, map, start, changed);

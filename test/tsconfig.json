@@ -1,6 +1,8 @@
 {
   // The unit tests run in Node with its type stripping (no build step), so only erasable TypeScript is allowed.
+  // DOM's types for brush3d/src/shared.ts, which the tests import: its wind simulation names WebAssembly's types, which
+  // Node has at run time but @types/node doesn't declare.
   "extends": "../tsconfig.json",
-  "compilerOptions": { "lib": ["ES2022"], "types": ["node"] },
+  "compilerOptions": { "lib": ["ES2022", "DOM"], "types": ["node"] },
   "include": [".", "../src/game", "../tools"]
 }

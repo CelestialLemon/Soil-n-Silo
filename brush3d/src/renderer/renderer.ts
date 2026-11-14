@@ -30,6 +30,8 @@ import { SnowPaint } from './snow';
 import { SunMemory } from './frost';
 import { earthShares } from './wet';
 import type { WindSnapshot } from '../wind/sim';
+import { LAND_LOOK, PaintedLand, type LandLook } from '../land/paint';
+import type { LandMap, LandPatch, LandRect } from '../land/map';
 
 // The renderer: the clouds' shade over the land (#8); a sun shadow map; for the water, the bed drawn without it and the
 // scene mirrored in it (both at half size, and only round the water on screen); a multisampled G-buffer (colour plus view
@@ -183,6 +185,8 @@ export class BrushRenderer {
   private seasonal = new Map<THREE.BufferGeometry, number>();
   /** Their colours as the game sent them, by colour attribute (a tile's copy of a geometry has its own), once turned. */
   private ownColours = new WeakMap<THREE.BufferAttribute, Float32Array>();
+  /** The season (setSeason's, as set) each turned geometry's colours are turned for, so they're not turned twice. */
+  private turnedFor = new WeakMap<THREE.BufferAttribute, SeasonSettings | null>();
   /** The game's water as drawn (#18): its map, eased between updates, and the sheet drawn from it. */
   readonly water = new WaterField();
   private waterMesh: THREE.Mesh | null = null;
@@ -420,11 +424,9 @@ export class BrushRenderer {
     mesh.userData.reflect = options.reflect ?? kind !== 'water';
     mesh.userData.fields = options.fields;
     mesh.userData.cover = options.cover ?? (kind === 'ink' ? 'full' : kind === 'foliage' ? 'partial' : 'none');
-    // (The ground too: the shelter's map of the land, where the rain lands.)
-    if (mesh.userData.cover !== 'none' || kind === 'ground') this.shelter.changed();
-    if (kind === 'ground') this.cloudArea = false;
+    if (mesh.userData.cover !== 'none') this.shelter.changed();
     this.scene.add(mesh);
-    if (kind === 'ground') { this.measureGround(); this.land = null; this.hollows.changed(); }
+    if (kind === 'ground') this.groundMoved(null);
     if (options.castShadow ?? kind !== 'water') this.casters.push(mesh);
     const twin = new THREE.Mesh(geometry, this.materials.get(kind)!.prepass);
     twin.frustumCulled = cull;
@@ -450,8 +452,50 @@ export class BrushRenderer {
     this.casters = this.casters.filter((m) => m !== mesh);
     const i = this.twins.findIndex(([m]) => m === mesh);
     if (i >= 0) { this.silhouettes.remove(this.twins[i][1]); this.twins.splice(i, 1); }
-    if (mesh.userData.cover !== 'none' || mesh.userData.kind === 'ground') this.shelter.changed();
-    if (mesh.userData.kind === 'ground') { this.measureGround(); this.cloudArea = false; this.land = null; this.hollows.changed(); }
+    if (mesh.userData.cover !== 'none') this.shelter.changed();
+    if (mesh.userData.kind === 'ground') this.groundMoved(null);
+  }
+
+  /**
+   * Runs `change` (ground meshes added and taken out) as one change to the ground, within `area` (the whole world if
+   * null): what follows the ground's shape is found again once, after it, and only within `area` where it can be. The
+   * land's earthworks swap their chunks this way (land/paint.ts).
+   */
+  changeGround(area: THREE.Box3 | null, change: () => void) {
+    const outer = this.groundChange;
+    this.groundChange = outer ?? { area: new THREE.Box3() };
+    const was = this.groundChange.area;
+    if (was) { if (area) was.union(area); else this.groundChange.area = null; }
+    try { change(); } finally {
+      if (!outer) { const { area: all } = this.groundChange; this.groundChange = null; this.groundMoved(all, true); }
+    }
+  }
+  /**
+   * What add works out from a ground mesh's geometry (where it's earth, its box), worked out ahead, so adding it later
+   * costs less: the land's chunks are prepared as they're painted, a few a frame.
+   */
+  prepare(geometry: THREE.BufferGeometry) {
+    const colour = geometry.getAttribute('color') as THREE.BufferAttribute | undefined;
+    if (colour && !geometry.getAttribute('aEarth')) geometry.setAttribute('aEarth', new THREE.BufferAttribute(earthShares(this.ownColours.get(colour) ?? colour.array), 1));
+    // Turned by the season now, a few a frame, not all together as they're swapped in (add turns it again only if the
+    // season's changed since).
+    if (colour) this.turnColour(colour);
+    geometry.computeBoundingBox();
+  }
+  /** The ground change changeGround is in the middle of (and where), if any. */
+  private groundChange: { area: THREE.Box3 | null } | null = null;
+
+  /**
+   * The ground's shape changed (within `area`, or anywhere): its lowest and highest points, its shelter map (the rain lands
+   * on it), its hollows, the cloud map's square and its heights, found again. Not yet, in the middle of a changeGround.
+   */
+  private groundMoved(area: THREE.Box3 | null, now = false) {
+    if (this.groundChange && !now) return;
+    this.measureGround();
+    this.shelter.changed();
+    this.hollows.changed();
+    this.cloudArea = false;
+    this.land = area && this.land ? this.land.refresh(this.scene, area) : null;
   }
 
   /**
@@ -588,6 +632,31 @@ export class BrushRenderer {
   private waterShown = true;
 
   /**
+   * The land from the game's map (Soil-n-Silo#202, docs/LAND.md): its levels, cliffs, the water's beds and the country
+   * round it, painted by the renderer. Sent once a level; a second call replaces the first. Earthworks go to updateLand.
+   */
+  setLand(map: LandMap, look: LandLook = LAND_LOOK) {
+    this.painted?.dispose();
+    this.painted = new PaintedLand(this, map, look);
+  }
+  private painted: PaintedLand | null = null;
+
+  /**
+   * An earthwork (or anything else that changes the land's tiles): the new values for the tiles in `rect` (LandPatch, each
+   * array over the rectangle alone). Only the ground round them is fitted and painted again, over the next few frames
+   * (a few milliseconds each): the ground fitted again first (landAt and landHit answer for the new ground from then), then
+   * its chunks painted and swapped in together once they're all painted. Earthworks given meanwhile wait their turn.
+   * Returns how many tiles changed.
+   */
+  updateLand(rect: LandRect, patch: LandPatch): number { return this.painted?.update(rect, patch) ?? 0; }
+
+  /** The land's height (m) at a point of the world, as drawn (setLand's; 0 before there is one). */
+  landAt(x: number, z: number): number { return this.painted?.heightAt(x, z) ?? 0; }
+
+  /** Where a line of sight (view.rayAt) first meets the land as drawn, or null if it misses or there's no land yet. */
+  landHit(ray: THREE.Ray, into?: THREE.Vector3): THREE.Vector3 | null { return this.painted?.hit(ray, into) ?? null; }
+
+  /**
    * The game's ground (#14, #11, see GroundMap and docs/GROUND.md): how deep the snow lies, where the frost is, how wet
    * the land is and how muddy, over a grid as the water's is, sent again whenever it changes. A changed map eases in over
    * `ease` seconds (0 at once). None settles or wets under a roof, and less under a crown: that, and how a thin cover
@@ -660,12 +729,17 @@ export class BrushRenderer {
     (colour.array as Float32Array).set(own);
     colour.needsUpdate = true;
     this.ownColours.delete(colour);
+    this.turnedFor.delete(colour);
   }
   /** Turns a seasonal geometry's colours by the season, from its own (kept the first time). */
   private turn(geometry: THREE.BufferGeometry) {
     if (!this.seasonal.has(geometry)) return;
     const colour = geometry.getAttribute('color') as THREE.BufferAttribute | undefined;
-    if (!colour) return;
+    if (colour) this.turnColour(colour);
+  }
+  /** Turns colours by the season, from their own (kept the first time), unless they're turned for it already. */
+  private turnColour(colour: THREE.BufferAttribute) {
+    if (this.turnedFor.has(colour) && this.turnedFor.get(colour) === this.seasonSet) return;
     const t = seasonTurn(this.seasonSet);
     let own = this.ownColours.get(colour);
     // Untouched while no season has turned it: no copy kept.
@@ -673,6 +747,7 @@ export class BrushRenderer {
     if (!own) this.ownColours.set(colour, own = Float32Array.from(colour.array as Float32Array));
     turnColours(own, colour.array as Float32Array, t);
     colour.needsUpdate = true;
+    this.turnedFor.set(colour, this.seasonSet);
   }
   /** The season as set, or null before setSeason. */
   get season(): SeasonSettings | null { return this.seasonSet && { ...this.seasonSet }; }
@@ -1018,6 +1093,8 @@ export class BrushRenderer {
     s.uMirrorY.value = this.water.mirror;
     s.uWaterHigh.value = this.water.any ? this.water.wetHigh : -1e6;
     this.ground.update(time);
+    // An earthwork's chunks, painted a few a frame and swapped in together.
+    this.painted?.step();
     // The land's height, known before a strike is asked for (see strike): worked out on the first frame, not during one.
     this.land ??= LandHeights.from(this.scene);
     if (!this.lightningCompiled) { this.lightning.precompile(this.gl, this.view.camera); this.lightningCompiled = true; }
@@ -1164,6 +1241,8 @@ export class BrushRenderer {
  * The land's highest ground in each cell of a coarse grid, from the ground mesh, to trace the view's rays down to it
  * (followView). Off the grid, and without a ground mesh, the land is flat at 0.
  */
+const IDENTITY = new THREE.Matrix4();
+
 class LandHeights {
   /** How tall what stands on the land can be and still catch a shadow worth drawing (trees, roofs, the windmill's sails). */
   static readonly TALL = 16;
@@ -1192,6 +1271,41 @@ class LandHeights {
       }
     }
     return new LandHeights(box.min.x, box.min.z, nx, nz, max, box.min.y, box.max.y);
+  }
+
+  /**
+   * Found again within `area` (metres) from the ground meshes there now, after some changed there; null where that can't
+   * be done in place (the change reached past the grid, or below its lowest), to be found again whole.
+   */
+  refresh(scene: THREE.Scene, area: THREE.Box3): LandHeights | null {
+    const C = LandHeights.CELL;
+    const i0 = Math.floor((area.min.x - this.x0) / C), i1 = Math.floor((area.max.x - this.x0) / C);
+    const j0 = Math.floor((area.min.z - this.z0) / C), j1 = Math.floor((area.max.z - this.z0) / C);
+    if (this.nx === 0 || i0 < 0 || j0 < 0 || i1 >= this.nx || j1 >= this.nz) return null;
+    for (let j = j0; j <= j1; j++) this.max.fill(this.lo, j * this.nx + i0, j * this.nx + i1 + 1);
+    const cells = new THREE.Box3(new THREE.Vector3(this.x0 + i0 * C, -Infinity, this.z0 + j0 * C), new THREE.Vector3(this.x0 + (i1 + 1) * C, Infinity, this.z0 + (j1 + 1) * C));
+    const box = new THREE.Box3(), p = new THREE.Vector3();
+    let hi = this.hi;
+    for (const o of scene.children) {
+      const mesh = o as THREE.Mesh;
+      if (o.userData.kind !== 'ground' || !mesh.isMesh) continue;
+      const g = mesh.geometry;
+      if (!g.boundingBox) g.computeBoundingBox();
+      if (!box.copy(g.boundingBox!).applyMatrix4(o.matrixWorld).intersectsBox(cells)) continue;
+      const pos = g.getAttribute('position');
+      const moved = !o.matrixWorld.equals(IDENTITY);
+      for (let v = 0; v < pos.count; v++) {
+        p.fromBufferAttribute(pos, v);
+        if (moved) p.applyMatrix4(o.matrixWorld);
+        const i = Math.floor((p.x - this.x0) / C), j = Math.floor((p.z - this.z0) / C);
+        if (i < i0 || i > i1 || j < j0 || j > j1) continue;
+        if (p.y < this.lo) return null;
+        const k = j * this.nx + i;
+        if (p.y > this.max[k]) this.max[k] = p.y;
+        hi = Math.max(hi, p.y);
+      }
+    }
+    return new LandHeights(this.x0, this.z0, this.nx, this.nz, this.max, this.lo, hi);
   }
 
   /** The ground's highest point in the cell round (x, z), and its neighbours' (a vertex on a cell's edge counts for both). */
