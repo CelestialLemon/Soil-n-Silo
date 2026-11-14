@@ -1,10 +1,11 @@
 {
   // `pixel3d-renderer` resolves through its package.json "exports" to the built declarations in lib/types.
   // Imports keep their .ts extension so the simulation code in src/game/ runs unchanged under Node's type stripping (tests).
+  // The renderer (brush3d/src) is checked with the game: the game will import it, and its shared code runs in Node too.
   "compilerOptions": {
     "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "strict": true, "skipLibCheck": true, "isolatedModules": true, "noEmit": true, "types": ["vite/client"],
-    "allowImportingTsExtensions": true, "erasableSyntaxOnly": true, "verbatimModuleSyntax": true
+    "allowImportingTsExtensions": true, "erasableSyntaxOnly": true, "verbatimModuleSyntax": true, "resolveJsonModule": true
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "brush3d/src", "vite.config.ts"]
 }

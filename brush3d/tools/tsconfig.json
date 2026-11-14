@@ -1,0 +1,7 @@
+{
+  // brush3d's tools run in Node (type stripping, so only erasable TypeScript) and drive the demo in a headless browser, so they
+  // see both Node's types and the DOM's (the code they hand the page).
+  "extends": "../../tsconfig.json",
+  "compilerOptions": { "types": ["node", "vite/client"] },
+  "include": ["."]
+}

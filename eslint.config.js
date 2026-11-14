@@ -25,7 +25,7 @@ export default tseslint.config(
   {
     files: ['**/*.ts'],
     extends: [tseslint.configs.recommendedTypeChecked],
-    languageOptions: { parserOptions: { project: ['./tsconfig.json', './test/tsconfig.json'], tsconfigRootDir: import.meta.dirname } },
+    languageOptions: { parserOptions: { project: ['./tsconfig.json', './test/tsconfig.json', './brush3d/tools/tsconfig.json'], tsconfigRootDir: import.meta.dirname } },
     rules: {
       eqeqeq: ['error', 'always', { null: 'ignore' }],
       // node:test's test() returns a promise the runner already awaits.
@@ -39,8 +39,15 @@ export default tseslint.config(
     },
   },
   {
-    // The tests tamper with saves through `any` on purpose, and assert state with `!`.
-    files: ['test/**/*.ts'],
+    // The renderer marks what it knows at that point (a lookup in a map it has just filled, a context its canvas always has)
+    // with `!`, as it was written in its own repo; the rules that catch real bugs stay on.
+    files: ['brush3d/**/*.ts'],
+    rules: { '@typescript-eslint/no-non-null-assertion': 'off' },
+  },
+  {
+    // The tests tamper with saves through `any` on purpose, and assert state with `!`; the renderer's tools drive the demo
+    // in a browser through `any` (its hooks on `window`, what `page.evaluate` hands back) in the same way.
+    files: ['test/**/*.ts', 'brush3d/tools/**/*.ts'],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-explicit-any': 'off',

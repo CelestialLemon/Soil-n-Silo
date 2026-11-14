@@ -1,8 +1,9 @@
 # Roadmap
 
 Goal: the game in [`DESIGN.md`](DESIGN.md), a build-only solarpunk automation game played in seeded commissions of 30–60 minutes.
-The game is drawn with [`pixel3d-renderer`](https://github.com/CelestialLemon/pixel3d-renderer), and is the first real game on it:
-renderer gaps found here go back to that repo as issues (`AGENTS.md`, "Renderer issues").
+The game is drawn with [`pixel3d-renderer`](https://github.com/CelestialLemon/pixel3d-renderer), and is moving to brush3d, the
+painterly renderer, which lives in this repo in [`brush3d/`](../brush3d/README.md) (epic #212; its own roadmap is
+[`brush3d/docs/ROADMAP.md`](../brush3d/docs/ROADMAP.md)). See `AGENTS.md`, "The renderer (brush3d)" and "pixel3d-renderer".
 
 Items are roughly in priority order within each section.
 
@@ -108,6 +109,15 @@ and 0.85) and breaks round the odd boulder; ponds and lakes stay still. The gene
 only, never saved, the map itself unchanged): the river runs on out of sight, a track leads off from the depot, the woods
 thicken and the ground rises into wooded hills, with an apron of distant woods beyond them. Everything past the edge is a
 shade duller, so where you can build still reads at a glance. Height on the map itself followed on 2026-10-17, below.
+
+## brush3d moves in (2026-11-14)
+
+The painterly renderer, brush3d, moved here from its own repo (#200, epic #212), with its history (`git log -- brush3d/`), into
+`brush3d/`: its code, the demo and its scenes, its tools (stills, videos, shimmer and pops, the GPU profile, the flash check,
+the wind, water and cloud checks), the models' Blender scripts and its docs. One `package.json` (its scripts are `render:*`);
+`npm test`, the typecheck, lint and CI cover it, and the demo is built and deployed beside the game (`<build>/brush3d/`).
+Every pull request now gets a preview of both at `https://celestiallemon.github.io/Soil-n-Silo/pr-<number>/`. The game still
+draws with pixel3d; brush3d-renderer is archived, and its open issues moved here.
 
 ## Height and terrain (2026-10-17)
 

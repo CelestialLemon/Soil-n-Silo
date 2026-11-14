@@ -3,11 +3,13 @@
 A solarpunk automation game, build-only and point-and-click: each commission is a seeded valley where you lay out fields,
 machines, power and the routes your trucks drive until the farm delivers what a nearby settlement asked for. Soil wears out and comes back,
 byproducts have to go somewhere, and the sun sets every few minutes. A 3D world drawn as pixel art by
-[pixel3d-renderer](https://github.com/CelestialLemon/pixel3d-renderer), for the web.
+[pixel3d-renderer](https://github.com/CelestialLemon/pixel3d-renderer), for the web, moving to brush3d, the painterly renderer
+in [`brush3d/`](brush3d/README.md) (epic #212).
 
 - Design: [`docs/DESIGN.md`](docs/DESIGN.md)
 - Plan: [`docs/ROADMAP.md`](docs/ROADMAP.md), including the renderer gaps
 - How to work here: [`AGENTS.md`](AGENTS.md)
+- The painterly renderer and its demo: [`brush3d/`](brush3d/README.md)
 - Models: [`docs/ASSET_BRIEF.md`](docs/ASSET_BRIEF.md)
 - Frame cost: [`docs/BENCHMARK.md`](docs/BENCHMARK.md)
 - The interface's design system: [`src/ui/clearday/`](src/ui/clearday/README.md)
@@ -16,13 +18,14 @@ byproducts have to go somewhere, and the sun sets every few minutes. A 3D world 
 
 ```sh
 npm install
-npm run dev          # http://127.0.0.1:5190
-npm test             # the game rules (src/game/), and the bot clearing each commission it has a layout for, in Node
+npm run dev          # http://127.0.0.1:5190 (and brush3d's demo at /brush3d/)
+npm test             # the game rules (src/game/), the bot clearing each commission it has a layout for, and brush3d's wind and water, in Node
 npm run sim -- c2     # a bot plays a commission on the real rules (c1, c2, c2:next, c4), to check it can be cleared and how fast
 npm run bench         # the frame-cost benchmark in headless Chromium (docs/BENCHMARK.md); `-- --structural --no-gpu` is CI's cheap check
 npm run typecheck
 npm run lint         # ESLint: errors fail, warnings are known debt to clear (see eslint.config.js)
-npm run build        # typecheck, then the game into dist/
+npm run build        # typecheck, then the game into dist/ and brush3d's demo into dist/brush3d/
+npm run render:shot -- out "hour=12"   # brush3d's tools are render:*; see brush3d/README.md
 ```
 
 Needs Node 22.18 or later (the tests run TypeScript directly, and installing the renderer from git builds it).
@@ -37,11 +40,12 @@ routes, Tab the ledger, W the Power panel and G the guide; Esc with nothing open
 key). The game saves the commission in progress in the browser every 30 s and when the page is hidden; `?menu` opens the level
 select and `?play=<id>` (`c1`…`c8`, `sandbox`, `r<seed>-<1..3>`) starts a commission directly.
 
-**Builds online.** Every push to `main` or `dev` is built and deployed to GitHub Pages (`.github/workflows/deploy.yml`):
-[`/main/`](https://celestiallemon.github.io/Soil-n-Silo/main/) and [`/dev/`](https://celestiallemon.github.io/Soil-n-Silo/dev/).
-The site's root redirects to `/main/`. Each build keeps its own save. New work is merged into `dev` and moves to `main` in a
-PR from `dev`. Every PR to either, and every push to them, runs the tests and the build on Node 22.18 and the deploy's Node
-(`.github/workflows/ci.yml`).
+**Builds online.** Every push to `main` or `dev` is built and deployed to GitHub Pages (`.github/workflows/pages.yml`):
+[`/main/`](https://celestiallemon.github.io/Soil-n-Silo/main/) and [`/dev/`](https://celestiallemon.github.io/Soil-n-Silo/dev/),
+each with brush3d's demo in its `brush3d/` folder. Every open PR from this repo gets a preview of both at `/pr-<number>/`,
+linked in a comment on it and removed when it closes. The site's root redirects to `/main/`. Each build keeps its own save.
+New work is merged into `dev` and moves to `main` in a PR from `dev`. Every PR to either, and every push to them, runs lint,
+the tests and the build on Node 22.18 and the deploy's Node, and brush3d's cloud check in a browser (`.github/workflows/ci.yml`).
 
 ## Layout
 
@@ -62,6 +66,7 @@ tools/          the commission bot (npm run sim) and its layouts, the frame-cost
   clearday/     generators for the Clearday tokens and icons (Python 3)
 test/           unit tests (Node's test runner)
 docs/           design, roadmap, asset brief
+brush3d/        the painterly renderer: its code (src/), demo (index.html, src/demo/), tools (tools/, tools/blender/) and docs
 ```
 
 ### Adding a building
@@ -77,6 +82,9 @@ Behaviour shared by a kind of building is declared as data, not written as `type
    its per-step logic in `src/game/sim/`, its entry in `forecast.ts`, and a test.
 
 ## The renderer
+
+The game draws with pixel3d-renderer until the swap to brush3d (#211); brush3d is in this repo (`brush3d/README.md`), and is
+changed here like the rest of the game. The rest of this section is about pixel3d.
 
 The game installs the renderer from git, pinned to a release tag, `v0.5.2` (see its `CHANGELOG.md` before moving to a newer
 one). three.js 0.180 sits beside it. Its public API is what its `src/renderer/index.ts` exports; its README explains how a game uses it.
