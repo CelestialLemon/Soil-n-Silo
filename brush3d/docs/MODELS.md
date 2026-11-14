@@ -179,4 +179,13 @@ measurable change, and all the inked things together are about 0.3 ms of it. See
 - Seen from the front (as the game's footprint has it), the water wheel is edge on, because its axle runs along the
   bank. On the farm it's turned to show its face.
 - Inside the open garage the walls read as one flat shade from some sides.
-- The models aren't in the game yet: that's the game repo's work, and its call when.
+- **In the game** (Soil-n-Silo#203): on the brush3d path (`?renderer=brush3d`), every building and truck the game places is
+  its model here. `src/world/brush/catalog.ts` says which model draws which building (the game's `hive` is `beehive`,
+  `press` `oil_press`, `solar` `solar_panel`, `turbine` `wind_turbine`, `wheel` `water_wheel`, `station`
+  `weather_station`, the rest by their own names) and how the game's four facings turn a model's front; `things.ts` places
+  them. A field and a sapling aren't models (what grows is painted, #213). The farmhouse and the five yard props (`home`)
+  aren't placed by the game. What the game draws that the set doesn't have yet: the goods in a truck's bed and handed
+  between buildings, the build frames and preview, and the markers over buildings (#206).
+- In the game, the water wheel stands on its bank with its wheel over the river, as the game turns it; the race the wheel
+  turns in (`wheelRace`) is the land's to cut (#202). Until then the inner half of the wheel turns in the bank's earth.
+- In the game, the greenhouse's glass is opaque, as every model's is: the crops the game grows under it can't be seen.
