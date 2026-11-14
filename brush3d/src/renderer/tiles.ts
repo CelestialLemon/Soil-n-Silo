@@ -17,6 +17,10 @@ export function cutIntoTiles(g: THREE.BufferGeometry, size: number): THREE.Buffe
   const index = g.getIndex();
   const pos = g.getAttribute('position');
   if (!index) return [g];
+  // All in one tile already (the land's chunks are): no need to look at each triangle.
+  if (!g.boundingBox) g.computeBoundingBox();
+  const box = g.boundingBox!;
+  if (Math.floor(box.min.x / size) === Math.ceil(box.max.x / size) - 1 && Math.floor(box.min.z / size) === Math.ceil(box.max.z / size) - 1) return [grow(g)];
   const tris = new Map<string, number[]>();
   for (let i = 0; i < index.count; i += 3) {
     const a = index.getX(i), b = index.getX(i + 1), c = index.getX(i + 2);

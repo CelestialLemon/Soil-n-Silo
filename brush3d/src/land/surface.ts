@@ -1,5 +1,3 @@
-import type { Relief } from '../game/relief.ts';
-
 // The ground as it is drawn: a smooth reading of the rules' whole levels. The rules keep each tile's corners at whole
 // levels (relief.ts), so ground that rises gently is shelves joined by one-tile ramps. Drawn as they are, those read as
 // terraces. Instead, the view fits one smooth height to each point where tiles join (a corner fan, as `sheetAt` finds),
@@ -11,7 +9,11 @@ import type { Relief } from '../game/relief.ts';
 // It also keeps the slopes the hillshade lights (`shadeAt`): the patches' own slopes, blurred over a tile or so, so the
 // light falls in broad, clean shapes rather than following every small bend.
 //
-// Pure arithmetic on a relief, so the tests run it in Node; ground.ts draws it.
+// Pure arithmetic on a relief, so the tests run it in Node. Moved here from the game (Soil-n-Silo#202) as it was, so the
+// land brush3d paints (land.ts) has the same shape as the pixel world's (the game's src/world/ground.ts, until #211).
+
+/** A relief: each tile's four corners in levels (north-west, north-east, south-east, south-west), tile by tile, rows in order. */
+export interface Relief { width: number; height: number; corner: ArrayLike<number> }
 
 /** How far (levels) a point's smooth height may stray from the rules' height there: just under half a level. */
 export const SLACK = 0.499;

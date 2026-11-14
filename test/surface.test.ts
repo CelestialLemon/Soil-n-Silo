@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { corners, joins, type Relief } from '../src/game/relief.ts';
-import { SLACK, Surface } from '../src/world/surface.ts';
+import { SLACK, Surface } from '../brush3d/src/shared.ts';
 
-// The ground as drawn (surface.ts): a smooth reading of the rules' levels that keeps to them where it must.
+// The ground as drawn (brush3d/src/land/surface.ts): a smooth reading of the rules' levels that keeps to them where it must.
 
 /** A relief `w` × `h` tiles, one sheet, each grid point at `f(px, py)`. */
 function sheet(w: number, h: number, f: (px: number, py: number) => number): Relief & { corner: number[] } {
