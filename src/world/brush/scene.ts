@@ -14,6 +14,8 @@ import { gameCases, profileGame, profilePanel, type LoadTimes, type ProfileHost 
 import { RISE, TILE } from './scale.ts';
 import { followSettings } from './settings.ts';
 import { BrushSky } from './sky.ts';
+import { Goods, pickedStyle } from './goods.ts';
+import { goodsChoice } from './goodsChoice.ts';
 import { thingHeight, Things } from './things.ts';
 import { BrushTools } from './tools.ts';
 import { BrushWater } from './water.ts';
@@ -55,7 +57,10 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
   followSettings(r, settings);
   const land = timed('map', () => generateLand(state.scenario, COUNTRY)), lie = timed('lie', () => new Lie(state, land));
   const ground = timed('land', () => new BrushLand(r, state, land, lie)), sky = new BrushSky(r, state), cover = new BrushCover(r, land), water = timed('water', () => new BrushWater(r, land, lie));
-  const things = new Things(r, lie), wild = timed('wild', () => new Wild(r, lie, land, state)), wind = timed('wind', () => new BrushWind(r, state, land));
+  // The goods' look candidates (#203's look PR: the button goes once the developer picks).
+  const goods = new Goods(r, pickedStyle());
+  goodsChoice(goods);
+  const things = new Things(r, lie, goods), wild = timed('wild', () => new Wild(r, lie, land, state)), wind = timed('wind', () => new BrushWind(r, state, land));
   const lens = new BrushLens(r, canvas);
   const camera = new Camera(lens, canvas, map, start, changed);
   const tools = timed('tools', () => new BrushTools(r, state, things, lie));
