@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { MeshBuilder, rng, srgb, type Paint } from './builder';
 import { C, addDab, growTree, smooth, type Ground, type Tree } from './kit';
 import { CRISP_EDGE, STIFF_STROKE } from '../renderer/materials';
-import type { BrushRenderer } from '../renderer/renderer';
+import type { BrushRenderer, MeshOptions } from '../renderer/renderer';
 import type { Season } from '../renderer/season';
 import { TREE_BEND, type TreeSpec } from '../renderer/trees';
 
@@ -141,7 +141,7 @@ function strokeColor(c: THREE.Color, nrm: V3, inner: number, r: () => number) {
 }
 
 /** A crown of leaf dabs over a tree's masses: big dark strokes inside, a skin, a loose edge. */
-function crown(leaves: MeshBuilder, masses: Mass[], dabScale: number, tint: (m: Mass, nrm: V3, inner: boolean) => THREE.Color, density: number, r: () => number, fine = 1) {
+function crown(leaves: MeshBuilder, masses: Mass[], dabScale: number, tint: (m: Mass, nrm: V3, inner: boolean) => THREE.Color, density: number, r: () => number, fine = 1, fill = 1) {
   const center = masses.reduce((a, k) => a.addScaledVector(k.c, 1 / masses.length), new THREE.Vector3());
   const stretch = new THREE.Vector3(1, 1.2, 1);
   const layers = [
@@ -154,7 +154,7 @@ function crown(leaves: MeshBuilder, masses: Mass[], dabScale: number, tint: (m: 
     for (const layer of layers) {
       // Finer strokes, more of them (blossom's), so a crown reads as specks and not as a ball; the inside stays broad.
       const fineness = layer.inner ? 1 : fine;
-      for (let i = 0, n = Math.round(layer.count * density * rn * rn / fineness / fineness); i < n; i++) {
+      for (let i = 0, n = Math.round((layer.inner ? layer.count : layer.count * fill) * density * rn * rn / fineness / fineness); i < n; i++) {
         const u = r() * 2 - 1, phi = r() * Math.PI * 2, s2 = Math.sqrt(1 - u * u);
         const dir = new THREE.Vector3(s2 * Math.cos(phi) * 1.12, u < 0 ? u * 0.55 : u, s2 * Math.sin(phi) * 1.12);
         const depth = layer.depth[0] + r() * layer.depth[1];
@@ -270,7 +270,7 @@ export class Grove {
   /** Winter's tree: its whole limbs, and its twigs (or, for a hedge's bush, a dense bulk of twigs). */
   private winter(ground: Ground, t: Tree, r: () => number) {
     const s = t.scale ?? 1, y0 = ground.height(t.x, t.z) - 0.05, base = new THREE.Vector3(t.x, y0, t.z);
-    const wood0 = this.wood.vertexCount, twigs0 = this.twigs.vertexCount, dabScale = Math.pow(s, 0.45);
+    const wood0 = this.wood.vertexCount, twigs0 = this.twigs.vertexCount, dabScale = Math.pow(s, 0.45) * (t.stroke ?? 1);
     if (twigMass(t)) {
       tube(this.wood, base, base.clone().add(new THREE.Vector3(0, 0.35 * s, 0)), 0.05 * Math.sqrt(s), 0.03, C.bark, 5, BARK_PAINT);
       const masses = bushMasses(base, s, r), plum = srgb(0x4e3f44), brown = srgb(0x7a6050);
@@ -315,7 +315,7 @@ export class Grove {
   private leafy(ground: Ground, t: Tree, r: () => number, dress: Dress) {
     const s = t.scale ?? 1, y0 = ground.height(t.x, t.z) - 0.05, base = new THREE.Vector3(t.x, y0, t.z);
     const wood0 = this.wood.vertexCount, leaves0 = this.leaves.vertexCount, twigs0 = this.twigs.vertexCount, limbs0 = this.limbs.vertexCount;
-    const dabScale = Math.pow(s, 0.45);
+    const dabScale = Math.pow(s, 0.45) * (t.stroke ?? 1);
     const spring = dress.season === 'spring';
     const green = t.leaf ?? (t.kind === 'fruit' || t.kind === 'bush' ? C.fruitLeaf : C.leaf);
     let masses: Mass[];
@@ -354,7 +354,7 @@ export class Grove {
         return bl.white.clone().lerp(bl.pink, r() * 0.55 + (nrm.y < 0 ? 0.35 : 0));
       }
       return (blossom && inner ? fresh.clone().lerp(srgb(0xb88a78), 0.45) : fresh.clone()).offsetHSL((k.tone - 0.5) * 0.04, 0, (k.tone - 0.5) * 0.04);
-    }, blossom ? 0.92 : 0.85, r, blossom ? 0.78 : 1);
+    }, blossom ? 0.92 : 0.85, r, blossom ? 0.78 : 1, t.fill);
     if (blossom) this.fall(t, masses, r, dress, () => bl.white.clone().lerp(bl.pink, r()), 0.025, ground, [0.05, 0.04]);
   }
 
@@ -362,7 +362,7 @@ export class Grove {
     // Each branch turns apart from its tree, a little ahead or behind.
     const pace = autumnPace(t), jitter = 0.3;
     for (const k of masses) k.tone = pace + (k.tone - 0.5) * 2 * jitter;
-    crown(this.leaves, masses, dabScale, (k, nrm) => turnColour(green, k.tone + nrm.y * 0.1), 1 - 0.2 * Math.max(0, pace), r);
+    crown(this.leaves, masses, dabScale, (k, nrm) => turnColour(green, k.tone + nrm.y * 0.1), 1 - 0.2 * Math.max(0, pace), r, 1, t.fill);
     const fruit = t.fruit ?? (t.kind === 'fruit' ? C.fruit : null);
     if (fruit) apples(this.leaves, masses, fruit, (t.fruitDensity ?? 1) * 0.7, dabScale, r);
     if (t.kind !== 'bush') {
@@ -401,12 +401,18 @@ export class Grove {
     if (leaves0 !== undefined && this.leaves.vertexCount > leaves0) this.leaves.markTree(leaves0, spec, share);
   }
 
-  /** Adds the grove's meshes to the scene. */
-  addTo(r: Pick<BrushRenderer, 'add'>) {
-    r.add(this.wood.build(), 'paint');
-    if (this.limbs.vertexCount) r.add(this.limbs.build(), 'paint', { castShadow: false });
-    if (this.leaves.vertexCount) r.add(this.leaves.build(), 'foliage');
-    if (this.twigs.vertexCount) r.add(this.twigs.build(), 'foliage', { cover: 'none', castShadow: false });
-    if (this.litter.vertexCount) r.add(this.litter.build(), 'foliage', { cover: 'none', castShadow: false });
+  /**
+   * Adds the grove's meshes to the scene, each with `options` too (cut into tiles, say), and returns them (to `remove` and
+   * dispose of when the grove goes).
+   */
+  addTo(r: Pick<BrushRenderer, 'add'>, options: MeshOptions = {}): THREE.Mesh[] {
+    const out: THREE.Mesh[] = [];
+    const add = (b: MeshBuilder, kind: 'paint' | 'foliage', own: MeshOptions = {}) => { if (b.vertexCount) out.push(r.add(b.build(), kind, { ...options, ...own })); };
+    add(this.wood, 'paint');
+    add(this.limbs, 'paint', { castShadow: false });
+    add(this.leaves, 'foliage');
+    add(this.twigs, 'foliage', { cover: 'none', castShadow: false });
+    add(this.litter, 'foliage', { cover: 'none', castShadow: false });
+    return out;
   }
 }

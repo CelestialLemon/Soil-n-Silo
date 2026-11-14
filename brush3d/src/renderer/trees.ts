@@ -90,6 +90,8 @@ export class TreeSprings {
       const key = `${t.x} ${t.z} ${t.kind}`;
       let id = this.ids.get(key);
       if (id === undefined) { id = this.trees.length; this.ids.set(key, id); this.trees.push(t); }
+      // A tree drawn anew where one stood (a sapling grown a step, a tree replanted) sways as it now is.
+      else if (this.trees[id].height !== t.height || this.trees[id].scale !== t.scale) this.trees[id] = t;
       return id;
     });
     const n = this.trees.length;

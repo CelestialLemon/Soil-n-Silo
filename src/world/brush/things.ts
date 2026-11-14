@@ -12,14 +12,14 @@ import { RISE, TILE } from './scale.ts';
 // it (its planted roofs and planters), as in the demo.
 //
 // The models load once, at the start; until they have (or if one fails), a grey stand-in shows, so what isn't drawn shows
-// rather than silently missing. A field and a sapling aren't models: what grows is painted, and #213 draws them (here a
-// low bed and a grey block until then).
+// rather than silently missing. A field and a sapling aren't models: what grows is painted (wild.ts, #213); a field here is
+// the low bed its crop grows on.
 //
 // Still to come: a world that changes without a stutter (#204: today a building's meshes are made and dropped here as the
 // game places and removes it), the moving parts and building states (#205: rotors, wheels and millstones are drawn at
 // rest and every `running_*` look as if working, as in the demo), and the markers and the build preview (#206). The
-// water wheel dips 0.87 m below its bank into a race the land has to cut for it (`wheelRace`, the land's: #202). Trees and
-// rocks are wild.ts's.
+// water wheel dips 0.87 m below its bank into a race the land has to cut for it (`wheelRace`, the land's: #202). Trees,
+// rocks, saplings and the fields' crops are wild.ts's.
 
 const GREY = srgb(0x9a968e), FIELD = srgb(0x8a7a62);
 /** How far a stand-in block stands in from its footprint's edge (m). */
@@ -92,6 +92,8 @@ export class Things {
   private syncBuildings(s: GameState) {
     const seen = new Set<number>(), drawn = this.models ? 'model' : 'stand-in';
     for (const b of s.buildings) {
+      // A sapling is painted, as what grows is (wild.ts, #213).
+      if (b.type === 'sapling') continue;
       seen.add(b.id);
       // Its kind, where it stands, which way it faces and how high: a building moved by earthworks under it stands anew.
       const n = sizeOf(b), y = standY(this.lie, s.map, n, b.x, b.y) * RISE * TILE, key = `${b.type} ${b.x} ${b.y} ${b.rot} ${y} ${drawn}`;

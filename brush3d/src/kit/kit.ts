@@ -58,6 +58,17 @@ export interface Tree {
   fruitDensity?: number;
   /** Where it grows, for its seasons (#13, seasonTrees.ts): nothing changes with no season set. */
   form?: TreeForm;
+  /**
+   * How broad its strokes are against the kit's (1 by default): at 2, strokes twice as broad and a quarter as many. For a
+   * camera that stands further off than the demo's (the game's, 4 to 24 px a metre), where the kit's strokes would be a
+   * few pixels each: noise, and costly.
+   */
+  stroke?: number;
+  /**
+   * The share of a crown's outer strokes painted (1 by default): fewer lets the dark inside show between them, a looser
+   * crown, and cheaper where trees stand thick (a crown's strokes overlap many deep, each painted in full).
+   */
+  fill?: number;
 }
 
 /** Where a tree grows, for its seasons: woods (some stay green), orchards (blossom), hedges and thickets (bulky twigs), the pond's willows. */
@@ -139,7 +150,7 @@ export function growTree(wood: MeshBuilder, leaves: MeshBuilder, ground: Ground,
   const stretch = new THREE.Vector3(1, 1.2, 1);
   const leafColor = t.leaf ?? (cypress ? C.cypress : t.kind === 'fruit' || bush ? C.fruitLeaf : C.leaf);
   // Strokes grow with the tree, but less than it does: a big tree is more strokes, not only bigger ones.
-  const dabScale = Math.pow(s, 0.45);
+  const dabScale = Math.pow(s, 0.45) * (t.stroke ?? 1);
   // A stroke's colour comes from where it sits on the crown, not from chance: lighter and warmer where the crown turns up,
   // darker deep inside. Neighbouring strokes then differ only a little, and the crown reads as a few big masses of light and
   // shade, broken at their borders by the strokes, rather than as a heap of separate dabs.
@@ -155,7 +166,7 @@ export function growTree(wood: MeshBuilder, leaves: MeshBuilder, ground: Ground,
     // bulging into a few vertical tufts so the silhouette is ragged, not a smooth cone.
     const height = 5.4 * s, tufts = 5 + Math.floor(rand() * 3), turn = rand() * Math.PI * 2;
     const radius = (f: number) => (0.3 + 0.75 * Math.sin(Math.min(1, 0.22 + f * 2.6) * Math.PI / 2) * (1 - f * 0.86)) * s;
-    const count = Math.round(420 * s * s / dabScale);
+    const count = Math.round(420 * s * s / dabScale / (t.stroke ?? 1));
     for (let i = 0; i < count; i++) {
       const f = Math.pow(rand(), 0.85), phi = rand() * Math.PI * 2;
       const tuft = 0.86 + 0.2 * Math.max(0, Math.cos((phi - turn) * tufts * 0.5)) ** 2 + (rand() - 0.5) * 0.1;
@@ -179,7 +190,7 @@ export function growTree(wood: MeshBuilder, leaves: MeshBuilder, ground: Ground,
       { count: 34, depth: [1.0, 0.13], size: [0.13, 0.09], inner: 0 },
     ];
     for (const layer of layers) {
-      for (let i = 0, n = Math.round(layer.count * rn * rn); i < n; i++) {
+      for (let i = 0, n = Math.round((layer.inner ? layer.count : layer.count * (t.fill ?? 1)) * rn * rn); i < n; i++) {
         const u = rand() * 2 - 1, phi = rand() * Math.PI * 2, s2 = Math.sqrt(1 - u * u);
         // A mass is a cloud with a flattened underside: the shelf of shade a painter puts under each one.
         const dir = new THREE.Vector3(s2 * Math.cos(phi) * 1.12, u < 0 ? u * 0.55 : u, s2 * Math.sin(phi) * 1.12);
