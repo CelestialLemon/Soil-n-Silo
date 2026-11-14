@@ -14,7 +14,8 @@ const stored = (k: Choice) => `brush3d-${k}`;
 /** The candidate asked for (by name or letter), else the last one picked, else the default. */
 function picked<K extends Choice>(k: K): PlantLooks[K] {
   const list = CHOICES[k] as readonly string[], q = new URLSearchParams(location.search).get(k) ?? '';
-  let v = list.includes(q) ? q : list['abc'.indexOf(q)] ?? '';
+  const letter = q.length === 1 ? 'abc'.indexOf(q) : -1;
+  let v = list.includes(q) ? q : (list[letter] ?? '');
   try {
     if (!v) v = localStorage.getItem(stored(k)) ?? '';
     else localStorage.setItem(stored(k), v);

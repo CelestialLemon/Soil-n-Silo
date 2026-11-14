@@ -210,7 +210,7 @@ export class CropPatch {
       return Math.max(0.02, st.tall * smooth(0, 0.7, inside(x, z)) * (rows ? 0.04 + 0.96 * Math.sqrt(f) : 1) * (1 + 0.08 * noise2(x * 0.5, z * 0.5)));
     };
     // Finer across the rows than along them, so each row is a ridge.
-    const nx = Math.round(side / 0.5) + 1, nz = rows ? Math.round(side / ROW) * 8 + 1 : nx;
+    const nx = Math.max(2, Math.round(side / 0.5) + 1), nz = rows ? Math.max(2, Math.round(side / ROW) * 8 + 1) : nx;
     const sx = side / (nx - 1), sz = side / (nz - 1), i0 = this.mass.vertexCount, c = new THREE.Color();
     for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
       const x = t.x - half + i * sx, z = t.z - half + j * sz, e = 0.12;
