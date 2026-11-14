@@ -1,13 +1,12 @@
 import { BrushRenderer } from '../../../brush3d/src/index.ts';
 import { generateLand } from '../../game/map.ts';
 import { MAX_LEVEL } from '../../game/relief.ts';
-import { buildingAt, type GameState } from '../../game/state.ts';
+import type { GameState } from '../../game/state.ts';
 import type { SettingsStore } from '../../ui/settings.ts';
 import { Camera } from '../camera.ts';
 import { Lie, LEVEL_HEIGHT, standY } from '../ground.ts';
-import type { Heights, Picker, Preview, Scene } from '../scene.ts';
+import type { Heights, Scene } from '../scene.ts';
 import { COUNTRY } from '../terrain.ts';
-import { TileCursor } from '../tileCursor.ts';
 import { BrushCover } from './cover.ts';
 import { BrushLand } from './land.ts';
 import { BrushLens } from './lens.ts';
@@ -15,6 +14,7 @@ import { RISE, TILE } from './scale.ts';
 import { followSettings } from './settings.ts';
 import { BrushSky } from './sky.ts';
 import { thingHeight, Things } from './things.ts';
+import { BrushTools } from './tools.ts';
 import { BrushWater } from './water.ts';
 import { BrushWind } from './wind.ts';
 import { Wild } from './wild.ts';
@@ -35,8 +35,8 @@ import { Wild } from './wild.ts';
 //   cover.ts   what lies on the land from the game's: snow, frost, wet and mud (#207)
 //   water.ts   the river and ponds, floods, ice and muddy water from the game's (#207; how the river sits in its bed is #202's)
 //   grid.ts    the grid cover.ts and water.ts send their maps on
-//   (tools)    picking, highlights, the build preview, overlays, routes and power lines are #206's: the picker, preview,
-//              show() and the labels below are stubs it fills (a tools.ts here)
+//   tools.ts   the game's tools on the picture: picking, the marks on things, the build preview and frames, the overlays,
+//              the grid, routes and power lines, the tile cursor, and where the labels and markers go (#206)
 //   settings.ts  brush3d's settings from the game's settings panel: graphics quality, rain and snow, lightning (#209)
 //
 // This file only wires the pieces into the Scene: a task adds its piece and its few lines here.
@@ -52,7 +52,7 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
   const things = new Things(r, lie), wild = new Wild(r, lie, land, state), wind = new BrushWind(r, state, land);
   const lens = new BrushLens(r, canvas);
   const camera = new Camera(lens, canvas, map, start, changed);
-  const cursor = new TileCursor(canvas, 0xfff0c0), refused = new TileCursor(canvas, 0xe8705a);
+  const tools = new BrushTools(r, state, things, lie);
 
   const heights: Heights = {
     at: (x, z) => lie.y(x, z) * RISE,
@@ -61,21 +61,9 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
     stand: (rel, n, x, y) => standY(lie, rel, n, x, y) * RISE,
     tile: (x, y, u, v) => lie.tileY(x, y, u, v) * RISE,
   };
-  // Until #206: what stands under the pointer is the building on the tile of ground under it (no picking of what's drawn,
-  // so a truck or a tree can't be pointed at, nor a building's side that stands over another tile).
-  const picker: Picker = {
-    under: (s, _at, tile) => ({ tile, building: tile ? buildingAt(s, tile.x, tile.y)?.id ?? null : null }),
-    now: () => {},
-    request: () => true,
-    forget: () => {},
-    moved: () => false,
-  };
-  // Until #206: no build preview (the tile cursor and the placement card still show where it goes).
-  const preview: Preview = { clear: () => {}, frame: () => {}, building: () => {}, crop: () => {} };
-
   const gl = r.gl.getContext();
   return {
-    camera, heights, picker, preview,
+    camera, heights, picker: tools.picker, preview: tools.preview,
     heightOf: (type) => thingHeight(type) / TILE,
     sync(s, f) {
       sky.sync(s, f.hour, f.speed);
@@ -85,22 +73,18 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
       water.sync(s);
       things.sync(s);
       wild.sync(s);
+      tools.sync(s, f);
     },
-    // Until #206: no overlays, links, highlights, routes or power lines.
-    show: () => {},
+    show: (s, f) => tools.show(s, f),
     truckAt: (id) => things.truckAt(id),
-    stopLabels: () => [],
-    netLabels: () => [],
-    // Until #205: no markers over buildings with a problem.
-    markerSpots: () => [],
+    stopLabels: () => tools.stopLabels(),
+    netLabels: () => tools.netLabels(),
+    markerSpots: (s) => tools.markerSpots(s),
     render(time, f) {
+      tools.cursor(f.marks, f.refused);
       r.render(time);
       f.lap('geometry');
       f.pick();
-      // The tile cursor's marks, on its own canvas in 2 × 2 CSS pixel squares (#206 draws them on the land).
-      const w = Math.ceil(innerWidth / 2), h = Math.ceil(innerHeight / 2);
-      cursor.draw(f.marks, lens.cursor, w, h);
-      refused.draw(f.refused, lens.cursor, w, h);
     },
     report: {
       env: () => {

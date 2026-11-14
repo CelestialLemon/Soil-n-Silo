@@ -60,6 +60,11 @@ export class Things {
   private layout = -1;
   /** The models by name, once loaded (one that failed to load is missing, and draws as its stand-in). */
   private models: Map<string, THREE.Object3D> | null = null;
+  /**
+   * Counts the meshes made and taken out (a building placed, removed or redrawn, a truck bought): what is under the
+   * pointer may have changed (tools.ts, #206). Trucks driving on are not counted.
+   */
+  changes = 0;
 
   constructor(r: BrushRenderer, lie: Lie) {
     this.r = r; this.lie = lie;
@@ -83,6 +88,15 @@ export class Things {
     this.syncTrucks(s);
   }
 
+  /** A building's or truck's meshes as drawn (the tools mark them, #206), or none. */
+  meshesOf(id: number): readonly THREE.Mesh[] { return this.buildings.get(id)?.meshes ?? this.trucks.get(id)?.meshes ?? []; }
+
+  /** The model a building is drawn with, once loaded (for its build preview, #206), or null: it draws as a stand-in. */
+  modelOf(type: BuildingId): THREE.Object3D | null {
+    const name = MODEL_OF[type];
+    return (name && this.models?.get(name)) || null;
+  }
+
   /** Where a truck is drawn (world units), if it is. */
   truckAt(id: number) {
     const m = this.trucks.get(id)?.meshes[0];
@@ -101,6 +115,7 @@ export class Things {
       if (was?.key === key) continue;
       if (was) this.drop(was.meshes);
       this.buildings.set(b.id, { meshes: this.building(b, n, y), key });
+      this.changes++;
     }
     for (const [id, was] of this.buildings) if (!seen.has(id)) { this.drop(was.meshes); this.buildings.delete(id); }
   }
@@ -113,24 +128,25 @@ export class Things {
       // Its plants are seeded by where it stands, so it grows the same ones each time it's drawn there.
       const set = new ModelSet(1 + b.x * 7919 + b.y * 104729);
       set.add(model, new THREE.Matrix4().compose(centre, new THREE.Quaternion().setFromAxisAngle(UP, YAW[b.rot]), ONE));
-      return set.addTo(this.r);
+      // Tagged with its id: a pick on it gives the building (#206).
+      return set.addTo(this.r, b.id);
     }
     const side = n * TILE - 2 * INSET, mb = new MeshBuilder('ink');
     box(mb, side, standInHeight(b.type), side, new THREE.Matrix4().makeTranslation(centre), growsCrops(b) && b.type === 'field' ? FIELD : GREY);
-    return [this.r.add(mb.build(), 'ink')];
+    return [this.r.add(mb.build(), 'ink', { tag: b.id })];
   }
 
-  /** A truck's mesh, at the origin facing +z: its model, or a block. It's no roof: it moves (no cover). */
-  private truck(): THREE.Mesh {
+  /** A truck's mesh, at the origin facing +z: its model, or a block. It's no roof: it moves (no cover). Tagged with its id. */
+  private truck(id: number): THREE.Mesh {
     const model = this.models?.get(TRUCK_MODEL);
     if (model) {
       const set = new ModelSet();
       set.add(model, new THREE.Matrix4());
-      return this.r.add(set.ink.build(), 'ink', { cover: 'none' });
+      return this.r.add(set.ink.build(), 'ink', { cover: 'none', tag: id });
     }
     const mb = new MeshBuilder('ink');
     box(mb, 1.6, 1.4, 3.2, new THREE.Matrix4(), GREY);
-    return this.r.add(mb.build(), 'ink', { cover: 'none' });
+    return this.r.add(mb.build(), 'ink', { cover: 'none', tag: id });
   }
 
   private syncTrucks(s: GameState) {
@@ -140,7 +156,8 @@ export class Things {
       let shown = this.trucks.get(t.id);
       if (shown?.key !== drawn) {
         if (shown) this.drop(shown.meshes);
-        shown = { meshes: [this.truck()], key: drawn };
+        shown = { meshes: [this.truck(t.id)], key: drawn };
+        this.changes++;
         this.trucks.set(t.id, shown);
       }
       // On a ramp it leans with the ground: the slope along its heading, from the ground a little ahead of it and behind.
@@ -154,6 +171,7 @@ export class Things {
   }
 
   private drop(meshes: THREE.Mesh[]) {
+    this.changes++;
     for (const mesh of meshes) {
       this.r.remove(mesh);
       mesh.geometry.dispose();
