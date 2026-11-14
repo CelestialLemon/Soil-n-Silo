@@ -185,6 +185,8 @@ export class BrushRenderer {
   private seasonal = new Map<THREE.BufferGeometry, number>();
   /** Their colours as the game sent them, by colour attribute (a tile's copy of a geometry has its own), once turned. */
   private ownColours = new WeakMap<THREE.BufferAttribute, Float32Array>();
+  /** The season (setSeason's, as set) each turned geometry's colours are turned for, so they're not turned twice. */
+  private turnedFor = new WeakMap<THREE.BufferAttribute, SeasonSettings | null>();
   /** The game's water as drawn (#18): its map, eased between updates, and the sheet drawn from it. */
   readonly water = new WaterField();
   private waterMesh: THREE.Mesh | null = null;
@@ -475,6 +477,9 @@ export class BrushRenderer {
   prepare(geometry: THREE.BufferGeometry) {
     const colour = geometry.getAttribute('color') as THREE.BufferAttribute | undefined;
     if (colour && !geometry.getAttribute('aEarth')) geometry.setAttribute('aEarth', new THREE.BufferAttribute(earthShares(this.ownColours.get(colour) ?? colour.array), 1));
+    // Turned by the season now, a few a frame, not all together as they're swapped in (add turns it again only if the
+    // season's changed since).
+    if (colour) this.turnColour(colour);
     geometry.computeBoundingBox();
   }
   /** The ground change changeGround is in the middle of (and where), if any. */
@@ -724,12 +729,17 @@ export class BrushRenderer {
     (colour.array as Float32Array).set(own);
     colour.needsUpdate = true;
     this.ownColours.delete(colour);
+    this.turnedFor.delete(colour);
   }
   /** Turns a seasonal geometry's colours by the season, from its own (kept the first time). */
   private turn(geometry: THREE.BufferGeometry) {
     if (!this.seasonal.has(geometry)) return;
     const colour = geometry.getAttribute('color') as THREE.BufferAttribute | undefined;
-    if (!colour) return;
+    if (colour) this.turnColour(colour);
+  }
+  /** Turns colours by the season, from their own (kept the first time), unless they're turned for it already. */
+  private turnColour(colour: THREE.BufferAttribute) {
+    if (this.turnedFor.has(colour) && this.turnedFor.get(colour) === this.seasonSet) return;
     const t = seasonTurn(this.seasonSet);
     let own = this.ownColours.get(colour);
     // Untouched while no season has turned it: no copy kept.
@@ -737,6 +747,7 @@ export class BrushRenderer {
     if (!own) this.ownColours.set(colour, own = Float32Array.from(colour.array as Float32Array));
     turnColours(own, colour.array as Float32Array, t);
     colour.needsUpdate = true;
+    this.turnedFor.set(colour, this.seasonSet);
   }
   /** The season as set, or null before setSeason. */
   get season(): SeasonSettings | null { return this.seasonSet && { ...this.seasonSet }; }
