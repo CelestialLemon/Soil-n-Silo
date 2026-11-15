@@ -16,6 +16,7 @@ import { followSettings } from './settings.ts';
 import { BrushSky } from './sky.ts';
 import { thingHeight, Things } from './things.ts';
 import { BrushWater } from './water.ts';
+import { BrushWind } from './wind.ts';
 import { Wild } from './wild.ts';
 
 // The game drawn by brush3d (epic #212), behind `?renderer=brush3d` until the swap (#211): the Scene (../scene.ts) the
@@ -29,8 +30,8 @@ import { Wild } from './wild.ts';
 //   things.ts  the buildings and trucks as brush3d's solarpunk models (#203); #204 (a world that changes without a
 //              stutter) and #205 (moving parts, building states, the markers) build on it
 //   wild.ts    what grows, painted: the trees by species, the rocks, the open fields' crops and the saplings (#213)
-//   sky.ts     the season, the hour and the sky from the game's weather (#207); #208 brings the wind and clouds the rules
-//              share
+//   sky.ts     the season, the hour and the sky from the game's weather (#207), the clouds where the rules have them (#208)
+//   wind.ts    the living wind under the gusts the rules step, round the buildings and trees (#208)
 //   cover.ts   what lies on the land from the game's: snow, frost, wet and mud (#207)
 //   water.ts   the river and ponds, floods, ice and muddy water from the game's (#207; how the river sits in its bed is #202's)
 //   grid.ts    the grid cover.ts and water.ts send their maps on
@@ -48,7 +49,7 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
   followSettings(r, settings);
   const land = generateLand(state.scenario, COUNTRY), lie = new Lie(state, land);
   const ground = new BrushLand(r, state, land, lie), sky = new BrushSky(r, state), cover = new BrushCover(r, land), water = new BrushWater(r, land, lie);
-  const things = new Things(r, lie), wild = new Wild(r, lie, land, state);
+  const things = new Things(r, lie), wild = new Wild(r, lie, land, state), wind = new BrushWind(r, state, land);
   const lens = new BrushLens(r, canvas);
   const camera = new Camera(lens, canvas, map, start, changed);
   const cursor = new TileCursor(canvas, 0xfff0c0), refused = new TileCursor(canvas, 0xe8705a);
@@ -78,6 +79,7 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
     heightOf: (type) => thingHeight(type) / TILE,
     sync(s, f) {
       sky.sync(s, f.hour, f.speed);
+      wind.sync(s);
       ground.sync(s);
       cover.sync(s);
       water.sync(s);
@@ -114,6 +116,6 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
       counts: () => ({ draws: r.gl.info.render.calls, triangles: r.gl.info.render.triangles }),
       resetCounts: (on) => { r.gl.info.autoReset = !on; if (on) r.gl.info.reset(); },
     },
-    debug: { renderer: r, lens },
+    debug: { renderer: r, lens, wind },
   };
 }

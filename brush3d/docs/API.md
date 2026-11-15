@@ -342,6 +342,10 @@ const wind = startWind({ nx, nz, cell, x0, z0 }, obstacles, goal, { state: gusts
 // or draw a steadyWind meanwhile).
 wind.setGoal(goal);                 // what the weather wants; eases there over a few seconds
 wind.advance(gameSeconds);          // each frame, by game time (nothing while paused)
+// or, as the game does, each frame: the rules' ticks since the last, each with its goal, then how far into the next
+// for (each tick) { wind.setGoal(goalThen); wind.advance(TICK); }  wind.lead(carry / TICK);
+// if (wind.pending > 30) wind.setState(gusts.state);   // too far behind (a slow machine, 16×): jump to the rules' gusts
+wind.setObstacles(obstacles);       // a building put up, a tree felled: the air flows round them from the next tick
 wind.at(x, z, height);              // between the last two ticks, as the frame sees it: for the picture only
 if (wind.cur) r.setWind(wind.prev!, wind.cur, wind.alpha);
 r.restartWind();                    // a new wind, not a continuation (a level loading): the trees and dust start at rest
@@ -357,7 +361,8 @@ r.restartWind();                    // a new wind, not a continuation (a level l
 | `WindSim` and `windAt(snapshot, x, z, height)`: the same simulation with no worker, for tests and tools | today |
 | Obstacles: a circle, a strip or a turned box in metres, `solid` with a height (a building) or with a `drag` (`DRAG.hedge`, `DRAG.crown`) | today |
 | `WindSim.setObstacles(list)` and `setState(state)`: the obstacles change in play, the gusts jump to the rules'; a save (version 3) keeps the obstacles | today (#208) |
-| The same through the worker, `wind.setObstacles(list)` and `wind.setState(state)`, queued against the ticks | #208, its picture PR |
+| The same through the worker, `wind.setObstacles(list)` and `wind.setState(state)`, queued against the ticks (a `setState` drops the ticks not yet stepped) | today (#208) |
+| `wind.lead(fraction)` and `wind.pending`: a game that gives the worker whole ticks puts its clock into the next, and sees how far behind the worker is | today (#208) |
 | `steadyWind(speed, direction)`: one even wind, for a scene with no simulation | today |
 | `r.restartWind()` | today |
 | The game's turbines reading the gusts (and the panels the clouds' shadows, below) | today (#208) |

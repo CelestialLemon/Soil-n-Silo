@@ -13,7 +13,8 @@
 //    about 25 hedge heights (docs/WIND.md has the curve and why).
 // 6. The game's side (client.ts), with stand-ins for the worker, a quick one and a slow one: the same calls give the
 //    same wind and every tick in order, at any frame rate and however far behind the worker falls; saves, restores and
-//    goals queued behind ticks come out as asked.
+//    goals queued behind ticks come out as asked; and the game's way (#208): a worker started from the rules' gusts and
+//    fed their ticks is their wind, put into the next tick by the game's clock, and jumps to their gusts when behind.
 // 7. Storms: the strongest wind taken, full rare gusts, across the grid's diagonal, stays sane.
 // 8. Speed: a tick of the farm at 1 m, in a breeze and in a hurricane, the cost the game pays in its worker (reported,
 //    and failed only if far too slow, or if the air hit its safety bounds).
@@ -186,10 +187,10 @@ console.log('Shelter (a single dense hedge, 2.5 m, across a steady 6 m/s)');
 console.log('The game\'s side (a quick worker and a slow one)');
 {
   const small: WindGrid = { nx: 60, nz: 60, cell: 1, x0: -30, z0: -30 };
-  /** A stand-in worker: the host run on the same thread, each message and reply after `delay` ms (0: at once). */
+  /** A stand-in worker: the host run on the same thread, each message (copied as it's sent, as a worker's is) and reply after `delay` ms (0: at once). */
   const port = (delay: number): WindPort => {
     const later = (f: () => void) => (delay ? setTimeout(f, delay) : queueMicrotask(f));
-    const p: WindPort = { onmessage: null, postMessage: (m) => later(() => handle(structuredClone(m))) };
+    const p: WindPort = { onmessage: null, postMessage: (m) => { const sent = structuredClone(m); later(() => handle(sent)); } };
     const handle = windHost((reply) => later(() => p.onmessage!({ data: reply } as MessageEvent<WindReply>)));
     return p;
   };
@@ -238,6 +239,42 @@ console.log('The game\'s side (a quick worker and a slow one)');
   check('disposing rejects a save not yet made', q.rejected && sl.rejected, '');
   const [mx] = windAt(quick.first, 0, 0, 8);
   check('the first snapshot has the free air above', mx !== 0, `${mx.toFixed(2)} m/s at 8 m, before any tick`);
+
+  // The game's way (#208): the rules step the gusts; the worker starts from their state and is given each tick they ran with
+  // its goal, a building put up between, and is put a fraction into the next tick by the game's clock (lead).
+  const rules = new WindRecipe(small, GUSTY, { seed: 5 });
+  for (let t = 0; t < 30; t++) { rules.setGoal(t < 12 ? GUSTY : { ...GUSTY, speed: 9 }); rules.step(); }
+  const shed: Obstacle = { box: { x: 4, z: 2, hx: 3, hz: 2, turn: 0.3 }, solid: true, height: 4 };
+  const follow = async (delay: number) => {
+    const rec = new WindRecipe(small, GUSTY, { state: rules.state }), wind = new WindWorker(port(delay), small, FARM.slice(0, 3), GUSTY, { state: rec.state });
+    const direct = new WindSim(small, FARM.slice(0, 3), GUSTY, { state: rec.state });
+    let behind = 0;
+    for (let t = 0; t < 20; t++) {
+      const goal = { ...GUSTY, speed: 9, direction: 0.55 + t * 0.02 };
+      if (t === 8) { wind.setObstacles([...FARM.slice(0, 3), shed]); direct.setObstacles([...FARM.slice(0, 3), shed]); }
+      rec.setGoal(goal); rec.step(); direct.setGoal(goal); direct.step();
+      // As the game does: the lead off, a whole tick, the lead on (once just short of a whole tick, which mustn't count as one).
+      wind.setGoal(goal); wind.lead(0); wind.advance(TICK); wind.lead(t === 17 ? 0.9999995 : 0.4);
+      behind = Math.max(behind, wind.pending);
+      await new Promise((r) => setTimeout(r, 1));
+    }
+    await wind.idle();
+    const fed = wind.cur!, alpha = wind.alpha, left = wind.pending;
+    // Fallen behind: jumped to the rules' gusts further on, its air kept, the ticks not yet stepped dropped.
+    for (let t = 0; t < 15; t++) { rec.step(); wind.advance(TICK); }
+    wind.setState(rec.state);
+    while (wind.cur!.tick !== rec.state.tick) await new Promise((r) => setTimeout(r, 5));
+    const k = 700, [u] = rec.freeAt(small.x0 + (k % small.nx + 0.5) * small.cell, small.z0 + (Math.floor(k / small.nx) + 0.5) * small.cell);
+    const jumped = wind.cur!;
+    await new Promise((r) => setTimeout(r, 20));
+    wind.dispose();
+    return { same: identical(fed, direct.snapshot()), tick: fed.tick, alpha, left, behind, jumped: jumped.tick === rec.state.tick && Object.is(jumped.fu[k], u), stayed: wind.cur!.tick === rec.state.tick };
+  };
+  const [fq, fs] = [await follow(0), await follow(8)];
+  check('a worker fed the rules\' ticks is the wind they make, quick or slow', fq.same && fs.same, `tick ${fq.tick}, a building put up after ${8 * TICK} s, a lead of 0.9999995 on the way`);
+  check('the game\'s clock puts it into the next tick', fq.alpha === 0.4 && fs.alpha === 0.4, `alpha ${fq.alpha} and ${fs.alpha}, caught up`);
+  check('it says how far behind it is', fs.behind > fq.behind && fq.left === 0 && fs.left === 0, `the slow worker up to ${fs.behind} ticks behind, the quick ${fq.behind}; none once caught up`);
+  check('jumped to the rules\' gusts, it takes them at once and drops the ticks not stepped', fq.jumped && fs.jumped && fq.stayed && fs.stayed, `tick ${fq.tick + 15}`);
 }
 
 // 7. Storms.

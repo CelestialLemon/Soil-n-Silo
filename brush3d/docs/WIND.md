@@ -67,6 +67,10 @@ wind.restore(save);                                      // carries on from it, 
 
 - **Changing in play.** `WindSim.setObstacles(list)` takes a new list of obstacles (a building put up, a tree felled):
   the air carries on round them. `setState(state)` jumps the gusts to a state (a `WindRecipe`'s), keeping the air.
+  Through the worker the same, queued against the ticks: `WindWorker.setObstacles(list)` and `setState(state)` (which
+  drops the ticks not yet stepped). A game that counts its own ticks gives them as whole `advance(TICK)`s and says how
+  far its clock is into the next with `lead(fraction)`; `pending` is how many ticks the worker has still to step, so the
+  game can jump it to the rules' gusts with `setState` when it falls too far behind (the game's `src/world/brush/wind.ts`).
 
 ## For the rules: the gusts alone (#208)
 

@@ -1,4 +1,4 @@
-import { TICK, windBetween, type Obstacle, type WindGoal, type WindGrid, type WindOptions, type WindSave, type WindSnapshot } from './sim.ts';
+import { TICK, windBetween, type Obstacle, type WindGoal, type WindGrid, type WindOptions, type WindSave, type WindSnapshot, type WindState } from './sim.ts';
 import type { WindReply, WindRequest } from './host.ts';
 
 // The game's side of the wind worker (#36): it keeps the game's clock for the wind, asks the worker for a tick every
@@ -17,7 +17,7 @@ export interface WindPort {
 }
 
 interface Pending { resolve(s: WindSave): void; reject(e: Error): void }
-type Queued = { ticks: number } | { goal: WindGoal } | { save: Pending } | { restore: WindSave };
+type Queued = { ticks: number } | { goal: WindGoal } | { obstacles: Obstacle[] } | { save: Pending } | { restore: WindSave } | { state: WindState };
 
 /** How near a whole tick the clock may fall short and still count it (so 60 frames of 1/60 s are 10 ticks). */
 const ROUNDING = 1e-6;
@@ -64,6 +64,9 @@ export class WindWorker {
   /** What the game asks of the wind; it applies from the next tick due. */
   setGoal(goal: WindGoal) { this.queue.push({ goal: structuredClone(goal) }); this.pump(); }
 
+  /** The obstacles change (a building put up or taken down, a tree felled); from the next tick due, like a goal. */
+  setObstacles(obstacles: Obstacle[]) { this.queue.push({ obstacles: structuredClone(obstacles) }); this.pump(); }
+
   /** Runs the wind's clock on by `seconds` of game time. */
   advance(seconds: number) {
     this.clock += seconds / TICK;
@@ -93,6 +96,26 @@ export class WindWorker {
     this.pump();
   }
 
+  /**
+   * Carries on the gusts from a state (WindRecipe's, as the game's rules step it), the air as it is: for a picture that
+   * fell too far behind the rules' wind (see `pending`). Ticks not yet stepped are dropped, as a restore drops them.
+   */
+  setState(state: WindState) {
+    for (let i = this.queue.length - 1; i >= 0 && !('save' in this.queue[i]); i--) if ('ticks' in this.queue[i]) this.queue.splice(i, 1);
+    this.clock = 0;
+    this.queue.push({ state: structuredClone(state) });
+    this.pump();
+  }
+
+  /**
+   * Puts the clock `fraction` (0..1) of a tick past the last tick due: for a game that keeps its own count of ticks and
+   * gives them as whole `advance(TICK)`s, so the two never drift apart, and says how far its clock is into the next.
+   */
+  lead(fraction: number) { this.clock = Math.min(1, Math.max(0, fraction)); }
+
+  /** Ticks due that the worker hasn't stepped yet (sent or not): how far behind it is. */
+  get pending() { return this.inFlight + this.queue.reduce((n, q) => n + ('ticks' in q ? q.ticks : 0), 0); }
+
   /** How far the clock is past the latest tick, 0..1, while the worker keeps up (1 while it's behind). */
   get alpha() { return this.inFlight > 0 || this.queue.some((q) => 'ticks' in q) ? 1 : Math.min(1, this.clock); }
 
@@ -115,6 +138,8 @@ export class WindWorker {
     while (!this.disposed && this.inFlight === 0 && this.queue.length) {
       const q = this.queue[0];
       if ('goal' in q) { this.queue.shift(); this.worker.postMessage({ type: 'goal', goal: q.goal }); }
+      else if ('obstacles' in q) { this.queue.shift(); this.worker.postMessage({ type: 'setObstacles', obstacles: q.obstacles }); }
+      else if ('state' in q) { this.queue.shift(); this.inFlight = 1; this.worker.postMessage({ type: 'state', state: q.state }); }
       else if ('save' in q) { this.queue.shift(); this.saves.push(q.save); this.worker.postMessage({ type: 'save' }); }
       else if ('restore' in q) { this.queue.shift(); this.inFlight = 1; this.worker.postMessage({ type: 'restore', save: q.restore }); }
       else {
