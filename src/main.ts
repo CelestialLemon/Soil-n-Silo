@@ -626,7 +626,7 @@ async function play(initial: GameState) {
     const dt = Math.min((now - last) / 1000, 0.1);
     last = now; time += dt;
 
-    if (!paused && !hud.modal) advance(state, dt * speed, MAX_STEPS_PER_FRAME);
+    if (!paused && !hud.modal && !scene.held?.()) advance(state, dt * speed, MAX_STEPS_PER_FRAME);
     if (!wasComplete && state.completedAt !== null) {
       wasComplete = true;
       const medal = medalFor(state.scenario.par, state.completedAt);

@@ -87,9 +87,12 @@ export class Things {
   /** The truck's shape, model or stand-in, made once and shared by every truck (never disposed: it's small). */
   private readonly truckShapes = new Map<string, THREE.BufferGeometry>();
 
+  /** Settles once the models are in (or failed): the load's end, for #210's profile. */
+  readonly ready: Promise<void>;
+
   constructor(r: BrushRenderer, lie: Lie) {
     this.r = r; this.lie = lie;
-    void this.load();
+    this.ready = this.load();
   }
 
   private async load() {

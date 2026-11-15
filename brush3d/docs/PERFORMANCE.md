@@ -471,6 +471,71 @@ only the ground on screen, traced down to the land, instead of a fixed square (a
 mostly the trees throwing shadows (4.3 ms of the shadow pass), and on the CPU the draw calls and the tree springs (1 ms).
 Not tuned further yet: thinner woods, fewer dabs in the shadow pass or merged meshes would bring it back.
 
+## The game's maps (Soil-n-Silo#210)
+
+What a frame costs in the game itself, on its eight commissions, rather than the demo's scenes.
+
+**Measuring.** In the game, `?renderer=brush3d&profile` (on `dev` or a PR's preview, any machine) puts a panel at the top:
+move the camera to the busiest part of the farm, press Run (two or three minutes), then Copy. The cases are the demo's
+profile's (`src/renderer/profile.ts`, `runProfile`), drawn where the camera is: the four views, the widest and closest
+zooms (4 and 24 px a metre), noon, the golden hour and night, the heaviest weathers (a storm, a strike at its brightest,
+a blizzard with snow lying, fog, dust, the heat wave, wet ground, frost), the three quality presets, and the widest view
+without each kind of mesh. The panel's head names the machine's GPU, the map, the camera and the quality, and how long
+the level took to load: each piece of the brush3d world made (`src/world/brush/scene.ts` times them), the first frame
+(its shaders compiled) and the models in. The game's own loop stands still while it runs.
+
+Headless, over every commission on this machine's GPU (needs a server: the game's dev server, or `vite preview` of a build
+for load times without the dev server's own cost):
+
+```sh
+npm run framerate                                        # c1 to c8, each fresh and as the bot's farm after 20 minutes
+npm run framerate -- --layouts c4 --saves farm --labels "view 1, storm|widest, storm"
+npm run framerate -- --layouts c4 --query level=2        # a look PR's option (its preview's address), to see what it costs
+```
+
+`fresh` is the commission as it starts; `farm` is the bot's (`tools/bot.ts`) after `--minutes`, on its flat map, with the
+commission's own trees and rocks put back wherever they're more than a tile from a building: a busy farm in its woods. It
+writes the rows and the load as JSON (`out/framerate/`).
+
+**Before the cuts** (2026-11-15, `dev` at 949ce3f, built; RX 570, 1080p, high, a storm, ms; the start view, the widest and
+the closest zoom; uncapped is frames drawn back to back). This machine is shared, so the uncapped column carries
+another program's stalls now and then; the c3 farm row was taken while the tests ran. (The medium and low columns, and
+the "without each kind" figures below, were run before a fix to the profile's framing, which drew those cases, and every
+case after them, over a little more land. Measured again since, medium and low are the same within 0.4 ms.)
+
+| map | GPU: start / widest / closest | CPU: start / widest | uncapped: start / widest | GPU medium / low | load s: first frame drawn / models in (the first frame itself) |
+|---|---|---|---|---|---|
+| c1 fresh (1 buildings, 127 trees) | 16.4 / 16.9 / 12.9 | 7.0 / 11.3 | 21.9 / 26.8 | 15.0 / 11.4 | 3.7 / 4.2 (0.9) |
+| c1 farm (17 buildings, 62 trees) | 16.3 / 16.8 / 11.4 | 10.2 / 12.7 | 24.5 / 27.0 | 15.2 / 11.4 | 3.5 / 4.0 (0.8) |
+| c2 fresh (1 buildings, 230 trees) | 18.8 / 18.5 / 11.6 | 6.9 / 11.8 | 27.3 / 29.0 | 16.9 / 13.1 | 4.0 / 4.7 (0.8) |
+| c2 farm (23 buildings, 226 trees) | 18.9 / 18.9 / 12.7 | 9.8 / 13.2 | 25.9 / 30.0 | 17.3 / 13.4 | 4.2 / 4.9 (0.8) |
+| c3 fresh (1 buildings, 115 trees) | 17.8 / 17.9 / 11.7 | 9.5 / 11.5 | 25.0 / 29.2 | 16.7 / 12.8 | 5.4 / 6.3 (0.8) |
+| c3 farm (17 buildings, 115 trees) | 19.4 / 28.5 / 11.9 | 22.4 / 27.4 | 30.6 / 34.9 | 17.1 / 13.2 | 11.0 / 12.9 (1.3) |
+| c4 fresh (1 buildings, 240 trees) | 20.7 / 19.4 / 12.0 | 9.5 / 17.6 | 27.8 / 31.4 | 17.9 / 13.5 | 4.0 / 4.6 (0.7) |
+| c4 farm (21 buildings, 213 trees) | 20.6 / 19.5 / 10.9 | 10.0 / 16.4 | 29.0 / 31.4 | 17.6 / 13.9 | 3.8 / 4.5 (0.7) |
+| c5 fresh (1 buildings, 230 trees) | 18.7 / 19.2 / 8.9 | 7.3 / 9.1 | 28.7 / 32.7 | 17.3 / 13.8 | 8.3 / 9.1 (4.6) |
+| c5 farm (20 buildings, 230 trees) | 20.1 / 19.2 / 9.2 | 7.8 / 16.0 | 29.9 / 38.3 | 19.1 / 14.2 | 7.4 / 8.3 (3.5) |
+| c6 fresh (1 buildings, 96 trees) | 17.3 / 17.5 / 12.2 | 8.8 / 11.1 | 24.7 / 26.8 | 15.6 / 12.1 | 3.2 / 3.5 (0.6) |
+| c6 farm (22 buildings, 82 trees) | 17.9 / 18.0 / 12.2 | 9.9 / 13.8 | 37.3 / 28.6 | 15.6 / 12.2 | 5.9 / 6.3 (3.4) |
+| c7 fresh (1 buildings, 480 trees) | 21.5 / 21.1 / 13.6 | 12.6 / 14.0 | 42.4 / 31.6 | 19.0 / 15.1 | 8.0 / 9.2 (3.9) |
+| c7 farm (39 buildings, 384 trees) | 20.8 / 21.0 / 11.5 | 17.7 / 17.8 | 29.7 / 33.2 | 18.8 / 15.2 | 4.7 / 5.9 (0.8) |
+| c8 fresh (1 buildings, 345 trees) | 22.3 / 22.2 / 14.3 | 9.3 / 14.8 | 29.8 / 34.4 | 19.7 / 15.8 | 5.5 / 7.2 (0.8) |
+| c8 farm (41 buildings, 327 trees) | 23.4 / 22.6 / 14.0 | 10.6 / 15.6 | 32.3 / 34.9 | 20.9 / 16.4 | 5.7 / 7.3 (0.8) |
+
+- **Over the 45 fps line on every map** but zoomed right in: 22 to 35 ms a frame drawn back to back, against 22. The
+  GPU alone is 16 to 23 ms at high (17 to 21 at medium), and the budget above makes the laptop's 22 ms about 12 here.
+- **The CPU is not idle here, as it is in the demo**: 7 to 17 ms a frame, most at the widest zoom, where the most meshes
+  are in view. three.js's work for each mesh drawn (about 1,300 to 3,000 draws a frame) is most of it, in every pass that
+  draws the scene: the sun's shadow, the bed under the water, the reflection and the main view (the last two twice, with
+  their silhouettes).
+- **What costs on the GPU** (the widest view without each kind, c1): the ground 11 ms (the frame 17 → 6), the water and
+  its two passes 4.5, the trees 1.5; the rest little.
+- **The load**: 3.2 to 5.7 s from the page's start to the first frame on most maps, and the models in 0.3 to 1.7 s after
+  (worked out from the pieces' times; `npm run framerate`'s load is now the later of the two, page start to both in). The pieces: the map's land 0.25 s, the
+  game's fit of it (its Lie) 0.35, the land painted 0.8, the trees and rocks 0.7 to 1.6, the first frame 0.6 to 0.9 (its
+  shaders compiled). On a few loads the first frame took 3.4 to 4.6 s (c5, c6's farm, c7 fresh): more of the shaders
+  compiled in it when the level starts in rain or snow.
+
 ## Quality settings
 
 One look on every machine: a lower quality keeps the paint, light, weather and ink, and draws them with less detail.

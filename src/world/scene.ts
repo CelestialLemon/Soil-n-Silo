@@ -96,6 +96,8 @@ export interface ShowFrame {
 
 export interface Scene {
   readonly camera: Camera;
+  /** While true the game stands still (brush3d's ?profile runs, #210): main.ts doesn't advance it. */
+  readonly held?: () => boolean;
   readonly heights: Heights;
   readonly picker: Picker;
   readonly preview: Preview;
