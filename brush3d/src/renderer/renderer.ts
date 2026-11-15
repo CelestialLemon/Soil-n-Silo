@@ -1247,12 +1247,15 @@ export class BrushRenderer {
     this.shelter.draw(this.gl, this.scene, cover, this.groundSquare(), () => {
       // Every wind value and the clock set to one rest, whatever the weather, and the flutter kept across the map's own
       // view (straight down), not the camera's: what's left of the sway and the flutter (a little even in a calm) is then
-      // the same every draw, so a new building can't nudge a tree's dry patch.
+      // the same every draw, so a new building can't nudge a tree's dry patch. Models' parts as modelled, still and shown,
+      // for the same reason: the map isn't drawn as a rotor turns (a rotor's few blades shelter little anyway).
       const saved = [s.uTime.value, s.uWindSpeed.value, s.uWindOn.value, s.uWindFlutter.value,
         s.uWindDir.value.clone(), s.uWindDrift.value.clone(), s.uViewBack.value.clone()] as const;
       s.uTime.value = 0; s.uWindSpeed.value = 0; s.uWindOn.value = 0; s.uWindFlutter.value = 0;
       s.uWindDir.value.set(1, 0); s.uWindDrift.value.set(0, 0); s.uViewBack.value.set(0, 1, 0);
+      s.uPartsRest.value = 1;
       return () => {
+        s.uPartsRest.value = 0;
         [s.uTime.value, s.uWindSpeed.value, s.uWindOn.value, s.uWindFlutter.value] = saved;
         s.uWindDir.value.copy(saved[4]); s.uWindDrift.value.copy(saved[5]); s.uViewBack.value.copy(saved[6]);
       };

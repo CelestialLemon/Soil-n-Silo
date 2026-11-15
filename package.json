@@ -27,6 +27,7 @@
     "render:test:wind": "node brush3d/tools/wind.ts",
     "render:test:water": "node brush3d/tools/water.ts",
     "render:test:view": "node brush3d/tools/view.ts",
+    "render:test:parts": "node brush3d/tools/parts.ts",
     "render:build:wind": "node brush3d/tools/wind-build.ts"
   },
   "dependencies": {

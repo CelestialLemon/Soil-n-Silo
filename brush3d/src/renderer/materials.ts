@@ -46,6 +46,8 @@ export function createSharedUniforms() {
     tTreePose: { value: null as THREE.Texture | null },
     // Every model part's axle, turn and whether it shows (Parts, Soil-n-Silo#205): four texels a part.
     tPartPose: { value: null as THREE.Texture | null },
+    // 1: every part as it's modelled, still and shown (the shelter map, drawn now and then: it can't follow a rotor).
+    uPartsRest: { value: 0 },
     uViewBack: { value: new THREE.Vector3(0, 0, 1) },
     uViewTarget: { value: new THREE.Vector3() },
     uShadowMap: { value: null as THREE.Texture | null },
@@ -184,8 +186,9 @@ varying float vGust;
 // by its angle, or, hidden, folded to its axle, where it draws nothing. Its normal turns with it.
 attribute float aPart;
 uniform highp sampler2D tPartPose;
+uniform float uPartsRest;
 void movePart(inout vec3 p, inout vec3 n) {
-  if (aPart < 0.5) return;
+  if (aPart < 0.5 || uPartsRest > 0.5) return;
   int i = (int(aPart + 0.5) - 1) * ${PART_TEXELS};
   ivec2 at = ivec2(i % 256, i / 256);
   vec4 axle = texelFetch(tPartPose, at, 0), along = texelFetch(tPartPose, at + ivec2(1, 0), 0);

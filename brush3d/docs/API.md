@@ -195,7 +195,8 @@ mill.remove();
   each part's axle, angle and whether it shows), so nothing is rebuilt as it turns. The angle is worked out from the
   renderer's clock, so a frame is the same however it was reached, and a part told to turn starts from the next frame:
   a still shows it at rest. A part hidden (a `running_*` piece not running, a charge ring not lit) is folded to its axle
-  and draws nothing in any pass.
+  and draws nothing in any pass. The shelter map (where rain and snow land), drawn only when something changes, sees
+  every part as modelled, so a rotor's dry patch never jumps with whatever angle it had then.
 - **Goods** in a truck's bed are things too, placed by the game as the truck moves (a call per good per frame is cheap).
 - **Today** the models load with `loadModel(url)` and go into meshes with `ModelSet`; the game's things.ts makes a
   building's meshes when it's placed (0.3 to 4 ms) and takes them out (`r.remove`) when it's removed, and every truck
