@@ -251,7 +251,19 @@ export class Grove {
 
   constructor(dress: Dress | null) { this.dress = dress; }
 
+  /**
+   * Grows a tree into the grove. Everything it adds goes with it (its wood, its leaves, the leaves fallen round it), so one
+   * tree can be taken out of the grove's meshes again (BrushRenderer.removeTree, Soil-n-Silo#204).
+   */
   grow(ground: Ground, t: Tree, rand: () => number) {
+    const parts = [this.wood, this.limbs, this.leaves, this.twigs, this.litter], starts = parts.map((b) => b.vertexCount);
+    const marked = this.wood.lastTree;
+    this.growOne(ground, t, rand);
+    const spec = this.wood.lastTree;
+    if (spec && spec !== marked) parts.forEach((b, i) => b.own(starts[i], spec));
+  }
+
+  private growOne(ground: Ground, t: Tree, rand: () => number) {
     const dress = this.dress;
     if (!dress) { growTree(this.wood, this.leaves, ground, t, rand); return; }
     if (evergreen(t)) {

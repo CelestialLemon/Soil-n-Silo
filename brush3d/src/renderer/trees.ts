@@ -66,7 +66,12 @@ function wobble(t: number, seed: number) {
   return at(i) + (at(i + 1) - at(i)) * s;
 }
 
-/** Every tree's spring, and a texture of their tops' displacement (x, z, metres) for the shaders, one texel a tree. */
+/**
+ * Every tree's spring, and a texture of their tops' displacement (x, z, metres) for the shaders, one texel a tree. A spring
+ * is held by each mesh that draws its tree (add), and let go when the last of them is taken out or the tree is taken out
+ * of them (release, Soil-n-Silo#204): its texel goes to the next new tree, so a world whose trees are cleared and grown in
+ * play doesn't grow its springs without end.
+ */
 export class TreeSprings {
   texture = TreeSprings.makeTexture(1);
   private trees: TreeSpec[] = [];
@@ -74,6 +79,12 @@ export class TreeSprings {
   /** Per tree: the top's displacement (x, z) and its velocity (x, z). */
   private state = new Float32Array(0);
   private seeds = new Int32Array(0);
+  /** Per tree: how many meshes hold its spring (0: free, its texel waiting for the next new tree). */
+  private holds: number[] = [];
+  /** The texels let go, for new trees to take. */
+  private readonly free: number[] = [];
+  /** Texels taken again by new trees, to lay where the wind holds them at the next update (as the new ones from `placed` on). */
+  private fresh: number[] = [];
   private time: number | null = null;
   /** Trees before this are moving; those from it on are new, and are laid where the wind holds them at the next update. */
   private placed = 0;
@@ -84,14 +95,30 @@ export class TreeSprings {
     return t;
   }
 
-  /** Takes in a mesh's trees; returns each one's index into the texture (the same tree in two meshes, the same index). */
+  /** The springs held. */
+  get count() { return this.trees.length - this.free.length; }
+
+  /**
+   * Takes in a mesh's trees, which it then holds (release them when it's taken out); returns each one's index into the
+   * texture (the same tree in two meshes, the same index).
+   */
   add(trees: TreeSpec[]): number[] {
+    const held = new Set<number>();
     const out = trees.map((t) => {
       const key = `${t.x} ${t.z} ${t.kind}`;
       let id = this.ids.get(key);
-      if (id === undefined) { id = this.trees.length; this.ids.set(key, id); this.trees.push(t); }
+      if (id === undefined) {
+        const reused = this.free.pop();
+        if (reused === undefined) { id = this.trees.length; this.trees.push(t); this.holds.push(0); }
+        else {
+          id = reused; this.trees[id] = t; this.fresh.push(id);
+          this.seeds[id] = Math.imul(Math.round(t.x * 97), 0x9e3779b1) ^ Math.round(t.z * 131);
+        }
+        this.ids.set(key, id);
+      }
       // A tree drawn anew where one stood (a sapling grown a step, a tree replanted) sways as it now is.
       else if (this.trees[id].height !== t.height || this.trees[id].scale !== t.scale) this.trees[id] = t;
+      if (!held.has(id)) { held.add(id); this.holds[id]++; }
       return id;
     });
     const n = this.trees.length;
@@ -104,6 +131,26 @@ export class TreeSprings {
         this.texture.dispose(); this.texture = TreeSprings.makeTexture(rows);
         (this.texture.image.data as Float32Array).set(old);
       }
+    }
+    return out;
+  }
+
+  /** A mesh lets go of these springs (it's taken out, or these trees out of it): a spring no mesh holds is freed. */
+  release(ids: Iterable<number>) {
+    for (const id of ids) {
+      if (!(this.holds[id] > 0) || --this.holds[id] > 0) continue;
+      const t = this.trees[id];
+      this.ids.delete(`${t.x} ${t.z} ${t.kind}`);
+      this.free.push(id);
+    }
+  }
+
+  /** The springs of the trees standing at (x, z) (m), of any kind. */
+  at(x: number, z: number): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < this.trees.length; i++) {
+      const t = this.trees[i];
+      if (this.holds[i] > 0 && Math.abs(t.x - x) < 1e-4 && Math.abs(t.z - z) < 1e-4) out.push(i);
     }
     return out;
   }
@@ -138,10 +185,14 @@ export class TreeSprings {
     this.time = time;
     const s = this.state, goal = [0, 0];
     const lay = (i: number) => { this.target(i, time, wind, gust, goal); s.set([goal[0], goal[1], 0, 0], i * 4); };
+    const fresh = this.fresh.length > 0;
     if (dt < 0 || dt > 1) for (let i = 0; i < n; i++) lay(i);
     else {
       for (let i = this.placed; i < n; i++) lay(i);
+      for (const i of this.fresh) lay(i);
       for (let i = 0; i < this.placed && dt > 0; i++) {
+        // A spring let go, waiting for a tree.
+        if (!(this.holds[i] > 0)) continue;
         const t = this.trees[i], f = TREE_FEEL[t.kind];
         const w = 2 * Math.PI * f.hz / Math.sqrt(t.scale);
         const steps = Math.ceil(dt / Math.min(STEP, STEP_TURN / w)), h = dt / steps;
@@ -155,9 +206,10 @@ export class TreeSprings {
           s[i * 4] += vx * h; s[i * 4 + 1] += vz * h; s[i * 4 + 2] = vx; s[i * 4 + 3] = vz;
         }
       }
-      if (dt === 0 && this.placed === n) return;
+      if (dt === 0 && this.placed === n && !fresh) return;
     }
     this.placed = n;
+    this.fresh = [];
     const data = this.texture.image.data as Float32Array;
     for (let i = 0; i < n; i++) { data[i * 4] = s[i * 4]; data[i * 4 + 1] = s[i * 4 + 1]; }
     this.texture.needsUpdate = true;

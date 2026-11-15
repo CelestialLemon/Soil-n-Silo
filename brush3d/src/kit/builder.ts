@@ -14,7 +14,10 @@ export class MeshBuilder {
   /** Each vertex's tree for the wind (its foot's x and z, its height, how much of the crown's movement the vertex takes); zero
    * where it isn't part of one. Wood and leaves only. */
   private tree: number[] | null;
-  /** Each vertex's tree, as an index into `trees` (the renderer renumbers them across meshes; see BrushRenderer.add). */
+  /**
+   * Each vertex's tree, as an index into `trees` (the renderer renumbers them across meshes; see BrushRenderer.add), or -1
+   * for none: what a tree is made of, to sway with it and to go with it (BrushRenderer.removeTree).
+   */
   private treeId: number[] | null;
   private readonly trees: TreeSpec[] = [];
   private readonly extraName: string | null;
@@ -37,7 +40,7 @@ export class MeshBuilder {
     this.paint.push(...paint); this.uv.push(...uv);
     for (let i = 0; i < this.extraSize; i++) this.extra.push(extra[i] ?? 0);
     this.tree?.push(0, 0, 0, 0);
-    this.treeId?.push(0);
+    this.treeId?.push(-1);
     return this.vertexCount - 1;
   }
 
@@ -49,9 +52,23 @@ export class MeshBuilder {
     if (!this.tree || !this.treeId) throw new Error(`a ${this.kind} mesh has no trees`);
     const id = this.trees.push(t) - 1;
     for (let i = start; i < this.vertexCount; i++) {
-      this.tree.splice(i * 4, 4, t.x, t.z, t.height, share(this.pos[i * 3 + 1]));
+      this.tree[i * 4] = t.x; this.tree[i * 4 + 1] = t.z; this.tree[i * 4 + 2] = t.height; this.tree[i * 4 + 3] = share(this.pos[i * 3 + 1]);
       this.treeId[i] = id;
     }
+  }
+
+  /** The tree marked last (markTree), if any. */
+  get lastTree(): TreeSpec | undefined { return this.trees[this.trees.length - 1]; }
+
+  /**
+   * Makes the vertices from `start` on that are part of no tree yet part of `t` without moving them in the wind (the leaves
+   * fallen round it): they go with it when it's taken out (BrushRenderer.removeTree).
+   */
+  own(start: number, t: TreeSpec) {
+    if (!this.treeId || start >= this.vertexCount) return;
+    let id = this.trees.indexOf(t);
+    if (id < 0) id = this.trees.push(t) - 1;
+    for (let i = start; i < this.vertexCount; i++) if (this.treeId[i] < 0) this.treeId[i] = id;
   }
 
   /** The heights of the vertices from 'start' on. */
