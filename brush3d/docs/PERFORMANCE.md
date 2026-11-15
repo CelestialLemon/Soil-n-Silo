@@ -560,6 +560,24 @@ RX 570, 1080p, high, the bot's farm, two runs each, ms (CPU / uncapped):
 Draws a frame on c4 at the widest zoom: 3,043 → 2,025. The GPU's time is unchanged (16 to 23 ms), so the frame is now
 the GPU's.
 
+### The ground's brush baked in the game (#210)
+
+The demo has baked its ground's brush since #6 (above, "The ground's brush, baked"); the game drew it live. Baked in the
+game, over its whole land (about 640 m, so 4096², 16 cm a texel, 64 MB), it now holds up to the game's maps: a cliff's
+faces (drawn flat, a bake can't hold them) and the country past the square are painted live, and an earthwork bakes
+again only the patch it changed (`changeGround`'s area, scissored: the same texels as a whole new bake, checked after
+six buildings' earthworks on c4 and c6). In the demo, a dozen pixels a still change by up to 3 of 255.
+
+A look choice (`?fields=live|baked`, the **Ground** button): the picture is nearly the same (c6, the mean difference
+0.3 to 0.7 of 255; one pixel in 400 more than 8 off, at the edges of long evening shadows and the pale line at the
+water's edge, fainter baked, as in the demo). RX 570, 1080p, the bot's farm, live → baked, GPU ms (uncapped):
+
+| | start view, storm, high | widest, storm, high | closest | storm, medium | storm, low |
+|---|---|---|---|---|---|
+| c4 | 22.3 → 14.5 (27.0 → 18.7) | 21.7 → 14.1 | 12.5 → 6.8 | 19.3 → 11.4 | 14.3 → 9.6 |
+| c6 | 17.5 → 11.2 (21.4 → 15.3) | 18.0 → 12.6 | 12.2 → 8.4 | 15.5 → 9.2 | 11.8 → 7.4 |
+| c8 | 23.4 → 17.9 (31.2 → 24.1) | 22.7 → 17.3 | 14.0 → 11.0 | 20.9 → 15.6 | 16.4 → 12.4 |
+
 ## Quality settings
 
 One look on every machine: a lower quality keeps the paint, light, weather and ink, and draws them with less detail.
