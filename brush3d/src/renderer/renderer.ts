@@ -293,7 +293,7 @@ export class BrushRenderer {
     // The ground's paint reads the tools' overlay and grid (overlay.ts).
     Object.assign(this.shared, this.groundTools.uniforms);
     this.marks = new Marks(this.shared);
-    this.onTop = new OnTop(this.shared.uSunDir, (x, z) => this.landAt(x, z));
+    this.onTop = new OnTop(this.shared.uSunDir, (x, z) => this.landAt(x, z), () => this.landRevision);
     this.picker = new Picker({
       landHit: (ray, into) => this.landHit(ray, into),
       waterAt: (x, z) => this.waterAt(x, z),
@@ -676,8 +676,12 @@ export class BrushRenderer {
   setLand(map: LandMap, look: LandLook = LAND_LOOK) {
     this.painted?.dispose();
     this.painted = new PaintedLand(this, map, look);
+    this.landsSet++;
   }
   private painted: PaintedLand | null = null;
+  private landsSet = 0;
+  /** Changes whenever the land as drawn does (a new land, an earthwork swapped in). */
+  private get landRevision() { return `${this.landsSet} ${this.painted?.revision ?? 0}`; }
 
   /**
    * An earthwork (or anything else that changes the land's tiles): the new values for the tiles in `rect` (LandPatch, each
@@ -762,7 +766,7 @@ export class BrushRenderer {
     const at = this.pickAt(clientX, clientY);
     if (!at) return null;
     this.picker.copy(this.gl, this.gbuffer.textures[1], at.x, at.y, this.height);
-    return this.picker.hit(this.picker.read(this.gl), this.drawnCamera, at.ndc);
+    return this.picker.hit(this.picker.read(this.gl), this.drawnCamera, at.ndc, at.px);
   }
 
   /** The same, without stalling: the answer comes a frame or two later, as of the frame last drawn (for hovering). */
@@ -771,7 +775,7 @@ export class BrushRenderer {
     if (!at) return null;
     this.picker.copy(this.gl, this.gbuffer.textures[1], at.x, at.y, this.height);
     const camera = this.drawnCamera.clone();
-    return this.picker.hit(await this.picker.readAsync(this.gl), camera, at.ndc);
+    return this.picker.hit(await this.picker.readAsync(this.gl), camera, at.ndc, at.px);
   }
 
   /** A point of the page as a pixel of the picture drawn and as the camera's -1..1, or null if off it. */
@@ -779,7 +783,7 @@ export class BrushRenderer {
     if (!this.drawn) return null;
     const r = this.canvas.getBoundingClientRect(), u = (clientX - r.left) / r.width, v = (clientY - r.top) / r.height;
     if (!(u >= 0 && u < 1 && v >= 0 && v < 1)) return null;
-    return { x: u * this.width, y: v * this.height, ndc: new THREE.Vector2(u * 2 - 1, 1 - v * 2) };
+    return { x: u * this.width, y: v * this.height, ndc: new THREE.Vector2(u * 2 - 1, 1 - v * 2), px: new THREE.Vector2(2 / this.width, 2 / this.height) };
   }
 
   /** The water's surface (m) at a point, from the map last sent, or null where it's dry. */

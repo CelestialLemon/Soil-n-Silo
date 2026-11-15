@@ -51,6 +51,7 @@ export class Picker {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private readonly world: PickWorld;
+  private readonly raycaster = new THREE.Raycaster();
 
   constructor(world: PickWorld) {
     this.world = world;
@@ -88,35 +89,43 @@ export class Picker {
   }
 
   /**
-   * What the pixels read show, seen by `camera` (as it drew them) through `ndc` (the pointer, -1..1): the nearest depth of
-   * the nine (so a pointer on a thing's edge picks the thing, not a blend of it and what's behind), or null for the sky.
+   * What the pixels read show, seen by `camera` (as it drew them) through `ndc` (the pointer, -1..1; `px` a pixel's size
+   * in it): the nearest depth of the nine (so a pointer on a thing's edge picks the thing, not a blend of it and what's
+   * behind), seen along that pixel's own line of sight; or null for the sky.
    */
-  hit(pixels: Float32Array, camera: THREE.OrthographicCamera, ndc: THREE.Vector2): PickHit | null {
-    let depth = Infinity;
-    for (let i = 0; i < 9; i++) { const d = pixels[i * 4 + 2]; if (d > 0 && d < depth) depth = d; }
+  hit(pixels: Float32Array, camera: THREE.OrthographicCamera, ndc: THREE.Vector2, px: THREE.Vector2): PickHit | null {
+    let depth = Infinity, nearest = 4;
+    for (let i = 0; i < 9; i++) { const d = pixels[i * 4 + 2]; if (d > 0 && d < depth) { depth = d; nearest = i; } }
     if (!Number.isFinite(depth)) return null;
+    // The pixels were read bottom row first, as the picture's own rows go up the screen.
+    const at = new THREE.Vector3(ndc.x + ((nearest % 3) - 1) * px.x, ndc.y + (Math.floor(nearest / 3) - 1) * px.y, -1);
     // The line of sight from the camera's near plane; the camera is orthographic, so the depth is a distance along it.
-    const ray = new THREE.Ray(new THREE.Vector3(ndc.x, ndc.y, -1).unproject(camera), camera.getWorldDirection(new THREE.Vector3()));
+    const ray = new THREE.Ray(at.unproject(camera), camera.getWorldDirection(new THREE.Vector3()));
     const along = depth - camera.near, point = ray.at(along, new THREE.Vector3()), tol = slack(depth);
-    // A tagged thing whose box (as placed) the point is in, the smallest if several.
-    let best: THREE.Mesh | null = null, bestSize = Infinity;
-    const local = new THREE.Ray(), inv = new THREE.Matrix4(), box = new THREE.Box3(), size = new THREE.Vector3();
+    // A tagged thing the line of sight meets where the depth says it does (the nearest such meeting): its box narrows
+    // them down, its triangles decide, so the empty air in a box (round a turbine's mast, under its blades) isn't it.
+    // A thing's leaves (a planted roof) are dabs drawn bigger than their cards: their box is enough.
+    let best: THREE.Mesh | null = null, off = Infinity;
+    const local = new THREE.Vector3(), inv = new THREE.Matrix4(), box = new THREE.Box3(), hits: THREE.Intersection[] = [];
+    this.raycaster.ray.copy(ray);
     for (const mesh of this.world.tagged()) {
       if (!mesh.visible || !mesh.parent) continue;
       const g = mesh.geometry;
       if (!g.boundingBox) g.computeBoundingBox();
+      // The point in the mesh's own frame, in its box (a little bigger, for the depth's rounding, however it's scaled).
       inv.copy(mesh.matrixWorld).invert();
-      local.copy(ray).applyMatrix4(inv);
-      // Along the ray in the mesh's own frame, where it enters and leaves its box (a little bigger, for the slack).
-      const scale = local.direction.length();
-      local.direction.divideScalar(scale);
-      box.copy(g.boundingBox!).expandByScalar(tol * 0.5);
-      const span = slabs(local, box);
-      if (!span) continue;
-      const t = along * scale;
-      if (t < span[0] - tol * scale || t > span[1] + tol * scale) continue;
-      const s = box.getSize(size), volume = s.x * s.y * s.z;
-      if (volume < bestSize) { best = mesh; bestSize = volume; }
+      local.copy(point).applyMatrix4(inv);
+      const scale = Math.cbrt(Math.abs(mesh.matrixWorld.determinant())) || 1;
+      if (!box.copy(g.boundingBox!).expandByScalar(tol / scale).containsPoint(local)) continue;
+      let d = 0;
+      if (!DABS.has(mesh.userData.kind as string)) {
+        hits.length = 0;
+        mesh.raycast(this.raycaster, hits);
+        d = Infinity;
+        for (const h of hits) d = Math.min(d, Math.abs(h.distance - along));
+        if (d > tol) continue;
+      }
+      if (d < off) { best = mesh; off = d; }
     }
     if (best) return { tag: best.userData.tag, what: 'thing', point };
     // The land, where the line of sight meets it (exact, not the depth's rounding), if that's what shows.
@@ -128,16 +137,5 @@ export class Picker {
   }
 }
 
-/** Where a ray (unit direction) enters and leaves a box, or null if it misses. */
-function slabs(ray: THREE.Ray, box: THREE.Box3): [number, number] | null {
-  let t0 = -Infinity, t1 = Infinity;
-  for (const k of ['x', 'y', 'z'] as const) {
-    const o = ray.origin[k], d = ray.direction[k];
-    if (Math.abs(d) < 1e-12) { if (o < box.min[k] || o > box.max[k]) return null; continue; }
-    let a = (box.min[k] - o) / d, b = (box.max[k] - o) / d;
-    if (a > b) [a, b] = [b, a];
-    t0 = Math.max(t0, a); t1 = Math.min(t1, b);
-    if (t0 > t1) return null;
-  }
-  return [t0, t1];
-}
+/** The kinds drawn as dabs on cards, bigger than the cards themselves. */
+const DABS = new Set(['foliage', 'debris']);

@@ -116,18 +116,21 @@ const UP = new THREE.Vector3(0, 1, 0);
 export class OnTop {
   private readonly previews = new THREE.Scene();
   private readonly lines = new THREE.Scene();
-  private readonly groups = new Map<string, THREE.Mesh>();
+  /** Each group's lines and their mesh, and the land they were laid on (a group with a point on the land is laid again when it moves). */
+  private readonly groups = new Map<string, { lines: readonly Line[]; mesh: THREE.Mesh; land: string | null }>();
   private readonly aux: THREE.IUniform<THREE.Texture | null> = { value: null };
   private readonly screen = { value: new THREE.Vector2(1, 1) };
   private readonly sunDir: THREE.IUniform<THREE.Vector3>;
   private readonly depthOnly: THREE.ShaderMaterial;
   private readonly lineMaterial: THREE.ShaderMaterial;
   private readonly land: (x: number, z: number) => number;
+  private readonly landRevision: () => string;
 
-  /** `sunDir` is the scene's (shared); `land` the land's height as drawn. */
-  constructor(sunDir: THREE.IUniform<THREE.Vector3>, land: (x: number, z: number) => number) {
+  /** `sunDir` is the scene's (shared); `land` the land's height as drawn, which changes with `landRevision`. */
+  constructor(sunDir: THREE.IUniform<THREE.Vector3>, land: (x: number, z: number) => number, landRevision: () => string) {
     this.sunDir = sunDir;
     this.land = land;
+    this.landRevision = landRevision;
     this.depthOnly = new THREE.ShaderMaterial({
       glslVersion: THREE.GLSL3, vertexShader: PREVIEW_VERT, fragmentShader: DEPTH_FRAG, colorWrite: false, side: THREE.DoubleSide,
     });
@@ -169,14 +172,15 @@ export class OnTop {
   /** The lines of a group (a group's lines replace its last), or none. */
   setLines(lines: readonly Line[] | null, group: string) {
     const was = this.groups.get(group);
-    if (was) { this.lines.remove(was); was.geometry.dispose(); this.groups.delete(group); }
+    if (was) { this.lines.remove(was.mesh); was.mesh.geometry.dispose(); this.groups.delete(group); }
     if (!lines?.length) return;
     const g = this.build(lines);
     if (!g) return;
     const mesh = new THREE.Mesh(g, this.lineMaterial);
     mesh.frustumCulled = false;
     this.lines.add(mesh);
-    this.groups.set(group, mesh);
+    const draped = lines.some((l) => l.points.some((p) => p.y === undefined));
+    this.groups.set(group, { lines, mesh, land: draped ? this.landRevision() : null });
   }
 
   get any() { return this.previews.children.length > 0 || this.lines.children.length > 0; }
@@ -184,6 +188,9 @@ export class OnTop {
   /** Draws it all over the finished picture in `target` (null: the canvas), hidden where `aux`'s depth shows the world nearer. */
   draw(gl: THREE.WebGLRenderer, camera: THREE.Camera, aux: THREE.Texture, target: THREE.WebGLRenderTarget | null, width: number, pixelRatio: number) {
     if (!this.any) return;
+    // Lines on the land laid again on it once it's moved (an earthwork swapped in).
+    const land = this.landRevision();
+    for (const [group, g] of [...this.groups]) if (g.land !== null && g.land !== land) this.setLines(g.lines, group);
     this.aux.value = aux;
     this.screen.value.set(width, pixelRatio);
     gl.setRenderTarget(target);
