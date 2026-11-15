@@ -450,6 +450,9 @@ Not for the game's players, but kept public for the tools that judge renderer wo
 
 - `r.timer = new PassTimer(...)`: the cost of each pass of a frame, on the GPU and the CPU (`docs/PERFORMANCE.md`).
 - `r.output`: draw the frame into a target rather than the canvas (profiling).
+- `runProfile(r, draw, restore, cases, progress?, frames?)`, `profileTable(rows)`, `PASSES`, `PROFILE_KINDS` and the
+  `ProfileCase` / `ProfileRow` types: the profile the demo's and the game's `?profile` both run (each case's GPU ms per
+  pass, the CPU's ms and the uncapped frame; a case may set its own `quality` preset, `docs/PERFORMANCE.md`).
 - `r.setVisible(kind, on)`: show or hide a kind (`'ground'`, `'ink'`, `'foliage'`, `'rain'`...), for A/B comparisons.
 - `r.settings.falling` (leave out what's in the air), `prepass`, `waterScissor`, `equalDepth`, `shelterDebug`, `grain`.
 - `r.setTime(seconds)`: set the renderer's clock without drawing, so a map sent next starts its ease from

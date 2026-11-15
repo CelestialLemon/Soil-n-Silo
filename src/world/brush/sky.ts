@@ -41,6 +41,9 @@ export class BrushSky {
     r.setSeason({ season, character, sunrise: sun.rise, sunset: sun.set });
   }
 
+  /** The weather sent at once at the next sync, not eased to (something else sent the renderer a weather: the profile, #210). */
+  resend() { this.first = true; }
+
   sync(s: GameState, hour: number, speed: number) {
     const r = this.r, sc = s.scenario, w = weatherNow(s), fall = w.precip, q = (n: number) => Math.round(n * 100) / 100;
     const weather: Weather = {

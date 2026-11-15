@@ -55,3 +55,4 @@ export { loadModel, ModelSet, ModelParts } from './kit/model';
 
 // ---- Tools: measuring a frame ----
 export { PassTimer, type FrameTimes } from './renderer/timer';
+export { PASSES, PROFILE_KINDS, profileTable, runProfile, type ProfileCase, type ProfileRow } from './renderer/profile';

@@ -2,14 +2,14 @@ import {
   hoursOf, type HourName, CHARACTERS, clockHour, SEASONS, type Character, type Season, BrushRenderer, type DrawnKind, QUALITY, type QualityName,
   TOUR, type Stand, MAX_ZOOM, MIN_ZOOM, cloudDriftSpeed, WEATHER_PRESETS, type CloudDrift, type Haze, type HazeKind,
   type Weather, type WeatherName, steadyWind, WIND_SCALE, windName, type WindStrength, startWind, WIND_TICK,
-  type WindGoal, type WindSave,
+  type WindGoal, type WindSave, profileTable, runProfile, type ProfileCase, type ProfileRow,
 } from '../index';
 import { lightningHud, setupLightning, stormLightning } from './lightning';
 import { buildMeadow } from './scenes/meadow';
 import { buildFarm } from './scenes/farm';
 import { buildWaterPatch } from './scenes/waterPatch';
 import { buildGallery } from './scenes/gallery';
-import { defaultCases, runProfile, table, type ProfileCase, type ProfileRow } from './profile';
+import { defaultCases } from './profile';
 import { SPEEDS, SPELLS, TICK, timelineAt, timelineClock, timelineFrost, timelineLightning, timelineLying, timelinePhase, timelineWater, timelineWet, timelineWind, type SpellName } from './timeline';
 import { DemoWater, USUAL_WATER, type WaterState } from './water';
 import { DemoGround, type GroundState } from './ground';
@@ -671,7 +671,7 @@ if (params.has('shot')) {
     __renderer: renderer,
     __draw: draw,
     __profile: (cases?: ProfileCase[]) => profile(cases),
-    __profileTable: table,
+    __profileTable: profileTable,
     __shot: async () => { await draw(); return canvas.toDataURL('image/png'); },
     // A scripted storm's lightning at a time, strikes and flickers a minute (tools/video.ts calls them, as the game would).
     __timelineLightning: (time: number, speed?: number, spell?: SpellName) => timelineLightning(time, speed, spell),
@@ -720,8 +720,8 @@ function profilePanel() {
     run.disabled = true; copy.disabled = true;
     const cases = defaultCases(), rows: ProfileRow[] = [], head = about();
     out.textContent = `${head}\n\nRunning…`;
-    await profile(cases, (row, i) => { rows.push(row); out.textContent = `${head}\n\n${table(rows)}\n\n${i + 1} of ${cases.length}…`; });
-    out.textContent = `${head}\n\n${table(rows)}\n\nms per frame; GPU per pass, CPU for the whole frame; uncapped: frames drawn back to back.`;
+    await profile(cases, (row, i) => { rows.push(row); out.textContent = `${head}\n\n${profileTable(rows)}\n\n${i + 1} of ${cases.length}…`; });
+    out.textContent = `${head}\n\n${profileTable(rows)}\n\nms per frame; GPU per pass, CPU for the whole frame; uncapped: frames drawn back to back.`;
     run.disabled = false; copy.disabled = false;
   };
   copy.onclick = () => navigator.clipboard.writeText(out.textContent ?? '');

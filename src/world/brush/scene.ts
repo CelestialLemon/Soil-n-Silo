@@ -10,6 +10,7 @@ import { COUNTRY } from '../terrain.ts';
 import { BrushCover } from './cover.ts';
 import { BrushLand } from './land.ts';
 import { BrushLens } from './lens.ts';
+import { gameCases, profileGame, profilePanel, type LoadTimes, type ProfileHost } from './profile.ts';
 import { RISE, TILE } from './scale.ts';
 import { followSettings } from './settings.ts';
 import { BrushSky } from './sky.ts';
@@ -38,21 +39,31 @@ import { Wild } from './wild.ts';
 //   tools.ts   the game's tools on the picture: picking, the marks on things, the build preview and frames, the overlays,
 //              the grid, routes and power lines, the tile cursor, and where the labels and markers go (#206)
 //   settings.ts  brush3d's settings from the game's settings panel: graphics quality, rain and snow, lightning (#209)
+//   profile.ts   what a frame costs on this map, pass by pass, and how long it took to load (`?profile`, #210)
 //
 // This file only wires the pieces into the Scene: a task adds its piece and its few lines here.
 
 export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings: SettingsStore, start: { x: number; z: number }, changed: () => void): Scene {
   const map = state.map;
+  // How long each piece takes to make (the load, #210's ?profile).
+  const pieces: Record<string, number> = {};
+  let mark = performance.now();
+  const timed = <T>(name: string, make: () => T): T => { const v = make(), now = performance.now(); pieces[name] = now - mark; mark = now; return v; };
   // The shadow follows the view over the map. The quality (the shadow's detail, the pixels drawn: on a high-DPI screen
   // at most 1080p's, scaled up, brush3d-renderer#28) is the player's setting.
-  const r = new BrushRenderer(canvas, { shadowFollow: true });
+  const r = timed('renderer', () => new BrushRenderer(canvas, { shadowFollow: true }));
   followSettings(r, settings);
-  const land = generateLand(state.scenario, COUNTRY), lie = new Lie(state, land);
-  const ground = new BrushLand(r, state, land, lie), sky = new BrushSky(r, state), cover = new BrushCover(r, land), water = new BrushWater(r, land, lie);
-  const things = new Things(r, lie), wild = new Wild(r, lie, land, state), wind = new BrushWind(r, state, land);
+  const land = timed('map', () => generateLand(state.scenario, COUNTRY)), lie = timed('lie', () => new Lie(state, land));
+  const ground = timed('land', () => new BrushLand(r, state, land, lie)), sky = new BrushSky(r, state), cover = new BrushCover(r, land), water = timed('water', () => new BrushWater(r, land, lie));
+  const things = new Things(r, lie), wild = timed('wild', () => new Wild(r, lie, land, state)), wind = timed('wind', () => new BrushWind(r, state, land));
   const lens = new BrushLens(r, canvas);
   const camera = new Camera(lens, canvas, map, start, changed);
-  const tools = new BrushTools(r, state, things, lie);
+  const tools = timed('tools', () => new BrushTools(r, state, things, lie));
+  const began = mark - Object.values(pieces).reduce((a, b) => a + b, 0);
+  /** The load's times, once the first frame is drawn; and while a profile runs, the game's loop stands still. */
+  let load: LoadTimes | null = null, firstFrame = 0, models = 0, held = false;
+  // From the page's start to the later of the two: the first frame, the models in.
+  void things.ready.then(() => { models = performance.now() - began; if (load) { load.models = models; load.sinceStart = performance.now(); } });
 
   const heights: Heights = {
     at: (x, z) => lie.y(x, z) * RISE,
@@ -62,10 +73,19 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
     tile: (x, y, u, v) => lie.tileY(x, y, u, v) * RISE,
   };
   const gl = r.gl.getContext();
+  const profile: ProfileHost = {
+    r, state: () => current, load: () => load,
+    // Held, nothing is sent; let go, everything is sent again (the case's weather and ground were the profile's).
+    hold: (on) => { held = lens.held = on; if (!on) { sky.resend(); cover.resend(); } },
+  };
+  let current = state;
+  if (new URLSearchParams(location.search).has('profile')) profilePanel(profile);
   return {
-    camera, heights, picker: tools.picker, preview: tools.preview,
+    camera, heights, picker: tools.picker, preview: tools.preview, held: () => held,
     heightOf: (type) => thingHeight(type) / TILE,
     sync(s, f) {
+      current = s;
+      if (held) return;
       sky.sync(s, f.hour, f.speed);
       wind.sync(s);
       ground.sync(s);
@@ -81,8 +101,11 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
     netLabels: () => tools.netLabels(),
     markerSpots: (s) => tools.markerSpots(s),
     render(time, f) {
+      if (held) return;
       tools.cursor(f.marks, f.refused);
+      const t0 = performance.now();
       r.render(time);
+      if (!load) { firstFrame = performance.now() - t0; load = { pieces, firstFrame, models, sinceStart: performance.now() }; }
       f.lap('geometry');
       f.pick();
     },
@@ -101,6 +124,11 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
       resetCounts: (on) => { r.gl.info.autoReset = !on; if (on) r.gl.info.reset(); },
     },
     // The pieces too, for tools/hitches.ts to time each one's sync.
-    debug: { renderer: r, lens, wind, pieces: { sky, wind, ground, cover, water, things, wild, tools } },
+    // The profile too (tools/framerate.ts: `game.profile(cases?)` of `game.cases()`, `game.load()`).
+    debug: {
+      renderer: r, lens, wind, pieces: { sky, wind, ground, cover, water, things, wild, tools },
+      profile: (cases?: Parameters<typeof profileGame>[1]) => profileGame(profile, cases), load: () => load,
+      cases: () => gameCases(current.scenario.climate.sun.set),
+    },
   };
 }

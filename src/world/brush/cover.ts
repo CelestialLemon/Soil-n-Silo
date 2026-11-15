@@ -57,7 +57,7 @@ export class BrushCover {
   private readonly r: BrushRenderer;
   private readonly land: Land;
   private readonly grid: LandGrid;
-  private readonly send = new Sender();
+  private send = new Sender();
   /** How deep the snow drifts on each land tile, against the valley's depth. */
   private readonly drift: Float32Array;
   private at = NaN;
@@ -70,6 +70,9 @@ export class BrushCover {
       this.drift[y * land.width + x] = DRIFT.thin + (DRIFT.deep - DRIFT.thin) * fbm2(x / DRIFT.size, y / DRIFT.size, land.seed + 331);
     }
   }
+
+  /** Sends it all again at the next sync, at once (something else sent the renderer a ground: the profile, #210). */
+  resend() { this.send = new Sender(); }
 
   /** Sends what lies on the land as the game has it now, if it changed. */
   sync(s: GameState) {

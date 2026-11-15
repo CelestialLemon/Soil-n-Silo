@@ -9,6 +9,8 @@ import { TILE } from './scale.ts';
 
 export class BrushLens implements Lens {
   onFit = () => {};
+  /** While set, the game's camera leaves the view where it is (a profile places it itself, #210). */
+  held = false;
   private readonly r: BrushRenderer;
   private readonly canvas: HTMLCanvasElement;
 
@@ -24,6 +26,7 @@ export class BrushLens implements Lens {
   }
 
   place(target: THREE.Vector3, yaw: number, _pitch: number, zoom: number) {
+    if (this.held) return;
     // The pitch is brush3d's PITCH, the same 30°.
     this.r.view.place({ x: target.x * TILE, y: target.y * TILE, z: target.z * TILE, heading: yaw, zoom: zoom / TILE });
   }
