@@ -110,6 +110,17 @@ only, never saved, the map itself unchanged): the river runs on out of sight, a 
 thicken and the ground rises into wooded hills, with an apron of distant woods beyond them. Everything past the edge is a
 shade duller, so where you can build still reads at a glance. Height on the map itself followed on 2026-10-17, below.
 
+## brush3d's settings in the game (2026-11-15)
+
+On the brush3d path (`?renderer=brush3d`, #209), the settings panel's Game tab has brush3d's settings in place of the pixel
+size, saved with the game's other settings and taking effect at once: **Graphics** (high, medium, low: presets for the three
+machines, high the full picture and the default; medium halves the shadow and shelter maps' detail, about 3.3 ms less on
+the RX 570, for integrated graphics; low also draws 2× multisampling and at most 1600 × 900's pixels), **Rain and snow**
+(full, or light: about a third of the drops and flakes) and **Lightning flashes** (full, which stays within the flash-safety
+limits, gentle or off; the developer's decision on #209). The pixel path keeps its pixel size until the swap (#211).
+`src/world/brush/settings.ts` sends them to the renderer; brush3d's `QUALITY` and `setQuality` change the quality while the
+game runs (`brush3d/docs/PERFORMANCE.md`).
+
 ## The game's weather, drawn by brush3d (2026-11-14)
 
 On the brush3d path (`?renderer=brush3d`), everything brush3d can draw now comes from the game's own state (#207, #223 and
@@ -125,7 +136,7 @@ is worked out from the game, as looks only, in `src/game/looks.ts`:
 - mud on the bare earth as it wets;
 - a river browned by heavy rain, clearing over the day after.
 No rule reads any of it; a test guards that, and the bots give identical results. What the richer weather might do to
-play is parked in #214. The player's flash setting for lightning is #209's.
+play is parked in #214. The player's flash setting for lightning is in the settings panel (#209).
 
 ## First light: the game drawn by brush3d (2026-11-14)
 

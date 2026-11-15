@@ -4,6 +4,7 @@
 
 // ---- The renderer ----
 export { BrushRenderer, FALLING, type DrawnKind, type MeshOptions, type RendererOptions, type Settings } from './renderer/renderer';
+export { QUALITY, type Quality, type QualityName } from './renderer/quality';
 export type { MaterialKind } from './renderer/materials';
 export type { Cover } from './renderer/shelter';
 

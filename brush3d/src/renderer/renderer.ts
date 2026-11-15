@@ -17,6 +17,7 @@ import { Rain } from './rain';
 import { Snowfall } from './snowfall';
 import { ShelterMap, type Cover } from './shelter';
 import type { PassTimer } from './timer';
+import type { Quality } from './quality';
 import { WeatherState, type Weather } from './weather';
 import { airLook, HEAT, heatShare } from './air';
 import { GOLDEN, goldenLook, goldenShape, goldenShare } from './golden';
@@ -699,6 +700,30 @@ export class BrushRenderer {
     this.reflectTarget.setSize(hw, hh);
     this.shared.uScreen.value.set(this.width, this.height);
     (this.post.uniforms.uResolution.value as THREE.Vector2).set(this.width, this.height);
+  }
+
+  /** The quality drawn at (see setQuality). */
+  get quality(): Quality {
+    return { samples: this.gbuffer.samples, shadowMapSize: this.shadowTarget.width, shelterSize: this.shelter.size, maxPixels: this.maxPixels };
+  }
+
+  /**
+   * Draws at `q` from the next frame (#209: the game's settings panel, QUALITY's presets), without a reload: only what
+   * changed is made again (the frame's buffers, the shadow map, the shelter map, which is then drawn again).
+   */
+  setQuality(q: Quality) {
+    const now = this.quality;
+    if (q.samples !== now.samples) { this.gbuffer.samples = q.samples; this.gbuffer.dispose(); }
+    if (q.shadowMapSize !== now.shadowMapSize) {
+      this.shadowTarget.setSize(q.shadowMapSize, q.shadowMapSize);
+      this.shared.uShadowTexel.value.set(1 / q.shadowMapSize, 1 / q.shadowMapSize);
+    }
+    this.shelter.resize(q.shelterSize);
+    if (q.maxPixels !== now.maxPixels) {
+      this.maxPixels = q.maxPixels;
+      const { width, height } = this.view.screen;
+      if (width > 0 && height > 0) this.resize(width, height);
+    }
   }
 
   /** The hour's look; the weather is laid over it as each frame is drawn. */

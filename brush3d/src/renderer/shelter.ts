@@ -98,11 +98,11 @@ export class ShelterMap {
   private overlayScene = new THREE.Scene();
   private box = new THREE.Box3();
 
-  readonly size: number;
+  /** Texels across (see resize). */
+  get size() { return this.full.width; }
 
   /** `size`: texels across (docs/PERFORMANCE.md: 1024 full quality, 512 reduced). */
   constructor(size = 1024) {
-    this.size = size;
     const target = () => {
       // Only the depth is read; the colour it must have is the smallest there is, a byte a texel.
       const t = new THREE.WebGLRenderTarget(size, size, { depthBuffer: true, format: THREE.RedFormat });
@@ -128,6 +128,14 @@ export class ShelterMap {
     const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.overlay);
     quad.frustumCulled = false;
     this.overlayScene.add(quad);
+  }
+
+  /** Makes the map `size` texels across (the quality, #209), drawn again before it's next read. */
+  resize(size: number) {
+    if (size === this.size) return;
+    for (const t of [this.full, this.partial, this.land]) t.setSize(size, size);
+    this.uniforms.uShelterTexels.value = size;
+    this.dirty = true;
   }
 
   /** Something under cover changed (placed, removed, moved, shown or hidden): the map is drawn again before it's next read. */
