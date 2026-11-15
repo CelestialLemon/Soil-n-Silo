@@ -1,10 +1,11 @@
 import * as THREE from 'three';
-import { loadModel, MeshBuilder, MODELS, ModelSet, PLAIN, srgb, type BrushRenderer } from '../../../brush3d/src/index.ts';
+import { loadModel, MeshBuilder, MODELS, ModelSet, PLAIN, srgb, type BrushRenderer, type ModelParts } from '../../../brush3d/src/index.ts';
 import { BUILDINGS, type BuildingId } from '../../game/data.ts';
 import { growsCrops, layoutOf, sizeOf, type Building, type GameState } from '../../game/state.ts';
 import { standY, type Lie } from '../ground.ts';
 import { MODEL_OF, TRUCK_MODEL, YAW } from './catalog.ts';
 import { RISE, TILE } from './scale.ts';
+import { partsLook, stateOf, type ThingState } from './states.ts';
 
 // What the game builds and drives, as brush3d's solarpunk models (#203, brush3d/docs/MODELS.md): each building its model
 // on its footprint, turned the way the game turns it (catalog.ts), standing level at the height the game levels it to; each
@@ -21,10 +22,13 @@ import { RISE, TILE } from './scale.ts';
 // truck draws the one truck shape (made once, never disposed), placed by its mesh's position and turn: a truck bought
 // costs a mesh, not a model.
 //
-// Still to come: the moving parts and building states (#205: rotors, wheels and millstones are drawn at rest and every
-// `running_*` look as if working, as in the demo): they go on the building's record (Drawn), made with it and dropped
-// with it, and change each frame without making the building again (its key stays as it is). Each mesh is tagged with
-// its building's or truck's id for the tools' picks and marks (tools.ts, #206: `meshesOf`, `changes`). The water wheel
+// Moving parts and building states (#205, states.ts): each building's model parts (brush3d's ModelParts) are on its record
+// (Drawn), made with it and dropped with it, and told how they are at each step of the game without making the building
+// again (its key stays as it is): rotors, wheels and stones turning at the pace the game gives, the running looks shown
+// while it works, a battery's charge rings lit as it fills. The renderer eases each part to its pace and turns it on its
+// own clock: at the game's 2× or 16× a rotor turns as at 1× (faster would strobe), and while the game is paused they come
+// to rest. The trucks' wheels don't turn (every truck draws one shared shape). Each mesh is tagged with its building's or
+// truck's id for the tools' picks and marks (tools.ts, #206: `meshesOf`, `changes`). The water wheel
 // dips 0.87 m below its bank into a race the land has to cut for it (`wheelRace`, the land's: #202). Trees, rocks,
 // saplings and the fields' crops are wild.ts's.
 
@@ -56,11 +60,11 @@ function box(b: MeshBuilder, w: number, h: number, d: number, at: THREE.Matrix4,
 }
 
 /**
- * A building or truck as drawn: its meshes, and the key of what they were made from (made again only when it changes).
- * #205's moving parts and state looks go here, beside the meshes: made in `building` and taken out in `drop`, changed each
- * frame in `sync` without touching the key.
+ * A building or truck as drawn: its meshes, and the key of what they were made from (made again only when it changes);
+ * a building's model parts (#205), made with its meshes and told how they are at each step (`syncParts`), and the state
+ * it's read in.
  */
-interface Drawn { meshes: THREE.Mesh[]; key: string }
+interface Drawn { meshes: THREE.Mesh[]; key: string; parts?: ModelParts; state?: ThingState }
 
 const UP = new THREE.Vector3(0, 1, 0), ONE = new THREE.Vector3(1, 1, 1);
 
@@ -77,6 +81,9 @@ export class Things {
    * pointer may have changed (tools.ts, #206). Trucks driving on are not counted.
    */
   changes = 0;
+  /** The game's clock at the last frame (to know it's paused), and the step its buildings' parts were last told. */
+  private clock = -1;
+  private told = -1;
   /** The truck's shape, model or stand-in, made once and shared by every truck (never disposed: it's small). */
   private readonly truckShapes = new Map<string, THREE.BufferGeometry>();
 
@@ -99,7 +106,33 @@ export class Things {
   sync(s: GameState) {
     const v = layoutOf(s);
     if (v !== this.layout) { this.layout = v; this.syncBuildings(s); }
+    this.syncParts(s);
     this.syncTrucks(s);
+  }
+
+  /** The state a building is read in now (states.ts), if it's drawn. */
+  stateOf(id: number): ThingState | undefined { return this.buildings.get(id)?.state; }
+
+  /**
+   * Tells each building's parts how they are, at each step of the game (and at once for one just made): their pace, the
+   * running look, the charge. While the game is paused (its clock stands still), every part comes to rest.
+   */
+  private syncParts(s: GameState) {
+    const clock = s.time + s.carry, paused = clock === this.clock;
+    this.clock = clock;
+    if (paused && this.told !== -1) for (const d of this.buildings.values()) d.parts?.spin(0);
+    const fresh = !paused && this.told !== s.time;
+    this.told = paused ? -1 : s.time;
+    for (const b of s.buildings) {
+      const d = this.buildings.get(b.id);
+      // Each step, and at once for one just made (its parts start at rest, as if working).
+      if (!d || (!fresh && d.state !== undefined)) continue;
+      d.state = stateOf(b);
+      if (!d.parts?.any) continue;
+      const look = partsLook(s, b);
+      d.parts.spin(paused ? 0 : look.pace);
+      d.parts.show({ running: look.running, charge: look.charge });
+    }
   }
 
   /** A building's or truck's meshes as drawn (the tools mark them, #206), or none. */
@@ -128,26 +161,26 @@ export class Things {
       const was = this.buildings.get(b.id);
       if (was?.key === key) continue;
       if (was) this.drop(was.meshes);
-      this.buildings.set(b.id, { meshes: this.building(b, n, y), key });
+      this.buildings.set(b.id, { ...this.building(b, n, y), key });
       this.changes++;
     }
     for (const [id, was] of this.buildings) if (!seen.has(id)) { this.drop(was.meshes); this.buildings.delete(id); }
   }
 
-  /** A building's meshes: its model (inked, its planted surfaces and its plants painted), or its stand-in. */
-  private building(b: Building, n: number, y: number): THREE.Mesh[] {
+  /** A building's meshes: its model (inked, its planted surfaces and its plants painted) and its parts, or its stand-in. */
+  private building(b: Building, n: number, y: number): { meshes: THREE.Mesh[]; parts?: ModelParts } {
     const name = MODEL_OF[b.type], model = name ? this.models?.get(name) : undefined;
     const centre = new THREE.Vector3((b.x + n / 2) * TILE, y, (b.y + n / 2) * TILE);
     if (model) {
       // Its plants are seeded by where it stands, so it grows the same ones each time it's drawn there.
       const set = new ModelSet(1 + b.x * 7919 + b.y * 104729);
-      set.add(model, new THREE.Matrix4().compose(centre, new THREE.Quaternion().setFromAxisAngle(UP, YAW[b.rot]), ONE));
+      const parts = set.add(model, new THREE.Matrix4().compose(centre, new THREE.Quaternion().setFromAxisAngle(UP, YAW[b.rot]), ONE));
       // Tagged with its id: a pick on it gives the building (#206).
-      return set.addTo(this.r, b.id);
+      return { meshes: set.addTo(this.r, b.id), parts };
     }
     const side = n * TILE - 2 * INSET, mb = new MeshBuilder('ink');
     box(mb, side, standInHeight(b.type), side, new THREE.Matrix4().makeTranslation(centre), growsCrops(b) && b.type === 'field' ? FIELD : GREY);
-    return [this.r.add(mb.build(), 'ink', { tag: b.id })];
+    return { meshes: [this.r.add(mb.build(), 'ink', { tag: b.id })] };
   }
 
   /**
