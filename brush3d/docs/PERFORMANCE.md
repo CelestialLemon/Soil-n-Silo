@@ -436,15 +436,30 @@ Not tuned further yet: thinner woods, fewer dabs in the shadow pass or merged me
 
 ## Quality settings
 
-One look on every machine for now. These are the knobs a weather task builds in, so a machine that misses its 45 fps can
-drop detail without changing the look:
+One look on every machine: a lower quality keeps the paint, light, weather and ink, and draws them with less detail.
+The game's settings panel has three presets (`QUALITY`, `src/renderer/quality.ts`; `r.setQuality`, which changes them
+while the game runs, #209), and the rain and snow on their own (`settings.fallingShare`):
 
-| | full | reduced |
-|---|---|---|
-| Raindrops, snowflakes on screen | all | about a third |
-| Shelter map size | 1024² | 512² |
-| Shadow map | 4096² (farm) | 2048² |
-| Weather seen in the reflection | rain rings, fog | fog only |
+| | high | medium | low |
+|---|---|---|---|
+| For | the RX 570 PC, the MacBook Air (the default) | integrated graphics: the Arc 140T laptop | when medium still misses 45 fps |
+| Shadow map | 4096² | 2048² (softer, slightly stepped shadow edges) | 2048² |
+| Shelter map | 1024² | 512² | 512² |
+| Multisampling | 4× | 4× | 2× (edges and ink a touch rougher) |
+| Most pixels drawn, scaled up to the screen | 1920 × 1080's | 1920 × 1080's | 1600 × 900's (a slightly softer frame) |
+| The farm at 1080p in a storm, RX 570, GPU | 14.65 ms | 11.31 ms | 9.76 ms |
+
+Measured with `node brush3d/tools/profile.ts out "scene=farm&quality=high" "scene=farm&quality=medium" "scene=farm&quality=low"`
+(the demo's `?quality=`; with it the profile's 1440p and 4K cases are drawn at the preset's pixels too). Each knob alone,
+on the farm at 1080p in a storm (14.64 ms): the 2048² shadow map 11.31 (-3.3), 2× multisampling 14.03 (-0.6), none 12.83
+(-1.8, but the ink's edges go ragged, so no preset drops it), the 512² shelter map 14.65 (it costs only when it's drawn
+again, after cover changes: 1.56 ms to 0.93 a time). Medium's 3.3 ms is about 6 on the laptop; the laptop's own numbers
+are the developer's to take (`?profile&quality=medium` on a preview of the demo).
+
+The rain and snow setting draws all the strokes or about a third (`fallingShare` 1 or 0.33): it barely costs here (the
+farm's storm 14.67 with the rain, 14.65 without), so it's there for a player who'd rather see less in the air, and for
+the laptop. Still a knob to build if a machine needs it: the weather in the water's reflection (rain rings and fog, or
+fog only).
 
 ## The cuts
 

@@ -12,6 +12,7 @@ import { BrushCover } from './cover.ts';
 import { BrushLand } from './land.ts';
 import { BrushLens } from './lens.ts';
 import { RISE, TILE } from './scale.ts';
+import { followSettings } from './settings.ts';
 import { BrushSky } from './sky.ts';
 import { thingHeight, Things } from './things.ts';
 import { BrushWater } from './water.ts';
@@ -35,16 +36,16 @@ import { Wild } from './wild.ts';
 //   grid.ts    the grid cover.ts and water.ts send their maps on
 //   (tools)    picking, highlights, the build preview, overlays, routes and power lines are #206's: the picker, preview,
 //              show() and the labels below are stubs it fills (a tools.ts here)
-//   (settings) brush3d's settings and quality presets in the game's settings panel are #209's (a settings.ts here)
+//   settings.ts  brush3d's settings from the game's settings panel: graphics quality, rain and snow, lightning (#209)
 //
 // This file only wires the pieces into the Scene: a task adds its piece and its few lines here.
 
-export function brushScene(state: GameState, canvas: HTMLCanvasElement, _settings: SettingsStore, start: { x: number; z: number }, changed: () => void): Scene {
+export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings: SettingsStore, start: { x: number; z: number }, changed: () => void): Scene {
   const map = state.map;
-  // The shadow follows the view over the map; on a high-DPI screen it draws 1080p's pixel count, scaled up (the demo's,
-  // brush3d#6, brush3d#28).
-  const r = new BrushRenderer(canvas, { shadowFollow: true, shadowMapSize: 4096 });
-  r.maxPixels = 1920 * 1080;
+  // The shadow follows the view over the map. The quality (the shadow's detail, the pixels drawn: on a high-DPI screen
+  // at most 1080p's, scaled up, brush3d-renderer#28) is the player's setting.
+  const r = new BrushRenderer(canvas, { shadowFollow: true });
+  followSettings(r, settings);
   const land = generateLand(state.scenario, COUNTRY), lie = new Lie(state, land);
   const ground = new BrushLand(r, state, land, lie), sky = new BrushSky(r, state), cover = new BrushCover(r, land), water = new BrushWater(r, land, lie);
   const things = new Things(r, lie), wild = new Wild(r, lie, land, state);
@@ -106,7 +107,7 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, _setting
           glRenderer: String(gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER)), glVendor: String(gl.getParameter(dbg ? dbg.UNMASKED_VENDOR_WEBGL : gl.VENDOR)),
           userAgent: navigator.userAgent, viewport: [window.innerWidth, window.innerHeight], devicePixelRatio: window.devicePixelRatio,
           // The pixels drawn; brush3d draws at the screen's resolution, no art pixels.
-          art: [r.width, r.height], supersample: 1, shadowMapSize: 4096, pixelSize: 1,
+          art: [r.width, r.height], supersample: 1, shadowMapSize: r.quality.shadowMapSize, pixelSize: 1,
           timerQueries: !!gl.getExtension('EXT_disjoint_timer_query_webgl2'),
         };
       },

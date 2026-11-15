@@ -30,6 +30,10 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      is driven by the game's state. That covers `setWeather` (with `storm` and `sunUnder`), `setGround` (snow, frost, wet
      and mud, a cell a tile over the whole land), `setWater` (the river, floods, ice and muddy water) and `strike`/`flicker`
      (seeded by game time). The renderer didn't change; the game's side is `src/world/brush/` and `src/game/looks.ts`.
+  5. Soil-n-Silo#209 the settings in the game (done 2026-11-15): graphics quality presets for the three machines
+     (`QUALITY.high|medium|low`, changed while the game runs with `r.setQuality`; `docs/PERFORMANCE.md`), how much rain and
+     snow falls (`fallingShare`) and the lightning flashes (`lightning.setting`, which stays where it is) in the game's
+     settings panel. The demo takes `?quality=` too; its frames are unchanged.
 - **Weather, epic #3** (planned 2026-10-30): season, weather and hour change the whole picture. The decisions are in #3; in
   short, the game owns the weather's state and logic and the renderer only draws it. The order:
   1. #6 performance: measure the frame and set the weather's budget (done 2026-10-30: the farm 17.5 ms on the laptop,

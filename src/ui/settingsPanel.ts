@@ -2,10 +2,12 @@ import { ACTIONS, GROUPS, SLOTS, assign, bindable, canon, overridesOf, resolve, 
 import { fill, h, icon } from './dom.ts';
 import { pct } from './format.ts';
 import { labelOf, nameOf } from './keyhints.ts';
-import { FRAME_STATS_MODES, PIXEL_SIZES, UI_SIZES, type Settings, type SettingsStore } from './settings.ts';
+import { FALLINGS, FLASHES, FRAME_STATS_MODES, PIXEL_SIZES, QUALITIES, UI_SIZES, type Settings, type SettingsStore } from './settings.ts';
 
-// The settings panel, opened from the level select and the pause screen: a Game tab (interface size, pixel size, the switches,
-// the frame rate readout) and a Keys tab, where each action's keys are changed (click a key, press the new one).
+// The settings panel, opened from the level select and the pause screen: a Game tab (interface size, the renderer's settings,
+// the switches, the frame rate readout) and a Keys tab, where each action's keys are changed (click a key, press the new
+// one). The renderer's settings are those of the one drawing the game until the swap (#211): the pixel renderer's pixel
+// size, or brush3d's graphics quality, rain and snow and lightning flashes (#209).
 
 /** A switch for a yes/no setting. */
 function toggle(on: boolean, label: string, change: (v: boolean) => void) {
@@ -23,26 +25,32 @@ function gameRows(store: SettingsStore) {
     oninput: () => { size.textContent = pct(Number(slider.value)); },
     onchange: () => store.set({ uiSize: Number(slider.value) }),
   });
-  const pixels = h('div', { class: 'cd-seg wide' }, ...PIXEL_SIZES.map((n) => {
-    const b = h('button', { class: st.pixelSize === n ? 'is-on' : '', onclick: () => { store.set({ pixelSize: n }); for (const x of pixels.children) x.classList.toggle('is-on', x === b); } }, `${n} × ${n}`);
-    return b;
-  }));
-  const frames = h('div', { class: 'cd-seg wide' }, ...FRAME_STATS_MODES.map((m) => {
-    const b = h('button', { class: st.frameStats === m ? 'is-on' : '', onclick: () => { store.set({ frameStats: m }); for (const x of frames.children) x.classList.toggle('is-on', x === b); } }, m[0].toUpperCase() + m.slice(1));
-    return b;
-  }));
+  /** A row of buttons for a setting with a few choices, `name` naming each. */
+  const seg = <K extends keyof Settings>(k: K, choices: readonly Settings[K][], name: (v: Settings[K]) => string) => {
+    const row = h('div', { class: 'cd-seg wide' }, ...choices.map((v) => {
+      const b = h('button', { class: st[k] === v ? 'is-on' : '', onclick: () => { store.set({ [k]: v }); for (const x of row.children) x.classList.toggle('is-on', x === b); } }, name(v));
+      return b;
+    }));
+    return row;
+  };
+  const named = (v: string) => v[0].toUpperCase() + v.slice(1);
+  const choice = (label: string, buttons: HTMLElement, words: string) => h('div', { class: 'set is-seg' }, h('b', null, label), buttons, h('span', { class: 'cd-small' }, words));
   const yes = (k: 'reduceMotion' | 'showPace' | 'problemsStrip' | 'fastSpeeds', label: string, words: string) => h('div', { class: 'set' },
     h('b', null, label), toggle(st[k], label, (v) => store.set({ [k]: v } satisfies Partial<Settings>)), h('span', { class: 'cd-small' }, words));
   return [
     h('div', { class: 'set is-slider' }, h('b', null, 'Interface size'), slider, size),
-    h('div', { class: 'set is-seg' }, h('b', null, 'Pixel size'), pixels,
-      h('span', { class: 'cd-small' }, 'Screen pixels for each pixel of the art. Smaller pixels show finer detail and cost more to draw.')),
+    ...(store.drawn === 'pixel' ? [
+      choice('Pixel size', seg('pixelSize', PIXEL_SIZES, (n) => `${n} × ${n}`), 'Screen pixels for each pixel of the art. Smaller pixels show finer detail and cost more to draw.'),
+    ] : [
+      choice('Graphics', seg('quality', QUALITIES, named), 'High: the full picture. Medium, for integrated graphics: softer edges on the sun’s shadows. Low: also rougher edges and fewer pixels, scaled up to the screen.'),
+      choice('Rain and snow', seg('falling', FALLINGS, named), 'How many raindrops and snowflakes fall. Light: about a third, and the weather reads the same.'),
+      choice('Lightning flashes', seg('flashes', FLASHES, named), 'Full stays within the safety limits for flashing lights. Gentle: one soft, slow glow. Off: the sky doesn’t light up, and you still see the bolt.'),
+    ]),
     yes('reduceMotion', 'Reduce motion', 'Cards and gauges appear without springing.'),
     yes('showPace', 'Show pace', '“Done by” on the commission card and gold and silver ticks on the goals. Off: you see only where you are.'),
     yes('problemsStrip', 'Problems strip', 'Experimental. A strip on the right edge listing problems. Off: find them on the map.'),
     yes('fastSpeeds', 'Fast speeds', 'For testing. Adds 8× and 16× to the speed buttons.'),
-    h('div', { class: 'set is-seg' }, h('b', null, 'Frame rate'), frames,
-      h('span', { class: 'cd-small' }, 'Top left while you play. Minimal: the frame rate, once a second. Full: a frame time graph, the average and the 1% and 0.1% lows. Report: that, where a frame goes, and a button that copies the last 30 seconds as JSON for a bug report.')),
+    choice('Frame rate', seg('frameStats', FRAME_STATS_MODES, named), 'Top left while you play. Minimal: the frame rate, once a second. Full: a frame time graph, the average and the 1% and 0.1% lows. Report: that, where a frame goes, and a button that copies the last 30 seconds as JSON for a bug report.'),
   ];
 }
 

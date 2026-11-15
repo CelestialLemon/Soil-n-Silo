@@ -86,11 +86,11 @@ is cheap: its looks ease towards whatever was asked last.
 | What the game does | Call | Stands |
 |---|---|---|
 | Make the renderer on a canvas | `new BrushRenderer(canvas, options)` | today |
-| Pick the quality at start: multisampling, shadow detail, the shelter map's size | `options.samples`, `shadowMapSize`, `shelterSize` | today |
+| Pick the quality at start: multisampling, shadow detail, the shelter map's size | `options.samples`, `shadowMapSize`, `shelterSize` (or `r.setQuality` before the first frame) | today |
 | Let the shadow follow the view over a big map (the game always wants this) | `options.shadowFollow: true` | today |
 | Draw fewer pixels than a high-DPI screen has (the MacBook) | `r.maxPixels = 1920 * 1080` (before `resize`) | today |
 | Follow the window | `r.resize(cssWidth, cssHeight)` | today |
-| Change the quality from the settings panel without a reload | `r.setQuality(preset)`, with presets for the three machines in `QUALITY` | #209 |
+| Change the quality from the settings panel without a reload | `r.setQuality(QUALITY.medium)`: presets `high`, `medium` and `low` for the three machines (`docs/PERFORMANCE.md`); `r.quality` is the one drawn | today (#209) |
 | Leave a level (free the GPU's memory, or clear for the next commission) | `r.dispose()` | not needed: the game reloads the page for each commission (#201) |
 
 The canvas is the renderer's: it draws every pixel at the screen's resolution. The HUD sits over it in HTML, as now.
@@ -391,17 +391,19 @@ The game's rule (#198): a panel under a cloud's shadow loses the share of its su
 loses none, `(1 − 0.65·cloud·shade/cover) / (1 − 0.65·cloud)` of the valley's sun (the game's `lightOver`), so across the
 land and over the days it makes the valley's power. The rules sample the shade at the middle of a panel's footprint.
 
-## Settings (today; in the game's settings panel in #209)
+## Settings (today; in the game's settings panel since #209)
 
 | Setting | Call | Stands |
 |---|---|---|
 | Ink lines on or off | `r.settings.lines` | today |
 | Sun shadows on or off | `r.settings.shadows` | today |
 | How much rain and snow falls (1 full, about a third reduced) | `r.settings.fallingShare` | today |
-| Lightning flashes: full, gentle or off | `r.lightning.setting` | today (#209 may move it to `r.settings.flashes`) |
-| Graphics quality presets for the three machines | `r.setQuality(QUALITY.laptop)` | #209 |
+| Lightning flashes: full, gentle or off | `r.lightning.setting` (it stays there: #209) | today |
+| Graphics quality presets for the three machines | `r.setQuality(QUALITY.medium)` (`high`, `medium`, `low`) | today |
 
-Each takes effect on the next frame. The game saves them with its own settings.
+Each takes effect on the next frame. The game saves them with its own settings (`src/world/brush/settings.ts`): the
+quality (high by default), rain and snow (all, or `fallingShare` 0.33) and the lightning flashes (full by default, which
+keeps within the flash-safety limits; gentle and off soften it further).
 
 ## Tools, for measuring and comparing (today)
 
