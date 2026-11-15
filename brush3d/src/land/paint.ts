@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { MeshBuilder, noise2, type Paint } from '../kit/builder.ts';
 import type { MaterialKind } from '../renderer/materials.ts';
 import { checkLand, checkPatch, LAND_COVER, LAND_GROUND, type LandMap, type LandPatch, type LandRect } from './map.ts';
@@ -10,7 +11,9 @@ import { Surface, type Refit } from './surface.ts';
 // need; where neighbours' corners don't meet, a cliff face runs from one to the other; the water's tiles are hollowed into
 // a bed under the game's water. The country past the tiles (`beyond`) is a coarse floor of distant woods round them.
 //
-// It's drawn in chunks of CHUNK tiles a side, each one ground mesh. An earthwork (updateLand) is worked on a little each
+// It's drawn in chunks of CHUNK tiles a side, each one ground mesh; out in the country, where no earthwork reaches, up to
+// PIECE² chunks are drawn together as one mesh (a piece), since each mesh drawn costs the CPU about as much however few
+// triangles it holds (#210). An earthwork (updateLand) is worked on a little each
 // frame, within STEP_BUDGET (step): the ground fitted again round what changed (its sweeps spread over frames), then only
 // the chunks whose ground or paint moved painted again, and swapped in all together once they're all painted, so the land
 // never shows half an earthwork and no frame waits for the whole of one. Earthworks given meanwhile wait their turn.
@@ -20,6 +23,13 @@ import { Surface, type Refit } from './surface.ts';
 
 /** Tiles a side of one chunk of the land's mesh. */
 const CHUNK = 8;
+/**
+ * Chunks a side of one piece of the country: its chunks (those wholly more than a chunk out of the map) drawn as one mesh,
+ * the same triangles as theirs. On the game's maps most of the land's chunks are country.
+ */
+const PIECE = 4;
+/** The tiles (m) the country beyond is cut into, for each pass to draw only those in its view. */
+const APRON_TILE = 256;
 /** How finely a tile may be cut, a side: whole, halves, quarters or eighths. */
 const DETAILS = [1, 2, 4, 8];
 /** How far (m) the flat triangles drawn may stray from the smooth surface. */
@@ -132,6 +142,11 @@ export class PaintedLand {
   /** The chunks' meshes, and the geometry each was made of (the land's own, to free when it's swapped out). */
   private readonly chunks: (THREE.Mesh | null)[];
   private readonly geometries: (THREE.BufferGeometry | null)[];
+  /** Each chunk's piece of the country (-1: drawn on its own); each piece's chunks, its mesh and what it's made of; and the
+   * pieces whose chunks changed, to make again (merge). */
+  private readonly pieceOf: Int32Array;
+  private readonly pieces = new Map<number, { chunks: number[]; mesh: THREE.Mesh | null; geometry: THREE.BufferGeometry | null }>();
+  private readonly stale = new Set<number>();
   /** The earthwork being fitted (step), its chunks still to paint, and those painted and waiting to be swapped in together. */
   private fitting: { change: Change; refit: Refit | null; taken: Taken } | null = null;
   private readonly pending = new Set<number>();
@@ -180,8 +195,22 @@ export class PaintedLand {
     const rows = Math.ceil(m.height / CHUNK);
     this.chunks = new Array<THREE.Mesh | null>(this.cols * rows).fill(null);
     this.geometries = new Array<THREE.BufferGeometry | null>(this.cols * rows).fill(null);
+    this.pieceOf = new Int32Array(this.cols * rows).fill(-1);
+    const mp = m.map, pcols = Math.ceil(this.cols / PIECE);
+    for (let k = 0; k < this.chunks.length; k++) {
+      const cx = k % this.cols, cy = Math.floor(k / this.cols), x0 = cx * CHUNK, y0 = cy * CHUNK;
+      // Wholly more than a chunk out of the map: past anything an earthwork paints again (up to two tiles round it).
+      const near = x0 + CHUNK > mp.x - CHUNK && x0 < mp.x + mp.width + CHUNK && y0 + CHUNK > mp.y - CHUNK && y0 < mp.y + mp.height + CHUNK;
+      if (near) continue;
+      const p = Math.floor(cy / PIECE) * pcols + Math.floor(cx / PIECE);
+      this.pieceOf[k] = p;
+      let piece = this.pieces.get(p);
+      if (!piece) this.pieces.set(p, piece = { chunks: [], mesh: null, geometry: null });
+      piece.chunks.push(k);
+    }
     adder.changeGround(null, () => {
       for (let k = 0; k < this.chunks.length; k++) this.setChunk(k, this.chunkGeometry(k));
+      this.merge();
       this.addApron();
     });
   }
@@ -190,6 +219,7 @@ export class PaintedLand {
   dispose() {
     this.adder.changeGround(null, () => {
       for (let k = 0; k < this.chunks.length; k++) this.setChunk(k, null);
+      this.merge();
       this.addApron(false);
     });
     for (const g of this.built.values()) g?.dispose();
@@ -334,6 +364,7 @@ export class PaintedLand {
     if (this.apronMoved) area = null;
     this.adder.changeGround(area, () => {
       for (const [k, g] of this.built) this.setChunk(k, g);
+      this.merge();
       if (this.apronMoved) { this.addApron(false); this.addApron(); }
     });
     this.built.clear();
@@ -566,8 +597,15 @@ export class PaintedLand {
 
   // ---- The mesh ----
 
-  /** A chunk's mesh made of `g` (none: taken out), in place of the one it had, which is freed. */
+  /** A chunk's mesh made of `g` (none: taken out), in place of the one it had, which is freed; in the country, its piece's
+   * made again (merge). */
   private setChunk(k: number, g: THREE.BufferGeometry | null) {
+    if (this.pieceOf[k] >= 0) {
+      this.geometries[k]?.dispose();
+      this.geometries[k] = g;
+      this.stale.add(this.pieceOf[k]);
+      return;
+    }
     const old = this.chunks[k];
     if (old) this.adder.remove(old);
     this.geometries[k]?.dispose();
@@ -575,12 +613,30 @@ export class PaintedLand {
     this.chunks[k] = g && this.adder.add(g, 'ground', { under: true, tile: CHUNK * this.tile, fields: this.fields });
   }
 
+  /** The pieces whose chunks changed, made again: their chunks' geometries as one mesh, in place of the one each had. */
+  private merge() {
+    for (const p of this.stale) {
+      const piece = this.pieces.get(p)!;
+      if (piece.mesh) this.adder.remove(piece.mesh);
+      piece.geometry?.dispose();
+      const parts = piece.chunks.map((k) => this.geometries[k]).filter((g): g is THREE.BufferGeometry => g !== null);
+      // (The chunks' colours are the land's own: only the piece is prepared, so the season turns them once.)
+      const g = parts.length ? mergeGeometries(parts) : null;
+      if (g) this.adder.prepare(g);
+      piece.geometry = g;
+      piece.mesh = g && this.adder.add(g, 'ground', { under: true, tile: PIECE * CHUNK * this.tile, fields: this.fields });
+    }
+    this.stale.clear();
+  }
+
   /** The country beyond's mesh made and added (`make` false: only the one it had taken out, and freed). */
   private addApron(make = true) {
     if (this.apron) this.adder.remove(this.apron);
     this.apronGeometry?.dispose();
     this.apronGeometry = make ? this.apronMesh() : null;
-    this.apron = this.apronGeometry && this.adder.add(this.apronGeometry, 'ground', { under: true, tile: 64, fields: this.fields });
+    // (In big tiles: 64 m made about 490 meshes on the game's maps, each costing the CPU as it's drawn, and its triangles
+    // are coarse, so the tiles off screen cost the GPU little, #210.)
+    this.apron = this.apronGeometry && this.adder.add(this.apronGeometry, 'ground', { under: true, tile: APRON_TILE, fields: this.fields });
   }
 
   /** A chunk's mesh, null if it has none (the land is narrower than its chunks). */
@@ -597,7 +653,8 @@ export class PaintedLand {
     if (b.vertexCount === 0) return null;
     // What the renderer works out from a ground mesh, worked out here, as it's painted, rather than when it's swapped in.
     const g = b.build();
-    this.adder.prepare(g);
+    // (A piece's chunks are prepared together, once merged.)
+    if (this.pieceOf[k] < 0) this.adder.prepare(g);
     return g;
   }
 

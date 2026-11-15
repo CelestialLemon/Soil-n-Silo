@@ -536,6 +536,30 @@ case after them, over a little more land. Measured again since, medium and low a
   shaders compiled). On a few loads the first frame took 3.4 to 4.6 s (c5, c6's farm, c7 fresh): more of the shaders
   compiled in it when the level starts in rain or snow.
 
+### Fewer meshes for the CPU (#210)
+
+Frames byte-identical (the game's, with what moves from run to run hidden: the trees' springs, the water, the rain and
+leaves; and the demo's stills), the CPU's work a frame about halved:
+
+- **The land's country in pieces.** The land was a mesh for each 8 × 8-tile chunk over the whole land, the country too
+  (about 380), and the country beyond in 64 m tiles (about 490). Now the chunks wholly more than a chunk out of the map,
+  where no earthwork reaches, are drawn four by four as one mesh, the same triangles (`paint.ts`, PIECE), and the country
+  beyond in 256 m tiles. Their triangles are coarse, so the GPU barely notices the parts off screen it now draws.
+- **The scene placed once a frame**, not again by each of the four or five passes that draw it.
+- **The sun's shadow asks a set** whether a mesh casts (it searched a list of every caster, for every mesh, every frame).
+
+RX 570, 1080p, high, the bot's farm, two runs each, ms (CPU / uncapped):
+
+| | before | after |
+|---|---|---|
+| c4, start view, storm | 9.5–10.7 / 32–34 | 4.6–6.3 / 25–30 |
+| c4, widest, storm | 14.6–14.9 / 36 | 6.2–8.8 / 25–31 |
+| c8, start view, storm | 12.1–12.5 / 31–33 | 6.8 / 30–31 |
+| c8, widest, storm | 16.0–21.1 / 36–37 | 10.3–11.3 / 31–33 |
+
+Draws a frame on c4 at the widest zoom: 3,043 → 2,025. The GPU's time is unchanged (16 to 23 ms), so the frame is now
+the GPU's.
+
 ## Quality settings
 
 One look on every machine: a lower quality keeps the paint, light, weather and ink, and draws them with less detail.
