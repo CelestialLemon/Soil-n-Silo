@@ -163,7 +163,7 @@ const mill = r.addThing(models.mill, { x, z, yaw }, { tag: building.id });
 mill.place({ x, z, yaw });                               // moved: a truck every frame, cheaply
 truck.place({ x, y, z, yaw, pitch, scale });             // a truck tipped up a ramp; a good shrunk to fit a bed
 mill.show({ running: true });                            // its `running_*` look; also `charge` (0..4), `stage`, `variant`
-mill.spin(0.4);                                          // its `move_spin_*` parts, turns a second (#205)
+mill.spin(0.4);                                          // its `move_spin_*` parts, at 0.4 × their model's pace (#205)
 mill.status = 'working';                                 // 'working' | 'idle' | 'unpowered' | 'weather' | 'building' (#205)
 mill.highlight = true;                                   // under the pointer, or selected (today on meshes: r.setMark, #206)
 mill.tint = { color: 0x90ff90, strength: 0.45 };         // or null (today on meshes: r.setMark, #206)
@@ -188,8 +188,14 @@ mill.remove();
 - **Markers.** A building with a problem also gets a small marker over it, to spot from afar. The marker is the game's
   HUD (HTML, as now), placed with `r.view.toScreen`: today over the model's top as the game's catalogue gives its height
   (`thingHeight`, #206); `thing.anchor` once things are handles (#204).
-- **Spinning parts** turn at the rate the game gives (it knows the wind at a turbine, the river's flow at the wheel); the
-  renderer turns the part, its ink and its shadow smoothly.
+- **Spinning parts** turn at the pace the game gives (it knows the wind at a turbine, the river's flow at the wheel), as
+  a share of the pace the model gives each part (its `speed` extra, radians a second; 0.6 if it has none): 0 still, 1
+  its usual, more in a strong wind. The renderer eases a part to a new pace (most of the way in 1.5 s, as a rotor has
+  weight) and turns the part, its ink lines and its shadow together, in the vertex shader (`r.parts`, a small texture of
+  each part's axle, angle and whether it shows), so nothing is rebuilt as it turns. The angle is worked out from the
+  renderer's clock, so a frame is the same however it was reached, and a part told to turn starts from the next frame:
+  a still shows it at rest. A part hidden (a `running_*` piece not running, a charge ring not lit) is folded to its axle
+  and draws nothing in any pass.
 - **Goods** in a truck's bed are things too, placed by the game as the truck moves (a call per good per frame is cheap).
 - **Today** the models load with `loadModel(url)` and go into meshes with `ModelSet`; the game's things.ts makes a
   building's meshes when it's placed (0.3 to 4 ms) and takes them out (`r.remove`) when it's removed, and every truck
@@ -197,6 +203,11 @@ mill.remove();
   shelter map only round it (Soil-n-Silo#204), so a building placed or removed costs no hitch. The handles above
   (`addThing` and the rest) are still to come: #204 kept the per-thing records game-side (things.ts), where #205's
   moving parts and states and #206's tags and marks join them, and the handles can wrap them once those have settled.
+  `ModelSet.add` gives back the model's parts (`ModelParts`) as they go into the meshes `addTo` makes: `parts.spin(pace)`
+  and `parts.show({ running, charge })` are `spin` and `show` above (`charge` the rings lit, 0..4; leave it out for all).
+  The game's things.ts calls them from the game's state each tick (`src/world/brush/states.ts`), and holds each building's
+  state (working, idle, unpowered, weather) for the look that decorates it, still to come (#205's look PR: `status`, and
+  `smoke_emitter`'s smoke, the lamps' glow at night).
 
 ## What grows: crops, trees and rocks (#204, #213)
 
