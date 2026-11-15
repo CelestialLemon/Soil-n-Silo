@@ -25,6 +25,11 @@ export interface PickWorld {
    * was drawn); null if it has none (#205).
    */
   posed?(geometry: THREE.BufferGeometry, pose?: Float32Array): THREE.BufferAttribute | null;
+  /**
+   * Whether a point may be in a working chimney's smoke, as `pose` had the parts (#205): smoke is no thing, so a pick there
+   * sees past it.
+   */
+  smoky?(point: THREE.Vector3, pose?: Float32Array): boolean;
 }
 
 const COPY_VERT = /* glsl */ `
@@ -119,9 +124,9 @@ export class Picker {
     // A thing's leaves (a planted roof) are dabs drawn bigger than their cards: their box is enough.
     let best: THREE.Mesh | null = null, bestTag: unknown = null, off = Infinity;
     const local = new THREE.Vector3(), inv = new THREE.Matrix4(), box = new THREE.Box3(), pad = new THREE.Vector3(), hits: THREE.Intersection[] = [];
-    const now = new THREE.Matrix4();
+    const things = placed ?? this.snapshot();
     this.raycaster.ray.copy(ray);
-    for (const { mesh, matrix, tag } of placed ?? this.snapshot()) {
+    for (const { mesh, matrix, tag } of things) {
       const g = mesh.geometry;
       if (!g.boundingBox) g.computeBoundingBox();
       // The point in the mesh's own frame, in its box (a little bigger, for the depth's rounding, along each of its axes
@@ -135,24 +140,8 @@ export class Picker {
       if (!box.containsPoint(local)) continue;
       let d = 0;
       if (!DABS.has(mesh.userData.kind as string)) {
-        // Its triangles, as it was placed when the picture was drawn, its parts turned as they're drawn (#205).
-        const posed = this.world.posed?.(g, pose);
-        hits.length = 0;
-        if (posed) {
-          const turned = new THREE.BufferGeometry();
-          turned.setAttribute('position', posed);
-          turned.setIndex(g.index);
-          const m = new THREE.Mesh(turned, mesh.material);
-          m.matrixWorld.copy(matrix);
-          m.raycast(this.raycaster, hits);
-        } else {
-          now.copy(mesh.matrixWorld);
-          mesh.matrixWorld.copy(matrix);
-          mesh.raycast(this.raycaster, hits);
-          mesh.matrixWorld.copy(now);
-        }
         d = Infinity;
-        for (const h of hits) d = Math.min(d, Math.abs(h.distance - along));
+        for (const h of this.meet(mesh, matrix, pose, hits)) d = Math.min(d, Math.abs(h.distance - along));
         if (d > tol) continue;
       }
       if (d < off) { best = mesh; bestTag = tag; off = d; }
@@ -163,7 +152,55 @@ export class Picker {
     if (land && ray.origin.distanceTo(land) <= along + tol) return { tag: null, what: 'land', point: land };
     const water = this.world.waterAt(point.x, point.z);
     if (water !== null && Math.abs(point.y - water) < tol) return { tag: null, what: 'water', point };
+    // Smoke (#205) is drawn as dabs, depth and all, but it's no thing: where a puff may have shown, what's behind it (or,
+    // against the sky, nothing).
+    if (this.world.smoky?.(point, pose)) return this.past(ray, along - tol, things, pose);
     return { tag: null, what: 'plant', point };
+  }
+
+  /** Where the line of sight meets a mesh's triangles, as it was placed and its parts turned when the picture was drawn. */
+  private meet(mesh: THREE.Mesh, matrix: THREE.Matrix4, pose: Float32Array | undefined, hits: THREE.Intersection[]) {
+    // Its triangles, its parts turned as they're drawn (#205).
+    const posed = this.world.posed?.(mesh.geometry, pose);
+    hits.length = 0;
+    if (posed) {
+      const turned = new THREE.BufferGeometry();
+      turned.setAttribute('position', posed);
+      turned.setIndex(mesh.geometry.index);
+      const m = new THREE.Mesh(turned, mesh.material);
+      m.matrixWorld.copy(matrix);
+      m.raycast(this.raycaster, hits);
+    } else {
+      const now = mesh.matrixWorld.clone();
+      mesh.matrixWorld.copy(matrix);
+      mesh.raycast(this.raycaster, hits);
+      mesh.matrixWorld.copy(now);
+    }
+    return hits;
+  }
+
+  /**
+   * What the line of sight meets first past `from` (m along it), whatever the depth drawn: a thing's triangles, else the
+   * land or the water over it. Null if nothing (the sky).
+   */
+  private past(ray: THREE.Ray, from: number, placed: Placed[], pose?: Float32Array): PickHit | null {
+    let best: Placed | null = null, near = Infinity;
+    const hits: THREE.Intersection[] = [];
+    this.raycaster.ray.copy(ray);
+    for (const p of placed) {
+      if (DABS.has(p.mesh.userData.kind as string)) continue;
+      for (const h of this.meet(p.mesh, p.matrix, pose, hits)) if (h.distance >= from && h.distance < near) { near = h.distance; best = p; }
+    }
+    const land = this.world.landHit(ray);
+    const ground = land ? ray.origin.distanceTo(land) : Infinity;
+    if (best && near <= ground) return { tag: best.tag, what: 'thing', point: ray.at(near, new THREE.Vector3()) };
+    if (!land || ground < from) return null;
+    const water = this.world.waterAt(land.x, land.z);
+    if (water !== null && water > land.y && ray.direction.y < 0) {
+      const at = ray.at((water - ray.origin.y) / ray.direction.y, new THREE.Vector3());
+      return { tag: null, what: 'water', point: at };
+    }
+    return { tag: null, what: 'land', point: land };
   }
 }
 

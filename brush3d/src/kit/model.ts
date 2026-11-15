@@ -141,10 +141,12 @@ export class ModelSet {
   readonly leaves = new MeshBuilder('foliage');
   readonly smoke = new MeshBuilder('smoke');
   private readonly rand: () => number;
+  /** The smoke's own (Soil-n-Silo#205): a chimney added takes nothing from the plants', so they grow as they did without it. */
+  private readonly smokeRand: () => number;
   /** The parts of the models added, in the order added (their index is what the vertices carry, less one). */
   private readonly parts: SetPart[] = [];
   private readonly things: ModelParts[] = [];
-  constructor(seed = 7) { this.rand = rng(seed); }
+  constructor(seed = 7) { this.rand = rng(seed); this.smokeRand = rng(seed + 1013); }
 
   /**
    * Adds a model, placed by `matrix`, and returns its parts, for the game to move and change (ModelParts). One that
@@ -232,10 +234,10 @@ export class ModelSet {
     const i = this.parts.push({ origin: at.clone(), axis: new THREE.Vector3(1, 0, 0), speed: 0, glow: GLOW.none }) - 1;
     thing.running.push(i);
     this.smoke.part = i + 1;
-    const up = new THREE.Vector3(0, 1, 0);
+    const up = new THREE.Vector3(0, 1, 0), rand = this.smokeRand;
     for (let k = 0; k < PUFFS; k++) {
-      addDab(this.smoke, at, up, SMOKE.clone().offsetHSL(0, 0, (this.rand() - 0.5) * 0.06), 0.3 * (0.8 + this.rand() * 0.4),
-        (k + this.rand() * 0.6) / PUFFS, SMOKE_PAINT);
+      addDab(this.smoke, at, up, SMOKE.clone().offsetHSL(0, 0, (rand() - 0.5) * 0.06), 0.3 * (0.8 + rand() * 0.4),
+        (k + rand() * 0.6) / PUFFS, SMOKE_PAINT);
     }
     this.smoke.part = 0;
   }

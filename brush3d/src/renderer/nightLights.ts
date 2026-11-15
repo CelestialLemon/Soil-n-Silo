@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLOW, type Parts } from './parts';
+import { GLOW, PART_TEXELS, type Parts } from './parts.ts';
 import type { SharedUniforms } from './materials';
 
 // The farm's lights at night (Soil-n-Silo#205). A building's lamps and fires (its `running_*` lights) glow while it works,
@@ -60,6 +60,47 @@ export class NightLights {
     lights.forEach((l, i) => pu.uPools.value[i].set(l.x, l.y, l.z, REACH[l.glow as keyof typeof REACH]));
     pu.uPoolN.value = lights.length;
   }
+}
+
+/** A smoke mesh's chimneys: where each one's puffs leave (in the mesh's frame), and its part's slot. Found once a mesh. */
+function chimneysOf(g: THREE.BufferGeometry): { at: THREE.Vector3; slot: number }[] {
+  const known = g.userData.chimneys as { at: THREE.Vector3; slot: number }[] | undefined;
+  if (known) return known;
+  const pos = g.getAttribute('position'), part = g.getAttribute('aPart'), found = new Map<number, THREE.Vector3>();
+  if (part) for (let i = 0; i < pos.count; i++) {
+    const k = Math.round(part.getX(i));
+    if (k > 0 && !found.has(k)) found.set(k, new THREE.Vector3().fromBufferAttribute(pos, i));
+  }
+  const out = [...found].map(([k, at]) => ({ at, slot: k - 1 }));
+  g.userData.chimneys = out;
+  return out;
+}
+
+/**
+ * Whether `p` may be in a chimney's smoke as drawn (SMOKE_VERT) with the parts as `pose` has them: for a pick, which sees
+ * past the smoke (it's no thing, but it's drawn as dabs, depth and all). Generous: the whole column a working chimney's
+ * puffs can reach, or one stopped less than a puff's life ago.
+ */
+export function inSmoke(p: THREE.Vector3, smoke: Iterable<THREE.Mesh>, pose: Float32Array, s: SharedUniforms): boolean {
+  const [rise, size, life, on] = s.uSmoke.value.toArray();
+  if (on <= 0) return false;
+  const reach = 0.5 * size * Math.max(s.uSmokeShape.value.x, 1) + 0.3, time = s.uTime.value;
+  const dir = s.uWindDir.value, drift = life * (0.25 + s.uWindSpeed.value * 0.03);
+  const from = new THREE.Vector3();
+  for (const mesh of smoke) {
+    if (!mesh.visible) continue;
+    for (const c of chimneysOf(mesh.geometry)) {
+      // Texel 1's w: shown (working); texel 3's x: when it last started or stopped (parts.ts).
+      const i = c.slot * PART_TEXELS * 4;
+      if (!(pose[i + 7] > 0.5 || pose[i + 12] > time - life)) continue;
+      from.copy(c.at).applyMatrix4(mesh.matrixWorld);
+      if (p.y < from.y - 0.3 || p.y > from.y + rise + reach) continue;
+      // How far from the line its puffs drift along, downwind.
+      const dx = p.x - from.x, dz = p.z - from.z, t = THREE.MathUtils.clamp(dx * dir.x + dz * dir.y, 0, drift);
+      if (Math.hypot(dx - dir.x * t, dz - dir.y * t) <= reach) return true;
+    }
+  }
+  return false;
 }
 
 /**
