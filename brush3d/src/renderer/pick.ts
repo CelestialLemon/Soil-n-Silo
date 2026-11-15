@@ -101,7 +101,7 @@ export class Picker {
   /** The tagged meshes shown, each as placed now: what a pick read later sees, as the picture copied had them. */
   snapshot(): Placed[] {
     const out: Placed[] = [];
-    for (const mesh of this.world.tagged()) if (mesh.visible && mesh.parent) out.push({ mesh, matrix: mesh.matrixWorld.clone() });
+    for (const mesh of this.world.tagged()) if (mesh.visible && mesh.parent) out.push({ mesh, matrix: mesh.matrixWorld.clone(), tag: mesh.userData.tag });
     return out;
   }
 
@@ -117,11 +117,11 @@ export class Picker {
     // A tagged thing the line of sight meets where the depth says it does (the nearest such meeting): its box narrows
     // them down, its triangles decide, so the empty air in a box (round a turbine's mast, under its blades) isn't it.
     // A thing's leaves (a planted roof) are dabs drawn bigger than their cards: their box is enough.
-    let best: THREE.Mesh | null = null, off = Infinity;
+    let best: THREE.Mesh | null = null, bestTag: unknown = null, off = Infinity;
     const local = new THREE.Vector3(), inv = new THREE.Matrix4(), box = new THREE.Box3(), pad = new THREE.Vector3(), hits: THREE.Intersection[] = [];
     const now = new THREE.Matrix4();
     this.raycaster.ray.copy(ray);
-    for (const { mesh, matrix } of placed ?? this.snapshot()) {
+    for (const { mesh, matrix, tag } of placed ?? this.snapshot()) {
       const g = mesh.geometry;
       if (!g.boundingBox) g.computeBoundingBox();
       // The point in the mesh's own frame, in its box (a little bigger, for the depth's rounding, along each of its axes
@@ -155,9 +155,9 @@ export class Picker {
         for (const h of hits) d = Math.min(d, Math.abs(h.distance - along));
         if (d > tol) continue;
       }
-      if (d < off) { best = mesh; off = d; }
+      if (d < off) { best = mesh; bestTag = tag; off = d; }
     }
-    if (best) return { tag: best.userData.tag, what: 'thing', point };
+    if (best) return { tag: bestTag, what: 'thing', point };
     // The land, where the line of sight meets it (exact, not the depth's rounding), if that's what shows.
     const land = this.world.landHit(ray);
     if (land && ray.origin.distanceTo(land) <= along + tol) return { tag: null, what: 'land', point: land };
@@ -167,8 +167,11 @@ export class Picker {
   }
 }
 
-/** A tagged mesh as it was placed when a picture was drawn. */
-export interface Placed { mesh: THREE.Mesh; matrix: THREE.Matrix4 }
+/**
+ * A tagged mesh as it was placed when a picture was drawn, and its tag then: a game may hand a mesh to another thing
+ * between frames (a good in a truck's bed, Soil-n-Silo#203), and the pick answers for what it drew.
+ */
+export interface Placed { mesh: THREE.Mesh; matrix: THREE.Matrix4; tag: unknown }
 
 /** The kinds drawn as dabs on cards, bigger than the cards themselves. */
 const DABS = new Set(['foliage', 'debris']);

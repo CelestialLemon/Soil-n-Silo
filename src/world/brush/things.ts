@@ -92,8 +92,8 @@ export class Things {
   /** The models by name, once loaded (one that failed to load is missing, and draws as its stand-in). */
   private models: Map<string, THREE.Object3D> | null = null;
   /**
-   * Counts the meshes made and taken out (a building placed, removed or redrawn, a truck bought): what is under the
-   * pointer may have changed (tools.ts, #206). Trucks driving on are not counted.
+   * Counts the meshes made and taken out (a building placed, removed or redrawn, a truck bought), and a truck loaded or
+   * unloaded: what is under the pointer may have changed (tools.ts, #206). Trucks driving on are not counted.
    */
   changes = 0;
   /** The game's clock at the last frame (to know it's paused), and the step its buildings' parts were last told. */
@@ -131,6 +131,9 @@ export class Things {
     this.syncTrucks(s);
     this.syncHandoffs(s);
     this.goods.end();
+    // A truck loaded or unloaded where it stands: what's under the pointer may have changed (a good handed next door moves
+    // on its own each frame, and counts only as it shows and goes: a pick on it gives the building under it anyway).
+    if (this.goods.changed) this.changes++;
   }
 
   /** The state a building is read in now (states.ts), if it's drawn. */

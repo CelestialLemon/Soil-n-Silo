@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MeshBuilder, PLAIN, srgb, type BrushRenderer } from '../../../brush3d/src/index.ts';
-import { ITEMS, type ItemId } from '../../game/data.ts';
+import { ITEM_IDS, ITEMS, type ItemId } from '../../game/data.ts';
 
 // The goods the game moves, drawn (#203): in a truck's bed, and handed over the edge between buildings next door. brush3d's
 // model set has no goods, so they are made here, in code, from a few plain shapes in the set's palette
@@ -134,6 +134,11 @@ export class Goods {
   private readonly geometry = new Map<ItemId, THREE.BufferGeometry>();
   private readonly pools = new Map<ItemId, { meshes: THREE.Mesh[]; used: number }>();
   style: GoodsStyle;
+  /** What was shown: each good put this frame and its tag, in order, as pairs (`end` compares them to the last frame's). */
+  private shown: number[] = [];
+  private lastShown: number[] | null = null;
+  /** Whether a good showed, went or changed hands at the last `end` (a truck loaded or unloaded): what a pick met may have changed. */
+  changed = false;
 
   constructor(r: BrushRenderer, style: GoodsStyle) { this.r = r; this.style = style; }
 
@@ -145,10 +150,14 @@ export class Goods {
     for (const g of this.geometry.values()) g.dispose();
     this.pools.clear();
     this.geometry.clear();
+    this.lastShown = null;
   }
 
   /** Starts a frame: every good is free to be put again. */
-  begin() { for (const p of this.pools.values()) p.used = 0; }
+  begin() {
+    for (const p of this.pools.values()) p.used = 0;
+    this.shown.length = 0;
+  }
 
   /**
    * Puts a good at `matrix` (world, metres). They cast shadows, but are no roof (they move). `tag`: what a pick on it gives
@@ -169,9 +178,17 @@ export class Goods {
     p.used++;
     mesh.visible = true;
     mesh.userData.tag = tag;
+    this.shown.push(ITEM_IDS.indexOf(id), tag ?? -1);
     matrix.decompose(mesh.position, mesh.quaternion, mesh.scale);
   }
 
   /** Ends a frame: the goods not put are hidden. */
-  end() { for (const p of this.pools.values()) for (let i = p.used; i < p.meshes.length; i++) p.meshes[i].visible = false; }
+  end() {
+    for (const p of this.pools.values()) for (let i = p.used; i < p.meshes.length; i++) p.meshes[i].visible = false;
+    const was = this.lastShown, now = this.shown;
+    this.changed = !was || was.length !== now.length || now.some((v, i) => v !== was[i]);
+    // The two lists swap, so neither is made anew each frame.
+    this.shown = was ?? [];
+    this.lastShown = now;
+  }
 }
