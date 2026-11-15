@@ -6,6 +6,7 @@ import { RAIN_RINGS_GLSL } from './rain';
 import { SHELTER_GLSL } from './shelter';
 import { SNOW_GLSL } from './snow';
 import { WET_GLSL, WET_INK_GLSL } from './wet';
+import { GROUND_TOOLS_GLSL } from './overlay';
 
 // The scene's materials. Each has a main variant (writes colour and the G-buffer) and a depth variant for the sun's
 // shadow map, built from the same vertex code so wind and billboarding cast the shadows they should.
@@ -515,6 +516,9 @@ varying float vGust;
 uniform sampler2D uFields;
 uniform mat3 uFieldsMap;
 #endif
+#ifdef GROUND
+${GROUND_TOOLS_GLSL}
+#endif
 void main() {
   cloudAt(vWorldPos);
   vec3 n = normalize(vNormal);
@@ -599,6 +603,10 @@ void main() {
     col = mix(col, snowPaint(light, 0.05, fields.x * 1.2 + fine * 0.8), cover);
     }
   }
+#ifdef GROUND
+  // The game's tools on the land (#206, overlay.ts): its overlay and grid, over the snow, so they read in any weather.
+  col = groundTools(col, p, n, light);
+#endif
   writeGBuffer(exposeHere(col), n, vViewDepth, 0.0, 1.0);
 }
 `;
@@ -1285,6 +1293,25 @@ export function prepassMaterial(kind: MaterialKind, shared: SharedUniforms, mirr
   });
   if (DABS(kind)) m.alphaToCoverage = true;
   return m;
+}
+
+/**
+ * The marks' variant of a kind (marks.ts, Soil-n-Silo#206): the same vertex shader as its painting, so a mark lands on the
+ * very pixels its thing is painted on, and a fragment that writes the mark (MARK_FRAG) where the thing shows, not where
+ * something stands in front of it.
+ */
+export function markMaterial(kind: MaterialKind, shared: SharedUniforms, fragmentShader: string, uniforms: Record<string, THREE.IUniform>): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    glslVersion: THREE.GLSL3,
+    uniforms: { ...shared, ...uniforms },
+    vertexShader: VERT[kind],
+    fragmentShader,
+    defines: { ...DEFINES[kind] },
+    vertexColors: true,
+    side: sideOf(kind),
+    depthTest: false,
+    depthWrite: false,
+  });
 }
 
 /** The sun's shadow-map variant of a kind. */

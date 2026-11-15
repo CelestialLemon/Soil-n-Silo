@@ -94,13 +94,16 @@ export class ModelSet {
     }
   }
 
-  /** Adds the set's meshes to the renderer, and returns them (for whoever takes them out again: `r.remove` each). */
-  addTo(r: Pick<BrushRenderer, 'add'>): THREE.Mesh[] {
+  /**
+   * Adds the set's meshes to the renderer, and returns them (for whoever takes them out again: `r.remove` each). `tag` goes
+   * with each, for picking (MeshOptions.tag): a set that is one thing, a building.
+   */
+  addTo(r: Pick<BrushRenderer, 'add'>, tag?: unknown): THREE.Mesh[] {
     const out: THREE.Mesh[] = [];
-    if (this.ink.vertexCount) out.push(r.add(this.ink.build(), 'ink'));
+    if (this.ink.vertexCount) out.push(r.add(this.ink.build(), 'ink', { tag }));
     // A planted roof is a roof: rain and snow stop at it, as at an inked one (paint is no cover unless told).
-    if (this.paint.vertexCount) out.push(r.add(this.paint.build(), 'paint', { seasonal: true, cover: 'full' }));
-    if (this.leaves.vertexCount) out.push(r.add(this.leaves.build(), 'foliage', { cover: 'none', seasonal: true }));
+    if (this.paint.vertexCount) out.push(r.add(this.paint.build(), 'paint', { seasonal: true, cover: 'full', tag }));
+    if (this.leaves.vertexCount) out.push(r.add(this.leaves.build(), 'foliage', { cover: 'none', seasonal: true, tag }));
     return out;
   }
 }

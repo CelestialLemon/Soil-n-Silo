@@ -35,10 +35,10 @@ interface Shown { obj: PixelObject; key: string; own?: THREE.BufferGeometry }
 const v = new THREE.Vector3(), e = new THREE.Euler();
 
 /** Overlay colours: soil from poor (red) to rich (green), roads (and buildings trucks can't reach), sprinkler water, bee range (power: powerView.ts). */
-const FERT = [0xb03020, 0xd07020, 0xd8b020, 0x98c030, 0x50a030, 0x207a30].map((c) => new THREE.Color(c));
+export const FERT = [0xb03020, 0xd07020, 0xd8b020, 0x98c030, 0x50a030, 0x207a30].map((c) => new THREE.Color(c));
 /** The Ground view's colour per kind of ground, by the map's index (`GROUND_IDS`). */
-const GROUND_COLOURS = GROUND_IDS.map((id) => new THREE.Color(GROUND_TINT[id]));
-const ROADS = new THREE.Color(0xd8d0b0), CUT_OFF = new THREE.Color(0xff5040), WATER = new THREE.Color(0x60a8e8), BEES = new THREE.Color(0xf09030);
+export const GROUND_COLOURS = GROUND_IDS.map((id) => new THREE.Color(GROUND_TINT[id]));
+export const ROADS = new THREE.Color(0xd8d0b0), CUT_OFF = new THREE.Color(0xff5040), WATER = new THREE.Color(0x60a8e8), BEES = new THREE.Color(0xf09030);
 /** The tint of the buildings and trucks linked to what is focused: a truck's stops, a garage's trucks. */
 export const LINK = 0x7ee060;
 const LINKED = new THREE.Color(LINK), LINK_STRENGTH = 0.55;
@@ -60,7 +60,7 @@ export type Overlay = 'none' | 'fertility' | 'ground' | 'height' | 'power' | 'ro
 /** The height view: tints from low to high, a band every HEIGHT_BAND levels (blended between), steep banks darker. */
 const LEVELS = [0x3a8a5a, 0x8ab84a, 0xd8c050, 0xd88a3a, 0xb04a3a].map((c) => new THREE.Color(c));
 const HEIGHT_BAND = 3, BANK_SHADE = 0.75;
-const heightTint = (level: number, steep: boolean) => {
+export const heightTint = (level: number, steep: boolean) => {
   const t = Math.min(LEVELS.length - 1, level / HEIGHT_BAND), k = Math.min(LEVELS.length - 2, Math.floor(t));
   const c = LEVELS[k].clone().lerp(LEVELS[k + 1], t - k);
   return steep ? c.multiplyScalar(BANK_SHADE) : c;
@@ -477,5 +477,5 @@ function isRunning(b: Building) {
 const QUIET = new Set<BuildingId>(['depot', 'sapling']);
 
 /** Whether a building shows a marker: it has a problem (not working, not just idle). */
-const hasMarker = (b: Building) => !QUIET.has(b.type) && b.status !== 'ok' && b.status !== 'idle';
+export const hasMarker = (b: Building) => !QUIET.has(b.type) && b.status !== 'ok' && b.status !== 'idle';
 

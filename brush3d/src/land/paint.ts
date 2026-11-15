@@ -143,6 +143,8 @@ export class PaintedLand {
   /** Whether one was given since the last step: it's fitted a step later, not in the frame the game fitted its own. */
   private given = false;
   private readonly next: { corner: Float64Array; worked: Uint8Array; cover: Uint8Array; ground: Uint8Array };
+  /** Counts the earthworks swapped in: what lies on the land as drawn (the tools' lines) lies on it again when it moves. */
+  revision = 0;
   private readonly cols: number;
   private apron: THREE.Mesh | null = null;
   private apronGeometry: THREE.BufferGeometry | null = null;
@@ -336,6 +338,7 @@ export class PaintedLand {
     });
     this.built.clear();
     this.apronMoved = false;
+    this.revision++;
   }
 
   /** The land's height (m) at a point of the world (x, z in metres), as drawn: the beds and cliffs too. */

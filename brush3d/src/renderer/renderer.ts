@@ -33,6 +33,10 @@ import { earthShares } from './wet';
 import type { WindSnapshot } from '../wind/sim';
 import { LAND_LOOK, PaintedLand, type LandLook } from '../land/paint';
 import type { LandMap, LandPatch, LandRect } from '../land/map';
+import { GroundTools, type Grid, type Overlay } from './overlay';
+import { HIGHLIGHT_LOOK, Marks, type HighlightLook, type Mark } from './marks';
+import { OnTop, type Line, type PreviewState } from './ontop';
+import { Picker, type PickHit } from './pick';
 
 // The renderer: the clouds' shade over the land (#8); a sun shadow map; for the water, the bed drawn without it and the
 // scene mirrored in it (both at half size, and only round the water on screen); a multisampled G-buffer (colour plus view
@@ -129,6 +133,11 @@ export interface MeshOptions {
    * so do the trees and what people make.
    */
   seasonal?: boolean;
+  /**
+   * The game's id for what this mesh draws (a building's, a truck's): a pick that lands on it gives the tag back
+   * (Soil-n-Silo#206). It's told by the mesh's box as placed, so a tagged mesh should be one thing.
+   */
+  tag?: unknown;
 }
 
 export class BrushRenderer {
@@ -236,6 +245,20 @@ export class BrushRenderer {
   /** The clouds' shape (clouds.ts): the game's, the same one it reads its solar panels by. */
   cloudShape: CloudShape = CLOUD_SHAPE;
 
+  // The game's tools on the picture (Soil-n-Silo#206, docs/API.md): the overlay and grid painted on the land, the marks
+  // (highlights and tints) on things, what's drawn over the finished picture (previews and lines), and picking.
+  private readonly groundTools = new GroundTools();
+  private readonly marks: Marks;
+  private readonly onTop: OnTop;
+  private readonly picker: Picker;
+  /** The meshes added with a tag, for picking. */
+  private readonly tagged = new Set<THREE.Mesh>();
+  /** The camera as the last frame was drawn (picking reads that frame), and whether one has been. */
+  private readonly drawnCamera = new THREE.OrthographicCamera();
+  private drawn = false;
+  /** The water map last sent (setWater), for picking its surface. */
+  private waterMap: WaterMap | null = null;
+
   readonly canvas: HTMLCanvasElement;
 
   constructor(canvas: HTMLCanvasElement, options: RendererOptions = {}) {
@@ -267,6 +290,15 @@ export class BrushRenderer {
     // Every material reads the shelter map, the ground's map and the land's hollows, for lying snow (#14) and wet ground
     // (#11).
     Object.assign(this.shared, this.shelter.uniforms, this.ground.uniforms, this.hollows.uniforms, this.snow.uniforms);
+    // The ground's paint reads the tools' overlay and grid (overlay.ts).
+    Object.assign(this.shared, this.groundTools.uniforms);
+    this.marks = new Marks(this.shared);
+    this.onTop = new OnTop(this.shared.uSunDir, (x, z) => this.landAt(x, z), () => this.landRevision);
+    this.picker = new Picker({
+      landHit: (ray, into) => this.landHit(ray, into),
+      waterAt: (x, z) => this.waterAt(x, z),
+      tagged: () => this.tagged,
+    });
     this.rain = new Rain(this.shared, this.shelter.uniforms);
     this.scene.add(this.rain.mesh);
     this.snowfall = new Snowfall(this.shared, this.shelter.uniforms);
@@ -304,6 +336,7 @@ export class BrushRenderer {
         // its shelter, from the hollows map).
         ...this.snowfall.veil, ...this.ground.uniforms, ...this.shelter.uniforms, ...this.hollows.uniforms,
         ...this.lightning.post, uShadowMap: this.shared.uShadowMap, uShadowMatrix: this.shared.uShadowMatrix,
+        ...this.marks.post,
       },
     });
     this.postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.post));
@@ -425,6 +458,7 @@ export class BrushRenderer {
     mesh.userData.reflect = options.reflect ?? kind !== 'water';
     mesh.userData.fields = options.fields;
     mesh.userData.cover = options.cover ?? (kind === 'ink' ? 'full' : kind === 'foliage' ? 'partial' : 'none');
+    if (options.tag !== undefined) { mesh.userData.tag = options.tag; this.tagged.add(mesh); }
     if (mesh.userData.cover !== 'none') this.shelter.changed();
     this.scene.add(mesh);
     if (kind === 'ground') this.groundMoved(null);
@@ -448,6 +482,8 @@ export class BrushRenderer {
     const tiles = mesh.userData.tiles as THREE.Mesh[] | undefined;
     if (tiles) { for (const t of tiles) { t.userData.tiles = undefined; this.remove(t); } return; }
     this.scene.remove(mesh);
+    this.tagged.delete(mesh);
+    this.marks.forget(mesh);
     if (mesh.userData.cut) mesh.geometry.dispose();
     if (mesh.userData.seasonal) this.unseason(mesh.geometry);
     this.casters = this.casters.filter((m) => m !== mesh);
@@ -618,6 +654,7 @@ export class BrushRenderer {
    */
   setWater(map: WaterMap | null, ease = WATER_EASE) {
     const before = this.water.geometry;
+    this.waterMap = map;
     this.water.set(map, this.shared.uTime.value, ease);
     const s = this.shared;
     s.tWaterA.value = this.water.a; s.tWaterB.value = this.water.b; s.uWaterGrid.value.copy(this.water.grid);
@@ -639,8 +676,12 @@ export class BrushRenderer {
   setLand(map: LandMap, look: LandLook = LAND_LOOK) {
     this.painted?.dispose();
     this.painted = new PaintedLand(this, map, look);
+    this.landsSet++;
   }
   private painted: PaintedLand | null = null;
+  private landsSet = 0;
+  /** Changes whenever the land as drawn does (a new land, an earthwork swapped in). */
+  private get landRevision() { return `${this.landsSet} ${this.painted?.revision ?? 0}`; }
 
   /**
    * An earthwork (or anything else that changes the land's tiles): the new values for the tiles in `rect` (LandPatch, each
@@ -686,6 +727,78 @@ export class BrushRenderer {
     this.view.landTop = top;
   }
 
+  // ---- The game's tools on the picture (Soil-n-Silo#206, docs/API.md) ----
+
+  /**
+   * A colour per tile washed over the land (Overlay: the game's fertility, ground, height, water, power, roads or bees), or
+   * null for none. Painted in the land's own light, under what stands on it; sent again when it changes.
+   */
+  setOverlay(overlay: Overlay | null) { this.groundTools.setOverlay(overlay); }
+
+  /** The tile grid and the contour lines over the map's tiles while the player builds or does earthworks, or null. */
+  setGrid(grid: Grid | null) { this.groundTools.setGrid(grid); }
+
+  /**
+   * The lines of a group (`group`: the game's own name for them, say 'routes', 'power', 'frames'), replacing that group's
+   * last; null or none clears it. Drawn over the finished picture, hidden behind what stands in front (ontop.ts).
+   */
+  setLines(lines: readonly Line[] | null, group = 'lines') { this.onTop.setLines(lines, group); }
+
+  /**
+   * What the player is about to build: `geometry` (the caller's, with its colours) drawn see-through and tinted for whether
+   * it fits. Never picked, casting no shadow; place it by the mesh returned, take it out with removePreview.
+   */
+  addPreview(geometry: THREE.BufferGeometry, state: PreviewState): THREE.Mesh { return this.onTop.addPreview(geometry, state); }
+  setPreview(mesh: THREE.Mesh, state: PreviewState) { this.onTop.setPreview(mesh, state); }
+  removePreview(mesh: THREE.Mesh) { this.onTop.removePreview(mesh); }
+
+  /** A mesh's marks: highlighted (under the pointer, selected), tinted (in focus), or null for none (marks.ts). */
+  setMark(mesh: THREE.Mesh, mark: Mark | null) { this.marks.set(mesh, mark); }
+
+  /** How a highlight is drawn (HIGHLIGHT_LOOK until the developer's pick). */
+  setHighlightLook(look: HighlightLook = HIGHLIGHT_LOOK) { this.marks.setLook(look, this.pixelRatio); }
+
+  /**
+   * What's under a point of the page (CSS pixels, as pointer events give it) in the frame last drawn, at once: waits for
+   * the GPU, so for a click. Null over the sky or off the picture (pick.ts).
+   */
+  pick(clientX: number, clientY: number): PickHit | null {
+    const at = this.pickAt(clientX, clientY);
+    if (!at) return null;
+    this.picker.copy(this.gl, this.gbuffer.textures[1], at.x, at.y, this.height);
+    return this.picker.hit(this.picker.read(this.gl), this.drawnCamera, at.ndc, at.px);
+  }
+
+  /** The same, without stalling: the answer comes a frame or two later, as of the frame last drawn (for hovering). */
+  async requestPick(clientX: number, clientY: number): Promise<PickHit | null> {
+    const at = this.pickAt(clientX, clientY);
+    if (!at) return null;
+    this.picker.copy(this.gl, this.gbuffer.textures[1], at.x, at.y, this.height);
+    // The camera and the things as the picture was drawn: by the time the pixels come back, they may have moved.
+    const camera = this.drawnCamera.clone(), placed = this.picker.snapshot();
+    return this.picker.hit(await this.picker.readAsync(this.gl), camera, at.ndc, at.px, placed);
+  }
+
+  /** A point of the page as a pixel of the picture drawn and as the camera's -1..1, or null if off it. */
+  private pickAt(clientX: number, clientY: number) {
+    if (!this.drawn) return null;
+    const r = this.canvas.getBoundingClientRect(), u = (clientX - r.left) / r.width, v = (clientY - r.top) / r.height;
+    if (!(u >= 0 && u < 1 && v >= 0 && v < 1)) return null;
+    // The pixel the pointer is in, and the camera's -1..1 at its middle (where the pick looks along).
+    const x = Math.floor(u * this.width), y = Math.floor(v * this.height);
+    return { x, y, ndc: new THREE.Vector2((x + 0.5) / this.width * 2 - 1, 1 - (y + 0.5) / this.height * 2), px: new THREE.Vector2(2 / this.width, 2 / this.height) };
+  }
+
+  /** The water's surface (m) at a point, from the map last sent, or null where it's dry. */
+  private waterAt(x: number, z: number): number | null {
+    const m = this.waterMap;
+    if (!m) return null;
+    const i = Math.floor((x - m.x0) / m.cell), j = Math.floor((z - m.z0) / m.cell);
+    if (i < 0 || j < 0 || i >= m.nx || j >= m.nz) return null;
+    const level = m.level[j * m.nx + i];
+    return Number.isFinite(level) ? level : null;
+  }
+
   resize(cssWidth: number, cssHeight: number) {
     this.pixelRatio = Math.min(this.screenRatio, Math.sqrt(this.maxPixels / Math.max(1, cssWidth * cssHeight)));
     this.gl.setPixelRatio(this.pixelRatio);
@@ -698,6 +811,7 @@ export class BrushRenderer {
     const hw = Math.max(1, Math.round(this.width / 2)), hh = Math.max(1, Math.round(this.height / 2));
     this.underTarget.setSize(hw, hh);
     this.reflectTarget.setSize(hw, hh);
+    this.marks.setSize(this.width, this.height, this.pixelRatio);
     this.shared.uScreen.value.set(this.width, this.height);
     (this.post.uniforms.uResolution.value as THREE.Vector2).set(this.width, this.height);
   }
@@ -1245,6 +1359,8 @@ export class BrushRenderer {
     gl.render(this.scene, this.view.camera);
     this.silhouettes.visible = false;
     this.paintOver(false, () => false);
+    // The game's marks on its things, where they show (marks.ts): none most frames but when hovering.
+    this.marks.draw(gl, this.view.camera, this.gbuffer.textures[1]);
 
     t?.mark('post');
     gl.setRenderTarget(this.output);
@@ -1257,6 +1373,10 @@ export class BrushRenderer {
     if (this.settings.shelterDebug) this.shelter.drawOverlay(gl, this.gbuffer.textures[1], this.view.camera, this.width, this.height);
     t?.mark('bolt', this.lightning.active);
     this.lightning.draw(gl, cam, u.uHazeColor.value as THREE.Color);
+    // The tools' previews and lines, over it all (ontop.ts).
+    this.onTop.draw(gl, cam, this.gbuffer.textures[1], this.output, this.width, this.pixelRatio);
+    this.drawnCamera.copy(cam);
+    this.drawn = true;
     for (const o of grounded) o.visible = true;
     t?.endFrame();
   }
