@@ -20,8 +20,10 @@ import * as THREE from 'three';
 // started or stopped says which puffs are drawn, so smoke starts and stops as smoke does, never all at once.
 
 /**
- * Texels a part: [axle's point, angle], [axle's direction, shown], [how it glows (GLOW), lit, 0, 0], [when it last started
- * or stopped showing (the renderer's clock; far back: always as it is), 0, 0, 0].
+ * Texels a part: [axle's point, angle], [axle's direction, shown], [how it glows (GLOW), lit, 0, 0], [the last four
+ * times it started or stopped showing, the latest first (the renderer's clock; far back: none)].
+ * (Four, so a puff of smoke knows whether its chimney was on when it left, though the building stopped and started
+ * again while it rose: CHANGES.)
  */
 export const PART_TEXELS = 4;
 /** How a part lights up at night: not at all, as a lamp or a fire (while it shows), as windows (while it's lit). */
@@ -29,6 +31,8 @@ export const GLOW = { none: 0, lamp: 1, window: 2 } as const;
 export type Glow = (typeof GLOW)[keyof typeof GLOW];
 /** A part's start or stop time before its first frame: it has always been as it is (its smoke already rising, or none). */
 const ALWAYS = -1e6;
+/** The changes of showing a part keeps (texel 3). */
+export const CHANGES = 4;
 /** Texels a row of the texture (a whole number of parts). */
 const ROW = 256;
 /** How long a part takes to come most of the way to a new pace (s): it comes 63% of the way in this time. */
@@ -93,7 +97,7 @@ export class Parts {
     d.fill(0, i, i + PART_TEXELS * 4);
     d[i] = origin.x; d[i + 1] = origin.y; d[i + 2] = origin.z;
     d[i + 4] = axis.x; d[i + 5] = axis.y; d[i + 6] = axis.z; d[i + 7] = 1;
-    d[i + 8] = glow; d[i + 9] = 1; d[i + 12] = ALWAYS;
+    d[i + 8] = glow; d[i + 9] = 1; d.fill(ALWAYS, i + 12, i + 12 + CHANGES);
     this.fresh.add(slot);
     this.dirty = true;
     return slot;
@@ -130,12 +134,15 @@ export class Parts {
     this.dirty = true;
   }
 
-  /** Shows or hides a part (hidden, it's folded to its axle), from now (its smoke starts or stops rising from now). */
+  /**
+   * Shows or hides a part (hidden, it's folded to its axle), from now: its smoke starts or stops rising from now. Before
+   * its first frame, it has always been so.
+   */
   show(slot: number, shown: boolean) {
     const d = this.texture.image.data as Float32Array, i = slot * PART_TEXELS * 4, v = shown ? 1 : 0;
     if (d[i + 7] === v) return;
     d[i + 7] = v;
-    d[i + 12] = this.fresh.has(slot) || this.time === null ? ALWAYS : this.time;
+    if (!this.fresh.has(slot) && this.time !== null) { d.copyWithin(i + 13, i + 12, i + 12 + CHANGES - 1); d[i + 12] = this.time; }
     this.dirty = true;
   }
 

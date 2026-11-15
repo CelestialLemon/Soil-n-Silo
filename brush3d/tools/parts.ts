@@ -109,6 +109,13 @@ const angleOf = (p: Parts, slot: number) => (p.texture.image.data as Float32Arra
   p.update(4);
   p.show(chimney, true);
   check('shown later: from then', d()[chimney * 16 + 12] === 4);
+  // Stopped and started again while its puffs rise: each change kept, the latest first, so a puff knows (the shader
+  // counts the changes since it left: an odd number, and the chimney was the other way then).
+  p.update(4.5); p.show(chimney, false); p.update(5); p.show(chimney, true);
+  const changes = [...d().slice(chimney * 16 + 12, chimney * 16 + 16)];
+  check('its last starts and stops kept', changes.join() === '5,4.5,4,-1000000', changes.join());
+  const onWhen = (left: number) => (d()[chimney * 16 + 7] > 0.5) === (changes.filter((t) => t > left).length % 2 === 0);
+  check('a puff knows whether it was on when it left', !onWhen(3) && onWhen(4.2) && !onWhen(4.7) && onWhen(5.2));
   const near = (windowsToo: boolean) => p.glowing({ x: 0, y: 0, z: 0 }, 8, windowsToo).map((l) => l.glow);
   check('lights: windows only if asked, the nearest first', near(false).join() === `${GLOW.lamp}` && near(true).join() === `${GLOW.window},${GLOW.lamp}`);
   p.light(windows, false); p.show(lamp, false);

@@ -468,7 +468,8 @@ void main() {
  * Smoke and steam (#205), drawn as painted dabs: each card a puff, 'position' the point it leaves from (a model's
  * `smoke_emitter`), aPart that point's part (shown while its building works), aCard as for foliage (its seed says when in
  * the puffs' cycle it leaves). A puff rises, slowing, drifts downwind, swells and thins away over its life (uSmoke). It's
- * drawn if it left while the part showed: so smoke starts with the first puff and stops with the last one rising away.
+ * drawn if it left while the part showed (by the part's last few starts and stops, parts.ts): so smoke starts with the
+ * first puff and stops with the last one rising away.
  */
 const SMOKE_VERT = /* glsl */ `
 ${HEAD}
@@ -492,8 +493,10 @@ void main() {
   if (aPart > 0.5) {
     int i = (int(aPart + 0.5) - 1) * ${PART_TEXELS};
     ivec2 at = ivec2(i % 256, i / 256);
-    float on = texelFetch(tPartPose, at + ivec2(1, 0), 0).w, since = texelFetch(tPartPose, at + ivec2(3, 0), 0).x;
-    drawn = (on > 0.5) == (left >= since) ? 1.0 : 0.0;
+    // On when it left: on now, unless it has started or stopped an odd number of times since (its last few changes).
+    float on = texelFetch(tPartPose, at + ivec2(1, 0), 0).w;
+    float flips = dot(vec4(greaterThan(texelFetch(tPartPose, at + ivec2(3, 0), 0), vec4(left))), vec4(1.0));
+    drawn = (on > 0.5) == (mod(flips, 2.0) < 0.5) ? 1.0 : 0.0;
   }
   if (fract(seed * 7.31) >= uSmokeShape.y || uSmoke.w <= 0.0) drawn = 0.0;
   float k = age / life;
