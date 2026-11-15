@@ -41,6 +41,12 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      turbine (a rotor is 14.4 m up, where the wind is the free air alone); the panels read `cloudShade`. The picture's
      worker starts from the rules' gusts and is fed their ticks and goals (`setState`, `setObstacles`, `lead`, `pending`),
      so the grass shows the gusts the turbines feel. `WindSim`'s save is version 3 (with the obstacles). `docs/WIND.md`.
+  7. Soil-n-Silo#204 a world that changes in play (done 2026-11-15, Soil-n-Silo#234): no frame spikes when buildings, trees,
+     fields or trucks change. The shelter map redraws only the patch round a change (`ShelterMap.changedIn`, and
+     `drawParts`, which picks meshes by the patch's footprint), and the hollows do the same. `r.removeTrees` folds a
+     cleared tree's triangles away inside its grove and frees its wind spring (`TreeSprings.release`; ids are reused).
+     `r.moveTrees` lifts a tree in place when the ground under it moves. Placing a building went from about 90 to 12 ms of
+     the game's work, and clearing a tree from 30 to 3 (`docs/PERFORMANCE.md`). The demo's frames are unchanged.
 - **Weather, epic #3** (planned 2026-10-30): season, weather and hour change the whole picture. The decisions are in #3; in
   short, the game owns the weather's state and logic and the renderer only draws it. The order:
   1. #6 performance: measure the frame and set the weather's budget (done 2026-10-30: the farm 17.5 ms on the laptop,
