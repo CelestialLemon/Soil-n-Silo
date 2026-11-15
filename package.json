@@ -16,6 +16,7 @@
     "lint": "eslint .",
     "sim": "node tools/sim.ts",
     "bench": "node tools/bench.ts",
+    "hitches": "node tools/hitches.ts",
     "render:shot": "node brush3d/tools/shot.ts",
     "render:video": "node brush3d/tools/video.ts",
     "render:motion": "node brush3d/tools/motion.ts",

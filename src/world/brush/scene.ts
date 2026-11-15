@@ -100,6 +100,7 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
       counts: () => ({ draws: r.gl.info.render.calls, triangles: r.gl.info.render.triangles }),
       resetCounts: (on) => { r.gl.info.autoReset = !on; if (on) r.gl.info.reset(); },
     },
-    debug: { renderer: r, lens, wind },
+    // The pieces too, for tools/hitches.ts to time each one's sync.
+    debug: { renderer: r, lens, wind, pieces: { sky, wind, ground, cover, water, things, wild, tools } },
   };
 }
