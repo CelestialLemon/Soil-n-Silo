@@ -74,7 +74,7 @@ try {
     try {
       const page = await context.newPage();
       page.on('pageerror', (e) => console.error(`  page error: ${e.message}`));
-      await page.addInitScript(`localStorage.setItem(${JSON.stringify(saveKey('/'))}, ${JSON.stringify(serialize(state))});`);
+      await page.addInitScript(`localStorage.setItem(${JSON.stringify(saveKey(new URL(`${URL_}/`).pathname))}, ${JSON.stringify(serialize(state))});`);
       await page.goto(`${URL_}/?renderer=brush3d${opt.query ? `&${opt.query}` : ''}`);
       await page.waitForFunction('window.game?.load?.()?.models > 0', undefined, { timeout: 180_000 });
       // The models swapped in, the shaders for them compiled, the wind's worker up.
