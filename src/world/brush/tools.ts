@@ -11,7 +11,7 @@ import { buildingAt, buildingById, growsCrops, inMap, layoutOf, reliefOf, sizeOf
 import { isBank, standY, type Lie } from '../ground.ts';
 import { inPower, netColour, type NetLabel, type PowerFocus } from '../powerView.ts';
 import { routeColour, type StopLabel } from '../routeView.ts';
-import type { CursorPatch } from '../tileCursor.ts';
+import { CURSOR_GRID, type CursorPatch } from '../tileCursor.ts';
 import type { MarkerAt, PagePoint, Picker, Preview, ShowFrame, SyncFrame, Tile, Under } from '../scene.ts';
 import { GHOST_WIRE, NET_COLOURS, ROUTE_COLOURS } from '../shapes.ts';
 import { BEES, CUT_OFF, FERT, GROUND_COLOURS, hasMarker, heightTint, LINK, ROADS, WATER, type Overlay } from '../view.ts';
@@ -42,6 +42,8 @@ const PYLON_TOP = 0.4, LABEL_OVER = 0.3, MARKER_OVER = 0.1;
 const GREY = srgb(0x9a968e);
 /** The tile cursor's marks (the tile pointed at, an earthwork's points) and those refused, as the pixel world's; a dot's radius (m). */
 const CURSOR = 0xfff0c0, REFUSED = 0xe8705a, DOT = 0.8;
+/** How far over its ground the cursor lies (m); a tile's corners (u, v), north-west, north-east, south-east, south-west (CursorPatch's). */
+const CURSOR_LIFT = 0.08, CORNERS = [[0, 0], [1, 0], [1, 1], [0, 1]];
 
 const hex = (c: THREE.Color) => c.getHex();
 
@@ -104,21 +106,33 @@ export class BrushTools {
 
   /**
    * The tile cursor's marks, as lines on the land: a frame along a tile's sides, a ring round a corner. Drawn over the
-   * finished picture like the routes, where no night or weather hides them.
+   * finished picture like the routes, where no night or weather hides them. Each lies on its own tile's ground as the
+   * game reads it (the patch's heights): at a cliff a tile's side is on two terraces, and the mark is this tile's.
    */
   cursor(marks: readonly CursorPatch[], refused: readonly CursorPatch[]) {
-    const key = JSON.stringify([marks.map(({ x, y, edges, dots }) => [x, y, edges, dots]), refused.map(({ x, y, edges, dots }) => [x, y, edges, dots])]);
+    const key = JSON.stringify([marks, refused]);
     if (key === this.cursorKey) return;
     this.cursorKey = key;
-    const lines: Line[] = [];
+    const lines: Line[] = [], G = CURSOR_GRID;
     const add = (patches: readonly CursorPatch[], color: number) => {
       for (const p of patches) {
-        const c = [[p.x, p.y], [p.x + 1, p.y], [p.x + 1, p.y + 1], [p.x, p.y + 1]].map(([x, z]) => ({ x: x * TILE, z: z * TILE }));
-        if (p.edges === 15) lines.push({ points: c, color, style: 'route', width: 0.25, closed: true });
-        else for (let e = 0; e < 4; e++) if (p.edges & (1 << e)) lines.push({ points: [c[e], c[(e + 1) % 4]], color, style: 'route', width: 0.25 });
+        // A point of the tile (u, v from its north-west corner, 0..1, held to the tile for its height) on its ground (m).
+        const at = (u: number, v: number) => {
+          const cu = Math.min(1, Math.max(0, u)) * G, cv = Math.min(1, Math.max(0, v)) * G;
+          const i = Math.min(G - 1, Math.floor(cu)), j = Math.min(G - 1, Math.floor(cv)), fu = cu - i, fv = cv - j, h = p.heights;
+          const top = h[j * (G + 1) + i] * (1 - fu) + h[j * (G + 1) + i + 1] * fu, bottom = h[(j + 1) * (G + 1) + i] * (1 - fu) + h[(j + 1) * (G + 1) + i + 1] * fu;
+          return { x: (p.x + u) * TILE, y: (top * (1 - fv) + bottom * fv) * TILE + CURSOR_LIFT, z: (p.y + v) * TILE };
+        };
+        // Its sides, north, east, south, west: each from a corner to the next, a point a piece of the tile's grid.
+        const side = (e: number) => Array.from({ length: G + 1 }, (_, k) => {
+          const t = k / G, [u0, v0] = CORNERS[e], [u1, v1] = CORNERS[(e + 1) % 4];
+          return at(u0 + (u1 - u0) * t, v0 + (v1 - v0) * t);
+        });
+        if (p.edges === 15) lines.push({ points: [0, 1, 2, 3].flatMap((e) => side(e).slice(1)), color, style: 'route', width: 0.25, closed: true });
+        else for (let e = 0; e < 4; e++) if (p.edges & (1 << e)) lines.push({ points: side(e), color, style: 'route', width: 0.25 });
         for (const d of p.dots) {
-          const { x, z } = c[d];
-          lines.push({ points: Array.from({ length: 16 }, (_, i) => ({ x: x + Math.cos(i / 16 * Math.PI * 2) * DOT, z: z + Math.sin(i / 16 * Math.PI * 2) * DOT })), color, style: 'route', width: 0.3, closed: true });
+          const [u, v] = CORNERS[d], r = DOT / TILE;
+          lines.push({ points: Array.from({ length: 16 }, (_, i) => at(u + Math.cos(i / 16 * Math.PI * 2) * r, v + Math.sin(i / 16 * Math.PI * 2) * r)), color, style: 'route', width: 0.3, closed: true });
         }
       }
     };
