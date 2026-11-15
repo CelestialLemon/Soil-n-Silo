@@ -7,6 +7,7 @@ import { SHELTER_GLSL } from './shelter';
 import { SNOW_VEIL_GLSL, WHITEOUT } from './snowfall';
 import { STREAK_STRETCH, WIND_GLSL } from './wind';
 import { MARKS_POST_GLSL } from './marks';
+import { NIGHT_POOLS_GLSL } from './nightLights';
 
 // The post pass: the heat's shimmer, lines on inked things, the fog or dust lying on the land, the distance's haze, the sky,
 // a grade, and out to sRGB.
@@ -192,6 +193,7 @@ vec3 toSrgb(vec3 c) {
 
 // Where a pixel is in the world, from its place on the screen and its depth.
 ${LIGHTNING_GLSL}
+${NIGHT_POOLS_GLSL}
 vec3 worldAt(vec2 uv, float d) {
   vec2 ndc = uv * 2.0 - 1.0;
   return uCamPos + uCamRight * ndc.x + uCamUp * ndc.y + uCamFwd * d;
@@ -234,6 +236,9 @@ void main() {
     }
     edge *= aux.w;
   }
+
+  // Pools of lamplight at night (#205, nightLights.ts): on the surface, under the fog and the haze.
+  if (!sky && uPoolN > 0) c = nightPools(c, worldAt(uv, d));
 
   // Fog or dust: lying on the land, over the surface and under the distance's haze.
   float fog = 0.0;

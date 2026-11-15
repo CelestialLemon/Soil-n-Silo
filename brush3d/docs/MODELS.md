@@ -176,8 +176,10 @@ measurable change, and all the inked things together are about 0.3 ms of it. See
 
 - The parts move (Soil-n-Silo#205): `move_spin_*` parts turn about their axle at the pace the game gives them (a share
   of their `speed`), and `running_*` and `charge_<n>` pieces show or hide as the game says (`ModelParts`, `docs/API.md`).
-  On the demo's farm and in the gallery every part turns at its usual pace. Not yet: the lamps' glow at night, the
-  smoke from a `smoke_emitter`, and a turbine turning its head into the wind (its model has no yaw part). A truck's
+  On the demo's farm and in the gallery every part turns at its usual pace. A `running_*` light (`glow`, `lamp`,
+  `beacon`, `light`, `fire`, a `window`) glows at night while it shows, and a `smoke_emitter` puffs smoke while its
+  building works (`docs/API.md`). A building's upright sea-glass panes (`glass` faces, pale green-blue) are its windows,
+  which can light up at night as it works. Not yet: a turbine turning its head into the wind (its model has no yaw part). A truck's
   wheels don't turn: every truck draws one shared shape.
 - Seen from the front (as the game's footprint has it), the water wheel is edge on, because its axle runs along the
   bank. On the farm it's turned to show its face.

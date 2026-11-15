@@ -31,6 +31,7 @@ export type { DustSource } from './renderer/dust';
 export { LAND_COVER, LAND_GROUND, type Beyond, type LandCover, type LandGround, type LandMap, type LandPatch, type LandRect } from './land/map';
 export { LAND_LOOK, type LandLook } from './land/paint';
 export type { FlashSetting, Flicker, Strike } from './renderer/lightning';
+export type { NightLightsLook, SmokeLook } from './renderer/nightLights';
 
 // ---- The wind (docs/WIND.md) and the clouds: the simulation and recipe the rules share, and the renderer's view ----
 export { startWind } from './wind/start';

@@ -110,7 +110,7 @@ export class Marks {
     }
     const kind = mesh.userData.kind as MaterialKind;
     // Leaves are dabs on cards, which a plain fragment would draw as squares: a thing's planted roof isn't marked.
-    if (kind === 'foliage' || kind === 'debris' || kind === 'water') return;
+    if (kind === 'foliage' || kind === 'debris' || kind === 'smoke' || kind === 'water') return;
     if (was) { was.mark = mark; this.style(was); return; }
     const m: Marked = { mesh, mark, twin: null };
     const twin = new THREE.Mesh(mesh.geometry, markMaterial(kind, this.shared, MARK_FRAG, {

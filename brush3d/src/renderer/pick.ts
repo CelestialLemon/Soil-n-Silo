@@ -174,4 +174,4 @@ export class Picker {
 export interface Placed { mesh: THREE.Mesh; matrix: THREE.Matrix4; tag: unknown }
 
 /** The kinds drawn as dabs on cards, bigger than the cards themselves. */
-const DABS = new Set(['foliage', 'debris']);
+const DABS = new Set(['foliage', 'debris', 'smoke']);

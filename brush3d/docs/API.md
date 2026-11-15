@@ -206,8 +206,15 @@ mill.remove();
   `ModelSet.add` gives back the model's parts (`ModelParts`) as they go into the meshes `addTo` makes: `parts.spin(pace)`
   and `parts.show({ running, charge })` are `spin` and `show` above (`charge` the rings lit, 0..4; leave it out for all).
   The game's things.ts calls them from the game's state each tick (`src/world/brush/states.ts`), and holds each building's
-  state (working, idle, unpowered, weather) for the look that decorates it, still to come (#205's look PR: `status`, and
-  `smoke_emitter`'s smoke, the lamps' glow at night).
+  state (working, idle, unpowered, weather) for the look that decorates it, still to come (#205's look PR: `status`).
+- **Lights at night and smoke** (#205). A building's lights (its `running_*` parts named as lights: `glow`, `lamp`,
+  `beacon`, `light`, `fire`, a `window`) glow while it works, in their own colour, from dusk and fully at night, whatever
+  the light. Its chimneys (`smoke_emitter`) puff smoke while it works: `show({ running })` starts and stops it, and the
+  smoke starts with its first puff and stops with its last one rising away, never all at once. Its windows (upright
+  sea-glass panes) can light up with it too. How they look is a choice the developer is making (candidates, until picked):
+  `r.setNightLights({ windows, pools })` (its windows lit too; pools of their light round them) and
+  `r.setSmoke('none' | 'wisps' | 'puffs')` (none by default). The smoke goes on in real time while the game is paused,
+  as the rain does.
 
 ## What grows: crops, trees and rocks (#204, #213)
 

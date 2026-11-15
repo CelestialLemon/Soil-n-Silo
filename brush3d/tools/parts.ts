@@ -5,9 +5,11 @@
 // 2. Slots: a part is freed with its last mesh, a slot no mesh took is freed at once, and an old handle's generation no
 //    longer matches the next part in its slot. Hidden, a part is folded to its axle.
 // 3. A mesh's bounds hold its parts wherever they turn, and its posed positions (for picking) are the shader's.
+// 4. The night's lights and the smoke (#205's looks): a lamp glows while it shows, windows while lit, the nearest first;
+//    a part shown or hidden before its first frame has always been so, later from then (its smoke starts or stops then).
 // Exits with 1 if anything is off.
 import * as THREE from 'three';
-import { EASE, Parts } from '../src/renderer/parts.ts';
+import { EASE, GLOW, Parts } from '../src/renderer/parts.ts';
 
 let failed = false;
 function check(name: string, ok: boolean, detail = '') {
@@ -91,6 +93,29 @@ const angleOf = (p: Parts, slot: number) => (p.texture.image.data as Float32Arra
   check('posed as a copy of an earlier pose has it', p.posed(g, pose)!.getY(1) === posed.getY(1));
   p.show(slot, false);
   check('hidden: folded to its axle', p.posed(g)!.getY(1) === 2);
+}
+
+// 4. Lights and smoke.
+{
+  const p = new Parts(), d = () => p.texture.image.data as Float32Array;
+  const lamp = p.add({ x: 10, y: 3, z: 0 }, { x: 1, y: 0, z: 0 }, 0, GLOW.lamp);
+  const windows = p.add({ x: 2, y: 2, z: 0 }, { x: 1, y: 0, z: 0 }, 0, GLOW.window);
+  const chimney = p.add({ x: 0, y: 6, z: 0 }, { x: 1, y: 0, z: 0 }, 0);
+  p.hold([lamp, windows, chimney]);
+  check('how each glows, in its texel', d()[lamp * 16 + 8] === GLOW.lamp && d()[windows * 16 + 8] === GLOW.window && d()[chimney * 16 + 8] === GLOW.none);
+  // Hidden before its first frame (a building not working as it's built): its smoke has always been off.
+  p.show(chimney, false);
+  check('hidden before its first frame: always so', d()[chimney * 16 + 12] === -1e6);
+  p.update(4);
+  p.show(chimney, true);
+  check('shown later: from then', d()[chimney * 16 + 12] === 4);
+  const near = (windowsToo: boolean) => p.glowing({ x: 0, y: 0, z: 0 }, 8, windowsToo).map((l) => l.glow);
+  check('lights: windows only if asked, the nearest first', near(false).join() === `${GLOW.lamp}` && near(true).join() === `${GLOW.window},${GLOW.lamp}`);
+  p.light(windows, false); p.show(lamp, false);
+  check('out: windows unlit, a lamp hidden', near(true).length === 0);
+  p.release([lamp]);
+  p.show(lamp, true);
+  check('a freed part throws no light', near(true).length === 0);
 }
 
 if (failed) process.exit(1);

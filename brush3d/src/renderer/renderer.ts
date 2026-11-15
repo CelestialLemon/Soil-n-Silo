@@ -26,6 +26,7 @@ import { colourLeafStorm, leafStorm, WindField, WindState } from './wind';
 import { DustField, type DustSource } from './dust';
 import { TreeSprings, type TreeSpec } from './trees';
 import { Parts } from './parts';
+import { NightLights, type NightLightsLook, type SmokeLook } from './nightLights';
 import { WATER_EASE, WaterField, type WaterMap } from './water';
 import { GROUND_EASE, GroundField, HollowMap, type GroundMap } from './ground';
 import { SnowPaint } from './snow';
@@ -214,6 +215,8 @@ export class BrushRenderer {
    * charge rings shown or hidden. ModelSet.addTo takes their slots; a handle (ModelParts) says how each is now.
    */
   readonly parts = new Parts();
+  /** The farm's lights at night and its smoke (#205): how they look (setNightLights, setSmoke). */
+  private readonly nightLights = new NightLights();
   private windNow: [WindSnapshot, WindSnapshot, number] | null = null;
   /** Fresh dust, lifted by the gusts where the game's map says (see setDustSource; the renderer's own motion). */
   readonly dust = new DustField();
@@ -347,7 +350,7 @@ export class BrushRenderer {
         // The blizzard's whiteout, and the wisps over the lying snow (which read the ground's map, the land's height and
         // its shelter, from the hollows map).
         ...this.snowfall.veil, ...this.ground.uniforms, ...this.shelter.uniforms, ...this.hollows.uniforms,
-        ...this.lightning.post, uShadowMap: this.shared.uShadowMap, uShadowMatrix: this.shared.uShadowMatrix,
+        ...this.lightning.post, ...this.nightLights.post, uShadowMap: this.shared.uShadowMap, uShadowMatrix: this.shared.uShadowMatrix,
         ...this.marks.post,
       },
     });
@@ -785,6 +788,15 @@ export class BrushRenderer {
     }
   }
 
+  /**
+   * How the farm's lights look at night (Soil-n-Silo#205; candidates for the developer to pick): a building's lamps and
+   * fires glow while it works, from dusk; `windows` lights its windows too, and `pools` throws pools of their light round them.
+   */
+  setNightLights(look: NightLightsLook) { this.nightLights.look = { ...look }; }
+
+  /** How the smoke from a working building's chimneys looks (#205; candidates for the developer to pick): none by default. */
+  setSmoke(look: SmokeLook) { NightLights.smoke(this.shared, look); }
+
   /** Shows or hides every mesh of a kind (for A/B comparisons). */
   setVisible(kind: DrawnKind, visible: boolean) {
     if (kind === 'rain') { this.rainShown = visible; return; }
@@ -1067,6 +1079,8 @@ export class BrushRenderer {
     // The cloud shadows are as strong as the sun is direct: none before dawn, faint by the moon. Where they're weak the
     // cover lies over the whole picture, as it did before the clouds; where they're strong the gaps are in the sun.
     const dim = THREE.MathUtils.smoothstep(clear.sunEl, -8, 6);
+    // The lamps from dusk, and the pools of their light (#205).
+    this.nightLights.update(this.shared, this.parts, clear.night, this.shared.uViewTarget.value);
     const strength = dim * THREE.MathUtils.lerp(1, CLOUD_NIGHT, clear.night);
     const gap = THREE.MathUtils.lerp(cover, gapCover(cover), strength);
     // What dust and the heat do to the light (air.ts), laid over each.

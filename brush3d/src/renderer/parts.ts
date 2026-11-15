@@ -13,9 +13,22 @@ import * as THREE from 'three';
 // (`EASE`), as a rotor has weight, and turns it on its own clock. The turn is worked out from the time, not stepped
 // frame by frame, so a frame at a time is the same however it was reached (the tools draw frames out of order): each part
 // keeps its last few changes of pace, to go back through.
+//
+// A part can also light up at night (#205's night glow): a lamp or a fire (`GLOW.lamp`), glowing while it shows; a
+// building's windows (`GLOW.window`), a part that never moves or hides, lit while the building works (`light`). And a
+// part can be where smoke leaves (its puffs, SMOKE_VERT): it shows while its building works, and the time it last
+// started or stopped says which puffs are drawn, so smoke starts and stops as smoke does, never all at once.
 
-/** Texels a part: [axle's point, angle], [axle's direction, shown], two spare (#205's look: a part's glow, its tint). */
+/**
+ * Texels a part: [axle's point, angle], [axle's direction, shown], [how it glows (GLOW), lit, 0, 0], [when it last started
+ * or stopped showing (the renderer's clock; far back: always as it is), 0, 0, 0].
+ */
 export const PART_TEXELS = 4;
+/** How a part lights up at night: not at all, as a lamp or a fire (while it shows), as windows (while it's lit). */
+export const GLOW = { none: 0, lamp: 1, window: 2 } as const;
+export type Glow = (typeof GLOW)[keyof typeof GLOW];
+/** A part's start or stop time before its first frame: it has always been as it is (its smoke already rising, or none). */
+const ALWAYS = -1e6;
 /** Texels a row of the texture (a whole number of parts). */
 const ROW = 256;
 /** How long a part takes to come most of the way to a new pace (s): it comes 63% of the way in this time. */
@@ -46,6 +59,8 @@ export class Parts {
   /** The renderer's clock at the last update (null before the first). */
   private time: number | null = null;
   private dirty = false;
+  /** Slots added since the last update: one shown or hidden before its first frame has always been so. */
+  private readonly fresh = new Set<number>();
 
   private static makeTexture(rows: number) {
     const t = new THREE.DataTexture(new Float32Array(ROW * rows * 4), ROW, rows, THREE.RGBAFormat, THREE.FloatType);
@@ -58,10 +73,10 @@ export class Parts {
 
   /**
    * A new part: its axle through `origin` along `axis` (unit), in the coordinates of the mesh it's in, turning at `speed`
-   * radians a second at its usual pace (0: it never turns). Shown, at rest. Returns its slot; the mesh's vertices carry
-   * slot + 1 (0 is none).
+   * radians a second at its usual pace (0: it never turns), lighting up at night as `glow` says. Shown, lit, at rest.
+   * Returns its slot; the mesh's vertices carry slot + 1 (0 is none).
    */
-  add(origin: THREE.Vector3Like, axis: THREE.Vector3Like, speed: number): number {
+  add(origin: THREE.Vector3Like, axis: THREE.Vector3Like, speed: number, glow: Glow = GLOW.none): number {
     let slot = this.free.pop();
     if (slot === undefined) {
       slot = this.holds.length;
@@ -78,6 +93,8 @@ export class Parts {
     d.fill(0, i, i + PART_TEXELS * 4);
     d[i] = origin.x; d[i + 1] = origin.y; d[i + 2] = origin.z;
     d[i + 4] = axis.x; d[i + 5] = axis.y; d[i + 6] = axis.z; d[i + 7] = 1;
+    d[i + 8] = glow; d[i + 9] = 1; d[i + 12] = ALWAYS;
+    this.fresh.add(slot);
     this.dirty = true;
     return slot;
   }
@@ -113,12 +130,37 @@ export class Parts {
     this.dirty = true;
   }
 
-  /** Shows or hides a part (hidden, it's folded to its axle). */
+  /** Shows or hides a part (hidden, it's folded to its axle), from now (its smoke starts or stops rising from now). */
   show(slot: number, shown: boolean) {
-    const d = this.texture.image.data as Float32Array, i = slot * PART_TEXELS * 4 + 7, v = shown ? 1 : 0;
+    const d = this.texture.image.data as Float32Array, i = slot * PART_TEXELS * 4, v = shown ? 1 : 0;
+    if (d[i + 7] === v) return;
+    d[i + 7] = v;
+    d[i + 12] = this.fresh.has(slot) || this.time === null ? ALWAYS : this.time;
+    this.dirty = true;
+  }
+
+  /** Lights a part's windows or puts them out (GLOW.window: lit while its building works). */
+  light(slot: number, lit: boolean) {
+    const d = this.texture.image.data as Float32Array, i = slot * PART_TEXELS * 4 + 9, v = lit ? 1 : 0;
     if (d[i] === v) return;
     d[i] = v;
     this.dirty = true;
+  }
+
+  /**
+   * The parts glowing now, nearest `to` first, at most `most`: each one's point (its axle's) and how it glows (GLOW), a
+   * window only if `windows`. For the pools of light they throw (BrushRenderer's night lights).
+   */
+  glowing(to: THREE.Vector3Like, most: number, windows: boolean): { x: number; y: number; z: number; glow: Glow }[] {
+    const d = this.texture.image.data as Float32Array, out: { x: number; y: number; z: number; glow: Glow; far: number }[] = [];
+    for (let s = 0; s < this.holds.length; s++) {
+      if (!(this.holds[s] > 0)) continue;
+      const i = s * PART_TEXELS * 4, glow = d[i + 8];
+      if (glow === GLOW.lamp ? d[i + 7] < 0.5 : glow !== GLOW.window || !windows || d[i + 9] < 0.5) continue;
+      const x = d[i], y = d[i + 1], z = d[i + 2];
+      out.push({ x, y, z, glow: glow as Glow, far: (x - to.x) ** 2 + (z - to.z) ** 2 });
+    }
+    return out.sort((a, b) => a.far - b.far).slice(0, most);
   }
 
   /** Starts a new leg at `time`, from how it turns then (the leg before kept, for a jump back). */
@@ -211,6 +253,7 @@ export class Parts {
       }
     }
     this.time = time;
+    this.fresh.clear();
     const d = this.texture.image.data as Float32Array;
     let moved = false;
     for (let s = 0; s < this.turns.length; s++) {

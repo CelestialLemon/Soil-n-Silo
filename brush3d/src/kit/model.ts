@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshBuilder, PLAIN, rng, srgb, type Paint } from './builder';
-import { addMound } from './kit';
+import { addDab, addMound } from './kit';
 import type { BrushRenderer } from '../renderer/renderer';
-import type { Parts } from '../renderer/parts';
+import { GLOW, type Glow, type Parts } from '../renderer/parts';
 
 // Models made in Blender (tools/blender/, docs/MODELS.md), as glTF: inked things, each face one colour (a custom attribute,
 // _COLOR, linear, as the scenes' own colours are), its material's name saying how the ink shader finishes it. No textures:
@@ -39,15 +39,35 @@ const PLANTS: Record<string, { leaf: number[]; foot: number; bloom?: number[]; d
 
 /** A model's piece the game moves or changes (docs/MODELS.md), by its name. */
 const PART = /^(move_spin_|running_|charge_(\d+))/;
+/** The running looks that are lights, which glow at night (#205): a fire, a lamp, a beacon, a lit window. */
+const LIGHT = /^running_(glow|lamp|beacon|light|fire|.*window)/;
+/**
+ * Windows (#205): sea-glass panes (`glass` faces, pale green-blue: the solar glass is a deep blue), which light up at night
+ * while their building works. By their colour's green, linear (sea glass #9ad2c8 about 0.64, solar blue #1d4fa0 about 0.08).
+ */
+const WINDOW_GREEN = 0.3;
+/** A window's pane stands up: its normal's height under this. */
+const UPRIGHT = 0.5;
+/** Puffs a smoke emitter has (#205, SMOKE_VERT: each leaves once a cycle, spread through it), their colour and paint. */
+const PUFFS = 8, SMOKE = new THREE.Color(0.58, 0.57, 0.62), SMOKE_PAINT: Paint = [0.4, 0.9, -1, 0.3];
+/** How green a mesh's colours are on average (linear): a window's sea glass, or the solar glass. */
+function greenOf(mesh: THREE.Mesh) {
+  const col = mesh.geometry.getAttribute('_color');
+  if (!col) return 1;
+  let g = 0;
+  for (let i = 0; i < col.count; i++) g += col.getY(i);
+  return g / Math.max(col.count, 1);
+}
 /** How fast a spinning part turns at its usual pace when its model doesn't say (radians a second). */
 const SPIN_SPEED = 0.6;
 
-/** One of a set's parts: its axle (as placed), its pace (radians a second; 0 if it doesn't turn), and whose it is. */
-interface SetPart { origin: THREE.Vector3; axis: THREE.Vector3; speed: number }
+/** One of a set's parts: its axle (as placed), its pace (radians a second; 0 if it doesn't turn), how it glows at night. */
+interface SetPart { origin: THREE.Vector3; axis: THREE.Vector3; speed: number; glow: Glow }
 
 /**
  * A model's moving and changing parts as added to a ModelSet (Soil-n-Silo#205), for the game to say how they are now:
- * `spin` turns its `move_spin_*` parts, `show` its `running_*` look and the battery's `charge_<n>` rings. Each call does
+ * `spin` turns its `move_spin_*` parts, `show` its `running_*` look (its smoke and its lit windows with it) and the
+ * battery's `charge_<n>` rings. Each call does
  * only its own job (docs/API.md: a mill with no power gets `spin(0)` and `show({ running: false })`). Until the set is
  * added to the renderer (addTo) it keeps what it's told, and then shows it; once its meshes are taken out, it does
  * nothing. A new one is at rest, its running look and every charge ring showing, as the model is drawn.
@@ -55,10 +75,14 @@ interface SetPart { origin: THREE.Vector3; axis: THREE.Vector3; speed: number }
 export class ModelParts {
   /** Where smoke or steam leaves it (its `smoke_emitter`s, as placed). */
   readonly smoke: THREE.Vector3[] = [];
-  /** Its parts, by their index in the set: those that turn, the running looks, the charge rings by number. */
+  /**
+   * Its parts, by their index in the set: those that turn, the running looks (and its smoke's chimneys), the charge rings
+   * by number, its windows (one part, lit while it works).
+   */
   readonly spins: number[] = [];
   readonly running: number[] = [];
   readonly charges: number[][] = [];
+  readonly windows: number[] = [];
   private table: Parts | null = null;
   private slots: readonly number[] = [];
   private gens: number[] = [];
@@ -66,7 +90,7 @@ export class ModelParts {
   private shown: { running: boolean; charge: number | null } = { running: true, charge: null };
 
   /** Whether it has anything to move or change. */
-  get any() { return this.spins.length + this.running.length + this.charges.length > 0; }
+  get any() { return this.spins.length + this.running.length + this.charges.length + this.windows.length > 0; }
 
   /** Turns its spinning parts at `pace` times their usual speed (0 still, 1 the model's pace), eased to it. */
   spin(pace: number) {
@@ -95,6 +119,7 @@ export class ModelParts {
   private apply() {
     if (!this.table) return;
     for (const p of this.running) { const s = this.slot(p); if (s !== null) this.table.show(s, this.shown.running); }
+    for (const p of this.windows) { const s = this.slot(p); if (s !== null) this.table.light(s, this.shown.running); }
     const charge = this.shown.charge;
     this.charges.forEach((ring, n) => { for (const p of ring) { const s = this.slot(p); if (s !== null) this.table!.show(s, charge === null || n < charge); } });
   }
@@ -114,6 +139,7 @@ export class ModelSet {
   readonly ink = new MeshBuilder('ink');
   readonly paint = new MeshBuilder('paint');
   readonly leaves = new MeshBuilder('foliage');
+  readonly smoke = new MeshBuilder('smoke');
   private readonly rand: () => number;
   /** The parts of the models added, in the order added (their index is what the vertices carry, less one). */
   private readonly parts: SetPart[] = [];
@@ -128,6 +154,8 @@ export class ModelSet {
     model.updateMatrixWorld(true);
     const p = new THREE.Vector3(), n = new THREE.Vector3(), c = new THREE.Color(), s = new THREE.Vector3(), q = new THREE.Quaternion();
     const thing = new ModelParts(), mine = new Map<THREE.Object3D, number>();
+    // Its windows' part (-1: none yet), and their middle.
+    const windows = { at: new THREE.Vector3(), n: 0, part: -1 };
     this.things.push(thing);
     // The part a mesh is of, if it is (the nearest of it and the nodes it hangs from with a part's name): its index in
     // the set, + 1; 0 for none.
@@ -141,6 +169,7 @@ export class ModelSet {
           i = this.parts.push({
             origin: new THREE.Vector3().setFromMatrixPosition(w), axis: new THREE.Vector3().setFromMatrixColumn(w, 0).normalize(),
             speed: spin ? (at.userData.speed as number | undefined) ?? SPIN_SPEED : 0,
+            glow: LIGHT.test(at.name) ? GLOW.lamp : GLOW.none,
           }) - 1;
           mine.set(at, i);
           if (spin) thing.spins.push(i);
@@ -157,12 +186,19 @@ export class ModelSet {
       if (!mesh.isMesh) {
         const kind = /^plant_([a-z]+)_/.exec(o.name)?.[1];
         if (kind && PLANTS[kind]) { m.decompose(p, q, s); this.grow(kind, p, s.x, s.y); }
-        if (/^smoke_emitter/.test(o.name)) thing.smoke.push(new THREE.Vector3().setFromMatrixPosition(m));
+        if (/^smoke_emitter/.test(o.name)) this.chimney(thing, new THREE.Vector3().setFromMatrixPosition(m));
         return;
       }
       const name = (mesh.material as THREE.Material).name, moss = name === 'moss';
       const nm = new THREE.Matrix3().getNormalMatrix(m), b = moss ? this.paint : this.ink;
       b.part = partOf(o);
+      // Its windows: one part, at their middle (for the light they throw), which never moves. Upright panes only: a
+      // sea-glass awning or skylight isn't a window lit from inside.
+      const glazed = !b.part && name === 'glass' && greenOf(mesh) > WINDOW_GREEN;
+      if (glazed && windows.part < 0) {
+        windows.part = this.parts.push({ origin: new THREE.Vector3(), axis: new THREE.Vector3(1, 0, 0), speed: 0, glow: GLOW.window }) - 1;
+        thing.windows.push(windows.part);
+      }
       const finish = moss ? MOSS : FINISH[name] ?? PLAIN;
       const g = mesh.geometry, paint: Paint = floats && !moss ? [finish[0], finish[1], finish[2], 1] : finish;
       const pos = g.getAttribute('position'), nrm = g.getAttribute('normal'), col = g.getAttribute('_color'), uv = g.getAttribute('uv');
@@ -171,7 +207,10 @@ export class ModelSet {
         p.fromBufferAttribute(pos, i).applyMatrix4(m);
         n.fromBufferAttribute(nrm, i).applyMatrix3(nm).normalize();
         if (col) c.setRGB(col.getX(i), col.getY(i), col.getZ(i)); else c.setRGB(1, 1, 1);
+        const pane = glazed && Math.abs(n.y) < UPRIGHT;
+        if (pane) { b.part = windows.part + 1; windows.at.add(p); windows.n++; }
         b.vertex(p, n, c, paint, uv ? [uv.getX(i), uv.getY(i)] : [0, 0]);
+        if (pane) b.part = 0;
       }
       const index = g.index;
       if (index) for (let i = 0; i < index.count; i += 3) b.tri(base + index.getX(i), base + index.getX(i + 1), base + index.getX(i + 2));
@@ -180,7 +219,25 @@ export class ModelSet {
     });
     // Each charge ring by its number, none missing.
     for (let k = 0; k < thing.charges.length; k++) thing.charges[k] ??= [];
+    if (windows.part >= 0) this.parts[windows.part].origin.copy(windows.at.divideScalar(Math.max(windows.n, 1)));
     return thing;
+  }
+
+  /**
+   * Smoke from a chimney (#205, a model's `smoke_emitter` at `at`): its puffs, and a part for it that shows while its
+   * building works (with its running look), so the smoke starts and stops with it.
+   */
+  private chimney(thing: ModelParts, at: THREE.Vector3) {
+    thing.smoke.push(at);
+    const i = this.parts.push({ origin: at.clone(), axis: new THREE.Vector3(1, 0, 0), speed: 0, glow: GLOW.none }) - 1;
+    thing.running.push(i);
+    this.smoke.part = i + 1;
+    const up = new THREE.Vector3(0, 1, 0);
+    for (let k = 0; k < PUFFS; k++) {
+      addDab(this.smoke, at, up, SMOKE.clone().offsetHSL(0, 0, (this.rand() - 0.5) * 0.06), 0.3 * (0.8 + this.rand() * 0.4),
+        (k + this.rand() * 0.6) / PUFFS, SMOKE_PAINT);
+    }
+    this.smoke.part = 0;
   }
 
   /** A painted plant at a model's point: a cushion `radius` across and `tall` high; a vine is a column of them. */
@@ -205,11 +262,13 @@ export class ModelSet {
     const out: THREE.Mesh[] = [];
     // Its parts get their slots in the renderer, for the game to move and change through each model's ModelParts. (A
     // renderer stand-in without parts draws them where they rest.)
-    const table = r.parts, slots = table ? this.parts.map((p) => table.add(p.origin, p.axis, p.speed)) : undefined;
+    const table = r.parts, slots = table ? this.parts.map((p) => table.add(p.origin, p.axis, p.speed, p.glow)) : undefined;
     if (this.ink.vertexCount) out.push(r.add(this.ink.build(slots), 'ink', { tag }));
     // A planted roof is a roof: rain and snow stop at it, as at an inked one (paint is no cover unless told).
     if (this.paint.vertexCount) out.push(r.add(this.paint.build(slots), 'paint', { seasonal: true, cover: 'full', tag }));
     if (this.leaves.vertexCount) out.push(r.add(this.leaves.build(), 'foliage', { cover: 'none', seasonal: true, tag }));
+    // Its smoke isn't the thing (no tag: a pick sees through it), and casts no shadow. Without parts there's none to draw.
+    if (this.smoke.vertexCount && slots) out.push(r.add(this.smoke.build(slots), 'smoke', { cover: 'none', castShadow: false }));
     // Bound before the slots no mesh took are freed: a handle keeps the part a slot held, so it never moves the next one in it.
     if (table && slots) { for (const t of this.things) t.bind(table, slots); table.unheld(slots); }
     return out;
