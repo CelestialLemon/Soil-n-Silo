@@ -46,7 +46,8 @@ export function gameCases(sunset: number): GameCase[] {
     at('storm, wet ground', { wet: { wet: 1, mud: 1 } }),
     at('storm, frost', { frost: 0.6, hour: 9 }),
   );
-  for (const q of ['medium', 'low'] as const) {
+  // Every preset as its own rows, whatever the player has picked (the other cases are drawn at the player's).
+  for (const q of ['high', 'medium', 'low'] as const) {
     cases.push(at(`storm, ${q}`, { quality: QUALITY[q] }), at(`widest, storm, ${q}`, { zoom: ZOOMS.widest, quality: QUALITY[q] }));
   }
   for (const k of ['ground', 'paint', 'grass', 'foliage', 'crop', 'ink', 'water'] as const) cases.push(at(`widest, storm, no ${k}`, { zoom: ZOOMS.widest, hide: [k] }));
@@ -96,7 +97,7 @@ export function profileHead(host: ProfileHost) {
   const quality = Object.entries(QUALITY).find(([, p]) => p.samples === q.samples && p.shadowMapSize === q.shadowMapSize && p.maxPixels === q.maxPixels)?.[0] ?? JSON.stringify(q);
   return [
     `${s.scenario.id} (${s.scenario.climate.season}) · ${s.buildings.length} buildings · ${s.trucks.length} trucks · GPU ${gpu} · ${timers ? 'GPU timers' : 'no GPU timers (read the uncapped column)'}`,
-    `view at x ${v.target.x.toFixed(1)} z ${v.target.z.toFixed(1)} · heading ${v.heading.toFixed(2)} · quality ${quality} (the presets are cases too) · screen ${innerWidth}×${innerHeight} at ${devicePixelRatio}`,
+    `view at x ${v.target.x.toFixed(1)} z ${v.target.z.toFixed(1)} · heading ${v.heading.toFixed(2)} · quality ${quality} (the cases' own, but for the presets' rows) · screen ${innerWidth}×${innerHeight} at ${devicePixelRatio}`,
     load ? `load ms: ${Object.entries(load.pieces).map(([k, v]) => `${k} ${ms(v)}`).join(', ')}; first frame ${ms(load.firstFrame)}; models in ${ms(load.models)}; from the page's start ${ms(load.sinceStart)}` : 'load: not yet',
     `${location.href}`, navigator.userAgent,
   ].join('\n');
