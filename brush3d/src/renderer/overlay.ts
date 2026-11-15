@@ -30,18 +30,25 @@ export interface Grid {
   level: number;
 }
 
-/** How the overlay's tiles show at their edges, and how strong the grid's and the contours' lines are (a plain look until #206's pick). */
-const EDGE = 0.35, GRID = 0.35, CONTOUR = 0.45;
+/**
+ * How an overlay is painted: how much the land's light and shade fall on its colour (`lit`, 1 as on the paint, 0 a flat
+ * colour, as in full sun, wherever it lies), how dark a line is drawn between tiles of different colours (`edge`, 0..1),
+ * and how wide a band of the colour, full strength, runs along the inside of a region's border (`rim`, m; 0 none).
+ */
+export interface OverlayLook { lit: number; edge: number; rim: number }
+export const OVERLAY_LOOK: OverlayLook = { lit: 1, edge: 0.35, rim: 0 };
+/** How strong the grid's and the contours' lines are. */
+const GRID = 0.35, CONTOUR = 0.45;
 
 export function createOverlayUniforms() {
   return {
     // The overlay: its tiles' colours (alpha 0 where clear), where they lie (x0, z0, the tile's size, how strong), their
-    // count, whether there is one, and how dark a line between tiles of different colours is.
+    // count, whether there is one, and its look (lit, edge, rim).
     tToolsOverlay: { value: null as THREE.Texture | null },
     uToolsOverlayRect: { value: new THREE.Vector4(0, 0, 4, 0) },
     uToolsOverlaySize: { value: new THREE.Vector2(1, 1) },
     uToolsOverlayOn: { value: 0 },
-    uToolsOverlayEdge: { value: EDGE },
+    uToolsOverlayLook: { value: new THREE.Vector3(OVERLAY_LOOK.lit, OVERLAY_LOOK.edge, OVERLAY_LOOK.rim) },
     // The grid: x0, z0, the tile's size, how high a level stands; its tiles' count; whether shown and its lines' strengths.
     uToolsGridRect: { value: new THREE.Vector4(0, 0, 4, 0) },
     uToolsGridSize: { value: new THREE.Vector2(1, 1) },
@@ -59,7 +66,7 @@ uniform sampler2D tToolsOverlay;
 uniform vec4 uToolsOverlayRect;
 uniform vec2 uToolsOverlaySize;
 uniform float uToolsOverlayOn;
-uniform float uToolsOverlayEdge;
+uniform vec3 uToolsOverlayLook;
 uniform vec4 uToolsGridRect;
 uniform vec2 uToolsGridSize;
 uniform vec3 uToolsGrid;
@@ -75,18 +82,23 @@ vec3 groundTools(vec3 col, vec3 p, vec3 n, float light) {
     ivec2 t = ivec2(floor(q));
     vec4 o = toolsOverlayAt(t);
     if (o.a > 0.0) {
-      vec3 tint = paintBands(toolsSrgbToLin(o.rgb), light, 0.02, n.y * 0.5 + 0.5);
-      // How far into the tile from its nearest side, in pixels, and whether the tile across that side has another colour.
+      float lit = uToolsOverlayLook.x;
+      // Painted in the land's light (the bands it was painted with), or as in full sun wherever it lies.
+      vec3 tint = paintBands(toolsSrgbToLin(o.rgb), mix(1.0, light, lit), 0.02, n.y * 0.5 + 0.5);
+      // How far into the tile from its nearest sides (tiles, and pixels), and whether the tiles across them have another colour.
       vec2 f = fract(q), fw = max(fwidth(q), vec2(1e-5));
-      vec2 side = min(f, 1.0 - f) / fw;
+      vec2 d = min(f, 1.0 - f), side = d / fw;
       ivec2 across = t + ivec2(f.x < 0.5 ? -1 : 1, f.y < 0.5 ? -1 : 1);
-      float differs = 0.0;
-      if (side.x < 2.0 && distance(toolsOverlayAt(ivec2(across.x, t.y)), o) > 0.01) differs = 1.0 - smoothstep(0.5, 1.5, side.x);
-      if (side.y < 2.0 && distance(toolsOverlayAt(ivec2(t.x, across.y)), o) > 0.01) differs = max(differs, 1.0 - smoothstep(0.5, 1.5, side.y));
-      // A wash: the colour laid over the paint, which keeps its own light and dark.
+      float otherX = distance(toolsOverlayAt(ivec2(across.x, t.y)), o) > 0.01 ? 1.0 : 0.0;
+      float otherY = distance(toolsOverlayAt(ivec2(t.x, across.y)), o) > 0.01 ? 1.0 : 0.0;
+      float differs = max(otherX * (1.0 - smoothstep(0.5, 1.5, side.x)), otherY * (1.0 - smoothstep(0.5, 1.5, side.y)));
+      // A rim: a band along the inside of the region's border, the colour at nearly full strength.
+      float rimT = uToolsOverlayLook.z / uToolsOverlayRect.z, rim = 0.0;
+      if (rimT > 0.0) rim = max(otherX * (1.0 - smoothstep(rimT - fw.x, rimT + fw.x, d.x)), otherY * (1.0 - smoothstep(rimT - fw.y, rimT + fw.y, d.y)));
+      // A wash: the colour laid over the paint, which keeps its own light and dark as much as the colour is lit.
       float lum = dot(col, vec3(0.2126, 0.7152, 0.0722)), own = max(dot(tint, vec3(0.2126, 0.7152, 0.0722)), 1e-3);
-      col = mix(col, tint * (0.55 + 0.45 * lum / own), uToolsOverlayRect.w);
-      col *= 1.0 - differs * uToolsOverlayEdge;
+      col = mix(col, tint * mix(1.0, 0.55 + 0.45 * lum / own, lit), max(uToolsOverlayRect.w, rim * 0.9));
+      col *= 1.0 - differs * uToolsOverlayLook.y;
     }
   }
   if (uToolsGrid.x > 0.5) {
@@ -135,6 +147,10 @@ export class GroundTools {
     u.uToolsOverlayRect.value.set(o.x0 ?? 0, o.z0 ?? 0, o.tile ?? 4, THREE.MathUtils.clamp(o.strength, 0, 1));
     u.uToolsOverlaySize.value.set(w, h);
     u.uToolsOverlayOn.value = 1;
+  }
+
+  setLook(look: OverlayLook) {
+    this.uniforms.uToolsOverlayLook.value.set(THREE.MathUtils.clamp(look.lit, 0, 1), THREE.MathUtils.clamp(look.edge, 0, 1), Math.max(0, look.rim));
   }
 
   setGrid(g: Grid | null) {
