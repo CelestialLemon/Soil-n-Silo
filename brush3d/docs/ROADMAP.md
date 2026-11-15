@@ -13,7 +13,8 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      simulation and the cloud recipe) loads in Node alone, for the rules' tests. The renderer, wind, painting kit
      (`src/kit`) and models (`src/models`) stand apart from the demo; the demo's frames are unchanged. Open for later
      tasks: the game's zoom at 4 m a tile is 4–24 px/m, under the 16–192 brush3d was tuned at (#201, #210); the wind
-     grid's 256 cells may need 2 m cells past the map (#208); moving obstacles and the sub-tick clock in wind saves (#208).
+     grid's 256 cells (settled in #208: 2 m cells, past the map by about 32 m); moving obstacles and the sub-tick clock in wind
+     saves (settled in #208: `setObstacles`, and the rules' one clock, a wind tick a game step).
   2. Soil-n-Silo#200 the move (done 2026-11-14): this folder of the game's repo, with brush3d-renderer's history rewritten
      under `brush3d/` so `git log` and `git blame` follow it. One `package.json` (the tools are `npm run render:*`), checked by
      the game's typecheck (now with `erasableSyntaxOnly`: the constructors' parameter properties became plain fields), lint
@@ -34,6 +35,12 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      (`QUALITY.high|medium|low`, changed while the game runs with `r.setQuality`; `docs/PERFORMANCE.md`), how much rain and
      snow falls (`fallingShare`) and the lightning flashes (`lightning.setting`, which stays where it is) in the game's
      settings panel. The demo takes `?quality=` too; its frames are unchanged.
+  6. Soil-n-Silo#208 one wind and one cloud field (done 2026-11-15, Soil-n-Silo#229 and Soil-n-Silo#231, with
+     Soil-n-Silo#198): the game's rules step the gusts alone (`WindRecipe`, `src/wind/recipe.ts`: the wind's eased state,
+     sets of gusts and a float32 twin of the engine's free air, bit for bit) a tick a game step, and read them at each
+     turbine (a rotor is 14.4 m up, where the wind is the free air alone); the panels read `cloudShade`. The picture's
+     worker starts from the rules' gusts and is fed their ticks and goals (`setState`, `setObstacles`, `lead`, `pending`),
+     so the grass shows the gusts the turbines feel. `WindSim`'s save is version 3 (with the obstacles). `docs/WIND.md`.
 - **Weather, epic #3** (planned 2026-10-30): season, weather and hour change the whole picture. The decisions are in #3; in
   short, the game owns the weather's state and logic and the renderer only draws it. The order:
   1. #6 performance: measure the frame and set the weather's budget (done 2026-10-30: the farm 17.5 ms on the laptop,

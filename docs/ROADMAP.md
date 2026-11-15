@@ -110,6 +110,22 @@ only, never saved, the map itself unchanged): the river runs on out of sight, a 
 thicken and the ground rises into wooded hills, with an apron of distant woods beyond them. Everything past the edge is a
 shade duller, so where you can build still reads at a glance. Height on the map itself followed on 2026-10-17, below.
 
+## One wind and one cloud field for the rules and the picture (2026-11-15)
+
+A turbine now makes its power times the gust passing over it, and a solar panel under a cloud's shadow loses the share of
+its sun the valley's cloud takes, while one in the sun keeps it all (#208, #198; #229 the rules, #231 the picture). The
+valley's wind and cloud stay what they were (the forecasts, the planning numbers, every day's and season's average), so the
+balance holds: over 100 days a turbine makes its power within 0.15% and a panel within 0.6%, and the bots clear every
+commission as before. What is new is the moment: a turbine swings between about 0.8 and 1.35 times the valley's power as the
+gusts and lulls pass, a panel between about a third and two and a half times (a gap in the cloud), and a single day's
+panels vary by about 8%. The gusts are brush3d's (`WindRecipe`), stepped by the rules a tick a step and saved with the game
+(save version 20), about 1 µs a step and a microsecond or two a turbine or panel. On the brush3d path the grass, trees and
+dust show those same gusts, flowing round the buildings and trees, and the clouds' shadows are drawn where they shade the
+panels. The worker that steps the air costs about 4–6% of a core at 1×, off the game's tick. `src/game/overhead.ts` has the
+rules, `src/world/brush/wind.ts` the picture. Still open: whether the wind's own shelter (the air flowing round what stands)
+should replace the rules' shelter number for turbines (a design call), and the pixel path has the rule without the drawn
+gusts until the swap (#211).
+
 ## brush3d's settings in the game (2026-11-15)
 
 On the brush3d path (`?renderer=brush3d`, #209), the settings panel's Game tab has brush3d's settings in place of the pixel
