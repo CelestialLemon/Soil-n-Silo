@@ -176,14 +176,15 @@ export class BrushRenderer {
   private materials = new Map<MaterialKind, {
     main: THREE.ShaderMaterial; depth: THREE.ShaderMaterial; prepass: THREE.ShaderMaterial; mirrorPrepass: THREE.ShaderMaterial;
   }>();
-  private casters: THREE.Mesh[] = [];
+  /** What casts the sun's shadow (a set: the shadow pass asks it of every mesh in the scene, every frame, #210). */
+  private casters = new Set<THREE.Mesh>();
   /**
    * Each mesh's silhouette twin (the same geometry, depth only), drawn in the main view and the reflection just before
    * the painted meshes, in the same render: three resolves a multisampled target after every render, and a full-size
    * resolve costs a millisecond or so on integrated graphics. Hidden in the other passes.
    */
   private silhouettes = new THREE.Group();
-  private twins: [THREE.Mesh, THREE.Mesh][] = [];
+  private twins = new Map<THREE.Mesh, THREE.Mesh>();
   private fields = new Map<MaterialKind, THREE.WebGLRenderTarget>();
   private underTarget: THREE.WebGLRenderTarget;
   private reflectTarget: THREE.WebGLRenderTarget;
@@ -477,14 +478,14 @@ export class BrushRenderer {
     if (cover !== 'none' && kind !== 'ground') this.shelter.add(mesh, cover);
     this.scene.add(mesh);
     if (kind === 'ground') this.groundMoved(null);
-    if (options.castShadow ?? kind !== 'water') this.casters.push(mesh);
+    if (options.castShadow ?? kind !== 'water') this.casters.add(mesh);
     const twin = new THREE.Mesh(geometry, this.materials.get(kind)!.prepass);
     twin.frustumCulled = cull;
     twin.renderOrder = -1;
     twin.matrixAutoUpdate = false;
     twin.matrixWorldAutoUpdate = false;
     this.silhouettes.add(twin);
-    this.twins.push([mesh, twin]);
+    this.twins.set(mesh, twin);
     return mesh;
   }
 
@@ -505,9 +506,9 @@ export class BrushRenderer {
     if (parts?.size) this.parts.release(parts);
     if (mesh.userData.cut) mesh.geometry.dispose();
     if (mesh.userData.seasonal) this.unseason(mesh.geometry);
-    this.casters = this.casters.filter((m) => m !== mesh);
-    const i = this.twins.findIndex(([m]) => m === mesh);
-    if (i >= 0) { this.silhouettes.remove(this.twins[i][1]); this.twins.splice(i, 1); }
+    this.casters.delete(mesh);
+    const twin = this.twins.get(mesh);
+    if (twin) { this.silhouettes.remove(twin); this.twins.delete(mesh); }
     const cover = mesh.userData.cover as Cover;
     if (cover !== 'none' && mesh.userData.kind !== 'ground') this.shelter.remove(mesh, cover);
     if (mesh.userData.kind === 'ground') this.groundMoved(null);
@@ -1368,6 +1369,8 @@ export class BrushRenderer {
       this.settings.falling && this.snowShown, this.ground.any, this.windNowVector, cam, this.view.target.y);
     this.scene.updateMatrixWorld();
     for (const [mesh, twin] of this.twins) twin.matrixWorld.copy(mesh.matrixWorld);
+    // Placed once for the frame: not again by every pass that draws the scene (three.js walks all of it each time, #210).
+    this.scene.matrixWorldAutoUpdate = false;
     const gl = this.gl;
 
     // The shelter map, only when cover has changed: nothing to do most frames.
@@ -1394,7 +1397,7 @@ export class BrushRenderer {
     if (this.settings.shadows) {
       const saved = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
       const hidden: THREE.Object3D[] = [];
-      for (const o of this.scene.children) if (!this.casters.includes(o as THREE.Mesh) && o.visible) { o.visible = false; hidden.push(o); }
+      for (const o of this.scene.children) if (!this.casters.has(o as THREE.Mesh) && o.visible) { o.visible = false; hidden.push(o); }
       for (const m of this.casters) { saved.set(m, m.material); m.material = this.materials.get(m.userData.kind as MaterialKind)!.depth; }
       gl.render(this.scene, this.sunCamera);
       for (const [m, mat] of saved) m.material = mat;
@@ -1481,6 +1484,7 @@ export class BrushRenderer {
     this.drawnCamera.copy(cam);
     this.drawn = true;
     for (const o of grounded) o.visible = true;
+    this.scene.matrixWorldAutoUpdate = true;
     t?.endFrame();
   }
 }
