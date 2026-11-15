@@ -299,6 +299,8 @@ r.requestPick(clientX, clientY).then((hit) => {});  // a frame or two later, nev
 - The pick sees the frame last drawn, as its camera saw it: `point` is where the pointer met what's drawn there, so the
   game finds the tile from it (`Math.floor(point.x / TILE)`).
 - A build preview, a route or a wire is drawn over the finished picture, never into the G-buffer: never picked.
+- Smoke (#205) is drawn into the G-buffer but is no thing: where the point falls in a working chimney's smoke, the pick
+  looks past it along the same line of sight (to the building behind, the land, or nothing: the sky).
 - Like pixel3d's `pick` and `requestPick`, so the game's hover logic carries over.
 
 ## The game's tools on the picture (today, #206)
