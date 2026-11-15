@@ -93,7 +93,14 @@ export class Picker {
    * in it): the nearest depth of the nine (so a pointer on a thing's edge picks the thing, not a blend of it and what's
    * behind), seen along that pixel's own line of sight; or null for the sky.
    */
-  hit(pixels: Float32Array, camera: THREE.OrthographicCamera, ndc: THREE.Vector2, px: THREE.Vector2): PickHit | null {
+  /** The tagged meshes shown, each as placed now: what a pick read later sees, as the picture copied had them. */
+  snapshot(): Placed[] {
+    const out: Placed[] = [];
+    for (const mesh of this.world.tagged()) if (mesh.visible && mesh.parent) out.push({ mesh, matrix: mesh.matrixWorld.clone() });
+    return out;
+  }
+
+  hit(pixels: Float32Array, camera: THREE.OrthographicCamera, ndc: THREE.Vector2, px: THREE.Vector2, placed?: Placed[]): PickHit | null {
     let depth = Infinity, nearest = 4;
     for (let i = 0; i < 9; i++) { const d = pixels[i * 4 + 2]; if (d > 0 && d < depth) { depth = d; nearest = i; } }
     if (!Number.isFinite(depth)) return null;
@@ -106,21 +113,29 @@ export class Picker {
     // them down, its triangles decide, so the empty air in a box (round a turbine's mast, under its blades) isn't it.
     // A thing's leaves (a planted roof) are dabs drawn bigger than their cards: their box is enough.
     let best: THREE.Mesh | null = null, off = Infinity;
-    const local = new THREE.Vector3(), inv = new THREE.Matrix4(), box = new THREE.Box3(), hits: THREE.Intersection[] = [];
+    const local = new THREE.Vector3(), inv = new THREE.Matrix4(), box = new THREE.Box3(), pad = new THREE.Vector3(), hits: THREE.Intersection[] = [];
+    const now = new THREE.Matrix4();
     this.raycaster.ray.copy(ray);
-    for (const mesh of this.world.tagged()) {
-      if (!mesh.visible || !mesh.parent) continue;
+    for (const { mesh, matrix } of placed ?? this.snapshot()) {
       const g = mesh.geometry;
       if (!g.boundingBox) g.computeBoundingBox();
-      // The point in the mesh's own frame, in its box (a little bigger, for the depth's rounding, however it's scaled).
-      inv.copy(mesh.matrixWorld).invert();
+      // The point in the mesh's own frame, in its box (a little bigger, for the depth's rounding, along each of its axes
+      // however it's scaled).
+      inv.copy(matrix).invert();
       local.copy(point).applyMatrix4(inv);
-      const scale = Math.cbrt(Math.abs(mesh.matrixWorld.determinant())) || 1;
-      if (!box.copy(g.boundingBox!).expandByScalar(tol / scale).containsPoint(local)) continue;
+      const e = inv.elements;
+      pad.set(Math.hypot(e[0], e[4], e[8]), Math.hypot(e[1], e[5], e[9]), Math.hypot(e[2], e[6], e[10])).multiplyScalar(tol);
+      box.copy(g.boundingBox!);
+      box.min.sub(pad); box.max.add(pad);
+      if (!box.containsPoint(local)) continue;
       let d = 0;
       if (!DABS.has(mesh.userData.kind as string)) {
+        // Its triangles, as it was placed when the picture was drawn.
+        now.copy(mesh.matrixWorld);
+        mesh.matrixWorld.copy(matrix);
         hits.length = 0;
         mesh.raycast(this.raycaster, hits);
+        mesh.matrixWorld.copy(now);
         d = Infinity;
         for (const h of hits) d = Math.min(d, Math.abs(h.distance - along));
         if (d > tol) continue;
@@ -136,6 +151,9 @@ export class Picker {
     return { tag: null, what: 'plant', point };
   }
 }
+
+/** A tagged mesh as it was placed when a picture was drawn. */
+export interface Placed { mesh: THREE.Mesh; matrix: THREE.Matrix4 }
 
 /** The kinds drawn as dabs on cards, bigger than the cards themselves. */
 const DABS = new Set(['foliage', 'debris']);

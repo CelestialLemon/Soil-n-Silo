@@ -774,8 +774,9 @@ export class BrushRenderer {
     const at = this.pickAt(clientX, clientY);
     if (!at) return null;
     this.picker.copy(this.gl, this.gbuffer.textures[1], at.x, at.y, this.height);
-    const camera = this.drawnCamera.clone();
-    return this.picker.hit(await this.picker.readAsync(this.gl), camera, at.ndc, at.px);
+    // The camera and the things as the picture was drawn: by the time the pixels come back, they may have moved.
+    const camera = this.drawnCamera.clone(), placed = this.picker.snapshot();
+    return this.picker.hit(await this.picker.readAsync(this.gl), camera, at.ndc, at.px, placed);
   }
 
   /** A point of the page as a pixel of the picture drawn and as the camera's -1..1, or null if off it. */
@@ -783,7 +784,9 @@ export class BrushRenderer {
     if (!this.drawn) return null;
     const r = this.canvas.getBoundingClientRect(), u = (clientX - r.left) / r.width, v = (clientY - r.top) / r.height;
     if (!(u >= 0 && u < 1 && v >= 0 && v < 1)) return null;
-    return { x: u * this.width, y: v * this.height, ndc: new THREE.Vector2(u * 2 - 1, 1 - v * 2), px: new THREE.Vector2(2 / this.width, 2 / this.height) };
+    // The pixel the pointer is in, and the camera's -1..1 at its middle (where the pick looks along).
+    const x = Math.floor(u * this.width), y = Math.floor(v * this.height);
+    return { x, y, ndc: new THREE.Vector2((x + 0.5) / this.width * 2 - 1, 1 - (y + 0.5) / this.height * 2), px: new THREE.Vector2(2 / this.width, 2 / this.height) };
   }
 
   /** The water's surface (m) at a point, from the map last sent, or null where it's dry. */
