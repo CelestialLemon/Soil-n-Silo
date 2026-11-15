@@ -78,8 +78,9 @@ export function buildGallery(r: BrushRenderer): Gallery {
   const ready = (async () => {
     const set = new ModelSet();
     const loaded = await Promise.all(STANDS.map((s) => loadModel(s.model.url)));
+    // Each model's moving parts turning at their usual pace (Soil-n-Silo#205).
     STANDS.forEach((s, i) => set.add(loaded[i], new THREE.Matrix4().compose(new THREE.Vector3(s.x, height(s.x, s.z), s.z),
-      new THREE.Quaternion().setFromEuler(new THREE.Euler(0, s.yaw, 0)), new THREE.Vector3(1, 1, 1))));
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(0, s.yaw, 0)), new THREE.Vector3(1, 1, 1))).spin(1));
     set.addTo(r);
   })();
   const wind: Obstacle[] = STANDS.filter((s) => blocksWind(s.model)).map((s) => ({

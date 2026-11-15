@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshBuilder, PLAIN, rng, srgb, type Paint } from './builder';
 import { addMound } from './kit';
 import type { BrushRenderer } from '../renderer/renderer';
+import type { Parts } from '../renderer/parts';
 
 // Models made in Blender (tools/blender/, docs/MODELS.md), as glTF: inked things, each face one colour (a custom attribute,
 // _COLOR, linear, as the scenes' own colours are), its material's name saying how the ink shader finishes it. No textures:
@@ -36,6 +37,75 @@ const PLANTS: Record<string, { leaf: number[]; foot: number; bloom?: number[]; d
   vine: { leaf: [0x5aa03e, 0x4e9a3a, 0x6aa84a], foot: 0x3e7a3c, dabs: 9 },
 };
 
+/** A model's piece the game moves or changes (docs/MODELS.md), by its name. */
+const PART = /^(move_spin_|running_|charge_(\d+))/;
+/** How fast a spinning part turns at its usual pace when its model doesn't say (radians a second). */
+const SPIN_SPEED = 0.6;
+
+/** One of a set's parts: its axle (as placed), its pace (radians a second; 0 if it doesn't turn), and whose it is. */
+interface SetPart { origin: THREE.Vector3; axis: THREE.Vector3; speed: number }
+
+/**
+ * A model's moving and changing parts as added to a ModelSet (Soil-n-Silo#205), for the game to say how they are now:
+ * `spin` turns its `move_spin_*` parts, `show` its `running_*` look and the battery's `charge_<n>` rings. Each call does
+ * only its own job (docs/API.md: a mill with no power gets `spin(0)` and `show({ running: false })`). Until the set is
+ * added to the renderer (addTo) it keeps what it's told, and then shows it; once its meshes are taken out, it does
+ * nothing. A new one is at rest, its running look and every charge ring showing, as the model is drawn.
+ */
+export class ModelParts {
+  /** Where smoke or steam leaves it (its `smoke_emitter`s, as placed). */
+  readonly smoke: THREE.Vector3[] = [];
+  /** Its parts, by their index in the set: those that turn, the running looks, the charge rings by number. */
+  readonly spins: number[] = [];
+  readonly running: number[] = [];
+  readonly charges: number[][] = [];
+  private table: Parts | null = null;
+  private slots: readonly number[] = [];
+  private gens: number[] = [];
+  private pace = 0;
+  private shown: { running: boolean; charge: number | null } = { running: true, charge: null };
+
+  /** Whether it has anything to move or change. */
+  get any() { return this.spins.length + this.running.length + this.charges.length > 0; }
+
+  /** Turns its spinning parts at `pace` times their usual speed (0 still, 1 the model's pace), eased to it. */
+  spin(pace: number) {
+    this.pace = pace;
+    for (const p of this.spins) { const s = this.slot(p); if (s !== null) this.table!.spin(s, pace); }
+  }
+
+  /**
+   * Its running look (`running`: its `running_*` parts show only while it works) and its charge (`charge`, 0 to 4: the
+   * rings lit from the bottom up, `charge_0` first). What isn't given stays as it is.
+   */
+  show(o: { running?: boolean; charge?: number }) {
+    if (o.running !== undefined) this.shown.running = o.running;
+    if (o.charge !== undefined) this.shown.charge = o.charge;
+    this.apply();
+  }
+
+  /** @internal Its parts' slots in the renderer (ModelSet.addTo), by their index in the set; what it was told, shown. */
+  bind(table: Parts, slots: readonly number[]) {
+    this.table = table; this.slots = slots;
+    this.gens = slots.map((s) => table.generation(s));
+    this.spin(this.pace);
+    this.apply();
+  }
+
+  private apply() {
+    if (!this.table) return;
+    for (const p of this.running) { const s = this.slot(p); if (s !== null) this.table.show(s, this.shown.running); }
+    const charge = this.shown.charge;
+    this.charges.forEach((ring, n) => { for (const p of ring) { const s = this.slot(p); if (s !== null) this.table!.show(s, charge === null || n < charge); } });
+  }
+
+  /** A part's slot, or null once its meshes are taken out. */
+  private slot(p: number) {
+    const s = this.slots[p];
+    return s !== undefined && this.table!.generation(s) === this.gens[p] ? s : null;
+  }
+}
+
 /**
  * The meshes a scene's models go into: the inked things, their planted surfaces (painted), and the plants growing on
  * them (painted leaves). Fill it with `add`, then `addTo` the renderer.
@@ -45,25 +115,54 @@ export class ModelSet {
   readonly paint = new MeshBuilder('paint');
   readonly leaves = new MeshBuilder('foliage');
   private readonly rand: () => number;
+  /** The parts of the models added, in the order added (their index is what the vertices carry, less one). */
+  private readonly parts: SetPart[] = [];
+  private readonly things: ModelParts[] = [];
   constructor(seed = 7) { this.rand = rng(seed); }
 
   /**
-   * Adds a model, placed by `matrix`. One that `floats` (a boat) gets no waterline (#18): its inside is dry, though it's
-   * below the water's surface. Its moving parts (`move_spin_*`) are drawn where they rest: nothing moves yet.
+   * Adds a model, placed by `matrix`, and returns its parts, for the game to move and change (ModelParts). One that
+   * `floats` (a boat) gets no waterline (#18): its inside is dry, though it's below the water's surface.
    */
-  add(model: THREE.Object3D, matrix: THREE.Matrix4, floats = false) {
+  add(model: THREE.Object3D, matrix: THREE.Matrix4, floats = false): ModelParts {
     model.updateMatrixWorld(true);
     const p = new THREE.Vector3(), n = new THREE.Vector3(), c = new THREE.Color(), s = new THREE.Vector3(), q = new THREE.Quaternion();
+    const thing = new ModelParts(), mine = new Map<THREE.Object3D, number>();
+    this.things.push(thing);
+    // The part a mesh is of, if it is (the nearest of it and the nodes it hangs from with a part's name): its index in
+    // the set, + 1; 0 for none.
+    const partOf = (o: THREE.Object3D): number => {
+      for (let at: THREE.Object3D | null = o; at && at !== model; at = at.parent) {
+        const named = PART.exec(at.name);
+        if (!named) continue;
+        let i = mine.get(at);
+        if (i === undefined) {
+          const w = matrix.clone().multiply(at.matrixWorld), spin = named[1] === 'move_spin_';
+          i = this.parts.push({
+            origin: new THREE.Vector3().setFromMatrixPosition(w), axis: new THREE.Vector3().setFromMatrixColumn(w, 0).normalize(),
+            speed: spin ? (at.userData.speed as number | undefined) ?? SPIN_SPEED : 0,
+          }) - 1;
+          mine.set(at, i);
+          if (spin) thing.spins.push(i);
+          else if (named[2] === undefined) thing.running.push(i);
+          else (thing.charges[Number(named[2])] ??= []).push(i);
+        }
+        return i + 1;
+      }
+      return 0;
+    };
     model.traverse((o) => {
       const mesh = o as THREE.Mesh;
       const m = matrix.clone().multiply(o.matrixWorld);
       if (!mesh.isMesh) {
         const kind = /^plant_([a-z]+)_/.exec(o.name)?.[1];
         if (kind && PLANTS[kind]) { m.decompose(p, q, s); this.grow(kind, p, s.x, s.y); }
+        if (/^smoke_emitter/.test(o.name)) thing.smoke.push(new THREE.Vector3().setFromMatrixPosition(m));
         return;
       }
       const name = (mesh.material as THREE.Material).name, moss = name === 'moss';
       const nm = new THREE.Matrix3().getNormalMatrix(m), b = moss ? this.paint : this.ink;
+      b.part = partOf(o);
       const finish = moss ? MOSS : FINISH[name] ?? PLAIN;
       const g = mesh.geometry, paint: Paint = floats && !moss ? [finish[0], finish[1], finish[2], 1] : finish;
       const pos = g.getAttribute('position'), nrm = g.getAttribute('normal'), col = g.getAttribute('_color'), uv = g.getAttribute('uv');
@@ -77,7 +176,11 @@ export class ModelSet {
       const index = g.index;
       if (index) for (let i = 0; i < index.count; i += 3) b.tri(base + index.getX(i), base + index.getX(i + 1), base + index.getX(i + 2));
       else for (let i = 0; i < pos.count; i += 3) b.tri(base + i, base + i + 1, base + i + 2);
+      b.part = 0;
     });
+    // Each charge ring by its number, none missing.
+    for (let k = 0; k < thing.charges.length; k++) thing.charges[k] ??= [];
+    return thing;
   }
 
   /** A painted plant at a model's point: a cushion `radius` across and `tall` high; a vine is a column of them. */
@@ -98,12 +201,17 @@ export class ModelSet {
    * Adds the set's meshes to the renderer, and returns them (for whoever takes them out again: `r.remove` each). `tag` goes
    * with each, for picking (MeshOptions.tag): a set that is one thing, a building.
    */
-  addTo(r: Pick<BrushRenderer, 'add'>, tag?: unknown): THREE.Mesh[] {
+  addTo(r: Pick<BrushRenderer, 'add'> & Partial<Pick<BrushRenderer, 'parts'>>, tag?: unknown): THREE.Mesh[] {
     const out: THREE.Mesh[] = [];
-    if (this.ink.vertexCount) out.push(r.add(this.ink.build(), 'ink', { tag }));
+    // Its parts get their slots in the renderer, for the game to move and change through each model's ModelParts. (A
+    // renderer stand-in without parts draws them where they rest.)
+    const table = r.parts, slots = table ? this.parts.map((p) => table.add(p.origin, p.axis, p.speed)) : undefined;
+    if (this.ink.vertexCount) out.push(r.add(this.ink.build(slots), 'ink', { tag }));
     // A planted roof is a roof: rain and snow stop at it, as at an inked one (paint is no cover unless told).
-    if (this.paint.vertexCount) out.push(r.add(this.paint.build(), 'paint', { seasonal: true, cover: 'full', tag }));
+    if (this.paint.vertexCount) out.push(r.add(this.paint.build(slots), 'paint', { seasonal: true, cover: 'full', tag }));
     if (this.leaves.vertexCount) out.push(r.add(this.leaves.build(), 'foliage', { cover: 'none', seasonal: true, tag }));
+    // Bound before the slots no mesh took are freed: a handle keeps the part a slot held, so it never moves the next one in it.
+    if (table && slots) { for (const t of this.things) t.bind(table, slots); table.unheld(slots); }
     return out;
   }
 }

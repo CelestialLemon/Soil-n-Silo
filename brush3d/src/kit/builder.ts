@@ -20,6 +20,13 @@ export class MeshBuilder {
    */
   private treeId: number[] | null;
   private readonly trees: TreeSpec[] = [];
+  /**
+   * Each vertex's part (ModelSet, Soil-n-Silo#205): 1 + its index among the set's parts, 0 for none. Inked and planted
+   * meshes only.
+   */
+  private parts: number[] | null;
+  /** The part the vertices made from here on are of (see `parts`). */
+  part = 0;
   private readonly extraName: string | null;
   private readonly extraSize: number;
 
@@ -31,6 +38,7 @@ export class MeshBuilder {
     this.extraSize = kind === 'foliage' || kind === 'grass' ? 4 : 0;
     this.tree = kind === 'paint' || kind === 'foliage' ? [] : null;
     this.treeId = this.tree ? [] : null;
+    this.parts = kind === 'ink' || kind === 'paint' ? [] : null;
   }
 
   get vertexCount() { return this.pos.length / 3; }
@@ -41,6 +49,7 @@ export class MeshBuilder {
     for (let i = 0; i < this.extraSize; i++) this.extra.push(extra[i] ?? 0);
     this.tree?.push(0, 0, 0, 0);
     this.treeId?.push(-1);
+    this.parts?.push(this.part);
     return this.vertexCount - 1;
   }
 
@@ -97,7 +106,15 @@ export class MeshBuilder {
     else for (let i = 0; i < p.count; i++) this.index.push(base + i);
   }
 
-  build() {
+  /** Whether any vertex is of a part. */
+  get hasParts() { return !!this.parts?.some((p) => p > 0); }
+
+  /**
+   * The mesh. `slots` gives each part's slot in the renderer's parts (Parts.add, by the index the vertices carry): the
+   * mesh's vertices then carry their part's slot + 1 (aPart) and its geometry the slots it draws (userData.parts, held by
+   * the renderer while it's added). Without it the parts are drawn where they rest, as part of the mesh.
+   */
+  build(slots?: readonly number[]) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
     g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nrm, 3));
@@ -107,6 +124,11 @@ export class MeshBuilder {
     if (this.extraName) g.setAttribute(this.extraName, new THREE.Float32BufferAttribute(this.extra, this.extraSize));
     if (this.tree) g.setAttribute('aTree', new THREE.Float32BufferAttribute(this.tree, 4));
     if (this.treeId) { g.setAttribute('aTreeId', new THREE.Float32BufferAttribute(this.treeId, 1)); g.userData.trees = this.trees; }
+    if (slots && this.parts && this.hasParts) {
+      const used = new Set<number>();
+      g.setAttribute('aPart', new THREE.Float32BufferAttribute(this.parts.map((p) => { if (!p) return 0; used.add(slots[p - 1]); return slots[p - 1] + 1; }), 1));
+      g.userData.parts = used;
+    }
     if (this.vertexCount > 65535) g.setIndex(new THREE.Uint32BufferAttribute(this.index, 1));
     else g.setIndex(this.index);
     return g;

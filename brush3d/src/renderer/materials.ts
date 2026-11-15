@@ -7,6 +7,7 @@ import { SHELTER_GLSL } from './shelter';
 import { SNOW_GLSL } from './snow';
 import { WET_GLSL, WET_INK_GLSL } from './wet';
 import { GROUND_TOOLS_GLSL } from './overlay';
+import { PART_TEXELS } from './parts';
 
 // The scene's materials. Each has a main variant (writes colour and the G-buffer) and a depth variant for the sun's
 // shadow map, built from the same vertex code so wind and billboarding cast the shadows they should.
@@ -43,6 +44,8 @@ export function createSharedUniforms() {
     uWindOn: { value: 1 },
     // Every tree's top, pushed over by the wind on its spring (TreeSprings): x and z in metres, one texel a tree.
     tTreePose: { value: null as THREE.Texture | null },
+    // Every model part's axle, turn and whether it shows (Parts, Soil-n-Silo#205): four texels a part.
+    tPartPose: { value: null as THREE.Texture | null },
     uViewBack: { value: new THREE.Vector3(0, 0, 1) },
     uViewTarget: { value: new THREE.Vector3() },
     uShadowMap: { value: null as THREE.Texture | null },
@@ -176,9 +179,36 @@ attribute float aTreeId;
 #ifdef CROP
 varying float vGust;
 #endif
+#ifdef PARTS
+// A model's part as the game has it now (parts.ts): its vertices carry its slot + 1 (0: no part). Turned about its axle
+// by its angle, or, hidden, folded to its axle, where it draws nothing. Its normal turns with it.
+attribute float aPart;
+uniform highp sampler2D tPartPose;
+void movePart(inout vec3 p, inout vec3 n) {
+  if (aPart < 0.5) return;
+  int i = (int(aPart + 0.5) - 1) * ${PART_TEXELS};
+  ivec2 at = ivec2(i % 256, i / 256);
+  vec4 axle = texelFetch(tPartPose, at, 0), along = texelFetch(tPartPose, at + ivec2(1, 0), 0);
+  if (along.w < 0.5) { p = axle.xyz; return; }
+  if (axle.w == 0.0) return;
+  vec3 k = along.xyz, d = p - axle.xyz;
+  float c = cos(axle.w), s = sin(axle.w);
+  p = axle.xyz + d * c + cross(k, d) * s + k * dot(k, d) * (1.0 - c);
+  n = n * c + cross(k, n) * s + k * dot(k, n) * (1.0 - c);
+}
+#endif
 void main() {
+#ifdef PARTS
+  vec3 pos = position, nrm = normal;
+  // Where it is at rest: the brush and the snow's pattern go round with it.
+  vRestPos = (modelMatrix * vec4(position, 1.0)).xyz;
+  movePart(pos, nrm);
+  vec4 wp = modelMatrix * vec4(pos, 1.0);
+#else
   vec4 wp = modelMatrix * vec4(position, 1.0);
   vRestPos = wp.xyz;
+  vec3 nrm = normal;
+#endif
 #ifdef CROP
   // The field gives a little under each gust: its top sinks and drifts downwind.
   vGust = windGust(wp.xz);
@@ -191,7 +221,7 @@ void main() {
   vWorldPos += tree;
   wp.xyz += drawnShift(tree);
 #endif
-  vNormal = normalize(mat3(modelMatrix) * normal);
+  vNormal = normalize(mat3(modelMatrix) * nrm);
   vColor = color;
   vPaint = aPaint;
   vUv = uv;
@@ -816,7 +846,8 @@ void main() {
   if (uGroundOn > 0.5 && groundAt(p) > 0.0) {
     if (gFrost > 0.0 && n.y > 0.35) col = frostPaint(col, light, frostCover(-0.2, sunHadAt(p.xz).y, 0.0) * smoothstep(0.35, 0.7, n.y) * 0.85, 0.0);
     if (gSnow > 0.0) {
-      float uneven = snoise(p.xz * 1.3) * 0.7 + snoise(p.xz * 5.0) * 0.3;
+      // Keyed to where it is at rest, so the snow on a turning part goes round with it.
+      float uneven = snoise(vRestPos.xz * 1.3) * 0.7 + snoise(vRestPos.xz * 5.0) * 0.3;
       float cover = snowCover(gSnow, smoothstep(0.4, 0.65, n.y), uneven * 0.25, 0.45);
       col = mix(col, snowPaint(light, 0.02, uneven * 0.3), cover);
     }
@@ -1252,12 +1283,20 @@ const DEFINES: Partial<Record<MaterialKind, Record<string, number | string>>> = 
   // The ground and what stands on it read their shelter with the land's hollows (AT_GROUND, snow.ts): one lookup, for
   // the shelter at their foot. The roofs (ink) and the crowns (foliage) read the shelter map where they are; the leaves in
   // the air take no snow.
-  paint: { TREES: 1, AT_GROUND: 1 }, ground: { TREES: 1, GROUND: 1, AT_GROUND: 1 }, crop: { CROP: 1, AT_GROUND: 1 }, grass: { AT_GROUND: 1 },
+  paint: { TREES: 1, AT_GROUND: 1, PARTS: 1 }, ink: { PARTS: 1 }, ground: { TREES: 1, GROUND: 1, AT_GROUND: 1 }, crop: { CROP: 1, AT_GROUND: 1 }, grass: { AT_GROUND: 1 },
   debris: { NO_SNOW: 1 },
   water: { WATER_SHEET: 1, WATER_COLOR: `vec3(${WATER_LINEAR.r.toFixed(6)}, ${WATER_LINEAR.g.toFixed(6)}, ${WATER_LINEAR.b.toFixed(6)})` },
 };
 const DABS = (kind: MaterialKind) => kind === 'foliage' || kind === 'debris';
 const sideOf = (kind: MaterialKind) => (kind === 'grass' || DABS(kind) || kind === 'ink' ? THREE.DoubleSide : THREE.FrontSide);
+/**
+ * A mesh with no parts has no aPart: it reads 0 (no part), not whatever the attribute's slot last held. Returns `m`.
+ */
+function partless<M extends THREE.ShaderMaterial>(m: M): M {
+  // three.js sets what's listed here for an attribute a mesh lacks (one number: vertexAttrib1fv); its types know only three.
+  (m.defaultAttributeValues as Record<string, number[]>).aPart = [0];
+  return m;
+}
 
 /** The main material of a kind. */
 export function sceneMaterial(kind: MaterialKind, shared: SharedUniforms): THREE.ShaderMaterial {
@@ -1271,7 +1310,7 @@ export function sceneMaterial(kind: MaterialKind, shared: SharedUniforms): THREE
     side: sideOf(kind),
   });
   if (DABS(kind)) m.alphaToCoverage = true;
-  return m;
+  return partless(m);
 }
 
 /**
@@ -1292,7 +1331,7 @@ export function prepassMaterial(kind: MaterialKind, shared: SharedUniforms, mirr
     colorWrite: false,
   });
   if (DABS(kind)) m.alphaToCoverage = true;
-  return m;
+  return partless(m);
 }
 
 /**
@@ -1301,7 +1340,7 @@ export function prepassMaterial(kind: MaterialKind, shared: SharedUniforms, mirr
  * something stands in front of it.
  */
 export function markMaterial(kind: MaterialKind, shared: SharedUniforms, fragmentShader: string, uniforms: Record<string, THREE.IUniform>): THREE.ShaderMaterial {
-  return new THREE.ShaderMaterial({
+  return partless(new THREE.ShaderMaterial({
     glslVersion: THREE.GLSL3,
     uniforms: { ...shared, ...uniforms },
     vertexShader: VERT[kind],
@@ -1311,12 +1350,12 @@ export function markMaterial(kind: MaterialKind, shared: SharedUniforms, fragmen
     side: sideOf(kind),
     depthTest: false,
     depthWrite: false,
-  });
+  }));
 }
 
 /** The sun's shadow-map variant of a kind. */
 export function depthMaterial(kind: MaterialKind, shared: SharedUniforms): THREE.ShaderMaterial {
-  return new THREE.ShaderMaterial({
+  return partless(new THREE.ShaderMaterial({
     uniforms: { ...shared },
     vertexShader: VERT[kind],
     fragmentShader: DABS(kind) ? FOLIAGE_DEPTH_FRAG : DEPTH_FRAG,
@@ -1325,7 +1364,7 @@ export function depthMaterial(kind: MaterialKind, shared: SharedUniforms): THREE
     side: THREE.DoubleSide,
     // Only the depth is read.
     colorWrite: false,
-  });
+  }));
 }
 
 // The ground's brush fields, baked: the ground drawn flat into a square texture, each texel holding brushFields where the
