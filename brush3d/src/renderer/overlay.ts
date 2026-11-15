@@ -95,11 +95,12 @@ vec3 groundTools(vec3 col, vec3 p, vec3 n, float light) {
       vec2 fw = max(fwidth(q), vec2(1e-5));
       vec2 g = abs(fract(q + 0.5) - 0.5) / fw;
       float line = 1.0 - smoothstep(0.4, 1.2, min(g.x, g.y));
-      // A contour at each level's height, on the land that slopes across it gently (on a cliff they'd crowd into a smear).
+      // A contour at each level's height, on the land that slopes across it gently (on a cliff they'd crowd into a smear;
+      // on the flat, a terrace standing at a level, there's no line to draw, only the whole terrace).
       float contour = 0.0;
       if (uToolsGridRect.w > 0.0) {
-        float h = p.y / uToolsGridRect.w, fh = max(fwidth(h), 1e-5);
-        contour = (1.0 - smoothstep(0.5, 1.4, abs(fract(h + 0.5) - 0.5) / fh)) * (1.0 - smoothstep(0.25, 0.6, fh));
+        float h = p.y / uToolsGridRect.w, slope = fwidth(h), fh = max(slope, 1e-5);
+        contour = (1.0 - smoothstep(0.5, 1.4, abs(fract(h + 0.5) - 0.5) / fh)) * (1.0 - smoothstep(0.25, 0.6, fh)) * smoothstep(1e-4, 5e-4, slope);
       }
       col *= 1.0 - max(line * uToolsGrid.y, contour * uToolsGrid.z);
     }
