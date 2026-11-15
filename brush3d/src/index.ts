@@ -51,7 +51,7 @@ export { dressFor, Grove, type Dress } from './kit/seasonTrees';
 export {
   addCanopy, CROP_NAMES, CropPatch, SPECIES, speciesHeight, speciesTree, type CropName, type CropStage, type CropTile, type Species,
 } from './kit/plants';
-export { loadModel, ModelSet } from './kit/model';
+export { loadModel, ModelSet, ModelParts } from './kit/model';
 
 // ---- Tools: measuring a frame ----
 export { PassTimer, type FrameTimes } from './renderer/timer';

@@ -388,7 +388,7 @@ export interface Farm {
 }
 
 /** Where the farm's pieces go: the renderer, its big meshes cut into tiles of the land (TILE metres). */
-type Adder = Pick<BrushRenderer, 'add'>;
+type Adder = Pick<BrushRenderer, 'add' | 'parts'>;
 /**
  * Tiles of 24 m: on screen at the default zoom are a few dozen; far fewer and a pass draws much it doesn't show, far more
  * and the draw calls add up on the CPU.
@@ -411,7 +411,7 @@ const STAGE: Record<Season, Stage> = { spring: 'young', summer: 'ripe', autumn: 
 export function buildFarm(renderer: BrushRenderer, season: Season = 'summer'): Farm {
   SEASON = season;
   DRESS = dressFor(season, canFall);
-  const r: Adder = { add: (g, kind, o = {}) => renderer.add(g, kind, { ...o, tile: TILE }) };
+  const r: Adder = { add: (g, kind, o = {}) => renderer.add(g, kind, { ...o, tile: TILE }), parts: renderer.parts };
   terrain(r);
   crops(r);
   fences(r);
@@ -477,8 +477,9 @@ async function models(r: Adder, stands: Stand[]) {
   const urls = [...new Set(stands.map((s) => s.model.url))];
   const loaded = new Map(await Promise.all(urls.map(async (url) => [url, await loadModel(url)] as const)));
   for (const s of stands) {
+    // Everything on the farm is at work: its rotors, wheels and stones turning at their usual pace (Soil-n-Silo#205).
     set.add(loaded.get(s.model.url)!, new THREE.Matrix4().compose(new THREE.Vector3(s.x, s.y, s.z),
-      new THREE.Quaternion().setFromEuler(new THREE.Euler(0, s.yaw, 0)), new THREE.Vector3(1, 1, 1)));
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(0, s.yaw, 0)), new THREE.Vector3(1, 1, 1))).spin(1);
   }
   set.addTo(r);
 }

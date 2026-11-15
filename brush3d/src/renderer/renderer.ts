@@ -25,6 +25,7 @@ import { STORM, stormGold, stormLook, VIGNETTE } from './storm';
 import { colourLeafStorm, leafStorm, WindField, WindState } from './wind';
 import { DustField, type DustSource } from './dust';
 import { TreeSprings, type TreeSpec } from './trees';
+import { Parts } from './parts';
 import { WATER_EASE, WaterField, type WaterMap } from './water';
 import { GROUND_EASE, GroundField, HollowMap, type GroundMap } from './ground';
 import { SnowPaint } from './snow';
@@ -205,6 +206,11 @@ export class BrushRenderer {
   readonly windField = new WindField();
   /** Every tree's spring (the renderer's own motion: no game logic reads it). */
   readonly trees = new TreeSprings();
+  /**
+   * The models' parts that move or change with the game (Soil-n-Silo#205): rotors and wheels turning, running looks and
+   * charge rings shown or hidden. ModelSet.addTo takes their slots; a handle (ModelParts) says how each is now.
+   */
+  readonly parts = new Parts();
   private windNow: [WindSnapshot, WindSnapshot, number] | null = null;
   /** Fresh dust, lifted by the gusts where the game's map says (see setDustSource; the renderer's own motion). */
   readonly dust = new DustField();
@@ -298,6 +304,7 @@ export class BrushRenderer {
       landHit: (ray, into) => this.landHit(ray, into),
       waterAt: (x, z) => this.waterAt(x, z),
       tagged: () => this.tagged,
+      posed: (g, pose) => this.parts.posed(g, pose),
     });
     this.rain = new Rain(this.shared, this.shelter.uniforms);
     this.scene.add(this.rain.mesh);
@@ -445,6 +452,9 @@ export class BrushRenderer {
       // The springs it holds, let go when it's taken out (remove) or a tree out of it (removeTree).
       geometry.userData.springs = new Set(map);
     }
+    // The parts it draws (ModelSet.addTo), held while it is.
+    const parts = geometry.userData.parts as Set<number> | undefined;
+    if (parts?.size) { this.parts.hold(parts); this.parts.sweep(geometry); this.shared.tPartPose.value = this.parts.texture; }
     const seasonal = options.seasonal ?? (kind === 'ground' || kind === 'grass');
     // Where the ground is earth (#11, wet.ts), from the game's colours, before the season turns them.
     const colour = geometry.getAttribute('color') as THREE.BufferAttribute | undefined;
@@ -491,6 +501,8 @@ export class BrushRenderer {
     this.marks.forget(mesh);
     const springs = mesh.geometry.userData.springs as Set<number> | undefined;
     if (springs) { this.trees.release(springs); mesh.geometry.userData.springs = undefined; }
+    const parts = mesh.geometry.userData.parts as Set<number> | undefined;
+    if (parts?.size) this.parts.release(parts);
     if (mesh.userData.cut) mesh.geometry.dispose();
     if (mesh.userData.seasonal) this.unseason(mesh.geometry);
     this.casters = this.casters.filter((m) => m !== mesh);
@@ -855,9 +867,10 @@ export class BrushRenderer {
     const at = this.pickAt(clientX, clientY);
     if (!at) return null;
     this.picker.copy(this.gl, this.gbuffer.textures[1], at.x, at.y, this.height);
-    // The camera and the things as the picture was drawn: by the time the pixels come back, they may have moved.
-    const camera = this.drawnCamera.clone(), placed = this.picker.snapshot();
-    return this.picker.hit(await this.picker.readAsync(this.gl), camera, at.ndc, at.px, placed);
+    // The camera, the things and their moving parts as the picture was drawn: by the time the pixels come back, they may
+    // have moved.
+    const camera = this.drawnCamera.clone(), placed = this.picker.snapshot(), pose = this.parts.pose().slice();
+    return this.picker.hit(await this.picker.readAsync(this.gl), camera, at.ndc, at.px, placed, pose);
   }
 
   /** A point of the page as a pixel of the picture drawn and as the camera's -1..1, or null if off it. */
@@ -1234,12 +1247,15 @@ export class BrushRenderer {
     this.shelter.draw(this.gl, this.scene, cover, this.groundSquare(), () => {
       // Every wind value and the clock set to one rest, whatever the weather, and the flutter kept across the map's own
       // view (straight down), not the camera's: what's left of the sway and the flutter (a little even in a calm) is then
-      // the same every draw, so a new building can't nudge a tree's dry patch.
+      // the same every draw, so a new building can't nudge a tree's dry patch. Models' parts as modelled, still and shown,
+      // for the same reason: the map isn't drawn as a rotor turns (a rotor's few blades shelter little anyway).
       const saved = [s.uTime.value, s.uWindSpeed.value, s.uWindOn.value, s.uWindFlutter.value,
         s.uWindDir.value.clone(), s.uWindDrift.value.clone(), s.uViewBack.value.clone()] as const;
       s.uTime.value = 0; s.uWindSpeed.value = 0; s.uWindOn.value = 0; s.uWindFlutter.value = 0;
       s.uWindDir.value.set(1, 0); s.uWindDrift.value.set(0, 0); s.uViewBack.value.set(0, 1, 0);
+      s.uPartsRest.value = 1;
       return () => {
+        s.uPartsRest.value = 0;
         [s.uTime.value, s.uWindSpeed.value, s.uWindOn.value, s.uWindFlutter.value] = saved;
         s.uWindDir.value.copy(saved[4]); s.uWindDrift.value.copy(saved[5]); s.uViewBack.value.copy(saved[6]);
       };
@@ -1305,6 +1321,8 @@ export class BrushRenderer {
     s.tWindA.value = f.a; s.tWindB.value = f.b; s.tWindUsual.value = f.usual; s.uWindBlend.value = f.blend; s.uWindGrid.value.copy(f.grid);
     this.trees.update(time, this.windNow, w.gust);
     s.tTreePose.value = this.trees.texture;
+    this.parts.update(time);
+    s.tPartPose.value = this.parts.texture;
     s.uWindFlutter.value = w.flutter;
     this.weather.update(time);
     s.uWaterBlend.value = this.water.blend(time);

@@ -174,8 +174,11 @@ measurable change, and all the inked things together are about 0.3 ms of it. See
 
 ## Not done, and known gaps
 
-- Nothing moves or lights up in the renderer yet: rotors, wheels and millstones are drawn at rest, and every `running_*`
-  piece is drawn as if working. Showing them idle or turning is the game's (or a later issue here).
+- The parts move (Soil-n-Silo#205): `move_spin_*` parts turn about their axle at the pace the game gives them (a share
+  of their `speed`), and `running_*` and `charge_<n>` pieces show or hide as the game says (`ModelParts`, `docs/API.md`).
+  On the demo's farm and in the gallery every part turns at its usual pace. Not yet: the lamps' glow at night, the
+  smoke from a `smoke_emitter`, and a turbine turning its head into the wind (its model has no yaw part). A truck's
+  wheels don't turn: every truck draws one shared shape.
 - Seen from the front (as the game's footprint has it), the water wheel is edge on, because its axle runs along the
   bank. On the farm it's turned to show its face.
 - Inside the open garage the walls read as one flat shade from some sides.

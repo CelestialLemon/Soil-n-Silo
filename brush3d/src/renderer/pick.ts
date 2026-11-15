@@ -20,6 +20,11 @@ export interface PickWorld {
   waterAt(x: number, z: number): number | null;
   /** The meshes the game tagged (visible or not). */
   tagged(): Iterable<THREE.Mesh>;
+  /**
+   * A mesh's positions with its moving parts as drawn (parts.ts): now, or as `pose` had them (a copy taken as the picture
+   * was drawn); null if it has none (#205).
+   */
+  posed?(geometry: THREE.BufferGeometry, pose?: Float32Array): THREE.BufferAttribute | null;
 }
 
 const COPY_VERT = /* glsl */ `
@@ -100,7 +105,7 @@ export class Picker {
     return out;
   }
 
-  hit(pixels: Float32Array, camera: THREE.OrthographicCamera, ndc: THREE.Vector2, px: THREE.Vector2, placed?: Placed[]): PickHit | null {
+  hit(pixels: Float32Array, camera: THREE.OrthographicCamera, ndc: THREE.Vector2, px: THREE.Vector2, placed?: Placed[], pose?: Float32Array): PickHit | null {
     let depth = Infinity, nearest = 4;
     for (let i = 0; i < 9; i++) { const d = pixels[i * 4 + 2]; if (d > 0 && d < depth) { depth = d; nearest = i; } }
     if (!Number.isFinite(depth)) return null;
@@ -130,12 +135,22 @@ export class Picker {
       if (!box.containsPoint(local)) continue;
       let d = 0;
       if (!DABS.has(mesh.userData.kind as string)) {
-        // Its triangles, as it was placed when the picture was drawn.
-        now.copy(mesh.matrixWorld);
-        mesh.matrixWorld.copy(matrix);
+        // Its triangles, as it was placed when the picture was drawn, its parts turned as they're drawn (#205).
+        const posed = this.world.posed?.(g, pose);
         hits.length = 0;
-        mesh.raycast(this.raycaster, hits);
-        mesh.matrixWorld.copy(now);
+        if (posed) {
+          const turned = new THREE.BufferGeometry();
+          turned.setAttribute('position', posed);
+          turned.setIndex(g.index);
+          const m = new THREE.Mesh(turned, mesh.material);
+          m.matrixWorld.copy(matrix);
+          m.raycast(this.raycaster, hits);
+        } else {
+          now.copy(mesh.matrixWorld);
+          mesh.matrixWorld.copy(matrix);
+          mesh.raycast(this.raycaster, hits);
+          mesh.matrixWorld.copy(now);
+        }
         d = Infinity;
         for (const h of hits) d = Math.min(d, Math.abs(h.distance - along));
         if (d > tol) continue;
