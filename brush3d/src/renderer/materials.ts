@@ -493,10 +493,12 @@ void main() {
   if (aPart > 0.5) {
     int i = (int(aPart + 0.5) - 1) * ${PART_TEXELS};
     ivec2 at = ivec2(i % 256, i / 256);
-    // On when it left: on now, unless it has started or stopped an odd number of times since (its last few changes).
+    // On when it left: on now, unless it has started or stopped an odd number of times since (its last few changes);
+    // none if it left before the history kept.
     float on = texelFetch(tPartPose, at + ivec2(1, 0), 0).w;
-    float flips = dot(vec4(greaterThan(texelFetch(tPartPose, at + ivec2(3, 0), 0), vec4(left))), vec4(1.0));
-    drawn = (on > 0.5) == (mod(flips, 2.0) < 0.5) ? 1.0 : 0.0;
+    vec4 changes = texelFetch(tPartPose, at + ivec2(3, 0), 0);
+    float flips = dot(vec3(greaterThan(changes.xyz, vec3(left))), vec3(1.0));
+    drawn = left >= changes.w && (on > 0.5) == (mod(flips, 2.0) < 0.5) ? 1.0 : 0.0;
   }
   if (fract(seed * 7.31) >= uSmokeShape.y || uSmoke.w <= 0.0) drawn = 0.0;
   float k = age / life;

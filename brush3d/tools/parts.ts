@@ -112,10 +112,18 @@ const angleOf = (p: Parts, slot: number) => (p.texture.image.data as Float32Arra
   // Stopped and started again while its puffs rise: each change kept, the latest first, so a puff knows (the shader
   // counts the changes since it left: an odd number, and the chimney was the other way then).
   p.update(4.5); p.show(chimney, false); p.update(5); p.show(chimney, true);
-  const changes = [...d().slice(chimney * 16 + 12, chimney * 16 + 16)];
-  check('its last starts and stops kept', changes.join() === '5,4.5,4,-1000000', changes.join());
-  const onWhen = (left: number) => (d()[chimney * 16 + 7] > 0.5) === (changes.filter((t) => t > left).length % 2 === 0);
-  check('a puff knows whether it was on when it left', !onWhen(3) && onWhen(4.2) && !onWhen(4.7) && onWhen(5.2));
+  const texel = () => [...d().slice(chimney * 16 + 12, chimney * 16 + 16)];
+  check('its last starts and stops kept', texel().join() === '5,4.5,4,-1000000', texel().join());
+  // As SMOKE_VERT draws a puff that left at `left`.
+  const drawn = (left: number) => {
+    const [a, b, c, lost] = texel();
+    return left >= lost && (d()[chimney * 16 + 7] > 0.5) === ([a, b, c].filter((t) => t > left).length % 2 === 0);
+  };
+  check('a puff knows whether it was on when it left', !drawn(3) && drawn(4.2) && !drawn(4.7) && drawn(5.2));
+  // Flickering faster than it rises: off at 5.5, on at 6, off at 6.5. What's before the changes kept is lost, never
+  // drawn: a puff that left while it was off (3) stays unseen.
+  for (const [t, on] of [[5.5, false], [6, true], [6.5, false], [7, true]] as const) { p.update(t); p.show(chimney, on); }
+  check('flickering: only puffs that left while it was on', !drawn(3) && !drawn(4.2) && !drawn(5.7) && drawn(6.2) && !drawn(6.7) && drawn(7.1), texel().join());
   const near = (windowsToo: boolean) => p.glowing({ x: 0, y: 0, z: 0 }, 8, windowsToo).map((l) => l.glow);
   check('lights: windows only if asked, the nearest first', near(false).join() === `${GLOW.lamp}` && near(true).join() === `${GLOW.window},${GLOW.lamp}`);
   p.light(windows, false); p.show(lamp, false);
