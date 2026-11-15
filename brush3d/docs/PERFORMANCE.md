@@ -166,6 +166,43 @@ the uncapped frame, its GPU timers count waiting): the farm's 1080p storm 14.99 
 0.67. Reading the map costs its readers (rain, wetness, snow),
 counted in their own lines.
 
+In the game (Soil-n-Silo#204) the CPU's side was what hurt: a whole redraw walks every mesh in the scene three times (a
+busy commission has well over a thousand), 16 to 40 ms in the frame a building was placed or a tree cleared. Since #204
+only the part of the map round what changed is drawn again (the meshes added or taken out, the trees removed or moved,
+the ground's chunks swapped), scissored to it, with what stands near it: 1 to 3 ms. It is exact: after a building placed,
+one removed, a tree cleared and a silo placed, every texel of the three maps matched a whole redraw's, and the snow's
+hollows (drawn again from the shelter's part) matched too. The whole map is still drawn when the ground's square moves,
+the map is resized, or something reaches above or below the heights it was drawn between.
+
+### A world that changes (Soil-n-Silo#204)
+
+What a change in play costs, measured with `node tools/hitches.ts` (a busy commission, c4 after 20 minutes of the bot,
+its free corners wooded, 532 trees; at 4× speed for 60 s, a change every 1.5 s; RX 570, 1080p): the game's own work in
+the worst of the three frames after each change (the brush3d world's pieces' sync, and the shelter and hollows
+redraws), median (max), ms. The frame times themselves on this shared machine carry stalls of 200 to 800 ms that come
+with no change at all (another program on the GPU), so the work is what's compared.
+
+| change | before | after |
+|---|---:|---:|
+| place a building | 89.5 (123) | 12.4 (46) |
+| clear a tree | 30.4 (56) | 2.8 (7) |
+| plant a sapling | 9.7 (16) | 3.0 (6) |
+| sow a field | 10.5 (17) | 3.4 (6) |
+| remove a building | 8.8 (15) | 3.2 (5) |
+| buy a truck | 4.6 (8) | 2.0 (2) |
+
+Where the time went, and what #204 did:
+- **The shelter map**, drawn whole: now only round the change (above).
+- **A tree cleared** made its whole 8 × 8-tile block anew (40 to 55 ms): now it is folded out of the block's meshes where
+  it stands (`r.removeTrees`), a tree whose ground moved is raised or lowered whole (`r.moveTrees`), and one grown from a
+  sapling is painted on its own (a few ms).
+- **The water** was sent again with every earthwork (40 to 90 ms), though it stood as it was: now only when its own
+  tiles' levels change.
+- **A truck bought** made the truck model's mesh again: every truck now shares one.
+- **Left** (Soil-n-Silo#210): the game's fit of the ground (`Lie.update`'s refit) is 2 to 7 ms a placement, but 20 to
+  25 ms the first time in a session, before the browser has made that code fast; so the first building placed still
+  costs about 45 ms once. A building's model is made in 0.3 to 4 ms.
+
 ### The season's look (#13)
 
 No line in the budget: nothing a frame. The season turns the greens' colours once, when the level sets it
