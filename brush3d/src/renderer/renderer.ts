@@ -26,7 +26,7 @@ import { colourLeafStorm, leafStorm, WindField, WindState } from './wind';
 import { DustField, type DustSource } from './dust';
 import { TreeSprings, type TreeSpec } from './trees';
 import { Parts } from './parts';
-import { inSmoke, NightLights, type NightLightsLook, type SmokeLook } from './nightLights';
+import { NightLights, type NightLightsLook, type SmokeLook } from './nightLights';
 import { WATER_EASE, WaterField, type WaterMap } from './water';
 import { GROUND_EASE, GroundField, HollowMap, type GroundMap } from './ground';
 import { SnowPaint } from './snow';
@@ -265,8 +265,6 @@ export class BrushRenderer {
   private readonly picker: Picker;
   /** The meshes added with a tag, for picking. */
   private readonly tagged = new Set<THREE.Mesh>();
-  /** The smoke's meshes (#205), for a pick to see past (inSmoke). */
-  private readonly smokes = new Set<THREE.Mesh>();
   /** The camera as the last frame was drawn (picking reads that frame), and whether one has been. */
   private readonly drawnCamera = new THREE.OrthographicCamera();
   private drawn = false;
@@ -315,7 +313,6 @@ export class BrushRenderer {
       waterAt: (x, z) => this.waterAt(x, z),
       tagged: () => this.tagged,
       posed: (g, pose) => this.parts.posed(g, pose),
-      smoky: (p, pose) => inSmoke(p, this.smokes, pose ?? this.parts.pose(), this.shared),
     });
     this.rain = new Rain(this.shared, this.shelter.uniforms);
     this.scene.add(this.rain.mesh);
@@ -483,7 +480,6 @@ export class BrushRenderer {
     mesh.userData.fields = options.fields;
     mesh.userData.cover = options.cover ?? (kind === 'ink' ? 'full' : kind === 'foliage' ? 'partial' : 'none');
     if (options.tag !== undefined) { mesh.userData.tag = options.tag; this.tagged.add(mesh); }
-    if (kind === 'smoke') this.smokes.add(mesh);
     // Only where it stands is drawn again in the shelter map (the ground's is found again whole, below).
     const cover = mesh.userData.cover as Cover;
     if (cover !== 'none' && kind !== 'ground') this.shelter.add(mesh, cover);
@@ -510,7 +506,6 @@ export class BrushRenderer {
     if (tiles) { for (const t of tiles) { t.userData.tiles = undefined; this.remove(t); } return; }
     this.scene.remove(mesh);
     this.tagged.delete(mesh);
-    this.smokes.delete(mesh);
     this.marks.forget(mesh);
     const springs = mesh.geometry.userData.springs as Set<number> | undefined;
     if (springs) { this.trees.release(springs); mesh.geometry.userData.springs = undefined; }

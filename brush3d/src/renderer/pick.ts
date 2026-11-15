@@ -25,12 +25,13 @@ export interface PickWorld {
    * was drawn); null if it has none (#205).
    */
   posed?(geometry: THREE.BufferGeometry, pose?: Float32Array): THREE.BufferAttribute | null;
-  /**
-   * Whether a point may be in a working chimney's smoke, as `pose` had the parts (#205): smoke is no thing, so a pick there
-   * sees past it.
-   */
-  smoky?(point: THREE.Vector3, pose?: Float32Array): boolean;
 }
+
+/**
+ * What smoke (#205) writes as its ink in the G-buffer: under the lines' threshold (post.ts: none drawn on it, as on any
+ * painted surface), but not 0, so a pick tells a puff from what's painted. A pick sees past smoke: it's no thing.
+ */
+export const SMOKE_INK = 1 / 256;
 
 const COPY_VERT = /* glsl */ `
 void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }
@@ -119,12 +120,16 @@ export class Picker {
     // The line of sight from the camera's near plane; the camera is orthographic, so the depth is a distance along it.
     const ray = new THREE.Ray(at.unproject(camera), camera.getWorldDirection(new THREE.Vector3()));
     const along = depth - camera.near, point = ray.at(along, new THREE.Vector3()), tol = slack(depth);
+    const things = placed ?? this.snapshot();
+    // Smoke, over most of the pixel (its samples averaged: with what's painted, less; with what's inked, far more): what's
+    // behind it along the line of sight (or, against the sky, nothing).
+    const ink = pixels[nearest * 4 + 3];
+    if (ink > SMOKE_INK * 0.5 && ink < SMOKE_INK * 1.5) return this.past(ray, along - tol, things, pose);
     // A tagged thing the line of sight meets where the depth says it does (the nearest such meeting): its box narrows
     // them down, its triangles decide, so the empty air in a box (round a turbine's mast, under its blades) isn't it.
     // A thing's leaves (a planted roof) are dabs drawn bigger than their cards: their box is enough.
     let best: THREE.Mesh | null = null, bestTag: unknown = null, off = Infinity;
     const local = new THREE.Vector3(), inv = new THREE.Matrix4(), box = new THREE.Box3(), pad = new THREE.Vector3(), hits: THREE.Intersection[] = [];
-    const things = placed ?? this.snapshot();
     this.raycaster.ray.copy(ray);
     for (const { mesh, matrix, tag } of things) {
       const g = mesh.geometry;
@@ -152,9 +157,6 @@ export class Picker {
     if (land && ray.origin.distanceTo(land) <= along + tol) return { tag: null, what: 'land', point: land };
     const water = this.world.waterAt(point.x, point.z);
     if (water !== null && Math.abs(point.y - water) < tol) return { tag: null, what: 'water', point };
-    // Smoke (#205) is drawn as dabs, depth and all, but it's no thing: where a puff may have shown, what's behind it (or,
-    // against the sky, nothing).
-    if (this.world.smoky?.(point, pose)) return this.past(ray, along - tol, things, pose);
     return { tag: null, what: 'plant', point };
   }
 
@@ -181,7 +183,8 @@ export class Picker {
 
   /**
    * What the line of sight meets first past `from` (m along it), whatever the depth drawn: a thing's triangles, else the
-   * land or the water over it. Null if nothing (the sky).
+   * land or the water over it; null if nothing (the sky). Not a plant (they're dabs, bigger than their cards): behind
+   * smoke, the land it stands on.
    */
   private past(ray: THREE.Ray, from: number, placed: Placed[], pose?: Float32Array): PickHit | null {
     let best: Placed | null = null, near = Infinity;

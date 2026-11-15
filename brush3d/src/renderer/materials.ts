@@ -8,6 +8,7 @@ import { SNOW_GLSL } from './snow';
 import { WET_GLSL, WET_INK_GLSL } from './wet';
 import { GROUND_TOOLS_GLSL } from './overlay';
 import { GLOW, PART_TEXELS } from './parts';
+import { SMOKE_INK } from './pick';
 
 // The scene's materials. Each has a main variant (writes colour and the G-buffer) and a depth variant for the sun's
 // shadow map, built from the same vertex code so wind and billboarding cast the shadows they should.
@@ -818,7 +819,12 @@ void main() {
     if (gSnow > 0.0) col = mix(col, snowPaint(light, 0.07, 0.0), cover);
   }
 #endif
+#ifdef SMOKE
+  // Marked as smoke, for a pick to see past (SMOKE_INK, pick.ts).
+  writeGBuffer(exposeHere(col), n, vViewDepth, ${SMOKE_INK.toFixed(8)}, alpha);
+#else
   writeGBuffer(exposeHere(col), n, vViewDepth, 0.0, alpha);
+#endif
 }
 `;
 
@@ -1396,7 +1402,7 @@ const DEFINES: Partial<Record<MaterialKind, Record<string, number | string>>> = 
   // the shelter at their foot. The roofs (ink) and the crowns (foliage) read the shelter map where they are; the leaves in
   // the air take no snow.
   paint: { TREES: 1, AT_GROUND: 1, PARTS: 1 }, ink: { PARTS: 1 }, ground: { TREES: 1, GROUND: 1, AT_GROUND: 1 }, crop: { CROP: 1, AT_GROUND: 1 }, grass: { AT_GROUND: 1 },
-  debris: { NO_SNOW: 1 }, smoke: { NO_SNOW: 1 },
+  debris: { NO_SNOW: 1 }, smoke: { NO_SNOW: 1, SMOKE: 1 },
   water: { WATER_SHEET: 1, WATER_COLOR: `vec3(${WATER_LINEAR.r.toFixed(6)}, ${WATER_LINEAR.g.toFixed(6)}, ${WATER_LINEAR.b.toFixed(6)})` },
 };
 const DABS = (kind: MaterialKind) => kind === 'foliage' || kind === 'debris' || kind === 'smoke';

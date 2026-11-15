@@ -11,9 +11,7 @@
 // Exits with 1 if anything is off.
 import * as THREE from 'three';
 import { EASE, GLOW, Parts } from '../src/renderer/parts.ts';
-import { inSmoke } from '../src/renderer/nightLights.ts';
-import { Picker } from '../src/renderer/pick.ts';
-import type { SharedUniforms } from '../src/renderer/materials.ts';
+import { Picker, SMOKE_INK } from '../src/renderer/pick.ts';
 
 let failed = false;
 function check(name: string, ok: boolean, detail = '') {
@@ -102,7 +100,8 @@ const angleOf = (p: Parts, slot: number) => (p.texture.image.data as Float32Arra
 // 4. Lights and smoke.
 {
   const p = new Parts(), d = () => p.texture.image.data as Float32Array;
-  const lamp = p.add({ x: 10, y: 3, z: 0 }, { x: 1, y: 0, z: 0 }, 0, GLOW.lamp);
+  // A lamp whose axle is its model's origin (as the garage's is), its globe 10 m off: its light is at the globe.
+  const lamp = p.add({ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, 0, GLOW.lamp, { x: 10, y: 3, z: 0 });
   const windows = p.add({ x: 2, y: 2, z: 0 }, { x: 1, y: 0, z: 0 }, 0, GLOW.window);
   const chimney = p.add({ x: 0, y: 6, z: 0 }, { x: 1, y: 0, z: 0 }, 0);
   p.hold([lamp, windows, chimney]);
@@ -129,6 +128,7 @@ const angleOf = (p: Parts, slot: number) => (p.texture.image.data as Float32Arra
   for (const [t, on] of [[5.5, false], [6, true], [6.5, false], [7, true]] as const) { p.update(t); p.show(chimney, on); }
   check('flickering: only puffs that left while it was on', !drawn(3) && !drawn(4.2) && !drawn(5.7) && drawn(6.2) && !drawn(6.7) && drawn(7.1), texel().join());
   const near = (windowsToo: boolean) => p.glowing({ x: 0, y: 0, z: 0 }, 8, windowsToo).map((l) => l.glow);
+  check('a lamp lights from where its light is', p.glowing({ x: 0, y: 0, z: 0 }, 8, false)[0]?.x === 10);
   check('lights: windows only if asked, the nearest first', near(false).join() === `${GLOW.lamp}` && near(true).join() === `${GLOW.window},${GLOW.lamp}`);
   p.light(windows, false); p.show(lamp, false);
   check('out: windows unlit, a lamp hidden', near(true).length === 0);
@@ -139,40 +139,30 @@ const angleOf = (p: Parts, slot: number) => (p.texture.image.data as Float32Arra
 
 // 5. Picking through smoke.
 {
-  const p = new Parts(), chimney = p.add({ x: 0, y: 4, z: 0 }, { x: 1, y: 0, z: 0 }, 0);
-  p.hold([chimney]);
-  // A building 4 m high with its chimney on top, and the chimney's smoke (one puff's card is enough: where it leaves).
+  // A building 4 m high, its chimney on top.
   const building = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 4).translate(0, 2, 0), new THREE.MeshBasicMaterial());
   building.userData = { tag: 'bakery', kind: 'ink' };
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute([0, 4, 0], 3));
-  g.setAttribute('aPart', new THREE.Float32BufferAttribute([chimney + 1], 1));
-  const smoke = new THREE.Mesh(g, new THREE.MeshBasicMaterial());
-  // As the smoke's "puffs" look sets it (nightLights.ts), at 10 s, in no wind.
-  const s = {
-    uSmoke: { value: new THREE.Vector4(4.5, 2.4, 5, 1) }, uSmokeShape: { value: new THREE.Vector2(1, 0.6) }, uTime: { value: 10 },
-    uWindDir: { value: new THREE.Vector2(1, 0) }, uWindSpeed: { value: 0 },
-  } as unknown as SharedUniforms;
   const picker = new Picker({
     landHit: (ray) => ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3()),
     waterAt: () => null,
     tagged: () => [building],
-    smoky: (point, pose) => inSmoke(point, [smoke], pose ?? p.pose(), s),
   });
-  // Looking down at 45° at the chimney, a puff 1 m up and in front of it: the depth drawn is the puff's.
+  // Looking down at 45° at the chimney, at what's drawn 1 m up and in front of it: a puff, or a tree's crown.
   const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 100);
   camera.position.set(10, 14, 0); camera.lookAt(0, 4, 0); camera.updateMatrixWorld();
-  const pixels = new Float32Array(36);
-  for (let i = 0; i < 9; i++) pixels[i * 4 + 2] = Math.hypot(9, 9);
-  const pick = () => picker.hit(pixels, camera, new THREE.Vector2(0, 0), new THREE.Vector2(1e-4, 1e-4), [{ mesh: building, matrix: building.matrixWorld }], p.pose());
-  p.update(1); p.show(chimney, true); p.update(10);
-  const through = pick();
-  check('a pick sees past working smoke to the building', through?.tag === 'bakery' && Math.abs(through.point.y - 4) < 0.05, JSON.stringify(through));
-  s.uSmoke.value.w = 0;
-  check('with no smoke drawn, what the depth shows', pick()?.what === 'plant');
-  s.uSmoke.value.w = 1;
-  p.show(chimney, false); p.update(20); s.uTime.value = 20;
-  check('a chimney long stopped has no smoke to see past', pick()?.what === 'plant');
+  // The 3 × 3 pixels read, all at `depth` and `ink`.
+  const pixels = (depth: number, ink: number) => Float32Array.from({ length: 36 }, (_, i) => (i % 4 === 2 ? depth : i % 4 === 3 ? ink : 0));
+  const pick = (ink: number, from = camera) =>
+    picker.hit(pixels(Math.hypot(9, 9), ink), from, new THREE.Vector2(0, 0), new THREE.Vector2(1e-4, 1e-4), [{ mesh: building, matrix: building.matrixWorld }]);
+  const through = pick(SMOKE_INK);
+  check('a pick sees past smoke to the building', through?.tag === 'bakery' && Math.abs(through.point.y - 4) < 0.05, JSON.stringify(through));
+  check('a smoke pixel partly something painted: still smoke', pick(SMOKE_INK * 0.75)?.tag === 'bakery');
+  check('a tree in front: the tree', pick(0)?.what === 'plant');
+  // Smoke with nothing behind it (looking level, over the building): the sky.
+  const level = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 100);
+  level.position.set(10, 14, 0); level.lookAt(0, 14, 0); level.updateMatrixWorld();
+  const sky = pick(SMOKE_INK, level);
+  check('smoke against the sky: nothing', sky === null, JSON.stringify(sky));
 }
 
 if (failed) process.exit(1);

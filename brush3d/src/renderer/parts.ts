@@ -60,6 +60,8 @@ export class Parts {
   private holds: number[] = [];
   /** Per slot: how many parts have had it, so a handle to a part freed never moves the next part in its slot. */
   private gens: number[] = [];
+  /** Where each part's light is, if it glows and its axle isn't there (a lamp's middle: add's `light`), for its pool. */
+  private lights: (THREE.Vector3Like | null)[] = [];
   private readonly free: number[] = [];
   /** The renderer's clock at the last update (null before the first). */
   private time: number | null = null;
@@ -81,11 +83,11 @@ export class Parts {
    * radians a second at its usual pace (0: it never turns), lighting up at night as `glow` says. Shown, lit, at rest.
    * Returns its slot; the mesh's vertices carry slot + 1 (0 is none).
    */
-  add(origin: THREE.Vector3Like, axis: THREE.Vector3Like, speed: number, glow: Glow = GLOW.none): number {
+  add(origin: THREE.Vector3Like, axis: THREE.Vector3Like, speed: number, glow: Glow = GLOW.none, light?: THREE.Vector3Like): number {
     let slot = this.free.pop();
     if (slot === undefined) {
       slot = this.holds.length;
-      this.holds.push(0); this.turns.push(null); this.gens.push(0);
+      this.holds.push(0); this.turns.push(null); this.gens.push(0); this.lights.push(null);
       const rows = Math.ceil(this.holds.length * PART_TEXELS / ROW);
       if (rows !== this.texture.image.height) {
         const old = this.texture.image.data as Float32Array;
@@ -93,6 +95,7 @@ export class Parts {
         (this.texture.image.data as Float32Array).set(old);
       }
     }
+    this.lights[slot] = light ? { x: light.x, y: light.y, z: light.z } : null;
     this.turns[slot] = speed ? { speed, target: 0, pace0: 0, angle0: 0, t0: null, past: [], next: [] } : null;
     const d = this.texture.image.data as Float32Array, i = slot * PART_TEXELS * 4;
     d.fill(0, i, i + PART_TEXELS * 4);
@@ -161,7 +164,7 @@ export class Parts {
   }
 
   /**
-   * The parts glowing now, nearest `to` first, at most `most`: each one's point (its axle's) and how it glows (GLOW), a
+   * The parts glowing now, nearest `to` first, at most `most`: each one's point (its light's, else its axle's) and how it glows (GLOW), a
    * window only if `windows`. For the pools of light they throw (BrushRenderer's night lights).
    */
   glowing(to: THREE.Vector3Like, most: number, windows: boolean): { x: number; y: number; z: number; glow: Glow }[] {
@@ -170,7 +173,7 @@ export class Parts {
       if (!(this.holds[s] > 0)) continue;
       const i = s * PART_TEXELS * 4, glow = d[i + 8];
       if (glow === GLOW.lamp ? d[i + 7] < 0.5 : glow !== GLOW.window || !windows || d[i + 9] < 0.5) continue;
-      const x = d[i], y = d[i + 1], z = d[i + 2];
+      const l = this.lights[s], x = l?.x ?? d[i], y = l?.y ?? d[i + 1], z = l?.z ?? d[i + 2];
       out.push({ x, y, z, glow: glow as Glow, far: (x - to.x) ** 2 + (z - to.z) ** 2 });
     }
     return out.sort((a, b) => a.far - b.far).slice(0, most);

@@ -62,7 +62,7 @@ function greenOf(mesh: THREE.Mesh) {
 const SPIN_SPEED = 0.6;
 
 /** One of a set's parts: its axle (as placed), its pace (radians a second; 0 if it doesn't turn), how it glows at night. */
-interface SetPart { origin: THREE.Vector3; axis: THREE.Vector3; speed: number; glow: Glow }
+interface SetPart { origin: THREE.Vector3; axis: THREE.Vector3; speed: number; glow: Glow; light?: THREE.Vector3 }
 
 /**
  * A model's moving and changing parts as added to a ModelSet (Soil-n-Silo#205), for the game to say how they are now:
@@ -158,6 +158,8 @@ export class ModelSet {
     const thing = new ModelParts(), mine = new Map<THREE.Object3D, number>();
     // Its windows' part (-1: none yet), and their middle.
     const windows = { at: new THREE.Vector3(), n: 0, part: -1 };
+    // Its lamps' middles (by part): where their light is, wherever their axle (often the model's own origin).
+    const lamps = new Map<number, { at: THREE.Vector3; n: number }>();
     this.things.push(thing);
     // The part a mesh is of, if it is (the nearest of it and the nodes it hangs from with a part's name): its index in
     // the set, + 1; 0 for none.
@@ -204,13 +206,15 @@ export class ModelSet {
       const finish = moss ? MOSS : FINISH[name] ?? PLAIN;
       const g = mesh.geometry, paint: Paint = floats && !moss ? [finish[0], finish[1], finish[2], 1] : finish;
       const pos = g.getAttribute('position'), nrm = g.getAttribute('normal'), col = g.getAttribute('_color'), uv = g.getAttribute('uv');
-      const base = b.vertexCount;
+      const base = b.vertexCount, lamp = b.part > 0 && this.parts[b.part - 1].glow === GLOW.lamp ? lamps.get(b.part) ?? { at: new THREE.Vector3(), n: 0 } : null;
+      if (lamp) lamps.set(b.part, lamp);
       for (let i = 0; i < pos.count; i++) {
         p.fromBufferAttribute(pos, i).applyMatrix4(m);
         n.fromBufferAttribute(nrm, i).applyMatrix3(nm).normalize();
         if (col) c.setRGB(col.getX(i), col.getY(i), col.getZ(i)); else c.setRGB(1, 1, 1);
         const pane = glazed && Math.abs(n.y) < UPRIGHT;
         if (pane) { b.part = windows.part + 1; windows.at.add(p); windows.n++; }
+        if (lamp) { lamp.at.add(p); lamp.n++; }
         b.vertex(p, n, c, paint, uv ? [uv.getX(i), uv.getY(i)] : [0, 0]);
         if (pane) b.part = 0;
       }
@@ -222,6 +226,7 @@ export class ModelSet {
     // Each charge ring by its number, none missing.
     for (let k = 0; k < thing.charges.length; k++) thing.charges[k] ??= [];
     if (windows.part >= 0) this.parts[windows.part].origin.copy(windows.at.divideScalar(Math.max(windows.n, 1)));
+    for (const [k, l] of lamps) if (l.n) this.parts[k - 1].light = l.at.divideScalar(l.n);
     return thing;
   }
 
@@ -264,7 +269,7 @@ export class ModelSet {
     const out: THREE.Mesh[] = [];
     // Its parts get their slots in the renderer, for the game to move and change through each model's ModelParts. (A
     // renderer stand-in without parts draws them where they rest.)
-    const table = r.parts, slots = table ? this.parts.map((p) => table.add(p.origin, p.axis, p.speed, p.glow)) : undefined;
+    const table = r.parts, slots = table ? this.parts.map((p) => table.add(p.origin, p.axis, p.speed, p.glow, p.light)) : undefined;
     if (this.ink.vertexCount) out.push(r.add(this.ink.build(slots), 'ink', { tag }));
     // A planted roof is a roof: rain and snow stop at it, as at an inked one (paint is no cover unless told).
     if (this.paint.vertexCount) out.push(r.add(this.paint.build(slots), 'paint', { seasonal: true, cover: 'full', tag }));
