@@ -15,11 +15,18 @@ import { RISE, TILE } from './scale.ts';
 // rather than silently missing. A field and a sapling aren't models: what grows is painted (wild.ts, #213); a field here is
 // the low bed its crop grows on.
 //
-// Still to come: a world that changes without a stutter (#204: today a building's meshes are made and dropped here as the
-// game places and removes it), the moving parts and building states (#205: rotors, wheels and millstones are drawn at
-// rest and every `running_*` look as if working, as in the demo), and the markers and the build preview (#206). The
-// water wheel dips 0.87 m below its bank into a race the land has to cut for it (`wheelRace`, the land's: #202). Trees,
-// rocks, saplings and the fields' crops are wild.ts's.
+// A world that changes in play (#204): a building is made when it's placed (its model's meshes, 0.3 to 4 ms) and taken out
+// when it's removed; only what its key holds makes it again (its kind, where it stands, which way, how high, and model or
+// stand-in), never the game's other changes. The shelter map is drawn again only round it (brush3d's ShelterMap). Every
+// truck draws the one truck shape (made once, never disposed), placed by its mesh's position and turn: a truck bought
+// costs a mesh, not a model.
+//
+// Still to come: the moving parts and building states (#205: rotors, wheels and millstones are drawn at rest and every
+// `running_*` look as if working, as in the demo): they go on the building's record (Drawn), made with it and dropped
+// with it, and change each frame without making the building again (its key stays as it is). Each mesh is tagged with
+// its building's or truck's id for the tools' picks and marks (tools.ts, #206: `meshesOf`, `changes`). The water wheel
+// dips 0.87 m below its bank into a race the land has to cut for it (`wheelRace`, the land's: #202). Trees, rocks,
+// saplings and the fields' crops are wild.ts's.
 
 const GREY = srgb(0x9a968e), FIELD = srgb(0x8a7a62);
 /** How far a stand-in block stands in from its footprint's edge (m). */
@@ -48,15 +55,20 @@ function box(b: MeshBuilder, w: number, h: number, d: number, at: THREE.Matrix4,
   g.dispose();
 }
 
-interface Shown { meshes: THREE.Mesh[]; key: string }
+/**
+ * A building or truck as drawn: its meshes, and the key of what they were made from (made again only when it changes).
+ * #205's moving parts and state looks go here, beside the meshes: made in `building` and taken out in `drop`, changed each
+ * frame in `sync` without touching the key.
+ */
+interface Drawn { meshes: THREE.Mesh[]; key: string }
 
 const UP = new THREE.Vector3(0, 1, 0), ONE = new THREE.Vector3(1, 1, 1);
 
 export class Things {
   private readonly r: BrushRenderer;
   private readonly lie: Lie;
-  private readonly buildings = new Map<number, Shown>();
-  private readonly trucks = new Map<number, Shown>();
+  private readonly buildings = new Map<number, Drawn>();
+  private readonly trucks = new Map<number, Drawn>();
   private layout = -1;
   /** The models by name, once loaded (one that failed to load is missing, and draws as its stand-in). */
   private models: Map<string, THREE.Object3D> | null = null;
@@ -65,6 +77,8 @@ export class Things {
    * pointer may have changed (tools.ts, #206). Trucks driving on are not counted.
    */
   changes = 0;
+  /** The truck's shape, model or stand-in, made once and shared by every truck (never disposed: it's small). */
+  private readonly truckShapes = new Map<string, THREE.BufferGeometry>();
 
   constructor(r: BrushRenderer, lie: Lie) {
     this.r = r; this.lie = lie;
@@ -136,17 +150,26 @@ export class Things {
     return [this.r.add(mb.build(), 'ink', { tag: b.id })];
   }
 
-  /** A truck's mesh, at the origin facing +z: its model, or a block. It's no roof: it moves (no cover). Tagged with its id. */
-  private truck(id: number): THREE.Mesh {
-    const model = this.models?.get(TRUCK_MODEL);
-    if (model) {
-      const set = new ModelSet();
-      set.add(model, new THREE.Matrix4());
-      return this.r.add(set.ink.build(), 'ink', { cover: 'none', tag: id });
+  /**
+   * A truck's mesh, at the origin facing +z: its model, or a block (`drawn`). It's no roof: it moves (no cover). Tagged
+   * with its id.
+   */
+  private truck(id: number, drawn: string): THREE.Mesh {
+    let shape = this.truckShapes.get(drawn);
+    if (!shape) {
+      const model = this.models?.get(TRUCK_MODEL);
+      if (model) {
+        const set = new ModelSet();
+        set.add(model, new THREE.Matrix4());
+        shape = set.ink.build();
+      } else {
+        const mb = new MeshBuilder('ink');
+        box(mb, 1.6, 1.4, 3.2, new THREE.Matrix4(), GREY);
+        shape = mb.build();
+      }
+      this.truckShapes.set(drawn, shape);
     }
-    const mb = new MeshBuilder('ink');
-    box(mb, 1.6, 1.4, 3.2, new THREE.Matrix4(), GREY);
-    return this.r.add(mb.build(), 'ink', { cover: 'none', tag: id });
+    return this.r.add(shape, 'ink', { cover: 'none', tag: id });
   }
 
   private syncTrucks(s: GameState) {
@@ -155,8 +178,8 @@ export class Things {
       seen.add(t.id);
       let shown = this.trucks.get(t.id);
       if (shown?.key !== drawn) {
-        if (shown) this.drop(shown.meshes);
-        shown = { meshes: [this.truck(t.id)], key: drawn };
+        if (shown) this.drop(shown.meshes, false);
+        shown = { meshes: [this.truck(t.id, drawn)], key: drawn };
         this.changes++;
         this.trucks.set(t.id, shown);
       }
@@ -167,14 +190,15 @@ export class Things {
       mesh.position.set(t.x * TILE, this.lie.y(t.x, t.y) * RISE * TILE, t.y * TILE);
       mesh.rotation.set(-Math.atan2(rise, 2 * FEEL), t.heading, 0, 'YXZ');
     }
-    for (const [id, was] of this.trucks) if (!seen.has(id)) { this.drop(was.meshes); this.trucks.delete(id); }
+    for (const [id, was] of this.trucks) if (!seen.has(id)) { this.drop(was.meshes, false); this.trucks.delete(id); }
   }
 
-  private drop(meshes: THREE.Mesh[]) {
+  /** Takes meshes out; `own`: their geometry was theirs alone, and is freed (a truck's is the shared shape). */
+  private drop(meshes: THREE.Mesh[], own = true) {
     this.changes++;
     for (const mesh of meshes) {
       this.r.remove(mesh);
-      mesh.geometry.dispose();
+      if (own) mesh.geometry.dispose();
     }
   }
 }
