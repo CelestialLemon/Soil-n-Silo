@@ -191,9 +191,12 @@ mill.remove();
 - **Spinning parts** turn at the rate the game gives (it knows the wind at a turbine, the river's flow at the wheel); the
   renderer turns the part, its ink and its shadow smoothly.
 - **Goods** in a truck's bed are things too, placed by the game as the truck moves (a call per good per frame is cheap).
-- **Today** the models load with `loadModel(url)` and go into one merged mesh per scene with `ModelSet`, at load:
-  nothing moves or changes after. `r.add(geometry, kind)` / `r.remove(mesh)` add and remove whole meshes. #204 builds
-  the per-thing handles over them, with no hitch when one changes.
+- **Today** the models load with `loadModel(url)` and go into meshes with `ModelSet`; the game's things.ts makes a
+  building's meshes when it's placed (0.3 to 4 ms) and takes them out (`r.remove`) when it's removed, and every truck
+  draws one shared truck geometry, placed by its mesh's position and turn. Adding or taking out a mesh redraws the
+  shelter map only round it (Soil-n-Silo#204), so a building placed or removed costs no hitch. The handles above
+  (`addThing` and the rest) are still to come: #204 kept the per-thing records game-side (things.ts), where #205's
+  moving parts and states and #206's tags and marks join them, and the handles can wrap them once those have settled.
 
 ## What grows: crops, trees and rocks (#204, #213)
 
@@ -220,8 +223,12 @@ crop.remove(); oak.remove(); rock.remove();
   stops the wind is the game's to say: it gives the wind simulation its obstacles (hedges, crowns, buildings; below).
 - **Today** the painting kit grows them: `growTree` and `Grove` (trees with their season's dress), `addStone`,
   `addTuft`, `addMound`, `addFlowers`, the demo's wheat, and the plant kit below (#213's groundwork). They are baked
-  into meshes the caller keeps, takes out with `r.remove` and makes anew when something changes (the game's wild.ts
-  does this per field, per sapling and per 8 × 8 tiles of trees); the handles above replace that (#204).
+  into meshes the caller keeps and takes out with `r.remove`. A tree changes without its meshes being made again
+  (Soil-n-Silo#204): `r.removeTrees(meshes, [[x, z], ...])` folds the trees standing there out of the meshes they were
+  grown into (wood, leaves and the litter under them) and lets go of their springs, and `r.moveTrees(meshes, [{ x, z,
+  dy }])` raises or lowers them whole, when the ground under them moved. The game's wild.ts draws the map's trees in
+  8 × 8-tile blocks made once, clears and moves trees in them this way, paints a tree grown in play on its own, and makes
+  a field's crop and a sapling anew at each stage (a few ms). The handles above can wrap this later.
 
 ## The camera
 
@@ -449,7 +456,11 @@ above, the game stops using it and it becomes the renderer's own.
   `remove` frees the tiles it cut a mesh into (`tile`); a geometry the caller gave stays the caller's to dispose.
   Give the ground its square (`fields`) even when its brush isn't baked: the clouds' map is laid over it, and without it
   covers only 128 m round the origin, the clouds' shadows smeared in streaks past it (#201).
-  `r.setFields(kind, size)` bakes a kind's brush once the scene is built; `r.shelter.changed()` after moving cover.
+  `r.setFields(kind, size)` bakes a kind's brush once the scene is built. The shelter map (and the snow's hollows under
+  it) is drawn again only round a mesh added or taken out, or round trees removed or moved (Soil-n-Silo#204);
+  `r.shelter.changed()` after moving cover yourself (the whole map), or `r.shelter.changedIn(layer, box)` for a part.
+  A tree's spring is held by each mesh that draws it and freed when the last lets go (`r.remove`, `r.removeTrees`), its
+  slot then reused by the next new tree.
 - `MeshBuilder` and `Paint`: geometry in the renderer's format (colours, normals, the brush per vertex, tree ids).
 - `growTree`, `Grove`, `dressFor`, `addStone`, `addTuft`, `addReeds`, `addMound`, `addFlowers`, `groundOf`, `MapLine`:
   the demo's pieces. `Grove.addTo(r, options)` adds its meshes with the given options and returns them. A `Tree`'s

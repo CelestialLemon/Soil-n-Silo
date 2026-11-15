@@ -110,6 +110,21 @@ only, never saved, the map itself unchanged): the river runs on out of sight, a 
 thicken and the ground rises into wooded hills, with an apron of distant woods beyond them. Everything past the edge is a
 shade duller, so where you can build still reads at a glance. Height on the map itself followed on 2026-10-17, below.
 
+## A world that changes without a hitch (2026-11-15)
+
+On the brush3d path (`?renderer=brush3d`), the world changes while you play without the picture stuttering (#204, #234).
+Placing a building used to stall a frame by about 90 ms, because every change redrew the whole shelter map (what each
+spot of land has standing over it), the ground's hollows and every tree on the map. Now only the patch around the
+change is redrawn. That brings it down to about 12 ms. Clearing a tree drops from 30 ms to 3; saplings, fields, removing
+a building and trucks to 2–3. Three changes do the work:
+- a cleared tree is folded away inside the grove it was painted in, and its wind spring is freed;
+- a tree whose ground moves is shifted, not repainted;
+- a new one is painted alone.
+The water only re-reads its levels when the ground under it changes, and every truck of a kind shares one shape.
+`npm run hitches` measures it: it makes each kind of change in a busy commission and reports the frame and the game's own
+work (`brush3d/docs/PERFORMANCE.md` has the table). The picture is unchanged. Still open: the first building placed in a
+session costs about 45 ms once (the land's first refit, warming up; #210).
+
 ## One wind and one cloud field for the rules and the picture (2026-11-15)
 
 A turbine now makes its power times the gust passing over it, and a solar panel under a cloud's shadow loses the share of

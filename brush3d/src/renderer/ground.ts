@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { NOISE } from './glsl';
 import { SHELTER_GLSL } from './shelter';
+import { TILE_REACH } from './tiles';
 
 // The ground's state (#14, designed for wet ground in #11): a map over the land the game sends, as it sends the water's
 // (#18), sent again whenever it changes. The game owns it: snow falls and lies and melts, frost forms in the night and
@@ -232,8 +233,12 @@ export class HollowMap {
     uHollowsMap: { value: new THREE.Matrix3() },
     uHollowsOn: { value: 0 },
   };
-  /** Whether the ground has changed since it was drawn. */
-  dirty = true;
+  /** Whether the whole map is to be found again (see changed). */
+  private whole = true;
+  /** The part of it to find again (world, m), when only a part is: a building placed, an earthwork. */
+  private part: THREE.Box3 | null = null;
+  /** As it was last found whole: its square, and the heights from its top to its bottom (m). */
+  private drawn: { area: HollowArea; top: number; bottom: number } | null = null;
   private heights: THREE.WebGLRenderTarget;
   private dips: THREE.WebGLRenderTarget;
   private camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -241,6 +246,9 @@ export class HollowMap {
   private material: THREE.ShaderMaterial;
 
   readonly size: number;
+
+  /** Whether the ground has changed since it was drawn. */
+  get dirty() { return this.whole || this.part !== null; }
 
   constructor(size = 1024) {
     this.size = size;
@@ -266,60 +274,129 @@ export class HollowMap {
   }
 
   /** The ground or its shelter has changed (added, removed, reshaped): found again before they're next read. */
-  changed() { this.dirty = true; }
+  changed() { this.whole = true; }
+
+  /**
+   * The ground or its shelter has changed within `box` (world, m: a building placed, an earthwork, Soil-n-Silo#204): only
+   * the hollows that can see it are found again.
+   */
+  changedIn(box: THREE.Box3) {
+    if (box.isEmpty()) return;
+    if (this.part) this.part.union(box); else this.part = box.clone();
+  }
 
   /**
    * Finds the hollows, if the ground has changed: `grounds` drawn with `depth` (a material writing depth only) from
-   * straight above over `area`, everything else in `scene` hidden.
+   * straight above over `area`, everything else in `scene` hidden. Only the part changed, where that's all that has.
    */
   draw(
     gl: THREE.WebGLRenderer, scene: THREE.Scene, grounds: THREE.Mesh[], depth: THREE.Material, area: HollowArea | null,
     shelter: Record<string, THREE.IUniform>,
   ) {
     if (!this.dirty) return;
-    this.dirty = false;
+    const part = this.whole ? null : this.part;
+    this.whole = false; this.part = null;
     const u = this.uniforms;
-    if (!area || grounds.length === 0) { u.uHollowsOn.value = 0; return; }
-    const box = new THREE.Box3();
-    for (const g of grounds) box.expandByObject(g);
-    const bottom = box.min.y - 1, top = box.max.y + 1;
-    const c = this.camera, h = area.side / 2;
-    c.left = -h; c.right = h; c.top = h; c.bottom = -h; c.near = 0; c.far = top - bottom;
-    c.position.set(area.x, top, area.z);
-    c.up.set(-Math.sin(area.turn), 0, -Math.cos(area.turn));
-    c.lookAt(area.x, bottom, area.z);
-    c.updateProjectionMatrix();
-    c.updateMatrixWorld();
-    // x, z to the map's uv: the camera's view and projection, on the plane, then -1..1 to 0..1.
-    const m = new THREE.Matrix4().multiplyMatrices(c.projectionMatrix, c.matrixWorldInverse).elements;
-    u.uHollowsMap.value.set(
-      0.5 * m[0], 0.5 * m[8], 0.5 * m[12] + 0.5,
-      0.5 * m[1], 0.5 * m[9], 0.5 * m[13] + 0.5,
-      0, 0, 1,
-    );
+    if (!area || grounds.length === 0) { u.uHollowsOn.value = 0; this.drawn = null; return; }
+    const d = this.drawn, b = new THREE.Box3();
+    // Only the part: the ground round it drawn again (a hollow's height reads the ground FAR round it) and its hollows found
+    // again, if the ground there stays within the heights the map holds, and the map's square hasn't moved.
+    let near: THREE.Mesh[] | null = null, heights: THREE.Vector4 | null = null, dips: THREE.Vector4 | null = null;
+    if (part && d && d.area.x === area.x && d.area.z === area.z && d.area.side === area.side && d.area.turn === area.turn) {
+      // The heights drawn again over the part and a little round it, the hollows FAR round those; every ground that may
+      // draw within the texels cleared is drawn (on a turned map they cover more than the part).
+      heights = this.texels(part.clone().expandByScalar(TILE_REACH));
+      const foot = heights && this.footprint(heights);
+      dips = foot && this.texels(foot.expandByScalar(FAR + 1));
+      if (!heights || !dips) return;
+      const reach = this.footprint(heights);
+      near = [];
+      for (const g of grounds) {
+        b.setFromObject(g);
+        if (b.min.x > reach.max.x || b.max.x < reach.min.x || b.min.z > reach.max.z || b.max.z < reach.min.z) continue;
+        if (b.min.y < d.bottom || b.max.y > d.top) { near = null; break; }
+        near.push(g);
+      }
+    }
+    const c = this.camera, mu = this.material.uniforms;
+    if (!near) {
+      const box = new THREE.Box3();
+      for (const g of grounds) box.expandByObject(g);
+      const bottom = box.min.y - 1, top = box.max.y + 1;
+      this.drawn = { area: { ...area }, top, bottom };
+      const h = area.side / 2;
+      c.left = -h; c.right = h; c.top = h; c.bottom = -h; c.near = 0; c.far = top - bottom;
+      c.position.set(area.x, top, area.z);
+      c.up.set(-Math.sin(area.turn), 0, -Math.cos(area.turn));
+      c.lookAt(area.x, bottom, area.z);
+      c.updateProjectionMatrix();
+      c.updateMatrixWorld();
+      // x, z to the map's uv: the camera's view and projection, on the plane, then -1..1 to 0..1.
+      const m = new THREE.Matrix4().multiplyMatrices(c.projectionMatrix, c.matrixWorldInverse).elements;
+      u.uHollowsMap.value.set(
+        0.5 * m[0], 0.5 * m[8], 0.5 * m[12] + 0.5,
+        0.5 * m[1], 0.5 * m[9], 0.5 * m[13] + 0.5,
+        0, 0, 1,
+      );
+      Object.assign(mu, shelter);
+      mu.uSide.value = area.side;
+      (mu.uRange.value as THREE.Vector2).set(top, top - bottom);
+      (mu.uUnmap.value as THREE.Matrix3).copy(u.uHollowsMap.value).invert();
+    }
+    if (!near) { heights = null; dips = null; }
 
     const hidden: THREE.Object3D[] = [];
     for (const o of scene.children) if (o.visible) { o.visible = false; hidden.push(o); }
-    const saved = grounds.map((g) => [g, g.material] as const);
-    for (const g of grounds) { g.visible = true; g.material = depth; }
+    const drawn = near ?? grounds;
+    const saved = drawn.map((g) => [g, g.material] as const);
+    for (const g of drawn) { g.visible = true; g.material = depth; }
+    scissor(this.heights, heights);
     gl.setRenderTarget(this.heights);
     gl.clear(false, true, false);
     gl.render(scene, c);
+    scissor(this.heights, null);
     for (const [g, material] of saved) { g.material = material; g.visible = false; }
     for (const o of hidden) o.visible = true;
 
-    const mu = this.material.uniforms;
-    Object.assign(mu, shelter);
-    mu.uSide.value = area.side;
-    (mu.uRange.value as THREE.Vector2).set(top, top - bottom);
-    (mu.uUnmap.value as THREE.Matrix3).copy(u.uHollowsMap.value).invert();
+    scissor(this.dips, dips);
     gl.setRenderTarget(this.dips);
     gl.render(this.quadScene, this.camera);
+    scissor(this.dips, null);
     gl.setRenderTarget(null);
     u.uHollowsOn.value = 1;
   }
 
+  /** The texels a world box covers (a texel more each way), or null if none. */
+  private texels(box: THREE.Box3) {
+    const m = this.uniforms.uHollowsMap.value, size = this.size, p = new THREE.Vector3();
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const x of [box.min.x, box.max.x]) for (const z of [box.min.z, box.max.z]) {
+      p.set(x, z, 1).applyMatrix3(m);
+      x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
+    }
+    const ix0 = Math.max(0, Math.floor(x0 * size) - 1), iy0 = Math.max(0, Math.floor(y0 * size) - 1);
+    const ix1 = Math.min(size, Math.ceil(x1 * size) + 1), iy1 = Math.min(size, Math.ceil(y1 * size) + 1);
+    return ix1 > ix0 && iy1 > iy0 ? new THREE.Vector4(ix0, iy0, ix1 - ix0, iy1 - iy0) : null;
+  }
+
+  /** The world's x and z (a box) that the texels `rect` cover. */
+  private footprint(rect: THREE.Vector4) {
+    const unmap = this.material.uniforms.uUnmap.value as THREE.Matrix3, p = new THREE.Vector3(), out = new THREE.Box3();
+    for (const u of [rect.x, rect.x + rect.z]) for (const v of [rect.y, rect.y + rect.w]) {
+      p.set(u / this.size, v / this.size, 1).applyMatrix3(unmap);
+      out.expandByPoint(new THREE.Vector3(p.x, 0, p.y));
+    }
+    out.min.y = -Infinity; out.max.y = Infinity;
+    return out;
+  }
+
   dispose() { this.heights.dispose(); this.dips.dispose(); this.material.dispose(); }
+}
+
+/** Draws only within `rect` (texels) into `target`, or all of it (null). */
+function scissor(target: THREE.WebGLRenderTarget, rect: THREE.Vector4 | null) {
+  target.scissorTest = rect !== null;
+  if (rect) target.scissor.copy(rect); else target.scissor.set(0, 0, target.width, target.height);
 }
 
 const QUAD_VERT = /* glsl */ `

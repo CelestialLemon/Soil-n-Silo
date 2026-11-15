@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { TILE_REACH } from './tiles';
 
 // The shelter map: what's under cover, seen from straight above, so rain and snow stop at roofs (#10). Three depth maps
 // over a square of the land, drawn from above: the highest full cover over each point (roofs: the inked things, solar
@@ -6,11 +7,17 @@ import * as THREE from 'three';
 // a drop in the open knows where it lands, #11). A raindrop or snowflake stops at the height they give; the ground under
 // a roof stays dry, under a crown drier. Nothing in them moves, so they're drawn only when what's under cover changes (a
 // building placed or removed, the ground changed), not every frame; the crowns are drawn at rest, without the wind.
+//
+// A change in play (Soil-n-Silo#204: a building placed, a tree cleared, an earthwork) redraws only the square round what
+// changed, in the layers it's in: the map is cleared there and what stands there drawn again. The whole map is drawn again
+// only when something new reaches above or below the heights the map holds, or the square it covers moves.
 
 /** How a mesh shelters what's under it: as a roof does, as a crown does (some rain gets through), or not at all. */
 export type Cover = 'full' | 'partial' | 'none';
 /** A map the shelter draws: the roofs, the crowns, or the land under them (the ground). */
 export type ShelterLayer = 'full' | 'partial' | 'land';
+/** A rectangle of a map's texels. */
+interface Rect { x: number; y: number; w: number; h: number }
 
 /** How much of the rain and snow a crown keeps off (a roof keeps off all of it): the developer's "partly" (#10). */
 export const PARTIAL_COVER = 0.6;
@@ -69,11 +76,28 @@ float crownTop(vec3 p) { return shelterHeightIn(uShelterPartial, p); }
 float landTop(vec3 p) { return shelterHeightIn(uShelterLand, p); }
 `;
 
+/**
+ * How far past its box a mesh may draw in the map (m): a crown's leaves are cards about their middles, and the trees stand
+ * at their rest, not quite where they were built (TILE_REACH's room, for the same reasons). A part of the map redrawn is
+ * this much bigger than what changed, and draws everything within this much of it.
+ */
+const REACH = TILE_REACH;
+
 /** Every point to (-2, -2): off the map, while there's none. */
 const OFF_MAP = new THREE.Matrix4().set(0, 0, 0, -2, 0, 0, 0, -2, 0, 0, 0, 0, 0, 0, 0, 1);
 
 /** A mesh as the map sees it: which of its maps it's drawn into ('none': none). */
 export interface CoverMesh { mesh: THREE.Mesh; cover: Cover | 'land'; depth: THREE.Material }
+
+const LAYERS = ['full', 'partial', 'land'] as const;
+/** The layer a mesh's cover is drawn into ('none' is drawn into none: it's left out by its cover). */
+const layerOf = (cover: Cover | 'land'): ShelterLayer => (cover === 'none' ? 'full' : cover);
+
+/** A mesh's box in the world, as last placed, into `out`. */
+function worldBox(mesh: THREE.Mesh, out: THREE.Box3) {
+  if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+  return out.copy(mesh.geometry.boundingBox!).applyMatrix4(mesh.matrixWorld);
+}
 
 export class ShelterMap {
   /** For materials that read it (see SHELTER_GLSL). */
@@ -86,8 +110,6 @@ export class ShelterMap {
     uShelterHeight: { value: new THREE.Vector2(0, 1) },
     uShelterTexels: { value: 1 },
   };
-  /** Whether the map must be drawn again before it's next read (see changed). */
-  dirty = true;
   /** The square it covers; null: the ground's own square (the one its brush is baked over), whatever the scene sets. */
   area: ShelterArea | null = null;
   private full: THREE.WebGLRenderTarget;
@@ -97,6 +119,20 @@ export class ShelterMap {
   private overlay: THREE.ShaderMaterial;
   private overlayScene = new THREE.Scene();
   private box = new THREE.Box3();
+  /** Whether the whole map is to be drawn again (see changed). */
+  private whole = true;
+  /** The parts of each layer to draw again (world boxes), when only parts are: a mesh removed, an earthwork. */
+  private parts: Record<ShelterLayer, THREE.Box3 | null> = { full: null, partial: null, land: null };
+  /** The meshes added since the map was drawn, and their layers: their boxes are taken as it's drawn (they may be placed after). */
+  private added = new Map<THREE.Mesh, ShelterLayer>();
+  /** As the map was last drawn whole: its square, and the heights from its top to its bottom (m). */
+  private drawn: { area: ShelterArea; top: number; bottom: number } | null = null;
+
+  /** What the last draw drew again (world, m): a part, or null for the whole map (for what reads the map, the hollows). */
+  lastPart: THREE.Box3 | null = null;
+
+  /** Whether the map must be drawn again before it's next read. */
+  get dirty() { return this.whole || this.added.size > 0 || this.parts.full !== null || this.parts.partial !== null || this.parts.land !== null; }
 
   /** Texels across (see resize). */
   get size() { return this.full.width; }
@@ -135,41 +171,88 @@ export class ShelterMap {
     if (size === this.size) return;
     for (const t of [this.full, this.partial, this.land]) t.setSize(size, size);
     this.uniforms.uShelterTexels.value = size;
-    this.dirty = true;
+    this.whole = true;
   }
 
-  /** Something under cover changed (placed, removed, moved, shown or hidden): the map is drawn again before it's next read. */
-  changed() { this.dirty = true; }
+  /**
+   * Something under cover changed (moved, shown or hidden): the whole map is drawn again before it's next read. A mesh
+   * added or removed, or a part of the land changed, needs only its part drawn again: see add, remove and changedIn.
+   */
+  changed() { this.whole = true; }
+
+  /** A mesh under cover of `layer` (the land: the ground) was added: only where it stands is drawn again. */
+  add(mesh: THREE.Mesh, layer: ShelterLayer) { this.added.set(mesh, layer); }
+
+  /** A mesh under cover of `layer` was taken out: only where it stood is drawn again. */
+  remove(mesh: THREE.Mesh, layer: ShelterLayer) {
+    if (this.added.delete(mesh)) return;
+    mesh.updateMatrixWorld();
+    this.changedIn(layer, worldBox(mesh, new THREE.Box3()));
+  }
+
+  /** A layer changed within `box` (world, m): only that part of it is drawn again. */
+  changedIn(layer: ShelterLayer, box: THREE.Box3) {
+    if (box.isEmpty()) return;
+    const was = this.parts[layer];
+    if (was) was.union(box); else this.parts[layer] = box.clone();
+  }
 
   /** Sets the square it covers (null: the ground's own). */
-  setArea(area: ShelterArea | null) { this.area = area; this.dirty = true; }
+  setArea(area: ShelterArea | null) { this.area = area; this.whole = true; }
 
   /**
    * Draws the map, if it's dirty: the full cover into one depth map, the partial into another and the land into the
    * third, each mesh with its depth material (`meshes`), from straight above, everything else hidden. `scene` holds them; `area` is the square to cover
-   * when none is set. The wind is stilled while it draws (`still`), so crowns are at rest.
+   * when none is set. The wind is stilled while it draws (`still`), so crowns are at rest. Only the parts changed are
+   * drawn, when that's all that changed (see add, remove, changedIn).
    */
   draw(gl: THREE.WebGLRenderer, scene: THREE.Scene, meshes: CoverMesh[], area: ShelterArea | null, still: () => () => void) {
     if (!this.dirty) return false;
-    this.dirty = false;
     const a = this.area ?? area;
+    const parts = this.takeParts();
     if (!a) {
+      this.drawn = null; this.lastPart = null;
       this.uniforms.uShelterMatrix.value.copy(OFF_MAP);
       return true;
     }
+    const d = this.drawn;
+    if (parts && d && d.area.x === a.x && d.area.z === a.z && d.area.side === a.side && d.area.turn === a.turn && this.drawParts(gl, scene, meshes, parts, still)) {
+      return true;
+    }
+    this.lastPart = null;
+    this.drawWhole(gl, scene, meshes, a, still);
+    return true;
+  }
+
+  /** What's to be drawn again, by layer, or null if the whole map is; and nothing left to draw after. */
+  private takeParts() {
+    const whole = this.whole, parts = this.parts, box = new THREE.Box3();
+    for (const [mesh, layer] of this.added) {
+      if (!mesh.parent) continue;
+      (parts[layer] ??= new THREE.Box3()).union(worldBox(mesh, box));
+    }
+    this.whole = false;
+    this.parts = { full: null, partial: null, land: null };
+    this.added.clear();
+    return whole ? null : parts;
+  }
+
+  /** The whole map. */
+  private drawWhole(gl: THREE.WebGLRenderer, scene: THREE.Scene, meshes: CoverMesh[], a: ShelterArea, still: () => () => void) {
     // From a metre above the highest cover (or land), down to a metre below everything in the scene.
-    const box = this.box.makeEmpty();
+    const box = this.box.makeEmpty(), b = new THREE.Box3(), covers = new Set<THREE.Object3D>();
+    for (const m of meshes) if (m.cover !== 'none') covers.add(m.mesh);
     let top = -Infinity;
     for (const o of scene.children) {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh || !mesh.visible) continue;
-      if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
-      const b = mesh.geometry.boundingBox!.clone().applyMatrix4(mesh.matrixWorld);
+      worldBox(mesh, b);
       box.union(b);
-      if (meshes.some((m) => m.mesh === mesh && m.cover !== 'none')) top = Math.max(top, b.max.y);
+      if (covers.has(mesh)) top = Math.max(top, b.max.y);
     }
     const bottom = (box.isEmpty() ? 0 : box.min.y) - 1;
     top = Math.max(top, bottom) + 1;
+    this.drawn = { area: { ...a }, top, bottom };
     const c = this.camera, h = a.side / 2;
     c.left = -h; c.right = h; c.top = h; c.bottom = -h; c.near = 0; c.far = top - bottom;
     c.position.set(a.x, top, a.z);
@@ -181,24 +264,102 @@ export class ShelterMap {
     const bias = new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1);
     this.uniforms.uShelterMatrix.value.copy(bias).multiply(c.projectionMatrix).multiply(c.matrixWorldInverse);
     this.uniforms.uShelterHeight.value.set(top, top - bottom);
+    this.render(gl, scene, meshes, null, () => true, still);
+  }
 
-    const hidden: THREE.Object3D[] = [];
-    for (const o of scene.children) if (o.visible) { o.visible = false; hidden.push(o); }
+  /**
+   * Only the parts changed: each layer's part (and REACH round it, what a dab or a card of what changed may have covered)
+   * cleared, and everything that may draw within what's cleared drawn again, scissored to it. False (nothing drawn) if
+   * something to draw reaches out of the heights the map holds: the whole map is drawn instead.
+   */
+  private drawParts(gl: THREE.WebGLRenderer, scene: THREE.Scene, meshes: CoverMesh[], parts: Record<ShelterLayer, THREE.Box3 | null>, still: () => () => void) {
+    const { top, bottom } = this.drawn!, b = new THREE.Box3(), near = new Set<THREE.Mesh>();
+    const rects: Record<ShelterLayer, Rect | null> = { full: null, partial: null, land: null };
+    const feet: Record<ShelterLayer, THREE.Box3 | null> = { full: null, partial: null, land: null };
+    for (const layer of LAYERS) {
+      const part = parts[layer];
+      if (!part) continue;
+      rects[layer] = this.texels(part.clone().expandByScalar(REACH));
+      // Where the cleared texels lie in the world (on a turned map, more than the part).
+      if (rects[layer]) feet[layer] = this.footprint(rects[layer]);
+    }
+    for (const m of meshes) {
+      const foot = m.cover === 'none' ? null : feet[layerOf(m.cover)];
+      if (!foot || !m.mesh.visible) continue;
+      // Its box and as far again as its dabs and cards reach past it.
+      worldBox(m.mesh, b).expandByScalar(REACH);
+      if (b.min.x > foot.max.x || b.max.x < foot.min.x || b.min.z > foot.max.z || b.max.z < foot.min.z) continue;
+      if (b.max.y - REACH > top || b.min.y + REACH < bottom) return false;
+      near.add(m.mesh);
+    }
+    this.render(gl, scene, meshes, rects, (m) => near.has(m), still);
+    // What was drawn again: the world under the texels cleared.
+    this.lastPart = new THREE.Box3();
+    for (const layer of LAYERS) { const foot = feet[layer]; if (foot) this.lastPart.union(foot); }
+    return true;
+  }
+
+  /**
+   * Draws each layer's meshes (those `draws` picks, each with its depth material) into its map, from above: within its
+   * rect only, where `rects` are given (a layer with none isn't drawn), else all of it.
+   */
+  private render(
+    gl: THREE.WebGLRenderer, scene: THREE.Scene, meshes: CoverMesh[], rects: Record<ShelterLayer, Rect | null> | null,
+    draws: (mesh: THREE.Mesh) => boolean, still: () => () => void,
+  ) {
+    const size = this.size;
+    const hidden = new Set<THREE.Object3D>();
+    for (const o of scene.children) if (o.visible) { o.visible = false; hidden.add(o); }
     const saved = meshes.map((m) => [m, m.mesh.material, m.mesh.visible] as const);
     const unstill = still();
-    for (const cover of ['full', 'partial', 'land'] as const) {
-      for (const m of meshes) {
-        m.mesh.visible = m.cover === cover && hidden.includes(m.mesh);
-        m.mesh.material = m.depth;
+    try {
+      for (const cover of LAYERS) {
+        const target = cover === 'full' ? this.full : cover === 'partial' ? this.partial : this.land;
+        if (rects) {
+          const rect = rects[cover];
+          if (!rect) continue;
+          target.scissor.set(rect.x, rect.y, rect.w, rect.h);
+          target.scissorTest = true;
+        }
+        for (const m of meshes) {
+          m.mesh.visible = layerOf(m.cover) === cover && m.cover !== 'none' && hidden.has(m.mesh) && draws(m.mesh);
+          m.mesh.material = m.depth;
+        }
+        gl.setRenderTarget(target);
+        gl.clear(false, true, false);
+        gl.render(scene, this.camera);
+        target.scissorTest = false;
+        target.scissor.set(0, 0, size, size);
       }
-      gl.setRenderTarget(cover === 'full' ? this.full : cover === 'partial' ? this.partial : this.land);
-      gl.clear(false, true, false);
-      gl.render(scene, c);
+    } finally {
+      unstill();
+      for (const [m, material, visible] of saved) { m.mesh.material = material; m.mesh.visible = visible; }
+      for (const o of hidden) o.visible = true;
     }
-    unstill();
-    for (const [m, material, visible] of saved) { m.mesh.material = material; m.mesh.visible = visible; }
-    for (const o of hidden) o.visible = true;
-    return true;
+    // The next target set picks up the scissor test cleared.
+    gl.setRenderTarget(null);
+  }
+
+  /** The world's x and z (a box, any height) that the texels `rect` cover. */
+  private footprint(rect: Rect) {
+    const unmap = this.uniforms.uShelterMatrix.value.clone().invert(), p = new THREE.Vector3(), out = new THREE.Box3();
+    for (const u of [rect.x, rect.x + rect.w]) for (const v of [rect.y, rect.y + rect.h]) {
+      out.expandByPoint(p.set(u / this.size, v / this.size, 0.5).applyMatrix4(unmap));
+    }
+    return out;
+  }
+
+  /** The texels a world box covers (a texel more each way, for the soft edges), or null if none. */
+  private texels(box: THREE.Box3): Rect | null {
+    const m = this.uniforms.uShelterMatrix.value, size = this.size, p = new THREE.Vector3();
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const x of [box.min.x, box.max.x]) for (const z of [box.min.z, box.max.z]) {
+      p.set(x, 0, z).applyMatrix4(m);
+      x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
+    }
+    const ix0 = Math.max(0, Math.floor(x0 * size) - 1), iy0 = Math.max(0, Math.floor(y0 * size) - 1);
+    const ix1 = Math.min(size, Math.ceil(x1 * size) + 1), iy1 = Math.min(size, Math.ceil(y1 * size) + 1);
+    return ix1 > ix0 && iy1 > iy0 ? { x: ix0, y: iy0, w: ix1 - ix0, h: iy1 - iy0 } : null;
   }
 
   /**

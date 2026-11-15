@@ -439,8 +439,11 @@ export class BrushRenderer {
     const trees = geometry.userData.trees as TreeSpec[] | undefined, ids = geometry.getAttribute('aTreeId');
     if (trees?.length && ids) {
       const map = this.trees.add(trees), a = ids.array as Float32Array;
-      for (let i = 0; i < a.length; i++) a[i] = map[a[i]];
+      // -1: no tree's (what a builder made outside any).
+      for (let i = 0; i < a.length; i++) a[i] = a[i] < 0 ? -1 : map[a[i]];
       geometry.userData.trees = undefined;
+      // The springs it holds, let go when it's taken out (remove) or a tree out of it (removeTree).
+      geometry.userData.springs = new Set(map);
     }
     const seasonal = options.seasonal ?? (kind === 'ground' || kind === 'grass');
     // Where the ground is earth (#11, wet.ts), from the game's colours, before the season turns them.
@@ -459,7 +462,9 @@ export class BrushRenderer {
     mesh.userData.fields = options.fields;
     mesh.userData.cover = options.cover ?? (kind === 'ink' ? 'full' : kind === 'foliage' ? 'partial' : 'none');
     if (options.tag !== undefined) { mesh.userData.tag = options.tag; this.tagged.add(mesh); }
-    if (mesh.userData.cover !== 'none') this.shelter.changed();
+    // Only where it stands is drawn again in the shelter map (the ground's is found again whole, below).
+    const cover = mesh.userData.cover as Cover;
+    if (cover !== 'none' && kind !== 'ground') this.shelter.add(mesh, cover);
     this.scene.add(mesh);
     if (kind === 'ground') this.groundMoved(null);
     if (options.castShadow ?? kind !== 'water') this.casters.push(mesh);
@@ -484,13 +489,89 @@ export class BrushRenderer {
     this.scene.remove(mesh);
     this.tagged.delete(mesh);
     this.marks.forget(mesh);
+    const springs = mesh.geometry.userData.springs as Set<number> | undefined;
+    if (springs) { this.trees.release(springs); mesh.geometry.userData.springs = undefined; }
     if (mesh.userData.cut) mesh.geometry.dispose();
     if (mesh.userData.seasonal) this.unseason(mesh.geometry);
     this.casters = this.casters.filter((m) => m !== mesh);
     const i = this.twins.findIndex(([m]) => m === mesh);
     if (i >= 0) { this.silhouettes.remove(this.twins[i][1]); this.twins.splice(i, 1); }
-    if (mesh.userData.cover !== 'none') this.shelter.changed();
+    const cover = mesh.userData.cover as Cover;
+    if (cover !== 'none' && mesh.userData.kind !== 'ground') this.shelter.remove(mesh, cover);
     if (mesh.userData.kind === 'ground') this.groundMoved(null);
+  }
+
+  /**
+   * Takes the trees standing at `at` (each [x, z], m) out of meshes added before, without building them again (trees
+   * cleared in play, Soil-n-Silo#204): every triangle of each (wood, leaves, the litter a grove lays under it) is folded
+   * to one of its corners, so it draws nothing in any pass (a leaf's card too, however the shader spreads it), its spring
+   * is let go and the shelter is drawn again where it stood. `meshes` are what add() returned for the trees (a tiled one
+   * stands for its tiles). The geometry is changed in place, so give each tree's geometry to one mesh only. Returns how
+   * many of them were there.
+   */
+  removeTrees(meshes: THREE.Mesh[], at: [number, number][]) {
+    return this.changeTrees(meshes, at.map(([x, z]) => ({ x, z, dy: 0 })), true);
+  }
+
+  /**
+   * Raises (or lowers) trees in meshes added before, each whole by its `dy` (m), without building them again: the ground
+   * under them moved a little (earthworks near them). As removeTrees, the geometry is changed in place.
+   */
+  moveTrees(meshes: THREE.Mesh[], moves: { x: number; z: number; dy: number }[]) {
+    return this.changeTrees(meshes, moves, false);
+  }
+
+  /**
+   * Folds (`remove`) or moves by their dy the trees at the points given, in one pass over each of `meshes`, sends up what
+   * changed and draws the shelter again over where they stood and stand; folded, the meshes let go of their springs.
+   * Returns how many of the trees were found.
+   */
+  private changeTrees(meshes: THREE.Mesh[], trees: { x: number; z: number; dy: number }[], remove: boolean) {
+    const dyOf = new Map<number, number>();
+    for (const t of trees) for (const id of this.trees.at(t.x, t.z)) dyOf.set(id, t.dy);
+    if (!dyOf.size) return 0;
+    const found = new Set<number>(), box = new THREE.Box3(), p = new THREE.Vector3();
+    for (const top of meshes) for (const mesh of (top.userData.tiles as THREE.Mesh[] | undefined) ?? [top]) {
+      const g = mesh.geometry, held = g.userData.springs as Set<number> | undefined;
+      const mine = held ? [...dyOf.keys()].filter((i) => held.has(i)) : [];
+      if (!mine.length) continue;
+      const pos = g.getAttribute('position') as THREE.BufferAttribute, id = g.getAttribute('aTreeId') as THREE.BufferAttribute;
+      let lo = -1, hi = -1;
+      box.makeEmpty();
+      for (let i = 0; i < id.count; i++) {
+        const t = id.getX(i), dy = dyOf.get(t);
+        if (dy === undefined) continue;
+        box.expandByPoint(p.fromBufferAttribute(pos, i));
+        if (!remove) { pos.setY(i, pos.getY(i) + dy); box.expandByPoint(p.fromBufferAttribute(pos, i)); }
+        found.add(t);
+        if (lo < 0) lo = i;
+        hi = i;
+      }
+      if (remove) { for (const i of mine) held!.delete(i); this.trees.release(mine); }
+      if (lo < 0) continue;
+      if (remove) {
+        // Each of its triangles folded onto its first corner (a builder's triangle is one tree's).
+        const index = g.getIndex();
+        let t0 = -1, t1 = -1;
+        if (index) for (let i = 0; i < index.count; i += 3) {
+          const c = index.getX(i);
+          if (!dyOf.has(id.getX(c))) continue;
+          index.setX(i + 1, c); index.setX(i + 2, c);
+          if (t0 < 0) t0 = i;
+          t1 = i + 3;
+        }
+        if (t0 >= 0) { index!.addUpdateRange(t0, t1 - t0); index!.needsUpdate = true; }
+      } else {
+        // Its vertices lie together (a tree is grown at once), so only their run goes up again; the bounds grow to hold it.
+        pos.addUpdateRange(lo * 3, (hi - lo + 1) * 3);
+        pos.needsUpdate = true;
+        g.boundingBox?.union(box);
+        g.boundingSphere?.union(box.getBoundingSphere(new THREE.Sphere()));
+      }
+      const cover = mesh.userData.cover as Cover;
+      if (cover !== 'none') { mesh.updateMatrixWorld(); this.shelter.changedIn(cover, box.applyMatrix4(mesh.matrixWorld)); }
+    }
+    return found.size;
   }
 
   /**
@@ -529,8 +610,8 @@ export class BrushRenderer {
   private groundMoved(area: THREE.Box3 | null, now = false) {
     if (this.groundChange && !now) return;
     this.measureGround();
-    this.shelter.changed();
-    this.hollows.changed();
+    // Within the area changed only, where it's known (an earthwork's chunks).
+    if (area) { this.shelter.changedIn('land', area); this.hollows.changedIn(area); } else { this.shelter.changed(); this.hollows.changed(); }
     this.cloudArea = false;
     this.land = area && this.land ? this.land.refresh(this.scene, area) : null;
   }
@@ -1274,7 +1355,11 @@ export class BrushRenderer {
     // The shelter map, only when cover has changed: nothing to do most frames.
     t?.mark('shelter', this.shelter.dirty);
     // The hollows map holds the ground's shelter too: found again with it.
-    if (this.shelter.dirty) { this.drawShelter(); this.hollows.changed(); }
+    if (this.shelter.dirty) {
+      this.drawShelter();
+      const part = this.shelter.lastPart;
+      if (part) this.hollows.changedIn(part); else this.hollows.changed();
+    }
     // The land's hollows (#14): once there's snow or frost, and again only when the ground or its shelter changes.
     const hollows = this.ground.any && this.hollows.dirty;
     t?.mark('hollows', hollows);

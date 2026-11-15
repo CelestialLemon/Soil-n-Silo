@@ -55,6 +55,11 @@ export class BrushWater {
   private readonly send = new Sender();
   private at = NaN;
   private riverMud = 0;
+  /** The land's water tiles, and the levels they were last sent at, with the relief they were read from. */
+  private readonly wet: number[] = [];
+  private readonly wetLevel: Float32Array;
+  private wetRelief = -1;
+  private wetStep = 0;
 
   constructor(r: BrushRenderer, land: Land, lie: Lie) {
     this.r = r; this.land = land; this.lie = lie;
@@ -67,6 +72,8 @@ export class BrushWater {
       river[i] = vx !== 0 || vz !== 0 ? 1 : 0;
       this.pond[i] = land.terrain[i] === TERRAIN.water && !river[i] ? 1 : 0;
     }
+    for (let i = 0; i < n; i++) if (land.terrain[i] === TERRAIN.water) this.wet.push(i);
+    this.wetLevel = new Float32Array(this.wet.length).fill(NaN);
     this.ice = iceOf({ width: land.width, height: land.height, river, level: (i) => land.corner[i * 4] });
   }
 
@@ -77,9 +84,25 @@ export class BrushWater {
     if (!(Math.abs(s.time - this.at) < LOOK)) { this.at = s.time; this.riverMud = groundLooksAt(sc, s.time).riverMud; }
     const mud = Math.max(flood ? flood.intensity * FLOOD_MUD : 0, this.riverMud);
     const iceStep = Math.round(cover * STEPS), mudStep = Math.round(mud * STEPS);
-    // The map changes only when one of these does: the flood's step (and the land it covers), the ice's and the mud's.
-    if (!this.send.due(`${f.step}:${reliefOf(s)}:${iceStep}:${mudStep}:${speed}`)) return;
+    // The map changes only when one of these does: the flood's step (and the land it covers), the ice's and the mud's, and
+    // the levels of the water's own tiles (not every earthwork, #204: sending the map again took 40 to 90 ms, a hitch
+    // each time a building levelled its ground, though the water stood as it was).
+    if (!this.send.due(`${f.step}:${f.step > 0 ? reliefOf(s) : this.levels(s)}:${iceStep}:${mudStep}:${speed}`)) return;
     this.r.setWater(this.build(s, f, iceStep / STEPS, mudStep / STEPS, speed), this.send.first ? 0 : undefined);
+  }
+
+  /** A count that moves on only when the levels of the land's water tiles change. */
+  private levels(s: GameState) {
+    const relief = reliefOf(s);
+    if (relief === this.wetRelief) return this.wetStep;
+    this.wetRelief = relief;
+    const corner = this.lie.relief.corner;
+    let moved = false;
+    this.wet.forEach((k, i) => {
+      if (this.wetLevel[i] !== corner[k * 4]) { this.wetLevel[i] = corner[k * 4]; moved = true; }
+    });
+    if (moved) this.wetStep++;
+    return this.wetStep;
   }
 
   private build(s: GameState, f: ReturnType<typeof flooded>, cover: number, mud: number, speed: number): WaterMap {

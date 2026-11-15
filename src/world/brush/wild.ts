@@ -17,9 +17,11 @@ import { thingHeight } from './things.ts';
 // the species by where a tree stands, trees.ts, as the pixel world does), saplings growing, and the rocks. The renderer
 // paints them from the game's words (brush3d/src/kit/plants.ts); this says which and where.
 //
-// - The map's trees are painted in blocks of BLOCK × BLOCK tiles, each made anew only when a tree in it is cleared, grows
-//   from a sapling or has the ground moved under it; a field's crop when its stage or crop changes. (#204 makes these
-//   changes without a hitch.)
+// - The map's trees are painted in blocks of BLOCK × BLOCK tiles, made once. What changes in play changes without making
+//   a block again (#204: that took 40 to 110 ms, a hitch each time): a tree cleared is taken out of its block where it
+//   stands (r.removeTree), a tree with the ground moved under it is raised or lowered whole (r.moveTree), and a tree grown
+//   from a sapling is painted on its own (a few ms) beside its block. A block's rocks are a mesh of their own, made again
+//   (cheaply) when they change. A field's crop is made anew when its stage or crop changes.
 // - The country's trees within NEAR tiles of the map are painted as the map's; further off, the woods are crowns alone, a
 //   crown for each 2 × 2 tiles of wood, as the pixel world draws them (terrain.ts).
 
@@ -52,13 +54,21 @@ export function stageOf(f: FieldBuilding): CropStage {
 
 interface Shown { meshes: THREE.Mesh[]; key: string }
 
+/**
+ * A map tree as drawn: where it stands (m), the height of the ground it was grown on (m), the meshes drawing it (its
+ * block's grove, or its own), and whether they're its own (a tree grown in play), to take out whole.
+ */
+interface Standing { x: number; z: number; ground: number; meshes: THREE.Mesh[]; own: boolean }
+/** A block of the map's trees and rocks as drawn: its grove, each tree in it (by tile), and its rocks (and their key). */
+interface Block { grove: THREE.Mesh[]; trees: Map<number, Standing>; stones: Shown | null }
+
 export class Wild {
   private readonly r: BrushRenderer;
   private readonly lie: Lie;
   private readonly land: Land;
   private readonly dress: Dress | null;
   private readonly ground: Ground;
-  private readonly blocks = new Map<number, Shown>();
+  private readonly blocks = new Map<number, Block>();
   private readonly fields = new Map<number, Shown>();
   private readonly saplings = new Map<number, Shown>();
   private layout = -1;
@@ -118,36 +128,71 @@ export class Wild {
   // ---- The map's trees and rocks, a block at a time ----
 
   private syncBlocks(s: GameState) {
-    const { width: w, height: h } = s.map;
+    const { width: w, height: h } = s.map, r = this.r;
     const wet = (x: number, y: number) => wetAt((wx, wy) => inMap(s, wx, wy) && terrainAt(s, wx, wy) === TERRAIN.water, x, y);
+    const species = (x: number, y: number) => treeAt(x, y, baseLevel(s.map, x, y), wet(x, y)).species;
     for (let by = 0; by * BLOCK < h; by++) for (let bx = 0; bx * BLOCK < w; bx++) {
-      // What the block holds: its trees and rocks, and the ground under each.
-      const here: [number, number, number][] = [];
+      // What the block holds: its trees and its rocks (with the ground under each).
+      const trees: number[] = [], rocks: number[] = [];
       for (let y = by * BLOCK; y < Math.min(h, (by + 1) * BLOCK); y++) for (let x = bx * BLOCK; x < Math.min(w, (bx + 1) * BLOCK); x++) {
         const t = terrainAt(s, x, y);
-        if (t === TERRAIN.tree || t === TERRAIN.rock) here.push([x, y, t]);
+        if (t === TERRAIN.tree) trees.push(y * w + x);
+        else if (t === TERRAIN.rock) rocks.push(y * w + x);
       }
-      const key = here.map(([x, y, t]) => `${x},${y},${t},${this.lie.y(x + 0.5, y + 0.5).toFixed(3)}`).join(' ');
-      const id = by * 1024 + bx, was = this.blocks.get(id);
-      if (was?.key === key) continue;
-      if (was) this.drop(was.meshes);
-      const grove = new Grove(this.dress), stones = new MeshBuilder('paint');
-      for (const [x, y, t] of here) {
-        if (t === TERRAIN.rock) this.stone(stones, x, y);
-        else this.tree(grove, treeAt(x, y, baseLevel(s.map, x, y), wet(x, y)).species, x, y);
+      const id = by * 1024 + bx;
+      let block = this.blocks.get(id);
+      if (!block) {
+        // First drawn: the block's trees in one grove.
+        const grove = new Grove(this.dress), standing = new Map<number, Standing>();
+        for (const i of trees) {
+          const x = i % w, y = Math.floor(i / w), [tx, tz] = this.tree(grove, species(x, y), x, y);
+          standing.set(i, { x: tx, z: tz, ground: this.ground.height(tx, tz), meshes: [], own: false });
+        }
+        const meshes = grove.addTo(r, { tile: CUT });
+        for (const t of standing.values()) t.meshes = meshes;
+        block = { grove: meshes, trees: standing, stones: null };
+        this.blocks.set(id, block);
+      } else {
+        const now = new Set(trees), cleared: [number, number][] = [], moved: { x: number; z: number; dy: number }[] = [];
+        for (const [i, t] of block.trees) {
+          // Cleared: taken out where it stands (or, grown in play, its own meshes taken out).
+          if (!now.has(i)) {
+            if (t.own) this.drop(t.meshes); else cleared.push([t.x, t.z]);
+            block.trees.delete(i);
+            continue;
+          }
+          // The ground under it moved: it's raised or lowered with it.
+          const ground = this.ground.height(t.x, t.z);
+          if (Math.abs(ground - t.ground) <= 1e-3) continue;
+          if (t.own) r.moveTrees(t.meshes, [{ x: t.x, z: t.z, dy: ground - t.ground }]);
+          else moved.push({ x: t.x, z: t.z, dy: ground - t.ground });
+          t.ground = ground;
+        }
+        if (cleared.length) r.removeTrees(block.grove, cleared);
+        if (moved.length) r.moveTrees(block.grove, moved);
+        // Grown here (from a sapling): painted on its own.
+        for (const i of trees) if (!block.trees.has(i)) {
+          const x = i % w, y = Math.floor(i / w), grove = new Grove(this.dress), [tx, tz] = this.tree(grove, species(x, y), x, y);
+          block.trees.set(i, { x: tx, z: tz, ground: this.ground.height(tx, tz), meshes: grove.addTo(r), own: true });
+        }
       }
-      const meshes = grove.addTo(this.r, { tile: CUT });
-      if (stones.vertexCount) meshes.push(this.r.add(stones.build(), 'paint', { tile: CUT }));
-      this.blocks.set(id, { meshes, key });
+      // The rocks, made again when one is cleared or the ground under them moved.
+      const key = rocks.map((i) => `${i},${this.lie.y(i % w + 0.5, Math.floor(i / w) + 0.5).toFixed(3)}`).join(' ');
+      if (block.stones?.key === key) continue;
+      if (block.stones) this.drop(block.stones.meshes);
+      const stones = new MeshBuilder('paint');
+      for (const i of rocks) this.stone(stones, i % w, Math.floor(i / w));
+      block.stones = { meshes: stones.vertexCount ? [r.add(stones.build(), 'paint', { tile: CUT })] : [], key };
     }
   }
 
-  /** A grown tree of `species` on tile (x, y), into `grove`. */
-  private tree(grove: Grove, species: Species, x: number, y: number, size = treeSize(hash(x, y))) {
+  /** A grown tree of `species` on tile (x, y), into `grove`; returns where it stands (m). */
+  private tree(grove: Grove, species: Species, x: number, y: number, size = treeSize(hash(x, y))): [number, number] {
     const n = hash(x * 1.3 + 7, y * 0.9 - 3);
     const tx = (x + 0.5) * TILE + (hash(x + 11, y) - 0.5) * JITTER, tz = (y + 0.5) * TILE + (hash(x, y + 11) - 0.5) * JITTER;
     const seed = Math.floor(n * 1e9);
     grove.grow(this.ground, { ...speciesTree(species, tx, tz, size, seed), stroke: STROKE, fill: FILL }, rng(seed));
+    return [tx, tz];
   }
 
   /** A rock on tile (x, y), into `b`: a stone or two, sunk into the ground. */
