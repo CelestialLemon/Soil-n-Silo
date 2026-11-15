@@ -253,7 +253,8 @@ console.log('The game\'s side (a quick worker and a slow one)');
       const goal = { ...GUSTY, speed: 9, direction: 0.55 + t * 0.02 };
       if (t === 8) { wind.setObstacles([...FARM.slice(0, 3), shed]); direct.setObstacles([...FARM.slice(0, 3), shed]); }
       rec.setGoal(goal); rec.step(); direct.setGoal(goal); direct.step();
-      wind.setGoal(goal); wind.advance(TICK); wind.lead(0.4);
+      // As the game does: the lead off, a whole tick, the lead on (once just short of a whole tick, which mustn't count as one).
+      wind.setGoal(goal); wind.lead(0); wind.advance(TICK); wind.lead(t === 17 ? 0.9999995 : 0.4);
       behind = Math.max(behind, wind.pending);
       await new Promise((r) => setTimeout(r, 1));
     }
@@ -270,7 +271,7 @@ console.log('The game\'s side (a quick worker and a slow one)');
     return { same: identical(fed, direct.snapshot()), tick: fed.tick, alpha, left, behind, jumped: jumped.tick === rec.state.tick && Object.is(jumped.fu[k], u), stayed: wind.cur!.tick === rec.state.tick };
   };
   const [fq, fs] = [await follow(0), await follow(8)];
-  check('a worker fed the rules\' ticks is the wind they make, quick or slow', fq.same && fs.same, `tick ${fq.tick}, a building put up after ${8 * TICK} s`);
+  check('a worker fed the rules\' ticks is the wind they make, quick or slow', fq.same && fs.same, `tick ${fq.tick}, a building put up after ${8 * TICK} s, a lead of 0.9999995 on the way`);
   check('the game\'s clock puts it into the next tick', fq.alpha === 0.4 && fs.alpha === 0.4, `alpha ${fq.alpha} and ${fs.alpha}, caught up`);
   check('it says how far behind it is', fs.behind > fq.behind && fq.left === 0 && fs.left === 0, `the slow worker up to ${fs.behind} ticks behind, the quick ${fq.behind}; none once caught up`);
   check('jumped to the rules\' gusts, it takes them at once and drops the ticks not stepped', fq.jumped && fs.jumped && fq.stayed && fs.stayed, `tick ${fq.tick + 15}`);

@@ -54,10 +54,15 @@ export class BrushWind {
     }
     const due = s.wind.tick - this.fed;
     if (due < 0 || due + wind.pending > CATCH_UP) wind.setState(s.wind);
-    else for (let k = this.fed + 1; k <= s.wind.tick; k++) {
-      // The goal the rules asked for at tick k (overhead.ts's stepOverhead: windGoal at the time the tick ends).
-      wind.setGoal(windGoal(s.scenario, s.time - (s.wind.tick - k) * WIND_TICK));
-      wind.advance(WIND_TICK);
+    else if (due > 0) {
+      // The last frame's lead first comes off the clock, so each whole tick given is exactly one (a lead of 0.9999995 and a
+      // tick would otherwise round up to two, and the picture would run a tick ahead of the rules for good).
+      wind.lead(0);
+      for (let k = this.fed + 1; k <= s.wind.tick; k++) {
+        // The goal the rules asked for at tick k (overhead.ts's stepOverhead: windGoal at the time the tick ends).
+        wind.setGoal(windGoal(s.scenario, s.time - (s.wind.tick - k) * WIND_TICK));
+        wind.advance(WIND_TICK);
+      }
     }
     this.fed = s.wind.tick;
     wind.lead(s.carry / WIND_TICK);
