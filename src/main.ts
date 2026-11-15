@@ -86,7 +86,8 @@ const saved = loaded.ok ? loaded.value : null;
  */
 const page = (query = '') => {
   const q = new URLSearchParams(query);
-  if (BRUSH) for (const [k, v] of params) if (k !== 'play' && k !== 'menu' && !q.has(k)) q.set(k, v);
+  // The page's options now, not as loaded: a look picked on the page since is in it (history.replaceState).
+  if (BRUSH) for (const [k, v] of new URLSearchParams(location.search)) if (k !== 'play' && k !== 'menu' && !q.has(k)) q.set(k, v);
   return `${location.pathname}${q.size ? `?${q}` : ''}`;
 };
 /** A commission to start straight away (`?play=<id>`); an unknown id falls through to the menu or the saved game. */

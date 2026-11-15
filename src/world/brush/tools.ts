@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CropPatch, MeshBuilder, ModelSet, OVERLAY_NONE, PLAIN, srgb, type BrushRenderer, type Line, type PickHit } from '../../../brush3d/src/index.ts';
+import { CropPatch, HIGHLIGHT_LOOK, MeshBuilder, ModelSet, OVERLAY_LOOK, OVERLAY_NONE, PLAIN, PREVIEW_LOOK, srgb, type BrushRenderer, type HighlightLook, type Line, type OverlayLook, type PickHit, type PreviewLook } from '../../../brush3d/src/index.ts';
 import { BUILDINGS, HIVE, POWER, type BuildingId, type CropId } from '../../game/data.ts';
 import { TERRAIN } from '../../game/map.ts';
 import { feederOf, networkOf, networks, POWERED, pylonsInLink, wiresOf } from '../../game/power.ts';
@@ -33,9 +33,9 @@ const TRUCK_REACH = 3.2;
 /** How far from a tree's tile's middle (tiles) a pick on a plant still finds the tree: a crown leans over its tile's edge. */
 const CROWN_REACH = 0.8;
 /** How strongly an overlay covers the land; the tint of what's linked to the focus, and how strong. */
-const OVERLAY_STRENGTH = 0.6, LINK_STRENGTH = 0.55;
+const LINK_STRENGTH = 0.55;
 /** A frame round a footprint being built: green where it fits, red where it doesn't; how far in from its edge (m), and over the ground. */
-const FITS = 0x90ff90, BLOCKED = 0xff5040, FRAME_INSET = 0.15, FRAME_LIFT = 0.05;
+const FRAME_INSET = 0.15, FRAME_LIFT = 0.05;
 /** How far below a pylon's top its wires meet it (m); how far over a building's card and marker stand (world units). */
 const PYLON_TOP = 0.4, LABEL_OVER = 0.3, MARKER_OVER = 0.1;
 /** The grey a building with no model yet previews as. */
@@ -44,6 +44,21 @@ const GREY = srgb(0x9a968e);
 const CURSOR = 0xfff0c0, REFUSED = 0xe8705a, DOT = 0.8;
 /** How far over its ground the cursor lies (m); a tile's corners (u, v), north-west, north-east, south-east, south-west (CursorPatch's). */
 const CURSOR_LIFT = 0.08, CORNERS = [[0, 0], [1, 0], [1, 1], [0, 1]];
+
+/**
+ * How the tools look (#206's look PR): the highlight, the building being placed and the frame round its footprint (its
+ * line's width, m, and 0 for a whole frame or the share of each side the brackets at its corners take), and an overlay's
+ * look and how strongly it covers the land.
+ */
+export interface ToolLooks {
+  highlight: HighlightLook;
+  preview: PreviewLook;
+  frame: { width: number; corners: number };
+  overlay: { look: OverlayLook; strength: number };
+}
+export const TOOL_LOOKS: ToolLooks = {
+  highlight: HIGHLIGHT_LOOK, preview: PREVIEW_LOOK, frame: { width: 0.25, corners: 0 }, overlay: { look: OVERLAY_LOOK, strength: 0.6 },
+};
 
 const hex = (c: THREE.Color) => c.getHex();
 
@@ -71,7 +86,18 @@ export class BrushTools {
   constructor(r: BrushRenderer, state: GameState, things: Things, lie: Lie) {
     this.r = r; this.things = things; this.lie = lie;
     this.picker = new BrushPicker(r, state, things);
-    this.preview = new BrushPreview(r, things, (lines) => this.frames(lines));
+    this.preview = new BrushPreview(r, things, (lines) => this.frames(lines), () => this.looks);
+  }
+
+  private looks = TOOL_LOOKS;
+  /** How the tools look, from now (the overlay shown and the frames drawn again in it). */
+  setLooks(looks: ToolLooks) {
+    this.looks = looks;
+    this.r.setHighlightLook(looks.highlight);
+    this.r.setPreviewLook(looks.preview);
+    this.r.setOverlayLook(looks.overlay.look);
+    this.overlayKey = '';
+    this.framesKey = '';
   }
 
   /** Before the tools run: the grid and the contour lines while building or doing earthworks. */
@@ -195,7 +221,7 @@ export class BrushTools {
         if (kind === 'bees' && b.type === 'hive') cover(b.x, b.y, 1, HIVE.reach);
       }
     }
-    this.r.setOverlay({ width: w, height: h, color, strength: OVERLAY_STRENGTH });
+    this.r.setOverlay({ width: w, height: h, color, strength: this.looks.overlay.strength });
   }
 
   /** The routes shown, each its way on the ground in its colour; with `numbers`, labels over its stops (routeView.ts's). */
@@ -429,7 +455,11 @@ class BrushPreview implements Preview {
   private readonly pools = new Map<string, { sets: THREE.Mesh[][]; used: number }>();
   private framed: Line[] = [];
 
-  constructor(r: BrushRenderer, things: Things, send: (lines: Line[]) => void) { this.r = r; this.things = things; this.send = send; }
+  private readonly looks: () => ToolLooks;
+
+  constructor(r: BrushRenderer, things: Things, send: (lines: Line[]) => void, looks: () => ToolLooks) {
+    this.r = r; this.things = things; this.send = send; this.looks = looks;
+  }
 
   clear() {
     for (const p of this.pools.values()) { for (const set of p.sets) for (const m of set) m.visible = false; p.used = 0; }
@@ -440,11 +470,21 @@ class BrushPreview implements Preview {
   flush() { this.send(this.framed); }
 
   frame(n: number, ok: boolean, x: number, y: number, z: number) {
+    const { preview, frame } = this.looks();
     const h = n / 2 * TILE - FRAME_INSET, cx = x * TILE, cz = z * TILE, top = y * TILE + FRAME_LIFT;
-    this.framed.push({
-      points: [[-h, -h], [h, -h], [h, h], [-h, h]].map(([dx, dz]) => ({ x: cx + dx, y: top, z: cz + dz })),
-      color: ok ? FITS : BLOCKED, style: 'route', width: 0.25, closed: true,
-    });
+    const color = ok ? preview.fits : preview.blocked, at = (dx: number, dz: number) => ({ x: cx + dx, y: top, z: cz + dz });
+    if (frame.corners <= 0 || frame.corners >= 0.5) {
+      this.framed.push({ points: [at(-h, -h), at(h, -h), at(h, h), at(-h, h)], color, style: 'route', width: frame.width, closed: true });
+      return;
+    }
+    // Brackets: an L at each corner, each arm that share of the side.
+    const arm = 2 * h * frame.corners;
+    for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      this.framed.push({
+        points: [at(sx * h, sz * (h - arm)), at(sx * h, sz * h), at(sx * (h - arm), sz * h)],
+        color, style: 'route', width: frame.width,
+      });
+    }
   }
 
   building(type: BuildingId, x: number, y: number, z: number, rot: Dir, ok: boolean) {
