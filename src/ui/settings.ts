@@ -11,6 +11,12 @@ export interface Settings {
   uiSize: number;
   /** brush3d's graphics quality (its QUALITY presets, src/world/brush/settings.ts). */
   quality: Quality;
+  /**
+   * On a high-DPI screen, the most pixels brush3d draws per screen point (its maxRatio): the screen's own ('full', within
+   * the quality's pixel budget), or 1.25 or 1, softer and faster (#210, the MacBook). A look choice waiting for the
+   * developer's pick: 'full' stays the default.
+   */
+  pixelRatio: PixelRatio;
   /** How much rain and snow brush3d draws falling: all of it, or about a third. */
   falling: Falling;
   /** brush3d's lightning flashes: full (within the flash-safety limits), gentle (one soft swell), or off (no flash). */
@@ -40,6 +46,9 @@ export const UI_SIZES = { min: 0.9, max: 1.3, step: 0.05 };
 /** The graphics quality setting's choices (brush3d's QUALITY presets), the fullest first: high the default, medium for integrated graphics (#210). */
 export const QUALITIES = ['high', 'medium', 'low'] as const;
 export type Quality = typeof QUALITIES[number];
+/** The pixel ratio setting's choices: the screen's own, or capped at 1.25 or 1 device pixels a point. */
+export const PIXEL_RATIOS = ['full', '1.25', '1'] as const;
+export type PixelRatio = typeof PIXEL_RATIOS[number];
 /** The rain and snow setting's choices. */
 export const FALLINGS = ['full', 'light'] as const;
 export type Falling = typeof FALLINGS[number];
@@ -53,7 +62,7 @@ export type Highlight = typeof HIGHLIGHTS[number];
 export const OVERLAY_STYLES = ['wash', 'bold', 'borders'] as const;
 export type OverlayStyle = typeof OVERLAY_STYLES[number];
 
-const DEFAULTS: Settings = { uiSize: 1, quality: 'high', falling: 'full', flashes: 'full', highlight: 'halo', overlayStyle: 'bold', reduceMotion: false, showPace: false, problemsStrip: false, frameStats: 'off', fastSpeeds: false, keys: {} };
+const DEFAULTS: Settings = { uiSize: 1, quality: 'high', pixelRatio: 'full', falling: 'full', flashes: 'full', highlight: 'halo', overlayStyle: 'bold', reduceMotion: false, showPace: false, problemsStrip: false, frameStats: 'off', fastSpeeds: false, keys: {} };
 
 /** `v` if it's one of `choices`, else `d`. */
 const oneOf = <T extends string>(choices: readonly T[], v: unknown, d: T): T => ((choices as readonly unknown[]).includes(v) ? v as T : d);
@@ -65,6 +74,7 @@ export function readSettings(json: string | null): Settings {
   return {
     uiSize: typeof o.uiSize === 'number' && o.uiSize >= UI_SIZES.min - 1e-9 && o.uiSize <= UI_SIZES.max + 1e-9 ? o.uiSize : DEFAULTS.uiSize,
     quality: oneOf(QUALITIES, o.quality, DEFAULTS.quality),
+    pixelRatio: oneOf(PIXEL_RATIOS, o.pixelRatio, DEFAULTS.pixelRatio),
     falling: oneOf(FALLINGS, o.falling, DEFAULTS.falling),
     flashes: oneOf(FLASHES, o.flashes, DEFAULTS.flashes),
     highlight: oneOf(HIGHLIGHTS, o.highlight, DEFAULTS.highlight),

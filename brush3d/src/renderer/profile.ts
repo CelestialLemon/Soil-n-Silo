@@ -9,7 +9,7 @@
 // came out in steps of 16.7 ms.
 import * as THREE from 'three';
 import type { Quality } from './quality';
-import type { BrushRenderer, DrawnKind } from './renderer';
+import type { BrushRenderer, DrawnKind, Settings } from './renderer';
 import { PassTimer } from './timer';
 import type { Weather } from './weather';
 import { steadyWind } from './wind';
@@ -32,6 +32,12 @@ export interface ProfileCase {
   wet?: { wet: number; mud: number };
   /** Drawn at this quality (setQuality), not the renderer's own: the game's presets compared in one run. */
   quality?: Quality;
+  /** Changes to that quality (the case's or the renderer's own): fewer pixels, no multisampling (Soil-n-Silo#210). */
+  tweak?: Partial<Quality>;
+  /** Changes to the renderer's settings for this case alone (no prepass, no shadows, no reflection): what each costs. */
+  settings?: Partial<Settings>;
+  /** The reflection at this share of its usual size (setReflectionScale). */
+  reflectionScale?: number;
 }
 export interface ProfileRow {
   label: string; width: number; height: number;
@@ -41,6 +47,21 @@ export interface ProfileRow {
   cpu: Record<string, number>;
   /** Mean ms a frame, drawn back to back. */
   uncapped: number;
+  /**
+   * Median ms the CPU takes to issue a frame when the GPU has finished all before it (no timers): the CPU's own work. Where
+   * `cpu.frame` is much more than this, the CPU was waiting on the GPU (a queue full of frames, or a pass that syncs), not
+   * working.
+   */
+  cpuAlone: number;
+  /** cpuAlone pass by pass (medians, and their sum as 'frame'): the pass a sync waits in takes the GPU's time so far. */
+  cpuAlonePasses: Record<string, number>;
+  /**
+   * Draw calls and triangles in one frame, every pass. Each draw call is work for the browser's GPU process (on a Mac,
+   * ANGLE turning it into Metal) as well as for the GPU: where the uncapped frame follows the draw calls and not the
+   * pixels, that process is what's slow.
+   */
+  draws: number;
+  triangles: number;
 }
 
 export const PASSES = ['setup', 'shelter', 'clouds', 'shadow', 'under', 'reflect', 'main', 'post', 'bolt'];
@@ -63,7 +84,10 @@ export async function runProfile<C extends ProfileCase>(
   const nextFrame = () => new Promise((r) => requestAnimationFrame(r));
   const rows: ProfileRow[] = [];
   let time = 20;
-  const view = renderer.view, zoom = view.zoom, quality = renderer.quality;
+  const view = renderer.view, zoom = view.zoom, quality = renderer.quality, maxRatio = renderer.maxRatio;
+  const settings = { ...renderer.settings }, reflectionScale = renderer.reflectionScale;
+  // The cases are in drawn pixels: the player's cap on the pixel ratio (a high-DPI screen's) isn't theirs.
+  renderer.setMaxRatio(Infinity);
   const screen = { width: view.screen.width, height: view.screen.height };
   const output = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false });
   renderer.output = output;
@@ -71,7 +95,9 @@ export async function runProfile<C extends ProfileCase>(
     for (const [i, c] of cases.entries()) {
       // A screen of the case's size in the screen's own pixels, which the zoom counts in, so every case frames the same
       // land; the quality sets only how many of them are drawn (maxPixels: fewer, scaled up).
-      renderer.setQuality(c.quality ?? quality);
+      renderer.setQuality({ ...(c.quality ?? quality), ...c.tweak });
+      Object.assign(renderer.settings, settings, c.settings);
+      renderer.setReflectionScale(c.reflectionScale ?? reflectionScale);
       renderer.resize(c.width / renderer.screenRatio, c.height / renderer.screenRatio);
       output.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight);
       view.zoom = (zoom * c.height) / 1080;
@@ -120,7 +146,29 @@ export async function runProfile<C extends ProfileCase>(
       const n = 30, start = performance.now();
       for (let f = 0; f < n; f++) frame((time += 1 / 60));
       sync();
-      const row: ProfileRow = { label: c.label, width: c.width, height: c.height, gpu, cpu, uncapped: (performance.now() - start) / n };
+      const uncapped = (performance.now() - start) / n;
+      // The CPU alone: each frame issued with the GPU idle, so nothing can make it wait but a sync in the frame itself.
+      const alone: number[] = [], cpuTimer = new PassTimer(gl, false);
+      renderer.timer = cpuTimer;
+      for (let f = 0; f < 12; f++) {
+        const t0 = performance.now();
+        frame((time += 1 / 60));
+        alone.push(performance.now() - t0);
+        sync();
+      }
+      renderer.timer = null;
+      // One frame's draw calls, every pass (three counts each render's on its own, unless told not to).
+      const info = renderer.gl.info, autoReset = info.autoReset;
+      info.autoReset = false;
+      info.reset();
+      frame((time += 1 / 60));
+      const draws = info.render.calls, triangles = info.render.triangles;
+      info.autoReset = autoReset;
+      sync();
+      const row: ProfileRow = {
+        label: c.label, width: c.width, height: c.height, gpu, cpu, uncapped,
+        cpuAlone: median(alone), cpuAlonePasses: medians(cpuTimer.frames.map((t) => t.cpu)), draws, triangles,
+      };
       renderer.lightning.clock = clock;
       rows.push(row);
       progress(row, i);
@@ -130,6 +178,9 @@ export async function runProfile<C extends ProfileCase>(
     output.dispose();
     renderer.timer = null;
     renderer.setQuality(quality);
+    Object.assign(renderer.settings, settings);
+    renderer.setReflectionScale(reflectionScale);
+    renderer.maxRatio = maxRatio;
     renderer.resize(screen.width, screen.height);
     for (const k of PROFILE_KINDS) renderer.setVisible(k, true);
     view.zoom = zoom;
@@ -150,25 +201,34 @@ function medians(frames: Record<string, number>[]) {
   out.frame = PASSES.reduce((a, p) => a + out[p], 0);
   return out;
 }
+/** Rows of cells as text: the first column left-aligned, the rest right. */
+function columns(all: string[][]) {
+  const widths = all[0].map((_, i) => Math.max(...all.map((l) => l[i].length)));
+  return all.map((l) => l.map((x, i) => (i ? x.padStart(widths[i]) : x.padEnd(widths[i]))).join('  ')).join('\n');
+}
 function median(v: number[]) {
   const s = [...v].sort((a, b) => a - b);
   return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : 0;
 }
 
-/** The rows as a plain-text table: GPU ms per pass, the CPU's ms for the whole frame, the uncapped frame and its fps. */
+/**
+ * The rows as a plain-text table: GPU ms per pass, the CPU's ms for the whole frame (frames in bursts, and alone: with the
+ * GPU idle), the uncapped frame and its fps.
+ */
 export function profileTable(rows: ProfileRow[]) {
-  const head = ['case', ...PASSES.slice(1).map((p) => `${p}`), 'GPU', 'CPU', 'uncapped', 'fps'];
+  const head = ['case', ...PASSES.slice(1).map((p) => `${p}`), 'GPU', 'CPU', 'CPU alone', 'draws', 'uncapped', 'fps'];
   const lines = rows.map((r) => [
     r.label,
     ...PASSES.slice(1).map((p) => (r.gpu ? r.gpu[p].toFixed(2) : '-')),
     r.gpu ? r.gpu.frame.toFixed(2) : '-',
     r.cpu.frame.toFixed(2),
+    r.cpuAlone.toFixed(2),
+    String(r.draws),
     r.uncapped.toFixed(2),
     (1000 / r.uncapped).toFixed(0),
   ]);
-  const all = [head, ...lines];
-  const widths = head.map((_, i) => Math.max(...all.map((l) => l[i].length)));
-  const text = all.map((l) => l.map((x, i) => (i ? x.padStart(widths[i]) : x.padEnd(widths[i]))).join('  ')).join('\n');
+  const text = `${columns([head, ...lines])}\n\nCPU alone, pass by pass (where the CPU waits on the GPU, the pass takes the GPU's time so far):\n${
+    columns([['case', ...PASSES], ...rows.map((r) => [r.label, ...PASSES.map((p) => (r.cpuAlonePasses[p] ?? 0).toFixed(2))])])}`;
   // The GPU's own timers can't take longer than the frames drawn back to back: if they do, they're counting waits.
   const off = rows.some((r) => r.gpu && r.gpu.frame > r.uncapped * 1.5);
   return off ? `${text}\n\nThe GPU timers here add up to far more than the uncapped frame: they count waiting, not work. Read the uncapped column.` : text;

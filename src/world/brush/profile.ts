@@ -51,7 +51,42 @@ export function gameCases(sunset: number): GameCase[] {
     cases.push(at(`storm, ${q}`, { quality: QUALITY[q] }), at(`widest, storm, ${q}`, { zoom: ZOOMS.widest, quality: QUALITY[q] }));
   }
   for (const k of ['ground', 'paint', 'grass', 'foliage', 'crop', 'ink', 'water'] as const) cases.push(at(`widest, storm, no ${k}`, { zoom: ZOOMS.widest, hide: [k] }));
+  cases.push(...causeCases().filter((c) => !cases.some((d) => d.label === c.label)));
   return cases;
+}
+
+/**
+ * The cases that tell apart why a GPU is slow (#210, the MacBook Air M4 at 21 fps where the PC's RX 570 runs at 70): the
+ * widest view in a storm and Medium's start view, and each with one thing changed. `?profile=causes` runs only these
+ * (a minute or so), as does `npm run framerate -- --causes`. Each name says what's changed:
+ *   half the pixels           the preset's pixels halved, as a pixel ratio of 1 on the MacBook's screen draws
+ *   no MSAA                   one sample a pixel, not four (rougher edges): what the multisampled frame costs
+ *   no prepass                each surface painted without its depth drawn first: what the depth prepass costs or saves
+ *   no shadow map             the sun's shadow map not drawn
+ *   water without reflection  the water drawn, but not the scene mirrored in it
+ *   water without the bed     the water drawn, but not the bed under it
+ *   reflection at half size   the reflection drawn at a quarter of the frame's pixels, not half's
+ *   depth not copied out      the same picture, the main view's depth dropped rather than copied out (resolveDepth)
+ * with `no water` and `no foliage` from the kinds, for comparison.
+ */
+export function causeCases(): GameCase[] {
+  const at = (label: string, c: Partial<GameCase>): GameCase => ({ label, width: W, height: H, wind: STORM, turn: 0, zoom: ZOOMS.start, weather: WEATHER_PRESETS.storm, ...c });
+  const widest = { zoom: ZOOMS.widest };
+  return [
+    at('widest, storm', widest),
+    at('widest, storm, half the pixels', { ...widest, tweak: { maxPixels: (W * H) / 2 } }),
+    at('widest, storm, no MSAA', { ...widest, tweak: { samples: 0 } }),
+    at('widest, storm, no prepass', { ...widest, settings: { prepass: false } }),
+    at('widest, storm, no shadow map', { ...widest, settings: { shadows: false } }),
+    at('widest, storm, water without reflection', { ...widest, settings: { reflection: false } }),
+    at('widest, storm, water without the bed', { ...widest, settings: { under: false } }),
+    at('widest, storm, reflection at half size', { ...widest, reflectionScale: 0.5 }),
+    at('widest, storm, depth not copied out', { ...widest, settings: { resolveDepth: false } }),
+    at('widest, storm, no water', { ...widest, hide: ['water'] }),
+    at('widest, storm, no foliage', { ...widest, hide: ['foliage'] }),
+    at('storm, medium', { quality: QUALITY.medium }),
+    at('storm, medium, half the pixels', { quality: QUALITY.medium, tweak: { maxPixels: (W * H) / 2 } }),
+  ];
 }
 
 /** How long the level took to load (ms): each piece made, the first frame, and the models in; from the page's start too. */
@@ -95,9 +130,11 @@ export function profileHead(host: ProfileHost) {
   const timers = gl.getExtension('EXT_disjoint_timer_query_webgl2') !== null;
   const load = host.load(), ms = (n: number) => `${Math.round(n)}`;
   const quality = Object.entries(QUALITY).find(([, p]) => p.samples === q.samples && p.shadowMapSize === q.shadowMapSize && p.maxPixels === q.maxPixels)?.[0] ?? JSON.stringify(q);
+  const cap = Number.isFinite(r.maxRatio) ? `, the pixel ratio capped at ${r.maxRatio}` : '';
   return [
     `${s.scenario.id} (${s.scenario.climate.season}) · ${s.buildings.length} buildings · ${s.trucks.length} trucks · GPU ${gpu} · ${timers ? 'GPU timers' : 'no GPU timers (read the uncapped column)'}`,
     `view at x ${v.target.x.toFixed(1)} z ${v.target.z.toFixed(1)} · heading ${v.heading.toFixed(2)} · quality ${quality} (the cases' own, but for the presets' rows) · screen ${innerWidth}×${innerHeight} at ${devicePixelRatio}`,
+    `the game draws ${r.width}×${r.height} (${r.pixelRatio.toFixed(2)} pixels a point${cap}); the cases draw 1920×1080, but for their own`,
     load ? `load ms: ${Object.entries(load.pieces).map(([k, v]) => `${k} ${ms(v)}`).join(', ')}; first frame ${ms(load.firstFrame)}; models in ${ms(load.models)}; from the page's start ${ms(load.sinceStart)}` : 'load: not yet',
     `${location.href}`, navigator.userAgent,
   ].join('\n');
@@ -117,10 +154,12 @@ export function profilePanel(host: ProfileHost) {
   copy.disabled = true;
   run.onclick = async () => {
     run.disabled = true; copy.disabled = true;
-    const head = profileHead(host), cases = gameCases(host.state().scenario.climate.sun.set), rows: ProfileRow[] = [];
+    const head = profileHead(host), rows: ProfileRow[] = [];
+    // `?profile=causes`: only the cases that tell apart why a GPU is slow.
+    const cases = new URLSearchParams(location.search).get('profile') === 'causes' ? causeCases() : gameCases(host.state().scenario.climate.sun.set);
     out.textContent = `${head}\n\nRunning…`;
     await profileGame(host, cases, (row, i) => { rows.push(row); out.textContent = `${head}\n\n${profileTable(rows)}\n\n${i + 1} of ${cases.length}…`; });
-    out.textContent = `${head}\n\n${profileTable(rows)}\n\nms per frame at 1080p; GPU per pass, CPU for the whole frame; uncapped: frames drawn back to back. 45 fps is 22 ms.`;
+    out.textContent = `${head}\n\n${profileTable(rows)}\n\nms per frame at 1080p; GPU per pass, CPU for the whole frame (in bursts, and alone: the GPU idle first); uncapped: frames drawn back to back. 45 fps is 22 ms.`;
     run.disabled = false; copy.disabled = false;
   };
   copy.onclick = () => void navigator.clipboard.writeText(out.textContent ?? '');

@@ -16,6 +16,10 @@ test('brush3d’s settings default to the full picture, and an unknown choice fa
   assert.deepEqual([t.highlight, t.overlayStyle], ['gold', 'borders']);
   const off = readSettings('{"highlight":"glow","overlayStyle":3}');
   assert.deepEqual([off.highlight, off.overlayStyle], ['halo', 'bold']);
+  // The pixel ratio (#210): the screen's own by default; a cap kept; anything else the default.
+  assert.equal(d.pixelRatio, 'full');
+  assert.equal(readSettings('{"pixelRatio":"1"}').pixelRatio, '1');
+  assert.equal(readSettings('{"pixelRatio":1}').pixelRatio, 'full');
 });
 
 test('each graphics quality is one of brush3d’s presets, each asking less of the GPU than the one above', () => {

@@ -9,7 +9,7 @@ import type { Heights, Scene } from '../scene.ts';
 import { BrushCover } from './cover.ts';
 import { BrushLand } from './land.ts';
 import { BrushLens } from './lens.ts';
-import { gameCases, profileGame, profilePanel, type LoadTimes, type ProfileHost } from './profile.ts';
+import { causeCases, gameCases, profileGame, profilePanel, type LoadTimes, type ProfileHost } from './profile.ts';
 import { RISE, TILE } from './scale.ts';
 import { followSettings } from './settings.ts';
 import { BrushSky } from './sky.ts';
@@ -134,7 +134,7 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
     debug: {
       renderer: r, lens, wind, pieces: { sky, wind, ground, cover, water, things, wild, tools },
       profile: (cases?: Parameters<typeof profileGame>[1]) => profileGame(profile, cases), load: () => load,
-      cases: () => gameCases(current.scenario.climate.sun.set),
+      cases: () => gameCases(current.scenario.climate.sun.set), causes: () => causeCases(),
     },
   };
 }

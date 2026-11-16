@@ -93,6 +93,20 @@ export interface Settings {
   fallingShare: number;
   /** Show the shelter map over the frame: what's under cover, and the map from above in the corner. */
   shelterDebug: boolean;
+  /**
+   * Draw the water's two passes: the scene mirrored in it (reflection) and the bed under it (under). Off only to time them
+   * (the profile's cases, Soil-n-Silo#210): the water then shows whatever those targets held last.
+   */
+  reflection: boolean;
+  under: boolean;
+  /**
+   * Copy the main view's multisampled depth out with its colour (three's resolve). Nothing reads it after, so off is the
+   * same picture: three then skips the copy (done once per colour target, so twice) and tells the GPU it may drop the depth
+   * (invalidateFramebuffer). On the RX 570 that's 0.45 ms less GPU, yet the frame drawn back to back took 1–5 ms longer
+   * (Soil-n-Silo#210), so it stays on until the MacBook's numbers (a tile-based GPU, where dropping it should matter
+   * most) say otherwise.
+   */
+  resolveDepth: boolean;
 }
 
 /** What the renderer draws, by kind: the scene's materials, and the rain and snow (rain.ts, snowfall.ts), its own. */
@@ -147,12 +161,21 @@ export class BrushRenderer {
   readonly scene = new THREE.Scene();
   readonly view = new ViewCamera();
   readonly shared: SharedUniforms = createSharedUniforms();
-  readonly settings: Settings = { lines: true, shadows: true, grain: 0.012, prepass: true, waterScissor: true, equalDepth: true, falling: true, fallingShare: 1, shelterDebug: false };
+  readonly settings: Settings = { lines: true, shadows: true, grain: 0.012, prepass: true, waterScissor: true, equalDepth: true, falling: true, fallingShare: 1, shelterDebug: false,
+    reflection: true, under: true, resolveDepth: true };
   width = 1; height = 1;
   /** Device pixels per CSS pixel asked for (see RendererOptions): the screen's pixels, which the zoom counts in. */
   readonly screenRatio: number;
-  /** Device pixels per CSS pixel drawn: screenRatio, or less where that would draw more than maxPixels. */
+  /** Device pixels per CSS pixel drawn: screenRatio, or less where that would draw more than maxPixels or maxRatio. */
   pixelRatio: number;
+  /**
+   * The most device pixels a CSS pixel is drawn with (setMaxRatio): 1 on a high-DPI screen draws one pixel per point, a
+   * softer picture scaled up to the screen (Soil-n-Silo#210, the MacBook). No limit by default; an ordinary screen (1) is
+   * never changed by it.
+   */
+  maxRatio = Infinity;
+  /** The reflection's size, as a share of its usual half of the frame's (setReflectionScale): 1 as drawn, 0.5 a quarter. */
+  reflectionScale = 1;
   /**
    * The most pixels to draw: on a high-DPI screen (the MacBook's) the frame is drawn at fewer pixels than the screen's and
    * scaled up to it, so it costs what the budget was set at. Set it before resize. No limit by default.
@@ -962,7 +985,7 @@ export class BrushRenderer {
   }
 
   resize(cssWidth: number, cssHeight: number) {
-    this.pixelRatio = Math.min(this.screenRatio, Math.sqrt(this.maxPixels / Math.max(1, cssWidth * cssHeight)));
+    this.pixelRatio = Math.min(this.screenRatio, this.maxRatio, Math.sqrt(this.maxPixels / Math.max(1, cssWidth * cssHeight)));
     this.gl.setPixelRatio(this.pixelRatio);
     this.gl.setSize(cssWidth, cssHeight, false);
     this.view.screen.width = cssWidth; this.view.screen.height = cssHeight;
@@ -972,11 +995,28 @@ export class BrushRenderer {
     this.gbuffer.setSize(this.width, this.height);
     const hw = Math.max(1, Math.round(this.width / 2)), hh = Math.max(1, Math.round(this.height / 2));
     this.underTarget.setSize(hw, hh);
-    this.reflectTarget.setSize(hw, hh);
+    const rs = this.reflectionScale;
+    this.reflectTarget.setSize(Math.max(1, Math.round(hw * rs)), Math.max(1, Math.round(hh * rs)));
     this.marks.setSize(this.width, this.height, this.pixelRatio);
     this.onTop.setSize(this.width, this.height);
     this.shared.uScreen.value.set(this.width, this.height);
     (this.post.uniforms.uResolution.value as THREE.Vector2).set(this.width, this.height);
+  }
+
+  /** Draws at most `ratio` device pixels a CSS pixel from the next frame (maxRatio; Infinity: no limit). */
+  setMaxRatio(ratio: number) {
+    if (ratio === this.maxRatio) return;
+    this.maxRatio = ratio;
+    const { width, height } = this.view.screen;
+    if (width > 0 && height > 0) this.resize(width, height);
+  }
+
+  /** Draws the reflection at `scale` of its usual size from the next frame (reflectionScale). */
+  setReflectionScale(scale: number) {
+    if (scale === this.reflectionScale) return;
+    this.reflectionScale = scale;
+    const { width, height } = this.view.screen;
+    if (width > 0 && height > 0) this.resize(width, height);
   }
 
   /** The quality drawn at (see setQuality). */
@@ -1486,7 +1526,7 @@ export class BrushRenderer {
     gl.setClearColor(0x000000, 0);
     const water = this.waterOnScreen();
     const nudge = (WATER_REACH.ripple + WATER_REACH.chop * WATER_REACH.chopMax) * 1.1;
-    if (water) {
+    if (water && this.settings.under) {
       // The bed under the water takes no snow or frost (#14): 2 tells the materials to leave out what's below the water's
       // top (the banks above it keep theirs, as the ripples' nudge shows them through the water's edge).
       const ground = this.ground.uniforms.uGroundOn, on = ground.value;
@@ -1496,7 +1536,7 @@ export class BrushRenderer {
     }
     t?.mark('reflect');
     const pre = this.settings.prepass;
-    if (water) {
+    if (water && this.settings.reflection) {
       this.shared.uMirror.value = 1;
       // Its silhouettes first too, of what the water mirrors.
       this.silhouettes.visible = pre;
@@ -1520,6 +1560,7 @@ export class BrushRenderer {
     // The main view's silhouettes first, depth only: then each pixel is painted once, by the surface that shows there,
     // rather than by every leaf card stacked behind it.
     t?.mark('main');
+    this.gbuffer.resolveDepthBuffer = this.settings.resolveDepth;
     gl.setRenderTarget(this.gbuffer);
     gl.clear(true, true, false);
     this.silhouettes.visible = pre;
