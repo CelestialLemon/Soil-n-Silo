@@ -159,11 +159,15 @@ export async function runProfile<C extends ProfileCase>(
       renderer.timer = null;
       // One frame's draw calls, every pass (three counts each render's on its own, unless told not to).
       const info = renderer.gl.info, autoReset = info.autoReset;
+      let draws = 0, triangles = 0;
       info.autoReset = false;
-      info.reset();
-      frame((time += 1 / 60));
-      const draws = info.render.calls, triangles = info.render.triangles;
-      info.autoReset = autoReset;
+      try {
+        info.reset();
+        frame((time += 1 / 60));
+        draws = info.render.calls; triangles = info.render.triangles;
+      } finally {
+        info.autoReset = autoReset;
+      }
       sync();
       const row: ProfileRow = {
         label: c.label, width: c.width, height: c.height, gpu, cpu, uncapped,

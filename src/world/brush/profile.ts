@@ -57,7 +57,8 @@ export function gameCases(sunset: number): GameCase[] {
 
 /**
  * The cases that tell apart why a GPU is slow (#210, the MacBook Air M4 at 21 fps where the PC's RX 570 runs at 70): the
- * widest view in a storm and Medium's start view, and each with one thing changed. `?profile=causes` runs only these
+ * widest view in a storm at High and Medium's start view (each at its preset, whatever the player's), and each with one
+ * thing changed. `?profile=causes` runs only these
  * (a minute or so), as does `npm run framerate -- --causes`. Each name says what's changed:
  *   half the pixels           the preset's pixels halved, as a pixel ratio of 1 on the MacBook's screen draws
  *   no MSAA                   one sample a pixel, not four (rougher edges): what the multisampled frame costs
@@ -71,21 +72,22 @@ export function gameCases(sunset: number): GameCase[] {
  */
 export function causeCases(): GameCase[] {
   const at = (label: string, c: Partial<GameCase>): GameCase => ({ label, width: W, height: H, wind: STORM, turn: 0, zoom: ZOOMS.start, weather: WEATHER_PRESETS.storm, ...c });
-  const widest = { zoom: ZOOMS.widest };
+  const widest = { zoom: ZOOMS.widest, quality: QUALITY.high }, w = 'widest, storm, high';
+  const half = (q: keyof typeof QUALITY) => ({ maxPixels: QUALITY[q].maxPixels / 2 });
   return [
-    at('widest, storm', widest),
-    at('widest, storm, half the pixels', { ...widest, tweak: { maxPixels: (W * H) / 2 } }),
-    at('widest, storm, no MSAA', { ...widest, tweak: { samples: 0 } }),
-    at('widest, storm, no prepass', { ...widest, settings: { prepass: false } }),
-    at('widest, storm, no shadow map', { ...widest, settings: { shadows: false } }),
-    at('widest, storm, water without reflection', { ...widest, settings: { reflection: false } }),
-    at('widest, storm, water without the bed', { ...widest, settings: { under: false } }),
-    at('widest, storm, reflection at half size', { ...widest, reflectionScale: 0.5 }),
-    at('widest, storm, depth not copied out', { ...widest, settings: { resolveDepth: false } }),
-    at('widest, storm, no water', { ...widest, hide: ['water'] }),
-    at('widest, storm, no foliage', { ...widest, hide: ['foliage'] }),
+    at(w, widest),
+    at(`${w}, half the pixels`, { ...widest, tweak: half('high') }),
+    at(`${w}, no MSAA`, { ...widest, tweak: { samples: 0 } }),
+    at(`${w}, no prepass`, { ...widest, settings: { prepass: false } }),
+    at(`${w}, no shadow map`, { ...widest, settings: { shadows: false } }),
+    at(`${w}, water without reflection`, { ...widest, settings: { reflection: false } }),
+    at(`${w}, water without the bed`, { ...widest, settings: { under: false } }),
+    at(`${w}, reflection at half size`, { ...widest, reflectionScale: 0.5 }),
+    at(`${w}, depth not copied out`, { ...widest, settings: { resolveDepth: false } }),
+    at(`${w}, no water`, { ...widest, hide: ['water'] }),
+    at(`${w}, no foliage`, { ...widest, hide: ['foliage'] }),
     at('storm, medium', { quality: QUALITY.medium }),
-    at('storm, medium, half the pixels', { quality: QUALITY.medium, tweak: { maxPixels: (W * H) / 2 } }),
+    at('storm, medium, half the pixels', { quality: QUALITY.medium, tweak: half('medium') }),
   ];
 }
 

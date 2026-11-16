@@ -595,7 +595,7 @@ more than the demo's does. What's known:
   process, which on a Mac turns it into Metal (ANGLE), and that's slower per call than on the PC.
 
 The profile's cases that tell these apart (`?profile=causes`, or `npm run framerate -- --causes`; `causeCases` in the
-game's `src/world/brush/profile.ts`): half the pixels, no MSAA, no prepass, no shadow map, the water without its
+game's `src/world/brush/profile.ts`; the widest view in a storm at High, whatever the player picked): half the pixels, no MSAA, no prepass, no shadow map, the water without its
 reflection or its bed, the reflection at half size, and the depth not copied out. Each row also has `CPU alone` (the
 CPU's time with the GPU idle, and pass by pass below the table) and `draws`. On the RX 570, c4's widest storm view
 (GPU ms; uncapped): as it is 14.5 (20.7); half the pixels 11.9 (17.9); no MSAA 11.6 (19.9); no prepass 26.2 (30.4); no
