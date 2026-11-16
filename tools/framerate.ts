@@ -10,7 +10,7 @@
 //   npm run framerate -- [--layouts c1,c4] [--saves fresh,farm] [--minutes 20] [--cases storm] [--out out/framerate]
 //   GAME_URL picks the server (default http://127.0.0.1:5173). --cases keeps the cases whose label has any of the words
 //   (comma-separated); --labels those with exactly one of the labels (`|`-separated: `--labels "view 1, storm|widest, storm"`).
-//   --query adds to the page's address (`--query level=2`: a look PR's option, to see what it costs). --chromium a
+//   --query adds to the page's address (`--query overcast=a`: a look PR's option, to see what it costs). --chromium a
 //   Chromium binary (default: Playwright's own install), as tools/bench.ts.
 // It takes /tmp/gpu-bench.lock (flock) as tools/bench.ts does, so two measurements never share the GPU (--no-lock skips it).
 

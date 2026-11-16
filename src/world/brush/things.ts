@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import { loadModel, MeshBuilder, MODELS, ModelSet, PLAIN, srgb, type BrushRenderer, type ModelParts } from '../../../brush3d/src/index.ts';
 import { BUILDINGS, type BuildingId } from '../../game/data.ts';
-import { growsCrops, layoutOf, sizeOf, type Building, type GameState } from '../../game/state.ts';
+import { HANDOFF_SECONDS, recentHandoffs } from '../../game/sim/goods.ts';
+import { buildingById, growsCrops, layoutOf, sizeOf, type Building, type GameState } from '../../game/state.ts';
 import { standY, type Lie } from '../ground.ts';
 import { MODEL_OF, TRUCK_MODEL, YAW } from './catalog.ts';
+import { BED, Goods } from './goods.ts';
 import { RISE, TILE } from './scale.ts';
 import { partsLook, stateOf, type ThingState } from './states.ts';
 
@@ -31,6 +33,10 @@ import { partsLook, stateOf, type ThingState } from './states.ts';
 // truck's id for the tools' picks and marks (tools.ts, #206: `meshesOf`, `changes`). The water wheel
 // dips 0.87 m below its bank into a race the land has to cut for it (`wheelRace`, the land's: #202). Trees, rocks,
 // saplings and the fields' crops are wild.ts's.
+//
+// The goods a truck carries ride in its bed, and goods handed to a building next door hop over the edge the two share
+// (goods.ts). A good in a bed is tagged with its truck's id, so a pick on it gives the
+// truck; one being handed over is tagged with none, so a pick on it gives the building on the tile it's over.
 
 const GREY = srgb(0x9a968e), FIELD = srgb(0x8a7a62);
 /** How far a stand-in block stands in from its footprint's edge (m). */
@@ -66,7 +72,16 @@ function box(b: MeshBuilder, w: number, h: number, d: number, at: THREE.Matrix4,
  */
 interface Drawn { meshes: THREE.Mesh[]; key: string; parts?: ModelParts; state?: ThingState }
 
-const UP = new THREE.Vector3(0, 1, 0), ONE = new THREE.Vector3(1, 1, 1);
+const UP = new THREE.Vector3(0, 1, 0), ONE = new THREE.Vector3(1, 1, 1), at = new THREE.Matrix4(), local = new THREE.Matrix4();
+/** How high a good handed next door hops at the top of its arc (m). */
+const HOP = 1.6;
+
+/** Where a good crosses between footprints `a0`..`a0 + na` and `b0`..`b0 + nb` along one axis, and which way (as view.ts). */
+function edge(a0: number, na: number, b0: number, nb: number): { at: number; dir: number } {
+  if (a0 + na <= b0) return { at: b0, dir: 1 };
+  if (b0 + nb <= a0) return { at: a0, dir: -1 };
+  return { at: (Math.max(a0, b0) + Math.min(a0 + na, b0 + nb)) / 2, dir: 0 };
+}
 
 export class Things {
   private readonly r: BrushRenderer;
@@ -77,8 +92,8 @@ export class Things {
   /** The models by name, once loaded (one that failed to load is missing, and draws as its stand-in). */
   private models: Map<string, THREE.Object3D> | null = null;
   /**
-   * Counts the meshes made and taken out (a building placed, removed or redrawn, a truck bought): what is under the
-   * pointer may have changed (tools.ts, #206). Trucks driving on are not counted.
+   * Counts the meshes made and taken out (a building placed, removed or redrawn, a truck bought), and a truck loaded or
+   * unloaded: what is under the pointer may have changed (tools.ts, #206). Trucks driving on are not counted.
    */
   changes = 0;
   /** The game's clock at the last frame (to know it's paused), and the step its buildings' parts were last told. */
@@ -90,8 +105,10 @@ export class Things {
   /** Settles once the models are in (or failed): the load's end, for #210's profile. */
   readonly ready: Promise<void>;
 
-  constructor(r: BrushRenderer, lie: Lie) {
-    this.r = r; this.lie = lie;
+  private readonly goods: Goods;
+
+  constructor(r: BrushRenderer, lie: Lie, goods: Goods) {
+    this.r = r; this.lie = lie; this.goods = goods;
     this.ready = this.load();
   }
 
@@ -110,7 +127,13 @@ export class Things {
     const v = layoutOf(s);
     if (v !== this.layout) { this.layout = v; this.syncBuildings(s); }
     this.syncParts(s);
+    this.goods.begin();
     this.syncTrucks(s);
+    this.syncHandoffs(s);
+    this.goods.end();
+    // A truck loaded or unloaded where it stands: what's under the pointer may have changed (a good handed next door moves
+    // on its own each frame, and counts only as it shows and goes: a pick on it gives the building under it anyway).
+    if (this.goods.changed) this.changes++;
   }
 
   /** The state a building is read in now (states.ts), if it's drawn. */
@@ -225,8 +248,30 @@ export class Things {
       const mesh = shown.meshes[0];
       mesh.position.set(t.x * TILE, this.lie.y(t.x, t.y) * RISE * TILE, t.y * TILE);
       mesh.rotation.set(-Math.atan2(rise, 2 * FEEL), t.heading, 0, 'YXZ');
+      // Its cargo in its bed, two across and three along, leaning with it.
+      if (t.cargo.length) {
+        mesh.updateMatrix();
+        t.cargo.forEach((item, i) => {
+          const [x, z] = BED.slots[i % BED.slots.length];
+          this.goods.put(item, at.copy(mesh.matrix).multiply(local.makeTranslation(x, BED.y, z)), t.id);
+        });
+      }
     }
     for (const [id, was] of this.trucks) if (!seen.has(id)) { this.drop(was.meshes, false); this.trucks.delete(id); }
+  }
+
+  /** Goods handed to a building next door, each hopping over the edge the two share (as the pixel world shows them). */
+  private syncHandoffs(s: GameState) {
+    for (const hd of recentHandoffs(s)) {
+      const a = buildingById(s, hd.from), b = buildingById(s, hd.to);
+      if (!a || !b) continue;
+      const k = Math.min(1, Math.max(0, (s.time - hd.time) / HANDOFF_SECONDS));
+      const ex = edge(a.x, sizeOf(a), b.x, sizeOf(b)), ez = edge(a.y, sizeOf(a), b.y, sizeOf(b));
+      // From half a tile inside the giver to half a tile inside the taker, in an arc (down a cliff when the taker is lower).
+      const x = ex.at + ex.dir * (k - 0.5), z = ez.at + ez.dir * (k - 0.5);
+      const ya = standY(this.lie, s.map, sizeOf(a), a.x, a.y) * RISE * TILE, yb = standY(this.lie, s.map, sizeOf(b), b.x, b.y) * RISE * TILE;
+      this.goods.put(hd.item, at.makeTranslation(x * TILE, ya + (yb - ya) * k * k + HOP * Math.sin(Math.PI * k), z * TILE));
+    }
   }
 
   /** Takes meshes out; `own`: their geometry was theirs alone, and is freed (a truck's is the shared shape). */

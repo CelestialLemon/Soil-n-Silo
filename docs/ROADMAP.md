@@ -110,6 +110,18 @@ only, never saved, the map itself unchanged): the river runs on out of sight, a 
 thicken and the ground rises into wooded hills, with an apron of distant woods beyond them. Everything past the edge is a
 shade duller, so where you can build still reads at a glance. Height on the map itself followed on 2026-10-17, below.
 
+## The buildings and trucks as models, with their goods (2026-11-16)
+
+On the brush3d path (`?renderer=brush3d`), every building the game places is now its solarpunk model, and every truck is the
+truck model (#203; #221 the models, #222 the goods). Each building sits on its footprint, faces the way the game turns it and
+stands level at the height the game sets. A truck faces the way it drives and leans with the ground on a ramp. Which model
+draws which building is in `src/world/brush/catalog.ts`, and a test checks each one against the models' list and the
+building's size. The set has no goods, so they're made in the game, as tokens: the pixel game's goods as they were, one shape
+and one strong colour each, grown to the 4 m tile (the developer's pick on #222, over goods in sacks, crates and jars). A
+truck's cargo rides in its bed, two across and three along. Goods handed to a building next door hop over the edge between
+them. A click on a truck's cargo picks the truck (#206). Still open: the greenhouse's glass is opaque, so the crops under it
+can't be seen. Fields and saplings are painted, not models (#213).
+
 ## A world that changes without a hitch (2026-11-15)
 
 On the brush3d path (`?renderer=brush3d`), the world changes while you play without the picture stuttering (#204, #234).
@@ -177,8 +189,9 @@ The game can now be drawn by brush3d, behind `?renderer=brush3d` (#201, epic #21
 each replace their own: the land (`land.ts`, #202), the buildings and trucks (`things.ts`, #203–#205), the trees and rocks
 (`wild.ts`, #213), the season, hour and weather (`sky.ts`, #207, #208), with the tools (#206) and settings (#209) still to
 add. Today it's plain: the ground one painted meadow green, everything built a grey stand-in. The paint holds at the
-game's widest zoom (4 px a metre: the ground's strokes become a soft wash, no shimmer). How high a terrain level stands
-is the developer's pick on #220 (0.5, 1 or 2 m; 1 m until then).
+game's widest zoom (4 px a metre: the ground's strokes become a soft wash, no shimmer). A terrain level stands 1 m high,
+the developer's pick of 0.5, 1 and 2 m (#220, 2026-11-16): the land keeps the shape the pixel world gave it, a riverbank
+reads as a bank and a rocky rise as a low cliff.
 
 ## brush3d moves in (2026-11-14)
 

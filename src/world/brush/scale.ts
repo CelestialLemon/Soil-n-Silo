@@ -9,8 +9,9 @@ export { TILE };
 
 /**
  * How high one of the rules' terrain levels stands, in metres: 1 m, as the pixel world's 0.25 m a level at 1 m a tile
- * scaled up, so the land keeps its shape (a level is a quarter of a tile either way). How high it should stand at 4 m is
- * the developer's look choice (#201); this is the working default until then.
+ * scaled up, so the land keeps its shape (a level is a quarter of a tile either way). The developer's pick (#201, #220,
+ * 2026-11-16) of 0.5, 1 and 2 m: at 0.5 m the land read flat, at 2 m riverbanks became walls and the hills round a map
+ * rose to ~58 m; at 1 m a bank reads as a bank and a rocky rise as a low cliff.
  */
 export const LEVEL = 1;
 
