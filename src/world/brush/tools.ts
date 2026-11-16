@@ -228,7 +228,7 @@ export class BrushTools {
     this.r.setOverlay({ width: w, height: h, color, strength: this.overlayStrength });
   }
 
-  /** The routes shown, each its way on the ground in its colour; with `numbers`, labels over its stops (routeView.ts's). */
+  /** The routes shown, each its way on the ground in its colour; with `numbers`, labels over its stops. */
   private routes(s: GameState, routes: Route[], numbers: boolean) {
     const key = `${layoutOf(s)} ${reliefOf(s)} ${numbers} ${routes.map((r) => `${r.id}:${routeColour(s, r)}:${r.stops.map((st) => st.building).join(',')}`).join(';')}`;
     if (key === this.routesKey) return;
@@ -266,7 +266,7 @@ export class BrushTools {
   }
 
   /**
-   * The power networks while the player works with power (powerView.ts's): each network's wires between its pylons' tops
+   * The power networks while the player works with power: each network's wires between its pylons' tops
    * and feeds down to what it powers, in its colour, with a label; its reach on the ground (the power overlay); a focused
    * pylon's reach and link range; and what pylons being placed would wire up.
    */

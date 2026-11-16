@@ -11,7 +11,7 @@ import { reliefOf, sizeOf, touchLayout, type Building, type Footprint, type Game
 // a tile only if its surface there is higher than the tile's ground and it can get there over ground at or below it. So a flood
 // fills a flat floodplain, climbs a gentle valley floor, and stops at a bank (earthworks raise one) or a hillside. The surface of
 // a flood falls a little with every tile it runs from the water (`FALL`), so a plain wide enough to carry it all the way thins
-// it out instead of drowning. Pure rules on the map's relief; the view draws the water (world/floodView.ts).
+// it out instead of drowning. Pure rules on the map's relief; brush3d draws the water (world/brush/water.ts).
 //
 // A flood is a rise, in levels above the surface of the water it comes from, over time (`floodRise`). The rise moves in half
 // levels (the ground's height at a tile's centre is a multiple of a half), so the covered tiles change only a few times as a

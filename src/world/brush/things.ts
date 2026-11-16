@@ -76,7 +76,7 @@ const UP = new THREE.Vector3(0, 1, 0), ONE = new THREE.Vector3(1, 1, 1), at = ne
 /** How high a good handed next door hops at the top of its arc (m). */
 const HOP = 1.6;
 
-/** Where a good crosses between footprints `a0`..`a0 + na` and `b0`..`b0 + nb` along one axis, and which way (as view.ts). */
+/** Where a good crosses between footprints `a0`..`a0 + na` and `b0`..`b0 + nb` along one axis, and which way (1 from a towards b, −1 back, 0 where they overlap). */
 function edge(a0: number, na: number, b0: number, nb: number): { at: number; dir: number } {
   if (a0 + na <= b0) return { at: b0, dir: 1 };
   if (b0 + nb <= a0) return { at: a0, dir: -1 };

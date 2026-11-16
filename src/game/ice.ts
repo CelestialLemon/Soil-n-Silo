@@ -5,7 +5,7 @@ import type { Scenario } from './scenarios.ts';
 
 // The frozen river: in a cold snap the river freezes over at its quiet stretches, from the banks inward, and a water wheel on
 // ice stops. A fall and the water just below it keep running (rivers freeze at the margins first, and a fall never stills), so
-// a wheel beside a fall keeps turning. Pure rules on the map's river; the view draws the ice (world/iceView.ts) from the same
+// a wheel beside a fall keeps turning. Pure rules on the map's river; brush3d draws the ice (world/brush/water.ts) from the same
 // grid, so what is drawn open is what runs.
 
 /** What the grid of water needs: the river's tiles (not ponds), and the level of the water on every tile. */

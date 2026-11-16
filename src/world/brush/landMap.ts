@@ -87,7 +87,7 @@ export function landMapOf(s: GameState, land: Land, scale: Scale): LandMap {
 
 /**
  * The apron past the country: a coarse grid of heights from the level the country settles to at its rim, rising and falling
- * a little away from it (terrain.ts's apron, at brush3d's scale).
+ * a little away from it (the pixel world's apron, at brush3d's scale).
  */
 function beyondOf(s: GameState, land: Land, { tile, level }: Scale): Beyond {
   const M = land.margin, w = s.map.width, h = s.map.height, from = -M - APRON;

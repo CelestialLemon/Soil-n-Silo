@@ -11,7 +11,7 @@
 // Run the game's dev server first (`npm run dev`, or as a service: AGENTS.md), then:
 //   npm run hitches -- [--layout c4] [--minutes 20] [--seconds 60] [--every 1.5] [--speed 3] [--out out/hitches]
 //   GAME_URL picks the server (default http://127.0.0.1:5173). --still makes no changes (the frame cost at rest).
-//   --chromium a Chromium binary (default: Playwright's own install), as tools/bench.ts.
+//   --chromium a Chromium binary (default: Playwright's own install).
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
