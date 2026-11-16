@@ -1,10 +1,15 @@
 import * as THREE from 'three';
+import { DAB_OUT_GLSL, markMaterial, type MaterialKind, type SharedUniforms } from './materials';
 
 // What the game's tools draw over the finished picture (Soil-n-Silo#206): the building being placed, a blueprint of it in
 // the colour for whether it fits (a preview), and lines: routes on the ground, the power networks' wires between pylon tops, a range's
 // dashed ring, the frame round a footprint being built. They're the player's tools, not the world, so they're drawn after the
 // post pass: no fog, haze or grade over them, never in the G-buffer (so never picked, never casting a shadow or sheltering
-// anything), and hidden only where something of the world stands in front of them (the G-buffer's depth there).
+// anything), and hidden only where something of the world stands in front of them (the G-buffer's depth there). Not by a
+// crop, though (#206, the developer's ask): a blueprint or a frame in a field shows in full through it. Crops are low, so
+// whatever a crop stands in front of is close behind it; it hides only what's farther (behind a hill beyond the field).
+// (So something close behind a crop that would hide a tool, a wall just past the field, doesn't where the crop is in
+// front of it: a strip along the field's edge. Knowing would take the world drawn again without its crops.)
 
 /** Whether the building being placed fits where it is. */
 export type PreviewState = 'fits' | 'blocked';
@@ -45,12 +50,21 @@ const LIFT = 0.08, STEP = 1, DASH = 1.2, GAP = 0.8;
 /** A wire's sag, as a share of its span, and at most (m). */
 const SAG = 0.05, MAX_SAG = 1.4;
 
-// Hidden where the world shows nearer (its depth from the G-buffer, resolved and half-float: allowing for its rounding).
+/**
+ * How far behind a crop what it stands in front of can be (m, along the view): a crop is at most 1.8 m tall (a sunflower's
+ * head), and the view looks 30° down, so the land (or a wall) it hides is within about 3.6 m behind it.
+ */
+const CROP_REACH = 4;
+
+// Hidden where the world shows nearer (its depth from the G-buffer, resolved and half-float: allowing for its rounding),
+// but for a crop (uOnTopCrops, 1 where a crop is what shows) only where it's well behind it (CROP_REACH).
 const HIDDEN = /* glsl */ `
 uniform sampler2D uOnTopAux;
+uniform sampler2D uOnTopCrops;
 bool hiddenAt(float depth) {
-  float shown = texelFetch(uOnTopAux, ivec2(gl_FragCoord.xy), 0).z;
-  return shown > 0.0 && depth > shown + 0.15 + shown * 0.004;
+  ivec2 at = ivec2(gl_FragCoord.xy);
+  float shown = texelFetch(uOnTopAux, at, 0).z, crop = texelFetch(uOnTopCrops, at, 0).r;
+  return shown > 0.0 && depth > shown + 0.15 + shown * 0.004 + crop * ${CROP_REACH.toFixed(1)};
 }
 vec3 toSrgbOnTop(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
 `;
@@ -100,6 +114,27 @@ const DEPTH_FRAG = /* glsl */ `
 layout(location = 0) out vec4 outColor;
 void main() { outColor = vec4(0.0); }
 `;
+// A crop, drawn again (with its painting's vertex shader, so on the same pixels) where it's what shows: its depth is the
+// G-buffer's there or nearer: nearer at a crop's edge, where the G-buffer's depth is the crop's averaged with what's
+// behind it (MSAA). Allowing for the G-buffer's rounding (half-float: a part in 2048) and no more, so a crop just behind a
+// wall doesn't count as showing (and let a tool behind the wall through).
+// A crop's leaves, flowers and heads are dabs on cards (CROP_DABS): cut to their shape.
+const CROP_FRAG = /* glsl */ `
+uniform sampler2D uOnTopAux;
+varying float vViewDepth;
+layout(location = 0) out vec4 outColor;
+#ifdef CROP_DABS
+${DAB_OUT_GLSL}
+#endif
+void main() {
+#ifdef CROP_DABS
+  if (dabOut()) discard;
+#endif
+  float shown = texelFetch(uOnTopAux, ivec2(gl_FragCoord.xy), 0).z;
+  if (shown <= 0.0 || vViewDepth > shown + 0.02 + shown * 0.0007) discard;
+  outColor = vec4(1.0);
+}
+`;
 
 // A line's vertex is its middle; it's pushed sideways (aSide.xyz, a unit across it, signed) by half its width (aSide.w,
 // metres) or by half aMinPx CSS pixels (uOnTopScreen: the width drawn, device pixels, and device pixels a CSS pixel),
@@ -138,6 +173,16 @@ export class OnTop {
   /** Each group's lines and their mesh, and the land they were laid on (a group with a point on the land is laid again when it moves). */
   private readonly groups = new Map<string, { lines: readonly Line[]; mesh: THREE.Mesh; land: string | null }>();
   private readonly aux: THREE.IUniform<THREE.Texture | null> = { value: null };
+  /** Where a crop is what shows (1), drawn before the tools each frame they're shown; the crops drawn into it. */
+  private readonly cropTarget = new THREE.WebGLRenderTarget(1, 1, {
+    type: THREE.UnsignedByteType, format: THREE.RGBAFormat, depthBuffer: false,
+    minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false,
+  });
+  private readonly crops = new THREE.Scene();
+  /** Each crop mesh's twin in `crops`, and the material of each kind (made when first needed). */
+  private readonly cropTwins = new Map<THREE.Mesh, THREE.Mesh>();
+  private readonly cropMaterials = new Map<MaterialKind, THREE.ShaderMaterial>();
+  private readonly shared: SharedUniforms;
   private readonly screen = { value: new THREE.Vector2(1, 1) };
   private readonly sunDir: THREE.IUniform<THREE.Vector3>;
   private readonly depthOnly: THREE.ShaderMaterial;
@@ -148,9 +193,10 @@ export class OnTop {
   /** The look's tint, opacity, shade and lines, shared by every preview's material. */
   private readonly lookUniform = { value: new THREE.Vector4() };
 
-  /** `sunDir` is the scene's (shared); `land` the land's height as drawn, which changes with `landRevision`. */
-  constructor(sunDir: THREE.IUniform<THREE.Vector3>, land: (x: number, z: number) => number, landRevision: () => string) {
-    this.sunDir = sunDir;
+  /** `shared` the scene's uniforms; `land` the land's height as drawn, which changes with `landRevision`. */
+  constructor(shared: SharedUniforms, land: (x: number, z: number) => number, landRevision: () => string) {
+    this.shared = shared;
+    this.sunDir = shared.uSunDir;
     this.land = land;
     this.landRevision = landRevision;
     this.setLook(PREVIEW_LOOK);
@@ -160,9 +206,12 @@ export class OnTop {
     this.lineMaterial = new THREE.ShaderMaterial({
       glslVersion: THREE.GLSL3, vertexShader: LINE_VERT, fragmentShader: LINE_FRAG, vertexColors: true, transparent: true,
       depthWrite: false, depthTest: false, side: THREE.DoubleSide,
-      uniforms: { uOnTopAux: this.aux, uOnTopScreen: this.screen },
+      uniforms: { uOnTopAux: this.aux, uOnTopCrops: { value: this.cropTarget.texture }, uOnTopScreen: this.screen },
     });
   }
+
+  /** The G-buffer's size (device pixels). */
+  setSize(width: number, height: number) { this.cropTarget.setSize(width, height); }
 
   /** How previews are drawn (PREVIEW_LOOK, the blueprint, by default), the ones shown too. */
   setLook(look: PreviewLook) {
@@ -177,7 +226,8 @@ export class OnTop {
       glslVersion: THREE.GLSL3, vertexShader: PREVIEW_VERT, fragmentShader: PREVIEW_FRAG, vertexColors: !!geometry.getAttribute('color'),
       transparent: true, depthWrite: false, depthFunc: THREE.LessEqualDepth, side: THREE.DoubleSide,
       uniforms: {
-        uOnTopAux: this.aux, uSunDir: this.sunDir, uPreviewColor: { value: new THREE.Color() }, uPreviewLook: this.lookUniform,
+        uOnTopAux: this.aux, uOnTopCrops: { value: this.cropTarget.texture }, uSunDir: this.sunDir,
+        uPreviewColor: { value: new THREE.Color() }, uPreviewLook: this.lookUniform,
       },
     });
     const mesh = new THREE.Mesh(geometry, material);
@@ -216,14 +266,19 @@ export class OnTop {
 
   get any() { return this.previews.children.length > 0 || this.lines.children.length > 0; }
 
-  /** Draws it all over the finished picture in `target` (null: the canvas), hidden where `aux`'s depth shows the world nearer. */
-  draw(gl: THREE.WebGLRenderer, camera: THREE.Camera, aux: THREE.Texture, target: THREE.WebGLRenderTarget | null, width: number, pixelRatio: number) {
+  /**
+   * Draws it all over the finished picture in `target` (null: the canvas), hidden where `aux`'s depth shows the world
+   * nearer, but by `scene`'s crops only a little.
+   */
+  draw(gl: THREE.WebGLRenderer, camera: THREE.Camera, aux: THREE.Texture, target: THREE.WebGLRenderTarget | null, width: number,
+    pixelRatio: number, scene: THREE.Scene) {
     if (!this.any) return;
     // Lines on the land laid again on it once it's moved (an earthwork swapped in).
     const land = this.landRevision();
     for (const [group, g] of [...this.groups]) if (g.land !== null && g.land !== land) this.setLines(g.lines, group);
     this.aux.value = aux;
     this.screen.value.set(width, pixelRatio);
+    this.drawCrops(gl, camera, scene);
     gl.setRenderTarget(target);
     if (this.previews.children.some((m) => m.visible)) {
       // Its own depth first, so each preview shows its nearest side only, evenly see-through.
@@ -234,6 +289,46 @@ export class OnTop {
       gl.render(this.previews, camera);
     }
     if (this.lines.children.length) gl.render(this.lines, camera);
+  }
+
+  /** Where a crop is what shows: `scene`'s crop meshes (CropPatch's) drawn again, as twins kept in step with them. */
+  private drawCrops(gl: THREE.WebGLRenderer, camera: THREE.Camera, scene: THREE.Scene) {
+    const seen = new Set<THREE.Mesh>();
+    for (const o of scene.children) {
+      const mesh = o as THREE.Mesh, kind = o.userData.kind as MaterialKind;
+      if (!mesh.isMesh || !o.userData.crop) continue;
+      seen.add(mesh);
+      let twin = this.cropTwins.get(mesh);
+      if (!twin || twin.geometry !== mesh.geometry) {
+        if (twin) this.crops.remove(twin);
+        twin = new THREE.Mesh(mesh.geometry, this.cropMaterial(kind));
+        twin.matrixAutoUpdate = false;
+        twin.matrixWorldAutoUpdate = false;
+        this.crops.add(twin);
+        this.cropTwins.set(mesh, twin);
+      }
+      // Culled off screen as its crop is (the same geometry, so the same bounds).
+      twin.visible = mesh.visible;
+      twin.frustumCulled = mesh.frustumCulled;
+      twin.matrixWorld.copy(mesh.matrixWorld);
+    }
+    for (const [mesh, twin] of this.cropTwins) if (!seen.has(mesh)) { this.crops.remove(twin); this.cropTwins.delete(mesh); }
+    const clear = gl.getClearColor(new THREE.Color()), alpha = gl.getClearAlpha();
+    gl.setRenderTarget(this.cropTarget);
+    gl.setClearColor(0x000000, 0);
+    gl.clear(true, false, false);
+    gl.render(this.crops, camera);
+    gl.setClearColor(clear, alpha);
+  }
+
+  private cropMaterial(kind: MaterialKind) {
+    let m = this.cropMaterials.get(kind);
+    if (!m) {
+      m = markMaterial(kind, this.shared, CROP_FRAG, { uOnTopAux: this.aux });
+      if (kind === 'foliage' || kind === 'debris') m.defines.CROP_DABS = 1;
+      this.cropMaterials.set(kind, m);
+    }
+    return m;
   }
 
   /** The lines' geometry: each piece a band across its way, two vertices a point (or none). */

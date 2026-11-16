@@ -304,7 +304,7 @@ The looks here are plain until then.
 | A thing under the pointer or selected: an outline round what shows of it, and it a little brighter | `r.setMark(mesh, { highlight: true })` on each of its meshes |
 | A thing tinted for what's in focus (a truck's stops, the buildings next door that would trade) | `r.setMark(mesh, { tint: { color, strength } })` (both at once is fine); `null` takes the marks off |
 | The highlight's look | `r.setHighlightLook({ color, width, glow, fill })` (width in CSS pixels; glow 0 a crisp outline to 1 a halo fading out; fill how much brighter the thing is, 0..1; `HIGHLIGHT_LOOK` by default) |
-| The building or crop being placed, a blueprint in green where it fits or red where it doesn't (never picked, casts no shadow, hidden behind what stands in front of it) | `const m = r.addPreview(geometry, 'fits')`, placed with `m.position` / `m.rotation`; `r.setPreview(m, 'blocked')`; `r.removePreview(m)`; their look `r.setPreviewLook({ fits, blocked, tint, opacity, shade, lines })` (`PREVIEW_LOOK`, the blueprint, by default) |
+| The building or crop being placed, a blueprint in green where it fits or red where it doesn't (never picked, casts no shadow, hidden behind what stands in front of it, but shown through a field's crops) | `const m = r.addPreview(geometry, 'fits')`, placed with `m.position` / `m.rotation`; `r.setPreview(m, 'blocked')`; `r.removePreview(m)`; their look `r.setPreviewLook({ fits, blocked, tint, opacity, shade, lines })` (`PREVIEW_LOOK`, the blueprint, by default) |
 | A colour per tile washed over the land in its light: fertility, the ground's kinds, height, water, power, roads, bees | `r.setOverlay({ width, height, color: Uint32Array, strength })` (a colour per tile, sRGB; `OVERLAY_NONE` leaves a tile clear) or `null`; its look `r.setOverlayLook({ lit, edge, rim })` (how much the land's light falls on it, the line between colours, a band of full colour inside each region's border in m; `OVERLAY_LOOK` by default) |
 | Routes and frames on the ground, the power networks' wires between pylon tops (sagging), a range's dashed ring, the tile cursor | `r.setLines([{ points: [{ x, y?, z }, ...], color, style: 'route' \| 'wire' \| 'dashed', width?, opacity?, closed? }], group)` or `null`: a point with no `y` lies on the land; each `group` (say `'routes'`, `'power'`) is replaced on its own |
 | The tile grid and the contour lines while building or doing earthworks | `r.setGrid({ width, height, level })` (a contour each `level` m) or `null` |
@@ -313,7 +313,7 @@ The looks here are plain until then.
 - **Where each is drawn.** The marks and the overlay are part of the picture: the marks are laid over it after the
   main view (a thing's tint and outline only where it shows), the overlay and grid in the ground's own paint, so they
   sit on the land as it's lit, under what stands on it. Previews and lines are drawn over the finished picture, after
-  the fog, the grade and the lightning, hidden only where something stands in front: interface, not world, so night and
+  the fog, the grade and the lightning, hidden only where something stands in front (not by a crop: a blueprint or a frame in a field shows through it): interface, not world, so night and
   a blizzard keep the renderer's mood and the tools stay readable.
 - **The units** are the renderer's, metres; a line's or frame's `width` is metres too, with a few screen pixels' minimum.
 

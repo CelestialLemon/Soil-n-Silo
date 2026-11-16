@@ -304,7 +304,7 @@ export class BrushRenderer {
     // The ground's paint reads the tools' overlay and grid (overlay.ts).
     Object.assign(this.shared, this.groundTools.uniforms);
     this.marks = new Marks(this.shared);
-    this.onTop = new OnTop(this.shared.uSunDir, (x, z) => this.landAt(x, z), () => this.landRevision);
+    this.onTop = new OnTop(this.shared, (x, z) => this.landAt(x, z), () => this.landRevision);
     this.picker = new Picker({
       landHit: (ray, into) => this.landHit(ray, into),
       waterAt: (x, z) => this.waterAt(x, z),
@@ -971,6 +971,7 @@ export class BrushRenderer {
     this.underTarget.setSize(hw, hh);
     this.reflectTarget.setSize(hw, hh);
     this.marks.setSize(this.width, this.height, this.pixelRatio);
+    this.onTop.setSize(this.width, this.height);
     this.shared.uScreen.value.set(this.width, this.height);
     (this.post.uniforms.uResolution.value as THREE.Vector2).set(this.width, this.height);
   }
@@ -1544,7 +1545,7 @@ export class BrushRenderer {
     t?.mark('bolt', this.lightning.active);
     this.lightning.draw(gl, cam, u.uHazeColor.value as THREE.Color);
     // The tools' previews and lines, over it all (ontop.ts).
-    this.onTop.draw(gl, cam, this.gbuffer.textures[1], this.output, this.width, this.pixelRatio);
+    this.onTop.draw(gl, cam, this.gbuffer.textures[1], this.output, this.width, this.pixelRatio, this.scene);
     this.drawnCamera.copy(cam);
     this.drawn = true;
     for (const o of grounded) o.visible = true;

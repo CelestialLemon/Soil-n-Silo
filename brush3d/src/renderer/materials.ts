@@ -1266,6 +1266,18 @@ const DEPTH_FRAG = /* glsl */ `
 void main() { gl_FragColor = vec4(1.0); }
 `;
 
+/**
+ * For a pass drawing a dab kind's surfaces again with its painting's vertex shader (the tools' crop mask, ontop.ts):
+ * dabOut(), whether this fragment is off the dab's shape on its card (as FOLIAGE_DEPTH_FRAG cuts it).
+ */
+export const DAB_OUT_GLSL = /* glsl */ `
+${NOISE}
+${DAB_SHAPE}
+varying vec4 vCard;
+varying vec4 vPaint;
+bool dabOut() { return dabShape(vCard.xy, vCard.w * 91.0, vPaint.y) < 0.0; }
+`;
+
 const FOLIAGE_DEPTH_FRAG = /* glsl */ `
 ${NOISE}
 ${DAB_SHAPE}
