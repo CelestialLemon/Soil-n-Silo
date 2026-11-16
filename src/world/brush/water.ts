@@ -28,6 +28,9 @@ import { LEVEL } from './scale.ts';
 // surface stands against its tile's level (`riverSurface`), and how the river's own cells are laid out, but the flood, the
 // ice and the mud stay here.
 
+/** The four sides as tile steps. */
+const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
+
 /** How far over the land a flood's surface stands (m), so it covers the tiles it floods. */
 const RIVER_LIFT = 0.03;
 /** Where the river's or a pond's surface stands over a tile at `level` (m): in the bed brush3d cuts under it (#202). */
@@ -60,6 +63,13 @@ export class BrushWater {
   private readonly wetLevel: Float32Array;
   private wetRelief = -1;
   private wetStep = 0;
+  /**
+   * The dry tiles round each fall (within two of its lower water tile), whose ground decides whether a bank beside it takes
+   * the water below's level (build), and their lowest corners as last sent, for the water levels they were found at.
+   */
+  private near: number[] = [];
+  private nearLow = new Float32Array(0);
+  private nearFor = -1;
 
   constructor(r: BrushRenderer, land: Land, lie: Lie) {
     this.r = r; this.land = land; this.lie = lie;
@@ -91,17 +101,39 @@ export class BrushWater {
     this.r.setWater(this.build(s, f, iceStep / STEPS, mudStep / STEPS, speed), this.send.first ? 0 : undefined);
   }
 
-  /** A count that moves on only when the levels of the land's water tiles change. */
+  /** A count that moves on only when the levels of the land's water tiles change, or the ground round a fall does (#202). */
   private levels(s: GameState) {
     const relief = reliefOf(s);
     if (relief === this.wetRelief) return this.wetStep;
     this.wetRelief = relief;
-    const corner = this.lie.relief.corner;
+    const corner = this.lie.relief.corner, low = (k: number) => Math.min(corner[k * 4], corner[k * 4 + 1], corner[k * 4 + 2], corner[k * 4 + 3]);
     let moved = false;
     this.wet.forEach((k, i) => {
       if (this.wetLevel[i] !== corner[k * 4]) { this.wetLevel[i] = corner[k * 4]; moved = true; }
     });
     if (moved) this.wetStep++;
+    if (this.nearFor !== this.wetStep) {
+      // The falls moved (or this is the first look): find the dry tiles round them again.
+      const { width: W, height: H, terrain } = this.land, near = new Set<number>();
+      for (const k of this.wet) {
+        const x = k % W, y = (k - x) / W;
+        const falls = SIDES.some(([dx, dy]) => {
+          const u = (y + dy) * W + x + dx;
+          return x + dx >= 0 && y + dy >= 0 && x + dx < W && y + dy < H && terrain[u] === TERRAIN.water && corner[u * 4] > corner[k * 4];
+        });
+        if (!falls) continue;
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx >= 0 && ny >= 0 && nx < W && ny < H && terrain[ny * W + nx] !== TERRAIN.water) near.add(ny * W + nx);
+        }
+      }
+      this.near = [...near];
+      this.nearLow = Float32Array.from(this.near, low);
+      this.nearFor = this.wetStep;
+    } else if (this.near.some((k, i) => this.nearLow[i] !== low(k))) {
+      this.nearLow = Float32Array.from(this.near, low);
+      this.nearFor = ++this.wetStep;
+    }
     return this.wetStep;
   }
 
@@ -113,6 +145,38 @@ export class BrushWater {
       if (land.terrain[i] !== TERRAIN.water) continue;
       level[i] = riverSurface(corner[i * 4]);
       flowX[i] = this.flowX[i] * speed; flowZ[i] = this.flowZ[i] * speed;
+    }
+    // Beside a fall, the banks below it (#202): the water's sheet runs from cell to cell at their surfaces, and on flat a
+    // cell past the last wet one, so beside a fall it would slope from the water above down over the bank below, standing
+    // out of the land there like a sail. Those banks are given the water below's surface (under them, so they hide it):
+    // the sheet beside the fall then runs down the bank's own cliff, out of sight.
+    // (Read from the river's cells as they were, so a bank given a surface here doesn't count as river for the next.)
+    const river = level.slice();
+    const under = (x: number, y: number, h: number) => { const k = y * W + x; return Math.min(corner[k * 4], corner[k * 4 + 1], corner[k * 4 + 2], corner[k * 4 + 3]) * LEVEL >= h; };
+    // Whether a bank hides water at `h`: it stands over it, and so does the dry ground round it, as brush3d carries a wet
+    // cell's surface on a cell further (WATER.md) and a bank given one counts as wet. Where it doesn't (ground dug lower
+    // beside it), the bank is left as it was.
+    const hides = (bx: number, by: number, h: number) => {
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const x = bx + dx, y = by + dy;
+        if (x < 0 || y < 0 || x >= W || y >= H || !Number.isNaN(river[y * W + x])) continue;
+        if (!under(x, y, h)) return false;
+      }
+      return true;
+    };
+    for (let i = 0; i < n; i++) {
+      if (Number.isNaN(river[i])) continue;
+      const x = i % W, y = (i - x) / W;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const ux = x + dx, uy = y + dy, u = uy * W + ux;
+        if (ux < 0 || uy < 0 || ux >= W || uy >= H || !(river[u] > river[i] + 0.01)) continue;
+        for (const s of [-1, 1]) {
+          const bx = x + dy * s, by = y + dx * s, k = by * W + bx;
+          if (bx < 0 || by < 0 || bx >= W || by >= H || land.terrain[k] === TERRAIN.water || !Number.isNaN(river[k])) continue;
+          // The lowest fall beside it wins, if two are.
+          if (!(level[k] <= river[i]) && hides(bx, by, river[i])) level[k] = river[i];
+        }
+      }
     }
     // A flood: the rules' surface over each tile it covers, and the river risen to it. Flood water out of the river runs on
     // the way the river beside it does, slower once it leaves the channel (breadth first from the river, as the rules spread it).

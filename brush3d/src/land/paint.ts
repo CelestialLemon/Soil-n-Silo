@@ -55,15 +55,18 @@ export const STEP_BUDGET = 3;
 /** The four sides as tile steps (north, east, south, west), as the game's relief.ts has them. */
 const SIDES = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const;
 
-/** The land's look: what the developer picks between on the previews (#202). */
+/** The land's look: the knobs the developer picked between on #202's previews (Soil-n-Silo#228). */
 export interface LandLook {
   /** How strongly each ground kind tints the paint: 0 not at all, 1 as GROUND_TINT has it. */
   groundTint: number;
   /** The country round the map: its colours' lightness and colourfulness (1, as the map's). */
   beyond: { light: number; chroma: number };
 }
-/** The land's look until the developer's picks. */
-export const LAND_LOOK: LandLook = { groundTint: 1, beyond: { light: 0.9, chroma: 0.8 } };
+/**
+ * The land's look as the developer picked it (Soil-n-Silo#228): the ground kinds subtle, as GROUND_TINT has them; the country
+ * round the map clearly duller, so where the player can build reads at a glance. (The cliffs' strata were picked too.)
+ */
+export const LAND_LOOK: LandLook = { groundTint: 1, beyond: { light: 0.78, chroma: 0.55 } };
 
 const srgb = (hex: number) => new THREE.Color(hex);
 /** The land's colours (sRGB; the season turns the greens, seasonLook.ts). */

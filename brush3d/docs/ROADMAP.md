@@ -47,6 +47,13 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      cleared tree's triangles away inside its grove and frees its wind spring (`TreeSprings.release`; ids are reused).
      `r.moveTrees` lifts a tree in place when the ground under it moves. Placing a building went from about 90 to 12 ms of
      the game's work, and clearing a tree from 30 to 3 (`docs/PERFORMANCE.md`). The demo's frames are unchanged.
+  8. Soil-n-Silo#202 the land from the game's map (done 2026-11-16, Soil-n-Silo#226 and Soil-n-Silo#228): `setLand` and
+     `updateLand` (`src/land/`, `docs/LAND.md`) paint the land from each tile's corners, cover and ground kind, on the
+     game's own smooth fit (`Surface`, moved here). Cliffs are sharp, with strata; the river's bed sits under its tiles;
+     the country past the map is clearly duller (`LAND_LOOK`, the developer's picks). An earthwork refits and repaints only
+     the chunks round it, over frames, swapped at once. `landAt` and `landHit` answer from the same fit. Open: falls that
+     read as waterfalls (Soil-n-Silo#241; a plain chute for now), grass tufts, the wheel's race, and one fit shared with the
+     game's (Soil-n-Silo#210).
 - **Weather, epic #3** (planned 2026-10-30): season, weather and hour change the whole picture. The decisions are in #3; in
   short, the game owns the weather's state and logic and the renderer only draws it. The order:
   1. #6 performance: measure the frame and set the weather's budget (done 2026-10-30: the farm 17.5 ms on the laptop,
