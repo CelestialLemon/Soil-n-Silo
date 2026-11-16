@@ -155,6 +155,8 @@ export class Picker {
     // A pixel only partly smoke, its samples averaged with what's inked or painted behind or in front (its ink between
     // theirs), and its depth with theirs, so it may meet nothing at that depth: what the line of sight meets first. Smoke
     // only (a pixel by it is smoke): a tree's crown against a building averages to an ink between too, and is the tree.
+    // (Known limit: a crown's edge over a building with a puff in the next pixel picks the building, a pixel's worth; the
+    // samples can't tell it from a puff's edge, which is common, over its own chimney's building.)
     let byPuff = false;
     for (let i = 0; i < 9; i++) if (smoke(pixels[i * 4 + 3])) byPuff = true;
     if (byPuff && ink > SMOKE_INK * 0.1 && ink < 0.99) {
