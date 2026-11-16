@@ -22,11 +22,11 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      Vite build, served at `/brush3d/` and deployed beside the game in each Pages folder, pull request previews included.
      The demo's frames are byte-identical to brush3d-renderer's. brush3d-renderer is archived; its open issues moved to the
      game (brush3d-renderer#25, brush3d-renderer#56).
-  3. Soil-n-Silo#201 first light (groundwork done 2026-11-14, Soil-n-Silo#219): the game drawn by brush3d behind
+  3. Soil-n-Silo#201 first light (done 2026-11-16, Soil-n-Silo#219 and Soil-n-Silo#220): the game drawn by brush3d behind
      `?renderer=brush3d`, plainly, at 4 m a tile. The renderer gained what the game needed: the view placed from the game's
      camera (`view.place`, `toScreen`, `rayAt`), a camera that sits back far enough for the game's widest zoom (`landTop`,
      from `measureGround`, which was `setHazeGround`), and `remove()` freeing the tiles `add()` cut. The paint holds at 4 px a
-     metre. How high a level stands is the developer's pick (Soil-n-Silo#220; 1 m until then).
+     metre. A terrain level stands 1 m high (the developer's pick of 0.5, 1 and 2 m, Soil-n-Silo#220).
   4. Soil-n-Silo#207 the weather from the game (done 2026-11-14, Soil-n-Silo#223 and Soil-n-Silo#224): every weather call
      is driven by the game's state. That covers `setWeather` (with `storm` and `sunUnder`), `setGround` (snow, frost, wet
      and mud, a cell a tile over the whole land), `setWater` (the river, floods, ice and muddy water) and `strike`/`flicker`

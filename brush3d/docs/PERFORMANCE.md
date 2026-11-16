@@ -490,7 +490,7 @@ for load times without the dev server's own cost):
 ```sh
 npm run framerate                                        # c1 to c8, each fresh and as the bot's farm after 20 minutes
 npm run framerate -- --layouts c4 --saves farm --labels "view 1, storm|widest, storm"
-npm run framerate -- --layouts c4 --query level=2        # a look PR's option (its preview's address), to see what it costs
+npm run framerate -- --layouts c4 --query overcast=a     # a look PR's option (its preview's address), to see what it costs
 ```
 
 `fresh` is the commission as it starts; `farm` is the bot's (`tools/bot.ts`) after `--minutes`, on its flat map, with the
