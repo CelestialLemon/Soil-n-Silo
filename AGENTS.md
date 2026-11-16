@@ -1,9 +1,8 @@
 # Working in this repo
 
-- The design is `docs/DESIGN.md`; the plan is `docs/ROADMAP.md`; the models are specified in `docs/ASSET_BRIEF.md`.
-- Two renderers, until the swap (epic #212): the game draws with `pixel3d-renderer`, a separate repo pinned to a release tag
-  (see **pixel3d-renderer** below), and is moving to **brush3d**, the painterly renderer, which lives in this repo, in
-  `brush3d/`. Renderer work is done here, in `brush3d/`; see **The renderer (brush3d)** below.
+- The design is `docs/DESIGN.md`; the plan is `docs/ROADMAP.md`; the models are brush3d's (`brush3d/docs/MODELS.md`).
+- The game draws with **brush3d**, the painterly renderer, which lives in this repo, in `brush3d/`; the game's side of it is
+  `src/world/brush/`. Renderer work is done here; see **The renderer (brush3d)** below.
 - Game rules live in `src/game/` as pure TypeScript (no DOM, no three.js, no renderer), so `npm test` runs them in Node. Drawing
   and input live outside it.
 - Expected failures (an action against the rules, a broken save or settings) return a `Result` (`src/game/result.ts`) rather
@@ -68,16 +67,3 @@
 - Issue numbers in `brush3d/`: a bare `#1` to `#68` there is one of brush3d-renderer's, the archived repo it came from
   (`#36` is CelestialLemon/brush3d-renderer#36); `#199` and up are this repo's. When you write about an old one, name it in
   full (`brush3d-renderer#36`).
-
-## pixel3d-renderer
-
-The renderer the game draws with until the swap (#211), when it goes for good. Until then the pixel path only has to keep
-working, not gain features.
-
-- It is a separate repo (local checkout at `../pixel3d-renderer`), pinned to a release tag. Don't patch it from here (not in
-  `node_modules`, not by copying code).
-- A pixel3d bug that breaks the game becomes an issue there: check its open issues and its `docs/ROADMAP.md` first, then open
-  one in `CelestialLemon/pixel3d-renderer` with the `soil-n-silo` and `bug` labels (what the game needs, a minimal repro or
-  screenshot, the version the game pins), linked from a game issue labelled `renderer` if game work is blocked on it. The fix
-  ships in a new patch tag (0.5.0 -> 0.5.1: the second number is a major jump); bumping the game's pin is its own small change
-  here (re-approve the install script, see `README.md`).

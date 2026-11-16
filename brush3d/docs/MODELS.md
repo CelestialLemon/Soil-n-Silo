@@ -71,7 +71,7 @@ Each model is one `.glb` in `src/models/`, read by `src/kit/model.ts`:
 
 - **Plants** are not modelled. A model marks where they grow with empty points named `plant_<kind>_<nn>` (kinds: `herb`,
   `flower`, `shrub`, `vine`), sized by the point's scale; the scene grows a painted clump there, as it does bushes.
-- **Pieces for the game** are separate named objects, drawn where they rest for now (nothing moves in the renderer yet):
+- **Pieces for the game** are separate named objects, turned, lit or shown and hidden as the game directs (#205):
 
   | Name | What it's for |
   | --- | --- |
@@ -81,7 +81,8 @@ Each model is one `.glb` in `src/models/`, read by `src/kit/model.ts`:
   | `smoke_emitter` | an empty point where smoke or steam leaves |
   | `dynamo` | the water wheel's generator, out on the shaft |
 
-  These follow the game's own conventions (`src/world/models.ts` there), so the files should drop in.
+  These follow the game's own conventions: `src/world/brush/catalog.ts` says which model draws which building, and
+  `src/world/brush/things.ts` places them and drives their parts.
 
 `src/models/index.json` lists every model's title, group, footprint, triangle count, bounds and named pieces; the
 demo reads it (`src/models/catalog.ts`).
@@ -184,7 +185,7 @@ measurable change, and all the inked things together are about 0.3 ms of it. See
 - Seen from the front (as the game's footprint has it), the water wheel is edge on, because its axle runs along the
   bank. On the farm it's turned to show its face.
 - Inside the open garage the walls read as one flat shade from some sides.
-- **In the game** (Soil-n-Silo#203): on the brush3d path (`?renderer=brush3d`), every building and truck the game places is
+- **In the game** (Soil-n-Silo#203): every building and truck the game places is
   its model here. `src/world/brush/catalog.ts` says which model draws which building (the game's `hive` is `beehive`,
   `press` `oil_press`, `solar` `solar_panel`, `turbine` `wind_turbine`, `wheel` `water_wheel`, `station`
   `weather_station`, the rest by their own names) and how the game's four facings turn a model's front; `things.ts` places

@@ -174,7 +174,7 @@ mill.remove();
   and named parts (`docs/MODELS.md`). The 22 buildings and vehicles are built on the game's own footprints, so a model
   stands on its building's tiles with no fitting. `loadModels()` (#203) loads them all, once per game.
 - **The game's id goes with it** (`tag`): picking a thing gives the tag back, so the game never has to keep its own map
-  from renderer objects to buildings (as it does with pixel3d today).
+  from renderer objects to buildings (as it did with pixel3d).
 - **Placed on the land.** Leave `y` out and the thing stands on the land under its middle; give it for a thing on a
   bridge or a truck's bed. `pitch` tips it nose up (radians, after the yaw; a truck on a ramp), `scale` sizes it (1 by
   default; the goods the game fits into a bed).
@@ -302,7 +302,7 @@ r.requestPick(clientX, clientY).then((hit) => {});  // a frame or two later, nev
 - A build preview, a route or a wire is drawn over the finished picture, never into the G-buffer: never picked.
 - Smoke (#205) is drawn into the G-buffer but is no thing: it marks its pixels (`SMOKE_INK`, as its ink), and a pick on
   one looks past it along the same line of sight (to the building behind, the land, or nothing: the sky).
-- Like pixel3d's `pick` and `requestPick`, so the game's hover logic carries over.
+- Like pixel3d's `pick` and `requestPick` were, so the game's hover logic carried over.
 
 ## The game's tools on the picture (today, #206)
 
@@ -501,11 +501,11 @@ above, the game stops using it and it becomes the renderer's own.
 - `loadModel` and `ModelSet`: the models, merged into the inked and planted meshes; `MODELS`, `TILE`, `blocksWind`,
   `wheelRace` from the catalogue.
 
-## What the game stops doing
+## What the game stopped doing (#211)
 
-The game's pixel3d calls and what replaces each:
+The game's pixel3d calls, gone since the swap, and what replaced each:
 
-| The game today (pixel3d) | brush3d |
+| The game before (pixel3d) | brush3d |
 |---|---|
 | `new PixelRenderer(canvas, bakedScene)`, `quantizePalette` | `new BrushRenderer(canvas, options)`, `setLand`: no palette, no baked scene |
 | `addObject(geometry)`, `setTransform`, `visible`, `remove()` | `addThing(model, place)`, `place`, `visible`, `remove()` |
