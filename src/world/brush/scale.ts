@@ -1,4 +1,4 @@
-import { TILE } from '../../../brush3d/src/index.ts';
+import { TILE } from '../../../brush3d/src/shared.ts';
 import { LEVEL_HEIGHT } from '../ground.ts';
 
 // The brush3d world's scale (epic #212): one tile is 4 m (brush3d's TILE: its models, brushes and speed budget were all made
