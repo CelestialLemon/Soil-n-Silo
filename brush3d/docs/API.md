@@ -206,8 +206,16 @@ mill.remove();
   `ModelSet.add` gives back the model's parts (`ModelParts`) as they go into the meshes `addTo` makes: `parts.spin(pace)`
   and `parts.show({ running, charge })` are `spin` and `show` above (`charge` the rings lit, 0..4; leave it out for all).
   The game's things.ts calls them from the game's state each tick (`src/world/brush/states.ts`), and holds each building's
-  state (working, idle, unpowered, weather) for the look that decorates it, still to come (#205's look PR: `status`, and
-  `smoke_emitter`'s smoke, the lamps' glow at night).
+  state (working, idle, unpowered, weather). That state shows in the model's own parts only (the developer's pick, #205):
+  its rotor turns or stands, its fire or lamp shows or goes out. Nothing is laid over the building.
+- **Lights at night and smoke** (#205). A building's lights (its `running_*` parts named as lights: `glow`, `lamp`,
+  `beacon`, `light`, `fire`, a `window`) glow while it works, in their own colour, from dusk and fully at night, whatever
+  the light. Its chimneys (`smoke_emitter`) puff smoke while it works: `show({ running })` starts and stops it, and the
+  smoke starts with its first puff and stops with its last one rising away, never all at once: round grey puffs that rise
+  about 4.5 m, drift downwind and fade. Its windows (upright sea-glass panes) light up with it, a warm lamplight. Each
+  lamp and lit window throws a pool of its light on the ground and walls round it (at most 16, the nearest the view's
+  middle; drawn in the post pass). The developer's picks (#205): pools, puffs. There's nothing to set. The smoke goes on
+  in real time while the game is paused, as the rain does.
 
 ## What grows: crops, trees and rocks (#204, #213)
 
@@ -292,6 +300,8 @@ r.requestPick(clientX, clientY).then((hit) => {});  // a frame or two later, nev
 - The pick sees the frame last drawn, as its camera saw it: `point` is where the pointer met what's drawn there, so the
   game finds the tile from it (`Math.floor(point.x / TILE)`).
 - A build preview, a route or a wire is drawn over the finished picture, never into the G-buffer: never picked.
+- Smoke (#205) is drawn into the G-buffer but is no thing: it marks its pixels (`SMOKE_INK`, as its ink), and a pick on
+  one looks past it along the same line of sight (to the building behind, the land, or nothing: the sky).
 - Like pixel3d's `pick` and `requestPick`, so the game's hover logic carries over.
 
 ## The game's tools on the picture (today, #206)

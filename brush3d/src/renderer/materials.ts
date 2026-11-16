@@ -7,7 +7,9 @@ import { SHELTER_GLSL } from './shelter';
 import { SNOW_GLSL } from './snow';
 import { WET_GLSL, WET_INK_GLSL } from './wet';
 import { GROUND_TOOLS_GLSL } from './overlay';
-import { PART_TEXELS } from './parts';
+import { GLOW, PART_TEXELS } from './parts';
+import { SMOKE_INK } from './pick';
+import { SMOKE } from './nightLights';
 
 // The scene's materials. Each has a main variant (writes colour and the G-buffer) and a depth variant for the sun's
 // shadow map, built from the same vertex code so wind and billboarding cast the shadows they should.
@@ -48,6 +50,8 @@ export function createSharedUniforms() {
     tPartPose: { value: null as THREE.Texture | null },
     // 1: every part as it's modelled, still and shown (the shelter map, drawn now and then: it can't follow a rotor).
     uPartsRest: { value: 0 },
+    // The night's lights (#205, BrushRenderer.nightLights): how much a lamp or a lit window glows now (0 by day, 1 at night).
+    uNightGlow: { value: 0 },
     uViewBack: { value: new THREE.Vector3(0, 0, 1) },
     uViewTarget: { value: new THREE.Vector3() },
     uShadowMap: { value: null as THREE.Texture | null },
@@ -102,9 +106,10 @@ export type SharedUniforms = ReturnType<typeof createSharedUniforms>;
 /**
  * paint: stones and trees' wood (which bends in the wind with its tree); ground: the land, painted as paint is, its brush
  * read from fields baked at load (see groundBakeMaterial); crop: a field's painted mass, which shows the gusts; debris:
- * leaves blown through the air in a storm, drawn by the renderer itself.
+ * leaves blown through the air in a storm, drawn by the renderer itself; smoke: puffs of smoke or steam rising from a
+ * model's chimney while its building works (ModelSet, SMOKE_VERT).
  */
-export type MaterialKind = 'paint' | 'ground' | 'crop' | 'foliage' | 'grass' | 'ink' | 'water' | 'debris';
+export type MaterialKind = 'paint' | 'ground' | 'crop' | 'foliage' | 'grass' | 'ink' | 'water' | 'debris' | 'smoke';
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Vertex shaders
@@ -187,6 +192,18 @@ varying float vGust;
 attribute float aPart;
 uniform highp sampler2D tPartPose;
 uniform float uPartsRest;
+uniform float uNightGlow;
+// How much it glows now (#205: a lamp while it shows, windows while they're lit, at night), and whether it's windows.
+varying vec2 vGlow;
+vec2 partGlow() {
+  if (aPart < 0.5 || uNightGlow <= 0.0) return vec2(0.0);
+  int i = (int(aPart + 0.5) - 1) * ${PART_TEXELS};
+  ivec2 at = ivec2(i % 256, i / 256);
+  vec4 glow = texelFetch(tPartPose, at + ivec2(2, 0), 0);
+  if (glow.x == ${GLOW.lamp}.0) return vec2(uNightGlow, 0.0);
+  if (glow.x == ${GLOW.window}.0) return vec2(uNightGlow * glow.y * 0.85, 1.0);
+  return vec2(0.0);
+}
 void movePart(inout vec3 p, inout vec3 n) {
   if (aPart < 0.5 || uPartsRest > 0.5) return;
   int i = (int(aPart + 0.5) - 1) * ${PART_TEXELS};
@@ -206,6 +223,7 @@ void main() {
   // Where it is at rest: the brush and the snow's pattern go round with it.
   vRestPos = (modelMatrix * vec4(position, 1.0)).xyz;
   movePart(pos, nrm);
+  vGlow = partGlow();
   vec4 wp = modelMatrix * vec4(pos, 1.0);
 #else
   vec4 wp = modelMatrix * vec4(position, 1.0);
@@ -431,6 +449,64 @@ void main() {
   // Its paint is the leaf's own, wherever it flies.
   vRestPos = position * BOX;
   vNormal = normalize(vec3(sin(ph * 2.3), 1.0, cos(ph * 1.9)));
+  vDabNormal = toCam;
+  vColor = color;
+  vPaint = aPaint;
+  vCard = aCard;
+  vCardPx = max(size, 1e-4) * projectionMatrix[0][0] * uScreen.x * 0.5;
+  vFlash = 0.0;
+  place(world);
+}
+`;
+
+/**
+ * Smoke and steam (#205), drawn as painted dabs: each card a puff, 'position' the point it leaves from (a model's
+ * `smoke_emitter`), aPart that point's part (shown while its building works), aCard as for foliage (its seed says when in
+ * the puffs' cycle it leaves). A puff rises, slowing, drifts downwind, swells and thins away over its life (SMOKE, nightLights.ts). It's
+ * drawn if it left while the part showed (by the part's last few starts and stops, parts.ts): so smoke starts with the
+ * first puff and stops with the last one rising away.
+ */
+const SMOKE_VERT = /* glsl */ `
+${HEAD}
+attribute vec4 aCard;
+attribute float aPart;
+uniform highp sampler2D tPartPose;
+uniform vec2 uScreen;
+varying vec4 vCard;
+varying vec3 vDabNormal;
+varying float vCardPx;
+varying float vFlash;
+void main() {
+  vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+  vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+  vec3 toCam = vec3(viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2]);
+  const float RISE = ${SMOKE.rise.toFixed(2)}, SIZE = ${SMOKE.size.toFixed(2)}, LIFE = ${SMOKE.life.toFixed(2)};
+  float seed = aCard.w, life = LIFE;
+  // Since it left, and whether it left while the smoke was on (after the part last started showing, or before it stopped).
+  float age = mod(uTime + seed * life, life), left = uTime - age, drawn = 1.0;
+  if (aPart > 0.5) {
+    int i = (int(aPart + 0.5) - 1) * ${PART_TEXELS};
+    ivec2 at = ivec2(i % 256, i / 256);
+    // On when it left: on now, unless it has started or stopped an odd number of times since (its last few changes);
+    // none if it left before the history kept.
+    float on = texelFetch(tPartPose, at + ivec2(1, 0), 0).w;
+    vec4 changes = texelFetch(tPartPose, at + ivec2(3, 0), 0);
+    float flips = dot(vec3(greaterThan(changes.xyz, vec3(left))), vec3(1.0));
+    drawn = left >= changes.w && (on > 0.5) == (mod(flips, 2.0) < 0.5) ? 1.0 : 0.0;
+  }
+  if (fract(seed * 7.31) >= ${SMOKE.share.toFixed(2)}) drawn = 0.0;
+  float k = age / life;
+  float size = aCard.z * SIZE * mix(0.45, 1.35, k) * smoothstep(0.0, 0.12, k) * (1.0 - smoothstep(0.55, 1.0, k)) * drawn;
+  // Up, slowing as it goes; downwind, faster in a wind; wavering a little.
+  vec2 wind = uWindDir * age * (0.25 + uWindSpeed * 0.03);
+  float waver = sin(age * 1.7 + seed * 40.0) * 0.18 * k;
+  vec3 from = (modelMatrix * vec4(position, 1.0)).xyz;
+  vec3 c0 = from + vec3(wind.x + waver * right.x, RISE * (1.0 - (1.0 - k) * (1.0 - k)), wind.y + waver * right.z);
+  vec3 world = c0 + (right * aCard.x + up * aCard.y) * size;
+  vWorldPos = world;
+  // Its paint stays with it as it rises.
+  vRestPos = from + vec3(seed * 9.0, 0.0, seed * 5.0);
+  vNormal = normalize(toCam + up * 0.6);
   vDabNormal = toCam;
   vColor = color;
   vPaint = aPaint;
@@ -735,7 +811,12 @@ void main() {
     if (gSnow > 0.0) col = mix(col, snowPaint(light, 0.07, 0.0), cover);
   }
 #endif
+#ifdef SMOKE
+  // Marked as smoke, for a pick to see past (SMOKE_INK, pick.ts).
+  writeGBuffer(exposeHere(col), n, vViewDepth, ${SMOKE_INK.toFixed(8)}, alpha);
+#else
   writeGBuffer(exposeHere(col), n, vViewDepth, 0.0, alpha);
+#endif
 }
 `;
 
@@ -796,6 +877,9 @@ ${WET_INK_GLSL}
 uniform vec3 uSkyTop;
 uniform vec3 uSkyBottom;
 varying vec2 vUv;
+#ifdef PARTS
+varying vec2 vGlow;
+#endif
 void main() {
   cloudAt(vWorldPos);
   vec3 n = normalize(vNormal);
@@ -861,7 +945,12 @@ void main() {
       col = mix(col, snowPaint(light, 0.02, uneven * 0.3), cover);
     }
   }
-  writeGBuffer(exposeHere(col), n, vViewDepth, 1.0, 1.0);
+  col = exposeHere(col);
+#ifdef PARTS
+  // Lit at night (#205): a lamp or a fire in its own colour, bright, whatever the light; windows a warm lamplight.
+  if (vGlow.x > 0.0) col = mix(col, vGlow.y > 0.5 ? vec3(1.7, 0.86, 0.3) : vColor * 2.2 + vec3(0.2, 0.12, 0.03), vGlow.x);
+#endif
+  writeGBuffer(col, n, vViewDepth, 1.0, 1.0);
 }
 `;
 
@@ -1291,11 +1380,11 @@ void main() {
 
 const VERT: Record<MaterialKind, string> = {
   paint: STATIC_VERT, ground: STATIC_VERT, crop: STATIC_VERT, ink: STATIC_VERT, water: WATER_VERT, foliage: FOLIAGE_VERT, grass: GRASS_VERT,
-  debris: DEBRIS_VERT,
+  debris: DEBRIS_VERT, smoke: SMOKE_VERT,
 };
 const FRAG: Record<MaterialKind, string> = {
   paint: PAINT_FRAG, ground: PAINT_FRAG, crop: PAINT_FRAG, ink: INK_FRAG, water: WATER_FRAG, foliage: FOLIAGE_FRAG, grass: GRASS_FRAG,
-  debris: FOLIAGE_FRAG,
+  debris: FOLIAGE_FRAG, smoke: FOLIAGE_FRAG,
 };
 /** Painted wood bends with its tree; a crop shows the gusts. (The ground has no trees, but keeps paint's shader exactly.) */
 /** The water's own colour (C.water before #18, when the scenes built it), linear. */
@@ -1305,10 +1394,10 @@ const DEFINES: Partial<Record<MaterialKind, Record<string, number | string>>> = 
   // the shelter at their foot. The roofs (ink) and the crowns (foliage) read the shelter map where they are; the leaves in
   // the air take no snow.
   paint: { TREES: 1, AT_GROUND: 1, PARTS: 1 }, ink: { PARTS: 1 }, ground: { TREES: 1, GROUND: 1, AT_GROUND: 1 }, crop: { CROP: 1, AT_GROUND: 1 }, grass: { AT_GROUND: 1 },
-  debris: { NO_SNOW: 1 },
+  debris: { NO_SNOW: 1 }, smoke: { NO_SNOW: 1, SMOKE: 1 },
   water: { WATER_SHEET: 1, WATER_COLOR: `vec3(${WATER_LINEAR.r.toFixed(6)}, ${WATER_LINEAR.g.toFixed(6)}, ${WATER_LINEAR.b.toFixed(6)})` },
 };
-const DABS = (kind: MaterialKind) => kind === 'foliage' || kind === 'debris';
+const DABS = (kind: MaterialKind) => kind === 'foliage' || kind === 'debris' || kind === 'smoke';
 const sideOf = (kind: MaterialKind) => (kind === 'grass' || DABS(kind) || kind === 'ink' ? THREE.DoubleSide : THREE.FrontSide);
 /**
  * A mesh with no parts has no aPart: it reads 0 (no part), not whatever the attribute's slot last held. Returns `m`.

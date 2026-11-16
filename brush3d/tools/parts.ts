@@ -5,9 +5,13 @@
 // 2. Slots: a part is freed with its last mesh, a slot no mesh took is freed at once, and an old handle's generation no
 //    longer matches the next part in its slot. Hidden, a part is folded to its axle.
 // 3. A mesh's bounds hold its parts wherever they turn, and its posed positions (for picking) are the shader's.
+// 4. The night's lights and the smoke (#205's looks): a lamp glows while it shows, windows while lit, the nearest first;
+//    a part shown or hidden before its first frame has always been so, later from then (its smoke starts or stops then).
+// 5. A pick sees past a working chimney's smoke to the building behind it (smoke is drawn with depth, but is no thing).
 // Exits with 1 if anything is off.
 import * as THREE from 'three';
-import { EASE, Parts } from '../src/renderer/parts.ts';
+import { EASE, GLOW, Parts } from '../src/renderer/parts.ts';
+import { Picker, SMOKE_INK } from '../src/renderer/pick.ts';
 
 let failed = false;
 function check(name: string, ok: boolean, detail = '') {
@@ -91,6 +95,109 @@ const angleOf = (p: Parts, slot: number) => (p.texture.image.data as Float32Arra
   check('posed as a copy of an earlier pose has it', p.posed(g, pose)!.getY(1) === posed.getY(1));
   p.show(slot, false);
   check('hidden: folded to its axle', p.posed(g)!.getY(1) === 2);
+}
+
+// 4. Lights and smoke.
+{
+  const p = new Parts(), d = () => p.texture.image.data as Float32Array;
+  // A lamp whose axle is its model's origin (as the garage's is), its globe 10 m off: its light is at the globe.
+  const lamp = p.add({ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, 0, GLOW.lamp, { x: 10, y: 3, z: 0 });
+  const windows = p.add({ x: 2, y: 2, z: 0 }, { x: 1, y: 0, z: 0 }, 0, GLOW.window);
+  const chimney = p.add({ x: 0, y: 6, z: 0 }, { x: 1, y: 0, z: 0 }, 0);
+  p.hold([lamp, windows, chimney]);
+  check('how each glows, in its texel', d()[lamp * 16 + 8] === GLOW.lamp && d()[windows * 16 + 8] === GLOW.window && d()[chimney * 16 + 8] === GLOW.none);
+  // Hidden before its first frame (a building not working as it's built): its smoke has always been off.
+  p.show(chimney, false);
+  check('hidden before its first frame: always so', d()[chimney * 16 + 12] === -1e6);
+  p.update(4);
+  p.show(chimney, true);
+  check('shown later: from then', d()[chimney * 16 + 12] === 4);
+  // Stopped and started again while its puffs rise: each change kept, the latest first, so a puff knows (the shader
+  // counts the changes since it left: an odd number, and the chimney was the other way then).
+  p.update(4.5); p.show(chimney, false); p.update(5); p.show(chimney, true);
+  const texel = () => [...d().slice(chimney * 16 + 12, chimney * 16 + 16)];
+  check('its last starts and stops kept', texel().join() === '5,4.5,4,-1000000', texel().join());
+  // As SMOKE_VERT draws a puff that left at `left`.
+  const drawn = (left: number) => {
+    const [a, b, c, lost] = texel();
+    return left >= lost && (d()[chimney * 16 + 7] > 0.5) === ([a, b, c].filter((t) => t > left).length % 2 === 0);
+  };
+  check('a puff knows whether it was on when it left', !drawn(3) && drawn(4.2) && !drawn(4.7) && drawn(5.2));
+  // Flickering faster than it rises: off at 5.5, on at 6, off at 6.5. What's before the changes kept is lost, never
+  // drawn: a puff that left while it was off (3) stays unseen.
+  for (const [t, on] of [[5.5, false], [6, true], [6.5, false], [7, true]] as const) { p.update(t); p.show(chimney, on); }
+  check('flickering: only puffs that left while it was on', !drawn(3) && !drawn(4.2) && !drawn(5.7) && drawn(6.2) && !drawn(6.7) && drawn(7.1), texel().join());
+  const near = () => p.glowing({ x: 0, y: 0, z: 0 }, 8).map((l) => l.glow);
+  check('a lamp lights from where its light is', p.glowing({ x: 0, y: 0, z: 0 }, 8).find((l) => l.glow === GLOW.lamp)?.x === 10);
+  check('lights: windows and lamps, the nearest first', near().join() === `${GLOW.window},${GLOW.lamp}`);
+  p.light(windows, false);
+  check('windows unlit: no light', near().join() === `${GLOW.lamp}`);
+  p.show(lamp, false);
+  check('out: windows unlit, a lamp hidden', near().length === 0);
+  p.release([lamp]);
+  p.show(lamp, true);
+  check('a freed part throws no light', near().length === 0);
+}
+
+// 5. Picking through smoke.
+{
+  // A building 4 m high, its chimney on top.
+  const building = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 4).translate(0, 2, 0), new THREE.MeshBasicMaterial());
+  building.userData = { tag: 'bakery', kind: 'ink' };
+  const picker = new Picker({
+    landHit: (ray) => ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3()),
+    waterAt: () => null,
+    tagged: () => [building],
+  });
+  // Looking down at 45° at the chimney, at what's drawn 1 m up and in front of it: a puff, or a tree's crown.
+  const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 100);
+  camera.position.set(10, 14, 0); camera.lookAt(0, 4, 0); camera.updateMatrixWorld();
+  // The 3 × 3 pixels read, all at `depth` and `ink`.
+  const pixels = (depth: number, ink: number) => Float32Array.from({ length: 36 }, (_, i) => (i % 4 === 2 ? depth : i % 4 === 3 ? ink : 0));
+  const pick = (ink: number, from = camera) =>
+    picker.hit(pixels(Math.hypot(9, 9), ink), from, new THREE.Vector2(0, 0), new THREE.Vector2(1e-4, 1e-4), [{ mesh: building, matrix: building.matrixWorld, tag: 'bakery' }]);
+  const through = pick(SMOKE_INK);
+  check('a pick sees past smoke to the building', through?.tag === 'bakery' && Math.abs(through.point.y - 4) < 0.05, JSON.stringify(through));
+  check('a smoke pixel partly something painted: still smoke', pick(SMOKE_INK * 0.75)?.tag === 'bakery');
+  check('a tree in front: the tree', pick(0)?.what === 'plant');
+  // A puff's edge over the building: three samples smoke, one the building's ink, averaged (ink and depth between), the
+  // puff beside it. (The pixel read first is the nearest of the nine at one depth.)
+  const edgeAt = (ink: number, by: number) => {
+    const px = pixels(Math.hypot(9, 9), by);
+    px[3] = ink;
+    return picker.hit(px, camera, new THREE.Vector2(0, 0), new THREE.Vector2(1e-4, 1e-4), [{ mesh: building, matrix: building.matrixWorld, tag: 'bakery' }]);
+  };
+  const edge = edgeAt(SMOKE_INK * 0.75 + 0.25, SMOKE_INK);
+  check('a puff\'s edge over the building: the building', edge?.tag === 'bakery', JSON.stringify(edge));
+  // A tree's crown over the building, no smoke by it: three samples leaves, one the building's ink. The tree.
+  const crown = edgeAt(0.25, 0);
+  check('a crown\'s edge over the building, no smoke: the tree', crown?.what === 'plant', JSON.stringify(crown));
+  // Smoke with nothing behind it (looking level, over the building): the sky.
+  const level = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 100);
+  level.position.set(10, 14, 0); level.lookAt(0, 14, 0); level.updateMatrixWorld();
+  const sky = pick(SMOKE_INK, level);
+  check('smoke against the sky: nothing', sky === null, JSON.stringify(sky));
+  // Smoke over a river's bank: water at y 0 over x < -2 (its bed at y -1), and a low bank beyond (y -0.5, under the water's
+  // level, but dry). Looking down at a slant, the line of sight crosses the water's height over the bank and meets the bed
+  // under the water.
+  const bed = (x: number) => (x < -2 ? -1 : x < -1 ? -0.5 : 0);
+  const river = new Picker({
+    landHit: (ray) => {
+      const p = new THREE.Vector3();
+      for (let t = 0; t < 200; t += 0.01) if (ray.at(t, p).y <= bed(p.x)) return p.clone();
+      return null;
+    },
+    waterAt: (x) => (x < -2 ? 0 : null),
+    tagged: () => [],
+  });
+  const steep = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 100);
+  steep.position.set(5.5, 5, 0); steep.lookAt(-2.2, -0.5, 0); steep.updateMatrixWorld();
+  const bank = river.hit(pixels(5, SMOKE_INK), steep, new THREE.Vector2(0, 0), new THREE.Vector2(1e-4, 1e-4), []);
+  check('smoke over a bank, the water\'s surface there over dry land: not water', bank?.what === 'land', JSON.stringify(bank));
+  const mid = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 100);
+  mid.position.set(-5, 10, 0); mid.lookAt(-5.8, -1, 0); mid.updateMatrixWorld();
+  const pond = river.hit(pixels(5, SMOKE_INK), mid, new THREE.Vector2(0, 0), new THREE.Vector2(1e-4, 1e-4), []);
+  check('smoke over the river: its water', pond?.what === 'water' && Math.abs(pond.point.y) < 1e-6, JSON.stringify(pond));
 }
 
 if (failed) process.exit(1);

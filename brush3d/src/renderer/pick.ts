@@ -27,6 +27,12 @@ export interface PickWorld {
   posed?(geometry: THREE.BufferGeometry, pose?: Float32Array): THREE.BufferAttribute | null;
 }
 
+/**
+ * What smoke (#205) writes as its ink in the G-buffer: under the lines' threshold (post.ts: none drawn on it, as on any
+ * painted surface), but not 0, so a pick tells a puff from what's painted. A pick sees past smoke: it's no thing.
+ */
+export const SMOKE_INK = 1 / 256;
+
 const COPY_VERT = /* glsl */ `
 void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }
 `;
@@ -114,14 +120,18 @@ export class Picker {
     // The line of sight from the camera's near plane; the camera is orthographic, so the depth is a distance along it.
     const ray = new THREE.Ray(at.unproject(camera), camera.getWorldDirection(new THREE.Vector3()));
     const along = depth - camera.near, point = ray.at(along, new THREE.Vector3()), tol = slack(depth);
+    const things = placed ?? this.snapshot();
+    // Smoke, over most of the pixel (its samples averaged: with what's painted, less; with what's inked, far more): what's
+    // behind it along the line of sight (or, against the sky, nothing).
+    const ink = pixels[nearest * 4 + 3], smoke = (k: number) => k > SMOKE_INK * 0.5 && k < SMOKE_INK * 1.5;
+    if (smoke(ink)) return this.past(ray, along - tol, things, pose);
     // A tagged thing the line of sight meets where the depth says it does (the nearest such meeting): its box narrows
     // them down, its triangles decide, so the empty air in a box (round a turbine's mast, under its blades) isn't it.
     // A thing's leaves (a planted roof) are dabs drawn bigger than their cards: their box is enough.
     let best: THREE.Mesh | null = null, bestTag: unknown = null, off = Infinity;
     const local = new THREE.Vector3(), inv = new THREE.Matrix4(), box = new THREE.Box3(), pad = new THREE.Vector3(), hits: THREE.Intersection[] = [];
-    const now = new THREE.Matrix4();
     this.raycaster.ray.copy(ray);
-    for (const { mesh, matrix, tag } of placed ?? this.snapshot()) {
+    for (const { mesh, matrix, tag } of things) {
       const g = mesh.geometry;
       if (!g.boundingBox) g.computeBoundingBox();
       // The point in the mesh's own frame, in its box (a little bigger, for the depth's rounding, along each of its axes
@@ -135,35 +145,77 @@ export class Picker {
       if (!box.containsPoint(local)) continue;
       let d = 0;
       if (!DABS.has(mesh.userData.kind as string)) {
-        // Its triangles, as it was placed when the picture was drawn, its parts turned as they're drawn (#205).
-        const posed = this.world.posed?.(g, pose);
-        hits.length = 0;
-        if (posed) {
-          const turned = new THREE.BufferGeometry();
-          turned.setAttribute('position', posed);
-          turned.setIndex(g.index);
-          const m = new THREE.Mesh(turned, mesh.material);
-          m.matrixWorld.copy(matrix);
-          m.raycast(this.raycaster, hits);
-        } else {
-          now.copy(mesh.matrixWorld);
-          mesh.matrixWorld.copy(matrix);
-          mesh.raycast(this.raycaster, hits);
-          mesh.matrixWorld.copy(now);
-        }
         d = Infinity;
-        for (const h of hits) d = Math.min(d, Math.abs(h.distance - along));
+        for (const h of this.meet(mesh, matrix, pose, hits)) d = Math.min(d, Math.abs(h.distance - along));
         if (d > tol) continue;
       }
       if (d < off) { best = mesh; bestTag = tag; off = d; }
     }
     if (best) return { tag: bestTag, what: 'thing', point };
+    // A pixel only partly smoke, its samples averaged with what's inked or painted behind or in front (its ink between
+    // theirs), and its depth with theirs, so it may meet nothing at that depth: what the line of sight meets first. Smoke
+    // only (a pixel by it is smoke): a tree's crown against a building averages to an ink between too, and is the tree.
+    // (Known limit: a crown's edge over a building with a puff in the next pixel picks the building, a pixel's worth; the
+    // samples can't tell it from a puff's edge, which is common, over its own chimney's building.)
+    let byPuff = false;
+    for (let i = 0; i < 9; i++) if (smoke(pixels[i * 4 + 3])) byPuff = true;
+    if (byPuff && ink > SMOKE_INK * 0.1 && ink < 0.99) {
+      const seen = this.past(ray, 0, things, pose);
+      if (seen) return seen;
+    }
     // The land, where the line of sight meets it (exact, not the depth's rounding), if that's what shows.
     const land = this.world.landHit(ray);
     if (land && ray.origin.distanceTo(land) <= along + tol) return { tag: null, what: 'land', point: land };
     const water = this.world.waterAt(point.x, point.z);
     if (water !== null && Math.abs(point.y - water) < tol) return { tag: null, what: 'water', point };
     return { tag: null, what: 'plant', point };
+  }
+
+  /** Where the line of sight meets a mesh's triangles, as it was placed and its parts turned when the picture was drawn. */
+  private meet(mesh: THREE.Mesh, matrix: THREE.Matrix4, pose: Float32Array | undefined, hits: THREE.Intersection[]) {
+    // Its triangles, its parts turned as they're drawn (#205).
+    const posed = this.world.posed?.(mesh.geometry, pose);
+    hits.length = 0;
+    if (posed) {
+      const turned = new THREE.BufferGeometry();
+      turned.setAttribute('position', posed);
+      turned.setIndex(mesh.geometry.index);
+      const m = new THREE.Mesh(turned, mesh.material);
+      m.matrixWorld.copy(matrix);
+      m.raycast(this.raycaster, hits);
+    } else {
+      const now = mesh.matrixWorld.clone();
+      mesh.matrixWorld.copy(matrix);
+      mesh.raycast(this.raycaster, hits);
+      mesh.matrixWorld.copy(now);
+    }
+    return hits;
+  }
+
+  /**
+   * What the line of sight meets first past `from` (m along it), whatever the depth drawn: a thing's triangles, else the
+   * land or the water over it; null if nothing (the sky). Not a plant (they're dabs, bigger than their cards): behind
+   * smoke, the land it stands on.
+   */
+  private past(ray: THREE.Ray, from: number, placed: Placed[], pose?: Float32Array): PickHit | null {
+    let best: Placed | null = null, near = Infinity;
+    const hits: THREE.Intersection[] = [];
+    this.raycaster.ray.copy(ray);
+    for (const p of placed) {
+      if (DABS.has(p.mesh.userData.kind as string)) continue;
+      for (const h of this.meet(p.mesh, p.matrix, pose, hits)) if (h.distance >= from && h.distance < near) { near = h.distance; best = p; }
+    }
+    const land = this.world.landHit(ray);
+    const ground = land ? ray.origin.distanceTo(land) : Infinity;
+    if (best && near <= ground) return { tag: best.tag, what: 'thing', point: ray.at(near, new THREE.Vector3()) };
+    if (!land || ground < from) return null;
+    const water = this.world.waterAt(land.x, land.z);
+    if (water !== null && water > land.y && ray.direction.y < 0) {
+      // Where it meets the water's surface, if the water is there too (by a bank, that can be over dry land).
+      const at = ray.at((water - ray.origin.y) / ray.direction.y, new THREE.Vector3()), there = this.world.waterAt(at.x, at.z);
+      if (there !== null && Math.abs(there - water) < 0.05) return { tag: null, what: 'water', point: at };
+    }
+    return { tag: null, what: 'land', point: land };
   }
 }
 
@@ -174,4 +226,4 @@ export class Picker {
 export interface Placed { mesh: THREE.Mesh; matrix: THREE.Matrix4; tag: unknown }
 
 /** The kinds drawn as dabs on cards, bigger than the cards themselves. */
-const DABS = new Set(['foliage', 'debris']);
+const DABS = new Set(['foliage', 'debris', 'smoke']);

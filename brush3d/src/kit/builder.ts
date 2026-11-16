@@ -22,7 +22,7 @@ export class MeshBuilder {
   private readonly trees: TreeSpec[] = [];
   /**
    * Each vertex's part (ModelSet, Soil-n-Silo#205): 1 + its index among the set's parts, 0 for none. Inked and planted
-   * meshes only.
+   * meshes, and smoke (its puffs' chimney) only.
    */
   private parts: number[] | null;
   /** The part the vertices made from here on are of (see `parts`). */
@@ -34,11 +34,12 @@ export class MeshBuilder {
 
   constructor(kind: MaterialKind) {
     this.kind = kind;
-    this.extraName = kind === 'foliage' ? 'aCard' : kind === 'grass' ? 'aBlade' : null;
-    this.extraSize = kind === 'foliage' || kind === 'grass' ? 4 : 0;
+    const cards = kind === 'foliage' || kind === 'smoke';
+    this.extraName = cards ? 'aCard' : kind === 'grass' ? 'aBlade' : null;
+    this.extraSize = cards || kind === 'grass' ? 4 : 0;
     this.tree = kind === 'paint' || kind === 'foliage' ? [] : null;
     this.treeId = this.tree ? [] : null;
-    this.parts = kind === 'ink' || kind === 'paint' ? [] : null;
+    this.parts = kind === 'ink' || kind === 'paint' || kind === 'smoke' ? [] : null;
   }
 
   get vertexCount() { return this.pos.length / 3; }

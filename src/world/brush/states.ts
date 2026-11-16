@@ -10,20 +10,20 @@ import { turbineShare } from '../../game/wind.ts';
 
 // How a building's moving and changing parts are now, from the game's state (#205): how fast its rotor, wheel or stones
 // turn, whether its running look shows (a fire's glow, a lamp, flour running), how many of a battery's charge rings are
-// lit, and which of the five states the player reads it in without clicking (the developer's, 2026-11-14, on #205):
+// lit, and which of the states the player reads it in without clicking (the developer's, 2026-11-14, on #205):
 //
 //   working    its parts turning, its running look and lights on
 //   idle       nothing to do, or its store full: still, its running look off
 //   unpowered  no power (or too little): still, dark
 //   weather    stopped (or slowed) by the weather: a turbine in a gale, a wheel on ice
-//   building   under construction (the game has no construction yet: nothing is in this state)
 //
-// The renderer only draws: things.ts sends each building's look (brush3d's ModelParts: `spin`, `show`), and how each state
-// is decorated beyond its own parts is a look the developer picks (#205's look PR). Pure: no renderer here, so the tests
-// read it in Node.
+// A fifth, under construction, is left out until the game has a build time (the developer, 2026-11-16, on #205).
+// The renderer only draws: things.ts sends each building's look (brush3d's ModelParts: `spin`, `show`). A state shows in the
+// building's own parts only, nothing laid over it (the developer's pick on #236); a problem's marker stands on a pin
+// (game.css). Pure: no renderer here, so the tests read it in Node.
 
-/** The five states a building is read in at a glance. */
-export type ThingState = 'working' | 'idle' | 'unpowered' | 'weather' | 'building';
+/** The states a building is read in at a glance. */
+export type ThingState = 'working' | 'idle' | 'unpowered' | 'weather';
 
 /** How a building's parts are now: their pace (0 still, 1 the model's usual), its running look, its charge rings lit (0..4). */
 export interface PartsLook { pace: number; running: boolean; charge?: number }

@@ -110,6 +110,20 @@ only, never saved, the map itself unchanged): the river runs on out of sight, a 
 thicken and the ground rises into wooded hills, with an apron of distant woods beyond them. Everything past the edge is a
 shade duller, so where you can build still reads at a glance. Height on the map itself followed on 2026-10-17, below.
 
+## The farm at work: moving parts, states, lights and smoke (2026-11-16)
+
+On the brush3d path (`?renderer=brush3d`), the models' moving parts do what the game says (#205; #235 the groundwork, #236
+and #240 the looks). Turbines and the weather station's cups turn with the wind, the water wheel with the stream, a machine's drum or
+stone while it works (slower on part of its power), and a battery's rings light by its charge. A building's state reads in its own parts and nothing laid over it (the developer's
+pick on #236): working, it turns, glows and smokes; idle, it stands still with its running look off; with no power, it's
+still and dark; held by the weather, it stops or slows. "Under construction" is left out until the game has a build time.
+A problem's marker stands on a pin down to its building's roof, so it reads as that building's in a crowded yard. At night
+a working building's lamps, fires and round sea-glass windows glow warm and throw soft pools of light around them, and
+smoke rises in puffs from a working bakery, cannery, digester and farmhouse (the developer's picks on #240, "for now").
+The puffs cost nothing measurable, and the pools about 0.15 ms a frame at night (#210). Still open: the turbine's head
+doesn't turn into the wind (the model has no part for it), every truck's wheels share one shape, and the smoke keeps
+rising while the game is paused, as the rain does.
+
 ## The crops and trees in paint (2026-11-16)
 
 On the brush3d path (`?renderer=brush3d`), the game's fields and trees are painted (#213; #225 the groundwork, #227 the
