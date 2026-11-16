@@ -71,7 +71,7 @@ Each model is one `.glb` in `src/models/`, read by `src/kit/model.ts`:
 
 - **Plants** are not modelled. A model marks where they grow with empty points named `plant_<kind>_<nn>` (kinds: `herb`,
   `flower`, `shrub`, `vine`), sized by the point's scale; the scene grows a painted clump there, as it does bushes.
-- **Pieces for the game** are separate named objects, drawn where they rest for now (nothing moves in the renderer yet):
+- **Pieces for the game** are separate named objects, turned, lit or shown and hidden as the game directs (#205):
 
   | Name | What it's for |
   | --- | --- |
