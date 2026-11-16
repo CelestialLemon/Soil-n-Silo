@@ -186,6 +186,8 @@ export class BrushRenderer {
   private silhouettes = new THREE.Group();
   private twins = new Map<THREE.Mesh, THREE.Mesh>();
   private fields = new Map<MaterialKind, THREE.WebGLRenderTarget>();
+  /** The sizes setFields was asked for: baked again when the GPU's context comes back, as a bake's texels go with it. */
+  private fieldSizes = new Map<'ground' | 'crop' | 'grass', number>();
   private underTarget: THREE.WebGLRenderTarget;
   private reflectTarget: THREE.WebGLRenderTarget;
   private look: Look | null = null;
@@ -272,6 +274,15 @@ export class BrushRenderer {
     this.canvas = canvas;
     this.view.screen.canvas = canvas;
     this.gl = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: true });
+    // After three's own handler (added first) has made the context afresh. Held weakly: a renderer dropped with the canvas
+    // kept (a new level) lets go of its listener on the next restore.
+    const self = new WeakRef(this);
+    const restored = () => {
+      const r = self.deref();
+      if (!r) { canvas.removeEventListener('webglcontextrestored', restored); return; }
+      for (const [kind, size] of [...r.fieldSizes]) r.setFields(kind, size);
+    };
+    canvas.addEventListener('webglcontextrestored', restored);
     this.gl.autoClear = false;
     this.screenRatio = options.pixelRatio ?? Math.min(window.devicePixelRatio || 1, 2);
     this.pixelRatio = this.screenRatio;
@@ -703,6 +714,7 @@ export class BrushRenderer {
    * Returns whether it baked.
    */
   setFields(kind: 'ground' | 'crop' | 'grass', size: number): boolean {
+    if (size > 0) this.fieldSizes.set(kind, size); else this.fieldSizes.delete(kind);
     const main = this.materials.get(kind)?.main;
     this.fields.get(kind)?.dispose();
     this.fields.delete(kind);
