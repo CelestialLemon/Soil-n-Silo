@@ -115,14 +115,15 @@ layout(location = 0) out vec4 outColor;
 void main() { outColor = vec4(0.0); }
 `;
 // A crop, drawn again (with its painting's vertex shader, so on the same pixels) where it's what shows: its depth is the
-// G-buffer's there.
+// G-buffer's there, to within the G-buffer's rounding (half-float: a part in 2048) and no more, so a crop just behind a
+// wall doesn't count as showing (and let a tool behind the wall through).
 const CROP_FRAG = /* glsl */ `
 uniform sampler2D uOnTopAux;
 varying float vViewDepth;
 layout(location = 0) out vec4 outColor;
 void main() {
   float shown = texelFetch(uOnTopAux, ivec2(gl_FragCoord.xy), 0).z;
-  if (shown <= 0.0 || abs(vViewDepth - shown) > 0.15 + shown * 0.004) discard;
+  if (shown <= 0.0 || abs(vViewDepth - shown) > 0.02 + shown * 0.0007) discard;
   outColor = vec4(1.0);
 }
 `;
