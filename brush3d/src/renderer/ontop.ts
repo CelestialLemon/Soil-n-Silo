@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
-// What the game's tools draw over the finished picture (Soil-n-Silo#206): the building being placed, see-through and tinted
-// for whether it fits (a preview), and lines: routes on the ground, the power networks' wires between pylon tops, a range's
+// What the game's tools draw over the finished picture (Soil-n-Silo#206): the building being placed, a blueprint of it in
+// the colour for whether it fits (a preview), and lines: routes on the ground, the power networks' wires between pylon tops, a range's
 // dashed ring, the frame round a footprint being built. They're the player's tools, not the world, so they're drawn after the
 // post pass: no fog, haze or grade over them, never in the G-buffer (so never picked, never casting a shadow or sheltering
 // anything), and hidden only where something of the world stands in front of them (the G-buffer's depth there).
@@ -32,7 +32,11 @@ export interface Line {
  * level lines across it show, a blueprint's, solid and in the colour (`lines`, 0..1).
  */
 export interface PreviewLook { fits: number; blocked: number; tint: number; opacity: number; shade: number; lines: number }
-export const PREVIEW_LOOK: PreviewLook = { fits: 0x90ff90, blocked: 0xff5040, tint: 0.45, opacity: 0.6, shade: 1, lines: 0 };
+/**
+ * The blueprint, the developer's pick (#206, 2026-11-16, over see-through glass and a nearly solid model): a faint body all in
+ * the colour, a little shaded, with solid level lines across it, so it never reads as a building already there.
+ */
+export const PREVIEW_LOOK: PreviewLook = { fits: 0x9dffc0, blocked: 0xff6a50, tint: 1, opacity: 0.28, shade: 0.4, lines: 1 };
 /** How far apart a preview's level lines are (m). */
 const LEVEL_LINES = 0.6;
 const WIDTH = { route: 0.5, dashed: 0.3, wire: 0.12 } as const, MIN_PX = { route: 3, dashed: 2.5, wire: 1.6 } as const;
@@ -160,7 +164,7 @@ export class OnTop {
     });
   }
 
-  /** How previews are drawn (PREVIEW_LOOK until the developer's pick), the ones shown too. */
+  /** How previews are drawn (PREVIEW_LOOK, the blueprint, by default), the ones shown too. */
   setLook(look: PreviewLook) {
     this.look = look;
     this.lookUniform.value.set(look.tint, look.opacity, look.shade, look.lines);
