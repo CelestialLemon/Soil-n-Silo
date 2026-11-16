@@ -35,7 +35,7 @@ import { partsLook, stateOf, type ThingState } from './states.ts';
 // saplings and the fields' crops are wild.ts's.
 //
 // The goods a truck carries ride in its bed, and goods handed to a building next door hop over the edge the two share
-// (goods.ts: their look is the developer's pick). A good in a bed is tagged with its truck's id, so a pick on it gives the
+// (goods.ts). A good in a bed is tagged with its truck's id, so a pick on it gives the
 // truck; one being handed over is tagged with none, so a pick on it gives the building on the tile it's over.
 
 const GREY = srgb(0x9a968e), FIELD = srgb(0x8a7a62);
