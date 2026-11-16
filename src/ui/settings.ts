@@ -1,15 +1,14 @@
 import { tryParseJson } from '../game/result.ts';
 import { readOverrides, type Overrides } from '../keybindings.ts';
 
-// The player's settings, kept in the browser beside the save: interface size, pixel size, reduce motion, show pace, the
-// experimental problems strip, the frame rate readout, the testing speeds, the keys, and brush3d's (graphics quality, how
-// much rain and snow falls, lightning flashes; #209; and how its tools mark things and colour the land, #206). Each deployment keeps its own (the key follows the save's).
+// The player's settings, kept in the browser beside the save: interface size, reduce motion, show pace, the experimental
+// problems strip, the frame rate readout, the testing speeds, the keys, and brush3d's (graphics quality, how much rain and
+// snow falls, lightning flashes, #209; how its tools mark things and colour the land, #206). Each deployment keeps its own
+// (the key follows the save's).
 
 export interface Settings {
   /** The interface's size, 0.9–1.3 (it scales the HUD and menus, not the world). */
   uiSize: number;
-  /** Screen pixels per art pixel. The pixel renderer's only; it goes with it (#211). */
-  pixelSize: number;
   /** brush3d's graphics quality (its QUALITY presets, src/world/brush/settings.ts). */
   quality: Quality;
   /** How much rain and snow brush3d draws falling: all of it, or about a third. */
@@ -34,13 +33,11 @@ export interface Settings {
   keys: Overrides;
 }
 
-/** The pixel size setting's choices: screen pixels per art pixel. */
-export const PIXEL_SIZES = [1, 2, 3, 4] as const;
 /** The frame rate setting's choices. */
 export const FRAME_STATS_MODES = ['off', 'minimal', 'full', 'report'] as const;
 export type FrameStatsMode = typeof FRAME_STATS_MODES[number];
 export const UI_SIZES = { min: 0.9, max: 1.3, step: 0.05 };
-/** The graphics quality setting's choices (brush3d's QUALITY presets), the fullest first. */
+/** The graphics quality setting's choices (brush3d's QUALITY presets), the fullest first: high the default, medium for integrated graphics (#210). */
 export const QUALITIES = ['high', 'medium', 'low'] as const;
 export type Quality = typeof QUALITIES[number];
 /** The rain and snow setting's choices. */
@@ -56,7 +53,7 @@ export type Highlight = typeof HIGHLIGHTS[number];
 export const OVERLAY_STYLES = ['wash', 'bold', 'borders'] as const;
 export type OverlayStyle = typeof OVERLAY_STYLES[number];
 
-const DEFAULTS: Settings = { uiSize: 1, pixelSize: 2, quality: 'high', falling: 'full', flashes: 'full', highlight: 'halo', overlayStyle: 'bold', reduceMotion: false, showPace: false, problemsStrip: false, frameStats: 'off', fastSpeeds: false, keys: {} };
+const DEFAULTS: Settings = { uiSize: 1, quality: 'high', falling: 'full', flashes: 'full', highlight: 'halo', overlayStyle: 'bold', reduceMotion: false, showPace: false, problemsStrip: false, frameStats: 'off', fastSpeeds: false, keys: {} };
 
 /** `v` if it's one of `choices`, else `d`. */
 const oneOf = <T extends string>(choices: readonly T[], v: unknown, d: T): T => ((choices as readonly unknown[]).includes(v) ? v as T : d);
@@ -67,7 +64,6 @@ export function readSettings(json: string | null): Settings {
   const o = (parsed.ok ? parsed.value ?? {} : {}) as Partial<Settings>;
   return {
     uiSize: typeof o.uiSize === 'number' && o.uiSize >= UI_SIZES.min - 1e-9 && o.uiSize <= UI_SIZES.max + 1e-9 ? o.uiSize : DEFAULTS.uiSize,
-    pixelSize: (PIXEL_SIZES as readonly number[]).includes(o.pixelSize as number) ? o.pixelSize as number : DEFAULTS.pixelSize,
     quality: oneOf(QUALITIES, o.quality, DEFAULTS.quality),
     falling: oneOf(FALLINGS, o.falling, DEFAULTS.falling),
     flashes: oneOf(FLASHES, o.flashes, DEFAULTS.flashes),
@@ -82,20 +78,13 @@ export function readSettings(json: string | null): Settings {
   };
 }
 
-/** Which renderer draws the game (until the swap, #211), and so which of its settings the panel shows. */
-export type Drawn = 'pixel' | 'brush3d';
-
 /** The settings, kept in local storage under `key`, telling listeners when one changes. */
 export class SettingsStore {
   private value: Settings;
   private readonly listeners: ((s: Settings) => void)[] = [];
   private readonly key: string;
-  /** Which renderer draws the game: the panel shows its settings (pixel size, or brush3d's), and keeps the other's. */
-  readonly drawn: Drawn;
-
-  constructor(key: string, drawn: Drawn) {
+  constructor(key: string) {
     this.key = key;
-    this.drawn = drawn;
     this.value = readSettings(localStorage.getItem(key));
   }
 

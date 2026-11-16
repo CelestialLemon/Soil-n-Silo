@@ -5,8 +5,7 @@ import { CAMPAIGN } from '../src/game/scenarios.ts';
 import { newGame, touchRelief } from '../src/game/state.ts';
 import { BrushWater } from '../src/world/brush/water.ts';
 import { SEND_GAP } from '../src/world/brush/grid.ts';
-import { Lie } from '../src/world/ground.ts';
-import { COUNTRY } from '../src/world/terrain.ts';
+import { COUNTRY, Lie } from '../src/world/ground.ts';
 
 // The water beside the river's falls (src/world/brush/water.ts, #202): the dry banks below a fall take the lower water's
 // level, under their ground, so the water's sheet doesn't stand out over them; and only while the ground round them hides it.

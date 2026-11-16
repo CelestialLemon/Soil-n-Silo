@@ -28,8 +28,7 @@ import { FAULT_WORDS, stationForecast, stationFault, stationsOf } from '../game/
 import { isStop, routeOf, routesAt } from '../game/sim/trucks.ts';
 import { describeLinks, describeStatus, describeTruck, truckProblems } from '../game/sim/describe.ts';
 import { buildingById, growsCrops, isMachine, routeById, truckById, type Building, type GameState, type Route, type Truck } from '../game/state.ts';
-import { netColour } from '../world/powerView.ts';
-import { NET_COLOURS } from '../world/shapes.ts';
+import { NET_COLOURS, netColour } from '../world/legend.ts';
 import { h, icon, rebuild, set, setVar } from './dom.ts';
 import { dayClock, dec, hex, itemName, num, pct, playTime, watts } from './format.ts';
 import type { GuidePage } from './guide.ts';

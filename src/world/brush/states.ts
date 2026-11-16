@@ -34,8 +34,8 @@ const UNPOWERED = new Set<Status>(['power', 'lowpower', 'nolink']);
 const WEATHER = new Set<Status>(['weather', 'cold', 'frost']);
 
 /**
- * Is it doing its thing (to show its running look)? The pixel world's rule (view.ts's isRunning), less a building with no
- * power: a machine keeps its batch through a power cut, but it isn't working.
+ * Is it doing its thing (to show its running look)? Running, or working through weather that only slows or weakens it;
+ * not with no power: a machine keeps its batch through a power cut, but it isn't working.
  */
 export function isRunning(b: Building) {
   // Weather that only slows or weakens it leaves it running; stopped (a machine keeps its progress for later), it rests.
@@ -52,7 +52,7 @@ export function stateOf(b: Building): ThingState {
   return isRunning(b) ? 'working' : 'idle';
 }
 
-/** A battery's charge rings lit, 0 to 4, one per quarter (any charge at all lights the first), as the pixel world shows them. */
+/** A battery's charge rings lit, 0 to 4, one per quarter (any charge at all lights the first). */
 export function chargeRings(charge: number) {
   const k = charge / POWER.battery.capacity;
   return k < 0.02 ? 0 : Math.min(4, Math.ceil(k * 4 - 0.02));

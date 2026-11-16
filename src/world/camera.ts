@@ -1,16 +1,14 @@
 import * as THREE from 'three';
-import type { PixelRenderer } from 'pixel3d-renderer';
-import type { SettingsStore } from '../ui/settings.ts';
 
 // The camera: where the view looks, how far in it is, which of the four views it turns to, and the maths between the page and
 // the ground. It is orthographic at a 30° pitch, turns between four views 90° apart, zooms towards the pointer and pans. It
 // knows the map only by its size (to keep the target on it); the game state is not its business.
 //
-// It works in the game's world units: a tile is 1 across (x along the map's columns, z its rows) and heights are as the
-// pixel world draws them (ground.ts's LEVEL_HEIGHT a level). Each renderer's `Lens` puts that on its own camera: the pixel
-// renderer draws in those units, brush3d in metres at 4 m a tile (brush/lens.ts).
+// It works in the game's world units: a tile is 1 across (x along the map's columns, z its rows), and a level stands
+// ground.ts's LEVEL_HEIGHT. A `Lens` puts that on the renderer's own camera: brush3d draws in metres at 4 m a tile
+// (brush/lens.ts).
 
-/** The zoom range, as screen pixels per tile of ground (per metre in the pixel world), and where a commission starts. */
+/** The zoom range, as screen pixels per tile of ground, and where a commission starts. */
 const MIN_ZOOM = 16, MAX_ZOOM = 96, START_ZOOM = 32;
 /** How much one wheel notch or key press zooms. */
 const ZOOM_STEP = 1.25;
@@ -34,47 +32,6 @@ export interface Lens {
   project(p: THREE.Vector3): THREE.Vector3;
   /** The line of sight through normalised device coordinates, in world units, into `ray`. */
   aim(ndc: THREE.Vector2, ray: THREE.Ray): THREE.Ray;
-}
-
-/** The pixel renderer's lens: art pixels `pixelSize` screen pixels square (a setting), the canvas centred on the window. */
-export class PixelLens implements Lens {
-  private readonly renderer: PixelRenderer;
-  private readonly canvas: HTMLCanvasElement;
-  /** Screen pixels per art pixel: the pixel size setting. */
-  private pixelSize: number;
-  private readonly raycaster = new THREE.Raycaster();
-  /** Called when the drawing is refitted (the window or the pixel size changed). */
-  onFit = () => {};
-
-  constructor(renderer: PixelRenderer, canvas: HTMLCanvasElement, settings: SettingsStore) {
-    this.renderer = renderer; this.canvas = canvas;
-    this.pixelSize = settings.get().pixelSize;
-    settings.listen((st) => { if (st.pixelSize !== this.pixelSize) { this.pixelSize = st.pixelSize; this.fit(); } });
-  }
-
-  /** Sizes the art (render target) for the window at the pixel size, and lays the canvas out centred on the window. */
-  fit() {
-    const { renderer, canvas, pixelSize } = this;
-    const w = Math.max(1, Math.ceil(innerWidth / pixelSize)), h = Math.max(1, Math.ceil(innerHeight / pixelSize));
-    if (renderer.width !== w || renderer.height !== h) renderer.resize(w, h);
-    const cw = w * pixelSize, ch = h * pixelSize;
-    canvas.style.width = `${cw}px`; canvas.style.height = `${ch}px`;
-    canvas.style.left = `${Math.floor((innerWidth - cw) / 2)}px`; canvas.style.top = `${Math.floor((innerHeight - ch) / 2)}px`;
-    this.onFit();
-  }
-
-  place(target: THREE.Vector3, yaw: number, pitch: number, zoom: number) {
-    // The view is as tall as the art at the zoom's screen pixels per metre.
-    this.renderer.placeCamera(target, yaw, pitch, this.renderer.height * this.pixelSize / zoom);
-  }
-
-  project(p: THREE.Vector3) { return p.project(this.renderer.camera); }
-
-  aim(ndc: THREE.Vector2, ray: THREE.Ray) {
-    this.renderer.camera.updateMatrixWorld();
-    this.raycaster.setFromCamera(ndc, this.renderer.camera);
-    return ray.copy(this.raycaster.ray);
-  }
 }
 
 export class Camera {
@@ -129,9 +86,9 @@ export class Camera {
   }
   pan(dx: number, dy: number) {
     this.cameraAxes();
-    const metres = 1 / this.zoom;
+    const tiles = 1 / this.zoom;
     const before = this.target.clone();
-    this.target.addScaledVector(this.right, -dx * metres).addScaledVector(this.forward, dy * metres / Math.sin(ELEVATION));
+    this.target.addScaledVector(this.right, -dx * tiles).addScaledVector(this.forward, dy * tiles / Math.sin(ELEVATION));
     this.clampTarget();
     // A pan during a zoom carries the zoom's anchor along, so the two don't fight.
     if (this.zoomAnchor) this.zoomAnchor.ground.add(this.target.clone().sub(before));
@@ -141,7 +98,7 @@ export class Camera {
     this.target.x = THREE.MathUtils.clamp(this.target.x, 0, this.map.width);
     this.target.z = THREE.MathUtils.clamp(this.target.z, 0, this.map.height);
   }
-  /** Points the camera at a ground point, optionally at a zoom (screen pixels per metre, reached at once). */
+  /** Points the camera at a ground point, optionally at a zoom (screen pixels per tile, reached at once). */
   lookAt(x: number, z: number, zoom?: number) {
     this.target.set(x, 0, z); this.clampTarget();
     if (zoom) { this.setZoom(zoom); this.zoom = this.zoomGoal; }
@@ -149,7 +106,7 @@ export class Camera {
   }
   /** Zooms in (+1) or out (−1) by one step. */
   zoomStep(dir: number, at?: { x: number; y: number }) { this.setZoom(this.zoomGoal * ZOOM_STEP ** dir, at); }
-  /** Zooms to `goal` screen pixels per metre, keeping the ground under the page point `at` (the pointer) where it is; the centre without one. */
+  /** Zooms to `goal` screen pixels per tile, keeping the ground under the page point `at` (the pointer) where it is; the centre without one. */
   setZoom(goal: number, at?: { x: number; y: number }) {
     goal = THREE.MathUtils.clamp(goal, MIN_ZOOM, MAX_ZOOM);
     if (goal === this.zoomGoal) return;
@@ -157,9 +114,9 @@ export class Camera {
     // The ground under the point, from where the camera is now (target, turn and zoom), not from the last picture drawn:
     // several wheel events can arrive before the next frame.
     if (at) {
-      const dx = at.x - innerWidth / 2, dy = at.y - innerHeight / 2, metres = 1 / this.zoom;
+      const dx = at.x - innerWidth / 2, dy = at.y - innerHeight / 2, tiles = 1 / this.zoom;
       this.cameraAxes();
-      const ground = this.target.clone().addScaledVector(this.right, dx * metres).addScaledVector(this.forward, -dy * metres / Math.sin(ELEVATION));
+      const ground = this.target.clone().addScaledVector(this.right, dx * tiles).addScaledVector(this.forward, -dy * tiles / Math.sin(ELEVATION));
       this.zoomAnchor = { ground, dx, dy };
     } else this.zoomAnchor = null;
   }
@@ -171,8 +128,8 @@ export class Camera {
     if (Math.abs(Math.log(this.zoomGoal / this.zoom)) < 0.004) this.zoom = this.zoomGoal;
     if (this.zoomAnchor) {
       this.cameraAxes();
-      const metres = 1 / this.zoom;
-      this.target.copy(this.zoomAnchor.ground).addScaledVector(this.right, -this.zoomAnchor.dx * metres).addScaledVector(this.forward, this.zoomAnchor.dy * metres / Math.sin(ELEVATION));
+      const tiles = 1 / this.zoom;
+      this.target.copy(this.zoomAnchor.ground).addScaledVector(this.right, -this.zoomAnchor.dx * tiles).addScaledVector(this.forward, this.zoomAnchor.dy * tiles / Math.sin(ELEVATION));
       this.clampTarget();
     }
     if (this.zoom === this.zoomGoal) this.zoomAnchor = null;
@@ -217,7 +174,7 @@ export class Camera {
   }
   /**
    * The map tile under a point of the page, on the ground (whatever stands there): the first place the line of sight meets
-   * the ground's height `ground` (metres at a point, never above `top`), so a cliff face picks the tile on top of it.
+   * the ground's height `ground` (world units at a point, never above `top`), so a cliff face picks the tile on top of it.
    */
   tileAt(x: number, y: number, ground: (x: number, z: number) => number = () => 0, top = 0): { x: number; y: number } | null {
     const p = this.pointOnGround(x, y, ground, top);

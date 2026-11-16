@@ -8,7 +8,7 @@ import type { GameState } from '../../game/state.ts';
 // The game's land in brush3d's terms (#202): what `r.setLand` takes, from the map and the country the game generates round
 // it. Plain data, so the tests check it in Node; land.ts sends it. (The water is #207's water.ts, WATER_DOWN under its tiles' level.)
 //
-// The country is drawn as the pixel world drew it (terrain.ts): the river and the track running off under the woods near
+// The country round the map: the river and the track running off under the woods near
 // the country's edge, woods' floor far out (the woods' trees are wild.ts's), and past the country an apron of distant
 // woods rising and falling a little, so even a far view never sees past the world.
 
@@ -21,7 +21,7 @@ const RIM = 10, NEAR = 12;
 const APRON = 120, APRON_CELL = 4, APRON_ROLL = 6.4;
 /**
  * How far (m) the river's and the ponds' surface stands under their tiles' level: the banks stand a little over the
- * water, as the pixel world's do, and the water's edge is where the bed (brush3d cuts it under the water's tiles, 1.2 m
+ * water, and the water's edge is where the bed (brush3d cuts it under the water's tiles, 1.2 m
  * at its deepest, brush3d/docs/LAND.md) rises through it, a little in from the tile's side rather than on it. In metres,
  * not levels, so it stays inside the bed whatever a level's height (#220). The water map (water.ts) lays them at this.
  */
@@ -46,7 +46,7 @@ export function tilesOf(s: GameState, land: Land, { level }: Scale, was?: Tiles)
   const m = s.map, M = land.margin, W = land.width, n = W * land.height;
   const corners = was ? was.corners.slice() : new Float32Array(n * 4), worked = was ? was.worked.slice() : new Uint8Array(n);
   const cover = was ? was.cover.slice() : new Uint8Array(n), ground = was ? was.ground.slice() : new Uint8Array(n);
-  // The tiles under a building that needs level ground: drawn level, as the pixel world draws them (ground.ts's pads).
+  // The tiles under a building that needs level ground: drawn level (as ground.ts's Lie fits them, its pads).
   const pads = new Uint8Array(m.width * m.height);
   for (const b of s.buildings) {
     if (groundOf(b.type) !== 'flat') continue;
@@ -87,7 +87,7 @@ export function landMapOf(s: GameState, land: Land, scale: Scale): LandMap {
 
 /**
  * The apron past the country: a coarse grid of heights from the level the country settles to at its rim, rising and falling
- * a little away from it (terrain.ts's apron, at brush3d's scale).
+ * a little away from it (the pixel world's apron, at brush3d's scale).
  */
 function beyondOf(s: GameState, land: Land, { tile, level }: Scale): Beyond {
   const M = land.margin, w = s.map.width, h = s.map.height, from = -M - APRON;

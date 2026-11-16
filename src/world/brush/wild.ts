@@ -8,13 +8,12 @@ import { TERRAIN, type Land } from '../../game/map.ts';
 import { baseLevel } from '../../game/relief.ts';
 import { inMap, layoutOf, reliefOf, terrainAt, type FieldBuilding, type GameState } from '../../game/state.ts';
 import { landRelief, standY, type Lie } from '../ground.ts';
-import { hash } from '../kit.ts';
-import { treeAt, wetAt } from '../trees.ts';
+import { hash, treeAt, wetAt } from '../trees.ts';
 import { RISE, TILE } from './scale.ts';
 import { thingHeight } from './things.ts';
 
 // What grows, in paint (#213): the fields' crops at their stage, the trees by species in the level's season (the game picks
-// the species by where a tree stands, trees.ts, as the pixel world does), saplings growing, and the rocks. The renderer
+// the species by where a tree stands, trees.ts), saplings growing, and the rocks. The renderer
 // paints them from the game's words (brush3d/src/kit/plants.ts); this says which and where.
 //
 // - The map's trees are painted in blocks of BLOCK × BLOCK tiles, made once. What changes in play changes without making
@@ -23,7 +22,7 @@ import { thingHeight } from './things.ts';
 //   from a sapling is painted on its own (a few ms) beside its block. A block's rocks are a mesh of their own, made again
 //   (cheaply) when they change. A field's crop is made anew when its stage or crop changes.
 // - The country's trees within NEAR tiles of the map are painted as the map's; further off, the woods are crowns alone, a
-//   crown for each 2 × 2 tiles of wood, as the pixel world draws them (terrain.ts).
+//   crown for each 2 × 2 tiles of wood.
 
 /** The side of a block of the map's trees (tiles). */
 const BLOCK = 8;
@@ -31,7 +30,7 @@ const BLOCK = 8;
 const NEAR = 8;
 /** How finely the renderer cuts the country's meshes, so only what's in view is drawn (m). */
 const CUT = 64;
-/** A grown tree's size, from a tile's hash: some variety, as the pixel world's 0.62 to 0.87 of its model. */
+/** A grown tree's size, from a tile's hash: some variety (the old pixel renderer's ran 0.62 to 0.87 of its model). */
 const treeSize = (n: number) => 0.8 + 0.3 * n;
 /**
  * How broad a tree's strokes are against the demo's (brush3d's kit): the game's camera stands further off (4 to 24 px a
@@ -45,7 +44,7 @@ const FILL = 0.55;
 const JITTER = 1.2;
 
 /**
- * A field's stage as drawn: by its growth, and ripe while a harvest waits for a truck (as the pixel world's, view.ts).
+ * A field's stage as drawn: by its growth, and ripe while a harvest waits for a truck.
  */
 export function stageOf(f: FieldBuilding): CropStage {
   const crop = CROPS[f.crop];
@@ -111,7 +110,7 @@ export class Wild {
     for (let y = -M; y < h + M; y++) for (let x = -M; x < w + M; x++) {
       if (x >= 0 && y >= 0 && x < w && y < h) continue;
       const t = kind(x, y), near = beyond(x + 0.5, y + 0.5) <= NEAR;
-      // Rocks only near the map, as the pixel world's: further off they'd be specks.
+      // Rocks only near the map: further off they'd be specks.
       if (t === TERRAIN.rock && near) this.stone(stones, x, y);
       if (t !== TERRAIN.tree) continue;
       if (near) { this.tree(grove, species(x, y), x, y); continue; }

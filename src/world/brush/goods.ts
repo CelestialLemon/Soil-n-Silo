@@ -34,7 +34,7 @@ class Shapes {
   }
 }
 
-/** A good: the pixel game's shape for it (shapes.ts, itemShape) at 3 times its size, so it fills a slot and shows over the bed's boards. */
+/** A good: the pixel game's shape for it (one shape and one strong colour, #222) at 3 times its size, so it fills a slot and shows over the bed's boards. */
 function token(id: ItemId, k: Shapes) {
   const hex = ITEMS[id].colour, s = 3;
   switch (id) {

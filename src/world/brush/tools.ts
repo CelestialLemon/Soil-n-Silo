@@ -10,12 +10,11 @@ import { cutOff } from '../../game/sim/trucks.ts';
 import { buildingAt, buildingById, growsCrops, inMap, layoutOf, reliefOf, sizeOf, type Building, type Dir, type GameState, type Route } from '../../game/state.ts';
 import type { Highlight, OverlayStyle } from '../../ui/settings.ts';
 import { isBank, standY, type Lie } from '../ground.ts';
-import { inPower, netColour, type NetLabel, type PowerFocus } from '../powerView.ts';
-import { routeColour, type StopLabel } from '../routeView.ts';
-import { CURSOR_GRID, type CursorPatch } from '../tileCursor.ts';
 import type { MarkerAt, PagePoint, Picker, Preview, ShowFrame, SyncFrame, Tile, Under } from '../scene.ts';
-import { GHOST_WIRE, NET_COLOURS, ROUTE_COLOURS } from '../shapes.ts';
-import { BEES, CUT_OFF, FERT, GROUND_COLOURS, hasMarker, heightTint, LINK, ROADS, WATER, type Overlay } from '../view.ts';
+import {
+  BEES, CURSOR_GRID, CUT_OFF, FERT, GHOST_WIRE, GROUND_COLOURS, hasMarker, heightTint, inPower, LINK, NET_COLOURS, netColour, ROADS, ROUTE_COLOURS, routeColour, WATER,
+  type CursorPatch, type NetLabel, type Overlay, type PowerFocus, type StopLabel,
+} from '../legend.ts';
 import { YAW } from './catalog.ts';
 import { LEVEL, RISE, TILE } from './scale.ts';
 import { thingHeight, type Things } from './things.ts';
@@ -23,12 +22,12 @@ import { thingHeight, type Things } from './things.ts';
 // The game's tools in the painted world (#206): picking what's under the pointer, the marks on buildings and trucks
 // (highlighted, tinted for what's in focus), the build preview and its frames, the overlays, the grid and contours, the
 // routes and power lines, and where the HUD puts its labels and markers. The calls are brush3d's (docs/API.md, "Picking"
-// and "The game's tools on the picture"); what each shows is the game's, as the pixel world shows it (view.ts,
-// routeView.ts, powerView.ts), so the two agree until the swap (#211). How each looks is the developer's pick (#206, PR
-// #233, 2026-11-16): the build preview a blueprint (brush3d's PREVIEW_LOOK) with brackets at its footprint's corners, and
-// the highlight and the overlays' look the player's to choose in the settings (HIGHLIGHT_LOOKS, OVERLAY_LOOKS).
+// and "The game's tools on the picture"); what each shows is the game's, and its colours are the HUD's too (legend.ts).
+// How each looks is the developer's pick (#206, PR #233, 2026-11-16): the build preview a blueprint (brush3d's
+// PREVIEW_LOOK) with brackets at its footprint's corners, and the highlight and the overlays' look the player's to choose
+// in the settings (HIGHLIGHT_LOOKS, OVERLAY_LOOKS).
 //
-// Units: the Scene's are the game's (a tile 1, heights as the pixel world's); brush3d's are metres (scale.ts).
+// Units: the Scene's are the game's (a tile 1, heights as ground.ts's Lie has them); brush3d's are metres (scale.ts).
 
 /** How near the line of sight through the pointer a truck must drive (m) to change what is under the pointer. */
 const TRUCK_REACH = 3.2;
@@ -45,7 +44,7 @@ const FRAME_ARM = 0.3, FRAME_WIDTH = 0.35, FRAME_INSET = 0.15, FRAME_LIFT = 0.05
 const PYLON_TOP = 0.4, LABEL_OVER = 0.3, MARKER_OVER = 0.1;
 /** The grey a building with no model yet previews as. */
 const GREY = srgb(0x9a968e);
-/** The tile cursor's marks (the tile pointed at, an earthwork's points) and those refused, as the pixel world's; a dot's radius (m). */
+/** The tile cursor's marks (the tile pointed at, an earthwork's points) and those refused; a dot's radius (m). */
 const CURSOR = 0xfff0c0, REFUSED = 0xe8705a, DOT = 0.8;
 /** How far over its ground the cursor lies (m); a tile's corners (u, v), north-west, north-east, south-east, south-west (CursorPatch's). */
 const CURSOR_LIFT = 0.08, CORNERS = [[0, 0], [1, 0], [1, 1], [0, 1]];
@@ -192,7 +191,7 @@ export class BrushTools {
     for (const m of want.keys()) this.marked.add(m);
   }
 
-  /** A colour per tile over the map (or none), as the pixel world tints its tiles (view.ts's overlay, powerView's reach). */
+  /** A colour per tile over the map (or none): the overlay's, or the power networks' reach. */
   private overlay(s: GameState, kind: Overlay) {
     const key = kind === 'none' ? 'none' : kind === 'power' ? `power ${this.powerKey}`
       : `${kind} ${reliefOf(s)} ${kind === 'fertility' ? s.map.fertility.map((f) => Math.floor(f / 17)).join('') : kind === 'ground' ? s.scenario.seed : ''} ${s.buildings.length} ${networks(s).layout} ${layoutOf(s)}${kind === 'roads' ? ` ${s.buildings.filter((b) => cutOff(s, b)).map((b) => b.id).join(',')}` : ''}`;
@@ -229,7 +228,7 @@ export class BrushTools {
     this.r.setOverlay({ width: w, height: h, color, strength: this.overlayStrength });
   }
 
-  /** The routes shown, each its way on the ground in its colour; with `numbers`, labels over its stops (routeView.ts's). */
+  /** The routes shown, each its way on the ground in its colour; with `numbers`, labels over its stops. */
   private routes(s: GameState, routes: Route[], numbers: boolean) {
     const key = `${layoutOf(s)} ${reliefOf(s)} ${numbers} ${routes.map((r) => `${r.id}:${routeColour(s, r)}:${r.stops.map((st) => st.building).join(',')}`).join(';')}`;
     if (key === this.routesKey) return;
@@ -267,7 +266,7 @@ export class BrushTools {
   }
 
   /**
-   * The power networks while the player works with power (powerView.ts's): each network's wires between its pylons' tops
+   * The power networks while the player works with power: each network's wires between its pylons' tops
    * and feeds down to what it powers, in its colour, with a label; its reach on the ground (the power overlay); a focused
    * pylon's reach and link range; and what pylons being placed would wire up.
    */

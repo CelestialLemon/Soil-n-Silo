@@ -3,8 +3,7 @@
    interface size (CSS zoom), so lengths here are at 1920 × 1080. */
 
 html, body { margin: 0; height: 100%; overflow: hidden; background: #2b3a33; }
-#view { position: fixed; display: block; image-rendering: pixelated; touch-action: none; }
-.tile-cursor { position: fixed; display: block; image-rendering: pixelated; pointer-events: none; }
+#view { position: fixed; display: block; touch-action: none; }
 button { font: inherit; }
 .loading { position: fixed; inset: 0; display: grid; place-items: center; color: var(--chalk); font: 600 18px/1 var(--font-ui); }
 
@@ -123,7 +122,7 @@ button { font: inherit; }
 /* ---- In the world: markers, labels, the placement card, the hover card ---- */
 .ui-world { overflow: hidden; }
 .ui-world > * { position: absolute; left: 0; top: 0; }
-.mk { --col: var(--status-ok); width: 26px; height: 26px; margin: -26px 0 0 -13px; border-radius: 99px; display: grid; place-items: center;
+.mk { --col: var(--status-ok); width: 26px; height: 26px; margin: -54px 0 0 -13px; border-radius: 99px; display: grid; place-items: center;
   background: color-mix(in srgb, var(--col) 18%, var(--chalk)); box-shadow: 0 0 0 2.5px var(--chalk), 0 4px 10px rgba(0, 0, 0, 0.35); }
 .mk i { display: block; width: 12px; height: 12px; border-radius: 99px; background: var(--col); }
 .mk.is-wait { --col: var(--status-wait); } .mk.is-wait i { height: 6px; margin-top: 6px; border-radius: 12px 12px 0 0; }
@@ -147,12 +146,11 @@ button { font: inherit; }
 .mk.is-weather { --col: var(--status-weather); }
 .mk.is-weather i, .cd-status.is-weather::before, .cd-pstrip__it.is-weather i { border-radius: 0; background: var(--col); -webkit-mask: var(--shape) center / contain no-repeat; mask: var(--shape) center / contain no-repeat; }
 .mk.is-weather i { width: 17px; height: 17px; }
-/* On brush3d (#205, the developer's pick): a problem's marker stands on a pin, its stem down to the building's roof, so
-   it reads as that building's over a crowded yard. */
-body[data-renderer="brush3d"] .mk { margin-top: -54px; }
-body[data-renderer="brush3d"] .mk::after { content: ''; position: absolute; left: 50%; top: 100%; width: 2.5px; height: 24px; margin: 2.5px 0 0 -1.25px;
+/* A problem's marker stands on a pin, its stem down to the building's roof, so it reads as that building's over a crowded
+   yard (#205, the developer's pick): it sits 54px up, over the pin's stem and dot. */
+.mk::after { content: ''; position: absolute; left: 50%; top: 100%; width: 2.5px; height: 24px; margin: 2.5px 0 0 -1.25px;
   background: linear-gradient(var(--chalk), color-mix(in srgb, var(--col) 70%, var(--chalk))); border-radius: 2px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3); }
-body[data-renderer="brush3d"] .mk::before { content: ''; position: absolute; left: 50%; top: calc(100% + 24px); width: 7px; height: 7px; margin: 0 0 0 -3.5px;
+.mk::before { content: ''; position: absolute; left: 50%; top: calc(100% + 24px); width: 7px; height: 7px; margin: 0 0 0 -3.5px;
   border-radius: 99px; background: var(--col); box-shadow: 0 0 0 1.5px var(--chalk); }
 .cd-status.is-weather { --col: var(--status-weather); } .cd-status.is-weather::before { width: 15px; height: 15px; }
 .cd-pstrip__it.is-weather { --col: var(--status-weather); }

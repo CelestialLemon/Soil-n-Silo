@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "A cozy farming and production game: soil, chickens and processing chains, drawn as pixel art.",
+  "description": "A cozy farming and production game: soil, chickens and processing chains, painted by its own renderer, brush3d.",
   "engines": {
     "node": ">=22.18"
   },
@@ -15,7 +15,6 @@
     "test": "node --test 'test/**/*.test.ts'",
     "lint": "eslint .",
     "sim": "node tools/sim.ts",
-    "bench": "node tools/bench.ts",
     "hitches": "node tools/hitches.ts",
     "framerate": "node tools/framerate.ts",
     "render:shot": "node brush3d/tools/shot.ts",
@@ -32,7 +31,6 @@
     "render:build:wind": "node brush3d/tools/wind-build.ts"
   },
   "dependencies": {
-    "pixel3d-renderer": "github:CelestialLemon/pixel3d-renderer#v0.5.2",
     "three": "^0.180.0"
   },
   "devDependencies": {
@@ -46,9 +44,6 @@
     "typescript": "^7.0.2",
     "typescript-eslint": "^8.71.2",
     "vite": "^8.3.3"
-  },
-  "allowScripts": {
-    "github:CelestialLemon/pixel3d-renderer#384c43197802950943440d4c1c2047b528b046a6": true
   },
   "overrides": {
     "typescript-eslint": {

@@ -6,9 +6,9 @@ import { STATS_WINDOW } from './frameStats.ts';
 /** At most this many frames are kept (30 s at 500 frames a second). */
 const CAPACITY = 16_384;
 
-/** One frame: the interval since the last frame, the JS time of the renderer's two calls, of picking, and of the rest of the game's frame (ms), and what three.js drew. */
-export interface FrameSample { interval: number; geometry: number; style: number; pick: number; rest: number; draws: number; triangles: number }
-const FIELDS = ['interval', 'geometry', 'style', 'pick', 'rest', 'draws', 'triangles'] as const satisfies readonly (keyof FrameSample)[];
+/** One frame: the interval since the last frame, the JS time of the renderer's frame, of picking, and of the rest of the game's frame (ms), and what three.js drew. */
+export interface FrameSample { interval: number; render: number; pick: number; rest: number; draws: number; triangles: number }
+const FIELDS = ['interval', 'render', 'pick', 'rest', 'draws', 'triangles'] as const satisfies readonly (keyof FrameSample)[];
 
 export interface Quantiles { p50: number; p95: number; p99: number }
 
@@ -24,7 +24,8 @@ export function quantiles(values: ArrayLike<number>): Quantiles | null {
 /** The machine and the setup the numbers came from. The player says the power state; it is never guessed from the frame rate. */
 export interface Environment {
   glRenderer: string | null; glVendor: string | null; userAgent: string; viewport: [number, number]; devicePixelRatio: number;
-  art: [number, number]; supersample: number; shadowMapSize: number; pixelSize: number; power: PowerState; timerQueries: boolean;
+  /** The pixels drawn (fewer than the screen's at Low, scaled up). */
+  drawn: [number, number]; shadowMapSize: number; power: PowerState; timerQueries: boolean;
 }
 export const POWER_STATES = ['unset', 'plugged in', 'battery', 'low-power mode'] as const;
 export type PowerState = typeof POWER_STATES[number];
@@ -64,16 +65,16 @@ export class Telemetry {
   /** The summary the overlay shows: the frame interval's percentiles and the median of each cost. */
   summary(now: number) {
     const r = this.recent(now);
-    return { frames: r.interval.length, span: r.interval.reduce((a, b) => a + b, 0), interval: quantiles(r.interval), geometry: quantiles(r.geometry), style: quantiles(r.style), rest: quantiles(r.rest), pick: quantiles(r.pick), draws: quantiles(r.draws), triangles: quantiles(r.triangles) };
+    return { frames: r.interval.length, span: r.interval.reduce((a, b) => a + b, 0), interval: quantiles(r.interval), render: quantiles(r.render), rest: quantiles(r.rest), pick: quantiles(r.pick), draws: quantiles(r.draws), triangles: quantiles(r.triangles) };
   }
 
   /** The report of the last 30 seconds, to copy as JSON. */
   report(now: number, env: Environment) {
     const s = this.summary(now);
     return {
-      version: 1, when: new Date().toISOString(), windowSeconds: Math.round(s.span / 100) / 10, frames: s.frames, env,
+      version: 2, when: new Date().toISOString(), windowSeconds: Math.round(s.span / 100) / 10, frames: s.frames, env,
       frameIntervalMs: rounded(s.interval),
-      jsMs: { renderGeometry: rounded(s.geometry), renderStyle: rounded(s.style), pick: rounded(s.pick), restOfFrame: rounded(s.rest) },
+      jsMs: { render: rounded(s.render), pick: rounded(s.pick), restOfFrame: rounded(s.rest) },
       draws: rounded(s.draws), triangles: rounded(s.triangles),
     };
   }

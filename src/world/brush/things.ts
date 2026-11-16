@@ -41,7 +41,7 @@ import { partsLook, stateOf, type ThingState } from './states.ts';
 const GREY = srgb(0x9a968e), FIELD = srgb(0x8a7a62);
 /** How far a stand-in block stands in from its footprint's edge (m). */
 const INSET = 0.3;
-/** How far ahead of and behind its middle a truck feels the ground for its lean (world units, as the pixel world's). */
+/** How far ahead of and behind its middle a truck feels the ground for its lean (world units). */
 const FEEL = 0.3;
 
 /** How tall a building's stand-in stands (m): a field's bed low, a tall building tall, the rest by size. */
@@ -76,7 +76,7 @@ const UP = new THREE.Vector3(0, 1, 0), ONE = new THREE.Vector3(1, 1, 1), at = ne
 /** How high a good handed next door hops at the top of its arc (m). */
 const HOP = 1.6;
 
-/** Where a good crosses between footprints `a0`..`a0 + na` and `b0`..`b0 + nb` along one axis, and which way (as view.ts). */
+/** Where a good crosses between footprints `a0`..`a0 + na` and `b0`..`b0 + nb` along one axis, and which way (1 from a towards b, −1 back, 0 where they overlap). */
 function edge(a0: number, na: number, b0: number, nb: number): { at: number; dir: number } {
   if (a0 + na <= b0) return { at: b0, dir: 1 };
   if (b0 + nb <= a0) return { at: a0, dir: -1 };
@@ -260,7 +260,7 @@ export class Things {
     for (const [id, was] of this.trucks) if (!seen.has(id)) { this.drop(was.meshes, false); this.trucks.delete(id); }
   }
 
-  /** Goods handed to a building next door, each hopping over the edge the two share (as the pixel world shows them). */
+  /** Goods handed to a building next door, each hopping over the edge the two share. */
   private syncHandoffs(s: GameState) {
     for (const hd of recentHandoffs(s)) {
       const a = buildingById(s, hd.from), b = buildingById(s, hd.to);

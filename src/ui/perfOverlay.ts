@@ -48,7 +48,7 @@ export class PerfOverlay {
   private readonly paste = h('textarea', { class: 'paste', readonly: true, hidden: true, rows: 6, 'aria-label': 'Report' });
   /** The game frame's clock readings (ms): when it began, the last lap, and the laps of the renderer's calls and picking. */
   private t0 = 0; private lapAt = 0;
-  private geometry = 0; private style = 0; private pick = 0;
+  private render = 0; private pick = 0;
   /** The last frame's interval; NaN after a reset, until two frames have been seen. */
   private lastInterval = Number.NaN;
   /** When the costs were last shown (they are worked out off the frame, so the sums do not land in a frame's time). */
@@ -67,13 +67,13 @@ export class PerfOverlay {
   get timing() { return this.mode === 'report'; }
 
   /** Starts timing a game frame. */
-  begin() { this.t0 = this.lapAt = performance.now(); this.geometry = this.style = this.pick = 0; this.source?.resetCounts(true); }
+  begin() { this.t0 = this.lapAt = performance.now(); this.render = this.pick = 0; this.source?.resetCounts(true); }
 
   /** Marks where the game's own work stops and `part`'s starts: the time since the last mark is not any part's. */
   mark() { this.lapAt = performance.now(); }
 
   /** Adds the time since the last mark or lap to `part`. */
-  lap(part: 'geometry' | 'style' | 'pick') {
+  lap(part: 'render' | 'pick') {
     const t = performance.now();
     this[part] += t - this.lapAt; this.lapAt = t;
   }
@@ -82,7 +82,7 @@ export class PerfOverlay {
   end() {
     if (!this.source || this.prev === null || Number.isNaN(this.lastInterval)) return;
     const total = performance.now() - this.t0, { draws, triangles } = this.source.counts();
-    const sample: FrameSample = { interval: this.lastInterval, geometry: this.geometry, style: this.style, pick: this.pick, rest: Math.max(0, total - this.geometry - this.style - this.pick), draws, triangles };
+    const sample: FrameSample = { interval: this.lastInterval, render: this.render, pick: this.pick, rest: Math.max(0, total - this.render - this.pick), draws, triangles };
     this.telemetry.add(this.t0, sample);
     if (this.t0 - this.shownAt >= 1000) { this.shownAt = this.t0; setTimeout(() => { if (this.timing) this.showCosts(); }, 0); }
   }
@@ -93,7 +93,7 @@ export class PerfOverlay {
     const i = s.interval;
     fill(this.costs,
       row('Frame p50 / p95 / p99', i ? `${i.p50.toFixed(1)} / ${i.p95.toFixed(1)} / ${i.p99.toFixed(1)} ms` : '–'),
-      row('renderGeometry', ms(s.geometry)), row('renderStyle', ms(s.style)), row('Picking', ms(s.pick)), row('Rest of frame', ms(s.rest)),
+      row('Rendering', ms(s.render)), row('Picking', ms(s.pick)), row('Rest of frame', ms(s.rest)),
       row('Draws / triangles', s.draws && s.triangles ? `${Math.round(s.draws.p50)} / ${Math.round(s.triangles.p50)}` : '–'));
   }
 

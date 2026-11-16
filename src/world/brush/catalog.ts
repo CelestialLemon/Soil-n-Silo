@@ -21,8 +21,7 @@ export const TRUCK_MODEL = 'truck';
 
 /**
  * The turn about the vertical (radians) that faces a model's front (+z) the way the game's `rot` says: 0 north (−z), 1 east
- * (+x), 2 south (+z), 3 west (−x), the sides `SIDES` in relief.ts counts. The pixel world turns its models the same
- * (view.ts). A water wheel's `rot` faces its river (wheelSite in rules.ts), and its model's front is the side its wheel hangs
+ * (+x), 2 south (+z), 3 west (−x), the sides `SIDES` in relief.ts counts. A water wheel's `rot` faces its river (wheelSite in rules.ts), and its model's front is the side its wheel hangs
  * off, so the wheel hangs over the water.
  */
 export const YAW: Record<Dir, number> = { 0: Math.PI, 1: Math.PI / 2, 2: 0, 3: -Math.PI / 2 };

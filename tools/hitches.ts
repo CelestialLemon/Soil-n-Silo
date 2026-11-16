@@ -1,6 +1,6 @@
-// Hitches in a world that changes (#204): a busy commission played on the brush3d path (`?renderer=brush3d`) in headless
-// Chromium on the GPU, at 4× speed, while the script changes the world every so often as a player would: buildings placed
-// and removed, fields sown, trees cleared, saplings planted, trucks bought. Every frame is timed: the whole frame, each of
+// Hitches in a world that changes (#204): a busy commission played in headless Chromium on the GPU, at 4× speed, while
+// the script changes the world every so often as a player would: buildings placed and removed, fields sown, trees
+// cleared, saplings planted, trucks bought. Every frame is timed: the whole frame, each of
 // the brush3d world's pieces' sync (sky, land, cover, water, things, wild), the renderer's passes (CPU, and GPU where the
 // browser has timer queries). Reports the frame times (median, p99, max, frames over 33 and 50 ms), the worst frame after
 // each kind of change, and the worst frames with what they spent their time on.
@@ -11,7 +11,7 @@
 // Run the game's dev server first (`npm run dev`, or as a service: AGENTS.md), then:
 //   npm run hitches -- [--layout c4] [--minutes 20] [--seconds 60] [--every 1.5] [--speed 3] [--out out/hitches]
 //   GAME_URL picks the server (default http://127.0.0.1:5173). --still makes no changes (the frame cost at rest).
-//   --chromium a Chromium binary (default: Playwright's own install), as tools/bench.ts.
+//   --chromium a Chromium binary (default: Playwright's own install).
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
@@ -165,7 +165,7 @@ try {
   page.on('pageerror', (e) => console.error(`page error: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') console.error(`[page] ${m.text()}`); });
   await page.addInitScript(`localStorage.setItem(${JSON.stringify(saveKey('/'))}, ${JSON.stringify(serialize(state))});`);
-  await page.goto(`${URL_}/?renderer=brush3d`);
+  await page.goto(`${URL_}/`);
   await page.waitForFunction('window.game?.renderer && window.game.pieces', undefined, { timeout: 180_000 });
   const seconds = Number(opt.seconds), warmup = Number(opt.warmup);
   await page.evaluate(`${INSTALL}(${JSON.stringify({ every: Number(opt.every), still: !!opt.still, seconds })})`);

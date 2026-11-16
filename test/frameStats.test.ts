@@ -51,13 +51,13 @@ test('the frame rate setting falls back to off', () => {
 
 test('a report holds only the last 30 seconds, with percentiles of each cost', () => {
   const t = new Telemetry();
-  const sample = (interval: number, geometry: number) => ({ interval, geometry, style: 1, pick: 0.5, rest: 2, draws: 100, triangles: 5000 });
+  const sample = (interval: number, render: number) => ({ interval, render, pick: 0.5, rest: 2, draws: 100, triangles: 5000 });
   t.add(0, sample(500, 9)); // too old by the time of the report
   for (let i = 1; i <= 100; i++) t.add(STATS_WINDOW - 100 + i, sample(i, 3));
-  const r = t.report(STATS_WINDOW + 100, { glRenderer: 'GPU', glVendor: 'V', userAgent: 'UA', viewport: [1, 2], devicePixelRatio: 2, art: [3, 4], supersample: 3, shadowMapSize: 2048, pixelSize: 2, power: 'battery', timerQueries: false });
+  const r = t.report(STATS_WINDOW + 100, { glRenderer: 'GPU', glVendor: 'V', userAgent: 'UA', viewport: [1, 2], devicePixelRatio: 2, drawn: [3, 4], shadowMapSize: 2048, power: 'battery', timerQueries: false });
   assert.equal(r.frames, 100);
   assert.deepEqual(r.frameIntervalMs, { p50: 51, p95: 96, p99: 100 });
-  assert.equal(r.jsMs.renderGeometry?.p99, 3);
+  assert.equal(r.jsMs.render?.p99, 3);
   assert.equal(r.env.power, 'battery');
   assert.equal(new Telemetry().report(0, r.env).frameIntervalMs, null);
 });
