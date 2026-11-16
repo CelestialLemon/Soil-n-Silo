@@ -84,8 +84,8 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
   - The farm valley re-laid as a solarpunk farm round them (a homestead, a market corner, a workshop row, turbines on
     the knoll, solar sheets over the wheat, a water wheel on the stream), and a gallery (`?scene=gallery`), a tour (◀ ▶)
     and `?focus=<name>` to look at each.
-  - Still to do, when wanted: the moving parts turning and the `running_*` looks switching in the demo; the models going
-    into the game (the game repo's work).
+  - In the game since 2026-11-16 (Soil-n-Silo#203): every building and truck the game places is its model, and the parts
+    move as the game says (#205).
 - **The demo on GitHub Pages** (#15, shipped 2026-10-30): https://celestiallemon.github.io/brush3d-renderer/main/, and a preview
   of every open pull request from this repo at `.../pr-<number>/`, removed when it closes. Since the move (#200) it is
   deployed beside the game instead, in each build's `brush3d/` folder (`https://celestiallemon.github.io/Soil-n-Silo/dev/brush3d/`,
