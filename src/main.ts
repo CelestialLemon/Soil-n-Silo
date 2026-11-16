@@ -30,9 +30,7 @@ import { SettingsStore } from './ui/settings.ts';
 import { truckName } from './ui/routing.ts';
 import { statusLabel } from './ui/widgets.ts';
 import type { Hover, MarkerSpot } from './ui/world.ts';
-import { CURSOR_GRID, type CursorPatch } from './world/tileCursor.ts';
-import { type Overlay } from './world/view.ts';
-import { pixelScene } from './world/pixelScene.ts';
+import { CURSOR_GRID, type CursorPatch, type Overlay } from './world/legend.ts';
 import type { Scene } from './world/scene.ts';
 import './ui/clearday/tokens.css';
 import './ui/clearday/clearday.css';
@@ -52,9 +50,8 @@ interface Placed { spot: Spot; fit: Result<Groundwork>; price: number; built: bo
 // build-only: the player places, configures and removes buildings and the simulation runs on its own. The camera
 // is orthographic at a 30° pitch, turns between four views 90° apart, zooms towards the pointer and pans with the mouse.
 //
-// It draws through a Scene (world/scene.ts), never a renderer: the pixel world (world/pixelScene.ts) by default, brush3d's
-// (world/brush/) with `?renderer=brush3d` until the swap (epic #212). Work on the brush3d world goes in world/brush/; this
-// file only changes when the loop itself does.
+// It draws through a Scene (world/scene.ts), never a renderer: brush3d's world (world/brush/). Work on the world goes in
+// world/brush/; this file only changes when the loop itself does.
 const AUTOSAVE_SECONDS = 30;
 const MAX_STEPS_PER_FRAME = 80;
 /** How long the pointer rests before the card about what is under it shows (ms). */
@@ -68,25 +65,18 @@ const canvas = must(document.querySelector<HTMLCanvasElement>('#view'), '#view c
 const loading = must(document.querySelector<HTMLElement>('#loading'), '#loading');
 const SAVE_KEY = saveKey(location.pathname), PROGRESS_KEY = `${SAVE_KEY}:progress`;
 const params = new URLSearchParams(location.search);
-/**
- * Whether the game is drawn by brush3d (`?renderer=brush3d`) rather than the pixel renderer, until the swap (#211). Players
- * don't see it before then (epic #212): it's only reachable through the URL, and kept across the game's own reloads (`page`).
- */
-const BRUSH = params.get('renderer') === 'brush3d';
-/** The settings (the panel shows the pixel renderer's or brush3d's, whichever draws). */
-const settings = new SettingsStore(`${SAVE_KEY}:settings`, BRUSH ? 'brush3d' : 'pixel');
+const settings = new SettingsStore(`${SAVE_KEY}:settings`);
 followKeys(settings);
 
 const loaded = deserialize(localStorage.getItem(SAVE_KEY));
 const saved = loaded.ok ? loaded.value : null;
 /**
- * The game's page again, with `query` (`?menu`). Drawn by brush3d, it keeps the page's other options too (the switch, and
- * a look PR's candidates, `?overcast=a` and the like, which the brush3d world reads only once it loads), all but the game's
- * own `play` and `menu`.
+ * The game's page again, with `query` (`?menu`). It keeps the page's other options too (`?profile` and the like, which the
+ * world reads only once it loads), all but the game's own `play` and `menu`.
  */
 const page = (query = '') => {
   const q = new URLSearchParams(query);
-  if (BRUSH) for (const [k, v] of params) if (k !== 'play' && k !== 'menu' && !q.has(k)) q.set(k, v);
+  for (const [k, v] of params) if (k !== 'play' && k !== 'menu' && !q.has(k)) q.set(k, v);
   return `${location.pathname}${q.size ? `?${q}` : ''}`;
 };
 /** A commission to start straight away (`?play=<id>`); an unknown id falls through to the menu or the saved game. */
@@ -126,9 +116,8 @@ async function play(initial: GameState) {
   /** What is under the pointer may have changed (the pointer, the camera, the tool or the world moved): ask again. */
   let repick = true;
   const start = { x: map.depot.x + 1.5, z: map.depot.y - 4 }, changed = () => { repick = true; };
-  // brush3d comes in its own chunk, so the pixel game never loads it.
-  const scene: Scene = BRUSH ? (await import('./world/brush/scene.ts')).brushScene(state, canvas, settings, start, changed)
-    : await pixelScene(state, canvas, settings, start, changed);
+  // The world comes in its own chunk, so the menu never loads it.
+  const scene: Scene = (await import('./world/brush/scene.ts')).brushScene(state, canvas, settings, start, changed);
   const { camera, heights, picker, preview } = scene;
   /** The ground's height at a point of the map, for picking a tile; nothing on the map stands above heights.top. */
   const groundAt = (x: number, z: number) => heights.at(x, z), TOP = heights.top;
@@ -711,7 +700,7 @@ async function play(initial: GameState) {
     get state() { return state; }, set state(s: GameState) { state = s; }, ...scene.debug, scene, hud, sizeOf,
     /** Runs the simulation on by `seconds` of play at once. */
     advance: (seconds: number) => advance(state, seconds),
-    /** Points the camera at a ground point, optionally at a zoom (screen pixels per metre). */
+    /** Points the camera at a ground point, optionally at a zoom (screen pixels per tile). */
     look: (x: number, z: number, z0?: number) => camera.lookAt(x, z, z0),
   } });
 }

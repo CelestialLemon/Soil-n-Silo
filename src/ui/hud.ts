@@ -2,7 +2,7 @@ import { choicesOf, messageOf, type Action, type Earthwork, type Setting } from 
 import type { BuildingId } from '../game/data.ts';
 import type { Medal } from '../game/sim/stats.ts';
 import { buildingById, type Dir, type GameState, type Route } from '../game/state.ts';
-import type { Overlay } from '../world/view.ts';
+import type { Overlay } from '../world/legend.ts';
 import { h, icon, setVar } from './dom.ts';
 import { Dock, dockTip } from './dock.ts';
 import { briefing } from './briefing.ts';

@@ -3,8 +3,7 @@ import { givesGoods } from '../game/sim/goods.ts';
 import { trucksOn } from '../game/sim/trucks.ts';
 import { stopProblems, truckProblems } from '../game/sim/describe.ts';
 import { buildingById, type GameState, type Route, type Truck } from '../game/state.ts';
-import { ROUTE_COLOURS } from '../world/shapes.ts';
-import { routeColour } from '../world/routeView.ts';
+import { ROUTE_COLOURS, routeColour } from '../world/legend.ts';
 import { hex } from './format.ts';
 
 // Routes and trucks in words, for the inspector and the routes card.

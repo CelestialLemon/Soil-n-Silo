@@ -3,17 +3,13 @@ import type { Relief } from '../game/relief.ts';
 import type { Dir, GameState, Route, Status } from '../game/state.ts';
 import type { ReportSource } from '../ui/perfOverlay.ts';
 import type { Camera } from './camera.ts';
-import type { NetLabel, PowerFocus } from './powerView.ts';
-import type { StopLabel } from './routeView.ts';
-import type { CursorPatch } from './tileCursor.ts';
-import type { Overlay } from './view.ts';
+import type { CursorPatch, NetLabel, Overlay, PowerFocus, StopLabel } from './legend.ts';
 
 // What the game draws through: the one seam between the game's loop (main.ts: the state, input, the HUD and the tools'
-// logic) and a renderer. Two scenes stand behind it until the swap (epic #212, #211): the pixel world (pixelScene.ts) and
-// brush3d's (brush/scene.ts, behind `?renderer=brush3d`). The loop asks a scene, never a renderer.
+// logic) and the renderer. The scene behind it is brush3d's (brush/scene.ts); the loop asks the scene, never the renderer.
 //
 // Everything here is in the game's world units (camera.ts): a tile is 1 across, x along the map's columns and z along its
-// rows, heights as the pixel world draws them. A scene converts to its renderer's own (brush3d: metres, 4 m a tile).
+// rows, heights as ground.ts's Lie has them (LEVEL_HEIGHT a level). The scene converts to brush3d's metres, 4 m a tile.
 
 /** A point of the page (CSS px, as pointer events give it), and a map tile. */
 export interface PagePoint { x: number; y: number }
@@ -117,7 +113,7 @@ export interface Scene {
    * Draws the frame. `pick` runs where the pointer's pick should see this frame's picture; `lap` times the parts for the
    * frame rate readout. `marks` and `refused` are the tile cursor's marks (the tile pointed at, an earthwork's points).
    */
-  render(time: number, f: { pick: () => void; lap: (part: 'geometry' | 'style' | 'pick') => void; marks: CursorPatch[]; refused: CursorPatch[] }): void;
+  render(time: number, f: { pick: () => void; lap: (part: 'render' | 'pick') => void; marks: CursorPatch[]; refused: CursorPatch[] }): void;
   /** The frame rate readout's report: the machine and the renderer's setup. */
   readonly report: ReportSource;
   /** For checks in the browser console and scripted playtests (`window.game`). */

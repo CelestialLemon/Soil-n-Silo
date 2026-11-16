@@ -21,7 +21,7 @@ import { LEVEL } from './scale.ts';
 //   a fall and the water just below it left open, so what is drawn open is what runs. Ponds freeze over with it (still
 //   water; no rule reads them);
 // - how muddy it runs (looks.ts, a look only): browner in heavy rain (a thunderstorm, a tropical storm) and a flood, clearing
-//   slowly over the day after; a flood's water as brown as the flood is high while it lasts (the pixel world's is brown too).
+//   slowly over the day after; a flood's water as brown as the flood is high while it lasts.
 // Nothing here changes a rule: it reads the game's state and draws it.
 //
 // #202 owns how the river and ponds sit in the land (their beds, the falls, the banks): it may change where the river's
@@ -49,7 +49,7 @@ export class BrushWater {
   private readonly land: Land;
   private readonly lie: Lie;
   private readonly grid: LandGrid;
-  /** The rules' river over the whole land, as the pixel world's ice reads it (iceView.ts): where it keeps running, and each tile's distance from the bank. */
+  /** The rules' river over the whole land, as the ice reads it: where it keeps running, and each tile's distance from the bank. */
   private readonly ice: Ice;
   /** Each land tile's river flow (m/s, x and z), and whether it is still water (a pond). */
   private readonly flowX: Float32Array;
@@ -204,7 +204,7 @@ export class BrushWater {
     const out: WaterMap = { ...grid.shape, level, flowX, flowZ };
     if (mud > 0) out.mud = new Float32Array(n).fill(mud);
     if (cover > 0) {
-      // The rules' ice, tile by tile from the bank inward (the pixel world's steps, `frozenBank`, made smooth), so each tile
+      // The rules' ice, tile by tile from the bank inward (the rules' steps, `frozenBank`, made smooth), so each tile
       // rises from open to frozen over in its turn; brush3d freezes the banks first inside each. Ponds freeze evenly.
       const { bank, open, reach } = this.ice, ice = new Float32Array(n);
       for (let i = 0; i < n; i++) {

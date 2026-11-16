@@ -9,8 +9,8 @@
 // It also keeps the slopes the hillshade lights (`shadeAt`): the patches' own slopes, blurred over a tile or so, so the
 // light falls in broad, clean shapes rather than following every small bend.
 //
-// Pure arithmetic on a relief, so the tests run it in Node. Moved here from the game (Soil-n-Silo#202) as it was, so the
-// land brush3d paints (land.ts) has the same shape as the pixel world's (the game's src/world/ground.ts, until #211).
+// Pure arithmetic on a relief, so the tests run it in Node. Moved here from the game (Soil-n-Silo#202) as it was: the land
+// brush3d paints (land.ts) has the same shape as the game stands things on (its src/world/ground.ts).
 
 /** A relief: each tile's four corners in levels (north-west, north-east, south-east, south-west), tile by tile, rows in order. */
 export interface Relief { width: number; height: number; corner: ArrayLike<number> }

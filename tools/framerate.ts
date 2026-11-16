@@ -1,6 +1,5 @@
-// The frame rate and the load on the brush3d path (#210), over every commission: each map loaded in the game
-// (`?renderer=brush3d`) in headless Chromium on the GPU at 1080p, and the game's own profile run on it
-// (src/world/brush/profile.ts: the four views, the widest and closest zooms, the hours, the heaviest weathers, the graphics
+// The frame rate and the load (#210), over every commission: each map loaded in the game in headless Chromium on the GPU
+// at 1080p, and the game's own profile run on it (src/world/brush/profile.ts: the four views, the widest and closest zooms, the hours, the heaviest weathers, the graphics
 // presets, the widest view without each kind of mesh), with the level's load timed. Two saves a commission:
 //   fresh  the commission as it starts: its own land, river, woods and rocks, nothing built but the depot;
 //   farm   the bot's farm after `--minutes` of play (tools/bot.ts), on the bot's flat map, with the commission's own trees
@@ -75,7 +74,7 @@ try {
       const page = await context.newPage();
       page.on('pageerror', (e) => console.error(`  page error: ${e.message}`));
       await page.addInitScript(`localStorage.setItem(${JSON.stringify(saveKey(new URL(`${URL_}/`).pathname))}, ${JSON.stringify(serialize(state))});`);
-      await page.goto(`${URL_}/?renderer=brush3d${opt.query ? `&${opt.query}` : ''}`);
+      await page.goto(`${URL_}/${opt.query ? `?${opt.query}` : ''}`);
       await page.waitForFunction('window.game?.load?.()?.models > 0', undefined, { timeout: 180_000 });
       // The models swapped in, the shaders for them compiled, the wind's worker up.
       await page.waitForTimeout(3000);

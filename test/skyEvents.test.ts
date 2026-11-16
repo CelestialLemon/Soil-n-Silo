@@ -12,8 +12,6 @@ import { sunAt, windAt } from '../src/game/sim/clock.ts';
 import { raining, weatherAt } from '../src/game/sim/weather.ts';
 import { newGame, type GameState } from '../src/game/state.ts';
 import { beesFly, dryPace, henFact, henPace, warmthOf } from '../src/game/warmth.ts';
-import { greyLook } from '../src/world/greyLook.ts';
-import { lookAt as dayLook } from 'pixel3d-renderer';
 import { TRUTH } from '../src/game/ahead.ts';
 import { PLAIN } from '../src/game/ground.ts';
 
@@ -114,14 +112,6 @@ test('a warm spell lifts a cold day to a mild one: crops grow, the bees fly; a w
 test('a steady breeze blows through the calm season', () => {
   const { s, quiet } = during('summer', 'steadyBreeze');
   assert.ok(windAt(s.scenario, s.time) > windAt(quiet.scenario, quiet.time) + 0.3);
-});
-
-test('the heat wave warms the look, and a clear day with no heat is left alone', () => {
-  const noon = dayLook(12);
-  assert.equal(greyLook(noon, { cloud: 0, precip: 0, heat: 0 }), noon);
-  const warm = greyLook(noon, { cloud: 0, precip: 0, heat: 1 });
-  assert.ok(warm.litTint[0] > noon.litTint[0] && warm.litTint[1] > noon.litTint[1]);
-  assert.notEqual(warm.skyBot.getHex(), noon.skyBot.getHex());
 });
 
 test('a warm spell lights the day a little gold, far less than a heat wave, and leaves the sky and rain alone', () => {

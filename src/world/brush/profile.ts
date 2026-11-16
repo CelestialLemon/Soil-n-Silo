@@ -3,7 +3,7 @@ import {
 } from '../../../brush3d/src/index.ts';
 import type { GameState } from '../../game/state.ts';
 
-// What a frame of the game costs on brush3d, pass by pass, on the map that's loaded (#210): `?renderer=brush3d&profile`
+// What a frame of the game costs on brush3d, pass by pass, on the map that's loaded (#210): `?profile`
 // on any machine (a PR's preview: the laptop and the MacBook Air), and tools/framerate.ts headless over every commission.
 // The cases are brush3d's profile's (src/renderer/profile.ts: each pass's GPU and CPU ms, and the frame drawn uncapped),
 // drawn where the camera is when Run is pressed: the four views, the widest and closest zooms, the hours, the heaviest

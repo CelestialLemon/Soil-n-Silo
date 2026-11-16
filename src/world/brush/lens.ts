@@ -20,7 +20,7 @@ export class BrushLens implements Lens {
 
   fit() {
     const w = innerWidth, h = innerHeight;
-    Object.assign(this.canvas.style, { width: `${w}px`, height: `${h}px`, left: '0px', top: '0px', imageRendering: 'auto' });
+    Object.assign(this.canvas.style, { width: `${w}px`, height: `${h}px`, left: '0px', top: '0px' });
     this.r.resize(w, h);
     this.onFit();
   }

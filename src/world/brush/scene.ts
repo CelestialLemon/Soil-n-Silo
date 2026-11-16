@@ -4,9 +4,8 @@ import { MAX_LEVEL } from '../../game/relief.ts';
 import type { GameState } from '../../game/state.ts';
 import type { SettingsStore } from '../../ui/settings.ts';
 import { Camera } from '../camera.ts';
-import { Lie, LEVEL_HEIGHT, standY } from '../ground.ts';
+import { COUNTRY, Lie, LEVEL_HEIGHT, standY } from '../ground.ts';
 import type { Heights, Scene } from '../scene.ts';
-import { COUNTRY } from '../terrain.ts';
 import { BrushCover } from './cover.ts';
 import { BrushLand } from './land.ts';
 import { BrushLens } from './lens.ts';
@@ -21,10 +20,9 @@ import { BrushWater } from './water.ts';
 import { BrushWind } from './wind.ts';
 import { Wild } from './wild.ts';
 
-// The game drawn by brush3d (epic #212), behind `?renderer=brush3d` until the swap (#211): the Scene (../scene.ts) the
-// game's loop draws through, over brush3d's API (brush3d/src/index.ts, brush3d/docs/API.md). The loop is the same as the
-// pixel world's (main.ts); everything brush3d-specific is in this folder, one piece a file, so the epic's tasks each work
-// in their own:
+// The game drawn by brush3d (epic #212; its only renderer since the swap, #211): the Scene (../scene.ts) the game's loop
+// (main.ts) draws through, over brush3d's API (brush3d/src/index.ts, brush3d/docs/API.md). Everything brush3d-specific is
+// in this folder, one piece a file, so work on each goes in its own:
 //
 //   scale.ts   4 m a tile, how high a level stands (#201), the units' conversions
 //   lens.ts    the game's camera placing brush3d's view (#201)
@@ -68,8 +66,6 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
   // earthwork bakes again only the patch it changed (brush3d's changeGround).
   timed('bake', () => r.setFields('ground', 4096));
   settings.listen((s) => tools.setLooks(s.highlight, s.overlayStyle));
-  // The HUD's marks drawn as this renderer's (game.css): a problem's marker on a pin down to its building (#205).
-  document.body.dataset.renderer = 'brush3d';
   const began = mark - Object.values(pieces).reduce((a, b) => a + b, 0);
   /** The load's times, once the first frame is drawn; and while a profile runs, the game's loop stands still. */
   let load: LoadTimes | null = null, firstFrame = 0, models = 0, held = false;
@@ -117,7 +113,7 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
       const t0 = performance.now();
       r.render(time);
       if (!load) { firstFrame = performance.now() - t0; load = { pieces, firstFrame, models, sinceStart: performance.now() }; }
-      f.lap('geometry');
+      f.lap('render');
       f.pick();
     },
     report: {
@@ -126,8 +122,7 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
         return {
           glRenderer: String(gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER)), glVendor: String(gl.getParameter(dbg ? dbg.UNMASKED_VENDOR_WEBGL : gl.VENDOR)),
           userAgent: navigator.userAgent, viewport: [window.innerWidth, window.innerHeight], devicePixelRatio: window.devicePixelRatio,
-          // The pixels drawn; brush3d draws at the screen's resolution, no art pixels.
-          art: [r.width, r.height], supersample: 1, shadowMapSize: r.quality.shadowMapSize, pixelSize: 1,
+          drawn: [r.width, r.height], shadowMapSize: r.quality.shadowMapSize,
           timerQueries: !!gl.getExtension('EXT_disjoint_timer_query_webgl2'),
         };
       },
