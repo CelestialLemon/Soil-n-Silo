@@ -68,6 +68,8 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
   // earthwork bakes again only the patch it changed (brush3d's changeGround).
   timed('bake', () => r.setFields('ground', 4096));
   settings.listen((s) => tools.setLooks(s.highlight, s.overlayStyle));
+  // The HUD's marks drawn as this renderer's (game.css): a problem's marker on a pin down to its building (#205).
+  document.body.dataset.renderer = 'brush3d';
   const began = mark - Object.values(pieces).reduce((a, b) => a + b, 0);
   /** The load's times, once the first frame is drawn; and while a profile runs, the game's loop stands still. */
   let load: LoadTimes | null = null, firstFrame = 0, models = 0, held = false;
