@@ -277,6 +277,8 @@ export class CropPatch {
     // The crop's own colour, not the season's (#13).
     if (this.stalks.vertexCount) out.push(r.add(this.stalks.build(), 'grass', { castShadow: false, seasonal: false }));
     if (this.dabs.vertexCount) out.push(r.add(this.dabs.build(), 'foliage', { castShadow: false, cover: 'none' }));
+    // A crop: the game's tools show through it (ontop.ts).
+    for (const m of out) m.userData.crop = true;
     return out;
   }
 }

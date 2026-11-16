@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { markMaterial, type MaterialKind, type SharedUniforms } from './materials';
+import { DAB_OUT_GLSL, markMaterial, type MaterialKind, type SharedUniforms } from './materials';
 
 // What the game's tools draw over the finished picture (Soil-n-Silo#206): the building being placed, a blueprint of it in
 // the colour for whether it fits (a preview), and lines: routes on the ground, the power networks' wires between pylon tops, a range's
@@ -49,12 +49,10 @@ const LIFT = 0.08, STEP = 1, DASH = 1.2, GAP = 0.8;
 const SAG = 0.05, MAX_SAG = 1.4;
 
 /**
- * How far behind a crop what it stands in front of can be (m, along the view): a crop is at most a metre or so tall, and
- * the view looks 30° down, so the land (or a wall) it hides is within about two metres behind it.
+ * How far behind a crop what it stands in front of can be (m, along the view): a crop is at most 1.8 m tall (a sunflower's
+ * head), and the view looks 30° down, so the land (or a wall) it hides is within about 3.6 m behind it.
  */
-const CROP_REACH = 2.5;
-/** The kinds a crop is painted with: its mass, and the stalks standing out of it (kit/plants.ts, CropPatch). */
-const CROP_KINDS: readonly MaterialKind[] = ['crop', 'grass'];
+const CROP_REACH = 4;
 
 // Hidden where the world shows nearer (its depth from the G-buffer, resolved and half-float: allowing for its rounding),
 // but for a crop (uOnTopCrops, 1 where a crop is what shows) only where it's well behind it (CROP_REACH).
@@ -117,11 +115,18 @@ void main() { outColor = vec4(0.0); }
 // A crop, drawn again (with its painting's vertex shader, so on the same pixels) where it's what shows: its depth is the
 // G-buffer's there, to within the G-buffer's rounding (half-float: a part in 2048) and no more, so a crop just behind a
 // wall doesn't count as showing (and let a tool behind the wall through).
+// A crop's leaves, flowers and heads are dabs on cards (CROP_DABS): cut to their shape.
 const CROP_FRAG = /* glsl */ `
 uniform sampler2D uOnTopAux;
 varying float vViewDepth;
 layout(location = 0) out vec4 outColor;
+#ifdef CROP_DABS
+${DAB_OUT_GLSL}
+#endif
 void main() {
+#ifdef CROP_DABS
+  if (dabOut()) discard;
+#endif
   float shown = texelFetch(uOnTopAux, ivec2(gl_FragCoord.xy), 0).z;
   if (shown <= 0.0 || abs(vViewDepth - shown) > 0.02 + shown * 0.0007) discard;
   outColor = vec4(1.0);
@@ -283,12 +288,12 @@ export class OnTop {
     if (this.lines.children.length) gl.render(this.lines, camera);
   }
 
-  /** Where a crop is what shows: `scene`'s crop meshes drawn again, as twins kept in step with them. */
+  /** Where a crop is what shows: `scene`'s crop meshes (CropPatch's) drawn again, as twins kept in step with them. */
   private drawCrops(gl: THREE.WebGLRenderer, camera: THREE.Camera, scene: THREE.Scene) {
     const seen = new Set<THREE.Mesh>();
     for (const o of scene.children) {
       const mesh = o as THREE.Mesh, kind = o.userData.kind as MaterialKind;
-      if (!mesh.isMesh || !CROP_KINDS.includes(kind)) continue;
+      if (!mesh.isMesh || !o.userData.crop) continue;
       seen.add(mesh);
       let twin = this.cropTwins.get(mesh);
       if (!twin || twin.geometry !== mesh.geometry) {
@@ -317,6 +322,7 @@ export class OnTop {
     let m = this.cropMaterials.get(kind);
     if (!m) {
       m = markMaterial(kind, this.shared, CROP_FRAG, { uOnTopAux: this.aux });
+      if (kind === 'foliage' || kind === 'debris') m.defines.CROP_DABS = 1;
       this.cropMaterials.set(kind, m);
     }
     return m;
