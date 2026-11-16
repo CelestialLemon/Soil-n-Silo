@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
-// What the game's tools draw over the finished picture (Soil-n-Silo#206): the building being placed, see-through and tinted
-// for whether it fits (a preview), and lines: routes on the ground, the power networks' wires between pylon tops, a range's
+// What the game's tools draw over the finished picture (Soil-n-Silo#206): the building being placed, a blueprint of it in
+// the colour for whether it fits (a preview), and lines: routes on the ground, the power networks' wires between pylon tops, a range's
 // dashed ring, the frame round a footprint being built. They're the player's tools, not the world, so they're drawn after the
 // post pass: no fog, haze or grade over them, never in the G-buffer (so never picked, never casting a shadow or sheltering
 // anything), and hidden only where something of the world stands in front of them (the G-buffer's depth there).
@@ -26,8 +26,19 @@ export interface Line {
   closed?: boolean;
 }
 
-/** The plain look until #206's pick: the preview's tints and how see-through it is, the lines' widths and lift. */
-const FITS = 0x90ff90, BLOCKED = 0xff5040, TINT = 0.45, PREVIEW_OPACITY = 0.6;
+/**
+ * How a preview is drawn: its colour where it fits and where it doesn't (sRGB), how much of that colour is laid over the
+ * model's own (`tint`, 0..1), how solid it is (`opacity`), how much the sun shades it (`shade`, 0 flat to 1), and how much
+ * level lines across it show, a blueprint's, solid and in the colour (`lines`, 0..1).
+ */
+export interface PreviewLook { fits: number; blocked: number; tint: number; opacity: number; shade: number; lines: number }
+/**
+ * The blueprint, the developer's pick (#206, 2026-11-16, over see-through glass and a nearly solid model): a faint body all in
+ * the colour, a little shaded, with solid level lines across it, so it never reads as a building already there.
+ */
+export const PREVIEW_LOOK: PreviewLook = { fits: 0x9dffc0, blocked: 0xff6a50, tint: 1, opacity: 0.28, shade: 0.4, lines: 1 };
+/** How far apart a preview's level lines are (m). */
+const LEVEL_LINES = 0.6;
 const WIDTH = { route: 0.5, dashed: 0.3, wire: 0.12 } as const, MIN_PX = { route: 3, dashed: 2.5, wire: 1.6 } as const;
 /** How far a line on the land is lifted off it (m), how far apart its points are laid along it, and a dash and its gap. */
 const LIFT = 0.08, STEP = 1, DASH = 1.2, GAP = 0.8;
@@ -48,10 +59,12 @@ const PREVIEW_VERT = /* glsl */ `
 invariant gl_Position;
 varying vec3 vColorOnTop;
 varying vec3 vNormalOnTop;
+varying float vHeightOnTop;
 varying float vDepthOnTop;
 void main() {
-  vec4 vp = viewMatrix * modelMatrix * vec4(position, 1.0);
+  vec4 wp = modelMatrix * vec4(position, 1.0), vp = viewMatrix * wp;
   vNormalOnTop = normalize(mat3(modelMatrix) * normal);
+  vHeightOnTop = wp.y;
 #ifdef USE_COLOR
   vColorOnTop = color.rgb;
 #else
@@ -63,18 +76,24 @@ void main() {
 `;
 const PREVIEW_FRAG = /* glsl */ `
 ${HIDDEN}
-uniform vec4 uPreviewTint;
-uniform float uPreviewOpacity;
+uniform vec3 uPreviewColor;
+uniform vec4 uPreviewLook;
 uniform vec3 uSunDir;
 varying vec3 vColorOnTop;
 varying vec3 vNormalOnTop;
+varying float vHeightOnTop;
 varying float vDepthOnTop;
 layout(location = 0) out vec4 outColor;
 void main() {
   if (hiddenAt(vDepthOnTop)) discard;
-  float lit = 0.62 + 0.38 * max(dot(normalize(vNormalOnTop), uSunDir), 0.0);
-  vec3 c = mix(toSrgbOnTop(vColorOnTop), uPreviewTint.rgb, uPreviewTint.a) * lit;
-  outColor = vec4(c, uPreviewOpacity);
+  // uPreviewLook: how much of the state's colour (x), how solid (y), how much the sun shades it (z), how much its level
+  // lines show (w): a line a pixel or so wide at each LEVEL_LINES of height, on the surfaces that rise (a flat roof at a
+  // line's height would be all line).
+  float lit = mix(1.0, 0.62 + 0.38 * max(dot(normalize(vNormalOnTop), uSunDir), 0.0), uPreviewLook.z);
+  vec3 c = mix(toSrgbOnTop(vColorOnTop), uPreviewColor, uPreviewLook.x) * lit;
+  float h = vHeightOnTop / ${LEVEL_LINES.toFixed(2)}, rise = fwidth(h), fh = max(rise, 1e-4);
+  float line = uPreviewLook.w * (1.0 - smoothstep(0.6, 1.4, abs(fract(h + 0.5) - 0.5) / fh)) * smoothstep(0.002, 0.006, rise);
+  outColor = vec4(mix(c, uPreviewColor, line), mix(uPreviewLook.y, 1.0, line));
 }
 `;
 const DEPTH_FRAG = /* glsl */ `
@@ -125,12 +144,16 @@ export class OnTop {
   private readonly lineMaterial: THREE.ShaderMaterial;
   private readonly land: (x: number, z: number) => number;
   private readonly landRevision: () => string;
+  private look = PREVIEW_LOOK;
+  /** The look's tint, opacity, shade and lines, shared by every preview's material. */
+  private readonly lookUniform = { value: new THREE.Vector4() };
 
   /** `sunDir` is the scene's (shared); `land` the land's height as drawn, which changes with `landRevision`. */
   constructor(sunDir: THREE.IUniform<THREE.Vector3>, land: (x: number, z: number) => number, landRevision: () => string) {
     this.sunDir = sunDir;
     this.land = land;
     this.landRevision = landRevision;
+    this.setLook(PREVIEW_LOOK);
     this.depthOnly = new THREE.ShaderMaterial({
       glslVersion: THREE.GLSL3, vertexShader: PREVIEW_VERT, fragmentShader: DEPTH_FRAG, colorWrite: false, side: THREE.DoubleSide,
     });
@@ -141,13 +164,20 @@ export class OnTop {
     });
   }
 
+  /** How previews are drawn (PREVIEW_LOOK, the blueprint, by default), the ones shown too. */
+  setLook(look: PreviewLook) {
+    this.look = look;
+    this.lookUniform.value.set(look.tint, look.opacity, look.shade, look.lines);
+    for (const m of this.previews.children) this.setPreview(m as THREE.Mesh, m.userData.preview as PreviewState);
+  }
+
   /** A preview of what would be built, `geometry` (the caller's, with its colours) placed by the mesh returned. */
   addPreview(geometry: THREE.BufferGeometry, state: PreviewState): THREE.Mesh {
     const material = new THREE.ShaderMaterial({
       glslVersion: THREE.GLSL3, vertexShader: PREVIEW_VERT, fragmentShader: PREVIEW_FRAG, vertexColors: !!geometry.getAttribute('color'),
       transparent: true, depthWrite: false, depthFunc: THREE.LessEqualDepth, side: THREE.DoubleSide,
       uniforms: {
-        uOnTopAux: this.aux, uSunDir: this.sunDir, uPreviewTint: { value: new THREE.Vector4() }, uPreviewOpacity: { value: PREVIEW_OPACITY },
+        uOnTopAux: this.aux, uSunDir: this.sunDir, uPreviewColor: { value: new THREE.Color() }, uPreviewLook: this.lookUniform,
       },
     });
     const mesh = new THREE.Mesh(geometry, material);
@@ -158,8 +188,9 @@ export class OnTop {
   }
 
   setPreview(mesh: THREE.Mesh, state: PreviewState) {
-    const c = new THREE.Color().setHex(state === 'fits' ? FITS : BLOCKED, THREE.LinearSRGBColorSpace);
-    ((mesh.material as THREE.ShaderMaterial).uniforms.uPreviewTint.value as THREE.Vector4).set(c.r, c.g, c.b, TINT);
+    // Laid over the finished picture, which is sRGB: kept as given.
+    ((mesh.material as THREE.ShaderMaterial).uniforms.uPreviewColor.value as THREE.Color)
+      .setHex(state === 'fits' ? this.look.fits : this.look.blocked, THREE.LinearSRGBColorSpace);
     mesh.userData.preview = state;
   }
 

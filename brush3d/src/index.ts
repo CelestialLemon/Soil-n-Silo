@@ -9,9 +9,9 @@ export type { MaterialKind } from './renderer/materials';
 export type { Cover } from './renderer/shelter';
 
 // ---- The game's tools on the picture (Soil-n-Silo#206) ----
-export { OVERLAY_NONE, type Grid, type Overlay } from './renderer/overlay';
+export { OVERLAY_LOOK, OVERLAY_NONE, type Grid, type Overlay, type OverlayLook } from './renderer/overlay';
 export { HIGHLIGHT_LOOK, type HighlightLook, type Mark } from './renderer/marks';
-export type { Line, LinePoint, PreviewState } from './renderer/ontop';
+export { PREVIEW_LOOK, type Line, type LinePoint, type PreviewLook, type PreviewState } from './renderer/ontop';
 export type { PickHit } from './renderer/pick';
 
 // ---- The camera ----

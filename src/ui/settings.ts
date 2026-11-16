@@ -3,7 +3,7 @@ import { readOverrides, type Overrides } from '../keybindings.ts';
 
 // The player's settings, kept in the browser beside the save: interface size, pixel size, reduce motion, show pace, the
 // experimental problems strip, the frame rate readout, the testing speeds, the keys, and brush3d's (graphics quality, how
-// much rain and snow falls, lightning flashes; #209). Each deployment keeps its own (the key follows the save's).
+// much rain and snow falls, lightning flashes; #209; and how its tools mark things and colour the land, #206). Each deployment keeps its own (the key follows the save's).
 
 export interface Settings {
   /** The interface's size, 0.9–1.3 (it scales the HUD and menus, not the world). */
@@ -16,6 +16,10 @@ export interface Settings {
   falling: Falling;
   /** brush3d's lightning flashes: full (within the flash-safety limits), gentle (one soft swell), or off (no flash). */
   flashes: Flashes;
+  /** How brush3d marks what's under the pointer or selected (src/world/brush/tools.ts, HIGHLIGHT_LOOKS). */
+  highlight: Highlight;
+  /** How brush3d's overlays colour the land (tools.ts, OVERLAY_LOOKS). */
+  overlayStyle: OverlayStyle;
   /** Cards and gauges appear without springing. */
   reduceMotion: boolean;
   /** "Done by" on the commission card, and gold and silver pace ticks on the goals. */
@@ -45,8 +49,14 @@ export type Falling = typeof FALLINGS[number];
 /** The lightning flashes setting's choices (brush3d's FlashSetting). */
 export const FLASHES = ['full', 'gentle', 'off'] as const;
 export type Flashes = typeof FLASHES[number];
+/** The highlight setting's choices: a cream outline, a soft halo (the default, the developer's pick on #206), a gold line. */
+export const HIGHLIGHTS = ['outline', 'halo', 'gold'] as const;
+export type Highlight = typeof HIGHLIGHTS[number];
+/** The overlay setting's choices: a wash in the land's light, bold flat colour (the default, #206), strong borders. */
+export const OVERLAY_STYLES = ['wash', 'bold', 'borders'] as const;
+export type OverlayStyle = typeof OVERLAY_STYLES[number];
 
-const DEFAULTS: Settings = { uiSize: 1, pixelSize: 2, quality: 'high', falling: 'full', flashes: 'full', reduceMotion: false, showPace: false, problemsStrip: false, frameStats: 'off', fastSpeeds: false, keys: {} };
+const DEFAULTS: Settings = { uiSize: 1, pixelSize: 2, quality: 'high', falling: 'full', flashes: 'full', highlight: 'halo', overlayStyle: 'bold', reduceMotion: false, showPace: false, problemsStrip: false, frameStats: 'off', fastSpeeds: false, keys: {} };
 
 /** `v` if it's one of `choices`, else `d`. */
 const oneOf = <T extends string>(choices: readonly T[], v: unknown, d: T): T => ((choices as readonly unknown[]).includes(v) ? v as T : d);
@@ -61,6 +71,8 @@ export function readSettings(json: string | null): Settings {
     quality: oneOf(QUALITIES, o.quality, DEFAULTS.quality),
     falling: oneOf(FALLINGS, o.falling, DEFAULTS.falling),
     flashes: oneOf(FLASHES, o.flashes, DEFAULTS.flashes),
+    highlight: oneOf(HIGHLIGHTS, o.highlight, DEFAULTS.highlight),
+    overlayStyle: oneOf(OVERLAY_STYLES, o.overlayStyle, DEFAULTS.overlayStyle),
     reduceMotion: typeof o.reduceMotion === 'boolean' ? o.reduceMotion : DEFAULTS.reduceMotion,
     showPace: typeof o.showPace === 'boolean' ? o.showPace : DEFAULTS.showPace,
     problemsStrip: typeof o.problemsStrip === 'boolean' ? o.problemsStrip : DEFAULTS.problemsStrip,

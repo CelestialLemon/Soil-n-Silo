@@ -34,9 +34,9 @@ import { earthShares } from './wet';
 import type { WindSnapshot } from '../wind/sim';
 import { LAND_LOOK, PaintedLand, type LandLook } from '../land/paint';
 import type { LandMap, LandPatch, LandRect } from '../land/map';
-import { GroundTools, type Grid, type Overlay } from './overlay';
+import { GroundTools, OVERLAY_LOOK, type Grid, type Overlay, type OverlayLook } from './overlay';
 import { HIGHLIGHT_LOOK, Marks, type HighlightLook, type Mark } from './marks';
-import { OnTop, type Line, type PreviewState } from './ontop';
+import { OnTop, PREVIEW_LOOK, type Line, type PreviewLook, type PreviewState } from './ontop';
 import { Picker, type PickHit } from './pick';
 
 // The renderer: the clouds' shade over the land (#8); a sun shadow map; for the water, the bed drawn without it and the
@@ -888,6 +888,8 @@ export class BrushRenderer {
    * null for none. Painted in the land's own light, under what stands on it; sent again when it changes.
    */
   setOverlay(overlay: Overlay | null) { this.groundTools.setOverlay(overlay); }
+  /** How an overlay is painted (OVERLAY_LOOK, a wash in the land's light, by default; the game's player picks it). */
+  setOverlayLook(look: OverlayLook = OVERLAY_LOOK) { this.groundTools.setLook(look); }
 
   /** The tile grid and the contour lines over the map's tiles while the player builds or does earthworks, or null. */
   setGrid(grid: Grid | null) { this.groundTools.setGrid(grid); }
@@ -899,17 +901,19 @@ export class BrushRenderer {
   setLines(lines: readonly Line[] | null, group = 'lines') { this.onTop.setLines(lines, group); }
 
   /**
-   * What the player is about to build: `geometry` (the caller's, with its colours) drawn see-through and tinted for whether
-   * it fits. Never picked, casting no shadow; place it by the mesh returned, take it out with removePreview.
+   * What the player is about to build: `geometry` (the caller's, with its colours) drawn as a blueprint in the colour for
+   * whether it fits (PREVIEW_LOOK). Never picked, casting no shadow; place it by the mesh returned, take it out with removePreview.
    */
   addPreview(geometry: THREE.BufferGeometry, state: PreviewState): THREE.Mesh { return this.onTop.addPreview(geometry, state); }
+  /** How previews are drawn (PREVIEW_LOOK, the blueprint, by default). */
+  setPreviewLook(look: PreviewLook = PREVIEW_LOOK) { this.onTop.setLook(look); }
   setPreview(mesh: THREE.Mesh, state: PreviewState) { this.onTop.setPreview(mesh, state); }
   removePreview(mesh: THREE.Mesh) { this.onTop.removePreview(mesh); }
 
   /** A mesh's marks: highlighted (under the pointer, selected), tinted (in focus), or null for none (marks.ts). */
   setMark(mesh: THREE.Mesh, mark: Mark | null) { this.marks.set(mesh, mark); }
 
-  /** How a highlight is drawn (HIGHLIGHT_LOOK until the developer's pick). */
+  /** How a highlight is drawn (HIGHLIGHT_LOOK, a crisp outline, by default; the game's player picks it). */
   setHighlightLook(look: HighlightLook = HIGHLIGHT_LOOK) { this.marks.setLook(look, this.pixelRatio); }
 
   /**

@@ -10,6 +10,12 @@ test('brush3d’s settings default to the full picture, and an unknown choice fa
   assert.deepEqual([s.quality, s.falling, s.flashes], ['low', 'light', 'gentle']);
   const bad = readSettings('{"quality":"ultra","falling":0.5,"flashes":"none"}');
   assert.deepEqual([bad.quality, bad.falling, bad.flashes], ['high', 'full', 'full']);
+  // The tools' looks (#206): halo and bold by default, the player's pick kept, anything else the default.
+  assert.deepEqual([d.highlight, d.overlayStyle], ['halo', 'bold']);
+  const t = readSettings('{"highlight":"gold","overlayStyle":"borders"}');
+  assert.deepEqual([t.highlight, t.overlayStyle], ['gold', 'borders']);
+  const off = readSettings('{"highlight":"glow","overlayStyle":3}');
+  assert.deepEqual([off.highlight, off.overlayStyle], ['halo', 'bold']);
 });
 
 test('each graphics quality is one of brush3d’s presets, each asking less of the GPU than the one above', () => {

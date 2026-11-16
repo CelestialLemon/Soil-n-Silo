@@ -14,9 +14,12 @@ export interface Mark {
   tint?: { color: number; strength: number } | null;
 }
 
-/** How a highlight is drawn: its colour (sRGB) and the outline's width (CSS pixels). A plain look until #206's pick. */
-export interface HighlightLook { color: number; width: number }
-export const HIGHLIGHT_LOOK: HighlightLook = { color: 0xfff0c0, width: 2 };
+/**
+ * How a highlight is drawn: its colour (sRGB), how far out it reaches round the thing (CSS pixels), whether it's a crisp
+ * outline (glow 0) or a halo fading out (1), and how much brighter the thing itself is drawn (0..1).
+ */
+export interface HighlightLook { color: number; width: number; glow: number; fill: number }
+export const HIGHLIGHT_LOOK: HighlightLook = { color: 0xfff0c0, width: 2, glow: 0, fill: 0.5 };
 
 const MARK_FRAG = /* glsl */ `
 uniform sampler2D uMarksAux;
@@ -39,20 +42,32 @@ export const MARKS_POST_GLSL = /* glsl */ `
 uniform sampler2D tMarks;
 uniform float uMarksOn;
 uniform vec4 uHighlight;
+uniform vec2 uHighlightStyle;
 float markHi(vec4 m) { return step(127.5, floor(m.a * 255.0 + 0.5)); }
 vec3 marksOver(vec3 o, vec2 uv) {
   vec4 m = texture2D(tMarks, uv);
   float a = floor(m.a * 255.0 + 0.5), hi = step(127.5, a);
   o = mix(o, m.rgb, mod(a, 128.0) / 127.0);
-  // The highlight: an outline round what shows of the thing, and the thing a little brighter.
-  float near = 0.0;
+  // The highlight round what shows of the thing: looked for its width out in twelve directions, the outline. A halo
+  // (glow) takes that faintly and looks nearer too, a third and two thirds of the way out, taking those more, so it fades.
+  float glow = uHighlightStyle.x, near = 0.0;
   vec2 px = uHighlight.w / uResolution;
   for (int i = 0; i < 12; i++) {
     float t = float(i) * 0.5235988;
-    near = max(near, markHi(texture2D(tMarks, uv + vec2(cos(t), sin(t)) * px)));
+    near = max(near, mix(1.0, 0.15, glow) * markHi(texture2D(tMarks, uv + vec2(cos(t), sin(t)) * px)));
   }
-  o = mix(o, uHighlight.rgb, near * (1.0 - hi) * 0.95);
-  o = mix(o, o * 1.1 + 0.03, hi * 0.5);
+  if (glow > 0.0) {
+    for (int k = 1; k <= 2; k++) {
+      float r = float(k) / 3.0;
+      for (int i = 0; i < 8; i++) {
+        float t = (float(i) + float(k) * 0.5) * 0.7853982;
+        near = max(near, glow * (1.15 - r) * markHi(texture2D(tMarks, uv + vec2(cos(t), sin(t)) * px * r)));
+      }
+    }
+  }
+  o = mix(o, uHighlight.rgb, clamp(near, 0.0, 1.0) * (1.0 - hi) * 0.95);
+  // The thing itself a little brighter.
+  o = mix(o, o * 1.1 + 0.03, hi * uHighlightStyle.y);
   return o;
 }
 `;
@@ -62,6 +77,7 @@ export function createMarksUniforms() {
     tMarks: { value: null as THREE.Texture | null },
     uMarksOn: { value: 0 },
     uHighlight: { value: new THREE.Vector4(1, 1, 1, 2) },
+    uHighlightStyle: { value: new THREE.Vector2(0, 0.5) },
   };
 }
 
@@ -123,6 +139,7 @@ export class Marks {
     // Laid over the finished picture, which is sRGB: kept as given.
     const c = new THREE.Color().setHex(look.color, THREE.LinearSRGBColorSpace);
     this.post.uHighlight.value.set(c.r, c.g, c.b, look.width * pixelRatio);
+    this.post.uHighlightStyle.value.set(THREE.MathUtils.clamp(look.glow, 0, 1), THREE.MathUtils.clamp(look.fill, 0, 1));
   }
 
   setSize(width: number, height: number, pixelRatio: number) {

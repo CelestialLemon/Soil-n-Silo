@@ -2,12 +2,12 @@ import { ACTIONS, GROUPS, SLOTS, assign, bindable, canon, overridesOf, resolve, 
 import { fill, h, icon } from './dom.ts';
 import { pct } from './format.ts';
 import { labelOf, nameOf } from './keyhints.ts';
-import { FALLINGS, FLASHES, FRAME_STATS_MODES, PIXEL_SIZES, QUALITIES, UI_SIZES, type Settings, type SettingsStore } from './settings.ts';
+import { FALLINGS, FLASHES, FRAME_STATS_MODES, HIGHLIGHTS, OVERLAY_STYLES, PIXEL_SIZES, QUALITIES, UI_SIZES, type Settings, type SettingsStore } from './settings.ts';
 
 // The settings panel, opened from the level select and the pause screen: a Game tab (interface size, the renderer's settings,
 // the switches, the frame rate readout) and a Keys tab, where each action's keys are changed (click a key, press the new
 // one). The renderer's settings are those of the one drawing the game until the swap (#211): the pixel renderer's pixel
-// size, or brush3d's graphics quality, rain and snow and lightning flashes (#209).
+// size, or brush3d's graphics quality, rain and snow and lightning flashes (#209), and its highlight and overlays (#206).
 
 /** A switch for a yes/no setting. */
 function toggle(on: boolean, label: string, change: (v: boolean) => void) {
@@ -45,6 +45,8 @@ function gameRows(store: SettingsStore) {
       choice('Graphics', seg('quality', QUALITIES, named), 'High: the full picture. Medium, for integrated graphics: softer edges on the sun’s shadows. Low: also rougher edges and fewer pixels, scaled up to the screen.'),
       choice('Rain and snow', seg('falling', FALLINGS, named), 'How many raindrops and snowflakes fall. Light: about a third, and the weather reads the same.'),
       choice('Lightning flashes', seg('flashes', FLASHES, named), 'Full stays within the safety limits for flashing lights. Gentle: one soft, slow glow. Off: the sky doesn’t light up, and you still see the bolt.'),
+      choice('Highlight', seg('highlight', HIGHLIGHTS, (v) => ({ outline: 'Cream outline', halo: 'Halo', gold: 'Gold' })[v]), 'How the building or truck under the pointer or selected is marked. Halo: a soft glow round it. Gold: a bold line, the easiest to see at night and in fog.'),
+      choice('Overlay', seg('overlayStyle', OVERLAY_STYLES, named), 'How an overlay (soil, ground, height, water, power…) colours the land. Wash: the colour in the land’s own light and shade. Bold: strong, even colour, the easiest to read. Borders: a light wash, each area’s colour strong along its edge.'),
     ]),
     yes('reduceMotion', 'Reduce motion', 'Cards and gauges appear without springing.'),
     yes('showPace', 'Show pace', '“Done by” on the commission card and gold and silver ticks on the goals. Off: you see only where you are.'),
