@@ -152,6 +152,12 @@ export class Picker {
       if (d < off) { best = mesh; bestTag = tag; off = d; }
     }
     if (best) return { tag: bestTag, what: 'thing', point };
+    // A pixel only partly smoke, its samples averaged with what's inked or painted behind or in front (its ink between
+    // theirs), and its depth with theirs, so it may meet nothing at that depth: what the line of sight meets first.
+    if (ink > SMOKE_INK * 0.1 && ink < 0.99) {
+      const seen = this.past(ray, 0, things, pose);
+      if (seen) return seen;
+    }
     // The land, where the line of sight meets it (exact, not the depth's rounding), if that's what shows.
     const land = this.world.landHit(ray);
     if (land && ray.origin.distanceTo(land) <= along + tol) return { tag: null, what: 'land', point: land };
@@ -200,8 +206,9 @@ export class Picker {
     if (!land || ground < from) return null;
     const water = this.world.waterAt(land.x, land.z);
     if (water !== null && water > land.y && ray.direction.y < 0) {
-      const at = ray.at((water - ray.origin.y) / ray.direction.y, new THREE.Vector3());
-      return { tag: null, what: 'water', point: at };
+      // Where it meets the water's surface, if the water is there too (by a bank, that can be over dry land).
+      const at = ray.at((water - ray.origin.y) / ray.direction.y, new THREE.Vector3()), there = this.world.waterAt(at.x, at.z);
+      if (there !== null && Math.abs(there - water) < 0.05) return { tag: null, what: 'water', point: at };
     }
     return { tag: null, what: 'land', point: land };
   }

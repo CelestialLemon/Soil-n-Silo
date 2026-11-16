@@ -160,11 +160,35 @@ const angleOf = (p: Parts, slot: number) => (p.texture.image.data as Float32Arra
   check('a pick sees past smoke to the building', through?.tag === 'bakery' && Math.abs(through.point.y - 4) < 0.05, JSON.stringify(through));
   check('a smoke pixel partly something painted: still smoke', pick(SMOKE_INK * 0.75)?.tag === 'bakery');
   check('a tree in front: the tree', pick(0)?.what === 'plant');
+  // A puff's edge over the building: three samples smoke, one the building's ink, averaged (ink and depth between).
+  const edge = pick(SMOKE_INK * 0.75 + 0.25);
+  check('a puff\'s edge over the building: the building', edge?.tag === 'bakery', JSON.stringify(edge));
   // Smoke with nothing behind it (looking level, over the building): the sky.
   const level = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 100);
   level.position.set(10, 14, 0); level.lookAt(0, 14, 0); level.updateMatrixWorld();
   const sky = pick(SMOKE_INK, level);
   check('smoke against the sky: nothing', sky === null, JSON.stringify(sky));
+  // Smoke over a river's bank: water at y 0 over x < -2 (its bed at y -1), and a low bank beyond (y -0.5, under the water's
+  // level, but dry). Looking down at a slant, the line of sight crosses the water's height over the bank and meets the bed
+  // under the water.
+  const bed = (x: number) => (x < -2 ? -1 : x < -1 ? -0.5 : 0);
+  const river = new Picker({
+    landHit: (ray) => {
+      const p = new THREE.Vector3();
+      for (let t = 0; t < 200; t += 0.01) if (ray.at(t, p).y <= bed(p.x)) return p.clone();
+      return null;
+    },
+    waterAt: (x) => (x < -2 ? 0 : null),
+    tagged: () => [],
+  });
+  const steep = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 100);
+  steep.position.set(5.5, 5, 0); steep.lookAt(-2.2, -0.5, 0); steep.updateMatrixWorld();
+  const bank = river.hit(pixels(5, SMOKE_INK), steep, new THREE.Vector2(0, 0), new THREE.Vector2(1e-4, 1e-4), []);
+  check('smoke over a bank, the water\'s surface there over dry land: not water', bank?.what === 'land', JSON.stringify(bank));
+  const mid = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 100);
+  mid.position.set(-5, 10, 0); mid.lookAt(-5.8, -1, 0); mid.updateMatrixWorld();
+  const pond = river.hit(pixels(5, SMOKE_INK), mid, new THREE.Vector2(0, 0), new THREE.Vector2(1e-4, 1e-4), []);
+  check('smoke over the river: its water', pond?.what === 'water' && Math.abs(pond.point.y) < 1e-6, JSON.stringify(pond));
 }
 
 if (failed) process.exit(1);
