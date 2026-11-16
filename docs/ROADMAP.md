@@ -1,9 +1,8 @@
 # Roadmap
 
 Goal: the game in [`DESIGN.md`](DESIGN.md), a build-only solarpunk automation game played in seeded commissions of 30–60 minutes.
-The game is drawn with [`pixel3d-renderer`](https://github.com/CelestialLemon/pixel3d-renderer), and is moving to brush3d, the
-painterly renderer, which lives in this repo in [`brush3d/`](../brush3d/README.md) (epic #212; its own roadmap is
-[`brush3d/docs/ROADMAP.md`](../brush3d/docs/ROADMAP.md)). See `AGENTS.md`, "The renderer (brush3d)" and "pixel3d-renderer".
+The game is drawn by brush3d, the painterly renderer, which lives in this repo in [`brush3d/`](../brush3d/README.md) (its
+own roadmap is [`brush3d/docs/ROADMAP.md`](../brush3d/docs/ROADMAP.md)). See `AGENTS.md`, "The renderer (brush3d)".
 
 Items are roughly in priority order within each section.
 
@@ -17,19 +16,10 @@ Items are roughly in priority order within each section.
 
 ## Renderer
 
-Pinned: **v0.3.3** (`package.json`). The game owns the loop, state, input, UI, audio and save; the renderer draws, and answers
-"what is under the pointer" (`pick`).
-
-| Need | Status | Notes |
-| --- | --- | --- |
-| Build preview ("ghost") drawn see-through and tinted green/red | Yes ([#30](https://github.com/CelestialLemon/pixel3d-renderer/issues/30), v0.3.0) | `opacity` and `tint`; `pick` sees through it. |
-| Overlays (fertility, power reach, water, bees) without a geometry per colour | Yes (#30) | One tile geometry, tinted per tile. |
-| Many goods moving (now in trucks) without redrawing the object shadow map | Yes ([#31](https://github.com/CelestialLemon/pixel3d-renderer/issues/31)) | Goods, markers, ghosts and overlays have `castShadow = false`. |
-| Smooth ground without false outline dashes or contact darkening | Yes ([#38](https://github.com/CelestialLemon/pixel3d-renderer/issues/38), v0.3.2) | Joined ground is shaded smooth in the game. |
-| Gentle folds between flat ground faces without outline ink or contact darkening | Yes ([#41](https://github.com/CelestialLemon/pixel3d-renderer/issues/41), v0.3.3) | Meadows and slopes read clean; cliffs and buildings keep their ink. |
-| Turbine rotors turning with the wind | Worked around | Three rotor speeds, swapped by wind strength (spin speed is baked into the geometry). |
-| Lamps on placed objects (pylon lanterns at night) | No | Lamps are scene data; emissive parts glow after dusk instead. |
-| Buildings fading when they hide the tile under the pointer | Not needed yet | Picking a tile uses the ground plane, so tall buildings don't block placement. |
+brush3d (`brush3d/`), in this repo since #200. The game owns the loop, state, input, UI, audio and save; the renderer
+draws, and answers "what is under the pointer" (`pick`). The game's side of it is `src/world/brush/`, behind the `Scene` in
+`src/world/scene.ts`; what the game still wants from it is in `brush3d/docs/ROADMAP.md`. Until 2026-11-16 the game was drawn
+with pixel3d-renderer; its needs and workarounds are in git history (#211).
 
 ## v0.1: the pivot (2026-10-09)
 
@@ -44,7 +34,8 @@ Pinned: **v0.3.3** (`package.json`). The game owns the loop, state, input, UI, a
   status markers, goods on belts, drones in flight, overlays.
 - The HUD (`src/ui/`): commission clock and medal pace, credits, power and weather, goals, build bar, inspector, stats, intro,
   pause and results screens, and the level select (campaign, random commission from a seed, sandbox).
-- Models: 27 solarpunk Blender models (`assets/`), built by a Codex agent from `docs/ASSET_BRIEF.md`.
+- Models: 27 solarpunk Blender models (`assets/`, gone since the swap to brush3d, #211), built by a Codex agent from
+  `docs/ASSET_BRIEF.md` (also gone; brush3d's models are listed in `brush3d/docs/MODELS.md`).
 
 ## Silos instead of belts (2026-10-10)
 
@@ -110,9 +101,19 @@ only, never saved, the map itself unchanged): the river runs on out of sight, a 
 thicken and the ground rises into wooded hills, with an apron of distant woods beyond them. Everything past the edge is a
 shade duller, so where you can build still reads at a glance. Height on the map itself followed on 2026-10-17, below.
 
+## One renderer: the swap to brush3d (2026-11-16)
+
+brush3d is now the game's only renderer (#211, the last task of epic #212): it's the default, with no `?renderer=` flag
+and no fallback. The pixel renderer went for good: its world (`pixelScene.ts` and the files only it used), its Blender
+models and their exports (`assets/`, `public/`), the pixel-size setting, its benchmark (`npm run bench` and its CI job) and
+the `pixel3d-renderer` dependency. The camera, the HUD's look (its restyle is #215) and every rule are unchanged: the bots
+give the same results and saves at version 20 still load. Graphics default to High, with Medium for integrated graphics.
+The frame-rate report (`npm run framerate`, report version 2) counts the renderer's time as one part. Still open: the
+developer's checks on the laptop and the MacBook (#210), and the river's falls (#241).
+
 ## The farm at work: moving parts, states, lights and smoke (2026-11-16)
 
-On the brush3d path (`?renderer=brush3d`), the models' moving parts do what the game says (#205; #235 the groundwork, #236
+In brush3d, the models' moving parts do what the game says (#205; #235 the groundwork, #236
 and #240 the looks). Turbines and the weather station's cups turn with the wind, the water wheel with the stream, a machine's drum or
 stone while it works (slower on part of its power), and a battery's rings light by its charge. A building's state reads in its own parts and nothing laid over it (the developer's
 pick on #236): working, it turns, glows and smokes; idle, it stands still with its running look off; with no power, it's
@@ -126,7 +127,7 @@ rising while the game is paused, as the rain does.
 
 ## The crops and trees in paint (2026-11-16)
 
-On the brush3d path (`?renderer=brush3d`), the game's fields and trees are painted (#213; #225 the groundwork, #227 the
+In brush3d, the game's fields and trees are painted (#213; #225 the groundwork, #227 the
 look). Each of the five crops has its own colours, height, flowers and fruit at each of its four stages, from bare sown soil
 to ripe, laid as one soft blanket over its bed. The map's trees are the game's species: oak, birch, apple and the bushes
 are brush3d's trees, and the pine, willow and poplar have shapes of their own, the pine a soft cone, the willow weeping and
@@ -136,7 +137,7 @@ tiered or a Scots pine, a pollarded willow) are in #227's history. The demo show
 
 ## The tools in the painted look (2026-11-16)
 
-On the brush3d path (`?renderer=brush3d`), the game's tools work on the painted world (#206; #232 the groundwork, #233 the
+In brush3d, the game's tools work on the painted world (#206; #232 the groundwork, #233 the
 looks). Pointing and clicking find the building, truck, tree, field or tile you see under the pointer, on the real land
 and the models' real shapes. A building being placed is a blueprint: a faint ghost in green where it fits or red where it
 doesn't, with level lines across it and brackets at its footprint's corners, so it never reads as a building already there.
@@ -148,7 +149,7 @@ picture's mood.
 
 ## The land drawn from the map (2026-11-16)
 
-On the brush3d path (`?renderer=brush3d`), brush3d now paints the land itself from the game's map (#202; #226 the groundwork,
+In brush3d, brush3d now paints the land itself from the game's map (#202; #226 the groundwork,
 #228 the look). Each tile's corners, cover and ground kind make one smooth surface, the game's own fit, so the hills keep
 their shape. Cliffs are sharp where tiles don't meet, and their faces show strata. The ground kinds show as a subtle tint.
 The river and ponds sit in beds under their tiles, with the water 0.48 m under the level, so the banks stand over it. The
@@ -160,7 +161,7 @@ and brush3d each fit the ground after an earthwork, about 10 ms twice (#210).
 
 ## The buildings and trucks as models, with their goods (2026-11-16)
 
-On the brush3d path (`?renderer=brush3d`), every building the game places is now its solarpunk model, and every truck is the
+In brush3d, every building the game places is now its solarpunk model, and every truck is the
 truck model (#203; #221 the models, #222 the goods). Each building sits on its footprint, faces the way the game turns it and
 stands level at the height the game sets. A truck faces the way it drives and leans with the ground on a ramp. Which model
 draws which building is in `src/world/brush/catalog.ts`, and a test checks each one against the models' list and the
@@ -172,7 +173,7 @@ can't be seen. Fields and saplings are painted, not models (#213).
 
 ## A world that changes without a hitch (2026-11-15)
 
-On the brush3d path (`?renderer=brush3d`), the world changes while you play without the picture stuttering (#204, #234).
+In brush3d, the world changes while you play without the picture stuttering (#204, #234).
 Placing a building used to stall a frame by about 90 ms, because every change redrew the whole shelter map (what each
 spot of land has standing over it), the ground's hollows and every tree on the map. Now only the patch around the
 change is redrawn. That brings it down to about 12 ms. Clearing a tree drops from 30 ms to 3; saplings, fields, removing
@@ -194,27 +195,26 @@ balance holds: over 100 days a turbine makes its power within 0.15% and a panel 
 commission as before. What is new is the moment: a turbine swings between about 0.8 and 1.35 times the valley's power as the
 gusts and lulls pass, a panel between about a third and two and a half times (a gap in the cloud), and a single day's
 panels vary by about 8%. The gusts are brush3d's (`WindRecipe`), stepped by the rules a tick a step and saved with the game
-(save version 20), about 1 µs a step and a microsecond or two a turbine or panel. On the brush3d path the grass, trees and
+(save version 20), about 1 µs a step and a microsecond or two a turbine or panel. In brush3d the grass, trees and
 dust show those same gusts, flowing round the buildings and trees, and the clouds' shadows are drawn where they shade the
 panels. The worker that steps the air costs about 4–6% of a core at 1×, off the game's tick. `src/game/overhead.ts` has the
 rules, `src/world/brush/wind.ts` the picture. Still open: whether the wind's own shelter (the air flowing round what stands)
-should replace the rules' shelter number for turbines (a design call), and the pixel path has the rule without the drawn
-gusts until the swap (#211).
+should replace the rules' shelter number for turbines (a design call).
 
 ## brush3d's settings in the game (2026-11-15)
 
-On the brush3d path (`?renderer=brush3d`, #209), the settings panel's Game tab has brush3d's settings in place of the pixel
-size, saved with the game's other settings and taking effect at once: **Graphics** (high, medium, low: presets for the three
+The settings panel's Game tab has brush3d's settings (#209) in place of the pixel size (gone with the pixel renderer, #211),
+saved with the game's other settings and taking effect at once: **Graphics** (high, medium, low: presets for the three
 machines, high the full picture and the default; medium halves the shadow and shelter maps' detail, about 3.3 ms less on
 the RX 570, for integrated graphics; low also draws 2× multisampling and at most 1600 × 900's pixels), **Rain and snow**
 (full, or light: about a third of the drops and flakes) and **Lightning flashes** (full, which stays within the flash-safety
-limits, gentle or off; the developer's decision on #209). The pixel path keeps its pixel size until the swap (#211).
+limits, gentle or off; the developer's decision on #209).
 `src/world/brush/settings.ts` sends them to the renderer; brush3d's `QUALITY` and `setQuality` change the quality while the
 game runs (`brush3d/docs/PERFORMANCE.md`).
 
 ## The game's weather, drawn by brush3d (2026-11-14)
 
-On the brush3d path (`?renderer=brush3d`), everything brush3d can draw now comes from the game's own state (#207, #223 and
+In brush3d, everything brush3d can draw now comes from the game's own state (#207, #223 and
 #224). The sky follows the game's weather, and a blizzard blows as hard as it looks. The land shows the snow lying, a late
 frost's rime on the frost hollows, and mud on clay while the rules have it muddy. The water shows the river at its current,
 a flood at the rules' surface, and a cold snap's ice frozen from the banks in. What brush3d draws that the rules don't track
@@ -231,9 +231,9 @@ play is parked in #214. The player's flash setting for lightning is in the setti
 
 ## First light: the game drawn by brush3d (2026-11-14)
 
-The game can now be drawn by brush3d, behind `?renderer=brush3d` (#201, epic #212); players still see pixel3d until the swap
-(#211). A tile is 4 m. `main.ts` draws through a `Scene` (`src/world/scene.ts`): the pixel world moved whole into
-`pixelScene.ts` (its frames byte-identical), and the brush3d world is `src/world/brush/`, one piece a file, so the epic's tasks
+The game could now be drawn by brush3d, behind a `?renderer=brush3d` flag (#201, epic #212), while players still saw
+pixel3d until the swap (#211, above). A tile is 4 m. `main.ts` draws through a `Scene` (`src/world/scene.ts`): the pixel
+world moved whole into `pixelScene.ts` (its frames byte-identical), and the brush3d world is `src/world/brush/`, one piece a file, so the epic's tasks
 each replace their own: the land (`land.ts`, #202), the buildings and trucks (`things.ts`, #203–#205), the trees and rocks
 (`wild.ts`, #213), the season, hour and weather (`sky.ts`, #207, #208), with the tools (#206) and settings (#209) still to
 add. Today it's plain: the ground one painted meadow green, everything built a grey stand-in. The paint holds at the
@@ -248,7 +248,7 @@ The painterly renderer, brush3d, moved here from its own repo (#200, epic #212),
 the wind, water and cloud checks), the models' Blender scripts and its docs. One `package.json` (its scripts are `render:*`);
 `npm test`, the typecheck, lint and CI cover it, and the demo is built and deployed beside the game (`<build>/brush3d/`).
 Every pull request now gets a preview of both at `https://celestiallemon.github.io/Soil-n-Silo/pr-<number>/`. The game still
-draws with pixel3d; brush3d-renderer is archived, and its open issues moved here.
+drew with pixel3d until the swap (#211); brush3d-renderer is archived, and its open issues moved here.
 
 ## Height and terrain (2026-10-17)
 
@@ -279,7 +279,7 @@ The dock has Earthworks with Raise, Lower and Level chips (K; C cycles). The Hei
 3 levels, blended between, with steep banks darker; placement cards show the terrain's costs and effects, and the guide has "Height and
 earthworks". Ground is shaded smooth across joined tiles, steep banks are worn turf, and cliff faces have strata every
 2 levels under a turf lip, stone from level 8. The map's ground is drawn as objects in chunks so earthworks can redraw it.
-Six tree species and bushes vary by place, with willows by water and pines up high (`trees.ts`, models in `ASSET_BRIEF.md`).
+Six tree species and bushes vary by place, with willows by water and pines up high (`trees.ts`; in brush3d, `src/world/brush/wild.ts`).
 `test/height.test.ts` covers the height rules; the bot deliberately keeps its flat map to test the economy. Saves are version
 7; older ones are refused.
 
@@ -315,7 +315,6 @@ Six tree species and bushes vary by place, with willows by water and pines up hi
   the targets: First Light 13.5 (20), Morning Bread 38 and 30.5 built round neighbours (50), Windy Ridge 41.7 (55), Linen for the
   Looms 31.3 (45), Long Nights 48.4 (65), Tired Soil 28.1 (40), Riverlands 37.7 (50), Harvest Festival 39 (55), with ground in (5.7). `npm test` plays
   every layout and fails if one misses its target.
-- Models for the `truck` and the `garage`, and the silo without its drone pads (`ASSET_BRIEF.md`).
 - Drones as automatic helpers beside the trucks (`DESIGN.md`, Open questions), once trucks have been played.
 - Copy and paste / blueprints for repeated blocks (a row of fields with sprinklers).
 - Undo for the last few actions.

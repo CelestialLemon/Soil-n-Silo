@@ -184,7 +184,7 @@ measurable change, and all the inked things together are about 0.3 ms of it. See
 - Seen from the front (as the game's footprint has it), the water wheel is edge on, because its axle runs along the
   bank. On the farm it's turned to show its face.
 - Inside the open garage the walls read as one flat shade from some sides.
-- **In the game** (Soil-n-Silo#203): on the brush3d path (`?renderer=brush3d`), every building and truck the game places is
+- **In the game** (Soil-n-Silo#203): every building and truck the game places is
   its model here. `src/world/brush/catalog.ts` says which model draws which building (the game's `hive` is `beehive`,
   `press` `oil_press`, `solar` `solar_panel`, `turbine` `wind_turbine`, `wheel` `water_wheel`, `station`
   `weather_station`, the rest by their own names) and how the game's four facings turn a model's front; `things.ts` places

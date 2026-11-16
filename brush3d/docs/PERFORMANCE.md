@@ -475,7 +475,7 @@ Not tuned further yet: thinner woods, fewer dabs in the shadow pass or merged me
 
 What a frame costs in the game itself, on its eight commissions, rather than the demo's scenes.
 
-**Measuring.** In the game, `?renderer=brush3d&profile` (on `dev` or a PR's preview, any machine) puts a panel at the top:
+**Measuring.** In the game, `?profile` (on `dev` or a PR's preview, any machine) puts a panel at the top:
 move the camera to the busiest part of the farm, press Run (two or three minutes), then Copy. The cases are the demo's
 profile's (`src/renderer/profile.ts`, `runProfile`), drawn where the camera is: the four views, the widest and closest
 zooms (4 and 24 px a metre), noon, the golden hour and night, the heaviest weathers (a storm, a strike at its brightest,

@@ -4,7 +4,7 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
 
 ## Now
 
-- **Into the game, epic CelestialLemon/Soil-n-Silo#212**: brush3d replaces the game's pixel3d renderer. The order is in
+- **Into the game, epic CelestialLemon/Soil-n-Silo#212**: brush3d replaced the game's pixel3d renderer. The order is in
   the epic: #199 → #200 (the move into the game) → #201 (first light) → #202–#210 and #213 → #211 (the swap), all
   Soil-n-Silo issues.
   1. Soil-n-Silo#199 the API and the split (done 2026-11-14, #67 and #68): `docs/API.md` is the renderer's API for the game, in
@@ -23,7 +23,7 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      The demo's frames are byte-identical to brush3d-renderer's. brush3d-renderer is archived; its open issues moved to the
      game (brush3d-renderer#25, brush3d-renderer#56).
   3. Soil-n-Silo#201 first light (done 2026-11-16, Soil-n-Silo#219 and Soil-n-Silo#220): the game drawn by brush3d behind
-     `?renderer=brush3d`, plainly, at 4 m a tile. The renderer gained what the game needed: the view placed from the game's
+     a `?renderer=brush3d` flag (gone since the swap, #211), plainly, at 4 m a tile. The renderer gained what the game needed: the view placed from the game's
      camera (`view.place`, `toScreen`, `rayAt`), a camera that sits back far enough for the game's widest zoom (`landTop`,
      from `measureGround`, which was `setHazeGround`), and `remove()` freeing the tiles `add()` cut. The paint holds at 4 px a
      metre. A terrain level stands 1 m high (the developer's pick of 0.5, 1 and 2 m, Soil-n-Silo#220).
@@ -60,6 +60,10 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      Each is marked tree by tree, so `removeTrees` and `moveTrees` work on them. The developer's picks "for now": the
      crops' lay and the pine may be revisited (the candidates are in Soil-n-Silo#227's history). The demo shows them at
      `?scene=plants`; its other frames are unchanged.
+  10. Soil-n-Silo#211 the swap (done 2026-11-16): brush3d is the game's only renderer, the default, with no flag or
+      fallback; the pixel world, its models and the pixel3d-renderer dependency are gone. The renderer didn't change.
+      Left open: the developer's checks on the laptop and the MacBook (Soil-n-Silo#210), and the river's falls
+      (Soil-n-Silo#241).
 - **Weather, epic #3** (planned 2026-10-30): season, weather and hour change the whole picture. The decisions are in #3; in
   short, the game owns the weather's state and logic and the renderer only draws it. The order:
   1. #6 performance: measure the frame and set the weather's budget (done 2026-10-30: the farm 17.5 ms on the laptop,

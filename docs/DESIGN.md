@@ -38,15 +38,11 @@ blueprints and copy-paste, sound, multiple saves per level.
 ## Camera, presentation and controls
 
 The camera stays as it was: orthographic, a 3/4 view at about 30° pitch, 4 views 90° apart (Q/E), zoom (the wheel, a trackpad pinch,
-+/− or Z) and panning (drag, right-drag or the arrow keys). Zoom eases smoothly towards the pointer. Low-poly, flat-colour models drawn as
-pixel art by `pixel3d-renderer`. Everything is seen from 4 sides.
-
-Each art pixel is always drawn as a square of the same size on screen (2×2 screen pixels by default; the pixel size is a
-setting in the menu, 1×1 to 4×4). Zooming changes how much ground fits on the screen, so models are drawn with more art
-pixels close up and fewer far out. Chosen on 2026-10-10 over two other ways, tried side by side in play: magnifying a fixed
-picture (art pixels growing from 1×1 to 6×6) and stepping through six fixed detail levels; the free zoom looked and felt best.
-
-![The same mill zoomed in, the three ways tried: magnify, detail steps, free (chosen)](images/zoom-modes.png)
++/− or Z) and panning (drag, right-drag or the arrow keys). Zoom eases smoothly towards the pointer. Everything is seen from 4
+sides. The world is painted by brush3d, the game's own renderer ("painted world, inked things", `brush3d/docs/DIRECTION.md`):
+painted land, water and sky that follow the game's weather, and the solarpunk models inked over them, at 4 m a tile (epic
+#212; it replaced the pixel-art renderer, pixel3d-renderer, in #211). Its graphics quality is a setting: High by default,
+Medium for integrated graphics, Low.
 
 It is build-only and point-and-click. There is no character and no manual farming: you place, rotate, configure and remove.
 
@@ -152,7 +148,8 @@ screen kept nearly empty so the valley is what you look at. Its principles:
   percentages, never watt-hours.
 
 Settings, kept in the browser: interface size (90–130%; the interface also scales with the window, designed at 1920 × 1080 and
-held down to about 1366 × 768), pixel size, reduce motion, show pace, and the problems strip.
+held down to about 1366 × 768), graphics quality, how much rain and snow falls, lightning flashes (full, gentle or off),
+how the highlight and the overlays look, reduce motion, show pace, the problems strip, the frame rate readout, and the keys.
 
 ## Time
 
@@ -817,7 +814,7 @@ The building that gives the forecast (3.1): `src/game/station.ts`. Panel (3.3) a
   "Issued" row has the hour of the forecast ("day 4, 14:00"); before the first, "none yet" (and why). The dock and guide tile say "Station". A button opens the forecast panel (3.3). Its status
   pill, hover card, history ribbon and marker are those of any powered building (`Forecasting` while it works; No power, Not connected, or
   stopped by the flood otherwise). **The guide** has its page (cost, power, what it sees, that one is enough).
-- **The model** is `public/models/weather_station.glb` (3.5): the cups turn with the wind whether or not it has power, at three speeds by the
+- **The model** is brush3d's `weather_station` (`brush3d/src/models/`, 3.5): the cups turn with the wind whether or not it has power, at three speeds by the
   wind (below 0.35 of full wind 1.5 rad/s, below 0.7 3.5, else 6), as the turbine's rotor does, with no power test.
 - **The bot** builds one in Tired Soil, Riverlands and Harvest Festival (3.6; `station()` in `tools/layouts.ts`, west of the sauce's first pylon), after the first
   loop runs and a few minutes before the first event. It plays the whole seeded weather in hand, so the forecast tells it nothing: the station is only its cost
@@ -1086,8 +1083,8 @@ Tired Soil: sand 0.9, stony 0.9. Riverlands: silt 1.2, a wide floodplain (about 
 
 Beyond the edge the country carries on, a shade duller: the river, a track climbing out from the depot, woods rising
 into higher hills above the map's height limit. It is only scenery. Trees are oak, birch, pine, willow, poplar and apple,
-with bushes mixed in. Willows favour water within 2 tiles, pines levels 9 and above; apples occur on low ground. Each tree
-species has three model variants (`ASSET_BRIEF.md`); the species changes only its looks.
+with bushes mixed in. Willows favour water within 2 tiles, pines levels 9 and above; apples occur on low ground. brush3d
+paints each species in its own shape (`src/world/brush/wild.ts`, #213); the species changes only its looks.
 
 A **freight depot** (3 × 3) stands at one edge. Anything a truck drops at it counts towards the goals and pays credits (see Logistics).
 
