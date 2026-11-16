@@ -24,7 +24,7 @@ import { WindView } from './windView';
 //   season=spring|summer|autumn|winter (#13; none by default: the looks' own day, sun up 6 to 20)  character (the
 //     game's: mild|wet|dry|hot|gales|stormy|hard|highRiver)  sunrise, sunset (the game's clock hours; the season's by default)
 //   The scene is built in the season (summer's with none): its crops, flowers and hay stand in for the game's.
-//   scene=farm|gallery|meadow|water|plants (gallery: every model on its own plot, docs/MODELS.md; water: the water's test patch, #19: a pond, a slow bend, a fast run, a flooded meadow; plants: the game's crops at every stage, laid both ways, and its trees, Soil-n-Silo#213)  lines=0  shadows=0  still (hide the buttons)  dpr (pixel ratio)
+//   scene=farm|gallery|meadow|water|plants (gallery: every model on its own plot, docs/MODELS.md; water: the water's test patch, #19: a pond, a slow bend, a fast run, a flooded meadow; plants: the game's crops at every stage and a tree of each species, Soil-n-Silo#213)  lines=0  shadows=0  still (hide the buttons)  dpr (pixel ratio)
 //   wind (m/s, or calm|breeze|gale|storm|hurricane)  windDir (degrees the wind blows towards, from +x towards +z)  gust (0..1)
 //   rhythm (how the gusts come: 0 rare and strong, 1 frequent and mild)  windMap (the living wind from above, #36)
 //   windSeed (which gusts: a whole number)

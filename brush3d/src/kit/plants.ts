@@ -11,9 +11,11 @@ import type { Grove } from './seasonTrees';
 // and its six tree species and the bushes. The game says which crop, which stage, which species; how each looks is the
 // renderer's.
 //
-// Each crop has its own colours, height, flowers and fruit at each stage. Oak, birch, apple and the bushes are the kit's
-// trees (growTree, seasonTrees.ts), and pine, willow and poplar shapes of their own (growSpecies). How a field's crop is laid
-// and the pine's and willow's shapes are candidates for the developer to pick (#213's look PR; the ones not picked go).
+// Each crop has its own colours, height, flowers and fruit at each stage, laid as one soft blanket over its bed. Oak, birch,
+// apple and the bushes are the kit's trees (growTree, seasonTrees.ts); pine, willow and poplar have shapes of their own
+// (growSpecies): the pine a soft cone, the willow weeping. The developer picked these on #213's look PR (Soil-n-Silo#227),
+// "for now": the crops' lay and the pine may be revisited. The candidates not picked (crops in rows of soil; the pine as a
+// tiered spire or a Scots pine; a pollarded willow) are in the history of Soil-n-Silo#227 if they are.
 
 export const CROP_NAMES = ['wheat', 'beans', 'tomato', 'sunflower', 'flax'] as const;
 export type CropName = (typeof CROP_NAMES)[number];
@@ -95,14 +97,6 @@ export function addCanopy(b: MeshBuilder, x: number, y: number, z: number, radiu
  */
 export interface CropTile { x: number; y: number; z: number; crop: CropName; stage: CropStage; joins?: number; side?: number }
 
-/**
- * How a field's crop is laid (#213's look candidates, for the developer to pick): `rows`, the plants in rows a metre apart
- * with the soil between them showing until they close over it; `blanket`, one soft mass over the bed, its rows only banded
- * in colour.
- */
-export const CROP_LOOKS = ['rows', 'blanket'] as const;
-export type CropLook = (typeof CROP_LOOKS)[number];
-
 /** Flowers, fruit or pods: dabs of a colour over the crop's top, `per` a square metre, `size` each dab's half-width (m). */
 interface Bloom { color: THREE.Color; per: number; size: number; /** Width over length: 1 round, less a pod. */ shape?: number; /** How far below the top (m). */ sink?: number }
 /** A sunflower's heads on their stems: `size` the head's half-width (m), `per` a square metre. */
@@ -111,10 +105,8 @@ interface Heads { petals: THREE.Color; eye: THREE.Color; size: number; per: numb
 interface Stand {
   /** How tall it stands (m). */
   tall: number;
-  /** The mass's colours: its own, its shade between the rows, its sunlit tips, and its foot at the field's edge. */
+  /** The mass's colours: its own, its shade in the bands across it, its sunlit tips, and its foot at the field's edge. */
   base: THREE.Color; deep: THREE.Color; tip: THREE.Color; root: THREE.Color;
-  /** Rows (`rows` look): how much of the space between two rows the plants fill (0..1). */
-  cover: number;
   /** Grassy stalks a square metre (wheat's and flax's), with ears on them (wheat's). */
   stalks?: number; ears?: boolean;
   /** Leafy plants a metre of row (the broad-leaved crops'), each a few leaf strokes over the mass, and their size. */
@@ -123,54 +115,50 @@ interface Stand {
   heads?: Heads;
 }
 
-const SOIL = srgb(0x6a5236);
-/** The space between a field's rows, `rows` look (m): a metre, so they stay a few pixels apart at the game's widest view. */
-const ROW = 1;
-
 const WHEAT: Stand[] = [
-  { tall: 0.1, base: srgb(0x8cb850), deep: srgb(0x6a9a44), tip: srgb(0xb0cc68), root: srgb(0x6a5a3a), cover: 0.35 },
-  { tall: 0.35, base: srgb(0x7cb04a), deep: srgb(0x5a9442), tip: srgb(0xa8c860), root: srgb(0x4e7e38), cover: 0.7, stalks: 3 },
-  { tall: 0.7, base: srgb(0x9cbc4a), deep: srgb(0x6e9a3e), tip: srgb(0xd2d070), root: srgb(0x5e8a3a), cover: 0.9, stalks: 5, ears: true },
-  { tall: 0.85, base: C.wheat, deep: C.wheatDeep, tip: C.wheatTip, root: C.wheatRoot, cover: 0.92, stalks: 6, ears: true },
+  { tall: 0.1, base: srgb(0x8cb850), deep: srgb(0x6a9a44), tip: srgb(0xb0cc68), root: srgb(0x6a5a3a) },
+  { tall: 0.35, base: srgb(0x7cb04a), deep: srgb(0x5a9442), tip: srgb(0xa8c860), root: srgb(0x4e7e38), stalks: 3 },
+  { tall: 0.7, base: srgb(0x9cbc4a), deep: srgb(0x6e9a3e), tip: srgb(0xd2d070), root: srgb(0x5e8a3a), stalks: 5, ears: true },
+  { tall: 0.85, base: C.wheat, deep: C.wheatDeep, tip: C.wheatTip, root: C.wheatRoot, stalks: 6, ears: true },
 ];
 const BEAN = { base: srgb(0x4f8a3c), deep: srgb(0x30602a), tip: srgb(0x86b44e), root: srgb(0x3e5a2a) };
 const BEANS: Stand[] = [
-  { tall: 0.12, ...BEAN, base: srgb(0x6aa044), cover: 0.3, plants: 3, leaf: 0.09 },
-  { tall: 0.4, ...BEAN, cover: 0.55, plants: 3, leaf: 0.16 },
+  { tall: 0.12, ...BEAN, base: srgb(0x6aa044), plants: 3, leaf: 0.09 },
+  { tall: 0.4, ...BEAN, plants: 3, leaf: 0.16 },
   // Climbing their poles, in flower: white and lilac.
-  { tall: 1.4, ...BEAN, cover: 0.6, plants: 3, leaf: 0.2,
+  { tall: 1.4, ...BEAN, plants: 3, leaf: 0.2,
     blooms: [{ color: srgb(0xf2ecf6), per: 5, size: 0.085 }, { color: srgb(0xc6a0e0), per: 3, size: 0.08 }] },
   // Hung with pods, the last flowers going over.
-  { tall: 1.55, ...BEAN, base: srgb(0x4a8238), cover: 0.65, plants: 3, leaf: 0.2,
+  { tall: 1.55, ...BEAN, base: srgb(0x4a8238), plants: 3, leaf: 0.2,
     blooms: [{ color: srgb(0x8cb43c), per: 9, size: 0.1, shape: 0.35, sink: 0.25 }, { color: srgb(0xf2ecf6), per: 1.5, size: 0.075 }] },
 ];
 const TOMATO = { base: srgb(0x4e8a3a), deep: srgb(0x2c5a28), tip: srgb(0x8ab452), root: srgb(0x3c5628) };
 const TOMATOES: Stand[] = [
-  { tall: 0.12, ...TOMATO, base: srgb(0x66a046), cover: 0.25, plants: 1.6, leaf: 0.1 },
-  { tall: 0.45, ...TOMATO, cover: 0.5, plants: 1.6, leaf: 0.2 },
+  { tall: 0.12, ...TOMATO, base: srgb(0x66a046), plants: 1.6, leaf: 0.1 },
+  { tall: 0.45, ...TOMATO, plants: 1.6, leaf: 0.2 },
   // Staked and leafy, in yellow flower.
-  { tall: 0.85, ...TOMATO, cover: 0.62, plants: 1.6, leaf: 0.26, blooms: [{ color: srgb(0xf4d23c), per: 7, size: 0.075 }] },
+  { tall: 0.85, ...TOMATO, plants: 1.6, leaf: 0.26, blooms: [{ color: srgb(0xf4d23c), per: 7, size: 0.075 }] },
   // Red fruit, a few still green, a last flower or two.
-  { tall: 0.95, ...TOMATO, cover: 0.66, plants: 1.6, leaf: 0.26,
+  { tall: 0.95, ...TOMATO, plants: 1.6, leaf: 0.26,
     blooms: [{ color: srgb(0xd8402a), per: 7, size: 0.11, sink: 0.12 }, { color: srgb(0xe0702e), per: 2, size: 0.1, sink: 0.15 }, { color: srgb(0xf4d23c), per: 1.5, size: 0.07 }] },
 ];
 const SUN = { base: srgb(0x5a8f34), deep: srgb(0x35642a), tip: srgb(0x94bc4a), root: srgb(0x45602c) };
 const SUNFLOWERS: Stand[] = [
-  { tall: 0.15, ...SUN, base: srgb(0x70a444), cover: 0.3, plants: 2.2, leaf: 0.1 },
-  { tall: 0.6, ...SUN, cover: 0.5, plants: 2.2, leaf: 0.22 },
+  { tall: 0.15, ...SUN, base: srgb(0x70a444), plants: 2.2, leaf: 0.1 },
+  { tall: 0.6, ...SUN, plants: 2.2, leaf: 0.22 },
   // Tall, the heads opening.
-  { tall: 1.35, ...SUN, cover: 0.55, plants: 2.2, leaf: 0.26, heads: { petals: srgb(0xf2c41a), eye: srgb(0x6a5a24), size: 0.13, per: 2.2 } },
+  { tall: 1.35, ...SUN, plants: 2.2, leaf: 0.26, heads: { petals: srgb(0xf2c41a), eye: srgb(0x6a5a24), size: 0.13, per: 2.2 } },
   // Full heads, dark-eyed.
-  { tall: 1.6, ...SUN, cover: 0.58, plants: 2.2, leaf: 0.28, heads: { petals: srgb(0xf6c414), eye: srgb(0x4a3018), size: 0.2, per: 2.2 } },
+  { tall: 1.6, ...SUN, plants: 2.2, leaf: 0.28, heads: { petals: srgb(0xf6c414), eye: srgb(0x4a3018), size: 0.2, per: 2.2 } },
 ];
 const FLAX = { base: srgb(0x6e9e64), deep: srgb(0x4c7a52), tip: srgb(0x9cc086), root: srgb(0x52683c) };
 const FLAXES: Stand[] = [
-  { tall: 0.08, ...FLAX, base: srgb(0x86b060), cover: 0.35 },
-  { tall: 0.3, ...FLAX, cover: 0.75, stalks: 3 },
+  { tall: 0.08, ...FLAX, base: srgb(0x86b060) },
+  { tall: 0.3, ...FLAX, stalks: 3 },
   // A haze of sky-blue flowers.
-  { tall: 0.55, ...FLAX, cover: 0.88, stalks: 4, blooms: [{ color: srgb(0x86aee6), per: 26, size: 0.06 }, { color: srgb(0xb0ccf0), per: 8, size: 0.05 }] },
+  { tall: 0.55, ...FLAX, stalks: 4, blooms: [{ color: srgb(0x86aee6), per: 26, size: 0.06 }, { color: srgb(0xb0ccf0), per: 8, size: 0.05 }] },
   // The seed bolls browning, flowers still among them.
-  { tall: 0.65, ...FLAX, base: srgb(0x8a9e5a), tip: srgb(0xc4b46a), cover: 0.9, stalks: 4,
+  { tall: 0.65, ...FLAX, base: srgb(0x8a9e5a), tip: srgb(0xc4b46a), stalks: 4,
     blooms: [{ color: srgb(0x86aee6), per: 14, size: 0.06 }, { color: srgb(0xb89a5a), per: 12, size: 0.05 }] },
 ];
 const STANDS: Record<CropName, Stand[]> = { wheat: WHEAT, beans: BEANS, tomato: TOMATOES, sunflower: SUNFLOWERS, flax: FLAXES };
@@ -189,64 +177,47 @@ export class CropPatch {
   /** Leaves, flowers, fruit and heads over it. */
   private readonly dabs = new MeshBuilder('foliage');
 
-  private readonly look: CropLook;
-
-  constructor(look: CropLook = 'rows') { this.look = look; }
-
   add(t: CropTile) {
-    const side = t.side ?? 4, half = side / 2, joins = t.joins ?? 0, st = STANDS[t.crop][t.stage], rows = this.look === 'rows';
+    const side = t.side ?? 4, half = side / 2, joins = t.joins ?? 0, st = STANDS[t.crop][t.stage];
     // How far inside the field a point is (m): to the nearest side the crop doesn't carry on past.
     const inside = (x: number, z: number) => {
       let d = Infinity;
       for (const [bit, dx, dz] of SIDES) if (!(joins & bit)) d = Math.min(d, dx ? half - dx * (x - t.x) : half - dz * (z - t.z));
       return d;
     };
-    // How much of the crop stands at a point: in a row, 1 along its middle and 0 in the soil between rows (`rows`); 1
-    // everywhere under a blanket.
-    const across = (z: number) => Math.abs(((z / ROW) % 1 + 1) % 1 - 0.5) * 2;
-    const fill = (z: number) => (rows ? 1 - smooth(st.cover * 0.55, st.cover, across(z)) : 1);
-    const tall = (x: number, z: number) => {
-      const f = fill(z);
-      return Math.max(0.02, st.tall * smooth(0, 0.7, inside(x, z)) * (rows ? 0.04 + 0.96 * Math.sqrt(f) : 1) * (1 + 0.08 * noise2(x * 0.5, z * 0.5)));
-    };
-    // Finer across the rows than along them, so each row is a ridge.
-    const nx = Math.max(2, Math.round(side / 0.5) + 1), nz = rows ? Math.max(2, Math.round(side / ROW) * 8 + 1) : nx;
-    const sx = side / (nx - 1), sz = side / (nz - 1), i0 = this.mass.vertexCount, c = new THREE.Color();
-    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
-      const x = t.x - half + i * sx, z = t.z - half + j * sz, e = 0.12;
+    // How tall the crop stands at a point: its full height, falling to the soil at the sides it doesn't carry on past.
+    const tall = (x: number, z: number) => Math.max(0.02, st.tall * smooth(0, 0.7, inside(x, z)) * (1 + 0.08 * noise2(x * 0.5, z * 0.5)));
+    const grid = Math.max(2, Math.round(side / 0.5) + 1), step = side / (grid - 1), i0 = this.mass.vertexCount, c = new THREE.Color();
+    for (let j = 0; j < grid; j++) for (let i = 0; i < grid; i++) {
+      const x = t.x - half + i * step, z = t.z - half + j * step, e = 0.12;
       const nrm = new THREE.Vector3(tall(x - e, z) - tall(x + e, z), 2 * e, tall(x, z - e) - tall(x, z + e)).normalize();
-      // Rows across the field (along x), banded in its deeper colour, sunlit tips in patches, the root's at its edges, and
-      // the soil's between the rows.
-      const band = rows ? 0 : smooth(-0.35, 0.35, Math.sin(z * 1.7 * Math.PI) + 0.3 * noise2(x * 0.08, z * 0.3));
+      // Banded across the field (along x) in its deeper colour, sunlit tips in patches, the root's at its edges.
+      const band = smooth(-0.35, 0.35, Math.sin(z * 1.7 * Math.PI) + 0.3 * noise2(x * 0.08, z * 0.3));
       c.copy(st.base).lerp(st.deep, band * 0.6).lerp(st.tip, smooth(0.5, 0.9, noise2(x * 0.06 + 9, z * 0.09)) * 0.3)
         .lerp(st.root, (1 - smooth(0.1, 0.8, inside(x, z))) * 0.35);
-      if (rows) c.lerp(st.deep, smooth(0.9, 0.4, fill(z)) * 0.5).lerp(SOIL, smooth(0.5, 0.05, fill(z)));
       this.mass.vertex({ x, y: t.y + tall(x, z), z }, nrm, c, [0.5, 1.3, 0, 0]);
     }
-    for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) { const a = i0 + j * nx + i; this.mass.quad(a, a + nx, a + nx + 1, a + 1); }
+    for (let j = 0; j < grid - 1; j++) for (let i = 0; i < grid - 1; i++) { const a = i0 + j * grid + i; this.mass.quad(a, a + grid, a + grid + 1, a + 1); }
 
     const rand = rng(Math.imul(Math.round(t.x * 13), 0x9e3779b1) ^ Math.round(t.z * 17));
-    // A place on the crop: anywhere under a blanket; along a row's middle in rows, `spread` of the way out.
-    const spot = (spread: number) => {
-      const x = t.x + (rand() - 0.5) * side;
-      let z = t.z + (rand() - 0.5) * side;
-      if (rows) z = (Math.round(z / ROW - 0.5) + 0.5) * ROW + (rand() - 0.5) * st.cover * ROW * spread;
+    // A place anywhere on the crop, and how far inside the field it is.
+    const spot = () => {
+      const x = t.x + (rand() - 0.5) * side, z = t.z + (rand() - 0.5) * side;
       return { x, z, d: inside(x, z) };
     };
     const area = side * side;
     // Stalks: thick along the field's edges, to break them, and a few through its top.
     if (st.stalks) {
       for (let k = 0, n = Math.round(st.stalks * area * 2); k < n; k++) {
-        const { x, z, d } = spot(0.8);
+        const { x, z, d } = spot();
         if (d < 0.05 || (d > 0.8 && rand() > 0.35)) continue;
         this.stalk(x, t.y, z, tall(x, z) + st.tall * (0.05 + rand() * 0.15), st, rand, st.ears ?? false);
       }
     }
-    // The broad-leaved crops' plants: each a few leaf strokes over its own top, so the rows read as plants.
+    // The broad-leaved crops' plants: each a few leaf strokes over its own top, so the crop reads as plants.
     if (st.plants && st.leaf) {
-      const n = Math.round(st.plants * (rows ? side * side / ROW : area * 0.6));
-      for (let k = 0; k < n; k++) {
-        const { x, z, d } = spot(0.4);
+      for (let k = 0, n = Math.round(st.plants * area * 0.6); k < n; k++) {
+        const { x, z, d } = spot();
         if (d < 0.1) continue;
         const top = t.y + tall(x, z);
         for (let l = 0; l < 3; l++) {
@@ -260,7 +231,7 @@ export class CropPatch {
     }
     for (const bl of st.blooms ?? []) {
       for (let k = 0, n = Math.round(bl.per * area); k < n; k++) {
-        const { x, z, d } = spot(0.7);
+        const { x, z, d } = spot();
         if (d < 0.15) continue;
         const y = t.y + tall(x, z) - (bl.sink ?? 0) * rand() + bl.size * 0.4;
         addDab(this.dabs, new THREE.Vector3(x, y, z), UP, bl.color.clone().offsetHSL((rand() - 0.5) * 0.02, 0, (rand() - 0.5) * 0.07),
@@ -269,8 +240,8 @@ export class CropPatch {
     }
     if (st.heads) {
       const h = st.heads;
-      for (let k = 0, n = Math.round(h.per * area * (rows ? 0.75 : 0.5)); k < n; k++) {
-        const { x, z, d } = spot(0.3);
+      for (let k = 0, n = Math.round(h.per * area * 0.5); k < n; k++) {
+        const { x, z, d } = spot();
         if (d < 0.2) continue;
         const y = t.y + st.tall * smooth(0, 0.7, d) * (0.95 + rand() * 0.15);
         this.stalk(x, t.y + tall(x, z) * 0.7, z, y - t.y - tall(x, z) * 0.7, st, rand, false);
@@ -312,23 +283,6 @@ export class CropPatch {
 
 // ---- Pine, willow and poplar: shapes of their own (#213's look) ----
 
-/**
- * The pine's candidates (#213's look, for the developer to pick): `spire`, tiers of drooping boughs up a bare trunk, drawn
- * to a point (the asset brief's); `cone`, one soft cone of needles down to the ground; `scots`, a tall bare trunk, rusty
- * up top, under a few flat-topped clouds of needles.
- */
-export const PINE_LOOKS = ['spire', 'cone', 'scots'] as const;
-export type PineLook = (typeof PINE_LOOKS)[number];
-/**
- * The willow's: `weeping`, a soft dome hung all round with long curtains to near the ground, golden whips in winter (the
- * asset brief's); `pollard`, a squat trunk cut back to a knuckle and a fountain of upright whips, red-gold in winter.
- */
-export const WILLOW_LOOKS = ['weeping', 'pollard'] as const;
-export type WillowLook = (typeof WILLOW_LOOKS)[number];
-/** Which candidate each plant is drawn as. */
-export interface PlantLooks { crops: CropLook; pine: PineLook; willow: WillowLook }
-export const PLANT_LOOKS: PlantLooks = { crops: 'rows', pine: 'spire', willow: 'weeping' };
-
 type V3 = THREE.Vector3;
 const BARK: Paint = [0.4, 2.5, 1.57, 0];
 const randomDir = (r: () => number) => {
@@ -367,20 +321,23 @@ function sway(parts: [MeshBuilder, number][], t: Tree, kind: TreeKind, y0: numbe
 const strokes = (area: number, size: number, t: Tree, deep = 7) => Math.round(deep * area / (4 * size * size) * (0.4 + 0.6 * (t.fill ?? 1)));
 
 /**
- * Grows a tree of a species into a grove, in the grove's season: pine, willow and poplar in shapes of their own (the
- * candidate `looks` names, for pine and willow), the rest as the kit grows them.
+ * Grows a tree of a species into a grove, in the grove's season: pine, willow and poplar in shapes of their own, the rest
+ * as the kit grows them.
  */
-export function growSpecies(grove: Grove, ground: Ground, species: Species, t: Tree, rand: () => number, looks: Pick<PlantLooks, 'pine' | 'willow'> = PLANT_LOOKS) {
-  if (species === 'pine') pine(grove, ground, t, rand, looks.pine);
-  else if (species === 'willow') willow(grove, ground, t, rand, looks.willow);
+export function growSpecies(grove: Grove, ground: Ground, species: Species, t: Tree, rand: () => number) {
+  if (species === 'pine') pine(grove, ground, t, rand);
+  else if (species === 'willow') willow(grove, ground, t, rand);
   else if (species === 'poplar') poplar(grove, ground, t, rand);
   else grove.grow(ground, t, rand);
 }
 
-const NEEDLES = srgb(0x2b5e4c), RUST_BARK = srgb(0xa0603a);
+const NEEDLES = srgb(0x2b5e4c);
 
-/** A pine: evergreen, the same in every season (a step fresher at its tips in spring). */
-function pine(grove: Grove, ground: Ground, t: Tree, r: () => number, look: PineLook) {
+/**
+ * A pine: one soft cone of needles from near the ground to a point, its skin in tufts so the edge is ragged, not ruled.
+ * Evergreen, the same in every season (a step fresher at its tips in spring).
+ */
+function pine(grove: Grove, ground: Ground, t: Tree, r: () => number) {
   const s = t.scale ?? 1, y0 = ground.height(t.x, t.z) - 0.05, base = new THREE.Vector3(t.x, y0, t.z);
   const { wood, leaves } = grove, wood0 = wood.vertexCount, leaves0 = leaves.vertexCount;
   const dabScale = Math.pow(s, 0.45) * (t.stroke ?? 1), green = t.leaf ?? NEEDLES;
@@ -388,77 +345,20 @@ function pine(grove: Grove, ground: Ground, t: Tree, r: () => number, look: Pine
     const c = shade(green, nrm, inner, r);
     return grove.season === 'spring' && nrm.y > 0.4 && r() < 0.3 ? c.lerp(srgb(0x6f9a50), 0.35) : c;
   };
-  const sq = Math.sqrt(s);
-  if (look === 'scots') {
-    // A tall bare trunk, leaning a little, its bark going rusty up top, under a few flat clouds of needles on their boughs.
-    const H = 6.6 * s, lean = new THREE.Vector3((r() - 0.5) * 0.12, 1, (r() - 0.5) * 0.12).normalize();
-    const top = base.clone().addScaledVector(lean, H * 0.66);
-    bough(wood, base, base.clone().addScaledVector(lean, H * 0.38), 0.2 * sq, 0.16 * sq, C.bark);
-    bough(wood, base.clone().addScaledVector(lean, H * 0.38), top, 0.16 * sq, 0.09 * sq, RUST_BARK);
-    const n = 3 + Math.floor(r() * 2), a0 = r() * Math.PI * 2;
-    const clouds: { c: V3; r: number }[] = [{ c: top.clone().add(new THREE.Vector3(0, 0.22 * H, 0)), r: (0.9 + r() * 0.3) * s }];
-    for (let i = 0; i < n; i++) {
-      const a = a0 + (i / n) * Math.PI * 2 + (r() - 0.5) * 0.8, from = base.clone().addScaledVector(lean, H * (0.5 + r() * 0.25));
-      const out = (1.3 + r() * 0.7) * s;
-      const to = from.clone().add(new THREE.Vector3(Math.cos(a) * out, (0.3 + r() * 0.7) * s, Math.sin(a) * out));
-      bough(wood, from, to, 0.08 * sq, 0.04 * sq, RUST_BARK);
-      clouds.push({ c: to.clone().add(new THREE.Vector3(0, 0.2 * s, 0)), r: (0.75 + r() * 0.35) * s });
-    }
-    bough(wood, top, clouds[0].c, 0.09 * sq, 0.04 * sq, RUST_BARK);
-    for (const k of clouds) {
-      // A cloud flat underneath and domed over the top, in broad flat strokes.
-      const size = 0.26 * dabScale, n2 = strokes(Math.PI * k.r * k.r * 1.6, size, t);
-      for (let i = 0; i < n2; i++) {
-        const dir = randomDir(r), inner = r() < 0.2 ? 0.7 : dir.y < -0.1 ? 0.45 : 0;
-        dir.y = dir.y < 0 ? dir.y * 0.2 : dir.y * 0.38;
-        const p = k.c.clone().addScaledVector(dir, k.r * (inner > 0.6 ? 0.5 : 0.85 + r() * 0.2));
-        const nrm = new THREE.Vector3(dir.x, dir.y * 2 + 0.3, dir.z).normalize();
-        addDab(leaves, p, nrm, tint(nrm, inner), size * (inner > 0.6 ? 1.4 : 0.8 + r() * 0.4), r(), [0.6, 0.5, (r() - 0.5) * 0.5, 0.5]);
-      }
-    }
-    sway([[wood, wood0], [leaves, leaves0]], t, 'broadleaf', y0, H * 0.55);
-    return;
-  }
-  const H = 6.4 * s;
+  const H = 6.4 * s, sq = Math.sqrt(s);
   bough(wood, base, base.clone().add(new THREE.Vector3(0, H * 0.9, 0)), 0.17 * sq, 0.04 * sq, C.bark);
-  if (look === 'cone') {
-    // One soft cone from near the ground to a point, its skin in tufts, so the edge is ragged, not ruled.
-    const foot = 0.08 * H, R = 1.75 * s, tufts = 6 + Math.floor(r() * 3), turn = r() * Math.PI * 2;
-    const radius = (f: number) => R * Math.pow(1 - f, 1.05) + 0.08 * s;
-    const size = 0.24 * dabScale, n = strokes(Math.PI * R * Math.hypot(R, H), size, t);
-    for (let i = 0; i < n; i++) {
-      const f = 1 - Math.sqrt(r()), phi = r() * Math.PI * 2, inner = r() < 0.18 ? 0.55 + r() * 0.3 : 0;
-      const tuft = 0.84 + 0.22 * Math.max(0, Math.cos((phi - turn) * tufts * 0.5)) ** 2 + (r() - 0.5) * 0.08;
-      const rr = radius(f) * tuft * (1 - inner * 0.6);
-      const p = base.clone().add(new THREE.Vector3(Math.cos(phi) * rr, foot + f * (H - foot) - 0.25 * s * (rr / R), Math.sin(phi) * rr));
-      const nrm = new THREE.Vector3(Math.cos(phi), 0.45 + f * 0.4, Math.sin(phi)).normalize();
-      addDab(leaves, p, nrm, tint(nrm, inner), size * (inner ? 1.5 : 0.75 + r() * 0.5), r(), [0.65, 0.5, -1, 0.4]);
-    }
-    sway([[wood, wood0], [leaves, leaves0]], t, 'cypress', y0, foot);
-    return;
+  const foot = 0.08 * H, R = 1.75 * s, tufts = 6 + Math.floor(r() * 3), turn = r() * Math.PI * 2;
+  const radius = (f: number) => R * Math.pow(1 - f, 1.05) + 0.08 * s;
+  const size = 0.24 * dabScale, n = strokes(Math.PI * R * Math.hypot(R, H), size, t);
+  for (let i = 0; i < n; i++) {
+    const f = 1 - Math.sqrt(r()), phi = r() * Math.PI * 2, inner = r() < 0.18 ? 0.55 + r() * 0.3 : 0;
+    const tuft = 0.84 + 0.22 * Math.max(0, Math.cos((phi - turn) * tufts * 0.5)) ** 2 + (r() - 0.5) * 0.08;
+    const rr = radius(f) * tuft * (1 - inner * 0.6);
+    const p = base.clone().add(new THREE.Vector3(Math.cos(phi) * rr, foot + f * (H - foot) - 0.25 * s * (rr / R), Math.sin(phi) * rr));
+    const nrm = new THREE.Vector3(Math.cos(phi), 0.45 + f * 0.4, Math.sin(phi)).normalize();
+    addDab(leaves, p, nrm, tint(nrm, inner), size * (inner ? 1.5 : 0.75 + r() * 0.5), r(), [0.65, 0.5, -1, 0.4]);
   }
-  // The spire: tiers of boughs, each a drooping skirt of needles, smaller up the trunk, the dark between them showing.
-  const bare = 0.2 * H, tiers = 5 + Math.floor(r() * 2);
-  for (let i = 0; i < tiers; i++) {
-    const f = i / (tiers - 1), yt = y0 + bare + f * (H * 0.86 - bare);
-    const R = (0.25 + 1.4 * Math.pow(1 - f, 1.1)) * s * (0.9 + r() * 0.2), lobes = 4 + Math.floor(r() * 3), turn = r() * Math.PI * 2;
-    const size = (0.15 + 0.05 * (1 - f)) * dabScale, n = strokes(Math.PI * R * R, size, t) + 2;
-    for (let k = 0; k < n; k++) {
-      const a = r() * Math.PI * 2, reach = R * (0.82 + 0.22 * Math.cos(a * lobes + turn)), d = reach * (0.3 + 0.7 * Math.sqrt(r()));
-      const under = r() < 0.25, out = d / R;
-      // Each skirt droops at its edge; its underside is in shade.
-      const y = yt - 0.4 * R * out * out + (under ? -0.16 * s : 0.1 * s * (1 - out)) + (r() - 0.5) * 0.06 * s;
-      const nrm = new THREE.Vector3(Math.cos(a) * out * 0.8, under ? -0.3 : 1 - 0.45 * out, Math.sin(a) * out * 0.8).normalize();
-      addDab(leaves, new THREE.Vector3(t.x + Math.cos(a) * d, y, t.z + Math.sin(a) * d), nrm, tint(nrm, under ? 0.6 : out < 0.4 ? 0.3 : 0),
-        size * (0.8 + r() * 0.4), r(), [0.6, 0.36, (r() - 0.5) * 0.4, 0.4]);
-    }
-  }
-  // The leader: a few upright strokes to a point.
-  for (let k = 0; k < 6; k++) {
-    const f = k / 5, p = base.clone().add(new THREE.Vector3((r() - 0.5) * 0.15 * s, H * (0.86 + 0.14 * f), (r() - 0.5) * 0.15 * s));
-    addDab(leaves, p, UP, tint(UP, 0.1), 0.16 * dabScale * (1 - f * 0.5), r(), [0.6, 0.4, Math.PI / 2, 0.4]);
-  }
-  sway([[wood, wood0], [leaves, leaves0]], t, 'cypress', y0, bare);
+  sway([[wood, wood0], [leaves, leaves0]], t, 'cypress', y0, foot);
 }
 
 /** The willow's leaves, by season: fresh in spring, soft grey-green in summer, yellow in autumn; its bare whips' in winter. */
@@ -469,8 +369,8 @@ function willowLeaf(t: Tree, season: Season, r: () => number) {
   return green.clone();
 }
 
-/** A willow by the water: weeping or pollarded, its leaves (or, in winter, its bare golden whips) on long hanging strands. */
-function willow(grove: Grove, ground: Ground, t: Tree, r: () => number, look: WillowLook) {
+/** A weeping willow by the water: its leaves (or, in winter, its bare golden whips) on long hanging strands. */
+function willow(grove: Grove, ground: Ground, t: Tree, r: () => number) {
   const s = t.scale ?? 1, y0 = ground.height(t.x, t.z) - 0.05, base = new THREE.Vector3(t.x, y0, t.z), sq = Math.sqrt(s);
   const { wood, leaves, twigs } = grove, wood0 = wood.vertexCount, leaves0 = leaves.vertexCount, twigs0 = twigs.vertexCount;
   const dabScale = Math.pow(s, 0.45) * (t.stroke ?? 1), winter = grove.season === 'winter';
@@ -481,27 +381,7 @@ function willow(grove: Grove, ground: Ground, t: Tree, r: () => number, look: Wi
     ? addDab(strand, p, nrm.clone().setY(nrm.y + 1.4).normalize(), c, size * 0.75, r(), [0.4 + STIFF_STROKE + CRISP_EDGE, 0.16, angle, 0.3])
     : addDab(strand, p, nrm, c, size, r(), [0.6, 0.3, angle, 0.5]);
   const leaf = willowLeaf(t, grove.season, r);
-  if (look === 'pollard') {
-    // A squat trunk cut back to a knuckle, and a fountain of upright whips from it, leafy along their outer two thirds.
-    const head = base.clone().add(new THREE.Vector3((r() - 0.5) * 0.2 * s, 1.4 * s, (r() - 0.5) * 0.2 * s)), bark = C.bark.clone().lerp(srgb(0x6a6458), 0.4);
-    bough(wood, base, head, 0.3 * sq, 0.34 * sq, bark);
-    bough(wood, head.clone().add(new THREE.Vector3(0, -0.15 * s, 0)), head.clone().add(new THREE.Vector3(0, 0.2 * s, 0)), 0.42 * sq, 0.3 * sq, bark);
-    const gold = srgb(0xc8823a), n = Math.round(60 * (0.4 + 0.6 * (t.fill ?? 1)));
-    for (let i = 0; i < n; i++) {
-      const a = r() * Math.PI * 2, tilt = r() * 1.05, len = (1.7 + r() * 1.0) * s;
-      const dir = new THREE.Vector3(Math.sin(tilt) * Math.cos(a), Math.cos(tilt), Math.sin(tilt) * Math.sin(a));
-      const step = 0.22 * dabScale, m = Math.max(2, Math.round(len / step));
-      for (let k = Math.round(m * 0.3); k <= m; k++) {
-        const f = k / m, p = head.clone().addScaledVector(dir, len * f).add(new THREE.Vector3(0, -0.6 * s * f * f * Math.sin(tilt), 0));
-        const nrm = dir.clone().setY(0.6).normalize(), inner = tilt < 0.3 ? 0.35 : 0;
-        if (winter) whip(p, nrm, gold.clone().lerp(srgb(0xa04a2a), f * 0.6).offsetHSL(0, 0, (r() - 0.5) * 0.06), 0.13 * dabScale, Math.PI / 2 - (a > Math.PI ? -1 : 1) * tilt * 0.6);
-        else whip(p, nrm, shade(leaf.clone().lerp(srgb(0x8aa890), 0.25), nrm, inner, r), 0.22 * dabScale, Math.PI / 2 + (r() - 0.5) * 0.5);
-      }
-    }
-    sway([[wood, wood0], [leaves, leaves0], [twigs, twigs0]], t, 'bush', y0, 1.7 * s);
-    return;
-  }
-  // Weeping: a short leaning trunk, boughs arching up and out, a dome over them, and curtains hung from its rim.
+  // A short leaning trunk, boughs arching up and out, a dome over them, and curtains hung from its rim.
   const fork = base.clone().add(new THREE.Vector3((r() - 0.5) * 0.4 * s, 1.3 * s, (r() - 0.5) * 0.4 * s));
   bough(wood, base, fork, 0.28 * sq, 0.2 * sq, C.bark);
   const c = fork.clone().add(new THREE.Vector3(0, 1.75 * s, 0)), R = 2.3 * s, rise = 1.25 * s;

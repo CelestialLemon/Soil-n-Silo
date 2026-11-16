@@ -49,8 +49,8 @@ export {
 } from './kit/kit';
 export { dressFor, Grove, type Dress } from './kit/seasonTrees';
 export {
-  addCanopy, CROP_LOOKS, CROP_NAMES, CropPatch, growSpecies, PINE_LOOKS, PLANT_LOOKS, SPECIES, speciesHeight, speciesTree, WILLOW_LOOKS,
-  type CropLook, type CropName, type CropStage, type CropTile, type PineLook, type PlantLooks, type Species, type WillowLook,
+  addCanopy, CROP_NAMES, CropPatch, growSpecies, SPECIES, speciesHeight, speciesTree, type CropName, type CropStage, type CropTile,
+  type Species,
 } from './kit/plants';
 export { loadModel, ModelSet, ModelParts } from './kit/model';
 
