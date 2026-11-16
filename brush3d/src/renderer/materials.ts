@@ -529,6 +529,8 @@ float rimLight(vec3 n, float amount) {
 // The brush where the paint is: its dabs, its strokes, its fine strokes (scaled 0.6 and 1.3 by the brush scale) and the
 // colour's drift. Worked out in the pixel, or, for the ground, read from the fields baked at load (BRUSH_BAKE_FRAG).
 const BRUSH_FIELDS = /* glsl */ `
+// How steep (the normal's height) ground may be and still read its baked fields: a cliff's faces are painted live.
+#define FIELDS_STEEP 0.5
 vec4 brushFields(vec3 p, vec3 n) {
   vec3 w = planeWeights(n);
   float angle = contourAngle(n, vPaint.z);
@@ -557,7 +559,11 @@ void main() {
   vec3 n = normalize(vNormal);
   vec3 p = vRestPos;
 #ifdef FIELDS
-  vec4 fields = texture(uFields, (uFieldsMap * vec3(p.xz, 1.0)).xy) * 2.0 - 1.0;
+  // Read where they were baked; worked out live on a steep face (a cliff's, which the bake can't hold: it's drawn flat)
+  // and past the square (the country beyond), #210.
+  vec2 fieldsAt = (uFieldsMap * vec3(p.xz, 1.0)).xy;
+  bool baked = abs(n.y) >= FIELDS_STEEP && all(greaterThanEqual(fieldsAt, vec2(0.0))) && all(lessThanEqual(fieldsAt, vec2(1.0)));
+  vec4 fields = baked ? texture(uFields, fieldsAt) * 2.0 - 1.0 : brushFields(p, n);
 #elif defined(BASIS)
   // A crop's brush: on top, read by place; down its sides (a field's edges, whatever its height), worked out live. As
   // brushFields, term by term.
@@ -1395,7 +1401,10 @@ const BRUSH_BAKE_FRAG = /* glsl */ `
 ${FRAG_HEAD}
 ${BRUSH_FIELDS}
 void main() {
-  gColor = brushFields(vRestPos, normalize(vNormal)) * 0.5 + 0.5;
+  vec3 n = normalize(vNormal);
+  // A steep face lies over the ground beside it when drawn flat: left out (it's painted live).
+  if (abs(n.y) < FIELDS_STEEP) discard;
+  gColor = brushFields(vRestPos, n) * 0.5 + 0.5;
   gAux = vec4(0.0);
 }
 `;

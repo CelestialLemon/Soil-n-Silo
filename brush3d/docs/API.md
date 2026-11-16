@@ -470,7 +470,9 @@ above, the game stops using it and it becomes the renderer's own.
   `remove` frees the tiles it cut a mesh into (`tile`); a geometry the caller gave stays the caller's to dispose.
   Give the ground its square (`fields`) even when its brush isn't baked: the clouds' map is laid over it, and without it
   covers only 128 m round the origin, the clouds' shadows smeared in streaks past it (#201).
-  `r.setFields(kind, size)` bakes a kind's brush once the scene is built. The shelter map (and the snow's hollows under
+  `r.setFields(kind, size)` bakes a kind's brush once the scene is built; the ground's is baked again by itself where the
+  ground changes (a `changeGround`, as the land's earthworks are), and a cliff's faces and the ground past its square
+  stay live (Soil-n-Silo#210). Every bake is made again when a lost GPU context comes back (`r.rebakeFields()`). The shelter map (and the snow's hollows under
   it) is drawn again only round a mesh added or taken out, or round trees removed or moved (Soil-n-Silo#204);
   `r.shelter.changed()` after moving cover yourself (the whole map), or `r.shelter.changedIn(layer, box)` for a part.
   A tree's spring is held by each mesh that draws it and freed when the last lets go (`r.remove`, `r.removeTrees`), its

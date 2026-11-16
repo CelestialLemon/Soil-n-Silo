@@ -186,6 +186,8 @@ export class BrushRenderer {
   private silhouettes = new THREE.Group();
   private twins = new Map<THREE.Mesh, THREE.Mesh>();
   private fields = new Map<MaterialKind, THREE.WebGLRenderTarget>();
+  /** The sizes setFields was asked for: baked again when the GPU's context comes back, as a bake's texels go with it. */
+  private fieldSizes = new Map<'ground' | 'crop' | 'grass', number>();
   private underTarget: THREE.WebGLRenderTarget;
   private reflectTarget: THREE.WebGLRenderTarget;
   private look: Look | null = null;
@@ -272,6 +274,8 @@ export class BrushRenderer {
     this.canvas = canvas;
     this.view.screen.canvas = canvas;
     this.gl = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: true });
+    // After three's own handler (added first) has made the context afresh.
+    onRestored(canvas, new WeakRef(this));
     this.gl.autoClear = false;
     this.screenRatio = options.pixelRatio ?? Math.min(window.devicePixelRatio || 1, 2);
     this.pixelRatio = this.screenRatio;
@@ -613,6 +617,66 @@ export class BrushRenderer {
     if (colour) this.turnColour(colour);
     geometry.computeBoundingBox();
   }
+  /**
+   * Bakes the ground's fields (setFields) again within `area` (metres; null: all of it): its meshes there drawn flat over
+   * the square, only that part of the texture cleared and drawn.
+   */
+  private bakeGround(area: THREE.Box3 | null) {
+    const target = this.fields.get('ground'), main = this.materials.get('ground')?.main;
+    if (!target || !main) return;
+    const map = main.uniforms.uFieldsMap.value as THREE.Matrix3, size = target.width;
+    let rect: THREE.Vector4 | null = null;
+    /** Where on the land the cleared texels lie: every mesh there is drawn again (more than the area, for the padding). */
+    const reach = new THREE.Box2();
+    if (area) {
+      // Its corners on the texture (the square may be turned), and a few texels round them for the filtering.
+      const uv = new THREE.Box2(), p = new THREE.Vector3();
+      for (const x of [area.min.x, area.max.x]) for (const z of [area.min.z, area.max.z]) {
+        p.set(x, z, 1).applyMatrix3(map);
+        uv.expandByPoint(new THREE.Vector2(p.x, p.y));
+      }
+      const x0 = Math.max(0, Math.floor(uv.min.x * size) - 2), y0 = Math.max(0, Math.floor(uv.min.y * size) - 2);
+      const x1 = Math.min(size, Math.ceil(uv.max.x * size) + 2), y1 = Math.min(size, Math.ceil(uv.max.y * size) + 2);
+      if (x1 <= x0 || y1 <= y0) return;
+      rect = new THREE.Vector4(x0, y0, x1 - x0, y1 - y0);
+      const toLand = map.clone().invert();
+      for (const u of [x0, x1]) for (const v of [y0, y1]) {
+        p.set(u / size, v / size, 1).applyMatrix3(toLand);
+        reach.expandByPoint(new THREE.Vector2(p.x, p.y));
+      }
+    }
+    // (Kept while it's baked: made anew for each earthwork, its shader would be compiled again each time.)
+    const material = (this.groundBaker ??= groundBakeMaterial(this.shared, map));
+    material.uniforms.uFieldsMap.value = map;
+    const scene = new THREE.Scene(), box = new THREE.Box3();
+    // Every piece of it, if it was cut into tiles (those in the area).
+    for (const piece of this.scene.children) {
+      const mesh = piece as THREE.Mesh;
+      if (piece.userData.kind !== 'ground' || !piece.userData.fields || !mesh.isMesh) continue;
+      piece.updateMatrixWorld();
+      if (area) {
+        if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+        box.copy(mesh.geometry.boundingBox!).applyMatrix4(piece.matrixWorld);
+        if (box.max.x < reach.min.x || box.min.x > reach.max.x || box.max.z < reach.min.y || box.min.z > reach.max.y) continue;
+      }
+      const flat = new THREE.Mesh(mesh.geometry, material);
+      flat.frustumCulled = false;
+      flat.matrixWorld.copy(piece.matrixWorld);
+      flat.matrixAutoUpdate = false;
+      flat.matrixWorldAutoUpdate = false;
+      scene.add(flat);
+    }
+    target.scissorTest = rect !== null;
+    if (rect) target.scissor.copy(rect);
+    this.gl.setRenderTarget(target);
+    this.gl.setClearColor(0x808080, 1);
+    this.gl.clear(true, false, false);
+    this.gl.render(scene, this.postCamera);
+    target.scissorTest = false;
+    this.gl.setRenderTarget(null);
+  }
+  private groundBaker: THREE.ShaderMaterial | null = null;
+
   /** The ground change changeGround is in the middle of (and where), if any. */
   private groundChange: { area: THREE.Box3 | null } | null = null;
 
@@ -627,22 +691,30 @@ export class BrushRenderer {
     if (area) { this.shelter.changedIn('land', area); this.hollows.changedIn(area); } else { this.shelter.changed(); this.hollows.changed(); }
     this.cloudArea = false;
     this.land = area && this.land ? this.land.refresh(this.scene, area) : null;
+    // Its brush fields, if baked (setFields), baked again there.
+    this.bakeGround(area);
   }
 
   /**
    * Bakes a kind's brush fields into `size`² textures, so its paint reads them rather than working them out in every pixel
    * every frame (the light and the wind stay live); 0 works them out live again. Call after the scene is built.
-   * - 'ground': the ground (added with `fields`) drawn flat over its square: it must be a heightfield (one surface over
-   *   each point). Re-bake if its shape or paint changes.
+   * - 'ground': the ground (added with `fields`) drawn flat over its square. Its steep faces (a cliff's) and whatever lies
+   *   past the square stay live. Baked again where the ground changes (changeGround's area, #210), so an earthwork needs
+   *   no new bake.
    * - 'grass', 'crop': by place, not by mesh, over the ground's square: the brush on the flat at seven angles, for each
    *   brush scale (up to eight) the kind's meshes use now. So crops can grow, be harvested and be sown anew with no new
    *   bake, unless at a new brush scale. A crop's sides (its edges) stay live.
    * Returns whether it baked.
    */
+  /** Bakes again every field asked for (the GPU's context lost and restored took their texels with it). */
+  rebakeFields() { for (const [kind, size] of [...this.fieldSizes]) this.setFields(kind, size); }
+
   setFields(kind: 'ground' | 'crop' | 'grass', size: number): boolean {
+    if (size > 0) this.fieldSizes.set(kind, size); else this.fieldSizes.delete(kind);
     const main = this.materials.get(kind)?.main;
     this.fields.get(kind)?.dispose();
     this.fields.delete(kind);
+    if (kind === 'ground') { this.groundBaker?.dispose(); this.groundBaker = null; }
     if (!main) return false;
     delete main.defines.FIELDS;
     delete main.defines.BASIS;
@@ -691,25 +763,13 @@ export class BrushRenderer {
       main.defines.BASIS = scales.length;
     } else {
       target = new THREE.WebGLRenderTarget(size, size, options);
-      const material = groundBakeMaterial(this.shared, map);
-      // Every piece of it, if it was cut into tiles.
-      for (const piece of meshes.filter((m) => m.userData.fields)) {
-        const flat = new THREE.Mesh(piece.geometry, material);
-        flat.frustumCulled = false;
-        piece.updateMatrixWorld();
-        flat.matrixWorld.copy(piece.matrixWorld);
-        flat.matrixAutoUpdate = false;
-        flat.matrixWorldAutoUpdate = false;
-        scene.add(flat);
-      }
-      bake(target);
-      material.dispose();
       main.uniforms.uFields = { value: target.texture };
       main.defines.FIELDS = 1;
     }
     this.gl.setRenderTarget(null);
     this.fields.set(kind, target);
     main.uniforms.uFieldsMap = { value: map };
+    if (kind === 'ground') this.bakeGround(null);
     return true;
   }
 
@@ -1583,4 +1643,17 @@ class LandHeights {
     }
     return end;
   }
+}
+
+/**
+ * Bakes the renderer's fields again when the canvas's context is restored. Out here, apart from the constructor, so the
+ * listener's closure holds the renderer only weakly (V8 shares a function's closure scope with its sibling closures, and
+ * the constructor's capture `this`): a renderer dropped with the canvas kept (a new level) lets go on the next restore.
+ */
+function onRestored(canvas: HTMLCanvasElement, renderer: WeakRef<BrushRenderer>) {
+  const restored = () => {
+    const r = renderer.deref();
+    if (r) r.rebakeFields(); else canvas.removeEventListener('webglcontextrestored', restored);
+  };
+  canvas.addEventListener('webglcontextrestored', restored);
 }
