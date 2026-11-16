@@ -296,11 +296,12 @@ export class OnTop {
         twin = new THREE.Mesh(mesh.geometry, this.cropMaterial(kind));
         twin.matrixAutoUpdate = false;
         twin.matrixWorldAutoUpdate = false;
-        twin.frustumCulled = false;
         this.crops.add(twin);
         this.cropTwins.set(mesh, twin);
       }
+      // Culled off screen as its crop is (the same geometry, so the same bounds).
       twin.visible = mesh.visible;
+      twin.frustumCulled = mesh.frustumCulled;
       twin.matrixWorld.copy(mesh.matrixWorld);
     }
     for (const [mesh, twin] of this.cropTwins) if (!seen.has(mesh)) { this.crops.remove(twin); this.cropTwins.delete(mesh); }
