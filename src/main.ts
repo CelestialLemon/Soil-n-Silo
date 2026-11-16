@@ -81,7 +81,7 @@ const loaded = deserialize(localStorage.getItem(SAVE_KEY));
 const saved = loaded.ok ? loaded.value : null;
 /**
  * The game's page again, with `query` (`?menu`). Drawn by brush3d, it keeps the page's other options too (the switch, and
- * a look PR's candidates, `?level=` and the like, which the brush3d world reads only once it loads), all but the game's
+ * a look PR's candidates, `?overcast=a` and the like, which the brush3d world reads only once it loads), all but the game's
  * own `play` and `menu`.
  */
 const page = (query = '') => {

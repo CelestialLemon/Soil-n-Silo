@@ -45,9 +45,8 @@ import { BrushRenderer, TILE, type Weather } from '../../brush3d/src/index.ts';
 - **Tile (x, y) on the map is the square of ground from (4x, 4y) to (4x + 4, 4y + 4)**: the map's columns run along x,
   its rows along z, its corner at the origin. So a building of n × n tiles at (x, y) stands at the middle of its
   footprint, (4x + 2n, 4y + 2n). Heights are metres too; how tall one of the game's terrain levels stands at 4 m a tile
-  is the developer's look choice, put to them on #201's look PR; until they pick, the game's world layer works at 1 m a
-  level (`LEVEL` in `src/world/brush/scale.ts`), the rules' levels as they are, so the land keeps the proportions the
-  pixel world gave it.
+  is 1 m, the developer's pick (Soil-n-Silo#201, #220): the game's world layer works at 1 m a level (`LEVEL` in
+  `src/world/brush/scale.ts`), the rules' levels as they are, so the land keeps the proportions the pixel world gave it.
 - **Turns** are radians. A thing's `yaw` turns it about the vertical; the wind's `direction` is where it blows towards,
   from +x towards +z. Which yaw the game's four facings (`Dir` 0..3) map to is the world layer's.
 - **Colours** in calls are sRGB hex numbers (`0xcfd6d8`), as a designer would pick them.

@@ -189,8 +189,9 @@ The game can now be drawn by brush3d, behind `?renderer=brush3d` (#201, epic #21
 each replace their own: the land (`land.ts`, #202), the buildings and trucks (`things.ts`, #203–#205), the trees and rocks
 (`wild.ts`, #213), the season, hour and weather (`sky.ts`, #207, #208), with the tools (#206) and settings (#209) still to
 add. Today it's plain: the ground one painted meadow green, everything built a grey stand-in. The paint holds at the
-game's widest zoom (4 px a metre: the ground's strokes become a soft wash, no shimmer). How high a terrain level stands
-is the developer's pick on #220 (0.5, 1 or 2 m; 1 m until then).
+game's widest zoom (4 px a metre: the ground's strokes become a soft wash, no shimmer). A terrain level stands 1 m high,
+the developer's pick of 0.5, 1 and 2 m (#220, 2026-11-16): the land keeps the shape the pixel world gave it, a riverbank
+reads as a bank and a rocky rise as a low cliff.
 
 ## brush3d moves in (2026-11-14)
 
