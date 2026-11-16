@@ -568,7 +568,7 @@ faces (drawn flat, a bake can't hold them) and the country past the square are p
 again only the patch it changed (`changeGround`'s area, scissored: the same texels as a whole new bake, checked after
 six buildings' earthworks on c4 and c6). In the demo, a dozen pixels a still change by up to 3 of 255.
 
-A look choice (`?fields=live|baked`, the **Ground** button): the picture is nearly the same (c6, the mean difference
+The developer picked it (Soil-n-Silo#239), so the game always bakes its ground. The picture is nearly the same as live (c6, the mean difference
 0.3 to 0.7 of 255; one pixel in 400 more than 8 off, at the edges of long evening shadows and the pale line at the
 water's edge, fainter baked, as in the demo). RX 570, 1080p, the bot's farm, live → baked, GPU ms (uncapped):
 

@@ -10,7 +10,6 @@ import { COUNTRY } from '../terrain.ts';
 import { BrushCover } from './cover.ts';
 import { BrushLand } from './land.ts';
 import { BrushLens } from './lens.ts';
-import { fieldsChoice } from './fieldsChoice.ts';
 import { gameCases, profileGame, profilePanel, type LoadTimes, type ProfileHost } from './profile.ts';
 import { RISE, TILE } from './scale.ts';
 import { followSettings } from './settings.ts';
@@ -60,8 +59,11 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
   const lens = new BrushLens(r, canvas);
   const camera = new Camera(lens, canvas, map, start, changed);
   const tools = timed('tools', () => new BrushTools(r, state, things, lie));
-  // The ground's brush live or baked: #210's look candidates (fieldsChoice.ts, goes once one is picked).
-  fieldsChoice(r);
+  // The ground's brush baked once, here at the load, into a 4096² texture over the land (16 cm a texel, 64 MB), and read
+  // from it each frame rather than worked out afresh in every pixel: a third of the GPU's frame (#210, the developer's
+  // pick on #239). The light, shadows and weather stay live, as do a cliff's faces and the country past the land; an
+  // earthwork bakes again only the patch it changed (brush3d's changeGround).
+  timed('bake', () => r.setFields('ground', 4096));
   const began = mark - Object.values(pieces).reduce((a, b) => a + b, 0);
   /** The load's times, once the first frame is drawn; and while a profile runs, the game's loop stands still. */
   let load: LoadTimes | null = null, firstFrame = 0, models = 0, held = false;
