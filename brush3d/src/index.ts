@@ -49,7 +49,8 @@ export {
 } from './kit/kit';
 export { dressFor, Grove, type Dress } from './kit/seasonTrees';
 export {
-  addCanopy, CROP_NAMES, CropPatch, SPECIES, speciesHeight, speciesTree, type CropName, type CropStage, type CropTile, type Species,
+  addCanopy, CROP_NAMES, CropPatch, growSpecies, SPECIES, speciesHeight, speciesTree, type CropName, type CropStage, type CropTile,
+  type Species,
 } from './kit/plants';
 export { loadModel, ModelSet, ModelParts } from './kit/model';
 

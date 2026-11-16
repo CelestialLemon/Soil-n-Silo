@@ -481,11 +481,13 @@ above, the game stops using it and it becomes the renderer's own.
 - `growTree`, `Grove`, `dressFor`, `addStone`, `addTuft`, `addReeds`, `addMound`, `addFlowers`, `groundOf`, `MapLine`:
   the demo's pieces. `Grove.addTo(r, options)` adds its meshes with the given options and returns them. A `Tree`'s
   `stroke` (broader, fewer strokes) and `fill` (the share of a crown's outer strokes) thin it for a crowd; 1 is the demo's.
-- The plant kit (`kit/plants.ts`, #213): `CropPatch` (a field's crop, one `CropTile` a tile with which neighbours it
-  joins, at its stage 0–3; `addTo(r)` returns its meshes), `speciesTree(species, x, z, size, seed)` and `speciesHeight`
-  (a `Tree` for each of `SPECIES`: the game's six and its bush), `addCanopy` (a far wood's crown, a few broad strokes in
-  the species' colour for the season), `CROP_NAMES`. The groundwork paints every crop as the demo's wheat and pine,
-  willow and poplar on the kit's shapes; #213's look work gives each its own.
+- The plant kit (`kit/plants.ts`, #213): `CropPatch` (a field's crop, one soft blanket over its bed; one `CropTile` a
+  tile with which neighbours it joins, at its stage 0–3: just sown, young, flowering, ripe; `addTo(r)` returns its
+  meshes), `speciesTree(species, x, z, size, seed)` and `speciesHeight` (a `Tree` for each of `SPECIES`: the game's six
+  and its bush), `growSpecies(grove, ground, species, tree, rand)` (grows a tree into a `Grove` in its species' own shape:
+  the pine a soft cone, the willow weeping, the poplar a column, the rest through `grove.grow`; use it rather than
+  `grove.grow` for the game's species), `addCanopy` (a far wood's crown, a few broad strokes in the species' colour for
+  the season), `CROP_NAMES`. The demo's `?scene=plants` shows every crop at every stage and every species, in any season.
 - `loadModel` and `ModelSet`: the models, merged into the inked and planted meshes; `MODELS`, `TILE`, `blocksWind`,
   `wheelRace` from the catalogue.
 

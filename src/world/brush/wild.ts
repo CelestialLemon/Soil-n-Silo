@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {
-  addCanopy, addStone, CropPatch, dressFor, groundOf, Grove, MeshBuilder, rng, speciesTree, type BrushRenderer, type CropStage, type Dress,
-  type Ground, type Species,
+  addCanopy, addStone, CropPatch, dressFor, groundOf, Grove, growSpecies, MeshBuilder, rng, speciesTree, type BrushRenderer, type CropStage,
+  type Dress, type Ground, type Species,
 } from '../../../brush3d/src/index.ts';
 import { CROPS, SAPLING_SECONDS } from '../../game/data.ts';
 import { TERRAIN, type Land } from '../../game/map.ts';
@@ -191,7 +191,7 @@ export class Wild {
     const n = hash(x * 1.3 + 7, y * 0.9 - 3);
     const tx = (x + 0.5) * TILE + (hash(x + 11, y) - 0.5) * JITTER, tz = (y + 0.5) * TILE + (hash(x, y + 11) - 0.5) * JITTER;
     const seed = Math.floor(n * 1e9);
-    grove.grow(this.ground, { ...speciesTree(species, tx, tz, size, seed), stroke: STROKE, fill: FILL }, rng(seed));
+    growSpecies(grove, this.ground, species, { ...speciesTree(species, tx, tz, size, seed), stroke: STROKE, fill: FILL }, rng(seed));
     return [tx, tz];
   }
 

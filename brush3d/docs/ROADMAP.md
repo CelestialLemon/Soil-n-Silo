@@ -54,6 +54,12 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      the chunks round it, over frames, swapped at once. `landAt` and `landHit` answer from the same fit. Open: falls that
      read as waterfalls (Soil-n-Silo#241; a plain chute for now), grass tufts, the wheel's race, and one fit shared with the
      game's (Soil-n-Silo#210).
+  9. Soil-n-Silo#213 the crops and trees (done 2026-11-16, Soil-n-Silo#225 and Soil-n-Silo#227): the game's five crops
+     at their four stages as one soft blanket over each bed (`CropPatch`), and its tree species, with the pine a soft
+     cone, the willow weeping and the poplar a column (`growSpecies`; oak, birch, apple and the bushes are `Grove.grow`'s).
+     Each is marked tree by tree, so `removeTrees` and `moveTrees` work on them. The developer's picks "for now": the
+     crops' lay and the pine may be revisited (the candidates are in Soil-n-Silo#227's history). The demo shows them at
+     `?scene=plants`; its other frames are unchanged.
 - **Weather, epic #3** (planned 2026-10-30): season, weather and hour change the whole picture. The decisions are in #3; in
   short, the game owns the weather's state and logic and the renderer only draws it. The order:
   1. #6 performance: measure the frame and set the weather's budget (done 2026-10-30: the farm 17.5 ms on the laptop,
