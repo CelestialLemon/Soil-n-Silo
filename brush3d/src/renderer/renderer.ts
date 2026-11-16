@@ -26,7 +26,7 @@ import { colourLeafStorm, leafStorm, WindField, WindState } from './wind';
 import { DustField, type DustSource } from './dust';
 import { TreeSprings, type TreeSpec } from './trees';
 import { Parts } from './parts';
-import { NightLights, type NightLightsLook, type SmokeLook } from './nightLights';
+import { NightLights } from './nightLights';
 import { WATER_EASE, WaterField, type WaterMap } from './water';
 import { GROUND_EASE, GroundField, HollowMap, type GroundMap } from './ground';
 import { SnowPaint } from './snow';
@@ -215,7 +215,7 @@ export class BrushRenderer {
    * charge rings shown or hidden. ModelSet.addTo takes their slots; a handle (ModelParts) says how each is now.
    */
   readonly parts = new Parts();
-  /** The farm's lights at night and its smoke (#205): how they look (setNightLights, setSmoke). */
+  /** The farm's lights at night (#205): how much they glow at the hour, and the pools they throw. */
   private readonly nightLights = new NightLights();
   private windNow: [WindSnapshot, WindSnapshot, number] | null = null;
   /** Fresh dust, lifted by the gusts where the game's map says (see setDustSource; the renderer's own motion). */
@@ -787,15 +787,6 @@ export class BrushRenderer {
       m.main.depthFunc = silhouettes && equal(kind) ? THREE.EqualDepth : THREE.LessEqualDepth;
     }
   }
-
-  /**
-   * How the farm's lights look at night (Soil-n-Silo#205; candidates for the developer to pick): a building's lamps and
-   * fires glow while it works, from dusk; `windows` lights its windows too, and `pools` throws pools of their light round them.
-   */
-  setNightLights(look: NightLightsLook) { this.nightLights.look = { ...look }; }
-
-  /** How the smoke from a working building's chimneys looks (#205; candidates for the developer to pick): none by default. */
-  setSmoke(look: SmokeLook) { NightLights.smoke(this.shared, look); }
 
   /** Shows or hides every mesh of a kind (for A/B comparisons). */
   setVisible(kind: DrawnKind, visible: boolean) {

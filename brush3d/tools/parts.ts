@@ -127,14 +127,16 @@ const angleOf = (p: Parts, slot: number) => (p.texture.image.data as Float32Arra
   // drawn: a puff that left while it was off (3) stays unseen.
   for (const [t, on] of [[5.5, false], [6, true], [6.5, false], [7, true]] as const) { p.update(t); p.show(chimney, on); }
   check('flickering: only puffs that left while it was on', !drawn(3) && !drawn(4.2) && !drawn(5.7) && drawn(6.2) && !drawn(6.7) && drawn(7.1), texel().join());
-  const near = (windowsToo: boolean) => p.glowing({ x: 0, y: 0, z: 0 }, 8, windowsToo).map((l) => l.glow);
-  check('a lamp lights from where its light is', p.glowing({ x: 0, y: 0, z: 0 }, 8, false)[0]?.x === 10);
-  check('lights: windows only if asked, the nearest first', near(false).join() === `${GLOW.lamp}` && near(true).join() === `${GLOW.window},${GLOW.lamp}`);
-  p.light(windows, false); p.show(lamp, false);
-  check('out: windows unlit, a lamp hidden', near(true).length === 0);
+  const near = () => p.glowing({ x: 0, y: 0, z: 0 }, 8).map((l) => l.glow);
+  check('a lamp lights from where its light is', p.glowing({ x: 0, y: 0, z: 0 }, 8).find((l) => l.glow === GLOW.lamp)?.x === 10);
+  check('lights: windows and lamps, the nearest first', near().join() === `${GLOW.window},${GLOW.lamp}`);
+  p.light(windows, false);
+  check('windows unlit: no light', near().join() === `${GLOW.lamp}`);
+  p.show(lamp, false);
+  check('out: windows unlit, a lamp hidden', near().length === 0);
   p.release([lamp]);
   p.show(lamp, true);
-  check('a freed part throws no light', near(true).length === 0);
+  check('a freed part throws no light', near().length === 0);
 }
 
 // 5. Picking through smoke.

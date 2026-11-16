@@ -9,6 +9,7 @@ import { WET_GLSL, WET_INK_GLSL } from './wet';
 import { GROUND_TOOLS_GLSL } from './overlay';
 import { GLOW, PART_TEXELS } from './parts';
 import { SMOKE_INK } from './pick';
+import { SMOKE } from './nightLights';
 
 // The scene's materials. Each has a main variant (writes colour and the G-buffer) and a depth variant for the sun's
 // shadow map, built from the same vertex code so wind and billboarding cast the shadows they should.
@@ -49,14 +50,8 @@ export function createSharedUniforms() {
     tPartPose: { value: null as THREE.Texture | null },
     // 1: every part as it's modelled, still and shown (the shelter map, drawn now and then: it can't follow a rotor).
     uPartsRest: { value: 0 },
-    // The night's lights (#205, BrushRenderer.nightLights): how much a lamp glows now (0 by day, 1 at night), and whether a
-    // building's windows light up with it (a look candidate).
+    // The night's lights (#205, BrushRenderer.nightLights): how much a lamp or a lit window glows now (0 by day, 1 at night).
     uNightGlow: { value: 0 },
-    uWindowsLit: { value: 0 },
-    // The smoke (#205, SMOKE_VERT; BrushRenderer.smoke, a look candidate): how high a puff rises (m), its size, its life
-    // (s), and whether any is drawn; a puff's width over its height, and the share of the puffs drawn.
-    uSmoke: { value: new THREE.Vector4(0, 0, 1, 0) },
-    uSmokeShape: { value: new THREE.Vector2(1, 1) },
     uViewBack: { value: new THREE.Vector3(0, 0, 1) },
     uViewTarget: { value: new THREE.Vector3() },
     uShadowMap: { value: null as THREE.Texture | null },
@@ -198,7 +193,6 @@ attribute float aPart;
 uniform highp sampler2D tPartPose;
 uniform float uPartsRest;
 uniform float uNightGlow;
-uniform float uWindowsLit;
 // How much it glows now (#205: a lamp while it shows, windows while they're lit, at night), and whether it's windows.
 varying vec2 vGlow;
 vec2 partGlow() {
@@ -207,7 +201,7 @@ vec2 partGlow() {
   ivec2 at = ivec2(i % 256, i / 256);
   vec4 glow = texelFetch(tPartPose, at + ivec2(2, 0), 0);
   if (glow.x == ${GLOW.lamp}.0) return vec2(uNightGlow, 0.0);
-  if (glow.x == ${GLOW.window}.0) return vec2(uNightGlow * glow.y * uWindowsLit * 0.85, 1.0);
+  if (glow.x == ${GLOW.window}.0) return vec2(uNightGlow * glow.y * 0.85, 1.0);
   return vec2(0.0);
 }
 void movePart(inout vec3 p, inout vec3 n) {
@@ -468,7 +462,7 @@ void main() {
 /**
  * Smoke and steam (#205), drawn as painted dabs: each card a puff, 'position' the point it leaves from (a model's
  * `smoke_emitter`), aPart that point's part (shown while its building works), aCard as for foliage (its seed says when in
- * the puffs' cycle it leaves). A puff rises, slowing, drifts downwind, swells and thins away over its life (uSmoke). It's
+ * the puffs' cycle it leaves). A puff rises, slowing, drifts downwind, swells and thins away over its life (SMOKE, nightLights.ts). It's
  * drawn if it left while the part showed (by the part's last few starts and stops, parts.ts): so smoke starts with the
  * first puff and stops with the last one rising away.
  */
@@ -478,8 +472,6 @@ attribute vec4 aCard;
 attribute float aPart;
 uniform highp sampler2D tPartPose;
 uniform vec2 uScreen;
-uniform vec4 uSmoke;
-uniform vec2 uSmokeShape;
 varying vec4 vCard;
 varying vec3 vDabNormal;
 varying float vCardPx;
@@ -488,7 +480,8 @@ void main() {
   vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
   vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
   vec3 toCam = vec3(viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2]);
-  float seed = aCard.w, life = max(uSmoke.z, 0.1);
+  const float RISE = ${SMOKE.rise.toFixed(2)}, SIZE = ${SMOKE.size.toFixed(2)}, LIFE = ${SMOKE.life.toFixed(2)};
+  float seed = aCard.w, life = LIFE;
   // Since it left, and whether it left while the smoke was on (after the part last started showing, or before it stopped).
   float age = mod(uTime + seed * life, life), left = uTime - age, drawn = 1.0;
   if (aPart > 0.5) {
@@ -501,16 +494,15 @@ void main() {
     float flips = dot(vec3(greaterThan(changes.xyz, vec3(left))), vec3(1.0));
     drawn = left >= changes.w && (on > 0.5) == (mod(flips, 2.0) < 0.5) ? 1.0 : 0.0;
   }
-  if (fract(seed * 7.31) >= uSmokeShape.y || uSmoke.w <= 0.0) drawn = 0.0;
+  if (fract(seed * 7.31) >= ${SMOKE.share.toFixed(2)}) drawn = 0.0;
   float k = age / life;
-  float size = aCard.z * uSmoke.y * mix(0.45, 1.35, k) * smoothstep(0.0, 0.12, k) * (1.0 - smoothstep(0.55, 1.0, k)) * drawn;
+  float size = aCard.z * SIZE * mix(0.45, 1.35, k) * smoothstep(0.0, 0.12, k) * (1.0 - smoothstep(0.55, 1.0, k)) * drawn;
   // Up, slowing as it goes; downwind, faster in a wind; wavering a little.
   vec2 wind = uWindDir * age * (0.25 + uWindSpeed * 0.03);
   float waver = sin(age * 1.7 + seed * 40.0) * 0.18 * k;
   vec3 from = (modelMatrix * vec4(position, 1.0)).xyz;
-  vec3 c0 = from + vec3(wind.x + waver * right.x, uSmoke.x * (1.0 - (1.0 - k) * (1.0 - k)), wind.y + waver * right.z);
-  vec2 c = aCard.xy * vec2(uSmokeShape.x, 1.0);
-  vec3 world = c0 + (right * c.x + up * c.y) * size;
+  vec3 c0 = from + vec3(wind.x + waver * right.x, RISE * (1.0 - (1.0 - k) * (1.0 - k)), wind.y + waver * right.z);
+  vec3 world = c0 + (right * aCard.x + up * aCard.y) * size;
   vWorldPos = world;
   // Its paint stays with it as it rises.
   vRestPos = from + vec3(seed * 9.0, 0.0, seed * 5.0);

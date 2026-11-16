@@ -206,15 +206,16 @@ mill.remove();
   `ModelSet.add` gives back the model's parts (`ModelParts`) as they go into the meshes `addTo` makes: `parts.spin(pace)`
   and `parts.show({ running, charge })` are `spin` and `show` above (`charge` the rings lit, 0..4; leave it out for all).
   The game's things.ts calls them from the game's state each tick (`src/world/brush/states.ts`), and holds each building's
-  state (working, idle, unpowered, weather) for the look that decorates it, still to come (#205's look PR: `status`).
+  state (working, idle, unpowered, weather). That state shows in the model's own parts only (the developer's pick, #205):
+  its rotor turns or stands, its fire or lamp shows or goes out. Nothing is laid over the building.
 - **Lights at night and smoke** (#205). A building's lights (its `running_*` parts named as lights: `glow`, `lamp`,
   `beacon`, `light`, `fire`, a `window`) glow while it works, in their own colour, from dusk and fully at night, whatever
   the light. Its chimneys (`smoke_emitter`) puff smoke while it works: `show({ running })` starts and stops it, and the
-  smoke starts with its first puff and stops with its last one rising away, never all at once. Its windows (upright
-  sea-glass panes) can light up with it too. How they look is a choice the developer is making (candidates, until picked):
-  `r.setNightLights({ windows, pools })` (its windows lit too; pools of their light round them) and
-  `r.setSmoke('none' | 'wisps' | 'puffs')` (none by default). The smoke goes on in real time while the game is paused,
-  as the rain does.
+  smoke starts with its first puff and stops with its last one rising away, never all at once: round grey puffs that rise
+  about 4.5 m, drift downwind and fade. Its windows (upright sea-glass panes) light up with it, a warm lamplight. Each
+  lamp and lit window throws a pool of its light on the ground and walls round it (at most 16, the nearest the view's
+  middle; drawn in the post pass). The developer's picks (#205): pools, puffs. There's nothing to set. The smoke goes on
+  in real time while the game is paused, as the rain does.
 
 ## What grows: crops, trees and rocks (#204, #213)
 

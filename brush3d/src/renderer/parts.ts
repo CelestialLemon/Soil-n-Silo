@@ -164,15 +164,15 @@ export class Parts {
   }
 
   /**
-   * The parts glowing now, nearest `to` first, at most `most`: each one's point (its light's, else its axle's) and how it glows (GLOW), a
-   * window only if `windows`. For the pools of light they throw (BrushRenderer's night lights).
+   * The parts glowing now (a lamp shown, windows lit), nearest `to` first, at most `most`: each one's point (its light's,
+   * else its axle's) and how it glows (GLOW). For the pools of light they throw (BrushRenderer's night lights).
    */
-  glowing(to: THREE.Vector3Like, most: number, windows: boolean): { x: number; y: number; z: number; glow: Glow }[] {
+  glowing(to: THREE.Vector3Like, most: number): { x: number; y: number; z: number; glow: Glow }[] {
     const d = this.texture.image.data as Float32Array, out: { x: number; y: number; z: number; glow: Glow; far: number }[] = [];
     for (let s = 0; s < this.holds.length; s++) {
       if (!(this.holds[s] > 0)) continue;
       const i = s * PART_TEXELS * 4, glow = d[i + 8];
-      if (glow === GLOW.lamp ? d[i + 7] < 0.5 : glow !== GLOW.window || !windows || d[i + 9] < 0.5) continue;
+      if (glow === GLOW.lamp ? d[i + 7] < 0.5 : glow !== GLOW.window || d[i + 9] < 0.5) continue;
       const l = this.lights[s], x = l?.x ?? d[i], y = l?.y ?? d[i + 1], z = l?.z ?? d[i + 2];
       out.push({ x, y, z, glow: glow as Glow, far: (x - to.x) ** 2 + (z - to.z) ** 2 });
     }
