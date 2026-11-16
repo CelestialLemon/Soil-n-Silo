@@ -110,6 +110,17 @@ only, never saved, the map itself unchanged): the river runs on out of sight, a 
 thicken and the ground rises into wooded hills, with an apron of distant woods beyond them. Everything past the edge is a
 shade duller, so where you can build still reads at a glance. Height on the map itself followed on 2026-10-17, below.
 
+## The tools in the painted look (2026-11-16)
+
+On the brush3d path (`?renderer=brush3d`), the game's tools work on the painted world (#206; #232 the groundwork, #233 the
+looks). Pointing and clicking find the building, truck, tree, field or tile you see under the pointer, on the real land
+and the models' real shapes. A building being placed is a blueprint: a faint ghost in green where it fits or red where it
+doesn't, with level lines across it and brackets at its footprint's corners, so it never reads as a building already there.
+The highlight and the overlays are the player's to choose in the Settings panel: the highlight a cream outline, a soft halo
+(the default) or a bold gold line; the overlays a wash in the land's own light, bold even colour (the default) or a light
+wash with strong borders (the developer's picks on #233). Night and weather still fall on the tools, so they keep the
+picture's mood.
+
 ## The land drawn from the map (2026-11-16)
 
 On the brush3d path (`?renderer=brush3d`), brush3d now paints the land itself from the game's map (#202; #226 the groundwork,
