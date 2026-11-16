@@ -12,7 +12,7 @@ own renderer, in [`brush3d/`](brush3d/README.md) ("painted world, inked things")
 - Frame cost: [`brush3d/docs/PERFORMANCE.md`](brush3d/docs/PERFORMANCE.md), `?profile` in the game and `npm run framerate`
 - The interface's design system: [`src/ui/clearday/`](src/ui/clearday/README.md)
 
-![Morning Bread at 13:00 on day 4: the commission card with its goals as gauges, the readouts and the dial, a field in hand with its placement card, and the dock](docs/screenshot.png)
+![Morning Bread at 13:30 on day 8, painted by brush3d: wheat fields, the bakery, mill, silos, turbines and solar panels in a green valley, with the commission card's goals as gauges, the readouts, the dial and the dock](docs/screenshot.webp)
 
 ```sh
 npm install
