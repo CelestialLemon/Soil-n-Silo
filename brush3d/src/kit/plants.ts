@@ -109,7 +109,7 @@ interface Stand {
   base: THREE.Color; deep: THREE.Color; tip: THREE.Color; root: THREE.Color;
   /** Grassy stalks a square metre (wheat's and flax's), with ears on them (wheat's). */
   stalks?: number; ears?: boolean;
-  /** Leafy plants a metre of row (the broad-leaved crops'), each a few leaf strokes over the mass, and their size. */
+  /** Leafy plants (the broad-leaved crops'), the blanket scattering six-tenths this many a square metre, each a few leaf strokes over the mass, and their size. */
   plants?: number; leaf?: number;
   blooms?: Bloom[];
   heads?: Heads;

@@ -110,6 +110,16 @@ only, never saved, the map itself unchanged): the river runs on out of sight, a 
 thicken and the ground rises into wooded hills, with an apron of distant woods beyond them. Everything past the edge is a
 shade duller, so where you can build still reads at a glance. Height on the map itself followed on 2026-10-17, below.
 
+## The crops and trees in paint (2026-11-16)
+
+On the brush3d path (`?renderer=brush3d`), the game's fields and trees are painted (#213; #225 the groundwork, #227 the
+look). Each of the five crops has its own colours, height, flowers and fruit at each of its four stages, from bare sown soil
+to ripe, laid as one soft blanket over its bed. The map's trees are the game's species: oak, birch, apple and the bushes
+are brush3d's trees, and the pine, willow and poplar have shapes of their own, the pine a soft cone, the willow weeping and
+the poplar a column. Saplings are small trees, and every tree changes with the season. These are the developer's picks
+on #227, "for now": the crops' lay and the pine may be revisited. The candidates not picked (crops in rows of soil, a
+tiered or a Scots pine, a pollarded willow) are in #227's history. The demo shows them all at `?scene=plants`.
+
 ## The tools in the painted look (2026-11-16)
 
 On the brush3d path (`?renderer=brush3d`), the game's tools work on the painted world (#206; #232 the groundwork, #233 the
