@@ -155,7 +155,7 @@ const angleOf = (p: Parts, slot: number) => (p.texture.image.data as Float32Arra
   // The 3 × 3 pixels read, all at `depth` and `ink`.
   const pixels = (depth: number, ink: number) => Float32Array.from({ length: 36 }, (_, i) => (i % 4 === 2 ? depth : i % 4 === 3 ? ink : 0));
   const pick = (ink: number, from = camera) =>
-    picker.hit(pixels(Math.hypot(9, 9), ink), from, new THREE.Vector2(0, 0), new THREE.Vector2(1e-4, 1e-4), [{ mesh: building, matrix: building.matrixWorld }]);
+    picker.hit(pixels(Math.hypot(9, 9), ink), from, new THREE.Vector2(0, 0), new THREE.Vector2(1e-4, 1e-4), [{ mesh: building, matrix: building.matrixWorld, tag: 'bakery' }]);
   const through = pick(SMOKE_INK);
   check('a pick sees past smoke to the building', through?.tag === 'bakery' && Math.abs(through.point.y - 4) < 0.05, JSON.stringify(through));
   check('a smoke pixel partly something painted: still smoke', pick(SMOKE_INK * 0.75)?.tag === 'bakery');
