@@ -120,6 +120,18 @@ export class BrushWater {
     // the sheet beside the fall then runs down the bank's own cliff, out of sight.
     // (Read from the river's cells as they were, so a bank given a surface here doesn't count as river for the next.)
     const river = level.slice();
+    const under = (x: number, y: number, h: number) => { const k = y * W + x; return Math.min(corner[k * 4], corner[k * 4 + 1], corner[k * 4 + 2], corner[k * 4 + 3]) * LEVEL >= h; };
+    // Whether a bank hides water at `h`: it stands over it, and so does the dry ground round it, as brush3d carries a wet
+    // cell's surface on a cell further (WATER.md) and a bank given one counts as wet. Where it doesn't (ground dug lower
+    // beside it), the bank is left as it was.
+    const hides = (bx: number, by: number, h: number) => {
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const x = bx + dx, y = by + dy;
+        if (x < 0 || y < 0 || x >= W || y >= H || !Number.isNaN(river[y * W + x])) continue;
+        if (!under(x, y, h)) return false;
+      }
+      return true;
+    };
     for (let i = 0; i < n; i++) {
       if (Number.isNaN(river[i])) continue;
       const x = i % W, y = (i - x) / W;
@@ -130,7 +142,7 @@ export class BrushWater {
           const bx = x + dy * s, by = y + dx * s, k = by * W + bx;
           if (bx < 0 || by < 0 || bx >= W || by >= H || land.terrain[k] === TERRAIN.water || !Number.isNaN(river[k])) continue;
           // The lowest fall beside it wins, if two are.
-          if (Math.min(corner[k * 4], corner[k * 4 + 1], corner[k * 4 + 2], corner[k * 4 + 3]) * LEVEL >= river[i] && !(level[k] <= river[i])) level[k] = river[i];
+          if (!(level[k] <= river[i]) && hides(bx, by, river[i])) level[k] = river[i];
         }
       }
     }
