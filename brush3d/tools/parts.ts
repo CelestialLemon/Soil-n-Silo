@@ -160,9 +160,18 @@ const angleOf = (p: Parts, slot: number) => (p.texture.image.data as Float32Arra
   check('a pick sees past smoke to the building', through?.tag === 'bakery' && Math.abs(through.point.y - 4) < 0.05, JSON.stringify(through));
   check('a smoke pixel partly something painted: still smoke', pick(SMOKE_INK * 0.75)?.tag === 'bakery');
   check('a tree in front: the tree', pick(0)?.what === 'plant');
-  // A puff's edge over the building: three samples smoke, one the building's ink, averaged (ink and depth between).
-  const edge = pick(SMOKE_INK * 0.75 + 0.25);
+  // A puff's edge over the building: three samples smoke, one the building's ink, averaged (ink and depth between), the
+  // puff beside it. (The pixel read first is the nearest of the nine at one depth.)
+  const edgeAt = (ink: number, by: number) => {
+    const px = pixels(Math.hypot(9, 9), by);
+    px[3] = ink;
+    return picker.hit(px, camera, new THREE.Vector2(0, 0), new THREE.Vector2(1e-4, 1e-4), [{ mesh: building, matrix: building.matrixWorld, tag: 'bakery' }]);
+  };
+  const edge = edgeAt(SMOKE_INK * 0.75 + 0.25, SMOKE_INK);
   check('a puff\'s edge over the building: the building', edge?.tag === 'bakery', JSON.stringify(edge));
+  // A tree's crown over the building, no smoke by it: three samples leaves, one the building's ink. The tree.
+  const crown = edgeAt(0.25, 0);
+  check('a crown\'s edge over the building, no smoke: the tree', crown?.what === 'plant', JSON.stringify(crown));
   // Smoke with nothing behind it (looking level, over the building): the sky.
   const level = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 100);
   level.position.set(10, 14, 0); level.lookAt(0, 14, 0); level.updateMatrixWorld();

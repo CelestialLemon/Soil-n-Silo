@@ -123,8 +123,8 @@ export class Picker {
     const things = placed ?? this.snapshot();
     // Smoke, over most of the pixel (its samples averaged: with what's painted, less; with what's inked, far more): what's
     // behind it along the line of sight (or, against the sky, nothing).
-    const ink = pixels[nearest * 4 + 3];
-    if (ink > SMOKE_INK * 0.5 && ink < SMOKE_INK * 1.5) return this.past(ray, along - tol, things, pose);
+    const ink = pixels[nearest * 4 + 3], smoke = (k: number) => k > SMOKE_INK * 0.5 && k < SMOKE_INK * 1.5;
+    if (smoke(ink)) return this.past(ray, along - tol, things, pose);
     // A tagged thing the line of sight meets where the depth says it does (the nearest such meeting): its box narrows
     // them down, its triangles decide, so the empty air in a box (round a turbine's mast, under its blades) isn't it.
     // A thing's leaves (a planted roof) are dabs drawn bigger than their cards: their box is enough.
@@ -153,8 +153,11 @@ export class Picker {
     }
     if (best) return { tag: bestTag, what: 'thing', point };
     // A pixel only partly smoke, its samples averaged with what's inked or painted behind or in front (its ink between
-    // theirs), and its depth with theirs, so it may meet nothing at that depth: what the line of sight meets first.
-    if (ink > SMOKE_INK * 0.1 && ink < 0.99) {
+    // theirs), and its depth with theirs, so it may meet nothing at that depth: what the line of sight meets first. Smoke
+    // only (a pixel by it is smoke): a tree's crown against a building averages to an ink between too, and is the tree.
+    let byPuff = false;
+    for (let i = 0; i < 9; i++) if (smoke(pixels[i * 4 + 3])) byPuff = true;
+    if (byPuff && ink > SMOKE_INK * 0.1 && ink < 0.99) {
       const seen = this.past(ray, 0, things, pose);
       if (seen) return seen;
     }
