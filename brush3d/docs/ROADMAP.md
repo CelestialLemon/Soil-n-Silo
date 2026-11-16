@@ -93,12 +93,14 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
   - A new finish, `moss`: planted surfaces are painted, not inked. Plants on a model are grown by the scene at points
     the model marks, never modelled.
   - Pieces the game will move or light are separate and named as the game expects (`move_spin_*`, `running_*`,
-    `charge_<n>`, `smoke_emitter`). Nothing moves in the renderer yet.
+    `charge_<n>`, `smoke_emitter`). The renderer moves and lights them (`Parts`, Soil-n-Silo#205).
   - The farm valley re-laid as a solarpunk farm round them (a homestead, a market corner, a workshop row, turbines on
     the knoll, solar sheets over the wheat, a water wheel on the stream), and a gallery (`?scene=gallery`), a tour (◀ ▶)
     and `?focus=<name>` to look at each.
   - In the game since 2026-11-16 (Soil-n-Silo#203): every building and truck the game places is its model, and the parts
-    move as the game says (#205).
+    move as the game says (#205): spinning parts turn, running looks and charge rings show and hide, a working
+    building's lamps and sea-glass windows glow at night with pools of light round them, and its chimneys puff smoke
+    (`NightLights`, `SMOKE_VERT`; the developer's picks).
 - **The demo on GitHub Pages** (#15, shipped 2026-10-30): https://celestiallemon.github.io/brush3d-renderer/main/, and a preview
   of every open pull request from this repo at `.../pr-<number>/`, removed when it closes. Since the move (#200) it is
   deployed beside the game instead, in each build's `brush3d/` folder (`https://celestiallemon.github.io/Soil-n-Silo/dev/brush3d/`,
