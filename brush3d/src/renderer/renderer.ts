@@ -274,15 +274,8 @@ export class BrushRenderer {
     this.canvas = canvas;
     this.view.screen.canvas = canvas;
     this.gl = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: true });
-    // After three's own handler (added first) has made the context afresh. Held weakly: a renderer dropped with the canvas
-    // kept (a new level) lets go of its listener on the next restore.
-    const self = new WeakRef(this);
-    const restored = () => {
-      const r = self.deref();
-      if (!r) { canvas.removeEventListener('webglcontextrestored', restored); return; }
-      for (const [kind, size] of [...r.fieldSizes]) r.setFields(kind, size);
-    };
-    canvas.addEventListener('webglcontextrestored', restored);
+    // After three's own handler (added first) has made the context afresh.
+    onRestored(canvas, new WeakRef(this));
     this.gl.autoClear = false;
     this.screenRatio = options.pixelRatio ?? Math.min(window.devicePixelRatio || 1, 2);
     this.pixelRatio = this.screenRatio;
@@ -713,6 +706,9 @@ export class BrushRenderer {
    *   bake, unless at a new brush scale. A crop's sides (its edges) stay live.
    * Returns whether it baked.
    */
+  /** Bakes again every field asked for (the GPU's context lost and restored took their texels with it). */
+  rebakeFields() { for (const [kind, size] of [...this.fieldSizes]) this.setFields(kind, size); }
+
   setFields(kind: 'ground' | 'crop' | 'grass', size: number): boolean {
     if (size > 0) this.fieldSizes.set(kind, size); else this.fieldSizes.delete(kind);
     const main = this.materials.get(kind)?.main;
@@ -1647,4 +1643,17 @@ class LandHeights {
     }
     return end;
   }
+}
+
+/**
+ * Bakes the renderer's fields again when the canvas's context is restored. Out here, apart from the constructor, so the
+ * listener's closure holds the renderer only weakly (V8 shares a function's closure scope with its sibling closures, and
+ * the constructor's capture `this`): a renderer dropped with the canvas kept (a new level) lets go on the next restore.
+ */
+function onRestored(canvas: HTMLCanvasElement, renderer: WeakRef<BrushRenderer>) {
+  const restored = () => {
+    const r = renderer.deref();
+    if (r) r.rebakeFields(); else canvas.removeEventListener('webglcontextrestored', restored);
+  };
+  canvas.addEventListener('webglcontextrestored', restored);
 }
