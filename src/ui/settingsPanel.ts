@@ -2,7 +2,7 @@ import { ACTIONS, GROUPS, SLOTS, assign, bindable, canon, overridesOf, resolve, 
 import { fill, h, icon } from './dom.ts';
 import { pct } from './format.ts';
 import { labelOf, nameOf } from './keyhints.ts';
-import { FALLINGS, FLASHES, FRAME_STATS_MODES, HIGHLIGHTS, OVERLAY_STYLES, QUALITIES, UI_SIZES, type Settings, type SettingsStore } from './settings.ts';
+import { FALLINGS, FLASHES, FRAME_STATS_MODES, HIGHLIGHTS, OVERLAY_STYLES, PIXEL_RATIOS, QUALITIES, UI_SIZES, type Settings, type SettingsStore } from './settings.ts';
 
 // The settings panel, opened from the level select and the pause screen: a Game tab (interface size, the renderer's settings,
 // the switches, the frame rate readout) and a Keys tab, where each action's keys are changed (click a key, press the new
@@ -40,6 +40,7 @@ function gameRows(store: SettingsStore) {
   return [
     h('div', { class: 'set is-slider' }, h('b', null, 'Interface size'), slider, size),
     choice('Graphics', seg('quality', QUALITIES, named), 'High: the full picture. Medium, for integrated graphics: softer edges on the sun’s shadows. Low: also rougher edges and fewer pixels, scaled up to the screen.'),
+    choice('Sharpness', seg('pixelRatio', PIXEL_RATIOS, (v) => (v === 'full' ? 'Full' : `${v}×`)), 'On a high-density screen (a Mac’s Retina display): how many pixels are drawn for each point of the screen. 1×: about half the pixels, a softer picture, faster. No change on an ordinary screen.'),
     choice('Rain and snow', seg('falling', FALLINGS, named), 'How many raindrops and snowflakes fall. Light: about a third, and the weather reads the same.'),
     choice('Lightning flashes', seg('flashes', FLASHES, named), 'Full stays within the safety limits for flashing lights. Gentle: one soft, slow glow. Off: the sky doesn’t light up, and you still see the bolt.'),
     choice('Highlight', seg('highlight', HIGHLIGHTS, (v) => ({ outline: 'Cream outline', halo: 'Halo', gold: 'Gold' })[v]), 'How the building or truck under the pointer or selected is marked. Halo: a soft glow round it. Gold: a bold line, the easiest to see at night and in fog.'),

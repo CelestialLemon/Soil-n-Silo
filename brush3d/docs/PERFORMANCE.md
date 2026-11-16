@@ -578,6 +578,35 @@ water's edge, fainter baked, as in the demo). RX 570, 1080p, the bot's farm, liv
 | c6 | 17.5 → 11.2 (21.4 → 15.3) | 18.0 → 12.6 | 12.2 → 8.4 | 15.5 → 9.2 | 11.8 → 7.4 |
 | c8 | 23.4 → 17.9 (31.2 → 24.1) | 22.7 → 17.3 | 14.0 → 11.0 | 20.9 → 15.6 | 16.4 → 12.4 |
 
+### The MacBook on the game's maps (Soil-n-Silo#210)
+
+The MacBook Air took 15 ms for the demo's farm (#27), about 1.3 times the RX 570. On the game's c4 farm it takes 46 ms
+at High (21 fps; 25 at Medium, 33 at Low), about 3 times the RX 570, so something in the game's scene costs the Mac far
+more than the demo's does. What's known:
+
+- **Not the pixels it draws.** The game and the profile draw at most 1080p's pixels at High and Medium (`maxPixels`): its
+  1470×753 window at 2 draws 2011×1030, 1.37 pixels a point. A cap of 1.5 changes nothing there; 1 draws 53% of them.
+- **Its "CPU" column is waiting.** 42–47 ms a frame, where the PC's is 7, dropping to 2.4 without the water and 1.4
+  zoomed closest. Nothing in the frame reads from the GPU (no readbacks, fences or query waits outside the profile's own
+  timers), and on the PC the CPU's time per pass with the GPU idle follows each pass's draw calls, not one pass that
+  waits. So the CPU there most likely waits on a queue full of frames behind a slow GPU process.
+- **It draws a lot.** The widest view in a storm is 2224 draw calls a frame on c4 (the profile's `draws` column): the
+  water's two passes add about 970 (the reflection 810), the foliage about 740. Each call is work for Chrome's GPU
+  process, which on a Mac turns it into Metal (ANGLE), and that's slower per call than on the PC.
+
+The profile's cases that tell these apart (`?profile=causes`, or `npm run framerate -- --causes`; `causeCases` in the
+game's `src/world/brush/profile.ts`; the widest view in a storm at High, whatever the player picked): half the pixels, no MSAA, no prepass, no shadow map, the water without its
+reflection or its bed, the reflection at half size, and the depth not copied out. Each row also has `CPU alone` (the
+CPU's time with the GPU idle, and pass by pass below the table) and `draws`. On the RX 570, c4's widest storm view
+(GPU ms; uncapped): as it is 14.5 (20.7); half the pixels 11.9 (17.9); no MSAA 11.6 (19.9); no prepass 26.2 (30.4); no
+shadow map 11.4 (16.9); water without reflection 12.3 (17.0); without the bed 13.4 (19.9); the reflection at half size
+13.8 (19.8); the depth not copied out 14.0 (21.9).
+
+The depth not copied out (`settings.resolveDepth` off) is the same picture and 0.45 ms less GPU, but frames drawn back to
+back took 1–5 ms longer on the RX 570 (alternating builds, c4 and c8), so it stays on until the MacBook's run says
+whether a tile-based GPU gains. The game's settings have a **Sharpness** choice (`?pixelratio=1` on a preview): the
+screen's own (the default) or 1.25 or 1 pixels a point, softer and faster; a look the developer picks.
+
 ## Quality settings
 
 One look on every machine: a lower quality keeps the paint, light, weather and ink, and draws them with less detail.

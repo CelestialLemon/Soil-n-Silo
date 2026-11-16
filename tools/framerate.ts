@@ -7,7 +7,8 @@
 //
 // Run the game's dev server first (`npm run dev`, or as a service: AGENTS.md), then:
 //   npm run framerate -- [--layouts c1,c4] [--saves fresh,farm] [--minutes 20] [--cases storm] [--out out/framerate]
-//   GAME_URL picks the server (default http://127.0.0.1:5173). --cases keeps the cases whose label has any of the words
+//   GAME_URL picks the server (default http://127.0.0.1:5173). --causes runs only the cases that tell apart why a GPU is
+//   slow (the page's ?profile=causes, src/world/brush/profile.ts's causeCases). --cases keeps the cases whose label has any of the words
 //   (comma-separated); --labels those with exactly one of the labels (`|`-separated: `--labels "view 1, storm|widest, storm"`).
 //   --query adds to the page's address (`--query overcast=a`: a look PR's option, to see what it costs). --chromium a
 //   Chromium binary (default: Playwright's own install).
@@ -28,7 +29,7 @@ import { newGame, sizeOf, type GameState } from '../src/game/state.ts';
 const { values: opt } = parseArgs({ options: {
   layouts: { type: 'string', default: 'c1,c2,c3,c4,c5,c6,c7,c8' }, saves: { type: 'string', default: 'fresh,farm' },
   minutes: { type: 'string', default: '20' }, cases: { type: 'string' }, out: { type: 'string', default: 'out/framerate' },
-  labels: { type: 'string' }, query: { type: 'string' }, chromium: { type: 'string' }, 'no-lock': { type: 'boolean' },
+  labels: { type: 'string' }, query: { type: 'string' }, causes: { type: 'boolean' }, chromium: { type: 'string' }, 'no-lock': { type: 'boolean' },
 } });
 const LOCK = '/tmp/gpu-bench.lock';
 if (!opt['no-lock'] && !process.env.BENCH_LOCKED && spawnSync('flock', ['--version']).status === 0) {
@@ -38,8 +39,14 @@ if (!opt['no-lock'] && !process.env.BENCH_LOCKED && spawnSync('flock', ['--versi
 const URL_ = (process.env.GAME_URL || 'http://127.0.0.1:5173').replace(/\/$/, '');
 
 /** As brush3d's profile reports a case (src/renderer/profile.ts). */
-interface Row { label: string; gpu: Record<string, number> | null; cpu: Record<string, number>; uncapped: number }
+interface Row { label: string; gpu: Record<string, number> | null; cpu: Record<string, number>; uncapped: number; cpuAlone: number; cpuAlonePasses: Record<string, number>; draws: number }
 interface Load { pieces: Record<string, number>; firstFrame: number; models: number; sinceStart: number }
+
+/** The pass the CPU took longest over in the frames drawn alone, and how long (where it waits on the GPU, if it does). */
+function slowest(passes: Record<string, number> = {}) {
+  const [name, v] = Object.entries(passes).filter(([k]) => k !== 'frame').sort((a, b) => b[1] - a[1])[0] ?? ['-', 0];
+  return `${name} ${v.toFixed(1)}`;
+}
 
 /** The bot's farm, with the commission's own trees and rocks back on the tiles more than a tile from any building. */
 function farm(id: string, minutes: number): GameState {
@@ -79,15 +86,16 @@ try {
       // The models swapped in, the shaders for them compiled, the wind's worker up.
       await page.waitForTimeout(3000);
       const load = await page.evaluate<Load>('game.load()');
-      const cases = labels ? `game.cases().filter((c) => ${JSON.stringify(labels)}.includes(c.label))`
-        : words ? `game.cases().filter((c) => ${JSON.stringify(words)}.some((w) => c.label.includes(w)))` : 'undefined';
+      const all = opt.causes ? 'game.causes()' : 'game.cases()';
+      const cases = labels ? `${all}.filter((c) => ${JSON.stringify(labels)}.includes(c.label))`
+        : words ? `${all}.filter((c) => ${JSON.stringify(words)}.some((w) => c.label.includes(w)))` : opt.causes ? all : 'undefined';
       const rows = await page.evaluate<Row[]>(`(async () => game.profile(${cases}))()`);
       report[name] = { buildings: state.buildings.length, trees, load, rows };
       const ms = (n: number) => n.toFixed(1);
       console.log(`\n${name}: ${state.buildings.length} buildings, ${trees} trees on the map · load ${ms(load.sinceStart)} ms (${Object.entries(load.pieces).map(([k, v]) => `${k} ${ms(v)}`).join(', ')}; first frame ${ms(load.firstFrame)}; models ${ms(load.models)})`);
-      console.log(`  ${'case'.padEnd(34)} ${'GPU'.padStart(6)} ${'CPU'.padStart(6)} ${'uncap'.padStart(6)}  shadow  reflect  main`);
+      console.log(`  ${'case'.padEnd(42)} ${'GPU'.padStart(6)} ${'CPU'.padStart(6)} ${'alone'.padStart(6)} ${'draws'.padStart(6)} ${'uncap'.padStart(6)}  shadow  reflect  main  (alone: the slowest pass)`);
       for (const r of rows) {
-        console.log(`  ${r.label.padEnd(34)} ${(r.gpu ? ms(r.gpu.frame) : '-').padStart(6)} ${ms(r.cpu.frame).padStart(6)} ${ms(r.uncapped).padStart(6)}  ${r.gpu ? [r.gpu.shadow, r.gpu.reflect, r.gpu.main].map((v) => ms(v).padStart(6)).join('  ') : ''}`);
+        console.log(`  ${r.label.padEnd(42)} ${(r.gpu ? ms(r.gpu.frame) : '-').padStart(6)} ${ms(r.cpu.frame).padStart(6)} ${ms(r.cpuAlone).padStart(6)} ${String(r.draws).padStart(6)} ${ms(r.uncapped).padStart(6)}  ${r.gpu ? [r.gpu.shadow, r.gpu.reflect, r.gpu.main].map((v) => ms(v).padStart(6)).join('  ') : ''}  ${slowest(r.cpuAlonePasses)}`);
       }
     } finally { await context.close(); }
   }

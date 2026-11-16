@@ -447,9 +447,11 @@ land and over the days it makes the valley's power. The rules sample the shade a
 | How much rain and snow falls (1 full, about a third reduced) | `r.settings.fallingShare` | today |
 | Lightning flashes: full, gentle or off | `r.lightning.setting` (it stays there: #209) | today |
 | Graphics quality presets for the three machines | `r.setQuality(QUALITY.medium)` (`high`, `medium`, `low`) | today |
+| On a high-DPI screen, the most pixels drawn a point (softer, faster; an ordinary screen is unchanged) | `r.setMaxRatio(1)` (`Infinity`, the default: the screen's own, within the quality's pixels); `r.maxRatio` | today (Soil-n-Silo#210) |
 
 Each takes effect on the next frame. The game saves them with its own settings (`src/world/brush/settings.ts`): the
-quality (high by default), rain and snow (all, or `fallingShare` 0.33) and the lightning flashes (full by default, which
+quality (high by default), the sharpness (`setMaxRatio`: the screen's own by default, or 1.25 or 1; `?pixelratio=` on a
+preview), rain and snow (all, or `fallingShare` 0.33) and the lightning flashes (full by default, which
 keeps within the flash-safety limits; gentle and off soften it further).
 
 ## Tools, for measuring and comparing (today)
@@ -461,9 +463,16 @@ Not for the game's players, but kept public for the tools that judge renderer wo
 - `r.output`: draw the frame into a target rather than the canvas (profiling).
 - `runProfile(r, draw, restore, cases, progress?, frames?)`, `profileTable(rows)`, `PASSES`, `PROFILE_KINDS` and the
   `ProfileCase` / `ProfileRow` types: the profile the demo's and the game's `?profile` both run (each case's GPU ms per
-  pass, the CPU's ms and the uncapped frame; a case may set its own `quality` preset, `docs/PERFORMANCE.md`).
+  pass, the CPU's ms, the CPU's ms with the GPU idle (`cpuAlone`, and pass by pass), the draw calls and the uncapped
+  frame; a case may set its own `quality` preset, `tweak` it, change `settings` or the `reflectionScale` for itself
+  alone, `docs/PERFORMANCE.md`). `new PassTimer(gl, false)` times the CPU alone, asking nothing of the GPU.
 - `r.setVisible(kind, on)`: show or hide a kind (`'ground'`, `'ink'`, `'foliage'`, `'rain'`...), for A/B comparisons.
 - `r.settings.falling` (leave out what's in the air), `prepass`, `waterScissor`, `equalDepth`, `shelterDebug`, `grain`.
+- `r.settings.reflection` and `under` (both on by default): draw the water's reflection and the bed under it. Off only to
+  time them: the water then shows whatever those targets held last.
+- `r.settings.resolveDepth` (on by default): copy the main view's multisampled depth out with its colour. Off is the same
+  picture (nothing reads that depth), timed against on for the MacBook (`docs/PERFORMANCE.md`).
+- `r.setReflectionScale(0.5)`: the reflection at that share of its usual half-frame size (1 by default), to time it.
 - `r.setTime(seconds)`: set the renderer's clock without drawing, so a map sent next starts its ease from
   there.
 - `r.lightning.clock`: the lightning's clock (real seconds by default), held still to time or film a flash at its height.

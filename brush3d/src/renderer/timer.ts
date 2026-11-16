@@ -20,9 +20,10 @@ export class PassTimer {
 
   private gl: WebGL2RenderingContext;
 
-  constructor(gl: WebGL2RenderingContext) {
+  /** `gpu` false times the CPU alone: no queries, nothing asked of the GPU. */
+  constructor(gl: WebGL2RenderingContext, gpu = true) {
     this.gl = gl;
-    this.ext = gl.getExtension('EXT_disjoint_timer_query_webgl2') as TimerExt | null;
+    this.ext = gpu ? gl.getExtension('EXT_disjoint_timer_query_webgl2') as TimerExt | null : null;
     this.gpu = this.ext !== null;
   }
 
