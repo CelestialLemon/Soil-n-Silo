@@ -814,8 +814,8 @@ The building that gives the forecast (3.1): `src/game/station.ts`. Panel (3.3) a
   "Issued" row has the hour of the forecast ("day 4, 14:00"); before the first, "none yet" (and why). The dock and guide tile say "Station". A button opens the forecast panel (3.3). Its status
   pill, hover card, history ribbon and marker are those of any powered building (`Forecasting` while it works; No power, Not connected, or
   stopped by the flood otherwise). **The guide** has its page (cost, power, what it sees, that one is enough).
-- **The model** is brush3d's `weather_station` (`brush3d/src/models/`, 3.5): the cups turn with the wind whether or not it has power, at three speeds by the
-  wind (below 0.35 of full wind 1.5 rad/s, below 0.7 3.5, else 6), as the turbine's rotor does, with no power test.
+- **The model** is brush3d's `weather_station` (`brush3d/src/models/`, 3.5): the cups turn with the wind and the gusts passing over it,
+  whether or not it has power, faster as it blows harder, as the turbine's rotor does (`src/world/brush/states.ts`).
 - **The bot** builds one in Tired Soil, Riverlands and Harvest Festival (3.6; `station()` in `tools/layouts.ts`, west of the sauce's first pylon), after the first
   loop runs and a few minutes before the first event. It plays the whole seeded weather in hand, so the forecast tells it nothing: the station is only its cost
   (+18 s, +63 s and +35 s on 29:13, 36:35 and 36:52). The other layouts build none.

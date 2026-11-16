@@ -81,7 +81,8 @@ Each model is one `.glb` in `src/models/`, read by `src/kit/model.ts`:
   | `smoke_emitter` | an empty point where smoke or steam leaves |
   | `dynamo` | the water wheel's generator, out on the shaft |
 
-  These follow the game's own conventions (`src/world/models.ts` there), so the files should drop in.
+  These follow the game's own conventions: `src/world/brush/catalog.ts` says which model draws which building, and
+  `src/world/brush/things.ts` places them and drives their parts.
 
 `src/models/index.json` lists every model's title, group, footprint, triangle count, bounds and named pieces; the
 demo reads it (`src/models/catalog.ts`).
