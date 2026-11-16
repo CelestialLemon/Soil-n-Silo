@@ -8,6 +8,8 @@ import { DAB_OUT_GLSL, markMaterial, type MaterialKind, type SharedUniforms } fr
 // anything), and hidden only where something of the world stands in front of them (the G-buffer's depth there). Not by a
 // crop, though (#206, the developer's ask): a blueprint or a frame in a field shows in full through it. Crops are low, so
 // whatever a crop stands in front of is close behind it; it hides only what's farther (behind a hill beyond the field).
+// (So something close behind a crop that would hide a tool, a wall just past the field, doesn't where the crop is in
+// front of it: a strip along the field's edge. Knowing would take the world drawn again without its crops.)
 
 /** Whether the building being placed fits where it is. */
 export type PreviewState = 'fits' | 'blocked';
@@ -113,7 +115,8 @@ layout(location = 0) out vec4 outColor;
 void main() { outColor = vec4(0.0); }
 `;
 // A crop, drawn again (with its painting's vertex shader, so on the same pixels) where it's what shows: its depth is the
-// G-buffer's there, to within the G-buffer's rounding (half-float: a part in 2048) and no more, so a crop just behind a
+// G-buffer's there or nearer: nearer at a crop's edge, where the G-buffer's depth is the crop's averaged with what's
+// behind it (MSAA). Allowing for the G-buffer's rounding (half-float: a part in 2048) and no more, so a crop just behind a
 // wall doesn't count as showing (and let a tool behind the wall through).
 // A crop's leaves, flowers and heads are dabs on cards (CROP_DABS): cut to their shape.
 const CROP_FRAG = /* glsl */ `
@@ -128,7 +131,7 @@ void main() {
   if (dabOut()) discard;
 #endif
   float shown = texelFetch(uOnTopAux, ivec2(gl_FragCoord.xy), 0).z;
-  if (shown <= 0.0 || abs(vViewDepth - shown) > 0.02 + shown * 0.0007) discard;
+  if (shown <= 0.0 || vViewDepth > shown + 0.02 + shown * 0.0007) discard;
   outColor = vec4(1.0);
 }
 `;
