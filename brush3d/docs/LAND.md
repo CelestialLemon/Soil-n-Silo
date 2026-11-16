@@ -24,18 +24,22 @@ country the game draws round it in tiles too, then `beyond`, a coarse grid of he
   only rounded. Each tile is cut as finely as its bends need (whole, halves, quarters or eighths), finer on and near the
   map where the camera comes close.
 - **Cliffs.** Where neighbours don't meet, a wall runs from the upper tile's side down to the lower one's, with a turf lip
-  at the top and bands of earth (stone from level 8 up) every two levels. The look is a developer's pick (the look PR).
+  at the top and bands of earth (stone from level 8 up) every two levels: the strata, the developer's pick over soft earth and
+  grey rock (Soil-n-Silo#228).
 - **The water's beds.** Under each water tile the ground sinks into a bed, 1.2 m at its deepest, rising to the bank over
   the last three quarters of a tile where dry ground is beside it. The water itself is the game's water map (`setWater`,
   `WATER.md`); the game lays it a little under its tiles' level (Soil-n-Silo's `WATER_DOWN`, 0.48 m), so the banks stand over
   it and the shore is where the bed rises through it.
+- **Falls.** Where the river steps down a level, the cliff face runs between its two beds, and the game's water slides down
+  over it, a ramp a tile long (its banks beside the fall get the water below's level, under them, so the sheet doesn't stand
+  out over them). A stand-in: a fall that reads as one is Soil-n-Silo#241.
 - **The paint.** Grass runs from lush, low and near water, to dry, high and far from it (blurred over a few tiles, so it
   follows the land rather than the tile grid), with the meadow's drifts of colour. Bare earth, tracks, rock and woods'
   floor have their own colours; the ground kind tints them a little (clay warmer, sand paler, stony greyer). The season
   turns the greens as it does everywhere.
-- **The country.** The tiles off the map are drawn the same, a little duller (`LandLook.beyond`), so the edge of the
-  buildable map reads. Past them, `beyond` is a coarse floor of distant woods out to the horizon; the land's outer edge is
-  skirted down 3 m so no crack shows where they meet.
+- **The country.** The tiles off the map are drawn the same, clearly duller (`LandLook.beyond`, the developer's pick), so
+  the edge of the buildable map reads. Past them, `beyond` is a coarse floor of distant woods out to the horizon; the
+  land's outer edge is skirted down 3 m so no crack shows where they meet.
 - **Chunks.** The land is meshes of 8 by 8 tiles, each cut into the renderer's tiles so a pass draws only what it sees.
 
 ## Earthworks without a hitch
@@ -68,6 +72,7 @@ at their level, which is where a boat or a dropped good on the water belongs.
 
 ## Not yet
 
+- Falls that read as waterfalls (Soil-n-Silo#241).
 - Grass tufts where the cover says grass (the meadow's), round what stands on it.
 - The cuts models need where they stand: the water wheel's race in its bank (`wheelRace` in the catalogue).
 - The game fits the same tiles a second time for its `Lie` (about 10 ms an earthwork, all in one frame); one fit shared
