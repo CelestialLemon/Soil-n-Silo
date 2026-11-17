@@ -36,6 +36,7 @@ import './ui/clearday/tokens.css';
 import './ui/clearday/clearday.css';
 import './ui/clearday/icons.css';
 import './ui/game.css';
+import { glassChoice } from './ui/glassChoice.ts';
 import { must, type Result } from './game/result.ts';
 
 /** A spot a building in hand would go: its tile and the way it faces. */
@@ -66,6 +67,8 @@ const loading = must(document.querySelector<HTMLElement>('#loading'), '#loading'
 const SAVE_KEY = saveKey(location.pathname), PROGRESS_KEY = `${SAVE_KEY}:progress`;
 const params = new URLSearchParams(location.search);
 const settings = new SettingsStore(`${SAVE_KEY}:settings`);
+// #210: the panels' glass candidates, for the developer to pick (removed with the ones not picked before the PR merges).
+glassChoice();
 followKeys(settings);
 
 const loaded = deserialize(localStorage.getItem(SAVE_KEY));
