@@ -12,11 +12,13 @@
 const GLASS = ['frosted', 'clear', 'solid'] as const;
 type Glass = typeof GLASS[number];
 const STORED = 'glass-choice';
-const PANELS = '.cd-card:not(.is-ink), .cd-pill, .cd-viewbar, .cd-pstrip';
+const PANELS = '.cd-card, .cd-pill, .cd-viewbar, .cd-pstrip';
+/** The chalk ones: an inked card keeps its own solid ink. */
+const CHALK = '.cd-card:not(.is-ink), .cd-pill, .cd-viewbar, .cd-pstrip';
 
 const CSS = `
 html.glass-clear :is(${PANELS}), html.glass-solid :is(${PANELS}) { backdrop-filter: none !important; }
-html.glass-solid :is(${PANELS}) { background: var(--chalk) !important; }
+html.glass-solid :is(${CHALK}) { background: var(--chalk) !important; }
 `;
 
 /** The candidate asked for (by name or letter), else the last one picked, else as now. */
