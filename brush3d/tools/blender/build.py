@@ -22,9 +22,10 @@ def names():
     return sorted(p.stem for p in (HERE / 'models').glob('*.py') if not p.stem.startswith('_'))
 
 
-def export(name):
+def export(name, mod=None):
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    mod = importlib.import_module(f'models.{name}')
+    if mod is None:
+        mod = importlib.import_module(f'models.{name}')
     m = kit.Model(name)
     mod.build(m)
     objs = m.finish()

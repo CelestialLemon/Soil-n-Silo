@@ -40,7 +40,7 @@ export class Camera {
   /** The zoom, as screen pixels per tile of ground: `zoom` eases towards `zoomGoal`. */
   private zoom = START_ZOOM;
   private zoomGoal = START_ZOOM;
-  /** While zooming towards the pointer: the ground point that stays under it, and where the pointer is from the centre. */
+  /** While zooming towards the pointer: the point that stays under it, and where the pointer is from the centre. */
   private zoomAnchor: { ground: THREE.Vector3; dx: number; dy: number } | null = null;
   private yaw = HOME_YAW;
   private turnFrom = HOME_YAW;
@@ -60,6 +60,7 @@ export class Camera {
   private readonly canvas: HTMLCanvasElement;
   private readonly map: { width: number; height: number };
   private readonly changed: () => void;
+  private readonly minZoom: number;
 
   /** `start` is the ground point first looked at; `changed` is called whenever what is under a point of the page may have changed. */
   constructor(
@@ -68,8 +69,9 @@ export class Camera {
     map: { width: number; height: number },
     start: { x: number; z: number },
     changed: () => void,
+    minZoom = MIN_ZOOM,
   ) {
-    this.lens = lens; this.canvas = canvas; this.map = map; this.changed = changed;
+    this.lens = lens; this.canvas = canvas; this.map = map; this.changed = changed; this.minZoom = minZoom;
     this.target = new THREE.Vector3(start.x, 0, start.z);
     lens.onFit = () => this.changed();
     addEventListener('resize', () => this.fit());
@@ -98,17 +100,17 @@ export class Camera {
     this.target.x = THREE.MathUtils.clamp(this.target.x, 0, this.map.width);
     this.target.z = THREE.MathUtils.clamp(this.target.z, 0, this.map.height);
   }
-  /** Points the camera at a ground point, optionally at a zoom (screen pixels per tile, reached at once). */
-  lookAt(x: number, z: number, zoom?: number) {
-    this.target.set(x, 0, z); this.clampTarget();
+  /** Points the camera at a world point, optionally at a zoom (screen pixels per tile, reached at once). */
+  lookAt(x: number, z: number, zoom?: number, y = 0) {
+    this.target.set(x, y, z); this.clampTarget();
     if (zoom) { this.setZoom(zoom); this.zoom = this.zoomGoal; }
     this.changed();
   }
   /** Zooms in (+1) or out (−1) by one step. */
   zoomStep(dir: number, at?: { x: number; y: number }) { this.setZoom(this.zoomGoal * ZOOM_STEP ** dir, at); }
-  /** Zooms to `goal` screen pixels per tile, keeping the ground under the page point `at` (the pointer) where it is; the centre without one. */
+  /** Zooms to `goal` screen pixels per tile, keeping the world under the page point `at` (the pointer) where it is; the centre without one. */
   setZoom(goal: number, at?: { x: number; y: number }) {
-    goal = THREE.MathUtils.clamp(goal, MIN_ZOOM, MAX_ZOOM);
+    goal = THREE.MathUtils.clamp(goal, this.minZoom, MAX_ZOOM);
     if (goal === this.zoomGoal) return;
     this.zoomGoal = goal;
     // The ground under the point, from where the camera is now (target, turn and zoom), not from the last picture drawn:

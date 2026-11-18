@@ -21,6 +21,10 @@ draws, and answers "what is under the pointer" (`pick`). The game's side of it i
 `src/world/scene.ts`; what the game still wants from it is in `brush3d/docs/ROADMAP.md`. Until 2026-11-16 the game was drawn
 with pixel3d-renderer; its needs and workarounds are in git history (#211).
 
+- **Building style study.** A preview level at `?building-study` compares five architectural directions for the bakery,
+  garage and silo alongside their current models. Pick a direction after reviewing it at game zoom. A production model
+  pass can then carry the chosen direction into the wider set.
+
 ## v0.1: the pivot (2026-10-09)
 
 - Game rules in `src/game/`: goods, crops, buildings and recipes as data (`data.ts`); seeded maps (`map.ts`); commissions
