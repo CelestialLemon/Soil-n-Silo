@@ -450,7 +450,7 @@ land and over the days it makes the valley's power. The rules sample the shade a
 | On a high-DPI screen, the most pixels drawn a point (softer, faster; an ordinary screen is unchanged) | `r.setMaxRatio(1)` (`Infinity`, the default: the screen's own, within the quality's pixels); `r.maxRatio` | today (Soil-n-Silo#210) |
 
 Each takes effect on the next frame. The game saves them with its own settings (`src/world/brush/settings.ts`): the
-quality (high by default), the sharpness (`setMaxRatio`: the screen's own by default, or 1.25 or 1; `?pixelratio=` on a
+quality (high by default), the sharpness (`setMaxRatio`: 1.25 by default, the developer's pick on Soil-n-Silo#210, or the screen's own or 1; `?pixelratio=` on a
 preview), rain and snow (all, or `fallingShare` 0.33) and the lightning flashes (full by default, which
 keeps within the flash-safety limits; gentle and off soften it further).
 

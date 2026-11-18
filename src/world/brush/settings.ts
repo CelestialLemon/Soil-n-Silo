@@ -8,7 +8,8 @@ import type { Falling, PixelRatio, SettingsStore } from '../../ui/settings.ts';
 //             brush3d's weather was built with, docs/PERFORMANCE.md); the weather reads the same, with less in the air
 //   pixelRatio  on a high-DPI screen, the most pixels drawn a point (maxRatio): the screen's own, or 1.25 or 1, softer and
 //             faster (#210: the MacBook Air draws ~1.37 a point at High, within 1080p's pixels). `?pixelratio=1` (any
-//             number) overrides it, for comparing on a PR's preview. A look choice: the developer picks on #210.
+//             number) overrides it, for comparing on a PR's preview. 1.25 is the default (the developer's pick on #210,
+//             2026-11-18).
 //   flashes   lightning (lightning.setting): full is safe by default, within the flash-safety limits (`npm run render:flash`);
 //             gentle softens it to one slow swell, and off lights nothing up but the bolt and a dim glow (the developer's
 //             decision on #209, 2026-11-14)

@@ -605,7 +605,7 @@ shadow map 11.4 (16.9); water without reflection 12.3 (17.0); without the bed 13
 The depth not copied out (`settings.resolveDepth` off) is the same picture and 0.45 ms less GPU, but frames drawn back to
 back took 1–5 ms longer on the RX 570 (alternating builds, c4 and c8), so it stays on until the MacBook's run says
 whether a tile-based GPU gains. The game's settings have a **Sharpness** choice (`?pixelratio=1` on a preview): the
-screen's own (the default) or 1.25 or 1 pixels a point, softer and faster; a look the developer picks.
+screen's own, 1.25 (the default: the developer's pick, about as crisp by eye and faster) or 1 pixels a point.
 
 ## Quality settings
 
