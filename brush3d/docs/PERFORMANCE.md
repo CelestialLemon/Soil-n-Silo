@@ -578,6 +578,42 @@ water's edge, fainter baked, as in the demo). RX 570, 1080p, the bot's farm, liv
 | c6 | 17.5 → 11.2 (21.4 → 15.3) | 18.0 → 12.6 | 12.2 → 8.4 | 15.5 → 9.2 | 11.8 → 7.4 |
 | c8 | 23.4 → 17.9 (31.2 → 24.1) | 22.7 → 17.3 | 14.0 → 11.0 | 20.9 → 15.6 | 16.4 → 12.4 |
 
+### The water's passes only where it can show (Soil-n-Silo#249)
+
+The water draws two pictures for itself: the bed under it and the scene mirrored in it. Each was drawn round the water on
+screen, but the river is one mesh across the map, so "round it" was 81–100% of both pictures while the water itself
+covers a few percent of the screen. Now (`waterMask.ts`, `WaterField.footprint`):
+
+- **The footprint.** Boxes round the water that can show: the sheet's triangles cut where it dives out of sight (the
+  shader's cutoff, `HIDDEN_DIVE`), gathered into 16 m squares (about 120 boxes on c8). Found again only when the water
+  changes; while it eases between two maps, round both.
+- **A mask a pass.** Each frame the boxes are laid on a 48 × 48 grid over the screen, each widened by how far that pass is
+  read round the water (the ripples' nudge, the reflection's larger one and its shift for water above or below the mirror,
+  its blur and its look for cover, two texels for filtering). Before the pass, the squares are stamped into its depth and
+  everywhere else is made "nearer than anything", so the GPU throws away every pixel drawn there before painting it.
+- **Fewer things drawn.** A mesh whose bounds (mirrored, for the reflection) miss every square isn't drawn in that pass,
+  nor its silhouette. Smoke and blown leaves always are: they're drawn metres from where they're built.
+- **None at all** when no square is marked: the bed, the reflection and its silhouettes are skipped.
+
+The same pictures: 15 demo stills byte-identical to before, and 125 views of the game (c8 farm, c4 farm and fresh: four
+turns, widest to closest, storm and still water, golden hour, night, a flood, a flood easing in, ice, and views with the
+water at each edge of the screen) identical with the mask on and off. `settings.waterMask` (the demo's `?mask=0`) turns
+it off, for comparing.
+
+RX 570, 1080p, storm, high, the game's profile, two alternating runs each (they agreed to 0.02 ms), GPU ms:
+
+| | bed | reflection | frame | draws | uncapped |
+|---|---|---|---|---|---|
+| c8 farm, start | 0.65 → 0.20 | 3.97 → 1.36 | 17.91 → 14.86 | 2,230 → 1,651 | 24.2–25.3 → 20.1–20.7 |
+| c8 farm, widest | 0.96 → 0.47 | 3.31 → 1.63 | 17.35 → 15.17 | 3,029 → 2,448 | 25.8–26.0 → 22.1–22.9 |
+| c4 farm, start | 0.60 → 0.21 | 2.26 → 0.76 | 14.89 → 12.98 | 1,528 → 1,216 | 19.3–19.6 → 16.8–16.9 |
+| c4 farm, widest | 1.04 → 0.52 | 2.18 → 1.04 | 14.44 → 12.78 | 2,224 → 1,837 | 20.3–20.4 → 17.7–18.1 |
+| c4 fresh, start | 0.61 → 0.27 | 2.30 → 0.73 | 14.87 → 12.95 | 1,304 → 1,020 | 18.9–19.2 → 16.5–17.7 |
+| c4 fresh, widest | 0.88 → 0.42 | 2.12 → 1.05 | 14.06 → 12.52 | 1,998 → 1,613 | 20.3–22.5 → 17.8–18.6 |
+
+On the CPU, making both masks takes about 0.1 ms a frame (0.09–0.12, the footprint kept), and the two passes' own work,
+leaving things out included, about halves with the draws they no longer issue (c8 start, 3.1 → 1.7 ms a frame).
+
 ### The MacBook on the game's maps (Soil-n-Silo#210)
 
 The MacBook Air took 15 ms for the demo's farm (#27), about 1.3 times the RX 570. On the game's c4 farm it takes 46 ms
