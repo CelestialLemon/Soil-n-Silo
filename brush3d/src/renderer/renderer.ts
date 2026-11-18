@@ -311,6 +311,9 @@ export class BrushRenderer {
       count: 2, samples, type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: true,
       minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
     });
+    // The depth buffer, kept where the post pass can read it: exact where the G-buffer's half-float depth is rounded, for
+    // the ink lines (post.ts, inkDepth). three resolves it out of the multisampled buffer anyway; this only gives it a texture.
+    this.gbuffer.depthTexture = new THREE.DepthTexture(1, 1, THREE.UnsignedIntType);
     const size = options.shadowMapSize ?? 2048;
     this.shadowTarget = new THREE.WebGLRenderTarget(size, size, { depthBuffer: true });
     this.shadowTarget.depthTexture = new THREE.DepthTexture(size, size, THREE.UnsignedIntType);
@@ -355,6 +358,7 @@ export class BrushRenderer {
       vertexShader: POST_VERT, fragmentShader: POST_FRAG, depthTest: false, depthWrite: false,
       uniforms: {
         tColor: { value: this.gbuffer.textures[0] }, tAux: { value: this.gbuffer.textures[1] },
+        tDepth: { value: this.gbuffer.depthTexture }, uDepthRange: { value: new THREE.Vector2(1, 400) },
         uResolution: { value: new THREE.Vector2(1, 1) }, uLineWidth: { value: 1.5 }, uLines: { value: 1 },
         uTargetDepth: { value: CAMERA_DISTANCE }, uHazeColor: { value: new THREE.Color() }, uHazeDensity: { value: 0.02 },
         uHazeMax: { value: 0.4 }, uHazeFloor: { value: 0 }, uSkyTop: { value: new THREE.Color() }, uSkyBottom: { value: new THREE.Color() },
@@ -1583,6 +1587,7 @@ export class BrushRenderer {
     gl.setRenderTarget(this.output);
     const u = this.post.uniforms;
     u.uLines.value = this.settings.lines ? 1 : 0;
+    (u.uDepthRange.value as THREE.Vector2).set(this.view.camera.near, this.view.camera.far);
     u.uGrain.value = this.settings.grain;
     // Lines thin as the camera zooms out, so a busy farm doesn't turn into a comic.
     u.uLineWidth.value = THREE.MathUtils.clamp(0.6 + this.view.zoom / 48, 0.8, 2.2) * this.pixelRatio * 0.75;

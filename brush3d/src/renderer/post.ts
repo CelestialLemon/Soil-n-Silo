@@ -21,6 +21,9 @@ export const POST_FRAG = /* glsl */ `
 precision highp float;
 uniform sampler2D tColor;
 uniform sampler2D tAux;
+// The depth buffer (the camera's near and far: it's orthographic, so its depth runs evenly between them).
+uniform sampler2D tDepth;
+uniform vec2 uDepthRange;
 uniform vec2 uResolution;
 uniform float uLineWidth;
 uniform float uLines;
@@ -79,6 +82,26 @@ ${MARKS_POST_GLSL}
 
 const float FAR = 1e4;
 float depthOf(vec4 a) { return a.z <= 0.0 ? FAR : a.z; }
+
+// The ink compares depths, and the G-buffer keeps them in half floats, which round them to 1/1024 of their power of two:
+// 6 cm from 64 m away, 12.5 cm from 128 m. A gentle slope's depth then climbs in steps as big as a small silhouette, and
+// each step was inked: stripes across a roof, a panel or a tower past 128 m. The depth buffer has them exact, so the ink
+// compares its depths instead, read as the G-buffer's are (filtered between pixels), where the two agree to within the
+// rounding (and the multisampling: the G-buffer's is its samples' average, the depth buffer's one sample). Where they
+// don't, at the pixel or its neighbour (an edge, or what the depth buffer doesn't hold, like smoke), it compares the
+// G-buffer's, as before: never one of each, which would itself be a step.
+float depthTexel(ivec2 p) {
+  return texelFetch(tDepth, clamp(p, ivec2(0), ivec2(uResolution) - 1), 0).r;
+}
+// x: the depth buffer's depth at uv, y: whether it agrees with d, the G-buffer's there.
+vec2 exactDepth(vec2 uv, float d) {
+  if (d >= FAR) return vec2(d, 0.0);
+  vec2 p = uv * uResolution - 0.5, f = fract(p);
+  ivec2 i = ivec2(floor(p));
+  float z = mix(mix(depthTexel(i), depthTexel(i + ivec2(1, 0)), f.x), mix(depthTexel(i + ivec2(0, 1)), depthTexel(i + ivec2(1, 1)), f.x), f.y);
+  float exact = uDepthRange.x + z * (uDepthRange.y - uDepthRange.x);
+  return vec2(exact, step(abs(exact - d), 2.0 * exp2(floor(log2(d)) - 10.0) + 0.02));
+}
 
 // The fog gathers over FOG_SOFT_BASE metres above its base, if it has one, and thins to nothing at its top over uFog.w
 // metres: most of its depth, so a shallow mist lies thickest along the water and in the hollows, and a deep fog veils all
@@ -225,11 +248,14 @@ void main() {
   float edge = 0.0;
   if (uLines > 0.5 && aux.w > 0.02) {
     vec2 px = uLineWidth / uResolution;
+    vec2 e0 = exactDepth(uv, d);
     for (int i = 0; i < 8; i++) {
       float a = float(i) * 0.785398;
       vec2 o = vec2(cos(a), sin(a)) * px;
       vec4 b = texture2D(tAux, uv + o);
-      float dd = depthOf(b) - d;
+      float db = depthOf(b);
+      vec2 eb = exactDepth(uv + o, db);
+      float dd = e0.y * eb.y > 0.5 ? eb.x - e0.x : db - d;
       float sil = smoothstep(0.06, 0.16, dd);
       float crease = b.w * smoothstep(0.3, 0.55, length(aux.xy - b.xy));
       edge = max(edge, max(sil, crease * 0.85));
