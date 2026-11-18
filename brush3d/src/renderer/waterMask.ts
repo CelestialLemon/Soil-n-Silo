@@ -11,6 +11,8 @@ import * as THREE from 'three';
 // there before painting it. And a thing whose bounds miss every marked square isn't drawn in that pass at all. Inside the
 // marked squares the pass draws exactly as it did; outside them, nothing reads it.
 
+const edge = (v: number) => Math.min(1, Math.max(-1, v));
+
 /** The screen grid's squares across and up: 48 kept about 95% of a per-triangle mask's saving (#210's findings). */
 export const MASK_GRID = 48;
 
@@ -62,9 +64,15 @@ export class WaterMask {
       const ex = (boxes[b + 3] - boxes[b]) / 2, ey = (boxes[b + 4] - boxes[b + 1]) / 2, ez = (boxes[b + 5] - boxes[b + 2]) / 2;
       // The box's middle on screen, and how far it reaches either side of it.
       const X = m[0] * cx + m[4] * cy + m[8] * cz + m[12], Y = m[1] * cx + m[5] * cy + m[9] * cz + m[13];
-      const rx = Math.abs(m[0]) * ex + Math.abs(m[4]) * ey + Math.abs(m[8]) * ez + padX;
-      const ry = Math.abs(m[1]) * ex + Math.abs(m[5]) * ey + Math.abs(m[9]) * ez + padY;
-      this.markRect(X - rx, Y - ry, X + rx, Y + ry);
+      const ax = Math.abs(m[0]) * ex + Math.abs(m[4]) * ey + Math.abs(m[8]) * ez;
+      const ay = Math.abs(m[1]) * ex + Math.abs(m[5]) * ey + Math.abs(m[9]) * ez;
+      const rx = ax + padX, ry = ay + padY;
+      if (mirror === null) { this.markRect(X - rx, Y - ry, X + rx, Y + ry); continue; }
+      // A read off the screen takes the target's edge (it clamps), so while the water itself is on screen its reads
+      // are brought onto the edge: a pond near the bottom whose mirror image falls below it reads the bottom row.
+      const wx = X + m[4] * (my - cy), wy = Y + m[5] * (my - cy);
+      if (!(wx + ax >= -1 && wx - ax <= 1 && wy + ay >= -1 && wy - ay <= 1)) continue;
+      this.markRect(edge(X - rx), edge(Y - ry), edge(X + rx), edge(Y + ry));
     }
     // The sums, the bounds and the quads.
     const S = N + 1, sums = this.sums, p = this.positions;

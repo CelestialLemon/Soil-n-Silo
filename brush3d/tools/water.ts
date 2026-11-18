@@ -211,5 +211,12 @@ mask.build(new Float32Array([-0.5, -0.1, 0, 0.5, 0.1, 0]), I, 0.2, 0);
 check('the mask widened by its padding', mask.filled === side(-0.7, 0.7) * side(-0.1, 0.1), `${mask.filled}`);
 mask.build(new Float32Array([3, 3, 0, 4, 4, 0]), I, 0, 0);
 check('the mask: none for water off the screen', mask.filled === 0);
+// The reflection's: mirrored about a height, and read off the screen as the target's edge while the water shows.
+mask.build(new Float32Array([-0.1, 0.2, 0, 0.1, 0.3, 0]), I, 0, 0, 0);
+check('the reflection\'s mask: the water mirrored', mask.touches(0, -0.25, 0, -0.25) && !mask.touches(0, 0.25, 0, 0.25));
+mask.build(new Float32Array([-0.1, 0.8, 0, 0.1, 0.9, 0]), I, 0, 0, -0.5);
+check('the reflection\'s mask: read below the screen, its bottom row', mask.filled > 0 && mask.touches(0, -1, 0, -1) && !mask.touches(-1, -0.9, 1, 1), `${mask.filled}`);
+mask.build(new Float32Array([-0.1, 1.8, 0, 0.1, 1.9, 0]), I, 0, 0, 1);
+check('the reflection\'s mask: none for water off the screen though its image is on it', mask.filled === 0);
 
 if (failed) process.exit(1);

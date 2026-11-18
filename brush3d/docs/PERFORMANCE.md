@@ -590,7 +590,8 @@ covers a few percent of the screen. Now (`waterMask.ts`, `WaterField.footprint`)
 - **A mask a pass.** Each frame the boxes are laid on a 48 × 48 grid over the screen, each widened by how far that pass is
   read round the water (the ripples' nudge, the reflection's larger one, its blur and its look for cover, two texels for
   filtering). The reflection's boxes are first mirrored about the mirror's height, as it's read for water at any height
-  where the scene mirrored about that water's own surface would be. Before the pass, the squares are stamped into its depth and
+  where the scene mirrored about that water's own surface would be; a read past the screen's edge takes the picture's
+  edge, so water on screen whose image falls off it marks the edge's squares. Before the pass, the squares are stamped into its depth and
   everywhere else is made "nearer than anything", so the GPU throws away every pixel drawn there before painting it.
 - **Fewer things drawn.** A mesh whose bounds (mirrored, for the reflection) miss every square isn't drawn in that pass,
   nor its silhouette. Smoke and blown leaves always are: they're drawn metres from where they're built.
