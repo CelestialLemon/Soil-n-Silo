@@ -64,6 +64,12 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
       fallback; the pixel world, its models and the pixel3d-renderer dependency are gone. The renderer didn't change.
       Left open: the developer's checks on the laptop and the MacBook (Soil-n-Silo#210), and the river's falls
       (Soil-n-Silo#241).
+      Since, for Soil-n-Silo#210: the water's bed and reflection drawn only where the water can show (Soil-n-Silo#249,
+      done 2026-11-18): the same picture, 1.5–3 ms less GPU and about 300–580 fewer draws a frame on c4 and c8
+      (docs/PERFORMANCE.md). And many meshes drawn to a call (Soil-n-Silo#250, done 2026-11-18, `pools.ts`): every mesh
+      but the water kept in a few shared buffers and each pass's draws from one buffer sent as one multi-draw; the same
+      picture, 1,200–2,400 draws a frame down to 70–95 on c4 and c8, three.js's time cut by half to two thirds, and
+      frames drawn back to back 1.5–4 ms shorter, the GPU's work unchanged (docs/PERFORMANCE.md).
 - **Weather, epic #3** (planned 2026-10-30): season, weather and hour change the whole picture. The decisions are in #3; in
   short, the game owns the weather's state and logic and the renderer only draws it. The order:
   1. #6 performance: measure the frame and set the weather's budget (done 2026-10-30: the farm 17.5 ms on the laptop,

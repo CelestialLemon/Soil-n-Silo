@@ -468,7 +468,7 @@ Not for the game's players, but kept public for the tools that judge renderer wo
   frame; a case may set its own `quality` preset, `tweak` it (the `reflectionScale` too), or change `settings` for itself
   alone, `docs/PERFORMANCE.md`). `new PassTimer(gl, false)` times the CPU alone, asking nothing of the GPU.
 - `r.setVisible(kind, on)`: show or hide a kind (`'ground'`, `'ink'`, `'foliage'`, `'rain'`...), for A/B comparisons.
-- `r.settings.falling` (leave out what's in the air), `prepass`, `waterScissor`, `equalDepth`, `shelterDebug`, `grain`.
+- `r.settings.falling` (leave out what's in the air), `prepass`, `waterScissor`, `waterMask` (the water's passes only where it can show, #249; off: the same picture, for timing), `pools` (every mesh but the water drawn from shared buffers, many to a draw call; on by default, #250; off: the same picture, for timing), `equalDepth`, `shelterDebug`, `grain`.
 - `r.settings.reflection` and `under` (both on by default): draw the water's reflection and the bed under it. Off only to
   time them: the water then shows whatever those targets held last.
 - `r.settings.resolveDepth` (on by default): copy the main view's multisampled depth out with its colour. Off is the same

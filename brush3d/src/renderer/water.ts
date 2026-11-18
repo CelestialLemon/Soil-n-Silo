@@ -45,6 +45,8 @@ export const HIDDEN_DIVE = 0.15;
 export const SHOWN_SINK = 1.25;
 /** How long a changed map takes to ease in by default, seconds. */
 export const WATER_EASE = 0.6;
+/** The squares the water's footprint is gathered into, metres (WaterField.footprint): a box per square that holds any. */
+export const FOOTPRINT_CELL = 16;
 
 /** The GLSL that reads the water map: its surface anywhere, and the nearest water's, for the reflection's clip. */
 export const WATER_MAP_GLSL = /* glsl */ `
@@ -197,6 +199,9 @@ export class WaterField {
   private to: Laid | null = null;
   private start = 0;
   private ease = 0;
+  /** Counts the maps taken, so the footprint is found again only for a new one. */
+  private version = 0;
+  private shown: { version: number; settled: boolean; boxes: Float32Array } | null = null;
 
   /** How far the water has eased from what was drawn to what was sent, at a time (seconds, the renderer's clock). */
   blend(time: number) {
@@ -277,6 +282,52 @@ export class WaterField {
     this.floor = laid.mid === null ? null : laid.low;
     this.any = laid.mid !== null || (ease > 0 && this.from.mid !== null);
     this.index();
+    this.version++;
+  }
+
+  /**
+   * Where the water can show (#249): boxes, six numbers each (min x, y, z then max x, y, z, in the sheet's own space), round
+   * the sheet's triangles cut where it's hidden (its mud below -HIDDEN_DIVE: sheetHidden), gathered into FOOTPRINT_CELL
+   * squares by each triangle's middle. The renderer draws the water's two passes only round them. Easing (`settled`
+   * false), a point shows only where it shows at one end or the other (its mud eases straight between the two) and lies
+   * between its two heights, so each box holds what shows at either end, at both its heights. Found again only for a
+   * new map, or once the ease is done; empty with no water.
+   */
+  footprint(settled: boolean): Float32Array {
+    const g = this.geometry;
+    if (!g || !this.any || !this.from || !this.to) return EMPTY;
+    const old = this.shown;
+    if (old && old.version === this.version && old.settled === settled) return old.boxes;
+    const pos = g.attributes.position.array, uv = g.attributes.uv.array, idx = g.index!.array, count = g.drawRange.count;
+    const ends = settled ? [this.to.data] : [this.from.data, this.to.data], cut = -HIDDEN_DIVE, nx = this.nx, C = FOOTPRINT_CELL;
+    const cells = new Map<number, number>(), boxes: number[] = [];
+    const corner = [0, 0, 0], at = [0, 0, 0];
+    for (let t = 0; t < count; t += 3) {
+      for (let k = 0; k < 3; k++) { const v = idx[t + k]; corner[k] = (uv[v * 2] + uv[v * 2 + 1] * nx) * 4; }
+      const a = idx[t], b = idx[t + 1], c = idx[t + 2];
+      const key = (Math.floor((pos[a * 3] + pos[b * 3] + pos[c * 3]) / (3 * C)) + 32768) * 65536
+        + Math.floor((pos[a * 3 + 2] + pos[b * 3 + 2] + pos[c * 3 + 2]) / (3 * C)) + 32768;
+      let box = -1;
+      // Each end's shown part of the triangle: the corners shown, and where an edge crosses the cut.
+      for (const data of ends) {
+        for (let k = 0; k < 3; k++) {
+          const i = corner[k], j = corner[(k + 1) % 3], mi = data[i + 3], mj = data[j + 3];
+          const vi = idx[t + k], vj = idx[t + (k + 1) % 3];
+          if (mi >= cut) {
+            if (box < 0) box = cell(cells, boxes, key);
+            for (const d of ends) grow(boxes, box, pos[vi * 3], d[i], pos[vi * 3 + 2]);
+          }
+          if ((mi >= cut) !== (mj >= cut)) {
+            const f = (cut - mi) / (mj - mi);
+            at[0] = pos[vi * 3] + (pos[vj * 3] - pos[vi * 3]) * f; at[2] = pos[vi * 3 + 2] + (pos[vj * 3 + 2] - pos[vi * 3 + 2]) * f;
+            if (box < 0) box = cell(cells, boxes, key);
+            for (const d of ends) grow(boxes, box, at[0], d[i] + (d[j] - d[i]) * f, at[2]);
+          }
+        }
+      }
+    }
+    this.shown = { version: this.version, settled, boxes: Float32Array.from(boxes) };
+    return this.shown.boxes;
   }
 
   private upload(t: THREE.DataTexture, data: Float32Array) {
@@ -354,6 +405,21 @@ export class WaterField {
     }
     g.boundingSphere = null;
   }
+}
+
+const EMPTY = new Float32Array(0);
+
+/** The box for a footprint square (its first number in `boxes`), started empty if it's new. */
+function cell(cells: Map<number, number>, boxes: number[], key: number) {
+  let at = cells.get(key);
+  if (at === undefined) { at = boxes.length; cells.set(key, at); boxes.push(Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity); }
+  return at;
+}
+
+/** Grows the box at `at` to hold a point. */
+function grow(boxes: number[], at: number, x: number, y: number, z: number) {
+  if (x < boxes[at]) boxes[at] = x; if (y < boxes[at + 1]) boxes[at + 1] = y; if (z < boxes[at + 2]) boxes[at + 2] = z;
+  if (x > boxes[at + 3]) boxes[at + 3] = x; if (y > boxes[at + 4]) boxes[at + 4] = y; if (z > boxes[at + 5]) boxes[at + 5] = z;
 }
 
 /** A float texture of the water's cells (RGBA per cell), read texel by texel. */
