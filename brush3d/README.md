@@ -98,7 +98,8 @@ recipe and the land's smooth fit); [docs/API.md](docs/API.md) has the API, in th
 
 - `src/index.ts`: the API. The demo imports nothing else.
 - `src/renderer/`: the renderer (`renderer.ts`), its materials and GLSL, the camera, the time-of-day looks, and the tiles big
-  meshes are cut into so each pass draws only what it sees (`tiles.ts`).
+  meshes are cut into so each pass draws only what it sees (`tiles.ts`), and the shared buffers the meshes are drawn from,
+  many to a draw call (`pools.ts`).
 - `src/land/`: the land painted from the game's map: what the game sends (`map.ts`), the smooth fit (`surface.ts`) and
   the painting and earthworks (`paint.ts`) (`docs/LAND.md`).
 - `src/wind/`: the living wind's simulation, which the game's rules read too (`docs/WIND.md`).

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { cutIntoTiles, TILE_REACH } from './tiles';
+import { Pools } from './pools';
 import { CAMERA_DISTANCE, ViewCamera } from './camera';
 import { CloudMap, MIRROR } from './cloudMap';
 import { CLOUD_SHAPE, type CloudShape } from './clouds';
@@ -75,6 +76,11 @@ export interface Settings {
   lines: boolean; shadows: boolean; grain: number;
   /** Draw the main view's silhouettes before painting it (depth only), so hidden surfaces aren't painted. */
   prepass: boolean;
+  /**
+   * Draw the meshes (all but the water) from shared buffers, many in one draw call (#250, pools.ts), rather than one call
+   * each. On by default; off for comparing: the same picture.
+   */
+  pools: boolean;
   /** Draw the water's two passes only round the water on screen. */
   waterScissor: boolean;
   /**
@@ -167,7 +173,7 @@ export class BrushRenderer {
   readonly scene = new THREE.Scene();
   readonly view = new ViewCamera();
   readonly shared: SharedUniforms = createSharedUniforms();
-  readonly settings: Settings = { lines: true, shadows: true, grain: 0.012, prepass: true, waterScissor: true, waterMask: true, equalDepth: true, falling: true, fallingShare: 1, shelterDebug: false,
+  readonly settings: Settings = { lines: true, shadows: true, grain: 0.012, prepass: true, pools: true, waterScissor: true, waterMask: true, equalDepth: true, falling: true, fallingShare: 1, shelterDebug: false,
     reflection: true, under: true, resolveDepth: true };
   width = 1; height = 1;
   /** Device pixels per CSS pixel asked for (see RendererOptions): the screen's pixels, which the zoom counts in. */
@@ -215,6 +221,8 @@ export class BrushRenderer {
    */
   private silhouettes = new THREE.Group();
   private twins = new Map<THREE.Mesh, THREE.Mesh>();
+  /** The meshes' shared buffers, drawn many meshes to a call (#250). */
+  private pools = new Pools();
   private fields = new Map<MaterialKind, THREE.WebGLRenderTarget>();
   /** The sizes setFields was asked for: baked again when the GPU's context comes back, as a bake's texels go with it. */
   private fieldSizes = new Map<'ground' | 'crop' | 'grass', number>();
@@ -386,6 +394,7 @@ export class BrushRenderer {
     this.postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.post));
     this.silhouettes.visible = false;
     this.scene.add(this.silhouettes);
+    this.pools.hook(this.scene);
     // Leaves in the air, for strong winds: the renderer's own, round wherever the camera is.
     this.debris = this.add(leafStorm(), 'debris', { castShadow: false });
   }
@@ -522,6 +531,9 @@ export class BrushRenderer {
     twin.matrixWorldAutoUpdate = false;
     this.silhouettes.add(twin);
     this.twins.set(mesh, twin);
+    // Its vertices go into the shared buffers, drawn with the others' (its twin's too: the same geometry). Not the water's,
+    // one mesh with uniforms of its own.
+    if (kind !== 'water') this.pools.add(geometry);
     return mesh;
   }
 
@@ -540,6 +552,7 @@ export class BrushRenderer {
     if (springs) { this.trees.release(springs); mesh.geometry.userData.springs = undefined; }
     const parts = mesh.geometry.userData.parts as Set<number> | undefined;
     if (parts?.size) this.parts.release(parts);
+    this.pools.remove(mesh.geometry);
     if (mesh.userData.cut) mesh.geometry.dispose();
     if (mesh.userData.seasonal) this.unseason(mesh.geometry);
     this.casters.delete(mesh);
@@ -681,6 +694,7 @@ export class BrushRenderer {
     const material = (this.groundBaker ??= groundBakeMaterial(this.shared, map));
     material.uniforms.uFieldsMap.value = map;
     const scene = new THREE.Scene(), box = new THREE.Box3();
+    this.pools.hook(scene);
     // Every piece of it, if it was cut into tiles (those in the area).
     for (const piece of this.scene.children) {
       const mesh = piece as THREE.Mesh;
@@ -1526,6 +1540,7 @@ export class BrushRenderer {
     const reach = (this.view.camera.right + this.view.camera.top * 2) / 2;
     this.lightning.update(this.view.target, this.view.zoom, reach, this.width, this.height, this.gbuffer.textures[1]);
     this.applyLook(this.look);
+    this.pools.enabled = this.settings.pools;
     const grounded: THREE.Object3D[] = [];
     if (!this.settings.falling) {
       for (const o of this.scene.children) if (o.visible && FALLING.includes(o.userData.kind as DrawnKind)) { o.visible = false; grounded.push(o); }
