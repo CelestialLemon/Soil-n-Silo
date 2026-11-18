@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CLOUD_MAP_GLSL } from './cloudMap';
+import { SHADOW_DEPTH } from './glsl';
 import { SHELTER_GLSL } from './shelter';
 
 // Frost (#14): the game says how much (the ground's map, its green channel: 0 none .. 1 a hard frost everywhere in the
@@ -190,6 +191,9 @@ ${CLOUD_MAP_GLSL}
 uniform float uCloudStrength;
 uniform sampler2D uShadowMap;
 uniform mat4 uShadowMatrix;
+uniform vec2 uShadowTexel;
+uniform vec2 uShadowArea;
+${SHADOW_DEPTH}
 uniform sampler2D tPrev;
 uniform float uAdd;
 uniform float uFresh;
@@ -207,7 +211,7 @@ float sunAt(vec3 p) {
     vec4 s = uShadowMatrix * vec4(p + vec3(cos(a), 0.0, sin(a)) * 0.3, 1.0);
     vec3 uvz = s.xyz / s.w;
     bool out_ = any(lessThan(uvz.xy, vec2(0.0))) || any(greaterThan(uvz.xy, vec2(1.0))) || uvz.z > 1.0;
-    seen += out_ ? 0.33 : uvz.z - 0.003 <= texture(uShadowMap, uvz.xy).r ? 1.0 : 0.0;
+    seen += out_ ? 0.33 : uvz.z - 0.003 <= shadowDepthAt(uvz.xy) ? 1.0 : 0.0;
   }
   return seen / 6.0;
 }

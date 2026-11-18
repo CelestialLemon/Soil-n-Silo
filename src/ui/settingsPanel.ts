@@ -39,7 +39,7 @@ function gameRows(store: SettingsStore) {
     h('b', null, label), toggle(st[k], label, (v) => store.set({ [k]: v } satisfies Partial<Settings>)), h('span', { class: 'cd-small' }, words));
   return [
     h('div', { class: 'set is-slider' }, h('b', null, 'Interface size'), slider, size),
-    choice('Graphics', seg('quality', QUALITIES, named), 'High: the full picture. Medium, for integrated graphics: softer edges on the sun’s shadows. Low: also rougher edges and fewer pixels, scaled up to the screen.'),
+    choice('Graphics', seg('quality', QUALITIES, named), 'High: the full picture. Medium, for integrated graphics: softer edges on the sun’s shadows, and a softer reflection in the water. Low: also coarser shadows when the sun is low, rougher edges and fewer pixels, scaled up to the screen.'),
     choice('Sharpness', seg('pixelRatio', PIXEL_RATIOS, (v) => (v === 'full' ? 'Full' : `${v}×`)), 'On a high-density screen (a Mac’s Retina display): how many pixels are drawn for each point of the screen. 1×: about half the pixels, a softer picture, faster. No change on an ordinary screen.'),
     choice('Rain and snow', seg('falling', FALLINGS, named), 'How many raindrops and snowflakes fall. Light: about a third, and the weather reads the same.'),
     choice('Lightning flashes', seg('flashes', FLASHES, named), 'Full stays within the safety limits for flashing lights. Gentle: one soft, slow glow. Off: the sky doesn’t light up, and you still see the bolt.'),

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { SHADOW_DEPTH } from './glsl';
 import type { SharedUniforms } from './materials';
 
 // Lightning (#12): the game says where and when (strike, flicker; epic #3), because strikes will have gameplay; the renderer
@@ -499,15 +500,17 @@ uniform vec4 uGlowShape;   // radius (m), -, brush
 uniform vec2 uGlowCap;     // the most it lifts a pixel, the most it darkens one
 uniform sampler2D uShadowMap;
 uniform mat4 uShadowMatrix;
+uniform vec2 uShadowTexel;
+uniform vec2 uShadowArea;
+${SHADOW_DEPTH}
 float boltSees(vec3 p) {
   vec4 s = uShadowMatrix * vec4(p + vec3(0.0, 0.08, 0.0), 1.0);
   vec3 uvz = s.xyz / s.w;
   if (uvz.x < 0.0 || uvz.x > 1.0 || uvz.y < 0.0 || uvz.y > 1.0 || uvz.z > 1.0) return 1.0;
-  vec2 texel = 1.0 / vec2(textureSize(uShadowMap, 0));
   float seen = 0.0;
   for (int i = 0; i < 4; i++) {
     float a = float(i) * 1.5708 + 0.6;
-    seen += uvz.z - 0.003 > texture(uShadowMap, uvz.xy + vec2(cos(a), sin(a)) * texel * 1.2).r ? 0.0 : 1.0;
+    seen += uvz.z - 0.003 > shadowDepthAt(uvz.xy + vec2(cos(a), sin(a)) * uShadowTexel * 1.2) ? 0.0 : 1.0;
   }
   return seen / 4.0;
 }

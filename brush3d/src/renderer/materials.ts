@@ -57,6 +57,9 @@ export function createSharedUniforms() {
     uShadowMap: { value: null as THREE.Texture | null },
     uShadowMatrix: { value: new THREE.Matrix4() },
     uShadowTexel: { value: new THREE.Vector2(1 / 2048, 1 / 2048) },
+    // How much of the shadow map the sun's view is drawn into, from its corner (BrushRenderer.followView, #251): all of it,
+    // or less when the view's window would take more detail than the cap (shadowDepthAt).
+    uShadowArea: { value: new THREE.Vector2(1, 1) },
     uMirror: { value: 0 },
     uMirrorY: { value: 0 },
     // The game's water map (WaterField, #18): as it was and as last sent, how far it has eased between, and where it lies.

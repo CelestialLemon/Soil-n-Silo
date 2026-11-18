@@ -87,6 +87,7 @@ is cheap: its looks ease towards whatever was asked last.
 | Make the renderer on a canvas | `new BrushRenderer(canvas, options)` | today |
 | Pick the quality at start: multisampling, shadow detail, the shelter map's size | `options.samples`, `shadowMapSize`, `shelterSize` (or `r.setQuality` before the first frame) | today |
 | Let the shadow follow the view over a big map (the game always wants this) | `options.shadowFollow: true` | today |
+| Hold the following shadow's detail to noon's, so a low sun's shadow costs no more than noon's (Soil-n-Silo#251) | `options.shadowCap` (1 by default: noon's on c8; less is coarser and cheaper; `Infinity` the whole map at any hour, as before); each preset has its own (`Quality.shadowCap`) | today |
 | Draw fewer pixels than a high-DPI screen has (the MacBook) | `r.maxPixels = 1920 * 1080` (before `resize`) | today |
 | Follow the window | `r.resize(cssWidth, cssHeight)` | today |
 | Change the quality from the settings panel without a reload | `r.setQuality(QUALITY.medium)`: presets `high`, `medium` and `low` for the three machines (`docs/PERFORMANCE.md`); `r.quality` is the one drawn | today (#209) |
@@ -464,7 +465,7 @@ Not for the game's players, but kept public for the tools that judge renderer wo
 - `runProfile(r, draw, restore, cases, progress?, frames?)`, `profileTable(rows)`, `PASSES`, `PROFILE_KINDS` and the
   `ProfileCase` / `ProfileRow` types: the profile the demo's and the game's `?profile` both run (each case's GPU ms per
   pass, the CPU's ms, the CPU's ms with the GPU idle (`cpuAlone`, and pass by pass), the draw calls and the uncapped
-  frame; a case may set its own `quality` preset, `tweak` it, change `settings` or the `reflectionScale` for itself
+  frame; a case may set its own `quality` preset, `tweak` it (the `reflectionScale` too), or change `settings` for itself
   alone, `docs/PERFORMANCE.md`). `new PassTimer(gl, false)` times the CPU alone, asking nothing of the GPU.
 - `r.setVisible(kind, on)`: show or hide a kind (`'ground'`, `'ink'`, `'foliage'`, `'rain'`...), for A/B comparisons.
 - `r.settings.falling` (leave out what's in the air), `prepass`, `waterScissor`, `equalDepth`, `shelterDebug`, `grain`.
@@ -472,7 +473,7 @@ Not for the game's players, but kept public for the tools that judge renderer wo
   time them: the water then shows whatever those targets held last.
 - `r.settings.resolveDepth` (on by default): copy the main view's multisampled depth out with its colour. Off is the same
   picture (nothing reads that depth), timed against on for the MacBook (`docs/PERFORMANCE.md`).
-- `r.setReflectionScale(0.5)`: the reflection at that share of its usual half-frame size (1 by default), to time it.
+- `r.setReflectionScale(0.5)`: the reflection at that share of its usual half-frame size (the quality's, `Quality.reflectionScale`: 1 at High, 0.5 at Medium and Low, Soil-n-Silo#251), to time it.
 - `r.setTime(seconds)`: set the renderer's clock without drawing, so a map sent next starts its ease from
   there.
 - `r.lightning.clock`: the lightning's clock (real seconds by default), held still to time or film a flash at its height.

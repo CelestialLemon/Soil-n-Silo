@@ -50,6 +50,13 @@ import { Picker, type PickHit } from './pick';
 const DUST_GUST = 1.6;
 /** Fresh dust's colour (sRGB, as the haze's): the tracks' pale earth, a little lighter in the air. */
 const FRESH_DUST = new THREE.Color(0xc8a77a);
+/**
+ * Noon's shadow detail, the cap's 100% (Quality.shadowCap, #251): the following shadow's texels a CSS pixel of the zoom,
+ * across the sun's view and up it. Those of c8 (the busiest map) at noon at zoom 8, the game's: its 4096² map over a
+ * window 384 m across and 232 up, 10.7 and 17.7 texels a metre. A lower sun's window is narrower (48 m up before dawn), and
+ * would otherwise take five times the texels a metre, as many leaf cards drawn into each.
+ */
+const SHADOW_CAP = { across: 4096 / 384 / 8, up: 4096 / 232 / 8 };
 
 export interface RendererOptions {
   /** Shadow-map size in texels. */
@@ -68,6 +75,8 @@ export interface RendererOptions {
   pixelRatio?: number;
   /** The shelter map's size in texels (1024; 512 to save memory). */
   shelterSize?: number;
+  /** The most detail the following shadow is drawn with, as a share of noon's (Quality.shadowCap): 1 by default. */
+  shadowCap?: number;
 }
 
 export interface Settings {
@@ -194,6 +203,8 @@ export class BrushRenderer {
   private shadowCenter: THREE.Vector3;
   private shadowRadius: number;
   private shadowFollow: boolean;
+  /** The most detail the following shadow is drawn with, a share of noon's (Quality.shadowCap, followView). */
+  private shadowCap: number;
   private post: THREE.ShaderMaterial;
   private postScene = new THREE.Scene();
   private postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -319,6 +330,7 @@ export class BrushRenderer {
     this.shadowCenter = options.shadowCenter?.clone() ?? new THREE.Vector3();
     this.shadowRadius = options.shadowRadius ?? 30;
     this.shadowFollow = options.shadowFollow ?? false;
+    this.shadowCap = options.shadowCap ?? 1;
     const half = () => new THREE.WebGLRenderTarget(1, 1, {
       count: 2, type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: true,
       minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
@@ -374,6 +386,7 @@ export class BrushRenderer {
         // its shelter, from the hollows map).
         ...this.snowfall.veil, ...this.ground.uniforms, ...this.shelter.uniforms, ...this.hollows.uniforms,
         ...this.lightning.post, ...this.nightLights.post, uShadowMap: this.shared.uShadowMap, uShadowMatrix: this.shared.uShadowMatrix,
+        uShadowTexel: this.shared.uShadowTexel, uShadowArea: this.shared.uShadowArea,
         ...this.marks.post,
       },
     });
@@ -1021,7 +1034,7 @@ export class BrushRenderer {
 
   /** The quality drawn at (see setQuality). */
   get quality(): Quality {
-    return { samples: this.gbuffer.samples, shadowMapSize: this.shadowTarget.width, shelterSize: this.shelter.size, maxPixels: this.maxPixels };
+    return { samples: this.gbuffer.samples, shadowMapSize: this.shadowTarget.width, shadowCap: this.shadowCap, shelterSize: this.shelter.size, maxPixels: this.maxPixels, reflectionScale: this.reflectionScale };
   }
 
   /**
@@ -1035,6 +1048,8 @@ export class BrushRenderer {
       this.shadowTarget.setSize(q.shadowMapSize, q.shadowMapSize);
       this.shared.uShadowTexel.value.set(1 / q.shadowMapSize, 1 / q.shadowMapSize);
     }
+    this.shadowCap = q.shadowCap;
+    this.setReflectionScale(q.reflectionScale);
     this.shelter.resize(q.shelterSize);
     if (q.maxPixels !== now.maxPixels) {
       this.maxPixels = q.maxPixels;
@@ -1232,6 +1247,7 @@ export class BrushRenderer {
       c.left = -r; c.right = r; c.top = r; c.bottom = -r;
       c.position.copy(this.shadowCenter).addScaledVector(this.shadowDir, 150);
       c.lookAt(this.shadowCenter);
+      this.drawShadowInto(this.shadowTarget.width, this.shadowTarget.height);
     }
     c.updateProjectionMatrix();
     c.updateMatrixWorld();
@@ -1276,9 +1292,41 @@ export class BrushRenderer {
     if (!aimed) this.flashShadowSize = [0, 0];
     const w = (held[0] = size(held[0], x1 - x0 + 6));
     const h = (held[1] = size(held[1], y1 - y0 + 6));
-    const tx = w / this.shadowTarget.width, ty = h / this.shadowTarget.height;
-    c.left = Math.round(((x0 + x1) / 2 - w / 2) / tx) * tx; c.right = c.left + w;
-    c.bottom = Math.round(((y0 + y1) / 2 - h / 2) / ty) * ty; c.top = c.bottom + h;
+    // The texels: the whole map's across the window, or, where that's finer than the cap (a low sun's narrow window), a
+    // corner of it at the cap's (shadowCap). Edges on whole texels either way.
+    const zoom = this.view.zoom / this.screenRatio;
+    const across = this.shadowTexels(w, this.shadowTarget.width, SHADOW_CAP.across * zoom);
+    const up = this.shadowTexels(h, this.shadowTarget.height, SHADOW_CAP.up * zoom);
+    c.left = Math.round(((x0 + x1) / 2 - w / 2) / across.pitch) * across.pitch; c.right = c.left + across.size;
+    c.bottom = Math.round(((y0 + y1) / 2 - h / 2) / up.pitch) * up.pitch; c.top = c.bottom + up.size;
+    this.drawShadowInto(across.texels, up.texels);
+  }
+
+  /**
+   * The shadow's texels along one side of its window, `need` metres (followView): the whole map's `full` across it, or
+   * fewer where those would be finer than `perMetre` (noon's, shadowCap). The capped spacing is held to one of 16 steps
+   * per doubling, rounded to the finer, so it holds through a zoom between steps (a still or slowly zooming shadow doesn't
+   * crawl) and through the window's own 8 m steps (whose texels stay on the same ground). Its size, which may be a little
+   * more than `need`, is a whole number of them.
+   */
+  private shadowTexels(need: number, full: number, perMetre: number): { texels: number; pitch: number; size: number } {
+    const cap = perMetre * this.shadowCap;
+    if (Number.isFinite(cap)) {
+      const pitch = 2 ** (Math.floor(Math.log2(1 / cap) * 16) / 16), texels = Math.ceil(need / pitch);
+      if (texels < full) return { texels, pitch, size: texels * pitch };
+    }
+    return { texels: full, pitch: need / full, size: need };
+  }
+
+  /**
+   * Draws the shadow map into its corner `texels` across and up (the viewport: nothing is drawn past it), and tells the
+   * shaders how much of it that is (uShadowArea). The whole map is still cleared each frame: a part cleared costs more
+   * than all of it (the GPU clears a whole surface at once), and nothing reads past the corner.
+   */
+  private drawShadowInto(across: number, up: number) {
+    const t = this.shadowTarget;
+    t.viewport.set(0, 0, across, up);
+    this.shared.uShadowArea.value.set(across / t.width, up / t.height);
   }
   /** The land's heights, for followView: from the ground mesh, once it's there. */
   private land: LandHeights | null = null;
