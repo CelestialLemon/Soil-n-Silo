@@ -68,12 +68,16 @@ type Proxy = THREE.Mesh & {
 };
 
 /** A geometry's attribute in a page: its own, the page's, the version last sent up, and the view of the page's it reads. */
-interface Part { name: string; own: THREE.BufferAttribute; into: THREE.BufferAttribute; version: number; view: THREE.TypedArray }
+interface Part {
+  name: string; own: THREE.BufferAttribute; into: THREE.BufferAttribute; version: number; view: THREE.TypedArray;
+  /** Its own ranges to send up were taken for the page's (so drawn on its own next, it must be sent whole). */
+  taken: boolean;
+}
 
 /** Where a geometry lies in its page. */
 interface Slot {
   geometry: THREE.BufferGeometry; page: Page; vertex: number; vertices: number; first: number; count: number;
-  parts: Part[]; index: THREE.BufferAttribute; indexVersion: number;
+  parts: Part[]; index: THREE.BufferAttribute; indexArray: THREE.TypedArray; indexVersion: number; indexTaken: boolean;
 }
 
 /** Big buffers of one layout of attributes (their names, sizes and types), holding many geometries' vertices. */
@@ -254,7 +258,7 @@ export class Pools {
       pages.push(page);
       [vertex, first] = page.take(vertices, count);
     }
-    const slot: Slot = { geometry, page, vertex, vertices, first, count, parts: [], index, indexVersion: index.version };
+    const slot: Slot = { geometry, page, vertex, vertices, first, count, parts: [], index, indexArray: index.array, indexVersion: index.version, indexTaken: false };
     for (const [name, a] of attributes as [string, THREE.BufferAttribute][]) {
       const into = page.geometry.getAttribute(name) as THREE.BufferAttribute, k = a.itemSize;
       const view = (into.array as Float32Array).subarray(vertex * k, (vertex + vertices) * k);
@@ -262,7 +266,7 @@ export class Pools {
       a.array = view;
       into.addUpdateRange(vertex * k, vertices * k);
       into.needsUpdate = true;
-      slot.parts.push({ name, own: a, into, version: a.version, view });
+      slot.parts.push({ name, own: a, into, version: a.version, view, taken: false });
       this.pooled.add(a);
     }
     this.sendIndex(slot);
@@ -280,7 +284,8 @@ export class Pools {
     if (!slot) return;
     this.slots.delete(geometry);
     for (const part of slot.parts) {
-      if (keep && part.own.array === part.view) part.own.array = part.view.slice();
+      // (Or any view of the page's it was given since.)
+      if (keep && part.own.array.buffer === part.view.buffer) part.own.array = part.own.array.slice();
       this.pooled.delete(part.own);
     }
     const page = slot.page;
@@ -312,7 +317,7 @@ export class Pools {
   private sync() {
     for (const slot of this.slots.values()) {
       const g = slot.geometry;
-      if (!poolable(g) || g.index !== slot.index || Object.keys(g.attributes).length !== slot.parts.length ||
+      if (!poolable(g) || g.index !== slot.index || slot.index.array !== slot.indexArray || Object.keys(g.attributes).length !== slot.parts.length ||
         slot.parts.some((p) => g.attributes[p.name] !== p.own || p.own.array !== p.view)) { this.remove(g); continue; }
       for (const part of slot.parts) {
         const a = part.own;
@@ -322,11 +327,13 @@ export class Pools {
         part.into.needsUpdate = true;
         // (Its own ranges are sent up with the page's; drawn on its own later, it's sent whole.)
         a.clearUpdateRanges();
+        part.taken = true;
       }
       if (slot.index.version !== slot.indexVersion) {
         slot.indexVersion = slot.index.version;
         this.sendIndex(slot);
         slot.index.clearUpdateRanges();
+        slot.indexTaken = true;
       }
     }
   }
@@ -351,8 +358,20 @@ export class Pools {
     return twin;
   }
 
+  /**
+   * With the pools off, each mesh drawn on its own: one whose ranges were taken for its page's since it was last drawn so
+   * goes up whole (its ranges now hold only what changed since, its own buffer misses what changed before).
+   */
+  private alone() {
+    for (const slot of this.slots.values()) {
+      for (const part of slot.parts) if (part.taken) { part.own.clearUpdateRanges(); part.taken = false; }
+      if (slot.indexTaken) { slot.index.clearUpdateRanges(); slot.indexTaken = false; }
+    }
+  }
+
   private before(scene: THREE.Scene, camera: THREE.Camera) {
-    if (!this.enabled() || !this.slots.size) return;
+    if (!this.enabled()) { this.alone(); return; }
+    if (!this.slots.size) return;
     this.sync();
     for (const pages of this.pages.values()) for (const p of pages) if (!p.drawn && !p.snug) p.trim();
     this.screen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
