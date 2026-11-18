@@ -1,5 +1,6 @@
 import { QUALITY, type BrushRenderer } from '../../../brush3d/src/index.ts';
-import type { Falling, PixelRatio, SettingsStore } from '../../ui/settings.ts';
+import type { Falling, PixelRatio, Quality, SettingsStore } from '../../ui/settings.ts';
+import { shadowCapChoice, shadowCapped } from '../../ui/shadowCapChoice.ts';
 
 // The player's settings that are brush3d's (#209), from the game's settings panel to the renderer, each taking effect from
 // the next frame and saved with the game's other settings (ui/settings.ts):
@@ -20,6 +21,16 @@ export const FALLING_SHARE: Record<Falling, number> = { full: 1, light: 0.33 };
 /** The most device pixels a CSS pixel, by the pixel ratio setting (Infinity: the screen's own). */
 export const MAX_RATIO: Record<PixelRatio, number> = { full: Infinity, '1.25': 1.25, 1: 1 };
 
+/**
+ * #251's comparison (removed before its PR merges): each level as it was before #251, its shadow all of the map whatever
+ * the hour (at its size then) and the reflection at its full size.
+ */
+const BEFORE_251: Record<Quality, { shadowMapSize: number; shadowCap: number; reflectionScale: number }> = {
+  high: { shadowMapSize: 4096, shadowCap: Infinity, reflectionScale: 1 },
+  medium: { shadowMapSize: 2048, shadowCap: Infinity, reflectionScale: 1 },
+  low: { shadowMapSize: 2048, shadowCap: Infinity, reflectionScale: 1 },
+};
+
 /** `?pixelratio=` as a cap, if it's a number above zero. */
 function ratioFromUrl() {
   const v = Number(new URLSearchParams(location.search).get('pixelratio') ?? NaN);
@@ -29,8 +40,10 @@ function ratioFromUrl() {
 /** Sends the settings to `r` now and whenever they change. */
 export function followSettings(r: BrushRenderer, store: SettingsStore) {
   const url = ratioFromUrl();
+  const quality = (q: Quality) => r.setQuality(shadowCapped() ? QUALITY[q] : { ...QUALITY[q], ...BEFORE_251[q] });
+  shadowCapChoice(() => quality(store.get().quality));
   store.listen((s) => {
-    r.setQuality(QUALITY[s.quality]);
+    quality(s.quality);
     r.setMaxRatio(url ?? MAX_RATIO[s.pixelRatio]);
     r.settings.fallingShare = FALLING_SHARE[s.falling];
     r.lightning.setting = s.flashes;
