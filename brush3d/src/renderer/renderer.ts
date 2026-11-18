@@ -1369,7 +1369,7 @@ export class BrushRenderer {
     const empty = new Float32Array(0);
     const pad = (target: THREE.WebGLRenderTarget, reach: number, px: number, mask: WaterMask, mirror: number | null) => {
       const rx = reach + px / this.width + 2 / target.width, ry = reach + px / this.height + 2 / target.height;
-      mask.build(boxes ?? empty, e, 2 * rx, 2 * ry, mirror);
+      mask.build(boxes ?? empty, e, 2 * rx, 2 * ry, mirror, 1 / target.width, 1 / target.height);
     };
     pad(this.underTarget, nudge, 0, this.underMask, null);
     pad(this.reflectTarget, nudge * WATER_REACH.reflectNudge, WATER_REACH.blurPx * WATER_REACH.coverWide, this.reflectMask, this.water.mirror);

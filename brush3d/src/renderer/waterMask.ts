@@ -11,8 +11,6 @@ import * as THREE from 'three';
 // there before painting it. And a thing whose bounds miss every marked square isn't drawn in that pass at all. Inside the
 // marked squares the pass draws exactly as it did; outside them, nothing reads it.
 
-const edge = (v: number) => Math.min(1, Math.max(-1, v));
-
 /** The screen grid's squares across and up: 48 kept about 95% of a per-triangle mask's saving (#210's findings). */
 export const MASK_GRID = 48;
 
@@ -52,10 +50,13 @@ export class WaterMask {
   /**
    * Marks the squares the boxes (six numbers each: min x, y, z, max x, y, z) cover on screen, `m` the world-to-screen
    * matrix's elements (an orthographic camera's: projected straight, no divide), each widened by `padX`, `padY` (the
-   * screen's -1 to 1); mirrored about the height `mirror` first if given (where the reflection is read for that water).
-   * Lays the quads: a run of marked squares along a row, one quad.
+   * screen's -1 to 1); mirrored about the height `mirror` first if given (where the reflection is read for that water),
+   * `texelX`, `texelY` then half a texel of the pass's target (the screen's -1 to 1). Lays the quads: a run of marked
+   * squares along a row, one quad.
    */
-  build(boxes: Float32Array, m: ArrayLike<number>, padX: number, padY: number, mirror: number | null = null) {
+  build(boxes: Float32Array, m: ArrayLike<number>, padX: number, padY: number, mirror: number | null = null, texelX = 0, texelY = 0) {
+    // A read off the target takes its edge texel (it clamps): brought onto that texel's middle, where it's drawn.
+    const inX = (v: number) => Math.min(1 - texelX, Math.max(-1 + texelX, v)), inY = (v: number) => Math.min(1 - texelY, Math.max(-1 + texelY, v));
     const N = MASK_GRID, grid = this.grid;
     grid.fill(0);
     for (let b = 0; b < boxes.length; b += 6) {
@@ -68,11 +69,11 @@ export class WaterMask {
       const ay = Math.abs(m[1]) * ex + Math.abs(m[5]) * ey + Math.abs(m[9]) * ez;
       const rx = ax + padX, ry = ay + padY;
       if (mirror === null) { this.markRect(X - rx, Y - ry, X + rx, Y + ry); continue; }
-      // A read off the screen takes the target's edge (it clamps), so while the water itself is on screen its reads
-      // are brought onto the edge: a pond near the bottom whose mirror image falls below it reads the bottom row.
+      // While the water itself is on screen its reads are brought onto the target's edge: a pond near the bottom whose
+      // mirror image falls below it reads the bottom row.
       const wx = X + m[4] * (my - cy), wy = Y + m[5] * (my - cy);
       if (!(wx + ax >= -1 && wx - ax <= 1 && wy + ay >= -1 && wy - ay <= 1)) continue;
-      this.markRect(edge(X - rx), edge(Y - ry), edge(X + rx), edge(Y + ry));
+      this.markRect(inX(X - rx), inY(Y - ry), inX(X + rx), inY(Y + ry));
     }
     // The sums, the bounds and the quads.
     const S = N + 1, sums = this.sums, p = this.positions;
@@ -116,8 +117,9 @@ export class WaterMask {
     const N = MASK_GRID;
     if (!(hx >= -1 && lx <= 1 && hy >= -1 && ly <= 1)) return null;
     const r = this.range;
-    r[0] = Math.max(0, Math.floor(((lx + 1) * N) / 2)); r[1] = Math.max(0, Math.floor(((ly + 1) * N) / 2));
-    r[2] = Math.min(N - 1, Math.floor(((hx + 1) * N) / 2)); r[3] = Math.min(N - 1, Math.floor(((hy + 1) * N) / 2));
+    // (Clamped both ways: a rectangle on the screen's very edge, 1, is in the last square.)
+    const at = (v: number) => Math.min(N - 1, Math.max(0, Math.floor(((v + 1) * N) / 2)));
+    r[0] = at(lx); r[1] = at(ly); r[2] = at(hx); r[3] = at(hy);
     return r;
   }
 

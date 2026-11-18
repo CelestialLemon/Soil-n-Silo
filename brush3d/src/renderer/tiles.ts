@@ -11,12 +11,13 @@ export const TILE_REACH = 5;
  * Cuts an indexed geometry into tiles `size` metres square on the ground (x, z), each triangle going to the tile its
  * middle is in, with the vertices it uses (a vertex shared across a border is copied into both). Every attribute and the
  * userData (a mesh's trees) go with each. Each tile's bounding sphere is grown by TILE_REACH, so it isn't skipped while
- * what it holds has moved into view.
+ * what it holds has moved into view (a geometry with no index isn't cut, but is grown the same: the water's passes, #249,
+ * take a culled mesh's sphere as grown).
  */
 export function cutIntoTiles(g: THREE.BufferGeometry, size: number): THREE.BufferGeometry[] {
   const index = g.getIndex();
   const pos = g.getAttribute('position');
-  if (!index) return [g];
+  if (!index) return [grow(g)];
   // All in one tile already (the land's chunks are): no need to look at each triangle.
   if (!g.boundingBox) g.computeBoundingBox();
   const box = g.boundingBox!;

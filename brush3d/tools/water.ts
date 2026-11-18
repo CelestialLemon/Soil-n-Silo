@@ -216,6 +216,10 @@ mask.build(new Float32Array([-0.1, 0.2, 0, 0.1, 0.3, 0]), I, 0, 0, 0);
 check('the reflection\'s mask: the water mirrored', mask.touches(0, -0.25, 0, -0.25) && !mask.touches(0, 0.25, 0, 0.25));
 mask.build(new Float32Array([-0.1, 0.8, 0, 0.1, 0.9, 0]), I, 0, 0, -0.5);
 check('the reflection\'s mask: read below the screen, its bottom row', mask.filled > 0 && mask.touches(0, -1, 0, -1) && !mask.touches(-1, -0.9, 1, 1), `${mask.filled}`);
+mask.build(new Float32Array([-0.1, -0.9, 0, 0.1, -0.8, 0]), I, 0, 0, 0.5);
+check('the reflection\'s mask: read above the screen, its top row', mask.touches(0, 1, 0, 1) && !mask.touches(-1, -1, 1, 0.9), `${mask.filled}`);
+mask.build(new Float32Array([-0.1, 0.8, 0, 0.1, 0.9, 0]), I, 0, 0, -0.5, 1 / 32, 1 / 16);
+check('the reflection\'s mask: a small target\'s edge texel, where it\'s drawn', mask.touches(0, -1 + 1 / 16, 0, -1 + 1 / 16));
 mask.build(new Float32Array([-0.1, 1.8, 0, 0.1, 1.9, 0]), I, 0, 0, 1);
 check('the reflection\'s mask: none for water off the screen though its image is on it', mask.filled === 0);
 
