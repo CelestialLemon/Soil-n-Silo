@@ -70,7 +70,7 @@ type Proxy = THREE.Mesh & {
 /** A geometry's attribute in a page: its own, the page's, the version last sent up, and the view of the page's it reads. */
 interface Part {
   name: string; own: THREE.BufferAttribute; into: THREE.BufferAttribute; version: number; view: THREE.TypedArray;
-  /** Its own ranges to send up were taken for the page's (so drawn on its own next, it must be sent whole). */
+  /** Its own ranges to send up were taken for the page's (so drawn on its own, it's sent whole). */
   taken: boolean;
 }
 
@@ -284,10 +284,18 @@ export class Pools {
     if (!slot) return;
     this.slots.delete(geometry);
     for (const part of slot.parts) {
-      // (Or any view of the page's it was given since.)
-      if (keep && part.own.array.buffer === part.view.buffer) part.own.array = part.own.array.slice();
+      // Drawn on its own from now: sent up whole (what changed while it was pooled went up with the page only).
+      if (part.taken) part.own.clearUpdateRanges();
       this.pooled.delete(part.own);
     }
+    // Every array of it still the page's (its own, or any view of the page's given it since) copied to its own.
+    if (keep) {
+      const buffers = new Set(slot.parts.map((p) => p.view.buffer));
+      for (const a of [...slot.parts.map((p) => p.own), ...Object.values(geometry.attributes)] as THREE.BufferAttribute[]) {
+        if (buffers.has(a.array.buffer)) a.array = a.array.slice();
+      }
+    }
+    if (slot.indexTaken) slot.index.clearUpdateRanges();
     const page = slot.page;
     page.vertices.give(slot.vertex, slot.vertices);
     page.indices.give(slot.first, slot.count);
@@ -359,13 +367,14 @@ export class Pools {
   }
 
   /**
-   * With the pools off, each mesh drawn on its own: one whose ranges were taken for its page's since it was last drawn so
-   * goes up whole (its ranges now hold only what changed since, its own buffer misses what changed before).
+   * With the pools off, each mesh drawn on its own: one whose ranges to send up were ever taken for its page's goes up
+   * whole whenever it changes (its own buffer may miss what changed while it was pooled; three.js doesn't say when it has
+   * caught up). A cost only when comparing: the pools are on in play.
    */
   private alone() {
     for (const slot of this.slots.values()) {
-      for (const part of slot.parts) if (part.taken) { part.own.clearUpdateRanges(); part.taken = false; }
-      if (slot.indexTaken) { slot.index.clearUpdateRanges(); slot.indexTaken = false; }
+      for (const part of slot.parts) if (part.taken) part.own.clearUpdateRanges();
+      if (slot.indexTaken) slot.index.clearUpdateRanges();
     }
   }
 
