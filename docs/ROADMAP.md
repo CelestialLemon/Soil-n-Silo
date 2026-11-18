@@ -110,6 +110,8 @@ the `pixel3d-renderer` dependency. The camera, the HUD's look (its restyle is #2
 give the same results and saves at version 20 still load. Graphics default to High, with Medium for integrated graphics.
 The frame-rate report (`npm run framerate`, report version 2) counts the renderer's time as one part. Still open: the
 developer's checks on the laptop and the MacBook (#210), and the river's falls (#241).
+Since, for #210: brush3d draws the water's bed and reflection only where the water can show (#249), the same picture
+for 1.5–3 ms less GPU a frame on c4 and c8.
 
 ## The farm at work: moving parts, states, lights and smoke (2026-11-16)
 
