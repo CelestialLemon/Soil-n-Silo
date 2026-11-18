@@ -620,6 +620,75 @@ The table is from before the reflection's mask took the footprint mirrored (in p
 whole range of heights); measured again after, it is as tight or tighter: c8 start 1,623 draws, widest 2,396 and its
 reflection 1.54 ms. The bed's and the reflection's times at the start matched to 0.01 ms.
 
+### Fewer draws (Soil-n-Silo#250)
+
+Each mesh a pass draws is a draw call: a little work for three.js on the page, and more for the browser's GPU process,
+which relays every call to the graphics card. On the c8 farm the frame sent 1,607 of them at the start view and 2,396 at
+the widest (after #249), and frames drawn back to back took 19–23 ms with the GPU's own work at 14.5–15 ms: the calls,
+not the painting, held the frame back. Which calls (c8 farm, a storm, one frame; each kind's silhouettes and its painting
+counted apart):
+
+| pass | start view | widest |
+|---|---:|---:|
+| the sun's shadow | 369: ground 115, leaves 117, trees' wood and rocks 78, buildings 50 | 502 |
+| the bed under the water | 47: ground 46 | 97 |
+| the reflection (silhouettes, then paint) | 2 × 153: leaves 56, wood and rocks 49, ground 45 | 2 × 306 |
+| the main view (silhouettes, then paint) | 2 × 441: leaves 160, wood and rocks 119, ground 97, buildings 50 | 2 × 591 |
+
+Nearly all are the map's pieces: the land's 32 m chunks, and the trees' blocks (each its wood, limbs, leaves, twigs and
+fallen leaves) and rocks, cut into 64 m tiles; about 590 meshes in all on c8. The 41 buildings are about 75 more.
+
+**Many meshes to a call** (`pools.ts`, `settings.pools`, on). Every mesh but the water keeps its vertices in a few big
+shared buffers ("pages", one set for each layout of attributes: the ground's, the trees' wood, their leaves, the
+buildings'...). Just before three.js draws the scene, each mesh it would draw (shown, in view: the same test it makes)
+is hidden and its triangles listed instead, and each page is drawn in one call with one material, WebGL's multi-draw (one
+call, many stretches of the page's triangles), front to back as three.js would have drawn them; just after, the meshes
+are shown again. So every pass, and the maps drawn from the scene (the shelter, the hollows, the ground's baked fields),
+keeps its own choice of what to draw, unchanged: a tile out of view, out of the water's mask, under a flag, isn't drawn.
+The meshes stay meshes with their own geometry, whose arrays are views of the pages' (the memory isn't doubled), so what
+reads or changes them works as before; what changes in them (a season's colours, a tree cleared, the ground under a
+building moved) goes up with the page at the next draw. A page starts small, doubles as it fills (up to 2M vertices),
+and is trimmed to what it holds and an eighth more before it's first drawn; once drawn, it grows by a quarter at a time
+(each growth sends it up whole). Only what a page's draw can stand for is pooled: a mesh where its geometry was made, on
+the first layer, drawn whole as triangles with one of the renderer's own (shader) materials; the rest is drawn as before.
+
+- The order: within a page the draws go front to back as three.js's would; across pages they go page by page. Nothing
+  pooled is see-through, and a layout's meshes share one page until it holds 2M vertices (c8's ground fills 264k), so
+  the order only changes which of two surfaces at the same depth is painted first, and the pictures show none.
+- Without WebGL's multi-draw (rare on desktops), three.js makes each stretch its own GPU call: the same picture and still
+  less of three.js's own work, but not the fewer calls.
+
+- Big pages: with pages an eighth the size, the GPU drew the trees' tiles in a worse order (front to back within each
+  page, not across the map) and the sun's shadow cost 0.15 ms more at night on c8; at 2M vertices it's within the noise.
+- Memory: on c8 the pages hold 203 MB for 182 MB of geometry, which the meshes held before (and on the GPU, the meshes'
+  673 buffers are now 22).
+- The ground's own silhouettes, dropped first (one draw for each of its pieces, and they hid little: it lies behind nearly
+  everything), saved 97–163 draws and 0.3–0.5 ms of three.js but cost the GPU 0.2–0.3 ms at the widest views (ground
+  behind ground painted before the nearer hides it). With the pools they cost one draw, so they stay.
+- The same picture: 26 game views on c8 and c4 (four turns at the widest, start and closest zooms, still air, golden
+  hour, night, a blizzard with snow lying, fog, dust, panned views) and 16 more after trees and rocks cleared, a building
+  placed and taken out, the ground raised and lowered by trees, the season turned and a building hovered, each identical
+  with the pools on and off; the 17 demo stills, `render:motion` and `render:pops` byte-identical to before.
+
+RX 570, 1080p, storm (and a clear night), High, the game's profile, two alternating runs each (they agreed within
+0.05 ms of GPU), pools off → on:
+
+| | draws | GPU ms | three.js ms a frame | uncapped ms |
+|---|---|---|---|---|
+| c8 farm, start | 1,607 → 68 | 14.55 → 14.59 | 5.8–6.0 → 2.5–3.1 | 20.3–20.5 → 18.1–18.7 |
+| c8 farm, widest | 2,396 → 74 | 15.07 → 15.10 | 8.4–8.5 → 2.8 | 22.8 → 18.9–19.1 |
+| c8 farm, night | 1,606 → 67 | 17.48 → 17.53 | 5.8–7.2 → 2.5–2.8 | 23.5–23.6 → 21.2–21.3 |
+| c4 farm, start | 1,213 → 84 | 12.99 → 13.01 | 4.6–5.1 → 2.0–2.2 | 17.7–17.8 → 16.1–16.3 |
+| c4 farm, widest | 1,827 → 95 | 12.74 → 12.79 | 6.0–6.2 → 2.3–2.4 | 18.1–18.8 → 16.0–16.1 |
+| c4 farm, night | 1,208 → 85 | 14.41 → 14.49 | 4.3 → 2.1 | 19.1–19.7 → 17.6–17.9 |
+
+(three.js ms: its `render()` calls, a frame, the median of the timed frames; uncapped: frames drawn back to back.) The
+calls are 95–97% fewer, three.js does half to two thirds less, and frames drawn back to back are 1.5–4 ms shorter, most
+at the widest views, which had the most calls; the GPU's work is the same, within 0.1 ms. Played (the game's own loop,
+uncapped, headless), the frames came at the same pace with the pools on and off (a mean of about 17 ms, as noisy as
+ever): on this machine the game's frame is held by the GPU, so the time freed on the CPU shows on a machine whose CPU is
+the slower part.
+
 ### The MacBook on the game's maps (Soil-n-Silo#210)
 
 The MacBook Air took 15 ms for the demo's farm (#27), about 1.3 times the RX 570. On the game's c4 farm it takes 46 ms

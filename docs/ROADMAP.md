@@ -111,7 +111,8 @@ give the same results and saves at version 20 still load. Graphics default to Hi
 The frame-rate report (`npm run framerate`, report version 2) counts the renderer's time as one part. Still open: the
 developer's checks on the laptop and the MacBook (#210), and the river's falls (#241).
 Since, for #210: brush3d draws the water's bed and reflection only where the water can show (#249), the same picture
-for 1.5–3 ms less GPU a frame on c4 and c8.
+for 1.5–3 ms less GPU a frame on c4 and c8; and it draws many meshes to a draw call (#250, done 2026-11-18): the same
+picture, about 70–95 draws a frame on c4 and c8 rather than 1,200–2,400, and half to two thirds less of three.js's time.
 
 ## The farm at work: moving parts, states, lights and smoke (2026-11-16)
 
