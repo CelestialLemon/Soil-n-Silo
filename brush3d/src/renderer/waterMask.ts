@@ -44,16 +44,21 @@ export class WaterMask {
     this.scene.matrixWorldAutoUpdate = false;
   }
 
+  /** Whether every square is marked: the pass draws as it would without a mask. */
+  get full() { return this.filled === MASK_GRID * MASK_GRID; }
+
   /**
    * Marks the squares the boxes (six numbers each: min x, y, z, max x, y, z) cover on screen, `m` the world-to-screen
    * matrix's elements (an orthographic camera's: projected straight, no divide), each widened by `padX`, `padY` (the
-   * screen's -1 to 1). Lays the quads: a run of marked squares along a row, one quad.
+   * screen's -1 to 1); mirrored about the height `mirror` first if given (where the reflection is read for that water).
+   * Lays the quads: a run of marked squares along a row, one quad.
    */
-  build(boxes: Float32Array, m: ArrayLike<number>, padX: number, padY: number) {
+  build(boxes: Float32Array, m: ArrayLike<number>, padX: number, padY: number, mirror: number | null = null) {
     const N = MASK_GRID, grid = this.grid;
     grid.fill(0);
     for (let b = 0; b < boxes.length; b += 6) {
-      const cx = (boxes[b] + boxes[b + 3]) / 2, cy = (boxes[b + 1] + boxes[b + 4]) / 2, cz = (boxes[b + 2] + boxes[b + 5]) / 2;
+      const my = (boxes[b + 1] + boxes[b + 4]) / 2;
+      const cx = (boxes[b] + boxes[b + 3]) / 2, cy = mirror === null ? my : 2 * mirror - my, cz = (boxes[b + 2] + boxes[b + 5]) / 2;
       const ex = (boxes[b + 3] - boxes[b]) / 2, ey = (boxes[b + 4] - boxes[b + 1]) / 2, ez = (boxes[b + 5] - boxes[b + 2]) / 2;
       // The box's middle on screen, and how far it reaches either side of it.
       const X = m[0] * cx + m[4] * cy + m[8] * cz + m[12], Y = m[1] * cx + m[5] * cy + m[9] * cz + m[13];

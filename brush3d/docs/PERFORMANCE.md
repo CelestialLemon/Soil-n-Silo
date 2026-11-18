@@ -588,8 +588,9 @@ covers a few percent of the screen. Now (`waterMask.ts`, `WaterField.footprint`)
   shader's cutoff, `HIDDEN_DIVE`), gathered into 16 m squares (about 120 boxes on c8). Found again only when the water
   changes; while it eases between two maps, round both.
 - **A mask a pass.** Each frame the boxes are laid on a 48 × 48 grid over the screen, each widened by how far that pass is
-  read round the water (the ripples' nudge, the reflection's larger one and its shift for water above or below the mirror,
-  its blur and its look for cover, two texels for filtering). Before the pass, the squares are stamped into its depth and
+  read round the water (the ripples' nudge, the reflection's larger one, its blur and its look for cover, two texels for
+  filtering). The reflection's boxes are first mirrored about the mirror's height, as it's read for water at any height
+  where the scene mirrored about that water's own surface would be. Before the pass, the squares are stamped into its depth and
   everywhere else is made "nearer than anything", so the GPU throws away every pixel drawn there before painting it.
 - **Fewer things drawn.** A mesh whose bounds (mirrored, for the reflection) miss every square isn't drawn in that pass,
   nor its silhouette. Smoke and blown leaves always are: they're drawn metres from where they're built.
@@ -613,6 +614,10 @@ RX 570, 1080p, storm, high, the game's profile, two alternating runs each (they 
 
 On the CPU, making both masks takes about 0.1 ms a frame (0.09–0.12, the footprint kept), and the two passes' own work,
 leaving things out included, about halves with the draws they no longer issue (c8 start, 3.1 → 1.7 ms a frame).
+
+The table is from before the reflection's mask took the footprint mirrored (in place of a pad as wide as the water's
+whole range of heights); measured again after, it is as tight or tighter: c8 start 1,623 draws, widest 2,396 and its
+reflection 1.54 ms. The bed's and the reflection's times at the start matched to 0.01 ms.
 
 ### The MacBook on the game's maps (Soil-n-Silo#210)
 

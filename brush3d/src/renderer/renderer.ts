@@ -1313,7 +1313,7 @@ export class BrushRenderer {
     target.scissorTest = scissor !== null;
     if (scissor) target.scissor.copy(scissor);
     this.gl.setRenderTarget(target);
-    if (mask) {
+    if (mask && !mask.full) {
       // Cleared nearer than anything, then far again only in the mask's squares: elsewhere every pixel drawn is dropped.
       const depth = this.gl.state.buffers.depth;
       depth.setClear(0);
@@ -1339,7 +1339,8 @@ export class BrushRenderer {
     if (!Number.isFinite(sphere.radius)) return true;
     const c = this.reachCentre.copy(sphere.center).applyMatrix4(mesh.matrixWorld);
     if (mirrored) c.y = 2 * this.water.mirror - c.y;
-    const r = sphere.radius * mesh.matrixWorld.getMaxScaleOnAxis() + (mesh.frustumCulled ? 0 : TILE_REACH);
+    // (Never shrunk by a scale: what the shaders add round a point, a leaf's card or the wind's reach, is in metres.)
+    const r = sphere.radius * Math.max(1, mesh.matrixWorld.getMaxScaleOnAxis()) + (mesh.frustumCulled ? 0 : TILE_REACH);
     const m = this.maskMatrix.elements;
     const x = m[0] * c.x + m[4] * c.y + m[8] * c.z + m[12], y = m[1] * c.x + m[5] * c.y + m[9] * c.z + m[13];
     return mask.touches(x - r * this.maskScale.x, y - r * this.maskScale.y, x + r * this.maskScale.x, y + r * this.maskScale.y);
@@ -1354,24 +1355,24 @@ export class BrushRenderer {
 
   /**
    * The water's two masks (#249) for the view as it is now: its footprint on screen, widened by how far each pass is
-   * read round it (the ripples' nudge, `nudge` in screen uv; the reflection's larger one, its shift for water above or
-   * below its surface and its blur; and two of the target's texels for the filtering).
+   * read round it (the ripples' nudge, `nudge` in screen uv; the reflection's larger one and its blur; and two of the
+   * target's texels for the filtering). The reflection is read for water at any height where the scene mirrored about
+   * that water's own surface would be (vMirrorShift), so its mask is of the footprint mirrored about the mirror's height.
    */
   private buildMasks(nudge: number) {
+    // (The sheet is drawn in the world's own space, as the mirror's height is: the renderer never moves its mesh.)
     const cam = this.view.camera, mesh = this.waterMesh;
     const boxes = mesh?.visible ? this.water.footprint(this.shared.uWaterBlend.value >= 1) : null;
     const m = this.maskMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
     const e = m.elements;
     this.maskScale.set(Math.hypot(e[0], e[4], e[8]), Math.hypot(e[1], e[5], e[9]));
-    const local = mesh ? new THREE.Matrix4().multiplyMatrices(m, mesh.matrixWorld).elements : e;
     const empty = new Float32Array(0);
-    const pad = (target: THREE.WebGLRenderTarget, reach: number, px: number, shift: THREE.Vector2, mask: WaterMask) => {
-      const rx = reach + Math.abs(shift.x) + px / this.width + 2 / target.width;
-      const ry = reach + Math.abs(shift.y) + px / this.height + 2 / target.height;
-      mask.build(boxes ?? empty, local, 2 * rx, 2 * ry);
+    const pad = (target: THREE.WebGLRenderTarget, reach: number, px: number, mask: WaterMask, mirror: number | null) => {
+      const rx = reach + px / this.width + 2 / target.width, ry = reach + px / this.height + 2 / target.height;
+      mask.build(boxes ?? empty, e, 2 * rx, 2 * ry, mirror);
     };
-    pad(this.underTarget, nudge, 0, new THREE.Vector2(), this.underMask);
-    pad(this.reflectTarget, nudge * WATER_REACH.reflectNudge, WATER_REACH.blurPx * WATER_REACH.coverWide, this.mirrorShift(), this.reflectMask);
+    pad(this.underTarget, nudge, 0, this.underMask, null);
+    pad(this.reflectTarget, nudge * WATER_REACH.reflectNudge, WATER_REACH.blurPx * WATER_REACH.coverWide, this.reflectMask, this.water.mirror);
   }
 
   /**
@@ -1601,7 +1602,7 @@ export class BrushRenderer {
     const nudge = (WATER_REACH.ripple + WATER_REACH.chop * WATER_REACH.chopMax) * 1.1;
     // Where the passes draw (#249): in the masks' squares (the settings' scissor round them), and not at all with none;
     // or, the masks off, round the water's mesh on screen.
-    const masked = this.settings.waterMask && this.view.camera.isOrthographicCamera;
+    const masked = this.settings.waterMask && this.view.camera.isOrthographicCamera && (this.settings.under || this.settings.reflection);
     if (masked) this.buildMasks(nudge);
     const water = masked ? null : this.waterOnScreen();
     const scissor = (target: THREE.WebGLRenderTarget, mask: WaterMask, into: THREE.Vector4) =>
