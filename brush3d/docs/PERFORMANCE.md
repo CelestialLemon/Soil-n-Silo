@@ -750,7 +750,12 @@ so the same map gave each metre up to four or five times midday's texels, detail
 drawn into all of them: the frame cost depended on the hour. Now the map is drawn into only a corner of itself, as many
 texels as noon's detail needs (`Quality.shadowCap`: 1 is c8's finest midday window at zoom 8, so midday is drawn as before
 in all four views: 1.6 texels a CSS pixel across the sun's view and 2.37 up it, scaled with the zoom), and the shaders read that corner (`shadowDepthAt`: the lit surfaces, the
-frost's sun memory and the lightning). The soft edge's taps keep their width on the ground, so a low sun's edge isn't
+frost's sun memory and the lightning). The corner's texels are coarser than the whole map's would be, so each reader
+pushes the point it tests off its surface by as much more as they've grown, along the surface's lean towards the sun
+(`shadowSlack`): without it, lit ground at a low sun shaded itself in dashes (shadow acne), and at the widest zoom in
+stripes. Wherever the whole map is drawn it adds nothing, so noon at the shipped levels draws as before (frost left from a
+morning remembers the morning's shadows, as it did with the cap); it costs nothing measurable. The price: a shadow comes
+up shorter by the push, and a caster lower than it (a sill, at Low zoomed out) throws none. The soft edge's taps keep their width on the ground, so a low sun's edge isn't
 speckled; the texels' spacing holds to 16 steps a doubling and, while the zoom moves, to the last frame's within half a
 doubling of the zoom's, settling once it stops (each change of it moves every texel, a flicker along the edges: a slow
 zoom from 4 to 24 changes it 9 to 32 times on High and Low, where before #251 the window's own 8 m steps changed it 33 to

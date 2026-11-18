@@ -241,6 +241,20 @@ export const SHADOW_DEPTH = /* glsl */ `
 float shadowDepthAt(vec2 uv) {
   return texture(uShadowMap, clamp(uv * uShadowArea, uShadowTexel * 0.5, uShadowArea - uShadowTexel * 0.5)).r;
 }
+// How much further (metres) a surface with normal n is pushed off itself before it reads the map, past its own push for
+// all the map drawn over the window: the corner's texels are coarser (uShadowArea < 1), each a bigger patch whose depth is
+// its centre's, and a surface at a slant to the sun sits in front of or behind that by its slope across the patch (shadow
+// acne: lit ground at a low sun dashed with its own shade). A push of a texel's growth across the sun's view along the
+// normal's lean in each axis covers it: the point is up to half a texel from the centre read, but half a texel's growth
+// still left a speckle at the widest zoom, so a whole one. The price: every shadow comes up short by the push (stretched
+// by a low sun), and what stands lower than it (a sill, at Low zoomed out) throws none, where the capped map could show
+// one. None with all the map drawn: just as before.
+float shadowSlack(vec3 n) {
+  vec3 ax = vec3(uShadowMatrix[0][0], uShadowMatrix[1][0], uShadowMatrix[2][0]);   // uv a metre, across and up
+  vec3 ay = vec3(uShadowMatrix[0][1], uShadowMatrix[1][1], uShadowMatrix[2][1]);
+  vec2 grow = uShadowTexel * (1.0 - uShadowArea) / uShadowArea;                     // the texel's growth, in uv
+  return abs(dot(n, ax)) * grow.x / dot(ax, ax) + abs(dot(n, ay)) * grow.y / dot(ay, ay);
+}
 `;
 
 /**
@@ -251,7 +265,7 @@ float shadowDepthAt(vec2 uv) {
 export const SHADOW = /* glsl */ `
 ${SHADOW_DEPTH}
 float sunVisibility(vec3 worldPos, vec3 n, float brush) {
-  vec3 p = worldPos + n * 0.04;
+  vec3 p = worldPos + n * (0.04 + shadowSlack(n));
   vec4 s = uShadowMatrix * vec4(p, 1.0);
   vec3 uvz = s.xyz / s.w;
   if (uvz.x < 0.0 || uvz.x > 1.0 || uvz.y < 0.0 || uvz.y > 1.0 || uvz.z > 1.0) return 1.0;

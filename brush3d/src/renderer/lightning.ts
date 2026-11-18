@@ -504,7 +504,7 @@ uniform vec2 uShadowTexel;
 uniform vec2 uShadowArea;
 ${SHADOW_DEPTH}
 float boltSees(vec3 p) {
-  vec4 s = uShadowMatrix * vec4(p + vec3(0.0, 0.08, 0.0), 1.0);
+  vec4 s = uShadowMatrix * vec4(p + vec3(0.0, 0.08 + shadowSlack(vec3(0.0, 1.0, 0.0)), 0.0), 1.0);
   vec3 uvz = s.xyz / s.w;
   if (uvz.x < 0.0 || uvz.x > 1.0 || uvz.y < 0.0 || uvz.y > 1.0 || uvz.z > 1.0) return 1.0;
   float seen = 0.0;

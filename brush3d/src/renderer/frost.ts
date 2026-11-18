@@ -221,8 +221,9 @@ void main() {
   vec3 p = vec3(xz.x, 0.0, xz.y);
   float land = landTop(p);
   float top = max(shelterTop(p), crownTop(p));
-  float ground = land > -1e3 ? sunAt(vec3(xz.x, land + 0.08, xz.y)) : 1.0;
-  float high = top > land + 0.3 ? sunAt(vec3(xz.x, top + 0.08, xz.y)) : ground;
+  float lift = 0.08 + shadowSlack(vec3(0.0, 1.0, 0.0));   // off the ground, more where the map's texels are coarse
+  float ground = land > -1e3 ? sunAt(vec3(xz.x, land + lift, xz.y)) : 1.0;
+  float high = top > land + 0.3 ? sunAt(vec3(xz.x, top + lift, xz.y)) : ground;
   float cloud = 1.0 - 0.85 * cloudMapShade(xz) * uCloudStrength;
   // Hours skipped (uGuess 1) are taken from this one shadow, though the shadows swung through them: what's in shade now
   // is taken as having had a third of the open's sun, so a still at noon keeps frost in the long shade, thinned.
