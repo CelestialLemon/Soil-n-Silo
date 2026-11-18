@@ -13,8 +13,8 @@ export interface Settings {
   quality: Quality;
   /**
    * On a high-DPI screen, the most pixels brush3d draws per screen point (its maxRatio): the screen's own ('full', within
-   * the quality's pixel budget), or 1.25 or 1, softer and faster (#210, the MacBook). A look choice waiting for the
-   * developer's pick: 'full' stays the default.
+   * the quality's pixel budget), or 1.25 or 1, softer and faster (#210, the MacBook). '1.25' is the default: the
+   * developer's pick on #210 (2026-11-18), about as crisp as full by eye and faster.
    */
   pixelRatio: PixelRatio;
   /** How much rain and snow brush3d draws falling: all of it, or about a third. */
@@ -62,7 +62,7 @@ export type Highlight = typeof HIGHLIGHTS[number];
 export const OVERLAY_STYLES = ['wash', 'bold', 'borders'] as const;
 export type OverlayStyle = typeof OVERLAY_STYLES[number];
 
-const DEFAULTS: Settings = { uiSize: 1, quality: 'high', pixelRatio: 'full', falling: 'full', flashes: 'full', highlight: 'halo', overlayStyle: 'bold', reduceMotion: false, showPace: false, problemsStrip: false, frameStats: 'off', fastSpeeds: false, keys: {} };
+const DEFAULTS: Settings = { uiSize: 1, quality: 'high', pixelRatio: '1.25', falling: 'full', flashes: 'full', highlight: 'halo', overlayStyle: 'bold', reduceMotion: false, showPace: false, problemsStrip: false, frameStats: 'off', fastSpeeds: false, keys: {} };
 
 /** `v` if it's one of `choices`, else `d`. */
 const oneOf = <T extends string>(choices: readonly T[], v: unknown, d: T): T => ((choices as readonly unknown[]).includes(v) ? v as T : d);
