@@ -648,7 +648,15 @@ keeps its own choice of what to draw, unchanged: a tile out of view, out of the 
 The meshes stay meshes with their own geometry, whose arrays are views of the pages' (the memory isn't doubled), so what
 reads or changes them works as before; what changes in them (a season's colours, a tree cleared, the ground under a
 building moved) goes up with the page at the next draw. A page starts small, doubles as it fills (up to 2M vertices),
-and is trimmed to what it holds and an eighth more before it's first drawn.
+and is trimmed to what it holds and an eighth more before it's first drawn; once drawn, it grows by a quarter at a time
+(each growth sends it up whole). Only what a page's draw can stand for is pooled: a mesh where its geometry was made, on
+the first layer, drawn whole as triangles with one of the renderer's own (shader) materials; the rest is drawn as before.
+
+- The order: within a page the draws go front to back as three.js's would; across pages they go page by page. Nothing
+  pooled is see-through, and a layout's meshes share one page until it holds 2M vertices (c8's ground fills 264k), so
+  the order only changes which of two surfaces at the same depth is painted first, and the pictures show none.
+- Without WebGL's multi-draw (rare on desktops), three.js makes each stretch its own GPU call: the same picture and still
+  less of three.js's own work, but not the fewer calls.
 
 - Big pages: with pages an eighth the size, the GPU drew the trees' tiles in a worse order (front to back within each
   page, not across the map) and the sun's shadow cost 0.15 ms more at night on c8; at 2M vertices it's within the noise.

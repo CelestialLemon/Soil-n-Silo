@@ -222,7 +222,7 @@ export class BrushRenderer {
   private silhouettes = new THREE.Group();
   private twins = new Map<THREE.Mesh, THREE.Mesh>();
   /** The meshes' shared buffers, drawn many meshes to a call (#250). */
-  private pools = new Pools();
+  private pools = new Pools(() => this.settings.pools);
   private fields = new Map<MaterialKind, THREE.WebGLRenderTarget>();
   /** The sizes setFields was asked for: baked again when the GPU's context comes back, as a bake's texels go with it. */
   private fieldSizes = new Map<'ground' | 'crop' | 'grass', number>();
@@ -552,7 +552,7 @@ export class BrushRenderer {
     if (springs) { this.trees.release(springs); mesh.geometry.userData.springs = undefined; }
     const parts = mesh.geometry.userData.parts as Set<number> | undefined;
     if (parts?.size) this.parts.release(parts);
-    this.pools.remove(mesh.geometry);
+    this.pools.remove(mesh.geometry, !mesh.userData.cut);
     if (mesh.userData.cut) mesh.geometry.dispose();
     if (mesh.userData.seasonal) this.unseason(mesh.geometry);
     this.casters.delete(mesh);
@@ -1540,7 +1540,6 @@ export class BrushRenderer {
     const reach = (this.view.camera.right + this.view.camera.top * 2) / 2;
     this.lightning.update(this.view.target, this.view.zoom, reach, this.width, this.height, this.gbuffer.textures[1]);
     this.applyLook(this.look);
-    this.pools.enabled = this.settings.pools;
     const grounded: THREE.Object3D[] = [];
     if (!this.settings.falling) {
       for (const o of this.scene.children) if (o.visible && FALLING.includes(o.userData.kind as DrawnKind)) { o.visible = false; grounded.push(o); }
