@@ -954,14 +954,15 @@ void main() {
 }
 `;
 
-/**
- * How far from its own pixel the water reads its two textures: the ripples' nudge (screen uv, at most ripple + chop times
- * chopAmt, which is at most 1.5), the reflection's larger nudge, and its blur (pixels). The renderer draws those passes
- * only round the water on screen, padded by this much (see BrushRenderer.waterRect).
- */
 /** How far the ripples shake the clouds in the water (MIRROR_SKY), metres for a unit of their screen nudge: a metre or two. */
 const MIRROR_WOBBLE = 400;
-export const WATER_REACH = { ripple: 0.0035, chop: 0.006, chopMax: 1.5, reflectNudge: 1.6, blurPx: 3 };
+/**
+ * How far from its own pixel the water reads its two textures: the ripples' nudge (screen uv, at most ripple + chop times
+ * chopAmt, which is at most 1.5), the reflection's larger nudge, its blur (pixels), and how much wider than the blur it
+ * looks for what covers the sky (coverWide times). The renderer draws those passes only round the water that can show,
+ * padded by this much (see BrushRenderer.buildMasks).
+ */
+export const WATER_REACH = { ripple: 0.0035, chop: 0.006, chopMax: 1.5, reflectNudge: 1.6, blurPx: 3, coverWide: 2.5 };
 const f = (x: number) => (Number.isInteger(x) ? x.toFixed(1) : String(x));
 
 /**
@@ -1181,7 +1182,7 @@ void main() {
   // they show: the developer's pick, "clear" (#8).
   float cloud;
   vec3 clouded = exposeHere(mirrorSky(skyPoint(p, reflect(-toCamera(), n)) + nudge * ${f(MIRROR_WOBBLE)}, low, cloud));
-  vec2 wide = rt * 2.5;
+  vec2 wide = rt * ${f(WATER_REACH.coverWide)};
   float cover = (refl.a * 2.0 + texture(uReflect, ruv + wide).a + texture(uReflect, ruv - wide).a
     + texture(uReflect, ruv + vec2(wide.x, -wide.y)).a + texture(uReflect, ruv - vec2(wide.x, -wide.y)).a) / 6.0;
   float solid = smoothstep(0.35, 0.9, cover);

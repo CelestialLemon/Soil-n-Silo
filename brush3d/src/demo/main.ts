@@ -154,6 +154,7 @@ renderer.settings.lines = num('lines', 1) !== 0;
 renderer.settings.shadows = num('shadows', 1) !== 0;
 renderer.settings.prepass = num('prepass', 1) !== 0;
 renderer.settings.waterScissor = num('scissor', 1) !== 0;
+renderer.settings.waterMask = num('mask', 1) !== 0;
 renderer.settings.equalDepth = num('equal', 1) !== 0;
 renderer.settings.shelterDebug = params.has('shelter') && params.get('shelter') !== '0';
 setupLightning(renderer);

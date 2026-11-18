@@ -6,9 +6,13 @@
 // 2. The stand-in's rule: water reaches lower ground it can get to and nothing else (a hollow behind a ridge stays dry
 //    until the ridge is overtopped), never off the land.
 // 3. Easing: halfway through, the sheet is halfway between the two maps; a map sent mid-ease starts from what's drawn.
+// 4. The footprint (#249): boxes round the sheet where it shows, cut where it dives out of sight; while easing, round both
+//    ends; and the screen mask made from them.
 // Exits with 1 if anything is off.
-import { DIVE, HIDDEN_DIVE, MAX_DIVE, REACH, WaterField, layWater, SHORE_MAX, shoreDistance, type WaterMap } from '../src/renderer/water.ts';
+import { DIVE, FOOTPRINT_CELL, HIDDEN_DIVE, MAX_DIVE, REACH, WaterField, layWater, SHORE_MAX, shoreDistance, type WaterMap } from '../src/renderer/water.ts';
 import { DemoWater } from '../src/demo/water.ts';
+import { MASK_GRID, WaterMask } from '../src/renderer/waterMask.ts';
+import { Vector4 } from 'three';
 import type { Stream } from '../src/kit/kit.ts';
 
 let failed = false;
@@ -175,5 +179,37 @@ const allWet = (cell: number) => shoreDistance({ nx: 3, nz: 3, cell, x0: 0, z0: 
 check('shore: a map all water has no shore, however coarse', allWet(20).every((v) => v === SHORE_MAX) && allWet(10).every((v) => v === SHORE_MAX));
 check('ice: the demo sends it only when there is some', near(demo.map({ rise: 0, flow: 1, mud: 0, ice: 0.4 }).ice?.[0] ?? 0, 0.4)
   && demo.map({ rise: 0, flow: 1, mud: 0, ice: 0 }).ice === undefined);
+
+// 4. The footprint: the 9 x 5 map's column at x 4..5 runs flat a cell either side (shown), then dives under the land: the
+// sheet shows until its mud (0.3) falling to the dive (-DIVE) reaches -HIDDEN_DIVE, between the two cells' middles.
+console.log('The footprint');
+const foot = new WaterField();
+foot.set(map, 0, 0);
+const fp = foot.footprint(true), edge = (0.3 + HIDDEN_DIVE) / (0.3 + DIVE);
+check('one box for a map inside a footprint square', fp.length === 6 && FOOTPRINT_CELL >= 9, `${fp.length / 6} boxes`);
+check('cut where the sheet dives out of sight', near(fp[0], 3.5 - edge) && near(fp[3], 5.5 + edge), `${fp[0]}..${fp[3]}`);
+check('from the cut\'s height up to the water', near(fp[1], 2 - DIVE * edge) && near(fp[4], 2), `${fp[1]}..${fp[4]}`);
+check('the whole length of the grid', fp[2] === 0 && fp[5] === nz);
+check('kept until the water changes', foot.footprint(true) === fp);
+const wider = { ...map, level: map.level.map((v, i) => (i % nx === 5 ? 2.5 : v)) };
+foot.set(wider, 0, 1);
+const easing = foot.footprint(false), after = foot.footprint(true);
+check('easing: round both ends', easing[0] <= fp[0] && easing[3] >= after[3] && easing[4] >= 2.5 && easing[1] <= Math.min(fp[1], after[1]),
+  [...easing].map((v) => v.toFixed(2)).join(", "));
+foot.set(null, 0);
+check('no water: no footprint', foot.footprint(true).length === 0);
+// The mask, with the world as the screen (an identity matrix): a box across the middle marks the squares it touches.
+const mask = new WaterMask(), I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+mask.build(new Float32Array([-0.5, -0.1, 0, 0.5, 0.1, 0]), I, 0, 0);
+const side = (lo: number, hi: number) => Math.floor(((hi + 1) * MASK_GRID) / 2) - Math.floor(((lo + 1) * MASK_GRID) / 2) + 1;
+check('the mask marks the squares the box touches', mask.filled === side(-0.5, 0.5) * side(-0.1, 0.1), `${mask.filled}`);
+check('the mask: a thing over it reaches it, one beside it doesn\'t', mask.touches(0.4, 0, 0.9, 0.9) && !mask.touches(0.6, -1, 1, 1) && !mask.touches(-1, 0.2, 1, 1));
+check('the mask: off the screen reaches nothing', !mask.touches(1.5, -1, 2, 1));
+const sc = mask.scissor({ width: 960, height: 540 } as never, new Vector4());
+check('the mask\'s scissor holds its squares', sc.x <= 240 && sc.x + sc.z >= 720 && sc.y <= 243 && sc.y + sc.w >= 297, sc.toArray().join(", "));
+mask.build(new Float32Array([-0.5, -0.1, 0, 0.5, 0.1, 0]), I, 0.2, 0);
+check('the mask widened by its padding', mask.filled === side(-0.7, 0.7) * side(-0.1, 0.1), `${mask.filled}`);
+mask.build(new Float32Array([3, 3, 0, 4, 4, 0]), I, 0, 0);
+check('the mask: none for water off the screen', mask.filled === 0);
 
 if (failed) process.exit(1);

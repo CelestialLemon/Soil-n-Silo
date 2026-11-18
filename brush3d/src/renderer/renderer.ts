@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { cutIntoTiles } from './tiles';
+import { cutIntoTiles, TILE_REACH } from './tiles';
 import { CAMERA_DISTANCE, ViewCamera } from './camera';
 import { CloudMap, MIRROR } from './cloudMap';
 import { CLOUD_SHAPE, type CloudShape } from './clouds';
@@ -28,6 +28,7 @@ import { TreeSprings, type TreeSpec } from './trees';
 import { Parts } from './parts';
 import { NightLights } from './nightLights';
 import { WATER_EASE, WaterField, type WaterMap } from './water';
+import { WaterMask } from './waterMask';
 import { GROUND_EASE, GroundField, HollowMap, type GroundMap } from './ground';
 import { SnowPaint } from './snow';
 import { SunMemory } from './frost';
@@ -76,6 +77,11 @@ export interface Settings {
   prepass: boolean;
   /** Draw the water's two passes only round the water on screen. */
   waterScissor: boolean;
+  /**
+   * Draw the water's two passes only where the water can show and what it reads there (#249: a mask of its footprint
+   * in their depth), and leave out of them what can't reach it. Off for comparing: the same picture.
+   */
+  waterMask: boolean;
   /**
    * With the silhouettes drawn first: paint the leaves in the main view, and everything in the reflection, only where its
    * depth is the silhouette's own (rather than at it or nearer). The same picture; it lets the GPU skip hidden leaf pixels
@@ -161,7 +167,7 @@ export class BrushRenderer {
   readonly scene = new THREE.Scene();
   readonly view = new ViewCamera();
   readonly shared: SharedUniforms = createSharedUniforms();
-  readonly settings: Settings = { lines: true, shadows: true, grain: 0.012, prepass: true, waterScissor: true, equalDepth: true, falling: true, fallingShare: 1, shelterDebug: false,
+  readonly settings: Settings = { lines: true, shadows: true, grain: 0.012, prepass: true, waterScissor: true, waterMask: true, equalDepth: true, falling: true, fallingShare: 1, shelterDebug: false,
     reflection: true, under: true, resolveDepth: true };
   width = 1; height = 1;
   /** Device pixels per CSS pixel asked for (see RendererOptions): the screen's pixels, which the zoom counts in. */
@@ -1288,16 +1294,84 @@ export class BrushRenderer {
   /** Where the shadows fall from: the sun, turned towards overhead under cloud. */
   private shadowDir = new THREE.Vector3(0, 1, 0);
 
-  /** Draws only the meshes `keep` picks into a target, from the view camera; only inside `scissor` (pixels) if given. */
-  private drawOnly(target: THREE.WebGLRenderTarget, keep: (m: THREE.Object3D) => boolean, scissor: THREE.Vector4 | null) {
+  /**
+   * Draws only the meshes `keep` picks into a target, from the view camera; only inside `scissor` (pixels) if given. With
+   * a mask, only in its squares, leaving out the meshes (and their silhouettes) that can't reach them, as `mirrored` in
+   * the water or not (#249).
+   */
+  private drawOnly(target: THREE.WebGLRenderTarget, keep: (m: THREE.Object3D) => boolean, scissor: THREE.Vector4 | null,
+    mask: WaterMask | null = null, mirrored = false) {
     const hidden: THREE.Object3D[] = [];
-    for (const o of this.scene.children) if (o.visible && !keep(o)) { o.visible = false; hidden.push(o); }
+    for (const o of this.scene.children) {
+      if (!o.visible) continue;
+      if (!keep(o)) { o.visible = false; hidden.push(o); continue; }
+      if (!mask || !(o as THREE.Mesh).isMesh || this.reaches(o as THREE.Mesh, mask, mirrored)) continue;
+      o.visible = false; hidden.push(o);
+      const twin = this.twins.get(o as THREE.Mesh);
+      if (twin?.visible) { twin.visible = false; hidden.push(twin); }
+    }
     target.scissorTest = scissor !== null;
     if (scissor) target.scissor.copy(scissor);
     this.gl.setRenderTarget(target);
-    this.gl.clear(true, true, false);
+    if (mask) {
+      // Cleared nearer than anything, then far again only in the mask's squares: elsewhere every pixel drawn is dropped.
+      const depth = this.gl.state.buffers.depth;
+      depth.setClear(0);
+      this.gl.clear(true, true, false);
+      depth.setClear(1);
+      this.gl.render(mask.scene, this.view.camera);
+    } else this.gl.clear(true, true, false);
     this.gl.render(this.scene, this.view.camera);
     for (const o of hidden) o.visible = true;
+  }
+
+  private reachCentre = new THREE.Vector3();
+  /**
+   * Whether a mesh can be drawn into a mask's squares: its bounds on screen (mirrored about the water's surface, as the
+   * reflection draws it), grown by how far its things move in the wind (TILE_REACH: a tile's bounds hold that already).
+   * Always, for the kinds drawn away from where they're built (smoke rising and drifting, leaves blown through the air).
+   */
+  private reaches(mesh: THREE.Mesh, mask: WaterMask, mirrored: boolean) {
+    if (!STAYS_PUT.has(mesh.userData.kind as MaterialKind)) return true;
+    const g = mesh.geometry;
+    if (!g.boundingSphere) g.computeBoundingSphere();
+    const sphere = g.boundingSphere!;
+    if (!Number.isFinite(sphere.radius)) return true;
+    const c = this.reachCentre.copy(sphere.center).applyMatrix4(mesh.matrixWorld);
+    if (mirrored) c.y = 2 * this.water.mirror - c.y;
+    const r = sphere.radius * mesh.matrixWorld.getMaxScaleOnAxis() + (mesh.frustumCulled ? 0 : TILE_REACH);
+    const m = this.maskMatrix.elements;
+    const x = m[0] * c.x + m[4] * c.y + m[8] * c.z + m[12], y = m[1] * c.x + m[5] * c.y + m[9] * c.z + m[13];
+    return mask.touches(x - r * this.maskScale.x, y - r * this.maskScale.y, x + r * this.maskScale.x, y + r * this.maskScale.y);
+  }
+
+  private underMask = new WaterMask();
+  private reflectMask = new WaterMask();
+  /** The view's world-to-screen matrix as the masks were made, and how far a metre reaches across and up the screen. */
+  private maskMatrix = new THREE.Matrix4();
+  private maskScale = new THREE.Vector2();
+  private maskScissor = [new THREE.Vector4(), new THREE.Vector4()];
+
+  /**
+   * The water's two masks (#249) for the view as it is now: its footprint on screen, widened by how far each pass is
+   * read round it (the ripples' nudge, `nudge` in screen uv; the reflection's larger one, its shift for water above or
+   * below its surface and its blur; and two of the target's texels for the filtering).
+   */
+  private buildMasks(nudge: number) {
+    const cam = this.view.camera, mesh = this.waterMesh;
+    const boxes = mesh?.visible ? this.water.footprint(this.shared.uWaterBlend.value >= 1) : null;
+    const m = this.maskMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    const e = m.elements;
+    this.maskScale.set(Math.hypot(e[0], e[4], e[8]), Math.hypot(e[1], e[5], e[9]));
+    const local = mesh ? new THREE.Matrix4().multiplyMatrices(m, mesh.matrixWorld).elements : e;
+    const empty = new Float32Array(0);
+    const pad = (target: THREE.WebGLRenderTarget, reach: number, px: number, shift: THREE.Vector2, mask: WaterMask) => {
+      const rx = reach + Math.abs(shift.x) + px / this.width + 2 / target.width;
+      const ry = reach + Math.abs(shift.y) + px / this.height + 2 / target.height;
+      mask.build(boxes ?? empty, local, 2 * rx, 2 * ry);
+    };
+    pad(this.underTarget, nudge, 0, new THREE.Vector2(), this.underMask);
+    pad(this.reflectTarget, nudge * WATER_REACH.reflectNudge, WATER_REACH.blurPx * WATER_REACH.coverWide, this.mirrorShift(), this.reflectMask);
   }
 
   /**
@@ -1524,19 +1598,27 @@ export class BrushRenderer {
     // all when none shows. The farthest a lookup reaches (snoise peaks a little past 1, hence the tenth more):
     t?.mark('under');
     gl.setClearColor(0x000000, 0);
-    const water = this.waterOnScreen();
     const nudge = (WATER_REACH.ripple + WATER_REACH.chop * WATER_REACH.chopMax) * 1.1;
-    if (water && this.settings.under) {
+    // Where the passes draw (#249): in the masks' squares (the settings' scissor round them), and not at all with none;
+    // or, the masks off, round the water's mesh on screen.
+    const masked = this.settings.waterMask && this.view.camera.isOrthographicCamera;
+    if (masked) this.buildMasks(nudge);
+    const water = masked ? null : this.waterOnScreen();
+    const scissor = (target: THREE.WebGLRenderTarget, mask: WaterMask, into: THREE.Vector4) =>
+      this.settings.waterScissor ? mask.scissor(target, into) : null;
+    if ((masked ? this.underMask.filled > 0 : water) && this.settings.under) {
       // The bed under the water takes no snow or frost (#14): 2 tells the materials to leave out what's below the water's
       // top (the banks above it keep theirs, as the ripples' nudge shows them through the water's edge).
       const ground = this.ground.uniforms.uGroundOn, on = ground.value;
       if (on > 0.5) ground.value = 2;
-      this.drawOnly(this.underTarget, (m) => m.userData.under as boolean, this.waterRect(water, this.underTarget, nudge, 0));
+      this.drawOnly(this.underTarget, (m) => m.userData.under as boolean, masked
+        ? scissor(this.underTarget, this.underMask, this.maskScissor[0]) : this.waterRect(water!, this.underTarget, nudge, 0),
+      masked ? this.underMask : null);
       ground.value = on;
     }
     t?.mark('reflect');
     const pre = this.settings.prepass;
-    if (water && this.settings.reflection) {
+    if ((masked ? this.reflectMask.filled > 0 : water) && this.settings.reflection) {
       this.shared.uMirror.value = 1;
       // Its silhouettes first too, of what the water mirrors.
       this.silhouettes.visible = pre;
@@ -1551,8 +1633,10 @@ export class BrushRenderer {
       // Mirroring flips the winding, so one-sided surfaces show their back faces.
       const flipped = [...this.materials.values()].flatMap((m) => [m.main, m.mirrorPrepass]).filter((m) => m.side === THREE.FrontSide);
       for (const m of flipped) m.side = THREE.BackSide;
-      const rect = this.waterRect(water, this.reflectTarget, nudge * WATER_REACH.reflectNudge, WATER_REACH.blurPx, this.mirrorShift());
-      this.drawOnly(this.reflectTarget, (m) => (m.userData.reflect as boolean) || m === this.silhouettes, rect);
+      const rect = masked ? scissor(this.reflectTarget, this.reflectMask, this.maskScissor[1])
+        : this.waterRect(water!, this.reflectTarget, nudge * WATER_REACH.reflectNudge, WATER_REACH.blurPx * WATER_REACH.coverWide, this.mirrorShift());
+      this.drawOnly(this.reflectTarget, (m) => (m.userData.reflect as boolean) || m === this.silhouettes, rect,
+        masked ? this.reflectMask : null, true);
       for (const m of flipped) m.side = THREE.FrontSide;
       this.shared.uMirror.value = 0;
     }
@@ -1599,6 +1683,12 @@ export class BrushRenderer {
     t?.endFrame();
   }
 }
+
+/**
+ * The kinds drawn where they're built, give or take how far the wind moves them (TILE_REACH): what the water's passes
+ * can leave out when its bounds miss the water (#249). Not the smoke and the blown leaves, which travel far from theirs.
+ */
+const STAYS_PUT: ReadonlySet<MaterialKind> = new Set(['ground', 'paint', 'crop', 'foliage', 'grass', 'ink']);
 
 /**
  * The land's highest ground in each cell of a coarse grid, from the ground mesh, to trace the view's rays down to it
