@@ -640,8 +640,10 @@ drawn into all of them: the frame cost depended on the hour. Now the map is draw
 texels as noon's detail needs (`Quality.shadowCap`: 1 is c8's noon at zoom 8, 1.33 texels a CSS pixel across the sun's
 view and 2.21 up it, scaled with the zoom), and the shaders read that corner (`shadowDepthAt`: the lit surfaces, the
 frost's sun memory and the lightning). The soft edge's taps keep their width on the ground, so a low sun's edge isn't
-speckled; the texels' spacing holds to 16 steps a doubling (so a zoom moves them no more often than the window's own 8 m
-steps did) and the window to whole texels (so a pan doesn't make them crawl). The whole map is still cleared each frame:
+speckled; the texels' spacing holds to 16 steps a doubling and, while the zoom moves, to the last frame's within half a
+doubling of the zoom's, settling once it stops (each change of it moves every texel, a flicker along the edges: a slow
+zoom from 4 to 24 changes it 9 to 32 times on High and Low, where before #251 the window's own 8 m steps changed it 33 to
+54 times), and the window to whole texels (so a pan doesn't make them crawl). The whole map is still cleared each frame:
 clearing only the corner cost 0.1 ms more on c4.
 
 c8's farm and c4's farm at 1080p on the RX 570, clear and still, the start view (zoom 8), GPU ms (the shadow pass, then

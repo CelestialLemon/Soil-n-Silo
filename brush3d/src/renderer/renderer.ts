@@ -57,9 +57,9 @@ const FRESH_DUST = new THREE.Color(0xc8a77a);
  * would otherwise take five times the texels a metre, as many leaf cards drawn into each.
  */
 const SHADOW_CAP = { across: 4096 / 384 / 8, up: 4096 / 232 / 8 };
-/** A shadowCap, which is more than 0 (Infinity: no cap); anything else is a caller's bug. */
+/** A shadowCap, at least 0.05 (a twentieth of noon's; Infinity: no cap); anything else is a caller's bug. */
 function checkShadowCap(cap: number): number {
-  if (!(cap > 0)) throw new Error(`brush3d: shadowCap must be more than 0 (Infinity for none), not ${cap}`);
+  if (!(cap >= 0.05)) throw new Error(`brush3d: shadowCap must be at least 0.05 (Infinity for none), not ${cap}`);
   return cap;
 }
 
@@ -80,7 +80,7 @@ export interface RendererOptions {
   pixelRatio?: number;
   /** The shelter map's size in texels (1024; 512 to save memory). */
   shelterSize?: number;
-  /** The most detail the following shadow is drawn with, as a share of noon's (Quality.shadowCap): more than 0, 1 by default. */
+  /** The most detail the following shadow is drawn with, as a share of noon's (Quality.shadowCap): at least 0.05, 1 by default. */
   shadowCap?: number;
 }
 
@@ -1054,6 +1054,8 @@ export class BrushRenderer {
       this.shadowTarget.setSize(q.shadowMapSize, q.shadowMapSize);
       this.shared.uShadowTexel.value.set(1 / q.shadowMapSize, 1 / q.shadowMapSize);
     }
+    // A held spacing (followView) was the old map's and cap's.
+    if (q.shadowMapSize !== now.shadowMapSize || q.shadowCap !== now.shadowCap) { this.shadowPitch = [0, 0]; this.flashShadowPitch = [0, 0]; }
     this.shadowCap = q.shadowCap;
     this.shelter.resize(q.shelterSize);
     if (q.maxPixels !== now.maxPixels || q.reflectionScale !== now.reflectionScale) {
@@ -1294,17 +1296,19 @@ export class BrushRenderer {
     const size = (have: number, need: number) => need > have || need < have - 16 ? Math.ceil(need / 8) * 8 : have;
     // A flash aimed at the bolt keeps its own, so the sun's shadow comes back to exactly where it was.
     const aimed = this.lightning.aiming, held = aimed ? this.flashShadowSize : this.shadowSize;
-    if (!aimed) this.flashShadowSize = [0, 0];
+    const pitch = aimed ? this.flashShadowPitch : this.shadowPitch;
+    if (!aimed) { this.flashShadowSize = [0, 0]; this.flashShadowPitch = [0, 0]; }
     const w = (held[0] = size(held[0], x1 - x0 + 6));
     const h = (held[1] = size(held[1], y1 - y0 + 6));
     // The texels: the whole map's across the window, or, where that's finer than the cap (a low sun's narrow window), a
     // corner of it at the cap's (shadowCap). Edges on whole texels either way.
     // While the zoom moves, the capped spacing holds (each change of it moves every texel, a flicker along the shadows'
-    // edges), and settles to the zoom's once it stops: one change a zoom rather than one every 4% of it.
+    // edges) within half a doubling of the zoom's, and settles to the zoom's once it stops: a change every 40% of a zoom
+    // and one at its end, rather than one every 4% of it.
     const zoom = this.view.zoom / this.screenRatio, zooming = this.shadowZooming;
-    const across = this.shadowTexels(w, this.shadowTarget.width, SHADOW_CAP.across * zoom, zooming ? this.shadowPitch[0] : 0);
-    const up = this.shadowTexels(h, this.shadowTarget.height, SHADOW_CAP.up * zoom, zooming ? this.shadowPitch[1] : 0);
-    this.shadowPitch = [across.capped ? across.pitch : 0, up.capped ? up.pitch : 0];
+    const across = this.shadowTexels(w, this.shadowTarget.width, SHADOW_CAP.across * zoom, zooming ? pitch[0] : 0);
+    const up = this.shadowTexels(h, this.shadowTarget.height, SHADOW_CAP.up * zoom, zooming ? pitch[1] : 0);
+    pitch[0] = across.capped ? across.pitch : 0; pitch[1] = up.capped ? up.pitch : 0;
     c.left = Math.round(((x0 + x1) / 2 - w / 2) / across.pitch) * across.pitch; c.right = c.left + across.size;
     c.bottom = Math.round(((y0 + y1) / 2 - h / 2) / up.pitch) * up.pitch; c.top = c.bottom + up.size;
     this.drawShadowInto(across.texels, up.texels);
@@ -1314,14 +1318,18 @@ export class BrushRenderer {
    * The shadow's texels along one side of its window, `need` metres (followView): the whole map's `full` across it, or
    * fewer where those would be finer than `perMetre` (noon's, shadowCap). The capped spacing is held to one of 16 steps
    * per doubling, rounded to the finer (so up to 4% more detail than the cap: noon's own window keeps the whole map), or
-   * `hold`'s while the zoom moves (followView); it holds through the window's own 8 m steps, whose texels stay on the same
-   * ground. Its size, which may be a little more than `need`, is a whole number of them.
+   * `hold`'s while the zoom moves (followView) and it's within half a doubling of that and fits; it holds through the
+   * window's own 8 m steps, whose texels stay on the same ground. Its size, which may be a little more than `need`, is a
+   * whole number of them.
    */
   private shadowTexels(need: number, full: number, perMetre: number, hold: number) {
     const cap = perMetre * this.shadowCap;
     if (Number.isFinite(cap)) {
-      const pitch = hold || 2 ** (Math.floor(Math.log2(1 / cap) * 16) / 16), texels = Math.ceil(need / pitch);
-      if (texels < full) return { texels, pitch, size: texels * pitch, capped: true };
+      const fresh = 2 ** (Math.floor(Math.log2(1 / cap) * 16) / 16);
+      for (const pitch of hold && Math.abs(Math.log2(hold / fresh)) <= 0.5 ? [hold, fresh] : [fresh]) {
+        const texels = Math.ceil(need / pitch);
+        if (texels < full) return { texels, pitch, size: texels * pitch, capped: true };
+      }
     }
     return { texels: full, pitch: need / full, size: need, capped: false };
   }
@@ -1345,6 +1353,7 @@ export class BrushRenderer {
   private shadowZoom = NaN;
   private shadowZooming = true;
   private shadowPitch: [number, number] = [0, 0];
+  private flashShadowPitch: [number, number] = [0, 0];
   /** Where the shadows fall from: the sun, turned towards overhead under cloud. */
   private shadowDir = new THREE.Vector3(0, 1, 0);
 
