@@ -634,11 +634,11 @@ are the developer's to take (`?profile&quality=medium` on a preview of the demo)
 ### The shadow's detail held to noon's (#251)
 
 The sun's shadow follows the view (`followView`): its map covers just the ground on screen, as the sun sees it. A low sun
-sees that ground squeezed into a narrow strip (on c8 at zoom 8 the window is 384 × 232 m at noon, 48 m up before dawn),
-so the same map gave each metre up to five times noon's texels, detail the screen can't show, and every leaf card was
+sees that ground squeezed into a narrow strip (on c8 at zoom 8 the window is 320 to 384 m across and 216 to 272 up from 11:00 to 13:00, whichever way the camera looks, and 48 m up before dawn),
+so the same map gave each metre up to four or five times midday's texels, detail the screen can't show, and every leaf card was
 drawn into all of them: the frame cost depended on the hour. Now the map is drawn into only a corner of itself, as many
-texels as noon's detail needs (`Quality.shadowCap`: 1 is c8's noon at zoom 8, 1.33 texels a CSS pixel across the sun's
-view and 2.21 up it, scaled with the zoom), and the shaders read that corner (`shadowDepthAt`: the lit surfaces, the
+texels as noon's detail needs (`Quality.shadowCap`: 1 is c8's finest midday window at zoom 8, so midday is drawn as before
+in all four views: 1.6 texels a CSS pixel across the sun's view and 2.37 up it, scaled with the zoom), and the shaders read that corner (`shadowDepthAt`: the lit surfaces, the
 frost's sun memory and the lightning). The soft edge's taps keep their width on the ground, so a low sun's edge isn't
 speckled; the texels' spacing holds to 16 steps a doubling and, while the zoom moves, to the last frame's within half a
 doubling of the zoom's, settling once it stops (each change of it moves every texel, a flicker along the edges: a slow
@@ -652,18 +652,18 @@ minutes before sunrise):
 
 | | noon | golden hour | before dawn |
 |---|---|---|---|
-| c8, High: shadow | 4.91 → 4.92 | 6.64 → 2.01 | 7.33 → 2.01 |
-| c8, High: frame | 19.41 → 19.40 | 21.40 → 16.49 | 22.09 → 16.56 |
-| c8, Medium: shadow | 1.62 → 1.62 | 2.40 → 1.31 | 2.49 → 1.06 |
-| c8, Medium: frame | 16.05 → 14.42 | 16.90 → 14.14 | 17.05 → 13.96 |
-| c8, Low: shadow | 1.62 → 1.62 | 2.40 → 0.87 | 2.49 → 0.85 |
-| c8, Low: frame | 12.69 → 11.38 | 13.52 → 10.63 | 13.65 → 10.67 |
-| c4, High: shadow | 5.18 → 5.15 | 7.18 → 2.28 | 8.48 → 2.71 |
-| c4, High: frame | 15.54 → 15.49 | 17.61 → 12.55 | 18.97 → 13.06 |
-| c4, Medium: shadow | 1.73 → 1.73 | 2.70 → 1.38 | 2.94 → 1.39 |
-| c4, Medium: frame | 12.02 → 11.22 | 12.97 → 10.84 | 13.30 → 10.94 |
-| c4, Low: shadow | 1.72 → 1.72 | 2.70 → 1.03 | 2.93 → 1.11 |
-| c4, Low: frame | 9.50 → 8.91 | 10.47 → 8.18 | 10.77 → 8.33 |
+| c8, High: shadow | 4.92 → 4.91 | 6.65 → 2.34 | 7.35 → 2.07 |
+| c8, High: frame | 19.42 → 19.39 | 21.41 → 16.83 | 22.15 → 16.62 |
+| c8, Medium: shadow | 1.62 → 1.62 | 2.40 → 1.40 | 2.49 → 1.13 |
+| c8, Medium: frame | 16.05 → 14.41 | 16.88 → 14.21 | 17.05 → 14.02 |
+| c8, Low: shadow | 1.62 → 1.62 | 2.40 → 0.98 | 2.49 → 0.87 |
+| c8, Low: frame | 12.70 → 11.37 | 13.52 → 10.75 | 13.66 → 10.70 |
+| c4, High: shadow | 5.18 → 5.17 | 7.16 → 2.61 | 8.48 → 2.81 |
+| c4, High: frame | 15.53 → 15.54 | 17.64 → 12.87 | 18.96 → 13.16 |
+| c4, Medium: shadow | 1.73 → 1.74 | 2.70 → 1.46 | 2.94 → 1.48 |
+| c4, Medium: frame | 12.02 → 11.22 | 12.96 → 10.93 | 13.30 → 11.04 |
+| c4, Low: shadow | 1.72 → 1.73 | 2.70 → 1.15 | 2.93 → 1.15 |
+| c4, Low: frame | 9.50 → 8.92 | 10.47 → 8.31 | 10.76 → 8.38 |
 
 Medium keeps its 2048² map (16 MB, not 64): at 4096² with the 75% cap its noon shadow cost 3.18 ms, twice the 2048²
 map's, so Medium would have cost more at noon than before. At 2048² it's never dearer than before at any hour. Its frame's other saving is the reflection at half size

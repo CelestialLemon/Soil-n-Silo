@@ -52,11 +52,12 @@ const DUST_GUST = 1.6;
 const FRESH_DUST = new THREE.Color(0xc8a77a);
 /**
  * Noon's shadow detail, the cap's 100% (Quality.shadowCap, #251): the following shadow's texels a CSS pixel of the zoom,
- * across the sun's view and up it. Those of c8 (the busiest map) at noon at zoom 8, the game's: its 4096² map over a
- * window 384 m across and 232 up, 10.7 and 17.7 texels a metre. A lower sun's window is narrower (48 m up before dawn), and
- * would otherwise take five times the texels a metre, as many leaf cards drawn into each.
+ * across the sun's view and up it. Those of c8 (the busiest map) around noon at zoom 8, the game's, at 1080p: its 4096²
+ * map over the narrowest of its windows from 11:00 to 13:00 in the four views, 320 m across and 216 up (12.8 and 19.0
+ * texels a metre), so midday is drawn as before #251 whichever way the camera looks. A lower sun's window is narrower
+ * (48 m up before dawn), and would otherwise take four times the texels a metre, as many leaf cards drawn into each.
  */
-const SHADOW_CAP = { across: 4096 / 384 / 8, up: 4096 / 232 / 8 };
+const SHADOW_CAP = { across: 4096 / 320 / 8, up: 4096 / 216 / 8 };
 /** A shadowCap, at least 0.05 (a twentieth of noon's; Infinity: no cap); anything else is a caller's bug. */
 function checkShadowCap(cap: number): number {
   if (!(cap >= 0.05)) throw new Error(`brush3d: shadowCap must be at least 0.05 (Infinity for none), not ${cap}`);
