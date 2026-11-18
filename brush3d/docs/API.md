@@ -87,7 +87,7 @@ is cheap: its looks ease towards whatever was asked last.
 | Make the renderer on a canvas | `new BrushRenderer(canvas, options)` | today |
 | Pick the quality at start: multisampling, shadow detail, the shelter map's size | `options.samples`, `shadowMapSize`, `shelterSize` (or `r.setQuality` before the first frame) | today |
 | Let the shadow follow the view over a big map (the game always wants this) | `options.shadowFollow: true` | today |
-| Hold the following shadow's detail to noon's, so a low sun's shadow costs no more than noon's (Soil-n-Silo#251) | `options.shadowCap` (1 by default: noon's on c8; less is coarser and cheaper; `Infinity` the whole map at any hour, as before); each preset has its own (`Quality.shadowCap`) | today |
+| Hold the following shadow's detail to noon's, so a low sun's shadow costs no more than noon's (Soil-n-Silo#251) | `options.shadowCap` (1 by default: noon's on c8; less, but more than 0, is coarser and cheaper; `Infinity` the whole map at any hour, as before); each preset has its own (`Quality.shadowCap`) | today |
 | Draw fewer pixels than a high-DPI screen has (the MacBook) | `r.maxPixels = 1920 * 1080` (before `resize`) | today |
 | Follow the window | `r.resize(cssWidth, cssHeight)` | today |
 | Change the quality from the settings panel without a reload | `r.setQuality(QUALITY.medium)`: presets `high`, `medium` and `low` for the three machines (`docs/PERFORMANCE.md`); `r.quality` is the one drawn | today (#209) |

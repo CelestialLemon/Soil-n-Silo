@@ -13,7 +13,7 @@ export interface Quality {
    * sun squeezes the map's texels into a narrow strip of ground, five times noon's to the metre before dawn, detail the
    * screen can't show that costs as much again to draw. The map is drawn into only as much of itself as this needs
    * (BrushRenderer.followView). 1 is noon's (on the game's busiest map, c8, at the game's zoom), less is coarser and
-   * cheaper; Infinity draws all of the map whatever the hour, as before #251.
+   * cheaper (more than 0); Infinity draws all of the map whatever the hour, as before #251.
    */
   shadowCap: number;
   /** The shelter map (shelter.ts), texels across: how closely rain and snow stop at a roof's or a crown's edge. */
