@@ -16,14 +16,14 @@
 .cd-soft { color: var(--ink-2); } .cd-faint { color: var(--ink-3); }
 .cd-good { color: var(--pine); } .cd-bad { color: var(--rust); }
 
-/* ---- Card: frosted chalk, big soft corners ---- */
-.cd-card { position: relative; padding: var(--s4); border-radius: var(--r-card); background: color-mix(in srgb, var(--chalk) 94%, transparent); backdrop-filter: blur(14px) saturate(1.1); box-shadow: var(--float); }
+/* ---- Card: solid chalk, big soft corners (no see-through blur: it cost ~10 fps on the MacBook, #210) ---- */
+.cd-card { position: relative; padding: var(--s4); border-radius: var(--r-card); background: var(--chalk); box-shadow: var(--float); }
 .cd-card.is-ink { background: var(--ink); color: var(--chalk); }
 .cd-card.is-ink .cd-label { color: #9aa59d; } .cd-card.is-ink .cd-small { color: #b9c2bb; }
 .cd-inset { padding: var(--s3); border-radius: var(--r-tile); background: var(--chalk-2); }
 
 /* ---- Pill: small rounded readouts and chips ---- */
-.cd-pill { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px 0 8px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--chalk) 94%, transparent); backdrop-filter: blur(14px); box-shadow: var(--float); font-weight: 700; font-variant-numeric: tabular-nums; }
+.cd-pill { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px 0 8px; border-radius: var(--r-pill); background: var(--chalk); box-shadow: var(--float); font-weight: 700; font-variant-numeric: tabular-nums; }
 .cd-pill small { font-weight: 600; font-size: 12px; color: var(--ink-3); }
 .cd-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px 0 6px; border-radius: var(--r-pill); background: var(--chalk-2); font: 700 13px/1 var(--font-ui); }
 
@@ -167,14 +167,14 @@
 .cd-panelbtn.is-on { background: var(--ink); color: var(--chalk); }
 
 /* ---- View bar: the map overlays as icon-and-word pills ---- */
-.cd-viewbar { display: inline-flex; align-items: center; gap: 2px; padding: 6px; border-radius: 99px; background: color-mix(in srgb, var(--chalk) 94%, transparent); backdrop-filter: blur(14px); box-shadow: var(--float); }
+.cd-viewbar { display: inline-flex; align-items: center; gap: 2px; padding: 6px; border-radius: 99px; background: var(--chalk); box-shadow: var(--float); }
 .cd-viewbar button { appearance: none; border: 0; display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px 0 8px; border-radius: 99px; background: transparent; font: 700 13px/1 var(--font-ui); color: var(--ink-2); cursor: pointer; }
 .cd-viewbar button .cd-i { --s: 22px; }
 .cd-viewbar button.is-off { padding: 0 12px; }
 .cd-viewbar button.is-on { background: var(--ink); color: var(--chalk); }
 
 /* ---- Problems strip (experimental, opt-in): a shape per problem on the right edge; hover opens it ---- */
-.cd-pstrip { position: absolute; right: 16px; width: 44px; padding: 10px 0 12px; border-radius: 99px; display: flex; flex-direction: column; align-items: center; gap: 12px; background: color-mix(in srgb, var(--chalk) 94%, transparent); backdrop-filter: blur(14px); box-shadow: var(--float); }
+.cd-pstrip { position: absolute; right: 16px; width: 44px; padding: 10px 0 12px; border-radius: 99px; display: flex; flex-direction: column; align-items: center; gap: 12px; background: var(--chalk); box-shadow: var(--float); }
 .cd-pstrip__n { width: 28px; height: 28px; border-radius: 99px; display: grid; place-items: center; background: var(--ink); color: var(--chalk); font: 800 13px/1 var(--font-ui); }
 .cd-pstrip__it { --col: var(--status-ok); appearance: none; border: 0; padding: 0; width: 28px; height: 28px; border-radius: 99px; display: grid; place-items: center; background: color-mix(in srgb, var(--col) 18%, var(--chalk)); cursor: pointer; }
 .cd-pstrip__it i { display: block; width: 12px; height: 12px; border-radius: 99px; background: var(--col); }
