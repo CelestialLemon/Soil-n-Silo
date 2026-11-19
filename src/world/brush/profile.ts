@@ -82,7 +82,7 @@ export function causeCases(): GameCase[] {
     at(`${w}, no shadow map`, { ...widest, settings: { shadows: false } }),
     at(`${w}, water without reflection`, { ...widest, settings: { reflection: false } }),
     at(`${w}, water without the bed`, { ...widest, settings: { under: false } }),
-    at(`${w}, reflection at half size`, { ...widest, reflectionScale: 0.5 }),
+    at(`${w}, reflection at half size`, { ...widest, tweak: { reflectionScale: 0.5 } }),
     at(`${w}, depth not copied out`, { ...widest, settings: { resolveDepth: false } }),
     at(`${w}, no water`, { ...widest, hide: ['water'] }),
     at(`${w}, no foliage`, { ...widest, hide: ['foliage'] }),
@@ -131,7 +131,7 @@ export function profileHead(host: ProfileHost) {
   const gpu = String(gl.getParameter(debug ? debug.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
   const timers = gl.getExtension('EXT_disjoint_timer_query_webgl2') !== null;
   const load = host.load(), ms = (n: number) => `${Math.round(n)}`;
-  const quality = Object.entries(QUALITY).find(([, p]) => p.samples === q.samples && p.shadowMapSize === q.shadowMapSize && p.maxPixels === q.maxPixels)?.[0] ?? JSON.stringify(q);
+  const quality = Object.entries(QUALITY).find(([, p]) => p.samples === q.samples && p.shadowMapSize === q.shadowMapSize && p.shadowCap === q.shadowCap && p.maxPixels === q.maxPixels)?.[0] ?? JSON.stringify(q);
   const cap = Number.isFinite(r.maxRatio) ? `, the pixel ratio capped at ${r.maxRatio}` : '';
   return [
     `${s.scenario.id} (${s.scenario.climate.season}) · ${s.buildings.length} buildings · ${s.trucks.length} trucks · GPU ${gpu} · ${timers ? 'GPU timers' : 'no GPU timers (read the uncapped column)'}`,

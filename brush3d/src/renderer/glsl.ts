@@ -163,6 +163,7 @@ uniform vec3 uViewBack;     // the main camera's backward direction (wind moves 
 uniform sampler2D uShadowMap;
 uniform mat4 uShadowMatrix;  // world -> shadow-map uv and depth
 uniform vec2 uShadowTexel;
+uniform vec2 uShadowArea;    // how much of the map, from its corner, the sun's view is drawn into (shadowDepthAt)
 uniform float uMirror;       // 1 while drawing the water's reflection: the scene mirrored in the plane y = uMirrorY
 uniform float uMirrorY;      // (the water at another height reads it shifted on screen: see WATER_FRAG)
 ${WATER_MAP_GLSL}
@@ -229,10 +230,42 @@ vec3 mirrorSky(vec2 xz, float low, out float cloud) {
 }
 `;
 
-/** Sun visibility from the shadow map, softened by a small rotated disc of taps and nudged by the brush, in 0..1. */
+/**
+ * The shadow map's depth at `uv`, a point of the sun's view (0..1 across its window). The view is drawn into only a corner
+ * of the map when a low sun's narrow window would take more detail than the cap (uShadowArea, #251: BrushRenderer
+ * followView), so `uv` is mapped to that corner, and kept to its outermost texels' centres as the whole map's own edge keeps
+ * it: past them is an older frame's. With all the map drawn (uShadowArea 1) it reads just what `uv` would. For every reader
+ * of the map, with uShadowMap, uShadowTexel and uShadowArea declared.
+ */
+export const SHADOW_DEPTH = /* glsl */ `
+float shadowDepthAt(vec2 uv) {
+  return texture(uShadowMap, clamp(uv * uShadowArea, uShadowTexel * 0.5, uShadowArea - uShadowTexel * 0.5)).r;
+}
+// How much further (metres) a surface with normal n is pushed off itself before it reads the map, past its own push for
+// all the map drawn over the window: the corner's texels are coarser (uShadowArea < 1), each a bigger patch whose depth is
+// its centre's, and a surface at a slant to the sun sits in front of or behind that by its slope across the patch (shadow
+// acne: lit ground at a low sun dashed with its own shade). A push of a texel's growth across the sun's view along the
+// normal's lean in each axis covers it: the point is up to half a texel from the centre read, but half a texel's growth
+// still left a speckle at the widest zoom, so a whole one. The price: every shadow comes up short by the push (stretched
+// by a low sun), and what stands lower than it (a sill, at Low zoomed out) throws none, where the capped map could show
+// one. None with all the map drawn: just as before.
+float shadowSlack(vec3 n) {
+  vec3 ax = vec3(uShadowMatrix[0][0], uShadowMatrix[1][0], uShadowMatrix[2][0]);   // uv a metre, across and up
+  vec3 ay = vec3(uShadowMatrix[0][1], uShadowMatrix[1][1], uShadowMatrix[2][1]);
+  vec2 grow = uShadowTexel * (1.0 - uShadowArea) / uShadowArea;                     // the texel's growth, in uv
+  return abs(dot(n, ax)) * grow.x / dot(ax, ax) + abs(dot(n, ay)) * grow.y / dot(ay, ay);
+}
+`;
+
+/**
+ * Sun visibility from the shadow map, softened by a small rotated disc of taps and nudged by the brush, in 0..1. The taps
+ * and the brush's nudge are measured across the view's window (in texels of all the map drawn over it), so the soft edge
+ * keeps its width on the ground however much of the map is drawn (shadowDepthAt).
+ */
 export const SHADOW = /* glsl */ `
+${SHADOW_DEPTH}
 float sunVisibility(vec3 worldPos, vec3 n, float brush) {
-  vec3 p = worldPos + n * 0.04;
+  vec3 p = worldPos + n * (0.04 + shadowSlack(n));
   vec4 s = uShadowMatrix * vec4(p, 1.0);
   vec3 uvz = s.xyz / s.w;
   if (uvz.x < 0.0 || uvz.x > 1.0 || uvz.y < 0.0 || uvz.y > 1.0 || uvz.z > 1.0) return 1.0;
@@ -244,7 +277,7 @@ float sunVisibility(vec3 worldPos, vec3 n, float brush) {
     float a = float(i) * 2.39996 + hash12(worldPos.xz * 31.0) * 6.283;
     float r = sqrt((float(i) + 0.5) / 8.0) * 2.2 * (1.0 + overcast.z);
     vec2 o = vec2(cos(a), sin(a)) * r * uShadowTexel + wob;
-    float d = texture(uShadowMap, uvz.xy + o).r;
+    float d = shadowDepthAt(uvz.xy + o);
     vis += (uvz.z - 0.0015 > d) ? 0.0 : 1.0;
   }
   return mix(vis / 8.0, 1.0, overcast.y);

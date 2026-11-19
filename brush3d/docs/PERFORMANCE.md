@@ -728,10 +728,12 @@ while the game runs, #209), and the rain and snow on their own (`settings.fallin
 |---|---|---|---|
 | For | the RX 570 PC, the MacBook Air (the default) | integrated graphics: the Arc 140T laptop | when medium still misses 45 fps |
 | Shadow map | 4096² | 2048² (softer, slightly stepped shadow edges) | 2048² |
+| Shadow detail at most (`shadowCap`, #251) | noon's | 75% of noon's (coarser at a low sun) | half noon's (stepped edges at a low sun) |
 | Shelter map | 1024² | 512² | 512² |
 | Multisampling | 4× | 4× | 2× (edges and ink a touch rougher) |
 | Most pixels drawn, scaled up to the screen | 1920 × 1080's | 1920 × 1080's | 1600 × 900's (a slightly softer frame) |
-| The farm at 1080p in a storm, RX 570, GPU | 14.65 ms | 11.31 ms | 9.76 ms |
+| The water's reflection (`reflectionScale`, #251) | half the frame's size | a quarter's (a little softer in the ripples) | a quarter's |
+| The farm at 1080p in a storm, RX 570, GPU (before #251) | 14.65 ms | 11.31 ms | 9.76 ms |
 
 Measured with `node brush3d/tools/profile.ts out "scene=farm&quality=high" "scene=farm&quality=medium" "scene=farm&quality=low"`
 (the demo's `?quality=`; with it the profile's 1440p and 4K cases are drawn at the preset's pixels too). Each knob alone,
@@ -739,6 +741,50 @@ on the farm at 1080p in a storm (14.64 ms): the 2048² shadow map 11.31 (-3.3), 
 (-1.8, but the ink's edges go ragged, so no preset drops it), the 512² shelter map 14.65 (it costs only when it's drawn
 again, after cover changes: 1.56 ms to 0.93 a time). Medium's 3.3 ms is about 6 on the laptop; the laptop's own numbers
 are the developer's to take (`?profile&quality=medium` on a preview of the demo).
+
+### The shadow's detail held to noon's (#251)
+
+The sun's shadow follows the view (`followView`): its map covers just the ground on screen, as the sun sees it. A low sun
+sees that ground squeezed into a narrow strip (on c8 at zoom 8 the window is 320 to 384 m across and 216 to 272 up from 11:00 to 13:00, whichever way the camera looks, and 48 m up before dawn),
+so the same map gave each metre up to four or five times midday's texels, detail the screen can't show, and every leaf card was
+drawn into all of them: the frame cost depended on the hour. Now the map is drawn into only a corner of itself, as many
+texels as noon's detail needs (`Quality.shadowCap`: 1 is c8's finest midday window at zoom 8, so midday is drawn as before
+in all four views: 1.6 texels a CSS pixel across the sun's view and 2.37 up it, scaled with the zoom), and the shaders read that corner (`shadowDepthAt`: the lit surfaces, the
+frost's sun memory and the lightning). The corner's texels are coarser than the whole map's would be, so each reader
+pushes the point it tests off its surface by as much more as they've grown, along the surface's lean towards the sun
+(`shadowSlack`): without it, lit ground at a low sun shaded itself in dashes (shadow acne), and at the widest zoom in
+stripes. Wherever the whole map is drawn it adds nothing, so noon at the shipped levels draws as before (frost left from a
+morning remembers the morning's shadows, as it did with the cap); it costs nothing measurable. The price: a shadow comes
+up shorter by the push, and a caster lower than it (a sill, at Low zoomed out) throws none. The soft edge's taps keep their width on the ground, so a low sun's edge isn't
+speckled; the texels' spacing holds to 16 steps a doubling and, while the zoom moves, to the last frame's within half a
+doubling of the zoom's, settling once it stops (each change of it moves every texel, a flicker along the edges: a slow
+zoom from 4 to 24 changes it 9 to 32 times on High and Low, where before #251 the window's own 8 m steps changed it 33 to
+54 times), and the window to whole texels (so a pan doesn't make them crawl). The whole map is still cleared each frame:
+clearing only the corner cost 0.1 ms more on c4.
+
+c8's farm and c4's farm at 1080p on the RX 570, clear and still, the start view (zoom 8), GPU ms (the shadow pass, then
+the whole frame), before → after; the hours are noon, golden hour (half an hour before sunset) and before dawn (six
+minutes before sunrise):
+
+| | noon | golden hour | before dawn |
+|---|---|---|---|
+| c8, High: shadow | 4.92 → 4.91 | 6.65 → 2.34 | 7.35 → 2.07 |
+| c8, High: frame | 19.42 → 19.39 | 21.41 → 16.83 | 22.15 → 16.62 |
+| c8, Medium: shadow | 1.62 → 1.62 | 2.40 → 1.40 | 2.49 → 1.13 |
+| c8, Medium: frame | 16.05 → 14.41 | 16.88 → 14.21 | 17.05 → 14.02 |
+| c8, Low: shadow | 1.62 → 1.62 | 2.40 → 0.98 | 2.49 → 0.87 |
+| c8, Low: frame | 12.70 → 11.37 | 13.52 → 10.75 | 13.66 → 10.70 |
+| c4, High: shadow | 5.18 → 5.17 | 7.16 → 2.61 | 8.48 → 2.81 |
+| c4, High: frame | 15.53 → 15.54 | 17.64 → 12.87 | 18.96 → 13.16 |
+| c4, Medium: shadow | 1.73 → 1.74 | 2.70 → 1.46 | 2.94 → 1.48 |
+| c4, Medium: frame | 12.02 → 11.22 | 12.96 → 10.93 | 13.30 → 11.04 |
+| c4, Low: shadow | 1.72 → 1.73 | 2.70 → 1.15 | 2.93 → 1.15 |
+| c4, Low: frame | 9.50 → 8.92 | 10.47 → 8.31 | 10.76 → 8.38 |
+
+Medium keeps its 2048² map (16 MB, not 64): at 4096² with the 75% cap its noon shadow cost 3.18 ms, twice the 2048²
+map's, so Medium would have cost more at noon than before. At 2048² it's never dearer than before at any hour. Its frame's other saving is the reflection at half size
+(1.6 ms at the start view, 1.0 at the widest). Half the leaf cards in the reflection, each larger (Sol's #210 idea), saved
+only 0.2 ms more and was left out.
 
 The rain and snow setting draws all the strokes or about a third (`fallingShare` 1 or 0.33): it barely costs here (the
 farm's storm 14.67 with the rain, 14.65 without), so it's there for a player who'd rather see less in the air, and for

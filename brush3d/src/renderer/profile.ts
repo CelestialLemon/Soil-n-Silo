@@ -36,8 +36,6 @@ export interface ProfileCase {
   tweak?: Partial<Quality>;
   /** Changes to the renderer's settings for this case alone (no prepass, no shadows, no reflection): what each costs. */
   settings?: Partial<Settings>;
-  /** The reflection at this share of its usual size (setReflectionScale). */
-  reflectionScale?: number;
 }
 export interface ProfileRow {
   label: string; width: number; height: number;
@@ -85,7 +83,7 @@ export async function runProfile<C extends ProfileCase>(
   const rows: ProfileRow[] = [];
   let time = 20;
   const view = renderer.view, zoom = view.zoom, quality = renderer.quality, maxRatio = renderer.maxRatio;
-  const settings = { ...renderer.settings }, reflectionScale = renderer.reflectionScale;
+  const settings = { ...renderer.settings };
   // The cases are in drawn pixels: the player's cap on the pixel ratio (a high-DPI screen's) isn't theirs.
   renderer.setMaxRatio(Infinity);
   const screen = { width: view.screen.width, height: view.screen.height };
@@ -97,7 +95,6 @@ export async function runProfile<C extends ProfileCase>(
       // land; the quality sets only how many of them are drawn (maxPixels: fewer, scaled up).
       renderer.setQuality({ ...(c.quality ?? quality), ...c.tweak });
       Object.assign(renderer.settings, settings, c.settings);
-      renderer.setReflectionScale(c.reflectionScale ?? reflectionScale);
       renderer.resize(c.width / renderer.screenRatio, c.height / renderer.screenRatio);
       output.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight);
       view.zoom = (zoom * c.height) / 1080;
@@ -183,7 +180,6 @@ export async function runProfile<C extends ProfileCase>(
     renderer.timer = null;
     renderer.setQuality(quality);
     Object.assign(renderer.settings, settings);
-    renderer.setReflectionScale(reflectionScale);
     renderer.maxRatio = maxRatio;
     renderer.resize(screen.width, screen.height);
     for (const k of PROFILE_KINDS) renderer.setVisible(k, true);

@@ -113,6 +113,10 @@ developer's checks on the laptop and the MacBook (#210), and the river's falls (
 Since, for #210: brush3d draws the water's bed and reflection only where the water can show (#249), the same picture
 for 1.5–3 ms less GPU a frame on c4 and c8; and it draws many meshes to a draw call (#250, done 2026-11-18): the same
 picture, about 70–95 draws a frame on c4 and c8 rather than 1,200–2,400, and half to two thirds less of three.js's time.
+And the sun's shadow is drawn with noon's detail at most (#251, done 2026-11-19), so a low sun costs no more than
+noon: on c8 at golden hour and before dawn, about 4.6–5.5 ms less GPU a frame at High, 2.7–3 at Medium and 2.8–3 at Low,
+noon as before; Medium and Low also draw the water's reflection at half size. Shadows come up a touch shorter at a low sun
+(the developer approved it on the sheets, 2026-11-19).
 
 ## The farm at work: moving parts, states, lights and smoke (2026-11-16)
 
@@ -208,8 +212,9 @@ should replace the rules' shelter number for turbines (a design call).
 
 The settings panel's Game tab has brush3d's settings (#209) in place of the pixel size (gone with the pixel renderer, #211),
 saved with the game's other settings and taking effect at once: **Graphics** (high, medium, low: presets for the three
-machines, high the full picture and the default; medium halves the shadow and shelter maps' detail, about 3.3 ms less on
-the RX 570, for integrated graphics; low also draws 2× multisampling and at most 1600 × 900's pixels), **Rain and snow**
+machines, high the full picture and the default; medium halves the shadow and shelter maps' detail, holds the shadow to 75% of noon's
+detail and halves the water's reflection, for integrated graphics; low holds the shadow to half noon's detail and also
+draws 2× multisampling and at most 1600 × 900's pixels; each level's sun shadow is held to noon's detail at most, #251), **Rain and snow**
 (full, or light: about a third of the drops and flakes) and **Lightning flashes** (full, which stays within the flash-safety
 limits, gentle or off; the developer's decision on #209).
 `src/world/brush/settings.ts` sends them to the renderer; brush3d's `QUALITY` and `setQuality` change the quality while the
