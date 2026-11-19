@@ -498,8 +498,8 @@ above, the game stops using it and it becomes the renderer's own.
   A tree's spring is held by each mesh that draws it and freed when the last lets go (`r.remove`, `r.removeTrees`), its
   slot then reused by the next new tree.
 - `MeshBuilder` and `Paint`: geometry in the renderer's format (colours, normals, the brush per vertex, tree ids).
-- `growTree`, `Grove`, `dressFor`, `addStone`, `addTuft`, `addReeds`, `addMound`, `addFlowers`, `groundOf`, `MapLine`:
-  the demo's pieces. `Grove.addTo(r, options)` adds its meshes with the given options and returns them. A `Tree`'s
+- `growTree`, `Grove`, `dressFor`, `addStone`, `addRock`, `addTuft`, `addReeds`, `addMound`, `addFlowers`, `groundOf`, `MapLine`:
+  the demo's pieces (`addRock` adds a faceted, slope-grounded boulder or crag with patchy moss, for clustered rock outcrops). `Grove.addTo(r, options)` adds its meshes with the given options and returns them. A `Tree`'s
   `stroke` (broader, fewer strokes) and `fill` (the share of a crown's outer strokes) thin it for a crowd; 1 is the demo's.
 - The plant kit (`kit/plants.ts`, #213): `CropPatch` (a field's crop, one soft blanket over its bed; one `CropTile` a
   tile with which neighbours it joins, at its stage 0–3: just sown, young, flowering, ripe; `addTo(r)` returns its
