@@ -95,7 +95,10 @@ function startNew(id: string) {
   location.href = page();
 }
 
-if (startId && startSc) startNew(startId);
+if (params.has('building-study')) {
+  const { openBuildingStudy } = await import('./world/study/buildings.ts');
+  openBuildingStudy(canvas, loading, settings, params.get('building-study'));
+} else if (startId && startSc) startNew(startId);
 else if (!saved || params.has('menu')) {
   loading.remove();
   showMenu(document.body, {

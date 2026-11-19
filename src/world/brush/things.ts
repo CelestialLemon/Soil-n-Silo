@@ -89,7 +89,8 @@ export class Things {
   private readonly buildings = new Map<number, Drawn>();
   private readonly trucks = new Map<number, Drawn>();
   private layout = -1;
-  /** The models by name, once loaded (one that failed to load is missing, and draws as its stand-in). */
+  private readonly modelUrls: ReadonlyMap<number, string>;
+  /** The models by name or override URL, once loaded (one that failed to load is missing, and draws as its stand-in). */
   private models: Map<string, THREE.Object3D> | null = null;
   /**
    * Counts the meshes made and taken out (a building placed, removed or redrawn, a truck bought), and a truck loaded or
@@ -107,15 +108,17 @@ export class Things {
 
   private readonly goods: Goods;
 
-  constructor(r: BrushRenderer, lie: Lie, goods: Goods) {
-    this.r = r; this.lie = lie; this.goods = goods;
+  constructor(r: BrushRenderer, lie: Lie, goods: Goods, modelUrls: ReadonlyMap<number, string> = new Map()) {
+    this.r = r; this.lie = lie; this.goods = goods; this.modelUrls = modelUrls;
     this.ready = this.load();
   }
 
   private async load() {
     const names = [...new Set([...Object.values(MODEL_OF), TRUCK_MODEL])];
-    const loaded = await Promise.all(names.map(async (name) => {
-      try { return [name, await loadModel(MODELS[name].url)] as const; } catch (e) { console.warn(`brush3d: the ${name} model failed to load`, e); return null; }
+    const sources = new Map(names.map((name) => [name, MODELS[name].url]));
+    for (const url of this.modelUrls.values()) sources.set(url, url);
+    const loaded = await Promise.all(Array.from(sources, async ([name, url]) => {
+      try { return [name, await loadModel(url)] as const; } catch (e) { console.warn(`brush3d: the ${name} model failed to load`, e); return null; }
     }));
     this.models = new Map(loaded.filter((l) => l !== null));
     // Every stand-in is swapped for its model at the next sync.
@@ -195,7 +198,7 @@ export class Things {
 
   /** A building's meshes: its model (inked, its planted surfaces and its plants painted) and its parts, or its stand-in. */
   private building(b: Building, n: number, y: number): { meshes: THREE.Mesh[]; parts?: ModelParts } {
-    const name = MODEL_OF[b.type], model = name ? this.models?.get(name) : undefined;
+    const name = this.modelUrls.get(b.id) ?? MODEL_OF[b.type], model = name ? this.models?.get(name) : undefined;
     const centre = new THREE.Vector3((b.x + n / 2) * TILE, y, (b.y + n / 2) * TILE);
     if (model) {
       // Its plants are seeded by where it stands, so it grows the same ones each time it's drawn there.

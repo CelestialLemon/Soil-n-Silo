@@ -4,6 +4,9 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
 
 ## Now
 
+- **Building style study.** Five sets of test models are available in the game's `?building-study` level. The options
+  vary materials and roof profiles, with the building's function visible at game zoom. See [the model notes](MODELS.md#building-style-study).
+
 - **Into the game, epic CelestialLemon/Soil-n-Silo#212**: brush3d replaced the game's pixel3d renderer. The order is in
   the epic: #199 → #200 (the move into the game) → #201 (first light) → #202–#210 and #213 → #211 (the swap), all
   Soil-n-Silo issues.

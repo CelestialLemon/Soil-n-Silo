@@ -15,6 +15,30 @@ Only buildings and props are models. Trees, bushes and crops are painted kinds t
   in `src/models/`.
 - From all four sides: `view=0..3`, or the demo's turn buttons.
 
+## Building style study
+
+Add `?building-study` to the game's URL (for example, on a PR preview). The level has six groups of the same three
+buildings: bakery, garage and silo. Use **Overview** to compare all the groups, then choose a style or an individual
+building to look closer. Drag to pan, scroll to zoom, turn with Q/E or the buttons, and use the time and weather controls
+to compare the materials in different light. The layout is a separate, unsaved level. To link to
+a particular group, use `?building-study=timber` (or `current`, `adobe`, `enamel`, `basalt`, `canvas`).
+
+| Style | Material and silhouette |
+| --- | --- |
+| Current | Rounded lime-white walls, planted roofs and solar glass from the game |
+| Orchard Timber | Cedar, berry-red gables, an open timber shed and a square grain tower |
+| Adobe Courtyard | Peach clay, flat parapets, shaded archways and stepped grain bins |
+| Enamel Works | Cobalt steel, yellow framing, folded skylights and paired metal silos |
+| Basalt & Copper | Deep stone courses, weathered copper and a tall faceted spire |
+| Canvas & Bamboo | Tensioned cloth, slender poles and an elevated woven grain basket |
+
+The Blender source is `tools/blender/build_study.py`. It uses the same footprint and triangle checks as the production
+models and exports to a separate folder. Rebuild from the repository root with:
+
+```sh
+flatpak run org.blender.Blender -b --factory-startup --python-exit-code 1 --python "$PWD/brush3d/tools/blender/build_study.py" -- "$PWD/brush3d/src/models/study"
+```
+
 ## The style
 
 "Painted world, inked things" (`docs/DIRECTION.md`), and the game's mood: hopeful, green, crafted, with renewable power

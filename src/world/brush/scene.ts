@@ -42,7 +42,13 @@ import { Wild } from './wild.ts';
 //
 // This file only wires the pieces into the Scene: a task adds its piece and its few lines here.
 
-export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings: SettingsStore, start: { x: number; z: number }, changed: () => void): Scene {
+interface SceneOptions {
+  /** Alternate models for individual exhibits in the building study. */
+  modelUrls?: ReadonlyMap<number, string>;
+  minZoom?: number;
+}
+
+export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings: SettingsStore, start: { x: number; z: number }, changed: () => void, options: SceneOptions = {}): Scene {
   const map = state.map;
   // How long each piece takes to make (the load, #210's ?profile).
   const pieces: Record<string, number> = {};
@@ -56,9 +62,9 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
   const ground = timed('land', () => new BrushLand(r, state, land, lie)), sky = new BrushSky(r, state), cover = new BrushCover(r, land), water = timed('water', () => new BrushWater(r, land, lie));
   // The goods trucks carry and buildings hand next door (#203), drawn with the things.
   const goods = new Goods(r);
-  const things = new Things(r, lie, goods), wild = timed('wild', () => new Wild(r, lie, land, state)), wind = timed('wind', () => new BrushWind(r, state, land));
+  const things = new Things(r, lie, goods, options.modelUrls), wild = timed('wild', () => new Wild(r, lie, land, state)), wind = timed('wind', () => new BrushWind(r, state, land));
   const lens = new BrushLens(r, canvas);
-  const camera = new Camera(lens, canvas, map, start, changed);
+  const camera = new Camera(lens, canvas, map, start, changed, options.minZoom);
   const tools = timed('tools', () => new BrushTools(r, state, things, lie));
   // The ground's brush baked once, here at the load, into a 4096² texture over the land (16 cm a texel, 64 MB), and read
   // from it each frame rather than worked out afresh in every pixel: a third of the GPU's frame (#210, the developer's
