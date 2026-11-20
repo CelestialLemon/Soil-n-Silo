@@ -165,14 +165,14 @@ test('a flood takes no reeds away: they line the same shores under it, mostly un
     const f = flooded(s), wet = shores();
     assert.ok(f.count > 100, `${strength}: the flood covers ${f.count} tiles`);
     assert.deepEqual([...wet], [...dry], strength);
-    let under = 0;
+    // Riverlands' shores are all the river's, and every one is under the flood (its banks and its channel both).
+    assert.ok(wet.size > 100, `${strength}: ${wet.size} shore tiles`);
     for (const [i, edge] of wet) {
-      if (Number.isNaN(f.surface[i])) continue;
+      const at = `${strength}, tile ${i % w}, ${Math.floor(i / w)}`;
+      assert.ok(Number.isFinite(f.surface[i]), `${at}: under the flood`);
       const deep = f.surface[i] * LEVEL - edge;
-      assert.ok(deep > over, `${strength}, tile ${i % w}, ${Math.floor(i / w)}: ${deep.toFixed(2)} m deep at the water's edge`);
-      under++;
+      assert.ok(deep > over, `${at}: ${deep.toFixed(2)} m deep at the water's edge`);
     }
-    assert.ok(under > 20, `${strength}: ${under} shore tiles under the flood`);
   }
 });
 
