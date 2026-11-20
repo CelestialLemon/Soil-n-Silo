@@ -176,8 +176,12 @@ their shape. Cliffs are sharp where tiles don't meet, and their faces show strat
 The river and ponds sit in beds under their tiles, with the water 0.48 m under the level, so the banks stand over it. The
 country past the edge is clearly duller, so where you can build reads at a glance, and distant woods run to the horizon
 (the developer's picks on #228). An earthwork repaints only the chunks round it, spread over frames and swapped in at once,
-so the land never shows half a change. Still open: the river's falls are a plain chute for now and don't read as a
-waterfall (#241); the water wheel's race cut into its bank (`brush3d/docs/LAND.md`); the game and brush3d each fit the
+so the land never shows half a change. The river and the ponds' shores curve over the tile rules (#258, epic #265,
+2026-11-20): the beds follow a smoothed field of the water's tiles, so a bend is a curve and a pond an oval, with a damp
+bank and a shingle at the waterline, while a water wheel's pad and a fall keep their square edges and the rules don't
+change (done 2026-11-21: the developer picked the organic look, which wanders a little, on PR #283). Still open: the river's falls are a
+plain chute for now and don't read as a waterfall (#241); the per-tile frost and ground paint still step a little way up
+a curving bank; the water wheel's race cut into its bank (`brush3d/docs/LAND.md`); the game and brush3d each fit the
 ground after an earthwork, about 10 ms twice (#210). Meadow grass tufts across the open grass, swaying in the living wind
 (#256, epic #265's Wave 1, done 2026-11-21): dense, taller tussocks, the developer's pick of three densities (lush). Wildflowers among them in soft
 drifts, gathered at the woods' skirts and the hills' edges, in the season's colours (spring's white, yellow, peach and sky

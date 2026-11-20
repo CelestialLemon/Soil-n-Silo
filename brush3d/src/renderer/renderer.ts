@@ -940,7 +940,8 @@ export class BrushRenderer {
 
   /**
    * Whether landAt and landHit answer for an earthwork's new ground that isn't drawn yet (fitted, its chunks still being
-   * painted): something set on the land meanwhile would float over or sink into the ground on screen till it's swapped in.
+   * painted), and landColourAt for its shores' banks and beds: something set on the land meanwhile would float over or sink
+   * into the ground on screen till it's swapped in, or take the new bank's colour.
    */
   get landAhead(): boolean { return this.painted?.ahead ?? false; }
 
