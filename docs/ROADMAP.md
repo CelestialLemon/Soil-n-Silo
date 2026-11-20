@@ -101,6 +101,20 @@ only, never saved, the map itself unchanged): the river runs on out of sight, a 
 thicken and the ground rises into wooded hills, with an apron of distant woods beyond them. Everything past the edge is a
 shade duller, so where you can build still reads at a glance. Height on the map itself followed on 2026-10-17, below.
 
+## A living valley (epic #265, from 2026-11-20)
+
+The live valley brought up to the brush3d farm demo's crafted look, one small issue and PR at a time, each with its look
+options behind a HUD button and a URL option on the PR's preview, and no rules changed.
+- **Rock outcrops (#257):** a rock tile used to be one or two round stones in its middle, so a rocky patch read as a grid
+  of dots. Now each rock tile looks at its eight neighbours (`src/world/brush/rockPlan.ts`): inside a patch, big faceted
+  crags and broad shelves shifted toward the patch's middle, bridges over the edges and corners rock tiles share, and at
+  its edges smaller stones and talus; nothing leaves the rock tiles, every crag sits into the slope, and moss grows on
+  their tops (seasonal). brush3d's painting kit draws them (`addCrag`). The country's rocks near the map are drawn in
+  8 × 8-tile pieces, so an earthwork at the map's edge remakes only the pieces it touches. Picking a crag finds its rock
+  tile, and a tree's crown leaning over the rock still finds the tree. On the PR's preview: `?rocks=soft` (calm, mossy,
+  the default), `?rocks=bold` (taller, sharper, more talus) or `?rocks=off` (as before), and the **Rocks** button in the
+  HUD; the developer's pick to come, then the switch goes.
+
 ## One renderer: the swap to brush3d (2026-11-16)
 
 brush3d is now the game's only renderer (#211, the last task of epic #212): it's the default, with no `?renderer=` flag

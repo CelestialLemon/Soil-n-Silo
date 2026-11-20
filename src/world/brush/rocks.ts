@@ -1,11 +1,15 @@
-import { addCrag, addStone, rng, srgb, type Ground, type MeshBuilder } from '../../../brush3d/src/index.ts';
+import { addCrag, addStone, groundOf, MeshBuilder, rng, srgb, type Ground } from '../../../brush3d/src/index.ts';
 import { hash } from '../trees.ts';
+import { cragTops } from './pickTile.ts';
 import { planOutcropTile, type RocksLook } from './rockPlan.ts';
 import { TILE } from './scale.ts';
 
 export { rockMask, rockTileKey, type RocksLook } from './rockPlan.ts';
 
 // Emits a planned rock outcrop tile into a brush3d MeshBuilder (#257).
+
+/** The crags' drawn surfaces, for picking (pickTile.ts): read from the same kit that draws them. */
+export const cragTop = cragTops({ addCrag, groundOf, MeshBuilder, rng });
 
 const STONE_COOL = srgb(0x84878b);
 const STONE_MID = srgb(0x978f83);

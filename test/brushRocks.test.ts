@@ -8,12 +8,13 @@ import { addCrag, addStone, groundOf } from '../brush3d/src/kit/kit.ts';
 import { generateLand, TERRAIN } from '../src/game/map.ts';
 import { CAMPAIGN } from '../src/game/scenarios.ts';
 import { newGame } from '../src/game/state.ts';
-import { plantTile } from '../src/world/brush/pickTile.ts';
-import { planOutcropTile, ROCK_BIT, footprintDistance2, rockFootprint, rockMask, rockTileKey, type PlannedRock, type RocksLook } from '../src/world/brush/rockPlan.ts';
+import { cragTops, plantTile } from '../src/world/brush/pickTile.ts';
+import { planOutcropTile, ROCK_BIT, rockMask, rockTileKey, type PlannedRock, type RocksLook } from '../src/world/brush/rockPlan.ts';
 import { TILE } from '../src/world/brush/scale.ts';
 
 const FLAT_GROUND = groundOf(() => 0);
 const FLAT = () => 0;
+const TOPS = cragTops({ addCrag, groundOf, MeshBuilder, rng });
 
 /** Emits real `addCrag` geometry for planned pieces and returns the built BufferGeometry. */
 function buildCrags(pieces: readonly PlannedRock[], ground = FLAT_GROUND) {
@@ -233,55 +234,23 @@ test('plantTile keeps rock picks on the rock tile next to a tree while preservin
   s.map.terrain[5 * w + 6] = TERRAIN.tree;
 
   // Direct hit on rock geometry inside the rock tile (even right near the border with the neighbour tree) picks the rock.
-  assert.deepEqual(plantTile(s, { x: 5.5 * TILE, y: 0.9, z: 5.5 * TILE }, FLAT, 'bold'), { x: 5, y: 5 });
+  assert.deepEqual(plantTile(s, { x: 5.5 * TILE, y: 0.9, z: 5.5 * TILE }, FLAT, 'bold', TOPS), { x: 5, y: 5 });
 
   // A low overhanging tree crown above the rock's local height (including a 3.98 m birch crown over a tall bold rock)
   // resolves to the adjacent tree rather than the rock.
-  assert.deepEqual(plantTile(s, { x: 5.85 * TILE, y: 3.98, z: 5.5 * TILE }, FLAT, 'bold'), { x: 6, y: 5 });
-  assert.deepEqual(plantTile(s, { x: 5.85 * TILE, y: 5.2, z: 5.5 * TILE }, FLAT, 'bold'), { x: 6, y: 5 });
+  assert.deepEqual(plantTile(s, { x: 5.85 * TILE, y: 3.98, z: 5.5 * TILE }, FLAT, 'bold', TOPS), { x: 6, y: 5 });
+  assert.deepEqual(plantTile(s, { x: 5.85 * TILE, y: 5.2, z: 5.5 * TILE }, FLAT, 'bold', TOPS), { x: 6, y: 5 });
 
   // Verify the exact Windy Ridge (40, 22) birch crown at 3.98 m over rock (41, 22) picks the tree.
   const c3 = newGame(CAMPAIGN.find((c) => c.id === 'c3')!);
-  assert.deepEqual(plantTile(c3, { x: 41.25 * TILE, y: 3.98, z: 22.5 * TILE }, FLAT, 'bold'), { x: 40, y: 22 });
+  assert.deepEqual(plantTile(c3, { x: 41.25 * TILE, y: 3.98, z: 22.5 * TILE }, FLAT, 'bold', TOPS), { x: 40, y: 22 });
 
   // A tree crown overhanging empty grass within CROWN_REACH still resolves to the tree.
-  assert.deepEqual(plantTile(s, { x: 6.5 * TILE, y: 4.5, z: 4.8 * TILE }, FLAT, 'bold'), { x: 6, y: 5 });
+  assert.deepEqual(plantTile(s, { x: 6.5 * TILE, y: 4.5, z: 4.8 * TILE }, FLAT, 'bold', TOPS), { x: 6, y: 5 });
 
   // A crop/building on grass next to a rock is never stolen by the rock.
   s.buildings.push({ id: 999, type: 'field', x: 4, y: 4, rot: 0, crop: 'wheat', growth: 0.5, stored: 0, status: 'idle', need: null } as never);
-  assert.equal(plantTile(s, { x: 5.5 * TILE, y: 0.4, z: 4.97 * TILE }, FLAT, 'bold'), null);
-});
-
-test('plantTile keeps a hit on a rock face whose piece belongs to the east neighbour, with a tree to the north', () => {
-  const s = newGame(CAMPAIGN[0]);
-  const w = s.map.width, h = s.map.height;
-  s.buildings = [];
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) s.map.terrain[y * w + x] = TERRAIN.grass;
-  // A row of trees over a solid band of rock five tiles deep.
-  const top = 3;
-  for (let x = 0; x < w; x++) {
-    s.map.terrain[(top - 1) * w + x] = TERRAIN.tree;
-    for (let y = top; y < top + 5; y++) s.map.terrain[y * w + x] = TERRAIN.rock;
-  }
-  const isRock = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h && s.map.terrain[y * w + x] === TERRAIN.rock;
-  const covers = (p: PlannedRock, wx: number, wz: number) => footprintDistance2(rockFootprint(p), wx - p.x, wz - p.z) <= 0.8;
-  const owns = (p: PlannedRock, wx: number, wz: number) => footprintDistance2(rockFootprint(p), wx - p.x, wz - p.z) <= 1;
-  let checked = 0;
-  for (let ox = 1; ox < w - 2; ox++) {
-    const own = [[ox, top], [ox - 1, top]].flatMap(([x, y]) => planOutcropTile(x, y, isRock, 'bold'));
-    for (const p of planOutcropTile(ox + 1, top, isRock, 'bold')) {
-      // Points of this tile's north strip, under a crown's reach, that only the east neighbour's crag stands on.
-      for (let fx = 0.05; fx < 1; fx += 0.1) for (let fz = 0.02; fz < 0.4; fz += 0.05) {
-        const wx = (ox + fx) * TILE, wz = (top + fz) * TILE;
-        if (Math.hypot(fx - 0.5, fz + 0.5) >= 0.8 || !covers(p, wx, wz) || own.some((q) => owns(q, wx, wz))) continue;
-        // Inside the crag's body, above the low floor the tile's gaps get.
-        const y = Math.max(0.6, p.ry * (1 - 2 * p.sink) + 0.3 * p.ry);
-        assert.deepEqual(plantTile(s, { x: wx, y, z: wz }, FLAT, 'bold'), { x: ox, y: top }, `rock face at tile ${ox}`);
-        checked++;
-      }
-    }
-  }
-  assert.ok(checked > 0, 'found an east neighbour\'s crag leaning over a tile under a crown');
+  assert.equal(plantTile(s, { x: 5.5 * TILE, y: 0.4, z: 4.97 * TILE }, FLAT, 'bold', TOPS), null);
 });
 
 test('plantTile measures a crag\'s top from the ground under it, not under the hit, on a slope', () => {
@@ -290,16 +259,60 @@ test('plantTile measures a crag\'s top from the ground under it, not under the h
   for (let y = 3; y <= 7; y++) for (let x = 3; x <= 7; x++) s.map.terrain[y * w + x] = TERRAIN.grass;
   s.buildings = s.buildings.filter((b) => b.x < 2 || b.x > 8 || b.y < 2 || b.y > 8);
   s.map.terrain[5 * w + 5] = TERRAIN.rock;
-  s.map.terrain[4 * w + 5] = TERRAIN.tree;
+  s.map.terrain[6 * w + 5] = TERRAIN.tree;
   const lone = (x: number, y: number) => x === 5 && y === 5;
   const main = planOutcropTile(5, 5, lone, 'bold')[0];
-  // The land falls steeply away to the south; a hit just above the crag's real top on its downhill side is the crown's.
+  // The land falls steeply away to the south, towards the tree, from the crag's centre.
   const slope = (_x: number, z: number) => -(z - main.z) * 0.8;
-  const tops = main.ry * (2 - 2 * main.sink) * 1.08 + 0.15;
-  const wz = main.z + 0.5 * rockFootprint(main).fz, wx = main.x;
-  if (Math.hypot(wx / TILE - 5.5, wz / TILE - 4.5) < 0.8) {
-    assert.deepEqual(plantTile(s, { x: wx, y: tops + 0.3, z: wz }, slope, 'bold'), { x: 5, y: 4 });
+  const g = buildCrags([main], groundOf(slope)), pos = g.getAttribute('position');
+  let checked = 0, highest = -Infinity;
+  for (let i = 0; i < pos.count; i++) {
+    const vx = pos.getX(i), vy = pos.getY(i) - 0.02, vz = pos.getZ(i);
+    highest = Math.max(highest, vy);
+    // Points on its downhill side, in the crown's reach, a metre or more lower ground under them than under its centre.
+    if (Math.floor(vx / TILE) !== 5 || Math.floor(vz / TILE) !== 5 || Math.hypot(vx / TILE - 5.5, vz / TILE - 6.5) >= 0.8) continue;
+    if (vy < 0.5 || slope(vx, vz) > -1) continue;
+    assert.deepEqual(plantTile(s, { x: vx, y: vy, z: vz }, slope, 'bold', TOPS), { x: 5, y: 5 });
+    checked++;
   }
-  // And a hit inside the crag's body there stays on the rock.
-  assert.deepEqual(plantTile(s, { x: wx, y: tops - 0.6, z: wz }, slope, 'bold'), { x: 5, y: 5 });
+  g.dispose();
+  assert.ok(checked > 0, 'points on the downhill face, in the crown\'s reach');
+  // And a hit over the crag's top, in the crown's reach, is the crown's.
+  assert.deepEqual(plantTile(s, { x: main.x, y: highest + 0.5, z: 5.95 * TILE }, slope, 'bold', TOPS), { x: 5, y: 6 });
+});
+
+test('plantTile: a crown over a crag\'s low shoulder is the tree\'s, every drawn point of the crag the rock\'s', () => {
+  const s = newGame(CAMPAIGN[0]);
+  const w = s.map.width;
+  for (let y = 2; y <= 10; y++) for (let x = 2; x <= 10; x++) s.map.terrain[y * w + x] = TERRAIN.grass;
+  s.buildings = s.buildings.filter((b) => b.x < 1 || b.x > 11 || b.y < 1 || b.y > 11);
+  // A bold rock with a tree east of it: its emitted surface is about 1.45 m high at this point, a crown hit 0.7 m over it.
+  s.map.terrain[5 * w + 5] = TERRAIN.rock;
+  s.map.terrain[5 * w + 6] = TERRAIN.tree;
+  assert.deepEqual(plantTile(s, { x: 22.81, y: 2.15, z: 21.77 }, FLAT, 'bold', TOPS), { x: 6, y: 5 });
+
+  // A 3 × 3 patch of rock with a corner cut, ringed by trees, and a lone rock among trees: each vertex of the crags
+  // drawn (just under the surface), whichever tile's crag it is, picks the rock tile it stands on, a crown in reach or not.
+  for (let y = 2; y <= 10; y++) for (let x = 2; x <= 10; x++) s.map.terrain[y * w + x] = TERRAIN.tree;
+  for (let y = 4; y <= 6; y++) for (let x = 4; x <= 6; x++) s.map.terrain[y * w + x] = TERRAIN.rock;
+  s.map.terrain[4 * w + 6] = TERRAIN.tree;
+  s.map.terrain[9 * w + 9] = TERRAIN.rock;
+  const isRock = (x: number, y: number) => x >= 0 && y >= 0 && x < w && s.map.terrain[y * w + x] === TERRAIN.rock;
+  for (const look of ['soft', 'bold'] as const) {
+    let checked = 0;
+    for (let y = 2; y <= 10; y++) for (let x = 2; x <= 10; x++) {
+      if (!isRock(x, y)) continue;
+      const g = buildCrags(planOutcropTile(x, y, isRock, look));
+      const pos = g.getAttribute('position');
+      for (let i = 0; i < pos.count; i++) {
+        const vx = pos.getX(i), vy = pos.getY(i) - 0.02, vz = pos.getZ(i);
+        const tx = Math.floor(vx / TILE), ty = Math.floor(vz / TILE);
+        if (vy <= 0.05 || !isRock(tx, ty)) continue;
+        assert.deepEqual(plantTile(s, { x: vx, y: vy, z: vz }, FLAT, look, TOPS), { x: tx, y: ty }, `${look} vertex at (${vx.toFixed(2)}, ${vy.toFixed(2)}, ${vz.toFixed(2)})`);
+        checked++;
+      }
+      g.dispose();
+    }
+    assert.ok(checked > 500, `${look}: ${checked} vertices checked`);
+  }
 });

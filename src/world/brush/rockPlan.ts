@@ -84,15 +84,6 @@ export function rockFootprint(s: RockShape): RockFootprint {
   return { qxx, qxz, qzz, fx: Math.sqrt(qxx), fz: Math.sqrt(qzz) };
 }
 
-/**
- * Where `(px, pz)` (m from a crag's centre) lies against its footprint: under 1 inside the projected ellipse, 1 on its
- * rim (`p · Q⁻¹ · p`).
- */
-export function footprintDistance2(fp: RockFootprint, px: number, pz: number): number {
-  const det = Math.max(1e-12, fp.qxx * fp.qzz - fp.qxz * fp.qxz);
-  return (fp.qzz * px * px - 2 * fp.qxz * px * pz + fp.qxx * pz * pz) / det;
-}
-
 interface OutcropStyle {
   heightScale: number;
   crag: number;
