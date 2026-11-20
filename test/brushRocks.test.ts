@@ -228,17 +228,22 @@ test('plantTile keeps rock picks on the rock tile next to a tree while preservin
   s.map.terrain[5 * w + 5] = TERRAIN.rock;
   s.map.terrain[5 * w + 6] = TERRAIN.tree;
 
-  // Direct hit anywhere inside the rock tile (even right near the border with the neighbour tree) picks the rock.
-  assert.deepEqual(plantTile(s, { x: 5.98 * TILE, y: 1.5, z: 5.5 * TILE }, 0), { x: 5, y: 5 });
-  assert.deepEqual(plantTile(s, { x: 5.95 * TILE, y: 3.4, z: 5.8 * TILE }, 0), { x: 5, y: 5 });
+  // Direct hit on rock geometry inside the rock tile (even right near the border with the neighbour tree) picks the rock.
+  assert.deepEqual(plantTile(s, { x: 5.5 * TILE, y: 0.9, z: 5.5 * TILE }, 0, 'bold'), { x: 5, y: 5 });
 
-  // A high hit above rock height over the rock tile resolves to the adjacent overhanging tree crown.
-  assert.deepEqual(plantTile(s, { x: 5.85 * TILE, y: 5.2, z: 5.5 * TILE }, 0), { x: 6, y: 5 });
+  // A low overhanging tree crown above the rock's local height (including a 3.98 m birch crown over a tall bold rock)
+  // resolves to the adjacent tree rather than the rock.
+  assert.deepEqual(plantTile(s, { x: 5.85 * TILE, y: 3.98, z: 5.5 * TILE }, 0, 'bold'), { x: 6, y: 5 });
+  assert.deepEqual(plantTile(s, { x: 5.85 * TILE, y: 5.2, z: 5.5 * TILE }, 0, 'bold'), { x: 6, y: 5 });
+
+  // Verify the exact Windy Ridge (40, 22) birch crown at 3.98 m over rock (41, 22) picks the tree.
+  const c3 = newGame(CAMPAIGN.find((c) => c.id === 'c3')!);
+  assert.deepEqual(plantTile(c3, { x: 41.25 * TILE, y: 3.98, z: 22.5 * TILE }, 0, 'bold'), { x: 40, y: 22 });
 
   // A tree crown overhanging empty grass within CROWN_REACH still resolves to the tree.
-  assert.deepEqual(plantTile(s, { x: 6.5 * TILE, y: 4.5, z: 4.8 * TILE }, 0), { x: 6, y: 5 });
+  assert.deepEqual(plantTile(s, { x: 6.5 * TILE, y: 4.5, z: 4.8 * TILE }, 0, 'bold'), { x: 6, y: 5 });
 
   // A crop/building on grass next to a rock is never stolen by the rock.
   s.buildings.push({ id: 999, type: 'field', x: 4, y: 4, rot: 0, crop: 'wheat', growth: 0.5, stored: 0, status: 'idle', need: null } as never);
-  assert.equal(plantTile(s, { x: 5.5 * TILE, y: 0.4, z: 4.97 * TILE }, 0), null);
+  assert.equal(plantTile(s, { x: 5.5 * TILE, y: 0.4, z: 4.97 * TILE }, 0, 'bold'), null);
 });
