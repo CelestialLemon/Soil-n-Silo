@@ -242,13 +242,13 @@ crop.remove(); oak.remove(); rock.remove();
 - Crowns keep some rain and snow off what's under them and everything casts its shadow, as the renderer sees fit. What
   stops the wind is the game's to say: it gives the wind simulation its obstacles (hedges, crowns, buildings; below).
 - **Today** the painting kit grows them: `growTree` and `Grove` (trees with their season's dress), `addStone`,
-  `addTuft`, `addMound`, `addFlowers`, the demo's wheat, and the plant kit below (#213's groundwork). They are baked
-  into meshes the caller keeps and takes out with `r.remove`. A tree changes without its meshes being made again
-  (Soil-n-Silo#204): `r.removeTrees(meshes, [[x, z], ...])` folds the trees standing there out of the meshes they were
-  grown into (wood, leaves and the litter under them) and lets go of their springs, and `r.moveTrees(meshes, [{ x, z,
-  dy }])` raises or lowers them whole, when the ground under them moved. The game's wild.ts draws the map's trees in
-  8 × 8-tile blocks made once, clears and moves trees in them this way, paints a tree grown in play on its own, and makes
-  a field's crop and a sapling anew at each stage (a few ms). The handles above can wrap this later.
+  `addCrag`, `addTuft`, `addMound`, `addFlowers`, the demo's wheat, and the plant kit below (#213's groundwork). They
+  are baked into meshes the caller keeps and takes out with `r.remove`. A tree changes without its meshes being made
+  again (Soil-n-Silo#204): `r.removeTrees(meshes, [[x, z], ...])` folds the trees standing there out of the meshes they
+  were grown into (wood, leaves and the litter under them) and lets go of their springs, and `r.moveTrees(meshes,
+  [{ x, z, dy }])` raises or lowers them whole, when the ground under them moved. The game's wild.ts draws the map's
+  trees in 8 × 8-tile blocks made once, clears and moves trees in them this way, paints a tree grown in play on its own,
+  and makes a field's crop and a sapling anew at each stage (a few ms). The handles above can wrap this later.
 
 ## The camera
 
@@ -498,8 +498,9 @@ above, the game stops using it and it becomes the renderer's own.
   A tree's spring is held by each mesh that draws it and freed when the last lets go (`r.remove`, `r.removeTrees`), its
   slot then reused by the next new tree.
 - `MeshBuilder` and `Paint`: geometry in the renderer's format (colours, normals, the brush per vertex, tree ids).
-- `growTree`, `Grove`, `dressFor`, `addStone`, `addRock`, `addTuft`, `addReeds`, `addMound`, `addFlowers`, `groundOf`, `MapLine`:
-  the demo's pieces (`addRock` adds a faceted, slope-grounded boulder or crag with patchy moss, for clustered rock outcrops). `Grove.addTo(r, options)` adds its meshes with the given options and returns them. A `Tree`'s
+- `growTree`, `Grove`, `dressFor`, `addStone`, `addCrag`, `addTuft`, `addReeds`, `addMound`, `addFlowers`, `groundOf`,
+  `MapLine`: the demo's pieces (`addCrag` adds a faceted, slope-grounded boulder or crag with patchy moss, for clustered
+  rock outcrops). `Grove.addTo(r, options)` adds its meshes with the given options and returns them. A `Tree`'s
   `stroke` (broader, fewer strokes) and `fill` (the share of a crown's outer strokes) thin it for a crowd; 1 is the demo's.
 - The plant kit (`kit/plants.ts`, #213): `CropPatch` (a field's crop, one soft blanket over its bed; one `CropTile` a
   tile with which neighbours it joins, at its stage 0–3: just sown, young, flowering, ripe; `addTo(r)` returns its

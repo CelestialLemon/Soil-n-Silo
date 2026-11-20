@@ -1,10 +1,9 @@
-import { addRock, addStone, rng, srgb, type Ground, type MeshBuilder } from '../../../brush3d/src/index.ts';
-import type { RocksLook } from '../../ui/rocksChoice.ts';
+import { addCrag, addStone, rng, srgb, type Ground, type MeshBuilder } from '../../../brush3d/src/index.ts';
 import { hash } from '../trees.ts';
-import { planOutcropTile } from './rockPlan.ts';
+import { planOutcropTile, type RocksLook } from './rockPlan.ts';
 import { TILE } from './scale.ts';
 
-export { ROCK_BIT, rockMask, rockTileKey } from './rockPlan.ts';
+export { rockMask, rockTileKey, type RocksLook } from './rockPlan.ts';
 
 // Emits a planned rock outcrop tile into a brush3d MeshBuilder (#257).
 
@@ -29,7 +28,7 @@ export function placeOutcropTile(
     return;
   }
   for (const p of planOutcropTile(x, y, isRock, look)) {
-    addRock(b, ground, p.x, p.z, {
+    addCrag(b, ground, p.x, p.z, {
       rx: p.rx, ry: p.ry, rz: p.rz, yaw: p.yaw, pitch: p.pitch, roll: p.roll,
       sink: p.sink, crag: p.crag, moss: p.moss, detail: p.detail, color: toneColor(p.tone),
     }, rng(p.seed));

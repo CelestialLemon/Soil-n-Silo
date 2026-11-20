@@ -3,7 +3,7 @@
 // one or two centred round stones per rock tile). A URL option (`?rocks=off|soft|bold`, default `soft`), kept for reloads
 // and remembered for the next visit, and a button in the HUD's row of panel buttons (top right) that cycles between them.
 
-export type RocksLook = 'off' | 'soft' | 'bold';
+import type { RocksLook } from '../world/brush/rockPlan.ts';
 
 const STORED = 'rocks-choice';
 const ORDER: readonly RocksLook[] = ['soft', 'bold', 'off'];

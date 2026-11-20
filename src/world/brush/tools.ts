@@ -16,6 +16,7 @@ import {
   type CursorPatch, type NetLabel, type Overlay, type PowerFocus, type StopLabel,
 } from '../legend.ts';
 import { YAW } from './catalog.ts';
+import { plantTile } from './pickTile.ts';
 import { LEVEL, RISE, TILE } from './scale.ts';
 import { thingHeight, type Things } from './things.ts';
 
@@ -31,8 +32,6 @@ import { thingHeight, type Things } from './things.ts';
 
 /** How near the line of sight through the pointer a truck must drive (m) to change what is under the pointer. */
 const TRUCK_REACH = 3.2;
-/** How far from a tree's tile's middle (tiles) a pick on a plant still finds the tree: a crown leans over its tile's edge. */
-const CROWN_REACH = 0.8;
 /** How strongly an overlay covers the land; the tint of what's linked to the focus, and how strong. */
 const LINK_STRENGTH = 0.55;
 /**
@@ -369,10 +368,10 @@ class BrushPicker implements Picker {
     const seen = this.seen;
     if (!seen) return { tile: ground, building: null };
     const hit = seen.hit, still = seen.px === this.pixel(at) && this.cameraNow(scratch).equals(seen.camera);
-    // What the pick met, as a tile of the map: a tree's own (it leans over the next), else the one it met.
-    const met = hit ? (hit.what === 'plant' ? treeTile(s, hit.point) : null) ?? tileOf(s, hit.point) : null;
-    const tree = hit?.what === 'plant' ? treeTile(s, hit.point) : null;
-    const tile = still && tree ? tree : ground;
+    // What the pick met, as a tile of the map: a tree's or rock's own, else the tile it met.
+    const plant = hit?.what === 'plant' ? plantTile(s, hit.point, this.r.landAt(hit.point.x, hit.point.z)) : null;
+    const met = hit ? plant ?? tileOf(s, hit.point) : null;
+    const tile = still && plant ? plant : ground;
     // A building's or truck's own mesh, if it still stands for it; else the building on the tile the pick met.
     let building: number | null = null;
     if (hit?.what === 'thing' && typeof hit.tag === 'number') {
@@ -429,20 +428,6 @@ const scratch = new THREE.Matrix4();
 function tileOf(s: GameState, p: THREE.Vector3): Tile | null {
   const x = Math.floor(p.x / TILE), y = Math.floor(p.z / TILE);
   return inMap(s, x, y) ? { x, y } : null;
-}
-
-/** The tree (or rock) on the map nearest a point a pick met on a plant, if one's close enough for its crown to be there. */
-function treeTile(s: GameState, p: THREE.Vector3): Tile | null {
-  const fx = p.x / TILE, fz = p.z / TILE;
-  let best: Tile | null = null, near = CROWN_REACH;
-  for (let y = Math.floor(fz) - 1; y <= Math.floor(fz) + 1; y++) for (let x = Math.floor(fx) - 1; x <= Math.floor(fx) + 1; x++) {
-    if (!inMap(s, x, y)) continue;
-    const t = s.map.terrain[y * s.map.width + x];
-    if (t !== TERRAIN.tree && t !== TERRAIN.rock) continue;
-    const d = Math.hypot(fx - (x + 0.5), fz - (y + 0.5));
-    if (d < near) { near = d; best = { x, y }; }
-  }
-  return best;
 }
 
 /**

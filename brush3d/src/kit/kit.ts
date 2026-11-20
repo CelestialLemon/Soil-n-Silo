@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { MeshBuilder, noise2, srgb, type Paint } from './builder';
-import { DRAG, type Obstacle } from '../wind/sim';
-import { TREE_BEND, type TreeKind, type TreeSpec } from '../renderer/trees';
+import { MeshBuilder, noise2, srgb, type Paint } from './builder.ts';
+import { DRAG, type Obstacle } from '../wind/sim.ts';
+import { TREE_BEND, type TreeKind, type TreeSpec } from '../renderer/trees.ts';
 
 // The pieces scenes are built from: the palette, trees, stones, grass, reeds, and lines on the map (streams, paths, fences).
 // Every piece stands on a Ground, so any scene's land can carry them.
@@ -262,57 +262,54 @@ export function addStone(b: MeshBuilder, ground: Ground, x: number, z: number, s
   for (let i = 0; i < idx.count; i += 3) b.tri(i0 + idx.getX(i), i0 + idx.getX(i + 1), i0 + idx.getX(i + 2));
 }
 
-/** Shape and look of a sculpted rock added with `addRock`. */
-export interface RockOptions {
-  /** Half-extents of the rock in metres: along its length (`rx`), height (`ry`), and breadth (`rz`). */
+/** Shape and look of a sculpted crag added with `addCrag`. */
+export interface CragOptions {
+  /** Half-extents of the crag in metres: along its length (`rx`), height (`ry`), and breadth (`rz`). */
   rx: number; ry: number; rz: number;
   /** Turn around the vertical (radians). Defaults to random. */
   yaw?: number;
   /** Tilt forward/back and sideways (radians), to lean a slab or crag naturally. Default 0. */
   pitch?: number; roll?: number;
-  /** How deeply the rock sits in the ground (0 resting on top .. 0.6 mostly buried). Default 0.34. */
+  /** How deeply the crag sits in the ground (0 resting on top .. 0.6 mostly buried). Default 0.34. */
   sink?: number;
-  /** How angular and faceted the rock is (0 soft rounded boulder .. 1 sharp stepped crag). Default 0.55. */
+  /** How angular and faceted the crag is (0 soft rounded boulder .. 1 sharp stepped crag). Default 0.55. */
   crag?: number;
   /** How much moss grows on its upward shelves (0 bare stone .. 1 mossy). Default 0.55. */
   moss?: number;
-  /** Mesh subdivision: 1 (42 vertices, 80 triangles: talus and shoulders) or 2 (162 vertices, 320 triangles: hero crags). Default 2. */
+  /** Mesh subdivision: 1 (42 vertices, 80 triangles: talus and shoulders) or 2 (92 vertices, 180 triangles: hero crags). Default 2. */
   detail?: 1 | 2;
   /** Base stone colour (defaults to `C.stone`), so an outcrop can share a local bedrock tone. */
   color?: THREE.Color;
-  /** Water surface height (m); stones submerged under it take no moss. Default -Infinity. */
-  waterY?: number;
 }
 
-const ROCK_BASE: Partial<Record<1 | 2, { pos: Float32Array; idx: Uint16Array }>> = {};
-function rockBase(detail: 1 | 2) {
-  let cached = ROCK_BASE[detail];
+const CRAG_BASE: Partial<Record<1 | 2, { pos: Float32Array; idx: Uint16Array }>> = {};
+function cragBase(detail: 1 | 2) {
+  let cached = CRAG_BASE[detail];
   if (cached) return cached;
   const g = mergeVertices(new THREE.IcosahedronGeometry(1, detail).deleteAttribute('normal').deleteAttribute('uv'));
   const p = g.getAttribute('position') as THREE.BufferAttribute, idx = g.getIndex()!;
   cached = { pos: Float32Array.from(p.array as Float32Array), idx: Uint16Array.from(idx.array as Uint16Array) };
   g.dispose();
-  ROCK_BASE[detail] = cached;
+  CRAG_BASE[detail] = cached;
   return cached;
 }
 
-const ROCK_EULER = new THREE.Euler(), ROCK_ROT = new THREE.Matrix4(), ROCK_COL = new THREE.Color();
+const CRAG_EULER = new THREE.Euler(), CRAG_ROT = new THREE.Matrix4(), CRAG_COL = new THREE.Color();
 
 /**
  * A sculpted natural boulder or crag: faceted by soft cleavage planes, anisotropically scaled and tilted, with its lower
  * skirt grounded cleanly below sloped terrain so no underside gap floats on hillsides. Patchy moss grows on upward shelves.
  */
-export function addRock(b: MeshBuilder, ground: Ground, x: number, z: number, opts: RockOptions, rand: () => number) {
+export function addCrag(b: MeshBuilder, ground: Ground, x: number, z: number, opts: CragOptions, rand: () => number) {
   const { rx, ry, rz } = opts;
   const detail = opts.detail ?? 2;
   const sink = opts.sink ?? 0.34;
   const crag = opts.crag ?? 0.55;
   const moss = opts.moss ?? 0.55;
-  const waterY = opts.waterY ?? -Infinity;
   const yaw = opts.yaw ?? rand() * Math.PI * 2;
   const pitch = opts.pitch ?? 0, roll = opts.roll ?? 0;
 
-  const { pos, idx } = rockBase(detail);
+  const { pos, idx } = cragBase(detail);
   const count = pos.length / 3;
   const seed = rand() * 100;
 
@@ -329,9 +326,9 @@ export function addRock(b: MeshBuilder, ground: Ground, x: number, z: number, op
     0.8 - crag * 0.14 + (rand() - 0.5) * 0.08,
   ];
 
-  ROCK_EULER.set(pitch, yaw, roll, 'YXZ');
-  ROCK_ROT.makeRotationFromEuler(ROCK_EULER);
-  const e = ROCK_ROT.elements;
+  CRAG_EULER.set(pitch, yaw, roll, 'YXZ');
+  CRAG_ROT.makeRotationFromEuler(CRAG_EULER);
+  const e = CRAG_ROT.elements;
   const h0 = ground.height(x, z);
   const cy = h0 + ry * (1 - 2 * sink);
 
@@ -386,17 +383,17 @@ export function addRock(b: MeshBuilder, ground: Ground, x: number, z: number, op
     let nx = nrm[i * 3], ny = nrm[i * 3 + 1], nz = nrm[i * 3 + 2];
     const len = Math.hypot(nx, ny, nz);
     if (len > 1e-6) { nx /= len; ny /= len; nz /= len; } else { nx = 0; ny = 1; nz = 0; }
-    ROCK_COL.copy(base);
+    CRAG_COL.copy(base);
     const foot = 1 - smooth(-0.05, 0.45, wy - gy[i]);
-    if (foot > 0) ROCK_COL.lerp(C.mud, foot * 0.18).multiplyScalar(1 - foot * 0.14);
+    if (foot > 0) CRAG_COL.lerp(C.mud, foot * 0.18).multiplyScalar(1 - foot * 0.14);
     const strata = Math.sin(wy * 3.6 + noise2(wx * 0.35 + seed, wz * 0.35 - seed) * 2);
-    ROCK_COL.multiplyScalar(1 + strata * (0.025 + 0.02 * crag));
-    if (moss > 0 && cy > waterY + 0.05 && ny > 0.35) {
+    CRAG_COL.multiplyScalar(1 + strata * (0.025 + 0.02 * crag));
+    if (moss > 0 && ny > 0.35) {
       const patch = smooth(-0.22, 0.48, noise2(wx * 0.42 + 13.7, wz * 0.42 - 9.3));
       const m = Math.min(0.78, moss * smooth(0.36, 0.84, ny) * (0.35 + 0.65 * patch));
-      if (m > 0.01) ROCK_COL.lerp(C.moss, m);
+      if (m > 0.01) CRAG_COL.lerp(C.moss, m);
     }
-    b.vertex({ x: wx, y: wy, z: wz }, { x: nx, y: ny, z: nz }, ROCK_COL, [0.55, 2.6, 0.8, 0]);
+    b.vertex({ x: wx, y: wy, z: wz }, { x: nx, y: ny, z: nz }, CRAG_COL, [0.55, 2.6, 0.8, 0]);
   }
   for (let i = 0; i < idx.length; i += 3) b.tri(i0 + idx[i], i0 + idx[i + 1], i0 + idx[i + 2]);
 }
