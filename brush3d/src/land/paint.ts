@@ -446,10 +446,29 @@ export class PaintedLand {
       this.topColour(px, py, this.drawnCover[ty * this.width + tx], x, z, n, into, this.drawnPaint);
       return into;
     }
+    return this.beyondColour(x, z, into, this.drawnPaint);
+  }
+
+  /**
+   * The country beyond's colour at a point of the world (m) past the land, into `c`: the distant woods' floor, dulled, and
+   * near the land, the land's own colour at its edge (from `paint`'s tiles), fading to the floor's over APRON_BLEND cells,
+   * so no straight seam shows where the two meshes meet (Soil-n-Silo#269: the land's edge is the country's grass, which
+   * autumn and winter turn pale, against the floor's dark green).
+   */
+  private beyondColour(x: number, z: number, c: THREE.Color, paint: Float32Array = this.paint): THREE.Color {
     const k = noise2(x * 0.015 + 2, z * 0.015 + 8) * 0.5 + 0.5;
-    into.copy(COL.floor).lerp(COL.emerald, k * 0.3);
-    this.dull(into);
-    return into;
+    c.copy(COL.floor).lerp(COL.emerald, k * 0.3);
+    this.dull(c);
+    if (!this.beyond) return c;
+    const lx0 = this.x0, lx1 = this.x0 + this.width * this.tile, lz0 = this.z0, lz1 = this.z0 + this.height * this.tile;
+    const ex = Math.min(lx1, Math.max(lx0, x)), ez = Math.min(lz1, Math.max(lz0, z)), away = Math.hypot(x - ex, z - ez);
+    const reach = APRON_BLEND * this.beyond.cell;
+    if (away < reach) {
+      const edge = SCRATCH.edge;
+      this.baseColour((ex - this.x0) / this.tile, (ez - this.z0) / this.tile, edge, paint);
+      c.lerp(edge, 1 - smooth(0, reach, away));
+    }
+    return c;
   }
 
   /** Where a line of sight first meets the land, or null if it misses (on the CPU: no wait for the GPU). */
@@ -925,22 +944,11 @@ export class PaintedLand {
     if (!bd) return null;
     const lx0 = this.x0, lx1 = this.x0 + this.width * this.tile, lz0 = this.z0, lz1 = this.z0 + this.height * this.tile;
     const { xs, zs } = this.apronLines()!, b = new MeshBuilder('paint'), nx = xs.length;
-    const c = SCRATCH.c, n = SCRATCH.n, e = 1, reach = APRON_BLEND * bd.cell;
+    const c = SCRATCH.c, n = SCRATCH.n, e = 1;
     for (const z of zs) for (const x of xs) {
       const y = this.heightAt(x, z);
       n.set(this.heightAt(x - e, z) - this.heightAt(x + e, z), 2 * e, this.heightAt(x, z - e) - this.heightAt(x, z + e)).normalize();
-      const k = noise2(x * 0.015 + 2, z * 0.015 + 8) * 0.5 + 0.5;
-      c.copy(COL.floor).lerp(COL.emerald, k * 0.3);
-      this.dull(c);
-      // Where it meets the land, the land's own colour at its edge, fading to the distant floor's over APRON_BLEND cells,
-      // so no straight seam shows where the two meshes meet (Soil-n-Silo#269: the land's edge is the country's grass,
-      // which autumn and winter turn pale, against the floor's dark green).
-      const ex = Math.min(lx1, Math.max(lx0, x)), ez = Math.min(lz1, Math.max(lz0, z)), away = Math.hypot(x - ex, z - ez);
-      if (away < reach) {
-        const edge = SCRATCH.edge;
-        this.baseColour((ex - this.x0) / this.tile, (ez - this.z0) / this.tile, edge);
-        c.lerp(edge, 1 - smooth(0, reach, away));
-      }
+      this.beyondColour(x, z, c);
       b.vertex({ x, y, z }, n, c, [0.3, 1.5, 0.7, 0]);
     }
     for (let j = 0; j + 1 < zs.length; j++) for (let i = 0; i + 1 < nx; i++) {

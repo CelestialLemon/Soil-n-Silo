@@ -155,6 +155,18 @@ check('the cliff and the land\'s edge have faces', faces > 100, `${faces} uprigh
       checked++;
     }
   }
+  // And the country beyond's mesh, its land-coloured edge too, at its vertices (the land's own skipped).
+  let beyondErr = 0, beyondChecked = 0;
+  const apronMesh = (land as unknown as { apron: THREE.Mesh }).apron, apos = apronMesh.geometry.getAttribute('position');
+  const acol = apronMesh.geometry.getAttribute('color'), ac = new THREE.Color();
+  for (let i = 0; i < apos.count; i++) {
+    const x = apos.getX(i), z = apos.getZ(i), fx = (x - X0) / TILE, fz = (z - Z0) / TILE;
+    if (fx > 0 && fz > 0 && fx < W && fz < H) continue;
+    land.landColourAt(x, z, ac);
+    beyondErr = Math.max(beyondErr, Math.abs(ac.r - acol.getX(i)), Math.abs(ac.g - acol.getY(i)), Math.abs(ac.b - acol.getZ(i)));
+    beyondChecked++;
+  }
+  check('landColourAt matches the country beyond\'s vertex colours, its land-coloured edge too', beyondChecked > 100 && beyondErr < 1e-5, `${beyondChecked} vertices, max err ${beyondErr.toExponential(2)}`);
   const onMap = land.landColourAt(...world(15.5, 10.5));
   const offMap = land.landColourAt(...world(1.5, 10.5));
   const beyond = land.landColourAt(X0 - 40, Z0 + 20);
