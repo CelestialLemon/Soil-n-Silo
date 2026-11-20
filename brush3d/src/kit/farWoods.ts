@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { addDab, srgb, type MeshBuilder, type Paint } from './builder.ts';
 import type { Species } from './plants.ts';
-import { CRISP_EDGE, STIFF_STROKE } from '../renderer/paintFlags.ts';
+import { CRISP_EDGE, STIFF_STROKE } from '../renderer/dabs.ts';
 import type { Season } from '../renderer/season.ts';
 
 // The far woods (`addCanopy`): the country's woods too far off to tell one tree's limbs from another's, a crown of a few

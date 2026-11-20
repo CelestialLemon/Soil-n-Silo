@@ -174,8 +174,20 @@ The river and ponds sit in beds under their tiles, with the water 0.48 m under t
 country past the edge is clearly duller, so where you can build reads at a glance, and distant woods run to the horizon
 (the developer's picks on #228). An earthwork repaints only the chunks round it, spread over frames and swapped in at once,
 so the land never shows half a change. Still open: the river's falls are a plain chute for now and don't read as a
-waterfall (#241); grass tufts on the land, and the water wheel's race cut into its bank (`brush3d/docs/LAND.md`); the game
-and brush3d each fit the ground after an earthwork, about 10 ms twice (#210).
+waterfall (#241); the water wheel's race cut into its bank (`brush3d/docs/LAND.md`); the game and brush3d each fit the
+ground after an earthwork, about 10 ms twice (#210). Meadow grass tufts across the open grass, swaying in the living wind
+(#256, epic #265's Wave 1, done 2026-11-21): dense, taller tussocks, the developer's pick of three densities (lush). Wildflowers among them in soft
+drifts, gathered at the woods' skirts and the hills' edges, in the season's colours (spring's white, yellow, peach and sky
+blue in full drifts, summer's vibrant ones as sparse as autumn's over its drier grass, autumn's warm specks, none in
+winter), built in the grass's blocks (#266, epic #265's Wave 1, done 2026-11-21: meadow, the developer's pick of three
+densities). Reeds line the river's banks and the ponds, in long, thick beds with gaps, where the land as drawn meets the
+water (so they follow the shores as brush3d draws them, square or curving), fresh green in spring and summer with brown
+bulrush heads, golden straw in autumn, frost-touched dry stalks in winter; none by a fall, a cliff, a building, a wheel or
+its race, they stand in the ice rather than float, and they move with an earthwork (#267, epic #265's Wave 1, done
+2026-11-21: lush, the developer's pick of two densities). A flood takes no plant away: grass, flowers and reeds stay
+rooted under the water, which hides what's below its surface, so the taller poke out of the shallows and deep water
+covers them (the developer's call, 2026-11-21). At its height an ordinary flood stands over a metre deep at the river's
+edge, so the river's reeds go mostly under it, the tallest tips showing in places; a severe one covers them all.
 
 ## The buildings and trucks as models, with their goods (2026-11-16)
 

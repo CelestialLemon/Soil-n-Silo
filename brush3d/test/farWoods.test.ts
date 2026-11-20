@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { addDab, MeshBuilder, rng, srgb } from '../src/kit/builder.ts';
 import { addCanopy, FAR_WOODS_MODES, type FarWoodsMode } from '../src/kit/farWoods.ts';
 import type { Species } from '../src/kit/plants.ts';
-import { STIFF_STROKE } from '../src/renderer/paintFlags.ts';
+import { STIFF_STROKE } from '../src/renderer/dabs.ts';
 import { SEASONS, type Season } from '../src/renderer/season.ts';
 
 // The far woods' crowns (brush3d's addCanopy, #268): `off` paints them as before, and the new looks' crown strokes cover no

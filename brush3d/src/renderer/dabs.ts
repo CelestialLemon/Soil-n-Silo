@@ -1,5 +1,5 @@
-// A foliage dab's flags, added to its aPaint.x above its colour drift (under 2) and read by FOLIAGE_VERT (materials.ts). Here
-// rather than in materials.ts so the parts of the kit that load in Node (farWoods.ts) reach no shader.
+// The flags added to a foliage dab's aPaint.x (FOLIAGE_VERT, materials.ts), as plain numbers with no three.js, so the
+// kit's pieces that load in Node (kit.ts's addFlower, farWoods.ts, for brush3d/test/) can set them.
 
 /** Added to a foliage dab's aPaint.x (its colour drift, under 2 otherwise) to give it crisper edges: see FOLIAGE_VERT. */
 export const CRISP_EDGE = 2;

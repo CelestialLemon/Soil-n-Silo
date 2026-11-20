@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { addDab, MeshBuilder, noise2, rng, srgb, type Paint } from './builder';
 import { C, smooth, type Ground, type Tree, type TreeForm } from './kit';
-import { CRISP_EDGE, STIFF_STROKE } from '../renderer/paintFlags';
+import { CRISP_EDGE, STIFF_STROKE } from '../renderer/dabs';
 import { TREE_BEND, type TreeKind, type TreeSpec } from '../renderer/trees';
 import type { Season } from '../renderer/season';
 import type { BrushRenderer } from '../renderer/renderer';

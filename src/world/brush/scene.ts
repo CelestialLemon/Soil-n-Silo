@@ -8,6 +8,7 @@ import { Camera } from '../camera.ts';
 import { COUNTRY, Lie, LEVEL_HEIGHT, standY } from '../ground.ts';
 import type { Heights, Scene } from '../scene.ts';
 import { BrushCover } from './cover.ts';
+import { Meadow } from './grass.ts';
 import { BrushLand } from './land.ts';
 import { BrushLens } from './lens.ts';
 import { causeCases, gameCases, profileGame, profilePanel, type LoadTimes, type ProfileHost } from './profile.ts';
@@ -31,6 +32,8 @@ import { Wild } from './wild.ts';
 //   things.ts  the buildings and trucks as brush3d's solarpunk models (#203); #204 (a world that changes without a
 //              stutter) and #205 (moving parts, building states, the markers) build on it
 //   wild.ts    what grows, painted: the trees by species, the rocks, the open fields' crops and the saplings (#213)
+//   grass.ts   the meadow across open grass: grass tufts swaying in the living wind (#256), wildflowers in drifts (#266),
+//              reeds along the water's edge (#267)
 //   sky.ts     the season, the hour and the sky from the game's weather (#207), the clouds where the rules have them (#208)
 //   wind.ts    the living wind under the gusts the rules step, round the buildings and trees (#208)
 //   cover.ts   what lies on the land from the game's: snow, frost, wet and mud (#207)
@@ -57,17 +60,17 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
   const ground = timed('land', () => new BrushLand(r, state, land, lie)), sky = new BrushSky(r, state), cover = new BrushCover(r, land), water = timed('water', () => new BrushWater(r, land, lie));
   // The goods trucks carry and buildings hand next door (#203), drawn with the things.
   const goods = new Goods(r);
-  const things = new Things(r, lie, goods), wild = timed('wild', () => new Wild(r, lie, land, state, farWoodsMode())), wind = timed('wind', () => new BrushWind(r, state, land));
+  const things = new Things(r, lie, goods), wild = timed('wild', () => new Wild(r, lie, land, state, farWoodsMode())), meadow = timed('meadow', () => new Meadow(r, lie, land, state)), wind = timed('wind', () => new BrushWind(r, state, land));
   // The far woods' look, #268's comparison (its button goes once the developer has picked).
   farWoodsChoice((mode) => wild.setFarWoods(mode));
   const lens = new BrushLens(r, canvas);
   const camera = new Camera(lens, canvas, map, start, changed);
-  const tools = timed('tools', () => new BrushTools(r, state, things, lie));
+  const tools = timed('tools', () => new BrushTools(r, state, things, lie, meadow));
   // The ground's brush baked once, here at the load, into a 4096² texture over the land (16 cm a texel, 64 MB), and read
   // from it each frame rather than worked out afresh in every pixel: a third of the GPU's frame (#210, the developer's
   // pick on #239). The light, shadows and weather stay live, as do a cliff's faces and the country past the land; an
   // earthwork bakes again only the patch it changed (brush3d's changeGround).
-  timed('bake', () => r.setFields('ground', 4096));
+  timed('bake', () => { r.setFields('ground', 4096); });
   settings.listen((s) => tools.setLooks(s.highlight, s.overlayStyle));
   const began = mark - Object.values(pieces).reduce((a, b) => a + b, 0);
   /** The load's times, once the first frame is drawn; and while a profile runs, the game's loop stands still. */
@@ -103,6 +106,7 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
       water.sync(s);
       things.sync(s);
       wild.sync(s);
+      meadow.sync(s);
       tools.sync(s, f);
     },
     show: (s, f) => tools.show(s, f),
@@ -135,7 +139,7 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
     // The pieces too, for tools/hitches.ts to time each one's sync.
     // The profile too (tools/framerate.ts: `game.profile(cases?)` of `game.cases()`, `game.load()`).
     debug: {
-      renderer: r, lens, wind, pieces: { sky, wind, ground, cover, water, things, wild, tools },
+      renderer: r, lens, wind, pieces: { sky, wind, ground, cover, water, things, wild, meadow, tools },
       profile: (cases?: Parameters<typeof profileGame>[1]) => profileGame(profile, cases), load: () => load,
       cases: () => gameCases(current.scenario.climate.sun.set), causes: () => causeCases(),
     },
