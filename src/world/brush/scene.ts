@@ -63,7 +63,7 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
   grassChoice((m) => grass.setMode(m));
   const lens = new BrushLens(r, canvas);
   const camera = new Camera(lens, canvas, map, start, changed);
-  const tools = timed('tools', () => new BrushTools(r, state, things, lie));
+  const tools = timed('tools', () => new BrushTools(r, state, things, lie, () => grass.shown));
   // The ground's brush baked once, here at the load, into a 4096² texture over the land (16 cm a texel, 64 MB), and read
   // from it each frame rather than worked out afresh in every pixel: a third of the GPU's frame (#210, the developer's
   // pick on #239). The light, shadows and weather stay live, as do a cliff's faces and the country past the land; an

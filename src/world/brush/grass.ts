@@ -21,14 +21,23 @@ import { TILE } from './scale.ts';
 //   (a building or field placed or taken away, a tree or rock cleared, an earthwork) makes again only the blocks it
 //   touches, found by comparing the layout's terrain and buildings with the last (grassMask.ts's layoutChanges), and
 //   made again a few a frame within `REBUILD_BUDGET` (#204), so a long build drag never hitches.
-// - A block a new building stands in, or whose land was just redrawn (`r.onLandChange`, as an earthwork is swapped in),
-//   is hidden until it's made again, first in the queue: its grass never pokes through the building or floats over (or
-//   sinks into) the old ground for a frame. The rest (grass growing back) keep showing until they're made again.
+// - A block a new building stands in, or whose ground an earthwork just moved (`r.onLandChange`, as it's swapped in), is
+//   hidden until it's made again, first in the queue: its grass never pokes through the building or floats over (or
+//   sinks into) the new ground for a frame. The rest (grass growing back, a repaint) keep showing until they're made.
 // - Ground-hugging tufts skip sun shadows and water reflections (`castShadow: false, reflect: false`): the painted
 //   ground already reflects in rivers and ponds, and skipping grass reflections saves ~0.6–1.1 ms GPU on water maps.
 
 /** Per-frame CPU budget (ms) for making queued blocks again during play (matches `PaintedLand.step`). */
 const REBUILD_BUDGET = 2.5;
+
+/**
+ * How far (m) the land may move under a block before its grass is hidden till it's made again. The refit's spread nudges
+ * the ground a few centimetres for several tiles round an earthwork (a pixel or so at the closest zoom, for the frames
+ * till it's made again); the tiles raised or lowered move a level.
+ */
+const MOVED = 0.1;
+/** Where in a tile its height is looked at, to tell whether the ground under a block moved. */
+const QUARTERS = [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]] as const;
 
 const SCRATCH = new THREE.Color();
 
@@ -43,7 +52,8 @@ export class Grass {
   private readonly reach: number;
   private readonly grid: GrassBlockRect[];
   private readonly blockById = new Map<number, GrassBlockRect>();
-  private readonly blocks = new Map<number, THREE.Mesh[]>();
+  /** Each block's mesh (none: no grass in it), and the land's height under it as it was made (`heightsUnder`). */
+  private readonly blocks = new Map<number, { meshes: THREE.Mesh[]; heights: Float32Array }>();
   /** Blocks to make again: hidden until they are (and made first), and the rest. */
   private readonly urgent = new Set<number>();
   private readonly dirty = new Set<number>();
@@ -66,12 +76,18 @@ export class Grass {
     r.onLandChange((area) => this.landChanged(area));
   }
 
+  /** The density shown. */
+  get shown(): GrassMode { return this.mode; }
+
   /** Switches the look option in place without leaking meshes or geometries. */
   setMode(next: GrassMode) {
     if (next === this.mode) return;
     this.clearAll();
     this.mode = next;
-    if (this.mode !== 'off') this.rebuildAll(this.lastState);
+    if (this.mode === 'off') return;
+    // On an earthwork's new ground not drawn yet: queued (sync makes them once it is).
+    if (this.r.landAhead) for (const rect of this.grid) this.dirty.add(rect.id);
+    else this.rebuildAll(this.lastState);
   }
 
   /**
@@ -89,14 +105,34 @@ export class Grass {
       for (const id of urgent) this.hide(id);
       for (const id of dirty) if (this.blockById.has(id) && !this.urgent.has(id)) this.dirty.add(id);
     }
-    if (this.urgent.size || this.dirty.size) this.drain(s);
+    // Not on an earthwork's new ground till it's drawn (the swap's landChanged queues what it moved).
+    if ((this.urgent.size || this.dirty.size) && !this.r.landAhead) this.drain(s);
   }
 
-  /** The land as drawn changed in `area` (m): its blocks hidden, to be made again on it first. */
+  /**
+   * The land as drawn changed in `area` (m): its blocks made again, those whose ground moved under them hidden till they
+   * are (made first), so no tuft floats over or sinks into it; the rest (repainted, or the refit's spread leaving them as
+   * they were) keep showing meanwhile.
+   */
   private landChanged(area: LandArea) {
     if (this.mode === 'off') return;
     const x0 = Math.floor(area.x0 / TILE), z0 = Math.floor(area.z0 / TILE), x1 = Math.ceil(area.x1 / TILE) - 1, z1 = Math.ceil(area.z1 / TILE) - 1;
-    for (const rect of this.grid) if (rect.x1 > x0 && rect.x0 <= x1 && rect.y1 > z0 && rect.y0 <= z1) this.hide(rect.id);
+    for (const rect of this.grid) {
+      if (rect.x1 <= x0 || rect.x0 > x1 || rect.y1 <= z0 || rect.y0 > z1) continue;
+      const was = this.blocks.get(rect.id)?.heights, now = this.heightsUnder(rect);
+      if (!was || now.some((y, i) => Math.abs(y - was[i]) > MOVED)) this.hide(rect.id);
+      else if (!this.urgent.has(rect.id)) this.dirty.add(rect.id);
+    }
+  }
+
+  /** The land's height (m) under a block, as drawn: at each quarter of each tile. */
+  private heightsUnder(rect: GrassBlockRect): Float32Array {
+    const out = new Float32Array((rect.x1 - rect.x0) * (rect.y1 - rect.y0) * 4);
+    let i = 0;
+    for (let y = rect.y0; y < rect.y1; y++) for (let x = rect.x0; x < rect.x1; x++) {
+      for (const [u, v] of QUARTERS) out[i++] = this.r.landAt((x + u) * TILE, (y + v) * TILE);
+    }
+    return out;
   }
 
   /** A block queued first, its grass hidden till it's made again. */
@@ -104,7 +140,7 @@ export class Grass {
     if (!this.blockById.has(id)) return;
     this.dirty.delete(id);
     this.urgent.add(id);
-    for (const m of this.blocks.get(id) ?? []) m.visible = false;
+    for (const m of this.blocks.get(id)?.meshes ?? []) m.visible = false;
   }
 
   // ---- Meadow colour & lushness ----
@@ -195,7 +231,7 @@ export class Grass {
   }
 
   private rebuildBlock(s: GameState, rect: GrassBlockRect) {
-    this.drop(this.blocks.get(rect.id) ?? []);
+    this.drop(this.blocks.get(rect.id)?.meshes ?? []);
     const profile = GRASS_PROFILES[this.mode as Exclude<GrassMode, 'off'>];
     const { width: w, height: h } = s.map;
     const boxes = boxesIn(s, rect.x0, rect.y0, rect.x1, rect.y1);
@@ -207,13 +243,14 @@ export class Grass {
       this.scatterTile(mb, s, x, y, onMap, profile, boxes, fade);
     }
     // Culled whole (not cut into tiles: a block is small, and made again often).
-    this.blocks.set(rect.id, mb.vertexCount ? [this.r.add(mb.build(), 'grass', { cull: true, castShadow: false, reflect: false })] : []);
+    const meshes = mb.vertexCount ? [this.r.add(mb.build(), 'grass', { cull: true, castShadow: false, reflect: false })] : [];
+    this.blocks.set(rect.id, { meshes, heights: this.heightsUnder(rect) });
   }
 
   private clearAll() {
     this.urgent.clear();
     this.dirty.clear();
-    for (const meshes of this.blocks.values()) this.drop(meshes);
+    for (const b of this.blocks.values()) this.drop(b.meshes);
     this.blocks.clear();
   }
 

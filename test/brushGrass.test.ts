@@ -12,7 +12,7 @@ import { COUNTRY, landRelief, Lie } from '../src/world/ground.ts';
 import { YAW } from '../src/world/brush/catalog.ts';
 import {
   blockOf, boxesIn, BUILDING_MARGIN, CLIFF_MARGIN, FIELD_MARGIN, fringeFade, GRASS_BLOCK, GRASS_FRINGE, GRASS_MODES,
-  GRASS_PROFILES, GRASS_TOP, grassAt, grassBlocks, grassLayout, inBuilding, layoutChanges, MAX_BLADE_REACH, ROCK_MARGIN,
+  GRASS_PROFILES, grassAt, grassTop, grassBlocks, grassLayout, inBuilding, layoutChanges, MAX_BLADE_REACH, ROCK_MARGIN,
   tileHabitat, tileSeed, WATER_MARGIN, wetDistance,
 } from '../src/world/brush/grassMask.ts';
 import { TILE } from '../src/world/brush/scale.ts';
@@ -126,7 +126,7 @@ test('habitat modifiers: tree skirts boost, deep woods thin, stony/sand thin, wi
   s.map.terrain[(ty - 1) * w + (tx - 1)] = TERRAIN.tree;
   const woods = tileHabitat(s, land, relief, wet, tx, ty, true)!;
   assert.equal(woods.skirtBoost, 0);
-  assert.ok(woods.deepWoods < 0.4);
+  assert.equal(woods.deepWoods, 0, "deep woods: no grass");
 
   s.map.ground[ty * w + tx] = GROUND.stony;
   const stony = tileHabitat(s, land, relief, wet, tx, ty, true)!;
@@ -343,10 +343,14 @@ test('a pick low over open grass is the meadow\'s grass, not the tree or rock be
   }
   assert.ok(tree && grass);
   const mid = ([x, y]: [number, number]) => [(x + 0.5) * TILE, (y + 0.5) * TILE] as const;
-  // The tallest blade of the lushest profile is under GRASS_TOP.
-  assert.ok(GRASS_TOP > 1.2 * (GRASS_PROFILES.lush.tall[0] + GRASS_PROFILES.lush.tall[1]) * 1.12);
-  assert.equal(grassAt(s, ...mid(grass), 0.4), true, 'a blade over open grass');
-  assert.equal(grassAt(s, ...mid(grass), GRASS_TOP + 0.5), false, 'a crown leaning over open grass');
-  assert.equal(grassAt(s, ...mid(tree), 0.4), false, 'the foot of a tree, or a rock, on its own tile');
-  assert.equal(grassAt(s, -2, -2, 0.4), true, 'a blade in the country beyond the map');
+  // Each density's tallest blade is under its top; none when the grass is off.
+  for (const m of ['quiet', 'meadow', 'lush'] as const) {
+    assert.ok(grassTop(m) > 1.2 * (GRASS_PROFILES[m].tall[0] + GRASS_PROFILES[m].tall[1]) * 1.12, m);
+  }
+  assert.ok(grassTop('quiet') < grassTop('meadow') && grassTop('meadow') < grassTop('lush'));
+  assert.equal(grassAt(s, ...mid(grass), 0.4, 'meadow'), true, 'a blade over open grass');
+  assert.equal(grassAt(s, ...mid(grass), 0.4, 'off'), false, 'a low branch over open grass, the grass off');
+  assert.equal(grassAt(s, ...mid(grass), grassTop('lush') + 0.5, 'lush'), false, 'a crown leaning over open grass');
+  assert.equal(grassAt(s, ...mid(tree), 0.4, 'meadow'), false, 'the foot of a tree, or a rock, on its own tile');
+  assert.equal(grassAt(s, -2, -2, 0.4, 'meadow'), true, 'a blade in the country beyond the map');
 });

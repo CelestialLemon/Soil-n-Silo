@@ -140,8 +140,11 @@ r.updateLand({ x, y, width, height }, { corners, worked, cover, ground });   // 
   ground's colour there as drawn (linear RGB, before the season turns it), and `r.landHit(ray)` where a line of sight
   (from `r.view.rayAt`) first meets it, or null, on the CPU with no wait for the GPU. `r.onLandChange((area) => {})`
   calls back whenever the land as drawn changes (a new land, an earthwork swapped in), with where (`{ x0, z0, x1, z1 }`,
-  metres) its height or paint may have changed, as the frame that first draws it begins: the game's grass is hidden
-  there and made again (#256), never left floating over the old ground. The rules go on asking `relief.ts`.
+  metres) its height or paint may have changed, as the frame that first draws it begins (`setLand` calls back at once,
+  with the old land's area and the new one's); it returns a function that stops the calls. `r.landAhead` is true while
+  `landAt` already answers for an earthwork's new ground that isn't drawn yet (fitted, its chunks still being painted):
+  the game's grass (#256) isn't made again meanwhile, and the blocks whose ground moved are hidden at the swap and made
+  again, never left floating over the old ground. The rules go on asking `relief.ts`.
 - Not yet: the cuts models need where they stand (the water wheel's race in its bank, `wheelRace` in the catalogue).
 
 ### Water (today; the game's river in #202, floods, ice and mud in #207)

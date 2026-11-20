@@ -169,6 +169,8 @@ export class PaintedLand {
   private readonly next: { corner: Float64Array; worked: Uint8Array; cover: Uint8Array; ground: Uint8Array };
   /** Counts the earthworks swapped in: what lies on the land as drawn (the tools' lines) lies on it again when it moves. */
   revision = 0;
+  /** Whether heightAt answers for ground fitted but not swapped in yet (settle to swap): the land drawn is behind it. */
+  ahead = false;
   /**
    * Called as an earthwork is swapped in, with where (metres) the land's height or paint may have changed: its tiles
    * whose ground or paint moved, and two round them (a tile's paint blends over its neighbours').
@@ -336,6 +338,7 @@ export class PaintedLand {
     let win = given ?? { x0: 0, y0: 0, x1: 0, y1: 0 };
     if (fit && refit) {
       for (const t of refit.finish()) dirty.add(t);
+      this.ahead = true;
       // How dry the ground lies follows its height (blurred over a few tiles) and the water (all of it, if that moved):
       // the tiles whose paint may change grow by those whose dryness did.
       const d = this.dryness(watered ? null : fit);
@@ -391,6 +394,7 @@ export class PaintedLand {
     this.drawnCover.set(this.cover);
     this.drawnPaint.set(this.paint);
     this.revision++;
+    this.ahead = false;
     const w = this.changed;
     this.changed = null;
     if (w && this.onSwap) {

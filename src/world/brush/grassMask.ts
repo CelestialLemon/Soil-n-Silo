@@ -258,7 +258,7 @@ export function tileHabitat(
     waterBoost: wetDist[li] <= 1 ? 0.30 : wetDist[li] <= 2 ? 0.16 : 0,
     skirtBoost: treesNear >= 1 && treesNear <= 3 ? 0.24 : 0,
     rockBoost: rockNear ? 0.16 : 0,
-    deepWoods: treesNear >= 5 ? 0.28 : treesNear === 4 ? 0.55 : 1,
+    deepWoods: treesNear >= 5 ? 0 : treesNear === 4 ? 0.55 : 1,
     groundScale: gKind === GROUND.stony ? 0.68 : gKind === GROUND.sand ? 0.76 : gKind === GROUND.silt ? 1.12 : 1,
     seasonDensity: winter ? 0.80 : 1,
     heightScale: (winter ? 0.60 : 1) * (gKind === GROUND.stony ? 0.82 : gKind === GROUND.sand ? 0.88 : 1),
@@ -310,16 +310,21 @@ export function layoutChanges(was: GrassLayout, now: GrassLayout, width: number)
   return { urgent, dirty };
 }
 
-/** How high (m) a meadow tuft's tip stands over the land at most: the tallest blade (addTuft) of the lushest profile. */
-export const GRASS_TOP = Math.max(...Object.values(GRASS_PROFILES).map((p) => 1.2 * (p.tall[0] + p.tall[1]) * 1.12)) + 0.05;
+/** How high (m) a meadow tuft's tip stands over the land at most, at a density: its tallest blade (addTuft); none when off. */
+export function grassTop(mode: GrassMode): number {
+  if (mode === 'off') return 0;
+  const p = GRASS_PROFILES[mode];
+  return 1.2 * (p.tall[0] + p.tall[1]) * 1.12 + 0.05;
+}
 
 /**
  * Whether what a pick calls a plant, at (x, z) m and `above` m over the land, is the meadow's grass (#256) rather than a
  * tree or a rock: low, and over a tile of open grass (or off the map). brush3d paints grass as it does a tree's leaves,
- * so its pick can't tell them apart; the game can. A tree's crown leaning over the next tile stands higher.
+ * so its pick can't tell them apart; the game can. A tree's crown leaning over the next tile stands higher. (A branch
+ * hanging lower than the grass's tips over the next tile is taken for grass: picked on its crown or its own tile instead.)
  */
-export function grassAt(s: GameState, x: number, z: number, above: number): boolean {
-  if (above >= GRASS_TOP) return false;
+export function grassAt(s: GameState, x: number, z: number, above: number, mode: GrassMode): boolean {
+  if (above >= grassTop(mode)) return false;
   const tx = Math.floor(x / TILE), ty = Math.floor(z / TILE);
   return tx < 0 || ty < 0 || tx >= s.map.width || ty >= s.map.height || terrainAt(s, tx, ty) === TERRAIN.grass;
 }

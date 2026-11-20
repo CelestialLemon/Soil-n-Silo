@@ -903,9 +903,13 @@ export class BrushRenderer {
     this.painted = new PaintedLand(this, map, look);
     this.painted.onSwap = (area) => { for (const f of this.landChanged) f(area); };
     this.landsSet++;
-    const all = { x0: map.x0, z0: map.z0, x1: map.x0 + map.width * map.tile, z1: map.z0 + map.height * map.tile };
+    // The old land's area and the new one's: whatever lay on either may have to move.
+    const was = this.landArea, now = { x0: map.x0, z0: map.z0, x1: map.x0 + map.width * map.tile, z1: map.z0 + map.height * map.tile };
+    this.landArea = now;
+    const all = was ? { x0: Math.min(was.x0, now.x0), z0: Math.min(was.z0, now.z0), x1: Math.max(was.x1, now.x1), z1: Math.max(was.z1, now.z1) } : now;
     for (const f of this.landChanged) f(all);
   }
+  private landArea: LandArea | null = null;
   private painted: PaintedLand | null = null;
   private landsSet = 0;
   /** Changes whenever the land as drawn does (a new land, an earthwork swapped in). */
@@ -933,6 +937,12 @@ export class BrushRenderer {
 
   /** The land's height (m) at a point of the world, as drawn (setLand's; 0 before there is one). */
   landAt(x: number, z: number): number { return this.painted?.heightAt(x, z) ?? 0; }
+
+  /**
+   * Whether landAt and landHit answer for an earthwork's new ground that isn't drawn yet (fitted, its chunks still being
+   * painted): something set on the land meanwhile would float over or sink into the ground on screen till it's swapped in.
+   */
+  get landAhead(): boolean { return this.painted?.ahead ?? false; }
 
   /**
    * The land's painted colour (linear RGB, before season turning) at a point of the world (m), as drawn (setLand's;
