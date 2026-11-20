@@ -98,6 +98,9 @@ export class ShoreField {
   private readonly heldNear: Uint8Array;
   /** The field (tiles inside the water, negative outside), RES² samples a tile, at the samples' middles. */
   private readonly field: Float32Array;
+  /** The field before what's held keeps it to the outline, and the least it may be (-Infinity: no least), as `field`. */
+  private readonly base: Float32Array;
+  private readonly keep: Float32Array;
   private readonly nx: number;
   private readonly ny: number;
 
@@ -110,6 +113,8 @@ export class ShoreField {
     this.heldNear = new Uint8Array(this.width * this.height);
     this.nx = this.width * RES; this.ny = this.height * RES;
     this.field = new Float32Array(this.nx * this.ny);
+    this.base = new Float32Array(this.nx * this.ny);
+    this.keep = new Float32Array(this.nx * this.ny);
     this.update({ x0: 0, y0: 0, x1: this.width, y1: this.height });
   }
 
@@ -118,13 +123,20 @@ export class ShoreField {
 
   /**
    * The tiles changed in [x0, x1) × [y0, y1) (read again from `tiles`): the kinds and the field worked out again as far as
-   * they reach, and the tiles whose kind or field moved.
+   * they reach, and the tiles whose kind or field moved. If the water's tiles are as they were (an earthwork beside it:
+   * the game never moves its water), only what's held changes the field, a few tiles round, so it's quick.
    */
   update(w: { x0: number; y0: number; x1: number; y1: number }): number[] {
-    const W = this.width, H = this.height, R = ShoreField.REACH;
+    const W = this.width, H = this.height;
+    let watered = false;
+    for (let y = w.y0; y < w.y1; y++) for (let x = w.x0; x < w.x1; x++) {
+      const t = y * W + x, wet = this.tiles.water(t) ? 1 : 0;
+      if (wet !== this.wet[t]) { this.wet[t] = wet; watered = true; }
+    }
+    if (!this.built) watered = true;
+    const R = watered ? ShoreField.REACH : Math.ceil(HOLD_OUT) + 1;
     const x0 = Math.max(0, w.x0 - R), y0 = Math.max(0, w.y0 - R), x1 = Math.min(W, w.x1 + R), y1 = Math.min(H, w.y1 + R);
     const changed = new Set<number>();
-    for (let y = w.y0; y < w.y1; y++) for (let x = w.x0; x < w.x1; x++) this.wet[y * W + x] = this.tiles.water(y * W + x) ? 1 : 0;
     // The kinds (and what's held) one tile further than they're needed, as they read a tile round.
     for (let y = Math.max(0, y0 - 1); y < Math.min(H, y1 + 1); y++) for (let x = Math.max(0, x0 - 1); x < Math.min(W, x1 + 1); x++) {
       const t = y * W + x, k = this.kindOf(x, y), h = this.heldOf(x, y);
@@ -137,10 +149,32 @@ export class ShoreField {
       for (let v = Math.max(0, y - r); v <= Math.min(H - 1, y + r) && !near; v++) for (let u = Math.max(0, x - r); u <= Math.min(W - 1, x + r); u++) if (this.held[v * W + u]) { near = 1; break; }
       this.heldNear[y * W + x] = near;
     }
+    if (watered) this.smooth(x0, y0, x1, y1);
+    this.built = true;
+    // Kept to the outline round what's held, and however it's smoothed, a water tile keeps water round its middle.
+    for (let j = y0 * RES; j < y1 * RES; j++) for (let i = x0 * RES; i < x1 * RES; i++) {
+      const px = (i + 0.5) / RES, py = (j + 0.5) / RES, at = j * this.nx + i, own = this.outline(px, py);
+      let v = this.base[at];
+      v += (own - v) * (1 - smooth(HOLD_IN, HOLD_OUT, this.heldDist(px, py)));
+      if (this.keep[at] > -Infinity) v = smax(v, this.keep[at]);
+      if (Math.abs(v - this.field[at]) > 1e-5) changed.add(Math.floor(py) * W + Math.floor(px));
+      this.field[at] = v;
+    }
+    return [...changed];
+  }
+
+  /** Whether the field's been worked out once (the first update works it all out). */
+  private built = false;
+
+  /**
+   * The field before what's held, over [x0, x1) × [y0, y1) (tiles), from the outline's distance as far round as the
+   * smoothing reaches: into `base`, and the least it may be in the water into `keep`.
+   */
+  private smooth(x0: number, y0: number, x1: number, y1: number) {
+    const W = this.width;
     // How far each tile is from the water's edge, so the work far from it (where every stage gives what it was given) is
     // skipped: the field's the same, only sooner.
     const edge = this.edges();
-    // The field over the window, from the outline's distance as far round as the smoothing reaches.
     const st = this.style, Kc = Math.ceil(3 * st.coarse * RES), Kt = Math.ceil(3 * st.along * RES), Ki = Math.ceil(3 * st.round * RES), Kg = Kc + Kt + Ki;
     const sx0 = x0 * RES, sy0 = y0 * RES, sx1 = x1 * RES, sy1 = y1 * RES;
     const gx0 = Math.max(0, sx0 - Kg), gy0 = Math.max(0, sy0 - Kg), gx1 = Math.min(this.nx, sx1 + Kg), gy1 = Math.min(this.ny, sy1 + Kg);
@@ -176,32 +210,33 @@ export class ShoreField {
     // would take away) keeps its water.
     // (And held to DRY outside before it's rounded: far up the bank counts no more than a little way, or the rounding would
     // drag a small pond's shore in after it.)
-    // (Only where the water's narrow: in a wide pond, how far it reaches across lets its corners round off freely.)
-    const wide = spread(raw, gw, gh, WIDE * RES, calm, still(WIDE * RES)), floor = (o: number, px: number, py: number, most: number, ease: number) =>
-      Math.min(this.core(px, py), most) - Math.max(0, wide[o] - NARROW) * ease;
+    // (Only where the water's narrow: in a wide pond, how far it reaches across lets its corners round off freely; but a
+    // tile pinched between dry sides, a channel a tile wide, is narrow however wide the water beside it.)
+    const wide = spread(raw, gw, gh, WIDE * RES, calm, still(WIDE * RES)), floor = (o: number, px: number, py: number, most: number) =>
+      Math.min(this.core(px, py), most) - (this.pinched(Math.floor(px), Math.floor(py)) ? 0 : Math.max(0, wide[o] - NARROW) * 2);
     for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
       const o = j * gw + i;
       if (raw[o] >= CAP) continue;
-      along[o] = raw[o] > 0 ? smax(along[o], floor(o, (gx0 + i + 0.5) / RES, (gy0 + j + 0.5) / RES, FLOOR, 2)) : smax(along[o], DRY);
+      along[o] = raw[o] > 0 ? smax(along[o], floor(o, (gx0 + i + 0.5) / RES, (gy0 + j + 0.5) / RES, FLOOR)) : smax(along[o], DRY);
     }
     // Then rounded a little every way, for what's left of the corners.
     const round = blur(along, gw, gh, st.round * RES, calm, still(Ki));
     for (let j = sy0; j < sy1; j++) for (let i = sx0; i < sx1; i++) {
-      const px = (i + 0.5) / RES, py = (j + 0.5) / RES, o = (j - gy0) * gw + i - gx0, own = raw[o];
+      const px = (i + 0.5) / RES, py = (j + 0.5) / RES, o = (j - gy0) * gw + i - gx0, own = raw[o], at = j * this.nx + i;
       // Grown back out where the water's wide, as the smoothing shrinks a pond (a round pond's shore runs round its tiles).
       let v = round[o] + st.grow * smooth(NARROW, 2, wide[o]);
-      // Wandering near the shore, and kept to the outline round what's held.
+      // Wandering near the shore.
       const near = 1 - smooth(1, 1.5, Math.abs(own));
       if (st.meander > 0 && near > 0) v += st.meander * near * wander(px / st.wave, py / st.wave);
-      const hold = 1 - smooth(HOLD_IN, HOLD_OUT, this.heldDist(px, py));
-      v += (own - v) * hold;
-      // However it's smoothed, a water tile keeps water round its middle.
-      if (own > 0 && calm[o] <= still(Ki)) v = smax(v, floor(o, px, py, KEEP, 2));
-      const at = j * this.nx + i;
-      if (Math.abs(v - this.field[at]) > 1e-5) changed.add(Math.floor(py) * W + Math.floor(px));
-      this.field[at] = v;
+      this.base[at] = v;
+      this.keep[at] = own > 0 && calm[o] <= still(Ki) ? floor(o, px, py, KEEP) : -Infinity;
     }
-    return [...changed];
+  }
+
+  /** Whether a water tile is pinched between dry tiles on opposite sides (off the land counts as more water). */
+  private pinched(x: number, y: number): boolean {
+    const W = this.width, H = this.height, dry = (u: number, v: number) => u >= 0 && v >= 0 && u < W && v < H && !this.wet[v * W + u];
+    return !!this.wet[y * W + x] && ((dry(x - 1, y) && dry(x + 1, y)) || (dry(x, y - 1) && dry(x, y + 1)));
   }
 
   /** The field at a point (tiles): about how far inside the water's shore it is, negative out on the bank. */

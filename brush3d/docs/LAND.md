@@ -37,8 +37,9 @@ country the game draws round it in tiles too, then `beyond`, a coarse grid of he
   corner is cut, its inner corner filled, a pond an oval. The rules don't change: the water stays on its tiles.
   - *How far it may go.* The bed reaches at most 0.45 of a tile into a dry tile beside the water (inside where the
     water's sheet runs flat past its last wet tile, and clear of a tree, which stands within 0.15 of its tile's middle),
-    and only into a bank at the water's level that isn't worked. A corner of a wide pond may come up out of the water,
-    but every tile of narrow water (a river a tile or two wide, a lone tile, a river's end) keeps water at its middle.
+    and only into a bank whose side by the water is at the water's level and that isn't worked. A corner of a wide pond
+    may come up out of the water, but every tile of narrow water (a river a tile or two wide, a lone tile, a river's end,
+    a channel a tile wide leaving a pond) keeps water at its middle.
   - *What stays square.* Round a pad (a water wheel's, any worked ground) and at a fall (water beside water at another
     level, where the game lays the banks' water under them, #228) the shore keeps to the tiles' outline, so a building
     stands square to the water and a fall's edges stay where they were.
@@ -69,7 +70,8 @@ to do). Nothing on screen changes in that call. Over the next frames, about `STE
    drawn land don't both fall in one frame.
 2. The ground is fitted again within 8 tiles of the change (further out it hardly moves): set up in one frame, its 128
    sweeps of the solver eight at a time over the next, then finished, with how dry the ground lies round it (all of it,
-   if the water moved), the shores round it if there's water near (`ShoreField.REACH`, 16 tiles), and the chunks whose
+   if the water moved), the shores round it (within `ShoreField.REACH`, 16 tiles, if the water's tiles moved; else, as
+   only what's held round a pad changes, within 3 tiles, about a millisecond), and the chunks whose
    ground, paint or shore moved. The sweeps run in the same order however they're
    spread, so the ground fits exactly as if it were done at once.
 3. The following frames paint those chunks again, a few a frame.

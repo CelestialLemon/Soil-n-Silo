@@ -342,8 +342,8 @@ export class PaintedLand {
       const d = this.dryness(watered ? null : fit);
       win = { x0: Math.min(win.x0, d.x0), y0: Math.min(win.y0, d.y0), x1: Math.max(win.x1, d.x1), y1: Math.max(win.y1, d.y1) };
     }
-    // The shores round what changed, if there's water near enough for them to move.
-    if (this.shore && given && (watered || this.waterNear(given, ShoreField.REACH))) for (const t of this.shore.update(given)) dirty.add(t);
+    // The shores round what changed (quick, unless the water's tiles moved).
+    if (this.shore && given) for (const t of this.shore.update(given)) dirty.add(t);
     const paint = new Float32Array(4);
     for (let y = win.y0; y < win.y1; y++) for (let x = win.x0; x < win.x1; x++) {
       const t = y * W + x;
@@ -455,14 +455,6 @@ export class PaintedLand {
     if (!this.shore) return 0;
     const tx = Math.min(this.width - 1, Math.max(0, Math.floor(px))), ty = Math.min(this.height - 1, Math.max(0, Math.floor(py)));
     return BED * this.shore.depth(tx, ty, px, py);
-  }
-
-  /** Whether there's water within `r` tiles of a window of tiles. */
-  private waterNear(w: Window, r: number) {
-    for (let y = Math.max(0, w.y0 - r); y < Math.min(this.height, w.y1 + r); y++) for (let x = Math.max(0, w.x0 - r); x < Math.min(this.width, w.x1 + r); x++) {
-      if (this.cover[y * this.width + x] === LAND_COVER.water) return true;
-    }
-    return false;
   }
 
   /** How far (m) the water's bed lies under its tiles' level at a point (in tiles): nothing at the bank, BED in from it. */
@@ -619,9 +611,16 @@ export class PaintedLand {
   }
 
   /** A colour as the country beyond the map has it: a little duller, so where the player can build reads at a glance. */
-  private dull(c: THREE.Color) {
+  private dull(c: THREE.Color): THREE.Color {
     const { light, chroma } = this.look.beyond, y = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
-    c.setRGB((y + (c.r - y) * chroma) * light, (y + (c.g - y) * chroma) * light, (y + (c.b - y) * chroma) * light);
+    return c.setRGB((y + (c.r - y) * chroma) * light, (y + (c.g - y) * chroma) * light, (y + (c.b - y) * chroma) * light);
+  }
+
+  /** How far a point (tiles) is beyond the map, 0 to 1: blended between the tiles' middles, as their paint is. */
+  private offMap(px: number, py: number): number {
+    const fx = px - 0.5, fy = py - 0.5, ix = Math.floor(fx), iy = Math.floor(fy), u = fx - ix, v = fy - iy;
+    const off = (x: number, y: number) => (this.onMap(x, y) ? 0 : 1);
+    return (off(ix, iy) * (1 - u) + off(ix + 1, iy) * u) * (1 - v) + (off(ix, iy + 1) * (1 - u) + off(ix + 1, iy + 1) * u) * v;
   }
 
   private onMap(x: number, y: number) { const m = this.map; return x >= m.x && y >= m.y && x < m.x + m.width && y < m.y + m.height; }
@@ -749,8 +748,9 @@ export class PaintedLand {
     const shingle = smooth(0.06, 0.2, depth) * (1 - smooth(0.3, 0.5, depth)) * smooth(-0.35, 0.25, noise2(wx * 0.6 - 2, wz * 0.6 + 6));
     c.lerp(COL.shingle, shingle * 0.6);
     // The bed, darkening as it deepens.
-    const under = SCRATCH.a.copy(COL.bed).lerp(COL.deep, depth * 0.7);
-    if (!this.onMap(tx, ty)) this.dull(under);
+    const under = SCRATCH.a.copy(COL.bed).lerp(COL.deep, depth * 0.7), off = this.offMap(px, py);
+    // (Duller beyond the map, blended across its edge as the tiles' paint is, so a bed crossing it has no seam.)
+    if (off > 0) under.lerp(this.dull(SCRATCH.b.copy(under)), off);
     c.lerp(under, bed);
     const cover = bed > 0.5 ? LAND_COVER.water : this.cover[ty * this.width + tx] === LAND_COVER.water ? LAND_COVER.grass : this.cover[ty * this.width + tx];
     const pt = PAINT[cover] ?? PAINT[0];
@@ -891,7 +891,7 @@ const SIDE_AT: ((s: number) => [number, number])[] = [(s) => [s, 0], (s) => [1, 
 /** The two ends of a tile's side, across the tile (u, v), in the order sideOf lists them. */
 const SIDE_ENDS: [[number, number], [number, number]][] = [[[0, 0], [1, 0]], [[1, 0], [1, 1]], [[0, 1], [1, 1]], [[0, 0], [0, 1]]];
 const SCRATCH = {
-  a: new THREE.Color(), c: new THREE.Color(), lip: new THREE.Color(), floor: new THREE.Color(), band: new THREE.Color(),
+  a: new THREE.Color(), b: new THREE.Color(), c: new THREE.Color(), lip: new THREE.Color(), floor: new THREE.Color(), band: new THREE.Color(),
   n: new THREE.Vector3(), out: new THREE.Vector3(),
 };
 const ab = new THREE.Vector3(), ac = new THREE.Vector3(), cross = new THREE.Vector3();
