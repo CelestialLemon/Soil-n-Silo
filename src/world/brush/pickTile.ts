@@ -1,19 +1,17 @@
 import { TERRAIN } from '../../game/map.ts';
 import { buildingAt, inMap, type GameState } from '../../game/state.ts';
 import type { Tile } from '../scene.ts';
-import { planOutcropTile, rockFootprint, type PlannedRock, type RocksLook } from './rockPlan.ts';
+import { planOutcropTile, rockFootprint, type PlannedRock } from './rockPlan.ts';
 import { TILE } from './scale.ts';
 
 /** How far from a tree's tile's middle (tiles) a pick on a plant still finds the tree: a crown leans over its tile's edge. */
 const CROWN_REACH = 0.8;
 /** How far from a rock tile's middle (tiles) a depth-rounded plant hit on empty grass still resolves to the rock (~20 cm past its edge). */
 const ROCK_EDGE_REACH = 0.55;
-/** Above the tallest rock (m over the ground): a plant hit higher than this over grass is never a rock (bold crags reach ~3.8 m). */
+/** Above the tallest rock (m over the ground): a plant hit higher than this over grass is never a rock (crags reach ~3.8 m). */
 const ROCK_PICK_TOP = 4;
 /** Height (m) under which a hit over a rock tile counts as rock even where no planned piece stands (low stones, skirts). */
 const ROCK_FLOOR = 0.4;
-/** The `off` look's round stones: how high (m over the ground under the hit) they reach. */
-const OLD_STONE_TOP = 1.6;
 /** How far round a hit (m) a crag's surface is read, and how far over it (m) a hit still counts as on it: a pick's point is rounded. */
 const SURFACE_REACH = 0.3, SURFACE_SLACK = 0.2;
 
@@ -68,18 +66,16 @@ export function cragTops(build: (piece: PlannedRock) => CragMesh): CragTop {
  * (`ROCK_FLOOR` over the ground there) lets a low crown overhanging the tile win.
  */
 function rockCeilingAt(
-  s: GameState, ox: number, oz: number, wx: number, wz: number, landAt: (x: number, z: number) => number, look: RocksLook,
-  top: CragTop,
+  s: GameState, ox: number, oz: number, wx: number, wz: number, landAt: (x: number, z: number) => number, top: CragTop,
 ): number {
   const here = landAt(wx, wz);
-  if (look === 'off') return here + OLD_STONE_TOP;
   const w = s.map.width;
   const isRock = (x: number, y: number) => inMap(s, x, y) && s.map.terrain[y * w + x] === TERRAIN.rock;
   const R = SURFACE_REACH;
   let ceiling = here + ROCK_FLOOR;
   for (let ty = oz - 1; ty <= oz + 1; ty++) for (let tx = ox - 1; tx <= ox + 1; tx++) {
     if (!isRock(tx, ty)) continue;
-    for (const piece of planOutcropTile(tx, ty, isRock, look)) {
+    for (const piece of planOutcropTile(tx, ty, isRock)) {
       const fp = rockFootprint(piece), px = wx - piece.x, pz = wz - piece.z;
       // Only crags whose footprint (grown by the reach) is near the point are read.
       if (Math.abs(px) > fp.fx + R || Math.abs(pz) > fp.fz + R) continue;
@@ -101,8 +97,7 @@ function rockCeilingAt(
  * reach, else a rock just past its edge, never a rock over a crop or building next to it.
  */
 export function plantTile(
-  s: GameState, p: { x: number; y: number; z: number }, landAt: (x: number, z: number) => number, look: RocksLook,
-  top: CragTop,
+  s: GameState, p: { x: number; y: number; z: number }, landAt: (x: number, z: number) => number, top: CragTop,
 ): Tile | null {
   const fx = p.x / TILE, fz = p.z / TILE;
   const ox = Math.floor(fx), oz = Math.floor(fz);
@@ -120,7 +115,7 @@ export function plantTile(
     const ownT = s.map.terrain[oz * w + ox];
     if (ownT === TERRAIN.tree) return { x: ox, y: oz };
     if (ownT === TERRAIN.rock) {
-      if (bestTree && p.y > rockCeilingAt(s, ox, oz, p.x, p.z, landAt, look, top)) return bestTree;
+      if (bestTree && p.y > rockCeilingAt(s, ox, oz, p.x, p.z, landAt, top)) return bestTree;
       return { x: ox, y: oz };
     }
   }

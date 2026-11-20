@@ -78,7 +78,8 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
 - **Crags, for the game's rock outcrops** (Soil-n-Silo#257, epic Soil-n-Silo#265, 2026-11-20): the painting kit's
   `addCrag`, a boulder or crag cut by three soft cleavage planes from an icosphere (80 or 180 triangles), stretched and
   tilted, its underside pushed into the slope so it never floats, with strata, a muddy foot and moss on its upward faces.
-  The game lays them out per rock tile from its neighbours. The demo doesn't use it; its frames are unchanged.
+  The game lays them out per rock tile from its neighbours (the bold look, the developer's pick on Soil-n-Silo#278). The
+  demo doesn't use it; its frames are unchanged.
 - **Weather, epic #3** (planned 2026-10-30): season, weather and hour change the whole picture. The decisions are in #3; in
   short, the game owns the weather's state and logic and the renderer only draws it. The order:
   1. #6 performance: measure the frame and set the weather's budget (done 2026-10-30: the farm 17.5 ms on the laptop,

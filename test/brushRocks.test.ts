@@ -114,38 +114,31 @@ test('every crag\'s promised shadow (brush3d\'s CRAG_BOUND) stays in the rock ti
   const offsets: [number, number][] = [[4, 4], [11, 7], [23, 19], [37, 5]];
   const RIM = 256;
 
-  for (const look of ['soft', 'bold'] as const) {
-    for (const shape of shapes) {
-      for (const [ox, oy] of offsets) {
-        const shifted: [number, number][] = shape.tiles.map(([tx, ty]) => [tx + ox, ty + oy]);
-        const set = new Set(shifted.map(([tx, ty]) => `${tx},${ty}`));
-        const isRock = (tx: number, ty: number) => set.has(`${tx},${ty}`);
-        let maxSpill = 0;
-        for (const [tx, ty] of shifted) for (const p of planOutcropTile(tx, ty, isRock, look)) {
-          // The shadow's ellipse is L·(cos t, sin t), L the Cholesky factor of its matrix.
-          const fp = rockFootprint(p), l00 = Math.sqrt(fp.qxx), l10 = fp.qxz / l00, l11 = Math.sqrt(Math.max(0, fp.qzz - l10 * l10));
-          for (let k = 0; k < RIM; k++) {
-            const c = Math.cos(2 * Math.PI * k / RIM), si = Math.sin(2 * Math.PI * k / RIM);
-            maxSpill = Math.max(maxSpill, distToRockUnion(p.x + l00 * c, p.z + l10 * c + l11 * si, shifted));
-          }
+  for (const shape of shapes) {
+    for (const [ox, oy] of offsets) {
+      const shifted: [number, number][] = shape.tiles.map(([tx, ty]) => [tx + ox, ty + oy]);
+      const set = new Set(shifted.map(([tx, ty]) => `${tx},${ty}`));
+      const isRock = (tx: number, ty: number) => set.has(`${tx},${ty}`);
+      let maxSpill = 0;
+      for (const [tx, ty] of shifted) for (const p of planOutcropTile(tx, ty, isRock)) {
+        // The shadow's ellipse is L·(cos t, sin t), L the Cholesky factor of its matrix.
+        const fp = rockFootprint(p), l00 = Math.sqrt(fp.qxx), l10 = fp.qxz / l00, l11 = Math.sqrt(Math.max(0, fp.qzz - l10 * l10));
+        for (let k = 0; k < RIM; k++) {
+          const c = Math.cos(2 * Math.PI * k / RIM), si = Math.sin(2 * Math.PI * k / RIM);
+          maxSpill = Math.max(maxSpill, distToRockUnion(p.x + l00 * c, p.z + l10 * c + l11 * si, shifted));
         }
-        assert.ok(maxSpill <= 0.01, `${look} ${shape.name} @(${ox},${oy}): a crag's shadow spills ${maxSpill.toFixed(3)} m off the rock`);
       }
+      assert.ok(maxSpill <= 0.01, `${shape.name} @(${ox},${oy}): a crag's shadow spills ${maxSpill.toFixed(3)} m off the rock`);
     }
   }
 
-  // Contiguous 3×3 cluster still bridges shared interior seams and bold remains taller than soft.
+  // A contiguous 3×3 cluster bridges its shared interior seams.
   const inCluster = (x: number, y: number) => x >= 0 && x <= 2 && y >= 0 && y <= 2;
-  const softAll: PlannedRock[] = [], boldAll: PlannedRock[] = [];
-  for (let y = 0; y <= 2; y++) for (let x = 0; x <= 2; x++) {
-    softAll.push(...planOutcropTile(x, y, inCluster, 'soft'));
-    boldAll.push(...planOutcropTile(x, y, inCluster, 'bold'));
-  }
-  const bridgeX = softAll.filter((p) => Math.abs(p.x - TILE) < 0.75).length;
-  const bridgeZ = softAll.filter((p) => Math.abs(p.z - TILE) < 0.75).length;
+  const all: PlannedRock[] = [];
+  for (let y = 0; y <= 2; y++) for (let x = 0; x <= 2; x++) all.push(...planOutcropTile(x, y, inCluster));
+  const bridgeX = all.filter((p) => Math.abs(p.x - TILE) < 0.75).length;
+  const bridgeZ = all.filter((p) => Math.abs(p.z - TILE) < 0.75).length;
   assert.ok(bridgeX >= 2 && bridgeZ >= 2, `cluster bridges seams (x=${bridgeX}, z=${bridgeZ})`);
-  const meanH = (arr: typeof softAll) => arr.reduce((a, p) => a + p.ry, 0) / arr.length;
-  assert.ok(meanH(boldAll) > meanH(softAll) * 1.25, `bold (${meanH(boldAll).toFixed(2)}) taller than soft (${meanH(softAll).toFixed(2)})`);
 });
 
 test('diagonal ridges align their long axis along NW-SE for NW|SE masks and NE-SW for NE|SW masks', () => {
@@ -162,7 +155,7 @@ test('diagonal ridges align their long axis along NW-SE for NW|SE masks and NE-S
       // Add one cardinal neighbour so it enters the ridge-aligned branch (card === 1, best === 2 on the diagonal).
       const base = isDiag(tx, ty);
       const isRock = (x: number, y: number) => base(x, y) || (x === tx + 1 && y === ty);
-      const primary = planOutcropTile(tx, ty, isRock, 'soft')[0];
+      const primary = planOutcropTile(tx, ty, isRock)[0];
       // Local +X rotated by yaw in Three.js is (cos(yaw), -sin(yaw)).
       const dx = Math.cos(primary.yaw), dz = -Math.sin(primary.yaw);
       dirCorr += dx * dz;
@@ -176,9 +169,9 @@ test('diagonal ridges align their long axis along NW-SE for NW|SE masks and NE-S
 });
 
 test('the crags\' triangles (brush3d\'s CRAG_TRIANGLES) stay within budget per rock tile, near country included', () => {
-  const tris = (tiles: [number, number][], isRock: (x: number, y: number) => boolean, look: 'soft' | 'bold') => {
+  const tris = (tiles: [number, number][], isRock: (x: number, y: number) => boolean) => {
     let n = 0;
-    for (const [x, y] of tiles) for (const p of planOutcropTile(x, y, isRock, look)) n += CRAG_TRIANGLES[p.detail];
+    for (const [x, y] of tiles) for (const p of planOutcropTile(x, y, isRock)) n += CRAG_TRIANGLES[p.detail];
     return n;
   };
 
@@ -192,10 +185,8 @@ test('the crags\' triangles (brush3d\'s CRAG_TRIANGLES) stay within budget per r
     for (let y = 0; y < sc.height; y++) for (let x = 0; x < sc.width; x++) if (mapRock(x, y)) mapTiles.push([x, y]);
 
     // Well below 420 triangles a rock tile on average (the old round stones, addStone, were about 288).
-    for (const look of ['soft', 'bold'] as const) {
-      const perTile = tris(mapTiles, mapRock, look) / mapTiles.length;
-      assert.ok(perTile < 420, `${id} ${look} avg tris/tile = ${perTile.toFixed(1)}`);
-    }
+    const perTile = tris(mapTiles, mapRock) / mapTiles.length;
+    assert.ok(perTile < 420, `${id} avg tris/tile = ${perTile.toFixed(1)}`);
 
     if (id === 'c3') {
       const beyond = (x: number, y: number) => Math.hypot(Math.max(0, -x, x - sc.width), Math.max(0, -y, y - sc.height));
@@ -210,10 +201,8 @@ test('the crags\' triangles (brush3d\'s CRAG_TRIANGLES) stay within budget per r
         if (countryRock(x, y)) countryTiles.push([x, y]);
       }
       assert.ok(countryTiles.length > 0, 'c3 has near-country rocks');
-      for (const look of ['soft', 'bold'] as const) {
-        const perTile = tris(countryTiles, countryRock, look) / countryTiles.length;
-        assert.ok(perTile < 420, `c3 near-country ${look} avg tris/tile = ${perTile.toFixed(1)}`);
-      }
+      const perTile = tris(countryTiles, countryRock) / countryTiles.length;
+      assert.ok(perTile < 420, `c3 near-country avg tris/tile = ${perTile.toFixed(1)}`);
     }
   }
 });
@@ -228,18 +217,18 @@ test('plantTile keeps rock picks on the rock tile next to a tree while preservin
   s.map.terrain[5 * w + 6] = TERRAIN.tree;
 
   // Direct hit on rock geometry inside the rock tile (even right near the border with the neighbour tree) picks the rock.
-  assert.deepEqual(plantTile(s, { x: 5.5 * TILE, y: 0.9, z: 5.5 * TILE }, FLAT, 'bold', TOPS), { x: 5, y: 5 });
+  assert.deepEqual(plantTile(s, { x: 5.5 * TILE, y: 0.9, z: 5.5 * TILE }, FLAT, TOPS), { x: 5, y: 5 });
 
   // A low overhanging tree crown above the rock's local height resolves to the adjacent tree rather than the rock.
-  assert.deepEqual(plantTile(s, { x: 5.85 * TILE, y: 3.98, z: 5.5 * TILE }, FLAT, 'bold', TOPS), { x: 6, y: 5 });
-  assert.deepEqual(plantTile(s, { x: 5.85 * TILE, y: 5.2, z: 5.5 * TILE }, FLAT, 'bold', TOPS), { x: 6, y: 5 });
+  assert.deepEqual(plantTile(s, { x: 5.85 * TILE, y: 3.98, z: 5.5 * TILE }, FLAT, TOPS), { x: 6, y: 5 });
+  assert.deepEqual(plantTile(s, { x: 5.85 * TILE, y: 5.2, z: 5.5 * TILE }, FLAT, TOPS), { x: 6, y: 5 });
 
   // A tree crown overhanging empty grass within CROWN_REACH still resolves to the tree.
-  assert.deepEqual(plantTile(s, { x: 6.5 * TILE, y: 4.5, z: 4.8 * TILE }, FLAT, 'bold', TOPS), { x: 6, y: 5 });
+  assert.deepEqual(plantTile(s, { x: 6.5 * TILE, y: 4.5, z: 4.8 * TILE }, FLAT, TOPS), { x: 6, y: 5 });
 
   // A crop/building on grass next to a rock is never stolen by the rock.
   s.buildings.push({ id: 999, type: 'field', x: 4, y: 4, rot: 0, crop: 'wheat', growth: 0.5, stored: 0, status: 'idle', need: null } as never);
-  assert.equal(plantTile(s, { x: 5.5 * TILE, y: 0.4, z: 4.97 * TILE }, FLAT, 'bold', TOPS), null);
+  assert.equal(plantTile(s, { x: 5.5 * TILE, y: 0.4, z: 4.97 * TILE }, FLAT, TOPS), null);
 });
 
 test('plantTile measures a crag\'s top from the ground under it, not under the hit, on a slope', () => {
@@ -250,7 +239,7 @@ test('plantTile measures a crag\'s top from the ground under it, not under the h
   s.map.terrain[5 * w + 5] = TERRAIN.rock;
   s.map.terrain[6 * w + 5] = TERRAIN.tree;
   const lone = (x: number, y: number) => x === 5 && y === 5;
-  const main = planOutcropTile(5, 5, lone, 'bold')[0];
+  const main = planOutcropTile(5, 5, lone)[0];
   // The land falls steeply away to the south, towards the tree, from the crag's centre.
   const slope = (_x: number, z: number) => -(z - main.z) * 0.8;
   // The crag on the slope stands as on flat ground (the ground under its centre is 0): only its buried skirt changes.
@@ -261,12 +250,12 @@ test('plantTile measures a crag\'s top from the ground under it, not under the h
     // Points on its downhill side, in the crown's reach, a metre or more lower ground under them than under its centre.
     if (Math.floor(vx / TILE) !== 5 || Math.floor(vz / TILE) !== 5 || Math.hypot(vx / TILE - 5.5, vz / TILE - 6.5) >= 0.8) continue;
     if (vy < 0.5 || slope(vx, vz) > -1) continue;
-    assert.deepEqual(plantTile(s, { x: vx, y: vy, z: vz }, slope, 'bold', TOPS), { x: 5, y: 5 });
+    assert.deepEqual(plantTile(s, { x: vx, y: vy, z: vz }, slope, TOPS), { x: 5, y: 5 });
     checked++;
   }
   assert.ok(checked > 0, 'points on the downhill face, in the crown\'s reach');
   // And a hit over the crag's top, in the crown's reach, is the crown's.
-  assert.deepEqual(plantTile(s, { x: main.x, y: highest + 0.5, z: 5.95 * TILE }, slope, 'bold', TOPS), { x: 5, y: 6 });
+  assert.deepEqual(plantTile(s, { x: main.x, y: highest + 0.5, z: 5.95 * TILE }, slope, TOPS), { x: 5, y: 6 });
 });
 
 test('plantTile: a crown over a crag\'s low shoulder is the tree\'s, every point of the crag\'s surface the rock\'s', () => {
@@ -274,11 +263,11 @@ test('plantTile: a crown over a crag\'s low shoulder is the tree\'s, every point
   const w = s.map.width;
   for (let y = 2; y <= 10; y++) for (let x = 2; x <= 10; x++) s.map.terrain[y * w + x] = TERRAIN.grass;
   s.buildings = s.buildings.filter((b) => b.x < 1 || b.x > 11 || b.y < 1 || b.y > 11);
-  // A bold rock with a tree east of it: along its shoulder, in the crown's reach, a hit just over the crag's surface (as
+  // A rock with a tree east of it: along its shoulder, in the crown's reach, a hit just over the crag's surface (as
   // the pick reads it: 0.3 m round the point, with 0.2 m of slack) is the crown's, a hit on it the rock's.
   s.map.terrain[5 * w + 5] = TERRAIN.rock;
   s.map.terrain[5 * w + 6] = TERRAIN.tree;
-  const pieces = planOutcropTile(5, 5, (x, y) => x === 5 && y === 5, 'bold');
+  const pieces = planOutcropTile(5, 5, (x, y) => x === 5 && y === 5);
   const surface = (x: number, z: number) => {
     let high: number | null = null;
     for (const p of pieces) {
@@ -292,8 +281,8 @@ test('plantTile: a crown over a crag\'s low shoulder is the tree\'s, every point
     const here = surface(x, z);
     if (here === null || here < 0.5) continue;
     const round = Math.max(...[[0, 0], [0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3]].map(([dx, dz]) => surface(x + dx, z + dz) ?? 0));
-    assert.deepEqual(plantTile(s, { x, y: round + 0.3, z }, FLAT, 'bold', TOPS), { x: 6, y: 5 }, `over the shoulder at (${x.toFixed(2)}, ${z})`);
-    assert.deepEqual(plantTile(s, { x, y: here - 0.02, z }, FLAT, 'bold', TOPS), { x: 5, y: 5 }, `on the shoulder at (${x.toFixed(2)}, ${z})`);
+    assert.deepEqual(plantTile(s, { x, y: round + 0.3, z }, FLAT, TOPS), { x: 6, y: 5 }, `over the shoulder at (${x.toFixed(2)}, ${z})`);
+    assert.deepEqual(plantTile(s, { x, y: here - 0.02, z }, FLAT, TOPS), { x: 5, y: 5 }, `on the shoulder at (${x.toFixed(2)}, ${z})`);
     shoulders++;
   }
   assert.ok(shoulders > 5, `${shoulders} points on the shoulder checked`);
@@ -305,25 +294,23 @@ test('plantTile: a crown over a crag\'s low shoulder is the tree\'s, every point
   s.map.terrain[4 * w + 6] = TERRAIN.tree;
   s.map.terrain[9 * w + 9] = TERRAIN.rock;
   const isRock = (x: number, y: number) => x >= 0 && y >= 0 && x < w && s.map.terrain[y * w + x] === TERRAIN.rock;
-  for (const look of ['soft', 'bold'] as const) {
-    let checked = 0;
-    for (let y = 2; y <= 10; y++) for (let x = 2; x <= 10; x++) {
-      if (!isRock(x, y)) continue;
-      for (const [vx, y0, vz] of verticesOf(planOutcropTile(x, y, isRock, look))) {
-        const vy = y0 - 0.02;
-        const tx = Math.floor(vx / TILE), ty = Math.floor(vz / TILE);
-        if (vy <= 0.05 || !isRock(tx, ty)) continue;
-        assert.deepEqual(plantTile(s, { x: vx, y: vy, z: vz }, FLAT, look, TOPS), { x: tx, y: ty }, `${look} vertex at (${vx.toFixed(2)}, ${vy.toFixed(2)}, ${vz.toFixed(2)})`);
-        checked++;
-      }
+  let checked = 0;
+  for (let y = 2; y <= 10; y++) for (let x = 2; x <= 10; x++) {
+    if (!isRock(x, y)) continue;
+    for (const [vx, y0, vz] of verticesOf(planOutcropTile(x, y, isRock))) {
+      const vy = y0 - 0.02;
+      const tx = Math.floor(vx / TILE), ty = Math.floor(vz / TILE);
+      if (vy <= 0.05 || !isRock(tx, ty)) continue;
+      assert.deepEqual(plantTile(s, { x: vx, y: vy, z: vz }, FLAT, TOPS), { x: tx, y: ty }, `vertex at (${vx.toFixed(2)}, ${vy.toFixed(2)}, ${vz.toFixed(2)})`);
+      checked++;
     }
-    assert.ok(checked > 500, `${look}: ${checked} vertices checked`);
   }
+  assert.ok(checked > 500, `${checked} vertices checked`);
 });
 
 test('cragTops: a crag turned in place (same seed and size) is read anew, not from the old one kept', () => {
   const isRock = (x: number, y: number) => x === 5 && y === 5;
-  const [piece] = planOutcropTile(5, 5, isRock, 'bold');
+  const [piece] = planOutcropTile(5, 5, isRock);
   const turned: PlannedRock = { ...piece, yaw: piece.yaw + Math.PI / 2 };
   let builds = 0;
   const tops = cragTops((p) => { builds++; return standIn(p); });

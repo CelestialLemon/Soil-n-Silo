@@ -105,15 +105,15 @@ shade duller, so where you can build still reads at a glance. Height on the map 
 
 The live valley brought up to the brush3d farm demo's crafted look, one small issue and PR at a time, each with its look
 options behind a HUD button and a URL option on the PR's preview, and no rules changed.
-- **Rock outcrops (#257):** a rock tile used to be one or two round stones in its middle, so a rocky patch read as a grid
+- **Rock outcrops (#257, done 2026-11-21):** a rock tile used to be one or two round stones in its middle, so a rocky patch read as a grid
   of dots. Now each rock tile looks at its eight neighbours (`src/world/brush/rockPlan.ts`): inside a patch, big faceted
   crags and broad shelves shifted toward the patch's middle, bridges over the edges and corners rock tiles share, and at
   its edges smaller stones and talus; nothing leaves the rock tiles, every crag sits into the slope, and moss grows on
   their tops (seasonal). brush3d's painting kit draws them (`addCrag`). The country's rocks near the map are drawn in
   8 × 8-tile pieces, so an earthwork at the map's edge remakes only the pieces it touches. Picking a crag finds its rock
-  tile, and a tree's crown leaning over the rock still finds the tree. On the PR's preview: `?rocks=soft` (calm, mossy,
-  the default), `?rocks=bold` (taller, sharper, more talus) or `?rocks=off` (as before), and the **Rocks** button in the
-  HUD; the developer's pick to come, then the switch goes.
+  tile, and a tree's crown leaning over the rock still finds the tree. The developer picked the bold look on PR #278:
+  crags about 1.4× as tall as the calmer, mossier option, sharper, with talus on every tile; the other looks and their
+  switch are gone.
 
 ## One renderer: the swap to brush3d (2026-11-16)
 

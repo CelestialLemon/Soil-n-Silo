@@ -7,10 +7,9 @@ import { CROPS, SAPLING_SECONDS } from '../../game/data.ts';
 import { TERRAIN, type Land } from '../../game/map.ts';
 import { baseLevel } from '../../game/relief.ts';
 import { inMap, layoutOf, reliefOf, terrainAt, type FieldBuilding, type GameState } from '../../game/state.ts';
-import { rocksLook } from '../../ui/rocksChoice.ts';
 import { landRelief, standY, type Lie } from '../ground.ts';
 import { hash, treeAt, wetAt } from '../trees.ts';
-import { placeOutcropTile, rockMask, rockTileKey, type RocksLook } from './rocks.ts';
+import { placeOutcropTile, rockMask, rockTileKey } from './rocks.ts';
 import { RISE, TILE } from './scale.ts';
 import { thingHeight } from './things.ts';
 
@@ -25,7 +24,7 @@ import { thingHeight } from './things.ts';
 //   (cheaply) when they change. A field's crop is made anew when its stage or crop changes.
 // - The country's trees within NEAR tiles of the map are painted as the map's; further off, the woods are crowns alone, a
 //   crown for each 2 × 2 tiles of wood. Near-country rocks (within NEAR tiles) stay in 8 × 8-tile chunks rebuilt only
-//   where map-edge earthworks move their ground or when the #257 rocks comparison look changes.
+//   where map-edge earthworks move their ground.
 
 /** The side of a block of the map's trees (tiles). */
 const BLOCK = 8;
@@ -68,7 +67,7 @@ interface Shown { meshes: THREE.Mesh[]; key: string }
 interface Standing { x: number; z: number; ground: number; meshes: THREE.Mesh[]; own: boolean }
 /** A block of the map's trees and rocks as drawn: its grove, each tree in it (by tile), and its rocks (and their key). */
 interface Block { grove: THREE.Mesh[]; trees: Map<number, Standing>; stones: Shown | null }
-/** One 8 × 8-tile chunk of near-country rocks, rebuilt on its own when map-edge relief or the look changes. */
+/** One 8 × 8-tile chunk of near-country rocks, rebuilt on its own when map-edge relief changes. */
 interface CountryRockChunk { tiles: [number, number][]; nearBorder: boolean; shown: Shown | null }
 
 export class Wild {
@@ -81,13 +80,11 @@ export class Wild {
   private readonly fields = new Map<number, Shown>();
   private readonly saplings = new Map<number, Shown>();
   private readonly countryRockChunks = new Map<string, CountryRockChunk>();
-  private rocksMode: RocksLook = rocksLook();
-  private lastState: GameState;
   private layout = -1;
   private relief = -1;
 
   constructor(r: BrushRenderer, lie: Lie, land: Land, s: GameState) {
-    this.r = r; this.lie = lie; this.land = land; this.lastState = s;
+    this.r = r; this.lie = lie; this.land = land;
     const M = land.margin;
     this.ground = groundOf((x, z) => lie.y(x / TILE, z / TILE) * RISE * TILE);
     // Fallen leaves and petals lie on the land, not on the water.
@@ -98,17 +95,8 @@ export class Wild {
     this.country(s);
   }
 
-  /** Switches the #257 rocks comparison look live (rebuilds near-country and map rocks without touching trees). */
-  setRocksLook(look: RocksLook) {
-    if (look === this.rocksMode) return;
-    this.rocksMode = look;
-    this.syncCountryStones(this.lastState);
-    this.syncBlocks(this.lastState);
-  }
-
   /** Follows the game: trees cleared or grown, saplings growing, crops growing, ripening and harvested, earthworks. */
   sync(s: GameState) {
-    this.lastState = s;
     const layout = layoutOf(s), relief = reliefOf(s);
     if (layout !== this.layout || relief !== this.relief) {
       this.layout = layout; this.relief = relief;
@@ -162,7 +150,7 @@ export class Wild {
       onLand(x, y, w, h, M) && !onMap(x, y, w, h) && beyond(x + 0.5, y + 0.5, w, h) <= NEAR
       && land.terrain[(y + M) * land.width + x + M] === TERRAIN.rock;
     for (const chunk of this.countryRockChunks.values()) {
-      let key = this.rocksMode;
+      let key = '';
       if (chunk.nearBorder) {
         for (const [x, y] of chunk.tiles) {
           if (x >= -BORDER_HALO && y >= -BORDER_HALO && x < w + BORDER_HALO && y < h + BORDER_HALO) {
@@ -173,12 +161,12 @@ export class Wild {
       if (chunk.shown?.key === key) continue;
       if (chunk.shown) this.drop(chunk.shown.meshes);
       const stones = new MeshBuilder('paint');
-      for (const [x, y] of chunk.tiles) placeOutcropTile(stones, this.ground, x, y, isCountryRock, this.rocksMode);
+      for (const [x, y] of chunk.tiles) placeOutcropTile(stones, this.ground, x, y, isCountryRock);
       const meshes: THREE.Mesh[] = [];
       if (stones.vertexCount) {
         const g = stones.build();
-        // Keep `off` non-seasonal to match `dev`'s exact baseline; `soft`/`bold` turn moss seasonally.
-        const m = r.add(g, 'paint', { tile: CUT, seasonal: this.rocksMode !== 'off' });
+        // Seasonal: the moss on the crags' tops turns with the season.
+        const m = r.add(g, 'paint', { tile: CUT, seasonal: true });
         if (m.geometry !== g) g.dispose();
         meshes.push(m);
       }
@@ -240,22 +228,20 @@ export class Wild {
           block.trees.set(i, { x: tx, z: tz, ground: this.ground.height(tx, tz), meshes: grove.addTo(r), own: true });
         }
       }
-      // The rocks, made again when one (or a neighbour) is cleared, the ground under them moved, or the comparison look changed.
-      const key = `${this.rocksMode}|${rocks.map((i) => {
+      // The rocks, made again when one (or a neighbour) is cleared or the ground under them moved.
+      const key = rocks.map((i) => {
         const rx = i % w, ry = Math.floor(i / w);
-        return this.rocksMode === 'off'
-          ? `${i},${heightAt(rx + 0.5, ry + 0.5).toFixed(3)}`
-          : rockTileKey(rx, ry, rockMask(isRock, rx, ry), heightAt);
-      }).join(' ')}`;
+        return rockTileKey(rx, ry, rockMask(isRock, rx, ry), heightAt);
+      }).join(' ');
       if (block.stones?.key === key) continue;
       if (block.stones) this.drop(block.stones.meshes);
       const stones = new MeshBuilder('paint');
-      for (const i of rocks) placeOutcropTile(stones, this.ground, i % w, Math.floor(i / w), isRock, this.rocksMode);
+      for (const i of rocks) placeOutcropTile(stones, this.ground, i % w, Math.floor(i / w), isRock);
       let meshes: THREE.Mesh[] = [];
       if (stones.vertexCount) {
         const g = stones.build();
-        // Keep `off` non-seasonal to match `dev`'s exact baseline; `soft`/`bold` turn moss seasonally.
-        const m = r.add(g, 'paint', { tile: CUT, seasonal: this.rocksMode !== 'off' });
+        // Seasonal: the moss on the crags' tops turns with the season.
+        const m = r.add(g, 'paint', { tile: CUT, seasonal: true });
         if (m.geometry !== g) g.dispose();
         meshes = [m];
       }

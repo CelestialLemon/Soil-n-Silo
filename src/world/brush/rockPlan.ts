@@ -7,9 +7,6 @@ import { TILE } from './scale.ts';
 // and tapered talus sit for each rock tile. Plain TypeScript with no three.js or Vite imports so Node tests can verify
 // cluster bridging, strict tile-union containment (#206 picking), and cross-block cache-key invalidation (#204).
 
-/** Rocks comparison look (`off` = legacy stones, `soft` = calm mossy crags, `bold` = taller faceted crags & talus). */
-export type RocksLook = 'off' | 'soft' | 'bold';
-
 /** Bitmask of the 8 tiles around (x, y) that are also rock: cardinal N, E, S, W then diagonal NE, SE, SW, NW. */
 export const ROCK_BIT = { N: 1, E: 2, S: 4, W: 8, NE: 16, SE: 32, SW: 64, NW: 128 } as const;
 
@@ -85,18 +82,12 @@ export function rockFootprint(s: RockShape): RockFootprint {
   return { qxx, qxz, qzz, fx: Math.sqrt(qxx), fz: Math.sqrt(qzz) };
 }
 
-interface OutcropStyle {
-  heightScale: number;
-  crag: number;
-  moss: number;
-  tilt: number;
-  extraTalus: boolean;
-}
-
-const STYLES: Record<Exclude<RocksLook, 'off'>, OutcropStyle> = {
-  soft: { heightScale: 1, crag: 0.52, moss: 0.62, tilt: 0.18, extraTalus: false },
-  bold: { heightScale: 1.42, crag: 0.8, moss: 0.4, tilt: 0.28, extraTalus: true },
-};
+/**
+ * The outcrops' style, the developer's pick on PR #278 (`bold`, over a calmer, mossier `soft`): crags about 1.4× as tall
+ * (`heightScale`, on a base sized for a calm crag), sharp (`crag`), lightly mossed (`moss`), leaning up to `tilt`
+ * radians, and every tile with its talus.
+ */
+const STYLE = { heightScale: 1.42, crag: 0.8, moss: 0.4, tilt: 0.28 } as const;
 
 /** Low-frequency geological bedrock tone in [0, 1] at world (wx, wz), shared across an outcrop. */
 function bedrockTone(wx: number, wz: number): number {
@@ -209,15 +200,15 @@ function clampToRock(
 }
 
 /**
- * Plans the multi-scale rock pieces belonging to rock tile (x, y) for `soft` or `bold`.
+ * Plans the multi-scale rock pieces belonging to rock tile (x, y).
  * Adjacent rock tiles fuse across shared cardinal edges (E, S) and 2×2 quad corners (E & S & SE).
  */
 export function planOutcropTile(
-  x: number, y: number, isRock: (tx: number, ty: number) => boolean, look: Exclude<RocksLook, 'off'>,
+  x: number, y: number, isRock: (tx: number, ty: number) => boolean,
 ): PlannedRock[] {
   const out: PlannedRock[] = [];
   const cx = (x + 0.5) * TILE, cz = (y + 0.5) * TILE;
-  const st = STYLES[look];
+  const st = STYLE;
   const mask = rockMask(isRock, x, y);
   const N = (mask & ROCK_BIT.N) !== 0, E = (mask & ROCK_BIT.E) !== 0, S = (mask & ROCK_BIT.S) !== 0, W = (mask & ROCK_BIT.W) !== 0;
   const NE = (mask & ROCK_BIT.NE) !== 0, SE = (mask & ROCK_BIT.SE) !== 0, SW = (mask & ROCK_BIT.SW) !== 0, NW = (mask & ROCK_BIT.NW) !== 0;
@@ -278,14 +269,13 @@ export function planOutcropTile(
       sink: 0.38, crag: st.crag * 0.85, moss: Math.min(0.85, st.moss + 0.12), detail: 1, tone, seed: nextSeed(rand),
     });
 
-    if (st.extraTalus || rand() < 0.65) {
-      const ta = ca + 2.3 + rand() * 1.4, tr = 0.95 + rand() * 0.4;
-      const trx = 0.38 + rand() * 0.2, trz = 0.3 + rand() * 0.16, try_ = 0.22 + rand() * 0.14;
-      pushFitted(dx + Math.cos(ta) * tr, dz + Math.sin(ta) * tr, {
-        rx: trx, ry: try_, rz: trz, yaw: rand() * Math.PI, pitch: 0, roll: 0,
-        sink: 0.44, crag: st.crag * 0.7, moss: st.moss, detail: 1, tone, seed: nextSeed(rand),
-      });
-    }
+    // Talus at its foot.
+    const ta = ca + 2.3 + rand() * 1.4, tr = 0.95 + rand() * 0.4;
+    const trx = 0.38 + rand() * 0.2, trz = 0.3 + rand() * 0.16, try_ = 0.22 + rand() * 0.14;
+    pushFitted(dx + Math.cos(ta) * tr, dz + Math.sin(ta) * tr, {
+      rx: trx, ry: try_, rz: trz, yaw: rand() * Math.PI, pitch: 0, roll: 0,
+      sink: 0.44, crag: st.crag * 0.7, moss: st.moss, detail: 1, tone, seed: nextSeed(rand),
+    });
   } else if (card <= 2) {
     // Edge, peninsula, or ridge band: elongated boulder pulled inward toward rock neighbours, tapered talus toward grass.
     const rx = 1.35 + rand() * 0.45, rz = 0.95 + rand() * 0.35, ry = (0.86 + rand() * 0.44) * st.heightScale;
@@ -304,14 +294,13 @@ export function planOutcropTile(
       sink: 0.42, crag: st.crag * 0.85, moss: Math.min(0.85, st.moss + 0.1), detail: 1, tone, seed: nextSeed(rand),
     });
 
-    if (st.extraTalus || rand() < 0.45) {
-      const ta = Math.atan2(oz, ox) + (rand() - 0.5) * 1.8, tr = 1.0 + rand() * 0.45;
-      const trx = 0.42 + rand() * 0.2, trz = 0.32 + rand() * 0.16, try_ = (0.24 + rand() * 0.14) * st.heightScale;
-      pushFitted(Math.cos(ta) * tr, Math.sin(ta) * tr, {
-        rx: trx, ry: try_, rz: trz, yaw: rand() * Math.PI, pitch: 0, roll: 0,
-        sink: 0.45, crag: st.crag * 0.75, moss: st.moss * 0.9, detail: 1, tone, seed: nextSeed(rand),
-      });
-    }
+    // Talus toward the grass.
+    const ta = Math.atan2(oz, ox) + (rand() - 0.5) * 1.8, tr = 1.0 + rand() * 0.45;
+    const trx = 0.42 + rand() * 0.2, trz = 0.32 + rand() * 0.16, try_ = (0.24 + rand() * 0.14) * st.heightScale;
+    pushFitted(Math.cos(ta) * tr, Math.sin(ta) * tr, {
+      rx: trx, ry: try_, rz: trz, yaw: rand() * Math.PI, pitch: 0, roll: 0,
+      sink: 0.45, crag: st.crag * 0.75, moss: st.moss * 0.9, detail: 1, tone, seed: nextSeed(rand),
+    });
   } else {
     // Deep interior cluster (3 or 4 cardinal rock neighbours): vary between tall hero crags and broad linking shelves.
     const p = tilePrio(x, y);
