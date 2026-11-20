@@ -14,9 +14,6 @@ import { LEVEL, TILE } from './scale.ts';
 // grow where the grass may, and its reeds along the water's edge (#267), all in the same blocks. Kept separate from `grass.ts` with no Three.js or renderer runtime imports
 // so `npm test` exercises them directly in Node (as `landMap.ts` does for `land.ts`).
 
-export const GRASS_MODES = ['off', 'quiet', 'meadow', 'lush'] as const;
-export type GrassMode = (typeof GRASS_MODES)[number];
-
 /**
  * Tiles a side of one map or country-fringe block: one mesh, made again whole when anything in it changes. Small, so
  * making one again fits the frame's budget (grass.ts).
@@ -40,35 +37,24 @@ export interface GrassProfile {
   tuft: Required<TuftOptions>;
 }
 
-export const GRASS_PROFILES: Record<Exclude<GrassMode, 'off'>, GrassProfile> = {
-  quiet: {
-    attempts: 3, baseProb: 0.06, lushProb: 0.56, clusterProb: 0.22,
-    tall: [0.30, 0.24],
-    tuft: { blades: [3, 2], width: [0.046, 0.022], spread: 0.08 },
-  },
-  meadow: {
-    attempts: 6, baseProb: 0.10, lushProb: 0.72, clusterProb: 0.32,
-    tall: [0.36, 0.32],
-    tuft: { blades: [3, 3], width: [0.052, 0.026], spread: 0.10 },
-  },
-  lush: {
-    attempts: 11, baseProb: 0.18, lushProb: 0.82, clusterProb: 0.42,
-    tall: [0.40, 0.36],
-    tuft: { blades: [4, 3], width: [0.055, 0.028], spread: 0.11 },
-  },
+/**
+ * The meadow's density: dense, taller tussocks (the developer's pick on #256, `lush` of the quiet, meadow and lush
+ * compared on its PR).
+ */
+export const GRASS_PROFILE: GrassProfile = {
+  attempts: 11, baseProb: 0.18, lushProb: 0.82, clusterProb: 0.42,
+  tall: [0.40, 0.36],
+  tuft: { blades: [4, 3], width: [0.055, 0.028], spread: 0.11 },
 };
 
-/** The tallest a tuft is asked to be (m) in a density: its full lushness, at the most of its random 0.88–1.12 (grass.ts). */
-const maxTall = (p: GrassProfile) => (p.tall[0] + p.tall[1]) * 1.12;
+/** The tallest a tuft is asked to be (m): its full lushness, at the most of its random 0.88–1.12 (grass.ts). */
+const MAX_TALL = (GRASS_PROFILE.tall[0] + GRASS_PROFILE.tall[1]) * 1.12;
 
 /**
- * The furthest (m) any blade reaches from its tuft's spot across the ground, at rest, in any density: brush3d's promise
- * for `addTuft` (`TUFT_REACH`, held to it by its brush3d/test/tuft.test.ts), ≈ 0.825 m in Lush.
+ * The furthest (m) any blade reaches from its tuft's spot across the ground, at rest: brush3d's promise for `addTuft`
+ * (`TUFT_REACH`, held to it by its brush3d/test/tuft.test.ts), ≈ 0.825 m.
  */
-export const MAX_BLADE_REACH = Math.max(...Object.values(GRASS_PROFILES).map((p) => p.tuft.spread + TUFT_REACH * maxTall(p)));
-
-export const FLOWER_MODES = ['off', 'subtle', 'meadow', 'lush'] as const;
-export type FlowerMode = (typeof FLOWER_MODES)[number];
+export const MAX_BLADE_REACH = GRASS_PROFILE.tuft.spread + TUFT_REACH * MAX_TALL;
 
 export interface FlowerProfile {
   /** Candidate spots tried per open grass tile; each that takes is a clump of blooms. */
@@ -84,10 +70,12 @@ export interface FlowerProfile {
   flower: Required<FlowerOptions>;
 }
 
-export const FLOWER_PROFILES: Record<Exclude<FlowerMode, 'off'>, FlowerProfile> = {
-  subtle: { attempts: 8, drift: [0.66, 0.80], clump: [1, 3], flower: { size: [0.07, 0.03], lift: [0.16, 0.16], crisp: true } },
-  meadow: { attempts: 12, drift: [0.60, 0.74], clump: [2, 3], flower: { size: [0.075, 0.035], lift: [0.18, 0.22], crisp: true } },
-  lush: { attempts: 16, drift: [0.54, 0.70], clump: [2, 4], flower: { size: [0.08, 0.04], lift: [0.20, 0.30], crisp: true } },
+/**
+ * The wildflowers' density: drifts across the meadow (the developer's pick on #266, `meadow` of the subtle, meadow and
+ * lush compared on its PR). The season thins them (FLOWER_SEASONS).
+ */
+export const FLOWER_PROFILE: FlowerProfile = {
+  attempts: 12, drift: [0.60, 0.74], clump: [2, 3], flower: { size: [0.075, 0.035], lift: [0.18, 0.22], crisp: true },
 };
 
 export interface FlowerSeason {
@@ -106,9 +94,10 @@ export const FLOWER_SEASONS: Record<Season, FlowerSeason> = {
     density: 1, clump: 1,
     palette: [{ hex: 0xf7f2e4, weight: 3 }, { hex: 0xf5cf3e, weight: 3 }, { hex: 0xf6b48f, weight: 2 }, { hex: 0x9cc8ec, weight: 2 }],
   },
-  // Vibrant drifts: the farm demo's pinks, reds and violets with the white and yellow.
+  // A few vibrant drifts: the farm demo's pinks, reds and violets with the white and yellow, as sparse as autumn's (the
+  // developer, on #266: the full drifts were too much over summer's drier grass; spring is when the meadow blooms).
   summer: {
-    density: 1.2, clump: 1.2,
+    density: 0.3, clump: 0.5,
     palette: [
       { hex: 0xf08bb0, weight: 2 }, { hex: 0xe8574a, weight: 2 }, { hex: 0xa77ad8, weight: 2 }, { hex: 0xf5cf3e, weight: 2 },
       { hex: 0xf7f2e4, weight: 1 },
@@ -122,14 +111,11 @@ export const FLOWER_SEASONS: Record<Season, FlowerSeason> = {
   winter: { density: 0, clump: 0, palette: [] },
 };
 
-/** Whether any wildflowers bloom at a density in a season. */
-export const flowersBloom = (mode: FlowerMode, season: Season) => mode !== 'off' && FLOWER_SEASONS[season].density > 0;
+/** Whether any wildflowers bloom in a season. */
+export const flowersBloom = (season: Season) => FLOWER_SEASONS[season].density > 0;
 
-/** The furthest (m) a bloom reaches from its middle at a density: brush3d's promise for `addFlower` (`FLOWER_REACH`). */
-export const flowerReach = (p: FlowerProfile) => FLOWER_REACH * (p.flower.size[0] + p.flower.size[1]);
-
-export const REED_MODES = ['off', 'sparse', 'lush'] as const;
-export type ReedMode = (typeof REED_MODES)[number];
+/** The furthest (m) a bloom reaches from its middle: brush3d's promise for `addFlower` (`FLOWER_REACH`). */
+export const BLOOM_REACH = FLOWER_REACH * (FLOWER_PROFILE.flower.size[0] + FLOWER_PROFILE.flower.size[1]);
 
 export interface ReedProfile {
   /** Candidate spots tried per shore tile; each that takes is a clump, with a few more beside it. */
@@ -147,15 +133,10 @@ export interface ReedProfile {
   heads: number;
 }
 
-export const REED_PROFILES: Record<Exclude<ReedMode, 'off'>, ReedProfile> = {
-  sparse: {
-    attempts: 40, beds: [0.48, 0.64], companions: [1, 3], heads: 0.05,
-    reed: { blades: [10, 8], tall: [0.6, 0.45], across: 0.5, width: [0.026, 0.016] },
-  },
-  lush: {
-    attempts: 64, beds: [0.36, 0.52], companions: [2, 3], heads: 0.1,
-    reed: { blades: [12, 10], tall: [0.7, 0.55], across: 0.55, width: [0.026, 0.016] },
-  },
+/** The reeds: long, thick beds (lush, the developer's pick of two densities on #267). */
+export const REED_PROFILE: ReedProfile = {
+  attempts: 64, beds: [0.36, 0.52], companions: [2, 3], heads: 0.1,
+  reed: { blades: [12, 10], tall: [0.7, 0.55], across: 0.55, width: [0.026, 0.016] },
 };
 
 export interface ReedSeason {
@@ -185,14 +166,12 @@ export const REED_SEASONS: Record<Season, ReedSeason> = {
   winter: { density: 0.85, tall: 0.85, palette: [{ hex: 0xa8987a, weight: 3 }, { hex: 0x9a8a6c, weight: 2 }, { hex: 0xb8ab8e, weight: 2 }], tip: 0xe8eef0, tipMix: 0.7, heads: 0.8 },
 };
 
-/** The tallest a clump is asked to be (m) at a density: its profile's most, at the tallest season. */
-const reedTall = (p: ReedProfile) => (p.reed.tall[0] + p.reed.tall[1]) * Math.max(...Object.values(REED_SEASONS).map((k) => k.tall));
+/** The tallest a clump is asked to be (m): the profile's most, at the tallest season. */
+const REED_TALL = (REED_PROFILE.reed.tall[0] + REED_PROFILE.reed.tall[1]) * Math.max(...Object.values(REED_SEASONS).map((k) => k.tall));
 
-/** The furthest (m) a stalk reaches from its clump's spot across the ground at a density: brush3d's promise (`REED_REACH`). */
-export const reedReach = (p: ReedProfile) =>
-  p.reed.across / Math.SQRT2 + REED_REACH * reedTall(p) + p.reed.width[0] + p.reed.width[1] + REED_WIDTH;
-/** The furthest any reed reaches, in any density. */
-export const MAX_REED_REACH = Math.max(...Object.values(REED_PROFILES).map(reedReach));
+/** The furthest (m) a stalk reaches from its clump's spot across the ground: brush3d's promise (`REED_REACH`). */
+export const MAX_REED_REACH =
+  REED_PROFILE.reed.across / Math.SQRT2 + REED_REACH * REED_TALL + REED_PROFILE.reed.width[0] + REED_PROFILE.reed.width[1] + REED_WIDTH;
 
 /**
  * How much a spot `depth` m under the water's surface (above it, below zero) is the reeds' (0..1): most at the waterline,
@@ -206,11 +185,8 @@ export function reedBand(depth: number): number {
   return depth > 0 ? 1 - (depth / REED_DEEP) ** 2 : 1 - (depth / REED_HIGH) ** 2;
 }
 
-/** How high (m) a reed's tips stand over the land at most, at a density: its tallest stalk (addReeds); none when off. */
-export function reedTop(mode: ReedMode): number {
-  if (mode === 'off') return 0;
-  return REED_HEIGHT * reedTall(REED_PROFILES[mode]) + 0.05;
-}
+/** How high (m) a reed's tips stand over the land at most: its tallest stalk (addReeds). */
+export const REED_TOP = REED_HEIGHT * REED_TALL + 0.05;
 
 /** Where on a tile reeds may stand, and the water they line. */
 export interface ReedShore {
@@ -538,34 +514,27 @@ export function layoutChanges(was: GrassLayout, now: GrassLayout, width: number)
   return { urgent, dirty };
 }
 
-/** How high (m) a meadow tuft's tip stands over the land at most, at a density: its tallest blade (addTuft); none when off. */
-export function grassTop(mode: GrassMode): number {
-  if (mode === 'off') return 0;
-  return TUFT_HEIGHT * maxTall(GRASS_PROFILES[mode]) + 0.05;
-}
+/** How high (m) a meadow tuft's tip stands over the land at most: its tallest blade (addTuft). */
+export const GRASS_TOP = TUFT_HEIGHT * MAX_TALL + 0.05;
 
-/** How high (m) a wildflower's bloom stands over the land at most, at a density: its highest (addFlower); none when off. */
-export function flowerTop(mode: FlowerMode): number {
-  if (mode === 'off') return 0;
-  const p = FLOWER_PROFILES[mode];
-  return p.flower.lift[0] + p.flower.lift[1] + flowerReach(p) + 0.05;
-}
-
-/** How high (m) the meadow's plants stand at most over open grass: its grass's tips or its flowers' blooms, whichever's higher. */
-export const meadowTop = (grass: GrassMode, flowers: FlowerMode) => Math.max(grassTop(grass), flowerTop(flowers));
+/**
+ * How high (m) a wildflower's bloom stands over the land at most: its highest (addFlower). Under the grass's top
+ * (GRASS_TOP), so a pick under that is the meadow's.
+ */
+export const FLOWER_TOP = FLOWER_PROFILE.flower.lift[0] + FLOWER_PROFILE.flower.lift[1] + BLOOM_REACH + 0.05;
 
 /**
  * Whether what a pick calls a plant, at (x, z) m and `above` m over the land, is the meadow's grass, flowers or reeds
- * (#256, #266, #267) rather than a tree or a rock: lower than the meadow's `top` (meadowTop) over a tile of open grass (or
- * off the map), or lower than its reeds' `reeds` there, over open grass or the water. `reeds` is the reeds' top where they
- * stand within a clump's reach of the point, else 0 (grass.ts's `reedTopAt`). brush3d paints the meadow as it does a
- * tree's leaves, so its pick can't tell them apart; the game can. A tree's crown leaning over the next tile stands
- * higher. (A branch hanging lower than the meadow's top over the next tile is taken for the meadow: picked on its crown
- * or its own tile instead.)
+ * (#256, #266, #267) rather than a tree or a rock: lower than the grass's tips (GRASS_TOP, over the flowers' blooms) over a
+ * tile of open grass (or off the map), or lower than its reeds' `reeds` there, over open grass or the water. `reeds` is the
+ * reeds' top where they stand within a clump's reach of the point, else 0 (grass.ts's `reedTopAt`). brush3d paints the
+ * meadow as it does a tree's leaves, so its pick can't tell them apart; the game can. A tree's crown leaning over the next
+ * tile stands higher. (A branch hanging lower than the grass's tips over the next tile is taken for the meadow: picked on
+ * its crown or its own tile instead.)
  */
-export function grassAt(s: GameState, x: number, z: number, above: number, top: number, reeds = 0): boolean {
+export function grassAt(s: GameState, x: number, z: number, above: number, reeds = 0): boolean {
   const tx = Math.floor(x / TILE), ty = Math.floor(z / TILE);
-  if (tx < 0 || ty < 0 || tx >= s.map.width || ty >= s.map.height) return above < Math.max(top, reeds);
+  if (tx < 0 || ty < 0 || tx >= s.map.width || ty >= s.map.height) return above < Math.max(GRASS_TOP, reeds);
   const t = terrainAt(s, tx, ty);
-  return t === TERRAIN.grass ? above < Math.max(top, reeds) : t === TERRAIN.water && above < reeds;
+  return t === TERRAIN.grass ? above < Math.max(GRASS_TOP, reeds) : t === TERRAIN.water && above < reeds;
 }

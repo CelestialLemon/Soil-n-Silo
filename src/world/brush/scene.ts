@@ -3,9 +3,6 @@ import { generateLand } from '../../game/map.ts';
 import { MAX_LEVEL } from '../../game/relief.ts';
 import type { GameState } from '../../game/state.ts';
 import type { SettingsStore } from '../../ui/settings.ts';
-import { flowerChoice, flowerMode } from '../../ui/flowerChoice.ts';
-import { grassChoice, grassMode } from '../../ui/grassChoice.ts';
-import { reedChoice, reedMode } from '../../ui/reedChoice.ts';
 import { Camera } from '../camera.ts';
 import { COUNTRY, Lie, LEVEL_HEIGHT, standY } from '../ground.ts';
 import type { Heights, Scene } from '../scene.ts';
@@ -62,10 +59,7 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
   const ground = timed('land', () => new BrushLand(r, state, land, lie)), sky = new BrushSky(r, state), cover = new BrushCover(r, land), water = timed('water', () => new BrushWater(r, land, lie));
   // The goods trucks carry and buildings hand next door (#203), drawn with the things.
   const goods = new Goods(r);
-  const things = new Things(r, lie, goods), wild = timed('wild', () => new Wild(r, lie, land, state)), meadow = timed('meadow', () => new Meadow(r, lie, land, state, { grass: grassMode(), flowers: flowerMode(), reeds: reedMode() })), wind = timed('wind', () => new BrushWind(r, state, land));
-  grassChoice((m) => meadow.setLooks({ grass: m }));
-  flowerChoice((m) => meadow.setLooks({ flowers: m }));
-  reedChoice((m) => meadow.setLooks({ reeds: m }));
+  const things = new Things(r, lie, goods), wild = timed('wild', () => new Wild(r, lie, land, state)), meadow = timed('meadow', () => new Meadow(r, lie, land, state)), wind = timed('wind', () => new BrushWind(r, state, land));
   const lens = new BrushLens(r, canvas);
   const camera = new Camera(lens, canvas, map, start, changed);
   const tools = timed('tools', () => new BrushTools(r, state, things, lie, meadow));

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { REED_HEIGHT, REED_REACH, REED_WIDTH } from '../brush3d/src/shared.ts';
+import { flooded } from '../src/game/flood.ts';
 import { generateLand, TERRAIN } from '../src/game/map.ts';
 import { joins, spanOf, STEEP } from '../src/game/relief.ts';
 import { place } from '../src/game/build.ts';
@@ -12,14 +13,14 @@ import { newGame, sizeOf } from '../src/game/state.ts';
 import { COUNTRY, landRelief } from '../src/world/ground.ts';
 import { YAW } from '../src/world/brush/catalog.ts';
 import {
-  boxesIn, BUILDING_MARGIN, FIELD_MARGIN, grassAt, MAX_REED_REACH, meadowTop, REED_DEEP, REED_HIGH, REED_MODES,
-  REED_PROFILES, REED_SEASONS, REED_SLOPE, reedBand, reedReach, reedShore, reedSpot, reedTop,
+  boxesIn, BUILDING_MARGIN, FIELD_MARGIN, FLOWER_TOP, GRASS_TOP, grassAt, MAX_REED_REACH, REED_DEEP, REED_HIGH,
+  REED_PROFILE, REED_SEASONS, REED_SLOPE, REED_TOP, reedBand, reedShore, reedSpot,
 } from '../src/world/brush/grassMask.ts';
 import { WATER_DOWN } from '../src/world/brush/landMap.ts';
 import { LEVEL, TILE } from '../src/world/brush/scale.ts';
 import { wheelRace } from './wheelRace.ts';
 
-// The reeds along the water's edge (#267): their densities and seasons, which tiles are a shore they may line, how near
+// The reeds along the water's edge (#267): their profile and seasons, which tiles are a shore they may line, how near
 // the water's edge as drawn they stand, how far a clump reaches against the margins kept round buildings and rocks, and
 // the pick. How far a clump reaches is brush3d's promise (`REED_REACH`, `REED_WIDTH`, `REED_HEIGHT`, from shared.ts),
 // which brush3d/test/reed.test.ts holds `addReeds` to.
@@ -27,15 +28,14 @@ import { wheelRace } from './wheelRace.ts';
 /** The maps the issue names: First Light, Windy Ridge, Long Nights, Riverlands, Harvest Festival. */
 const MAPS = ['c1', 'c3', 'c5', 'c7', 'c8'];
 
-test('the options are off, sparse and lush, and lush stands thicker and taller', () => {
-  assert.deepEqual([...REED_MODES], ['off', 'sparse', 'lush']);
-  const p = REED_PROFILES.sparse, q = REED_PROFILES.lush;
-  assert.ok(p.attempts < q.attempts);
-  // A lower threshold on the beds field: more of the shore in beds.
-  assert.ok(p.beds[0] > q.beds[0] && p.beds[1] > q.beds[1]);
-  assert.ok(p.companions[0] <= q.companions[0]);
-  assert.ok(reedTop('off') === 0 && reedTop('sparse') < reedTop('lush'));
-  for (const m of ['sparse', 'lush'] as const) assert.ok(REED_PROFILES[m].beds[0] < REED_PROFILES[m].beds[1], m);
+test('the reeds are lush: long, thick beds that stand over the grass and flowers', () => {
+  // The developer's pick on #267: the lush beds' numbers, kept exactly.
+  assert.deepEqual(REED_PROFILE, {
+    attempts: 64, beds: [0.36, 0.52], companions: [2, 3], heads: 0.1,
+    reed: { blades: [12, 10], tall: [0.7, 0.55], across: 0.55, width: [0.026, 0.016] },
+  });
+  assert.ok(REED_PROFILE.beds[0] < REED_PROFILE.beds[1]);
+  assert.ok(REED_TOP > GRASS_TOP && GRASS_TOP > FLOWER_TOP);
 });
 
 test('by season: green in spring and summer, golden straw in autumn, pale frost-tipped stalks in winter', () => {
@@ -62,12 +62,9 @@ test('by season: green in spring and summer, golden straw in autumn, pale frost-
 test('a clump the masks let stand never reaches into a building, field, wheel race or rock', () => {
   // A clump stands outside the footprints as the grass's (boxes widened by BUILDING_MARGIN, FIELD_MARGIN; a wheel's race by
   // BUILDING_MARGIN too) and inside its tile's bounds, kept MAX_REED_REACH off a rock's side, so its whole reach stays out.
-  for (const m of ['sparse', 'lush'] as const) {
-    const p = REED_PROFILES[m], tall = (p.reed.tall[0] + p.reed.tall[1]) * Math.max(...SEASON_IDS.map((s) => REED_SEASONS[s].tall));
-    assert.equal(reedReach(p), p.reed.across / Math.SQRT2 + REED_REACH * tall + p.reed.width[0] + p.reed.width[1] + REED_WIDTH);
-    assert.ok(reedReach(p) <= MAX_REED_REACH);
-    assert.ok(reedTop(m) >= REED_HEIGHT * tall, m);
-  }
+  const p = REED_PROFILE, tall = (p.reed.tall[0] + p.reed.tall[1]) * Math.max(...SEASON_IDS.map((s) => REED_SEASONS[s].tall));
+  assert.equal(MAX_REED_REACH, p.reed.across / Math.SQRT2 + REED_REACH * tall + p.reed.width[0] + p.reed.width[1] + REED_WIDTH);
+  assert.ok(REED_TOP >= REED_HEIGHT * tall);
   assert.ok(MAX_REED_REACH < Math.min(BUILDING_MARGIN, FIELD_MARGIN), `a clump reaches ${MAX_REED_REACH.toFixed(3)} m`);
 });
 
@@ -147,6 +144,28 @@ test('a rock beside a shore keeps the reeds a clump\'s reach off it', () => {
   assert.ok(checked > 0);
 });
 
+test('a flood takes no reeds away: they line the same shores under it, and go under its water', () => {
+  // Rooted on the ground, the water hiding what's below its surface (the developer, on #266 and #267). A flood stands at
+  // least a level over the river, deeper at the water's edge (WATER_DOWN under the level) than the tallest reed: only
+  // the tips of the tallest up the bank may show.
+  const sc = must(scenarioById('c7'), 'c7');
+  const s = newGame(sc), land = generateLand(sc, COUNTRY), relief = landRelief(land), { width: w, height: h } = s.map;
+  const shores = () => {
+    const out: string[] = [];
+    for (let ty = 0; ty < h; ty++) for (let tx = 0; tx < w; tx++) {
+      const r = reedShore(s, land, relief, tx, ty, true);
+      if (r) out.push(`${tx},${ty},${r.surface}`);
+    }
+    return out;
+  };
+  const dry = shores();
+  s.scenario.events = [{ kind: 'flood', strength: 'ordinary', start: s.time - 6 * 3600, length: 48 * 3600 }];
+  const f = flooded(s);
+  assert.ok(f.count > 100, `the flood covers ${f.count} tiles`);
+  assert.deepEqual(shores(), dry);
+  assert.ok(LEVEL + WATER_DOWN > REED_TOP, 'the reeds at the river\'s edge go under an ordinary flood');
+});
+
 test('a pick low over the water or its banks is the reeds where they stand, and elsewhere it isn\'t', () => {
   // `reeds` is the reeds' top where a clump stands within reach of the point, else 0 (grass.ts's reedTopAt).
   const sc = must(scenarioById('c1'), 'c1');
@@ -154,17 +173,17 @@ test('a pick low over the water or its banks is the reeds where they stand, and 
   const mid = (i: number): [number, number] => [((i % w) + 0.5) * TILE, (Math.floor(i / w) + 0.5) * TILE];
   const water = s.map.terrain.findIndex((t) => t === TERRAIN.water), grass = s.map.terrain.findIndex((t) => t === TERRAIN.grass);
   const tree = s.map.terrain.findIndex((t) => t === TERRAIN.tree);
-  const top = meadowTop('meadow', 'meadow'), reeds = reedTop('lush'), stalk = (top + reeds) / 2;
+  const top = GRASS_TOP, reeds = REED_TOP, stalk = (top + reeds) / 2;
   assert.ok(top < stalk && stalk < reeds, 'a reed stands over the grass and flowers');
-  assert.equal(grassAt(s, ...mid(water), 0.5, top, reeds), true, 'a reed over the water');
-  assert.equal(grassAt(s, ...mid(water), 0.5, top, 0), false, 'a low branch over the water, no reeds there');
-  assert.equal(grassAt(s, ...mid(water), reeds + 0.5, top, reeds), false, 'a crown over the water');
-  assert.equal(grassAt(s, ...mid(grass), stalk, top, reeds), true, 'a reed over the bank');
-  assert.equal(grassAt(s, ...mid(grass), stalk, top, 0), false, 'a branch over the grass, no reeds there');
-  assert.equal(grassAt(s, ...mid(grass), top - 0.05, top, 0), true, 'a blade over the grass');
-  assert.equal(grassAt(s, -2, -2, stalk, top, 0), false, 'a branch beyond the map, no reeds there');
-  assert.equal(grassAt(s, -2, -2, stalk, top, reeds), true, 'a reed beyond the map');
-  assert.equal(grassAt(s, ...mid(tree), 0.5, top, reeds), false, 'the foot of a tree on its own tile');
+  assert.equal(grassAt(s, ...mid(water), 0.5, reeds), true, 'a reed over the water');
+  assert.equal(grassAt(s, ...mid(water), 0.5, 0), false, 'a low branch over the water, no reeds there');
+  assert.equal(grassAt(s, ...mid(water), reeds + 0.5, reeds), false, 'a crown over the water');
+  assert.equal(grassAt(s, ...mid(grass), stalk, reeds), true, 'a reed over the bank');
+  assert.equal(grassAt(s, ...mid(grass), stalk, 0), false, 'a branch over the grass, no reeds there');
+  assert.equal(grassAt(s, ...mid(grass), top - 0.05, 0), true, 'a blade over the grass');
+  assert.equal(grassAt(s, -2, -2, stalk, 0), false, 'a branch beyond the map, no reeds there');
+  assert.equal(grassAt(s, -2, -2, stalk, reeds), true, 'a reed beyond the map');
+  assert.equal(grassAt(s, ...mid(tree), 0.5, reeds), false, 'the foot of a tree on its own tile');
 });
 
 test('a clump reedSpot lets stand reaches into no building, field or wheel race', () => {
