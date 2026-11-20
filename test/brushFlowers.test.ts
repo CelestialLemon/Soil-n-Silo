@@ -8,7 +8,7 @@ import { newGame } from '../src/game/state.ts';
 import { TERRAIN } from '../src/game/map.ts';
 import {
   BUILDING_MARGIN, CLIFF_MARGIN, FIELD_MARGIN, FLOWER_MODES, FLOWER_PROFILES, FLOWER_SEASONS, flowerReach, flowersBloom,
-  flowerTop, grassAt, grassTop, meadowTop, ROCK_MARGIN, WATER_MARGIN,
+  flowerTop, GRASS_TOP, grassAt, ROCK_MARGIN, WATER_MARGIN,
 } from '../src/world/brush/grassMask.ts';
 import { TILE } from '../src/world/brush/scale.ts';
 
@@ -59,15 +59,12 @@ test('a bloom the masks let stand never reaches a building, field, rock, water o
   }
 });
 
-test('a pick low over open grass is the meadow\'s flowers too, with the grass off', () => {
+test('a pick low over open grass is the meadow\'s flowers too: every bloom stands under the grass\'s tips', () => {
   const sc = must(scenarioById('c7'), 'c7');
   const s = newGame(sc), { width: w } = s.map;
   const i = s.map.terrain.findIndex((t, k) => t === TERRAIN.grass && k % w > 4);
   const x = ((i % w) + 0.5) * TILE, z = (Math.floor(i / w) + 0.5) * TILE;
-  assert.equal(meadowTop('off', 'off'), 0);
-  assert.equal(meadowTop('lush', 'subtle'), Math.max(grassTop('lush'), flowerTop('subtle')));
-  const bloom = flowerTop('meadow') - 0.1;
-  assert.equal(grassAt(s, x, z, bloom, meadowTop('off', 'meadow')), true, 'a bloom over open grass, the grass off');
-  assert.equal(grassAt(s, x, z, bloom, meadowTop('off', 'off')), false, 'a low branch over open grass, the meadow off');
-  assert.equal(grassAt(s, x, z, flowerTop('lush') + 0.5, meadowTop('off', 'lush')), false, 'a crown over open grass');
+  for (const m of DENSITIES) assert.ok(flowerTop(m) < GRASS_TOP, `${m}'s blooms under the grass's tips`);
+  assert.equal(grassAt(s, x, z, flowerTop('lush') - 0.1), true, 'a bloom over open grass');
+  assert.equal(grassAt(s, x, z, GRASS_TOP + 0.5), false, 'a crown over open grass');
 });

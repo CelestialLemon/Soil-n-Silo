@@ -4,7 +4,6 @@ import { MAX_LEVEL } from '../../game/relief.ts';
 import type { GameState } from '../../game/state.ts';
 import type { SettingsStore } from '../../ui/settings.ts';
 import { flowerChoice, flowerMode } from '../../ui/flowerChoice.ts';
-import { grassChoice, grassMode } from '../../ui/grassChoice.ts';
 import { Camera } from '../camera.ts';
 import { COUNTRY, Lie, LEVEL_HEIGHT, standY } from '../ground.ts';
 import type { Heights, Scene } from '../scene.ts';
@@ -60,12 +59,11 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
   const ground = timed('land', () => new BrushLand(r, state, land, lie)), sky = new BrushSky(r, state), cover = new BrushCover(r, land), water = timed('water', () => new BrushWater(r, land, lie));
   // The goods trucks carry and buildings hand next door (#203), drawn with the things.
   const goods = new Goods(r);
-  const things = new Things(r, lie, goods), wild = timed('wild', () => new Wild(r, lie, land, state)), meadow = timed('meadow', () => new Meadow(r, lie, land, state, { grass: grassMode(), flowers: flowerMode() })), wind = timed('wind', () => new BrushWind(r, state, land));
-  grassChoice((m) => meadow.setLooks({ grass: m }));
+  const things = new Things(r, lie, goods), wild = timed('wild', () => new Wild(r, lie, land, state)), meadow = timed('meadow', () => new Meadow(r, lie, land, state, { flowers: flowerMode() })), wind = timed('wind', () => new BrushWind(r, state, land));
   flowerChoice((m) => meadow.setLooks({ flowers: m }));
   const lens = new BrushLens(r, canvas);
   const camera = new Camera(lens, canvas, map, start, changed);
-  const tools = timed('tools', () => new BrushTools(r, state, things, lie, () => meadow.top));
+  const tools = timed('tools', () => new BrushTools(r, state, things, lie));
   // The ground's brush baked once, here at the load, into a 4096² texture over the land (16 cm a texel, 64 MB), and read
   // from it each frame rather than worked out afresh in every pixel: a third of the GPU's frame (#210, the developer's
   // pick on #239). The light, shadows and weather stay live, as do a cliff's faces and the country past the land; an
