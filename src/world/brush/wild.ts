@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {
-  addCanopy, addStone, CropPatch, dressFor, groundOf, Grove, growSpecies, MeshBuilder, rng, speciesTree, type BrushRenderer, type CropStage,
+  addCanopy, CropPatch, dressFor, groundOf, Grove, growSpecies, MeshBuilder, rng, speciesTree, type BrushRenderer, type CropStage,
   type Dress, type Ground, type Species,
 } from '../../../brush3d/src/index.ts';
 import { CROPS, SAPLING_SECONDS } from '../../game/data.ts';
@@ -9,6 +9,7 @@ import { baseLevel } from '../../game/relief.ts';
 import { inMap, layoutOf, reliefOf, terrainAt, type FieldBuilding, type GameState } from '../../game/state.ts';
 import { landRelief, standY, type Lie } from '../ground.ts';
 import { hash, treeAt, wetAt } from '../trees.ts';
+import { placeOutcropTile, rockMask, rockTileKey } from './rocks.ts';
 import { RISE, TILE } from './scale.ts';
 import { thingHeight } from './things.ts';
 
@@ -22,14 +23,20 @@ import { thingHeight } from './things.ts';
 //   from a sapling is painted on its own (a few ms) beside its block. A block's rocks are a mesh of their own, made again
 //   (cheaply) when they change. A field's crop is made anew when its stage or crop changes.
 // - The country's trees within NEAR tiles of the map are painted as the map's; further off, the woods are crowns alone, a
-//   crown for each 2 × 2 tiles of wood.
+//   crown for each 2 × 2 tiles of wood. Near-country rocks (within NEAR tiles) stay in 8 × 8-tile chunks rebuilt only
+//   where map-edge earthworks move their ground.
 
 /** The side of a block of the map's trees (tiles). */
 const BLOCK = 8;
-/** How far beyond the map (tiles) the country's trees are painted whole; further, the woods are crowns. */
+/** How far beyond the map (tiles) the country's trees and rocks are painted whole; further, woods are crowns. */
 const NEAR = 8;
+/** How far outside the map edge earthworks can shift country heights (`ground.ts` refits a 3-tile halo, plus corner reach). */
+const BORDER_HALO = 4;
 /** How finely the renderer cuts the country's meshes, so only what's in view is drawn (m). */
 const CUT = 64;
+const onMap = (x: number, y: number, w: number, h: number) => x >= 0 && y >= 0 && x < w && y < h;
+const onLand = (x: number, y: number, w: number, h: number, M: number) => x >= -M && y >= -M && x < w + M && y < h + M;
+const beyond = (x: number, y: number, w: number, h: number) => Math.hypot(Math.max(0, -x, x - w), Math.max(0, -y, y - h));
 /** A grown tree's size, from a tile's hash: some variety (the old pixel renderer's ran 0.62 to 0.87 of its model). */
 const treeSize = (n: number) => 0.8 + 0.3 * n;
 /**
@@ -60,6 +67,8 @@ interface Shown { meshes: THREE.Mesh[]; key: string }
 interface Standing { x: number; z: number; ground: number; meshes: THREE.Mesh[]; own: boolean }
 /** A block of the map's trees and rocks as drawn: its grove, each tree in it (by tile), and its rocks (and their key). */
 interface Block { grove: THREE.Mesh[]; trees: Map<number, Standing>; stones: Shown | null }
+/** One 8 × 8-tile chunk of near-country rocks, rebuilt on its own when map-edge relief changes. */
+interface CountryRockChunk { tiles: [number, number][]; nearBorder: boolean; shown: Shown | null }
 
 export class Wild {
   private readonly r: BrushRenderer;
@@ -70,6 +79,7 @@ export class Wild {
   private readonly blocks = new Map<number, Block>();
   private readonly fields = new Map<number, Shown>();
   private readonly saplings = new Map<number, Shown>();
+  private readonly countryRockChunks = new Map<string, CountryRockChunk>();
   private layout = -1;
   private relief = -1;
 
@@ -91,27 +101,34 @@ export class Wild {
     if (layout !== this.layout || relief !== this.relief) {
       this.layout = layout; this.relief = relief;
       this.syncBlocks(s);
+      this.syncCountryStones(s);
     }
     this.syncFields(s);
     this.syncSaplings(s);
   }
 
-  // ---- The country beyond the map, made once ----
+  // ---- The country beyond the map (woods made once; near-country rocks follow map-edge relief) ----
 
   private country(s: GameState) {
     const { land, r } = this, M = land.margin, w = s.map.width, h = s.map.height;
     const lr = landRelief(land), season = s.scenario.climate.season;
     const kind = (x: number, y: number) => land.terrain[(y + M) * land.width + x + M];
-    const onLand = (x: number, y: number) => x >= -M && y >= -M && x < w + M && y < h + M;
-    const wet = (x: number, y: number) => wetAt((wx, wy) => onLand(wx, wy) && kind(wx, wy) === TERRAIN.water, x, y);
+    const wet = (x: number, y: number) => wetAt((wx, wy) => onLand(wx, wy, w, h, M) && kind(wx, wy) === TERRAIN.water, x, y);
     const species = (x: number, y: number) => treeAt(x, y, baseLevel(lr, x + M, y + M), wet(x, y)).species;
-    const beyond = (x: number, y: number) => Math.hypot(Math.max(0, -x, x - w), Math.max(0, -y, y - h));
-    const grove = new Grove(this.dress), crowns = new MeshBuilder('foliage'), stones = new MeshBuilder('paint'), rand = rng(213);
+    const grove = new Grove(this.dress), crowns = new MeshBuilder('foliage'), rand = rng(213);
     for (let y = -M; y < h + M; y++) for (let x = -M; x < w + M; x++) {
-      if (x >= 0 && y >= 0 && x < w && y < h) continue;
-      const t = kind(x, y), near = beyond(x + 0.5, y + 0.5) <= NEAR;
-      // Rocks only near the map: further off they'd be specks.
-      if (t === TERRAIN.rock && near) this.stone(stones, x, y);
+      if (onMap(x, y, w, h)) continue;
+      const t = kind(x, y), near = beyond(x + 0.5, y + 0.5, w, h) <= NEAR;
+      if (t === TERRAIN.rock) {
+        if (near) {
+          const cid = `${Math.floor(x / BLOCK)},${Math.floor(y / BLOCK)}`;
+          let chunk = this.countryRockChunks.get(cid);
+          if (!chunk) { chunk = { tiles: [], nearBorder: false, shown: null }; this.countryRockChunks.set(cid, chunk); }
+          chunk.tiles.push([x, y]);
+          if (x >= -BORDER_HALO && y >= -BORDER_HALO && x < w + BORDER_HALO && y < h + BORDER_HALO) chunk.nearBorder = true;
+        }
+        continue;
+      }
       if (t !== TERRAIN.tree) continue;
       if (near) { this.tree(grove, species(x, y), x, y); continue; }
       // A crown for each 2 × 2 block of far woods, of the species of its first tile.
@@ -121,7 +138,40 @@ export class Wild {
     }
     grove.addTo(r, { tile: CUT });
     if (crowns.vertexCount) r.add(crowns.build(), 'foliage', { tile: CUT, castShadow: true });
-    if (stones.vertexCount) r.add(stones.build(), 'paint', { tile: CUT });
+    this.syncCountryStones(s);
+  }
+
+  /** Near-country rocks (within NEAR tiles of the map), chunked into 8 × 8 blocks so map-edge earthworks only rebuild affected chunks. */
+  private syncCountryStones(s: GameState) {
+    const { land, r } = this, M = land.margin, w = s.map.width, h = s.map.height;
+    const heightAt = (tx: number, ty: number) => this.lie.y(tx, ty);
+    // Country rocks only bridge to drawn near-country rocks (never across NEAR into undrawn far rock, nor across the map edge).
+    const isCountryRock = (x: number, y: number) =>
+      onLand(x, y, w, h, M) && !onMap(x, y, w, h) && beyond(x + 0.5, y + 0.5, w, h) <= NEAR
+      && land.terrain[(y + M) * land.width + x + M] === TERRAIN.rock;
+    for (const chunk of this.countryRockChunks.values()) {
+      let key = '';
+      if (chunk.nearBorder) {
+        for (const [x, y] of chunk.tiles) {
+          if (x >= -BORDER_HALO && y >= -BORDER_HALO && x < w + BORDER_HALO && y < h + BORDER_HALO) {
+            key += `|${rockTileKey(x, y, 0, heightAt)}`;
+          }
+        }
+      }
+      if (chunk.shown?.key === key) continue;
+      if (chunk.shown) this.drop(chunk.shown.meshes);
+      const stones = new MeshBuilder('paint');
+      for (const [x, y] of chunk.tiles) placeOutcropTile(stones, this.ground, x, y, isCountryRock);
+      const meshes: THREE.Mesh[] = [];
+      if (stones.vertexCount) {
+        const g = stones.build();
+        // Seasonal: the moss on the crags' tops turns with the season.
+        const m = r.add(g, 'paint', { tile: CUT, seasonal: true });
+        if (m.geometry !== g) g.dispose();
+        meshes.push(m);
+      }
+      chunk.shown = { meshes, key };
+    }
   }
 
   // ---- The map's trees and rocks, a block at a time ----
@@ -130,6 +180,9 @@ export class Wild {
     const { width: w, height: h } = s.map, r = this.r;
     const wet = (x: number, y: number) => wetAt((wx, wy) => inMap(s, wx, wy) && terrainAt(s, wx, wy) === TERRAIN.water, x, y);
     const species = (x: number, y: number) => treeAt(x, y, baseLevel(s.map, x, y), wet(x, y)).species;
+    // Map rocks stay symmetric with country rocks: neither side bridges across the map/country boundary.
+    const isRock = (x: number, y: number) => inMap(s, x, y) && terrainAt(s, x, y) === TERRAIN.rock;
+    const heightAt = (tx: number, ty: number) => this.lie.y(tx, ty);
     for (let by = 0; by * BLOCK < h; by++) for (let bx = 0; bx * BLOCK < w; bx++) {
       // What the block holds: its trees and its rocks (with the ground under each).
       const trees: number[] = [], rocks: number[] = [];
@@ -175,13 +228,24 @@ export class Wild {
           block.trees.set(i, { x: tx, z: tz, ground: this.ground.height(tx, tz), meshes: grove.addTo(r), own: true });
         }
       }
-      // The rocks, made again when one is cleared or the ground under them moved.
-      const key = rocks.map((i) => `${i},${this.lie.y(i % w + 0.5, Math.floor(i / w) + 0.5).toFixed(3)}`).join(' ');
+      // The rocks, made again when one (or a neighbour) is cleared or the ground under them moved.
+      const key = rocks.map((i) => {
+        const rx = i % w, ry = Math.floor(i / w);
+        return rockTileKey(rx, ry, rockMask(isRock, rx, ry), heightAt);
+      }).join(' ');
       if (block.stones?.key === key) continue;
       if (block.stones) this.drop(block.stones.meshes);
       const stones = new MeshBuilder('paint');
-      for (const i of rocks) this.stone(stones, i % w, Math.floor(i / w));
-      block.stones = { meshes: stones.vertexCount ? [r.add(stones.build(), 'paint', { tile: CUT })] : [], key };
+      for (const i of rocks) placeOutcropTile(stones, this.ground, i % w, Math.floor(i / w), isRock);
+      let meshes: THREE.Mesh[] = [];
+      if (stones.vertexCount) {
+        const g = stones.build();
+        // Seasonal: the moss on the crags' tops turns with the season.
+        const m = r.add(g, 'paint', { tile: CUT, seasonal: true });
+        if (m.geometry !== g) g.dispose();
+        meshes = [m];
+      }
+      block.stones = { meshes, key };
     }
   }
 
@@ -192,13 +256,6 @@ export class Wild {
     const seed = Math.floor(n * 1e9);
     growSpecies(grove, this.ground, species, { ...speciesTree(species, tx, tz, size, seed), stroke: STROKE, fill: FILL }, rng(seed));
     return [tx, tz];
-  }
-
-  /** A rock on tile (x, y), into `b`: a stone or two, sunk into the ground. */
-  private stone(b: MeshBuilder, x: number, y: number) {
-    const rand = rng(Math.floor(hash(x + 5, y - 5) * 1e9)), cx = (x + 0.5) * TILE, cz = (y + 0.5) * TILE;
-    addStone(b, this.ground, cx, cz, 1.1 + rand() * 0.4, 0.3, rand);
-    if (rand() < 0.6) addStone(b, this.ground, cx + (rand() - 0.5) * 2.2, cz + (rand() - 0.5) * 2.2, 0.5 + rand() * 0.3, 0.3, rand);
   }
 
   // ---- What the game plants: fields' crops and saplings ----

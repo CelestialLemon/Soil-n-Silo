@@ -263,6 +263,142 @@ export function addStone(b: MeshBuilder, ground: Ground, x: number, z: number, s
   for (let i = 0; i < idx.count; i += 3) b.tri(i0 + idx.getX(i), i0 + idx.getX(i + 1), i0 + idx.getX(i + 2));
 }
 
+/** Shape and look of a sculpted crag added with `addCrag`. */
+export interface CragOptions {
+  /** Half-extents of the crag in metres: along its length (`rx`), height (`ry`), and breadth (`rz`). */
+  rx: number; ry: number; rz: number;
+  /** Turn around the vertical (radians). Defaults to random. */
+  yaw?: number;
+  /** Tilt forward/back and sideways (radians), to lean a slab or crag naturally. Default 0. */
+  pitch?: number; roll?: number;
+  /** How deeply the crag sits in the ground (0 resting on top .. 0.6 mostly buried). Default 0.34. */
+  sink?: number;
+  /** How angular and faceted the crag is (0 soft rounded boulder .. 1 sharp stepped crag). Default 0.55. */
+  crag?: number;
+  /** How much moss grows on its upward shelves (0 bare stone .. 1 mossy). Default 0.55. */
+  moss?: number;
+  /** Mesh subdivision: 1 (42 vertices, 80 triangles: talus and shoulders) or 2 (92 vertices, 180 triangles: hero crags). Default 2. */
+  detail?: 1 | 2;
+  /** Base stone colour (defaults to `C.stone`), so an outcrop can share a local bedrock tone. */
+  color?: THREE.Color;
+}
+
+const CRAG_BASE: Partial<Record<1 | 2, { pos: Float32Array; idx: Uint16Array }>> = {};
+function cragBase(detail: 1 | 2) {
+  let cached = CRAG_BASE[detail];
+  if (cached) return cached;
+  const g = mergeVertices(new THREE.IcosahedronGeometry(1, detail).deleteAttribute('normal').deleteAttribute('uv'));
+  const p = g.getAttribute('position') as THREE.BufferAttribute, idx = g.getIndex()!;
+  cached = { pos: Float32Array.from(p.array as Float32Array), idx: Uint16Array.from(idx.array as Uint16Array) };
+  g.dispose();
+  CRAG_BASE[detail] = cached;
+  return cached;
+}
+
+const CRAG_EULER = new THREE.Euler(), CRAG_ROT = new THREE.Matrix4(), CRAG_COL = new THREE.Color();
+
+/**
+ * A sculpted natural boulder or crag: faceted by soft cleavage planes, anisotropically scaled and tilted, with its lower
+ * skirt grounded cleanly below sloped terrain so no underside gap floats on hillsides. Patchy moss grows on upward shelves.
+ */
+export function addCrag(b: MeshBuilder, ground: Ground, x: number, z: number, opts: CragOptions, rand: () => number) {
+  const { rx, ry, rz } = opts;
+  const detail = opts.detail ?? 2;
+  const sink = opts.sink ?? 0.34;
+  const crag = opts.crag ?? 0.55;
+  const moss = opts.moss ?? 0.55;
+  const yaw = opts.yaw ?? rand() * Math.PI * 2;
+  const pitch = opts.pitch ?? 0, roll = opts.roll ?? 0;
+
+  const { pos, idx } = cragBase(detail);
+  const count = pos.length / 3;
+  const seed = rand() * 100;
+
+  // Three cleavage planes (one sloped crown shelf, two angled side facets) to break the sphere into geological rock planes.
+  const a0 = rand() * Math.PI * 2, t0 = (0.18 + rand() * 0.34) * (0.6 + 0.4 * crag);
+  const a1 = rand() * Math.PI * 2, u1 = 0.12 + rand() * 0.32, r1 = Math.sqrt(1 - u1 * u1);
+  const a2 = a1 + 1.7 + rand() * 1.1, u2 = 0.08 + rand() * 0.3, r2 = Math.sqrt(1 - u2 * u2);
+  const pnx = [Math.sin(t0) * Math.cos(a0), r1 * Math.cos(a1), r2 * Math.cos(a2)];
+  const pny = [Math.cos(t0), u1, u2];
+  const pnz = [Math.sin(t0) * Math.sin(a0), r1 * Math.sin(a1), r2 * Math.sin(a2)];
+  const pd = [
+    0.72 - crag * 0.16 + (rand() - 0.5) * 0.08,
+    0.78 - crag * 0.14 + (rand() - 0.5) * 0.08,
+    0.8 - crag * 0.14 + (rand() - 0.5) * 0.08,
+  ];
+
+  CRAG_EULER.set(pitch, yaw, roll, 'YXZ');
+  CRAG_ROT.makeRotationFromEuler(CRAG_EULER);
+  const e = CRAG_ROT.elements;
+  const h0 = ground.height(x, z);
+  const cy = h0 + ry * (1 - 2 * sink);
+
+  const world = new Float32Array(count * 3);
+  const nrm = new Float32Array(count * 3);
+  const gy = new Float32Array(count);
+
+  for (let i = 0; i < count; i++) {
+    const ux = pos[i * 3], uy = pos[i * 3 + 1], uz = pos[i * 3 + 2];
+    const n1 = noise2(ux * 1.35 + seed, uz * 1.35 + uy * 1.15);
+    const n2 = noise2(ux * 2.85 - seed * 0.7, uy * 2.4 + uz * 2.65);
+    const k = 1 + n1 * (0.13 + 0.09 * crag) + n2 * (0.03 + 0.05 * crag);
+    let vx = ux * k, vy = uy * k, vz = uz * k;
+    for (let p = 0; p < 3; p++) {
+      const dot = vx * pnx[p] + vy * pny[p] + vz * pnz[p];
+      if (dot > pd[p]) {
+        const ex = dot - pd[p];
+        const pull = ex * (0.52 + 0.36 * crag) * (ex / (ex + 0.12));
+        vx -= pnx[p] * pull; vy -= pny[p] * pull; vz -= pnz[p] * pull;
+      }
+    }
+    const flare = uy < 0 ? 1 + -uy * 0.16 : 1 - Math.max(0, uy - 0.25) * 0.14 * crag;
+    vx *= flare * rx; vy *= ry; vz *= flare * rz;
+    const wx = x + e[0] * vx + e[4] * vy + e[8] * vz;
+    let wy = cy + e[1] * vx + e[5] * vy + e[9] * vz;
+    const wz = z + e[2] * vx + e[6] * vy + e[10] * vz;
+    const g = ground.height(wx, wz);
+    gy[i] = g;
+    if (uy < 0) {
+      // Extend the lower skirt below the local downhill slope so no underside gap can float.
+      const down = -uy;
+      const floorY = g - Math.max(0.35, ry * 0.45) * down;
+      if (wy > floorY) wy += (floorY - wy) * smooth(0, 0.55, down);
+    }
+    world[i * 3] = wx; world[i * 3 + 1] = wy; world[i * 3 + 2] = wz;
+  }
+
+  for (let i = 0; i < idx.length; i += 3) {
+    const a = idx[i] * 3, c = idx[i + 1] * 3, d = idx[i + 2] * 3;
+    const abx = world[c] - world[a], aby = world[c + 1] - world[a + 1], abz = world[c + 2] - world[a + 2];
+    const adx = world[d] - world[a], ady = world[d + 1] - world[a + 1], adz = world[d + 2] - world[a + 2];
+    const cx = aby * adz - abz * ady, cy_ = abz * adx - abx * adz, cz = abx * ady - aby * adx;
+    nrm[a] += cx; nrm[a + 1] += cy_; nrm[a + 2] += cz;
+    nrm[c] += cx; nrm[c + 1] += cy_; nrm[c + 2] += cz;
+    nrm[d] += cx; nrm[d + 1] += cy_; nrm[d + 2] += cz;
+  }
+
+  const base = (opts.color ?? C.stone).clone().offsetHSL((rand() - 0.5) * 0.03, (rand() - 0.5) * 0.08, (rand() - 0.5) * 0.09);
+  const i0 = b.vertexCount;
+  for (let i = 0; i < count; i++) {
+    const wx = world[i * 3], wy = world[i * 3 + 1], wz = world[i * 3 + 2];
+    let nx = nrm[i * 3], ny = nrm[i * 3 + 1], nz = nrm[i * 3 + 2];
+    const len = Math.hypot(nx, ny, nz);
+    if (len > 1e-6) { nx /= len; ny /= len; nz /= len; } else { nx = 0; ny = 1; nz = 0; }
+    CRAG_COL.copy(base);
+    const foot = 1 - smooth(-0.05, 0.45, wy - gy[i]);
+    if (foot > 0) CRAG_COL.lerp(C.mud, foot * 0.18).multiplyScalar(1 - foot * 0.14);
+    const strata = Math.sin(wy * 3.6 + noise2(wx * 0.35 + seed, wz * 0.35 - seed) * 2);
+    CRAG_COL.multiplyScalar(1 + strata * (0.025 + 0.02 * crag));
+    if (moss > 0 && ny > 0.35) {
+      const patch = smooth(-0.22, 0.48, noise2(wx * 0.42 + 13.7, wz * 0.42 - 9.3));
+      const m = Math.min(0.78, moss * smooth(0.36, 0.84, ny) * (0.35 + 0.65 * patch));
+      if (m > 0.01) CRAG_COL.lerp(C.moss, m);
+    }
+    b.vertex({ x: wx, y: wy, z: wz }, { x: nx, y: ny, z: nz }, CRAG_COL, [0.55, 2.6, 0.8, 0]);
+  }
+  for (let i = 0; i < idx.length; i += 3) b.tri(i0 + idx[i], i0 + idx[i + 1], i0 + idx[i + 2]);
+}
+
 /** Optional shape overrides for `addTuft`; omitted values keep the demo's exact defaults. */
 export interface TuftOptions {
   /** Blade count: `[min, spread]` (`min + floor(rand() * spread)`), default `[4, 4]`. */
