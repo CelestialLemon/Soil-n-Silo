@@ -19,7 +19,7 @@ import type { Season } from '../renderer/season.ts';
 // wood's own, so they read on a winter's day with no snow lying too. In the other seasons both looks shape the pines as
 // cones and the poplars as columns, as the near ones are, and lift the crowns' dark undersides; misty also cools and pales
 // them a little, as distance does. The same strokes as before, none bigger, in the same one mesh, but for frosted's bare
-// woods: three times the strokes at a little over half the size, so about as much to fill (3 × 0.55² ≈ 0.9 of it).
+// woods: four times the strokes at a little over two fifths the size, so less to fill (4 × 0.42² ≈ 0.7 of it).
 // Under every crown in both looks, its trunk down to the ground, and a bare wood's limbs forking up into its twigs: up close,
 // where the far woods meet the near, a crown without them read as loose strokes floating over the ground, not a tree. They
 // are a few thin strokes standing upright, facing across, so no snow lies on them and they stay dark against it.

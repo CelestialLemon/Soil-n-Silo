@@ -25,6 +25,17 @@ function wood(species: Species, season: Season, mode: FarWoodsMode | 'before') {
   return b.build();
 }
 
+/** Where wood() stands its crowns, as each's trunk's key. */
+function crowns() {
+  const place = rng(7), keys: string[] = [];
+  for (let i = 0; i < 40; i++) {
+    const x = place() * 200, z = place() * 200;
+    place();
+    keys.push(`${Math.fround(x).toFixed(3)},${Math.fround(z).toFixed(3)}`);
+  }
+  return keys;
+}
+
 /** addCanopy as it was before #268 (brush3d/src/kit/plants.ts at a2dd65e), to hold `off` to it. */
 function before(b: MeshBuilder, x: number, y: number, z: number, radius: number, species: Species, season: Season, rand: () => number) {
   const bare = srgb(0x7a6758);
@@ -94,17 +105,22 @@ test('the new looks\' crowns cover no more than before, no stroke is bigger, and
 test('every crown in the new looks stands on its trunk: thin upright strokes from its foot up into it, a bare wood\'s limbs forking', () => {
   for (const mode of ['frosted', 'misty'] as const) for (const season of SEASONS) for (const species of SPECIES) {
     const g = wood(species, season, mode), pos = g.getAttribute('position'), card = g.getAttribute('aCard'), paint = g.getAttribute('aPaint');
-    const trunks = new Map<string, { foot: number; top: number; limbs: number }>();
+    const trunks = new Map<string, { spans: [number, number][]; limbs: number }>();
     for (let i = 0; i < card.count; i += 4) {
       if (!isWood(g, i)) continue;
-      const key = `${pos.getX(i).toFixed(3)},${pos.getZ(i).toFixed(3)}`, t = trunks.get(key) ?? { foot: Infinity, top: -Infinity, limbs: 0 };
+      const key = `${pos.getX(i).toFixed(3)},${pos.getZ(i).toFixed(3)}`, t = trunks.get(key) ?? { spans: [], limbs: 0 };
       assert.ok(Math.abs(paint.getZ(i) - Math.PI / 2) < 0.7 && paint.getY(i) <= Math.fround(0.2), `${mode} ${species} in ${season}: a thin, upright stroke`);
-      if (paint.getZ(i) === Math.fround(Math.PI / 2)) { t.foot = Math.min(t.foot, pos.getY(i) - card.getZ(i)); t.top = Math.max(t.top, pos.getY(i) + card.getZ(i)); } else t.limbs++;
+      if (paint.getZ(i) === Math.fround(Math.PI / 2)) t.spans.push([pos.getY(i) - card.getZ(i), pos.getY(i) + card.getZ(i)]); else t.limbs++;
       trunks.set(key, t);
     }
-    assert.equal(trunks.size, 40, `${mode} ${species} in ${season}: ${trunks.size} trunks for 40 crowns`);
-    // Each reaches down into the ground at its foot (1 m up, in wood()), and up past its crown's lowest strokes.
-    for (const t of trunks.values()) assert.ok(t.foot <= 1 && t.top > 3, `${mode} ${species} in ${season}: a trunk from ${t.foot.toFixed(2)} to ${t.top.toFixed(2)}`);
+    // One trunk under each crown, where the crown stands.
+    assert.deepEqual([...trunks.keys()].sort(), crowns().sort(), `${mode} ${species} in ${season}: a trunk under each crown`);
+    for (const t of trunks.values()) {
+      // Each reaches down into the ground at its foot (1 m up, in wood()), up past its crown's lowest strokes, and unbroken.
+      const spans = t.spans.sort((a, b) => a[0] - b[0]), foot = spans[0][0], top = Math.max(...spans.map((s) => s[1]));
+      assert.ok(foot <= 1 && top > 3, `${mode} ${species} in ${season}: a trunk from ${foot.toFixed(2)} to ${top.toFixed(2)}`);
+      for (let k = 1; k < spans.length; k++) assert.ok(spans[k][0] < spans[k - 1][1], `${mode} ${species} in ${season}: a gap in a trunk at ${spans[k][0].toFixed(2)}`);
+    }
     const forks = season === 'winter' && species !== 'pine';
     for (const t of trunks.values()) assert.ok(forks ? t.limbs >= 2 : t.limbs === 0, `${mode} ${species} in ${season}: ${t.limbs} limbs`);
     // The wood is a sliver of the crown's cost: its cards fill under half the crowns' (and its marks a fifth of its cards).
