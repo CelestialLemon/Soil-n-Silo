@@ -8,6 +8,7 @@ import { SNOW_GLSL } from './snow';
 import { WET_GLSL, WET_INK_GLSL } from './wet';
 import { GROUND_TOOLS_GLSL } from './overlay';
 import { GLOW, PART_TEXELS } from './parts';
+import { CRISP_EDGE, STIFF_STROKE } from './dabs';
 import { SMOKE_INK } from './pick';
 import { SMOKE } from './nightLights';
 
@@ -292,11 +293,8 @@ void main() {
 }
 `;
 
-/** Added to a foliage dab's aPaint.x (its colour drift, under 2 otherwise) to give it crisper edges: see FOLIAGE_VERT. */
-export const CRISP_EDGE = 2;
-/** Added to a foliage dab's aPaint.x to mark it as stiff (#13's winter twigs, and fallen leaves): it moves only with its
- * tree, if any, never fluttering or turning over on its own. Adds to CRISP_EDGE. */
-export const STIFF_STROKE = 4;
+// The flags a foliage dab's aPaint.x carries (CRISP_EDGE, STIFF_STROKE) are in dabs.ts, which the kit's pieces load in Node.
+export { CRISP_EDGE, STIFF_STROKE };
 
 /**
  * Foliage dabs: each card is a quad centred on `position`, turned to face whichever camera draws it (the view or the sun),

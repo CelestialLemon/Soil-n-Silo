@@ -57,7 +57,8 @@ export function cutIntoTiles(g: THREE.BufferGeometry, size: number): THREE.Buffe
   return out;
 }
 
-function grow(g: THREE.BufferGeometry) {
+/** A geometry's bounding sphere, grown by TILE_REACH as a tile's is (for a mesh culled whole, uncut). */
+export function grow(g: THREE.BufferGeometry) {
   g.computeBoundingSphere();
   g.boundingSphere!.radius += TILE_REACH;
   return g;

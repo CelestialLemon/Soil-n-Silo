@@ -1,0 +1,540 @@
+import type { FlowerOptions, ReedOptions, TuftOptions } from '../../../brush3d/src/index.ts';
+import { FLOWER_REACH, REED_HEIGHT, REED_REACH, REED_WIDTH, TUFT_HEIGHT, TUFT_REACH } from '../../../brush3d/src/shared.ts';
+import { GROUND } from '../../game/ground.ts';
+import { TERRAIN, type Land } from '../../game/map.ts';
+import { joins, SIDES, spanOf, STEEP, type Relief } from '../../game/relief.ts';
+import type { BuildingId } from '../../game/data.ts';
+import type { Season } from '../../game/seasons.ts';
+import { sizeOf, terrainAt, type GameState } from '../../game/state.ts';
+import { YAW } from './catalog.ts';
+import { WATER_DOWN } from './landMap.ts';
+import { LEVEL, TILE } from './scale.ts';
+
+// Pure placement, masking, and block-change rules for the meadow: its grass tufts (#256), its wildflowers (#266), which
+// grow where the grass may, and its reeds along the water's edge (#267), all in the same blocks. Kept separate from `grass.ts` with no Three.js or renderer runtime imports
+// so `npm test` exercises them directly in Node (as `landMap.ts` does for `land.ts`).
+
+/**
+ * Tiles a side of one map or country-fringe block: one mesh, made again whole when anything in it changes. Small, so
+ * making one again fits the frame's budget (grass.ts).
+ */
+export const GRASS_BLOCK = 4;
+/** Tiles beyond the map where grass tufts fade out into the country. */
+export const GRASS_FRINGE = 4;
+
+export interface GrassProfile {
+  /** Candidate spots tried per open grass tile. */
+  attempts: number;
+  /** Minimum chance a candidate spawns on open lawn (keeps quiet painted spaces between drifts). */
+  baseProb: number;
+  /** Extra chance added by lushness (drifts, tree skirts, banks). */
+  lushProb: number;
+  /** Chance a lush tuft spawns a tight companion tussock nearby (organic clumping). */
+  clusterProb: number;
+  /** Tuft height (m): base and extra at full lushness. */
+  tall: [number, number];
+  /** Shape options passed to `addTuft`. */
+  tuft: Required<TuftOptions>;
+}
+
+/**
+ * The meadow's density: dense, taller tussocks (the developer's pick on #256, `lush` of the quiet, meadow and lush
+ * compared on its PR).
+ */
+export const GRASS_PROFILE: GrassProfile = {
+  attempts: 11, baseProb: 0.18, lushProb: 0.82, clusterProb: 0.42,
+  tall: [0.40, 0.36],
+  tuft: { blades: [4, 3], width: [0.055, 0.028], spread: 0.11 },
+};
+
+/** The tallest a tuft is asked to be (m): its full lushness, at the most of its random 0.88–1.12 (grass.ts). */
+const MAX_TALL = (GRASS_PROFILE.tall[0] + GRASS_PROFILE.tall[1]) * 1.12;
+
+/**
+ * The furthest (m) any blade reaches from its tuft's spot across the ground, at rest: brush3d's promise for `addTuft`
+ * (`TUFT_REACH`, held to it by its brush3d/test/tuft.test.ts), ≈ 0.825 m.
+ */
+export const MAX_BLADE_REACH = GRASS_PROFILE.tuft.spread + TUFT_REACH * MAX_TALL;
+
+export interface FlowerProfile {
+  /** Candidate spots tried per open grass tile; each that takes is a clump of blooms. */
+  attempts: number;
+  /**
+   * Where the drifts are: the drift field (0..1, grass.ts's `driftAt`) eased from none at the first to full at the second.
+   * Higher, fewer and smaller drifts with more open meadow between.
+   */
+  drift: [number, number];
+  /** Blooms in a clump: `[min, spread]` (`min + floor(rand() * spread)`), times the season's `clump`. */
+  clump: [number, number];
+  /** The blooms' shape, passed to `addFlower`. */
+  flower: Required<FlowerOptions>;
+}
+
+/**
+ * The wildflowers' density: drifts across the meadow (the developer's pick on #266, `meadow` of the subtle, meadow and
+ * lush compared on its PR). The season thins them (FLOWER_SEASONS).
+ */
+export const FLOWER_PROFILE: FlowerProfile = {
+  attempts: 12, drift: [0.60, 0.74], clump: [2, 3], flower: { size: [0.075, 0.035], lift: [0.18, 0.22], crisp: true },
+};
+
+export interface FlowerSeason {
+  /** How thickly they bloom against spring's (the chance a candidate takes is multiplied by it): none in winter's snow. */
+  density: number;
+  /** How many blooms to a clump, against spring's. */
+  clump: number;
+  /** The colours (sRGB) and how often each is a drift's. */
+  palette: readonly { hex: number; weight: number }[];
+}
+
+/** The wildflowers by season: the season never changes during a commission, so the meadow reads it once. */
+export const FLOWER_SEASONS: Record<Season, FlowerSeason> = {
+  // Fresh blooms: white, yellow, peach and sky blue.
+  spring: {
+    density: 1, clump: 1,
+    palette: [{ hex: 0xf7f2e4, weight: 3 }, { hex: 0xf5cf3e, weight: 3 }, { hex: 0xf6b48f, weight: 2 }, { hex: 0x9cc8ec, weight: 2 }],
+  },
+  // A few vibrant drifts: the farm demo's pinks, reds and violets with the white and yellow, as sparse as autumn's (the
+  // developer, on #266: the full drifts were too much over summer's drier grass; spring is when the meadow blooms).
+  summer: {
+    density: 0.3, clump: 0.5,
+    palette: [
+      { hex: 0xf08bb0, weight: 2 }, { hex: 0xe8574a, weight: 2 }, { hex: 0xa77ad8, weight: 2 }, { hex: 0xf5cf3e, weight: 2 },
+      { hex: 0xf7f2e4, weight: 1 },
+    ],
+  },
+  // Sparse warm specks: the last few blooms, ochre, amber, rust and cream.
+  autumn: {
+    density: 0.3, clump: 0.5,
+    palette: [{ hex: 0xe0a33a, weight: 3 }, { hex: 0xf0b84a, weight: 2 }, { hex: 0xcf6b3a, weight: 2 }, { hex: 0xeedcae, weight: 1 }],
+  },
+  winter: { density: 0, clump: 0, palette: [] },
+};
+
+/** Whether any wildflowers bloom in a season. */
+export const flowersBloom = (season: Season) => FLOWER_SEASONS[season].density > 0;
+
+/** The furthest (m) a bloom reaches from its middle: brush3d's promise for `addFlower` (`FLOWER_REACH`). */
+export const BLOOM_REACH = FLOWER_REACH * (FLOWER_PROFILE.flower.size[0] + FLOWER_PROFILE.flower.size[1]);
+
+export interface ReedProfile {
+  /** Candidate spots tried per shore tile; each that takes is a clump, with a few more beside it. */
+  attempts: number;
+  /**
+   * Where the reed beds are along a shore: the beds field (0..1, grass.ts's `bedsAt`) eased from none at the first to full
+   * at the second. Higher, fewer and shorter beds with open bank between.
+   */
+  beds: [number, number];
+  /** Clumps beside each one that takes, in its bed: `[min, spread]` (`min + floor(rand() * spread)`). */
+  companions: [number, number];
+  /** The clumps' shape, passed to `addReeds` (their colours are the season's). */
+  reed: Required<Pick<ReedOptions, 'blades' | 'tall' | 'across' | 'width'>>;
+  /** The chance a stalk bears a seed head, times the season's. */
+  heads: number;
+}
+
+/** The reeds: long, thick beds (lush, the developer's pick of two densities on #267). */
+export const REED_PROFILE: ReedProfile = {
+  attempts: 64, beds: [0.36, 0.52], companions: [2, 3], heads: 0.1,
+  reed: { blades: [12, 10], tall: [0.7, 0.55], across: 0.55, width: [0.026, 0.016] },
+};
+
+export interface ReedSeason {
+  /** How thickly they stand against summer's (the chance a candidate takes is multiplied by it), and how tall. */
+  density: number;
+  tall: number;
+  /** The stalks' colours (sRGB) and how often each is a clump's; what their tips lean towards and how far. */
+  palette: readonly { hex: number; weight: number }[];
+  tip: number;
+  tipMix: number;
+  /** How often a stalk bears a seed head, against the profile's. */
+  heads: number;
+}
+
+/**
+ * The reeds by season (the season never changes during a commission). Greens are sent as summer's and turned by brush3d's
+ * season (fresher in spring); straw and frost it leaves as they are.
+ */
+export const REED_SEASONS: Record<Season, ReedSeason> = {
+  // Fresh green shoots, not yet full height, a few of last year's straw stalks among them.
+  spring: { density: 0.9, tall: 0.85, palette: [{ hex: 0x86a446, weight: 6 }, { hex: 0x9ab452, weight: 3 }, { hex: 0xb8a464, weight: 1 }], tip: 0xc4dc6c, tipMix: 0.6, heads: 0.3 },
+  // Full height, deep green, the bulrushes' brown heads among them.
+  summer: { density: 1, tall: 1, palette: [{ hex: 0x7a9a40, weight: 6 }, { hex: 0x6a8c3c, weight: 3 }, { hex: 0x9caa4e, weight: 1 }], tip: 0xb8d062, tipMix: 0.5, heads: 1 },
+  // Golden straw, a little olive still in some clumps.
+  autumn: { density: 1, tall: 1, palette: [{ hex: 0xc9a24c, weight: 4 }, { hex: 0xb8903e, weight: 3 }, { hex: 0x9a9446, weight: 2 }], tip: 0xead48c, tipMix: 0.5, heads: 1.2 },
+  // Dry, pale stalks, a little broken down, frost on their tips.
+  winter: { density: 0.85, tall: 0.85, palette: [{ hex: 0xa8987a, weight: 3 }, { hex: 0x9a8a6c, weight: 2 }, { hex: 0xb8ab8e, weight: 2 }], tip: 0xe8eef0, tipMix: 0.7, heads: 0.8 },
+};
+
+/** The tallest a clump is asked to be (m): the profile's most, at the tallest season. */
+const REED_TALL = (REED_PROFILE.reed.tall[0] + REED_PROFILE.reed.tall[1]) * Math.max(...Object.values(REED_SEASONS).map((k) => k.tall));
+
+/** The furthest (m) a stalk reaches from its clump's spot across the ground: brush3d's promise (`REED_REACH`). */
+export const MAX_REED_REACH =
+  REED_PROFILE.reed.across / Math.SQRT2 + REED_REACH * REED_TALL + REED_PROFILE.reed.width[0] + REED_PROFILE.reed.width[1] + REED_WIDTH;
+
+/**
+ * How much a spot `depth` m under the water's surface (above it, below zero) is the reeds' (0..1): most at the waterline,
+ * out into the shallows to `REED_DEEP` and up the bank to `REED_HIGH`. The reeds line the water as drawn: the bed brush3d
+ * carves, square or curving, wherever it meets the water. The spot is a clump's middle: its stalks root within half its
+ * `across` of it, so on a steep bank a stalk can stand a little deeper in the shallows or higher up the bank than that.
+ */
+export const REED_DEEP = 0.24, REED_HIGH = 0.32;
+export function reedBand(depth: number): number {
+  if (depth >= REED_DEEP || depth <= -REED_HIGH) return 0;
+  return depth > 0 ? 1 - (depth / REED_DEEP) ** 2 : 1 - (depth / REED_HIGH) ** 2;
+}
+
+/** How high (m) a reed's tips stand over the land at most: its tallest stalk (addReeds). */
+export const REED_TOP = REED_HEIGHT * REED_TALL + 0.05;
+
+/** Where on a tile reeds may stand, and the water they line. */
+export interface ReedShore {
+  /** The surface (m) of the water beside it, which its reeds stand at the edge of. */
+  surface: number;
+  /** The tile's inner bounds (m across it), kept off rocks and tracks beside it. */
+  minU: number; maxU: number; minV: number; maxV: number;
+  /** Still water beside it (a pond or a lake): the reeds gather there. */
+  still: boolean;
+}
+
+/**
+ * Whether map/country tile `(tx, ty)` is a shore the reeds may line, and the water's surface there; `null` if not. A shore
+ * tile is open grass or water with both water and dry ground round it (so the water's edge as drawn may cross it, square or
+ * curving). None by a fall (two tiles round it hold water at different levels: the water there drops, and its banks take
+ * the lower water's surface), on a cliff or a steep tile, on a track, or by the land's edge.
+ */
+export function reedShore(s: GameState, land: Land, relief: Relief, tx: number, ty: number, onMap: boolean): ReedShore | null {
+  const M = land.margin, W = land.width, H = land.height;
+  const lx = tx + M, ly = ty + M;
+  if (lx < 0 || ly < 0 || lx >= W || ly >= H) return null;
+  const inMap = (x: number, y: number) => x >= 0 && y >= 0 && x < s.map.width && y < s.map.height;
+  const kindAt = (x: number, y: number) => inMap(x, y) ? terrainAt(s, x, y) : land.terrain[(y + M) * W + x + M];
+  const here = onMap ? terrainAt(s, tx, ty) : land.terrain[ly * W + lx];
+  if (here !== TERRAIN.water && here !== TERRAIN.grass) return null;
+  if (!onMap && land.track[ly * W + lx] === 1) return null;
+  if (spanOf(relief, lx, ly) >= STEEP) return null;
+  for (let d = 0; d < 4; d++) if (!joins(relief, lx, ly, d)) return null;
+  let level = NaN, wet = false, dry = false, still = false;
+  for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+    const nx = tx + dx, ny = ty + dy, nlx = nx + M, nly = ny + M;
+    if (nlx < 0 || nly < 0 || nlx >= W || nly >= H) return null;
+    const near = Math.abs(dx) <= 1 && Math.abs(dy) <= 1;
+    if (kindAt(nx, ny) !== TERRAIN.water) { dry ||= near; continue; }
+    const j = nly * W + nlx, lv = relief.corner[j * 4];
+    if (Number.isNaN(level)) level = lv;
+    else if (lv !== level) return null;
+    if (near) { wet = true; still ||= land.flow[j * 2] === 0 && land.flow[j * 2 + 1] === 0; }
+  }
+  if (!wet || !dry) return null;
+  // Kept off a rock's crags and a track beside it by the reeds' reach, and off the map's edge from the country as the
+  // grass is (tileHabitat).
+  let minU = 0.05, maxU = TILE - 0.05, minV = 0.05, maxV = TILE - 0.05;
+  for (let d = 0; d < 4; d++) {
+    const [dx, dy] = SIDES[d], nx = tx + dx, ny = ty + dy, nlx = nx + M, nly = ny + M;
+    let margin = 0;
+    if (!onMap && inMap(nx, ny)) margin = BUILDING_MARGIN + 0.05;
+    else if (kindAt(nx, ny) === TERRAIN.rock || land.track[nly * W + nlx] === 1) margin = MAX_REED_REACH + 0.05;
+    if (d === 0) minV = Math.max(minV, margin);
+    else if (d === 1) maxU = Math.min(maxU, TILE - margin);
+    else if (d === 2) maxV = Math.min(maxV, TILE - margin);
+    else minU = Math.max(minU, margin);
+  }
+  if (minU >= maxU || minV >= maxV) return null;
+  return { surface: level * LEVEL - WATER_DOWN, minU, maxU, minV, maxV, still };
+}
+
+/** The steepest ground a clump of reeds stands on (the y of its normal): a bank, not a cliff. */
+export const REED_SLOPE = 0.75;
+
+/**
+ * Whether a clump of reeds may stand at (wx, wz) m on shore tile (tx, ty) (`shore`, reedShore's): within the tile's bounds,
+ * outside every footprint and water wheel's race (`boxes`, boxesIn's, with brush3d's `wheelRace` as `race`), on ground no
+ * steeper than REED_SLOPE (`up`, the y of the ground's normal there, asked only when the rest let it stand).
+ */
+export function reedSpot(
+  shore: ReedShore, tx: number, ty: number, wx: number, wz: number, boxes: readonly FootprintBox[],
+  race: (lx: number, lz: number, pad: number) => number, up: () => number,
+): boolean {
+  const x0 = tx * TILE, z0 = ty * TILE;
+  if (wx < x0 + shore.minU || wx > x0 + shore.maxU || wz < z0 + shore.minV || wz > z0 + shore.maxV) return false;
+  if (boxes.length && inBuilding(boxes, wx, wz, race)) return false;
+  return up() >= REED_SLOPE;
+}
+
+/** Margins (m) kept clear around cliff faces, non-grass neighbours, and footprints. */
+export const CLIFF_MARGIN = 0.85;
+export const WATER_MARGIN = 0.45;
+export const ROCK_MARGIN = 0.35;
+/**
+ * Kept strictly above `MAX_BLADE_REACH` so no blade at rest stands in a building's or field's footprint. The wind's sway
+ * is left out, on purpose (as it is from `TUFT_REACH`): the grass shader bends a blade across the view only, never nearer or
+ * further, so a blade in a gust can lean over a field's edge or in front of a wall it already stood in front of, but
+ * never through a wall. Covering the sway's full reach (up to 0.6 m, in a storm) would leave a bare ring round everything.
+ */
+export const BUILDING_MARGIN = 0.90;
+export const FIELD_MARGIN = 0.85;
+
+export interface FootprintBox {
+  x0: number; x1: number; z0: number; z1: number;
+  wheel?: { cx: number; cz: number; cos: number; sin: number };
+}
+
+export interface TileHabitat {
+  minU: number; maxU: number; minV: number; maxV: number;
+  waterBoost: number; skirtBoost: number; rockBoost: number;
+  /** At a hill's edge: a bank or cliff on a side (the wildflowers gather there). */
+  edgeBoost: number;
+  deepWoods: number; groundScale: number; seasonDensity: number; heightScale: number;
+}
+
+export interface GrassBlockRect {
+  id: number;
+  x0: number; y0: number; x1: number; y1: number;
+  /** Whether this block contains any playable map tiles (`false` for pure country-fringe blocks). */
+  onMap: boolean;
+}
+
+/** Deterministic tile hash in 0..2^32-1 for per-tile seeding (rebuilding a block never shifts neighbouring tiles). */
+export function tileSeed(seed: number, x: number, y: number): number {
+  let h = (seed ^ Math.imul(x + 374761393, 668265263) ^ Math.imul(y + 1274126177, 2246822519)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+/** Distance (tiles, capped at 40) from each land tile to the nearest water tile (water never moves in play). */
+export function wetDistance(land: Pick<Land, 'width' | 'height' | 'terrain'>): Float32Array {
+  const { width: W, height: H, terrain } = land, n = W * H;
+  const dist = new Float32Array(n).fill(40);
+  const queue = new Int32Array(n);
+  let head = 0, tail = 0;
+  for (let i = 0; i < n; i++) {
+    if (terrain[i] === TERRAIN.water) { dist[i] = 0; queue[tail++] = i; }
+  }
+  while (head < tail) {
+    const i = queue[head++], d = dist[i] + 1;
+    if (d >= 40) continue;
+    const x = i % W, y = (i - x) / W;
+    for (const [dx, dy] of SIDES) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const j = ny * W + nx;
+      if (dist[j] > d) { dist[j] = d; queue[tail++] = j; }
+    }
+  }
+  return dist;
+}
+
+/** Whether (x, z) in metres falls inside any building footprint (or water wheel race, when `wheelRaceAt` is given). */
+export function inBuilding(
+  boxes: readonly FootprintBox[],
+  x: number,
+  z: number,
+  wheelRaceAt?: (lx: number, lz: number, pad: number) => number,
+): boolean {
+  for (const b of boxes) {
+    if (x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1) return true;
+    if (b.wheel && wheelRaceAt) {
+      const dx = x - b.wheel.cx, dz = z - b.wheel.cz;
+      const lx = dx * b.wheel.cos - dz * b.wheel.sin;
+      const lz = dx * b.wheel.sin + dz * b.wheel.cos;
+      if (wheelRaceAt(lx, lz, BUILDING_MARGIN) > 0) return true;
+    }
+  }
+  return false;
+}
+
+function makeBox(b: GameState['buildings'][number]): FootprintBox {
+  const n = sizeOf(b);
+  const margin = b.type === 'field' ? FIELD_MARGIN : BUILDING_MARGIN;
+  const box: FootprintBox = {
+    x0: b.x * TILE - margin, x1: (b.x + n) * TILE + margin,
+    z0: b.y * TILE - margin, z1: (b.y + n) * TILE + margin,
+  };
+  if (b.type === 'wheel') {
+    const yaw = YAW[b.rot];
+    box.wheel = { cx: (b.x + n / 2) * TILE, cz: (b.y + n / 2) * TILE, cos: Math.cos(yaw), sin: Math.sin(yaw) };
+  }
+  return box;
+}
+
+/** Expanded building footprints & wheel races that can touch tiles in `[x0, x1) × [y0, y1)`. */
+export function boxesIn(s: GameState, x0: number, y0: number, x1: number, y1: number): FootprintBox[] {
+  const out: FootprintBox[] = [];
+  for (const b of s.buildings) {
+    const n = sizeOf(b), pad = b.type === 'wheel' ? 3 : 1;
+    if (b.x + n + pad <= x0 || b.x - pad >= x1 || b.y + n + pad <= y0 || b.y - pad >= y1) continue;
+    out.push(makeBox(b));
+  }
+  return out;
+}
+
+/** All 8 × 8-tile blocks covering the playable map `[0, w) × [0, h)` and its `reach`-tile country fringe. */
+export function grassBlocks(w: number, h: number, reach: number): GrassBlockRect[] {
+  const out: GrassBlockRect[] = [];
+  const bx0 = Math.floor(-reach / GRASS_BLOCK), bx1 = Math.floor((w + reach - 1) / GRASS_BLOCK);
+  const by0 = Math.floor(-reach / GRASS_BLOCK), by1 = Math.floor((h + reach - 1) / GRASS_BLOCK);
+  for (let by = by0; by <= by1; by++) for (let bx = bx0; bx <= bx1; bx++) {
+    const x0 = Math.max(-reach, bx * GRASS_BLOCK), x1 = Math.min(w + reach, (bx + 1) * GRASS_BLOCK);
+    const y0 = Math.max(-reach, by * GRASS_BLOCK), y1 = Math.min(h + reach, (by + 1) * GRASS_BLOCK);
+    if (x0 >= x1 || y0 >= y1) continue;
+    out.push({
+      id: (by + 64) * 1024 + (bx + 64),
+      x0, y0, x1, y1,
+      onMap: x1 > 0 && x0 < w && y1 > 0 && y0 < h,
+    });
+  }
+  return out;
+}
+
+/** Density fade (0..1) for tile `(x, y)`: 1 on the playable map, tapering smoothly over `reach` country-fringe tiles. */
+export function fringeFade(x: number, y: number, w: number, h: number, reach: number): number {
+  if (x >= 0 && y >= 0 && x < w && y < h) return 1;
+  const beyond = Math.hypot(Math.max(0, -x, x - w + 1), Math.max(0, -y, y - h + 1));
+  const t = Math.min(1, Math.max(0, beyond / (reach + 0.5)));
+  const fade = (1 - t * t * (3 - 2 * t)) * 0.65;
+  return fade > 0.05 ? fade : 0;
+}
+
+/**
+ * Evaluates whether map/country tile `(tx, ty)` can hold meadow grass tufts and returns its inner placement bounds
+ * and habitat modifiers, or `null` if the tile is excluded (non-grass, track, steep bank, or pinched margins).
+ */
+export function tileHabitat(
+  s: GameState,
+  land: Land,
+  relief: Relief,
+  wetDist: Float32Array,
+  tx: number,
+  ty: number,
+  onMap: boolean,
+): TileHabitat | null {
+  const M = land.margin, W = land.width, H = land.height;
+  const lx = tx + M, ly = ty + M, li = ly * W + lx;
+  const terrain = onMap ? terrainAt(s, tx, ty) : land.terrain[li];
+  if (terrain !== TERRAIN.grass) return null;
+  if (!onMap && land.track[li] === 1) return null;
+  if (spanOf(relief, lx, ly) >= STEEP) return null;
+
+  const kindAt = (nx: number, ny: number): number => {
+    const nlx = nx + M, nly = ny + M;
+    if (nlx < 0 || nly < 0 || nlx >= W || nly >= H) return TERRAIN.grass;
+    if (nx >= 0 && ny >= 0 && nx < s.map.width && ny < s.map.height) return terrainAt(s, nx, ny);
+    return land.terrain[nly * W + nlx];
+  };
+
+  let treesNear = 0, rockNear = false;
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    if (dx === 0 && dy === 0) continue;
+    const k = kindAt(tx + dx, ty + dy);
+    if (k === TERRAIN.tree) treesNear++;
+    else if (k === TERRAIN.rock) rockNear = true;
+  }
+
+  let minU = 0.08, maxU = TILE - 0.08, minV = 0.08, maxV = TILE - 0.08, edge = false;
+  for (let d = 0; d < 4; d++) {
+    const [dx, dy] = SIDES[d], nx = tx + dx, ny = ty + dy, nlx = nx + M, nly = ny + M;
+    let margin = 0;
+    if (!joins(relief, lx, ly, d)) {
+      margin = CLIFF_MARGIN;
+      edge = true;
+    } else if (!onMap && nx >= 0 && ny >= 0 && nx < s.map.width && ny < s.map.height) {
+      margin = BUILDING_MARGIN + 0.05;
+    } else {
+      const nk = kindAt(nx, ny);
+      if (nk === TERRAIN.water) margin = WATER_MARGIN;
+      else if (nk === TERRAIN.rock) margin = ROCK_MARGIN;
+      else if (nlx >= 0 && nly >= 0 && nlx < W && nly < H && land.track[nly * W + nlx] === 1) margin = ROCK_MARGIN;
+    }
+    if (margin <= 0) continue;
+    if (d === 0) minV = Math.max(minV, margin);
+    else if (d === 1) maxU = Math.min(maxU, TILE - margin);
+    else if (d === 2) maxV = Math.min(maxV, TILE - margin);
+    else minU = Math.max(minU, margin);
+  }
+  if (minU >= maxU || minV >= maxV) return null;
+
+  const winter = s.scenario.climate.season === 'winter';
+  const gKind = onMap ? s.map.ground[ty * s.map.width + tx] : land.ground[li];
+  return {
+    minU, maxU, minV, maxV,
+    waterBoost: wetDist[li] <= 1 ? 0.30 : wetDist[li] <= 2 ? 0.16 : 0,
+    skirtBoost: treesNear >= 1 && treesNear <= 3 ? 0.24 : 0,
+    rockBoost: rockNear ? 0.16 : 0,
+    edgeBoost: edge ? 0.14 : 0,
+    deepWoods: treesNear >= 5 ? 0 : treesNear === 4 ? 0.55 : 1,
+    groundScale: gKind === GROUND.stony ? 0.68 : gKind === GROUND.sand ? 0.76 : gKind === GROUND.silt ? 1.12 : 1,
+    seasonDensity: winter ? 0.80 : 1,
+    heightScale: (winter ? 0.60 : 1) * (gKind === GROUND.stony ? 0.82 : gKind === GROUND.sand ? 0.88 : 1),
+  };
+}
+
+/** The id of the block (grassBlocks') that holds tile (x, y), on the map or in its fringe. */
+export const blockOf = (x: number, y: number) => (Math.floor(y / GRASS_BLOCK) + 64) * 1024 + (Math.floor(x / GRASS_BLOCK) + 64);
+
+/** Where a building stands, as far as the grass is concerned. */
+interface Standing { type: BuildingId; x: number; y: number; rot: number }
+const same = (a: Standing | undefined, b: Standing | undefined) => !!a && !!b && a.type === b.type && a.x === b.x && a.y === b.y && a.rot === b.rot;
+
+/** What of the game's layout the grass stands round: the map's terrain, and each building where it stands. */
+export interface GrassLayout { terrain: Uint8Array; buildings: Map<number, Standing> }
+
+export function grassLayout(s: GameState): GrassLayout {
+  const buildings = new Map<number, Standing>();
+  for (const b of s.buildings) buildings.set(b.id, { type: b.type, x: b.x, y: b.y, rot: b.rot });
+  return { terrain: Uint8Array.from(s.map.terrain), buildings };
+}
+
+/**
+ * The blocks touched by what changed between two layouts of a map `width` tiles across: `urgent`, those a building now
+ * stands in (or its wheel's race reaches), whose grass must go before the building is drawn; `dirty`, the rest (a tree
+ * or rock cleared, a building taken away: grass grows back). A tile's grass depends on its neighbours' terrain, so a
+ * changed tile touches the blocks round it too. Costs a look at each tile and building, not a block's worth of work.
+ */
+export function layoutChanges(was: GrassLayout, now: GrassLayout, width: number): { urgent: Set<number>; dirty: Set<number> } {
+  const urgent = new Set<number>(), dirty = new Set<number>();
+  const touch = (into: Set<number>, x0: number, y0: number, x1: number, y1: number) => {
+    for (let y = Math.floor(y0 / GRASS_BLOCK); y <= Math.floor(y1 / GRASS_BLOCK); y++) {
+      for (let x = Math.floor(x0 / GRASS_BLOCK); x <= Math.floor(x1 / GRASS_BLOCK); x++) into.add(blockOf(x * GRASS_BLOCK, y * GRASS_BLOCK));
+    }
+  };
+  for (let i = 0; i < now.terrain.length; i++) {
+    if (was.terrain[i] === now.terrain[i]) continue;
+    const x = i % width, y = (i - x) / width;
+    touch(dirty, x - 1, y - 1, x + 1, y + 1);
+  }
+  // A building's box (makeBox) reaches less than a tile past its footprint; a wheel's race, three.
+  const around = (b: Standing, into: Set<number>) => {
+    const n = sizeOf(b), pad = b.type === 'wheel' ? 3 : 1;
+    touch(into, b.x - pad, b.y - pad, b.x + n + pad - 1, b.y + n + pad - 1);
+  };
+  for (const [id, b] of now.buildings) if (!same(was.buildings.get(id), b)) around(b, urgent);
+  for (const [id, b] of was.buildings) if (!same(now.buildings.get(id), b)) around(b, dirty);
+  for (const id of urgent) dirty.delete(id);
+  return { urgent, dirty };
+}
+
+/** How high (m) a meadow tuft's tip stands over the land at most: its tallest blade (addTuft). */
+export const GRASS_TOP = TUFT_HEIGHT * MAX_TALL + 0.05;
+
+/**
+ * How high (m) a wildflower's bloom stands over the land at most: its highest (addFlower). Under the grass's top
+ * (GRASS_TOP), so a pick under that is the meadow's.
+ */
+export const FLOWER_TOP = FLOWER_PROFILE.flower.lift[0] + FLOWER_PROFILE.flower.lift[1] + BLOOM_REACH + 0.05;
+
+/**
+ * Whether what a pick calls a plant, at (x, z) m and `above` m over the land, is the meadow's grass, flowers or reeds
+ * (#256, #266, #267) rather than a tree or a rock: lower than the grass's tips (GRASS_TOP, over the flowers' blooms) over a
+ * tile of open grass (or off the map), or lower than its reeds' `reeds` there, over open grass or the water. `reeds` is the
+ * reeds' top where they stand within a clump's reach of the point, else 0 (grass.ts's `reedTopAt`). brush3d paints the
+ * meadow as it does a tree's leaves, so its pick can't tell them apart; the game can. A tree's crown leaning over the next
+ * tile stands higher. (A branch hanging lower than the grass's tips over the next tile is taken for the meadow: picked on
+ * its crown or its own tile instead.)
+ */
+export function grassAt(s: GameState, x: number, z: number, above: number, reeds = 0): boolean {
+  const tx = Math.floor(x / TILE), ty = Math.floor(z / TILE);
+  if (tx < 0 || ty < 0 || tx >= s.map.width || ty >= s.map.height) return above < Math.max(GRASS_TOP, reeds);
+  const t = terrainAt(s, tx, ty);
+  return t === TERRAIN.grass ? above < Math.max(GRASS_TOP, reeds) : t === TERRAIN.water && above < reeds;
+}

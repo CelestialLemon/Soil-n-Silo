@@ -6,5 +6,5 @@
   // Vite's client types too: a test of the brush3d world (brushWater.test.ts) reaches brush3d's model catalogue through the
   // types it names, and the catalogue lists its models with Vite's import.meta.glob (never run in the tests).
   "compilerOptions": { "lib": ["ES2022", "DOM"], "types": ["node", "vite/client"] },
-  "include": [".", "../src/game", "../tools"]
+  "include": [".", "../src/game", "../tools", "../brush3d/test"]
 }

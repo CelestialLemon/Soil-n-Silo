@@ -14,7 +14,7 @@
 // Exits with 1 if anything is off.
 import * as THREE from 'three';
 import { LAND_COVER, LAND_GROUND, type LandMap } from '../src/land/map.ts';
-import { LAND_LOOK, PaintedLand, type LandAdder, type LandLook } from '../src/land/paint.ts';
+import { LAND_LOOK, PaintedLand, type LandAdder, type LandArea, type LandLook } from '../src/land/paint.ts';
 import { Surface } from '../src/land/surface.ts';
 
 let failed = false;
@@ -136,6 +136,31 @@ for (const t of tris) {
 }
 check('every triangle faces the way its normal does', backwards === 0, `${backwards} of ${tris.length} the wrong way round`);
 check('the cliff and the land\'s edge have faces', faces > 100, `${faces} upright triangles`);
+// landColourAt matches the built top vertices' colours (linear RGB) and handles the country beyond.
+{
+  let colourErr = 0, checked = 0;
+  for (const m of adder.live) {
+    const pos = m.geometry.getAttribute('position'), nrm = m.geometry.getAttribute('normal'), col = m.geometry.getAttribute('color');
+    const c = new THREE.Color();
+    for (let i = 0; i < pos.count; i++) {
+      // Top vertices face upward (cliff faces have y == 0).
+      if (nrm.getY(i) < 0.5) continue;
+      const x = pos.getX(i), z = pos.getZ(i);
+      // Skip tile borders where two adjacent tiles have distinct cover/slope.
+      const fx = (x - X0) / TILE, fz = (z - Z0) / TILE;
+      if (fx <= 0.1 || fz <= 0.1 || fx >= W - 0.1 || fz >= H - 0.1) continue;
+      if (Math.abs(fx - Math.round(fx)) < 1e-3 || Math.abs(fz - Math.round(fz)) < 1e-3) continue;
+      land.landColourAt(x, z, c);
+      colourErr = Math.max(colourErr, Math.abs(c.r - col.getX(i)), Math.abs(c.g - col.getY(i)), Math.abs(c.b - col.getZ(i)));
+      checked++;
+    }
+  }
+  const onMap = land.landColourAt(...world(15.5, 10.5));
+  const offMap = land.landColourAt(...world(1.5, 10.5));
+  const beyond = land.landColourAt(X0 - 40, Z0 + 20);
+  check('landColourAt matches top vertex colours on the mesh', checked > 1000 && colourErr < 1e-5, `${checked} vertices, max err ${colourErr.toExponential(2)}`);
+  check('landColourAt dulls off-map country and covers the beyond apron', offMap.g < onMap.g && beyond.r > 0 && beyond.g > 0 && beyond.b > 0);
+}
 // Lines of sight: straight down, and slanting across the cliff, meet the land where heightAt has it.
 const [dx, dz] = world(18.3, 9.6), down = land.hit({ origin: new THREE.Vector3(dx, 100, dz), direction: new THREE.Vector3(0, -1, 0) });
 check('straight down, at heightAt', !!down && Math.abs(down.y - land.heightAt(dx, dz)) < 1e-3, `${down?.y} for ${land.heightAt(dx, dz)}`);
@@ -241,6 +266,29 @@ for (let k = 0; k < 40 && !land.step(0); k++) if ((land as unknown as { fitting:
 while (!land.step(0));
 check('a tile turned to water: as it was until fitted, then its bed', midFit && land.heightAt(...pondAt) < pondBefore - 0.3, `${pondBefore} then ${land.heightAt(...pondAt)}`);
 
+// A tile repainted, its height as it was (a rock cleared): landColourAt answers the paint as drawn until it's swapped in
+// (what the game colours its grass from), and the swap says where the land changed (onSwap: the game remakes its grass
+// there).
+{
+  // A grass tile among grass, away from the water (a water tile changing would refit its bed, and the dryness round it).
+  let tx = -1, ty = -1;
+  for (let y = 3; y < H - 3 && tx < 0; y++) for (let x = 3; x < W - 3 && tx < 0; x++) {
+    let open = map.cover[y * W + x] === LAND_COVER.grass;
+    for (let j = -3; j <= 3; j++) for (let i = -3; i <= 3; i++) if (map.cover[(y + j) * W + x + i] === LAND_COVER.water) open = false;
+    if (open) { tx = x; ty = y; }
+  }
+  const at = world(tx + 0.5, ty + 0.5), before = land.landColourAt(...at).clone(), swaps: LandArea[] = [];
+  land.onSwap = (a) => swaps.push(a);
+  land.update({ x: tx, y: ty, width: 1, height: 1 }, { cover: new Uint8Array([LAND_COVER.bare]) });
+  let held = true;
+  for (let k = 0; k < 40 && !land.step(0); k++) if (!swaps.length && !land.landColourAt(...at).equals(before)) held = false;
+  while (!land.step(0));
+  land.onSwap = null;
+  const a = swaps[0], after = land.landColourAt(...at);
+  check('a tile repainted: its colour as drawn until swapped in, then the new', held && !after.equals(before), `${before.getHexString()} then ${after.getHexString()}`);
+  check('and the swap says where', swaps.length === 1 && a.x0 < at[0] && a.x1 > at[0] && a.z0 < at[1] && a.z1 > at[1] && a.x1 - a.x0 <= 6 * TILE, JSON.stringify(swaps));
+}
+
 // The land's edge raised: the country beyond made again to meet it.
 const apronAt = () => {
   const g = (land as unknown as { apronGeometry: THREE.BufferGeometry }).apronGeometry, pos = g.getAttribute('position');
@@ -292,9 +340,9 @@ const bright = topColours({ ...LAND_LOOK, beyond: { light: 1, chroma: 1 } });
  * The land drawn as dull as the country everywhere, map and all: each point's paint fully dulled as it's read, and no fade
  * on top (apart from the land's own dulling, so a fade drawn weaker or stronger than it means shows).
  */
-type Painter = { colourAt(px: number, py: number, c: THREE.Color): number; dull(c: THREE.Color): void };
+type Painter = { colourAt(px: number, py: number, c: THREE.Color, p?: Float32Array): number; dull(c: THREE.Color): void };
 const allDull = topColours(LAND_LOOK, class extends (PaintedLand as unknown as new (...a: unknown[]) => Painter) {
-  colourAt(px: number, py: number, c: THREE.Color) { const meadow = super.colourAt(px, py, c); this.dull(c); return meadow; }
+  colourAt(px: number, py: number, c: THREE.Color, p?: Float32Array) { const meadow = super.colourAt(px, py, c, p); this.dull(c); return meadow; }
   dullness() { return 0; }
 } as unknown as typeof PaintedLand);
 const land0 = new PaintedLand(new Adder(), makeLand());

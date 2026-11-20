@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { cutIntoTiles, TILE_REACH } from './tiles';
+import { cutIntoTiles, grow as grownBound, TILE_REACH } from './tiles';
 import { Pools } from './pools';
 import { CAMERA_DISTANCE, ViewCamera } from './camera';
 import { CloudMap, MIRROR } from './cloudMap';
@@ -35,7 +35,7 @@ import { SnowPaint } from './snow';
 import { SunMemory } from './frost';
 import { earthShares } from './wet';
 import type { WindSnapshot } from '../wind/sim';
-import { LAND_LOOK, PaintedLand, type LandLook } from '../land/paint';
+import { LAND_LOOK, PaintedLand, type LandArea, type LandLook } from '../land/paint';
 import type { LandMap, LandPatch, LandRect } from '../land/map';
 import { GroundTools, OVERLAY_LOOK, type Grid, type Overlay, type OverlayLook } from './overlay';
 import { HIGHLIGHT_LOOK, Marks, type HighlightLook, type Mark } from './marks';
@@ -170,6 +170,11 @@ export interface MeshOptions {
    * tile: remove() takes them all out with it, but moving or hiding it moves or hides only that tile.
    */
   tile?: number;
+  /**
+   * Drawn only when it's in a pass's view, as one piece (its bounding sphere grown as a tile's is), without being cut:
+   * for a small mesh that's added and taken out often (a block of the game's grass), which cutting would slow.
+   */
+  cull?: boolean;
   /**
    * Turned by the season (seasonLook.ts): its greens take the season's colour. By default the ground and the grass (the
    * reeds among it); flowers' and garden plants' leaves opt in. Crops keep their own colour (their stage is the game's), and
@@ -503,6 +508,7 @@ export class BrushRenderer {
       for (const t of tiles) t.userData.cut = t.geometry !== geometry;
       return tiles[0];
     }
+    if (options.cull && kind !== 'water') return this.addOne(grownBound(geometry), kind, options, true);
     return this.addOne(geometry, kind, options, false);
   }
 
@@ -895,12 +901,30 @@ export class BrushRenderer {
   setLand(map: LandMap, look: LandLook = LAND_LOOK) {
     this.painted?.dispose();
     this.painted = new PaintedLand(this, map, look);
+    this.painted.onSwap = (area) => { for (const f of this.landChanged) f(area); };
     this.landsSet++;
+    // The old land's area and the new one's: whatever lay on either may have to move.
+    const was = this.landArea, now = { x0: map.x0, z0: map.z0, x1: map.x0 + map.width * map.tile, z1: map.z0 + map.height * map.tile };
+    this.landArea = now;
+    const all = was ? { x0: Math.min(was.x0, now.x0), z0: Math.min(was.z0, now.z0), x1: Math.max(was.x1, now.x1), z1: Math.max(was.z1, now.z1) } : now;
+    for (const f of this.landChanged) f(all);
   }
+  private landArea: LandArea | null = null;
   private painted: PaintedLand | null = null;
   private landsSet = 0;
   /** Changes whenever the land as drawn does (a new land, an earthwork swapped in). */
   private get landRevision() { return `${this.landsSet} ${this.painted?.revision ?? 0}`; }
+  private readonly landChanged = new Set<(area: LandArea) => void>();
+
+  /**
+   * Calls `f` whenever the land as drawn changes (a new land, an earthwork swapped in), with where (metres) its height or
+   * paint may have changed, as the frame that first draws it begins: what the game stands on the land (grass) can be
+   * hidden or made again there before it's drawn on the old. Returns what stops it.
+   */
+  onLandChange(f: (area: LandArea) => void): () => void {
+    this.landChanged.add(f);
+    return () => { this.landChanged.delete(f); };
+  }
 
   /**
    * An earthwork (or anything else that changes the land's tiles): the new values for the tiles in `rect` (LandPatch, each
@@ -913,6 +937,20 @@ export class BrushRenderer {
 
   /** The land's height (m) at a point of the world, as drawn (setLand's; 0 before there is one). */
   landAt(x: number, z: number): number { return this.painted?.heightAt(x, z) ?? 0; }
+
+  /**
+   * Whether landAt and landHit answer for an earthwork's new ground that isn't drawn yet (fitted, its chunks still being
+   * painted): something set on the land meanwhile would float over or sink into the ground on screen till it's swapped in.
+   */
+  get landAhead(): boolean { return this.painted?.ahead ?? false; }
+
+  /**
+   * The land's painted colour (linear RGB, before season turning) at a point of the world (m), as drawn (setLand's;
+   * meadow green before there is one).
+   */
+  landColourAt(x: number, z: number, into = new THREE.Color()): THREE.Color {
+    return this.painted ? this.painted.landColourAt(x, z, into) : into.setHex(0x5a9848);
+  }
 
   /** Where a line of sight (view.rayAt) first meets the land as drawn, or null if it misses or there's no land yet. */
   landHit(ray: THREE.Ray, into?: THREE.Vector3): THREE.Vector3 | null { return this.painted?.hit(ray, into) ?? null; }

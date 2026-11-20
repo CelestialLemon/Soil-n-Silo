@@ -52,8 +52,14 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      game's own smooth fit (`Surface`, moved here). Cliffs are sharp, with strata; the river's bed sits under its tiles;
      the country past the map is clearly duller (`LAND_LOOK`, the developer's picks). An earthwork refits and repaints only
      the chunks round it, over frames, swapped at once. `landAt` and `landHit` answer from the same fit. Open: falls that
-     read as waterfalls (Soil-n-Silo#241; a plain chute for now), grass tufts, the wheel's race, and one fit shared with the
-     game's (Soil-n-Silo#210).
+     read as waterfalls (Soil-n-Silo#241; a plain chute for now), the wheel's race, and one fit shared with the game's
+     (Soil-n-Silo#210). Grass tufts are the game's (Soil-n-Silo#256): `landColourAt` gives them the ground's colour as
+     drawn, `onLandChange` says where an earthwork redrew the land, `landAhead` that `landAt` runs ahead of the land
+     drawn (an earthwork fitted, not yet swapped in), and `cull` adds a small mesh culled whole, uncut. So are the
+     wildflowers among them (Soil-n-Silo#266): `addFlower` is one of the demo's blooms, with `crisp` edges for the game's
+     far-off camera and `FLOWER_REACH` how far it reaches. And the reeds along the water (Soil-n-Silo#267): `addReeds`
+     takes `ReedOptions` (the clump's size and colours, and bulrush seed heads), `REED_REACH`, `REED_WIDTH` and
+     `REED_HEIGHT` how far a clump reaches; the game places them from `landAt`, so they follow the bed as drawn.
      Since, Soil-n-Silo#269 (done 2026-11-21): the country's dullness fades in by place over the first one to three tiles
      outside the map, its outer edge wandering like a brush's (the developer's pick on Soil-n-Silo#281, "organic", over an
      even fade), rather than tile by tile; and the country beyond's mesh starts from the land's colour where it meets it
