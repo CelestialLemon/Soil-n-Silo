@@ -28,7 +28,7 @@ plain code with no drawing in them, so the game's rules and tests can use them w
 
 Everything the game uses comes from one file, `src/index.ts` (in the game's repo, since the move, #200:
 `brush3d/src/index.ts`). The demo is just another user of it: it imports nothing else. One part of it also stands on
-its own: `src/shared.ts`, the wind simulation, the cloud recipe, the land's data and smooth fit (below) and how far a grass tuft, a wildflower and a clump of reeds reach, which loads in Node with no bundler, for the
+its own: `src/shared.ts`, the wind simulation, the cloud recipe, the land's data and smooth fit (below) and how far a crag, a grass tuft, a wildflower and a clump of reeds reach, which loads in Node with no bundler, for the
 rules' tests and bots (the rest needs Vite, for the models and the wind's worker). Anything not exported there is
 the renderer's own business and can change without notice: its shaders, materials, passes, uniforms and maps.
 
@@ -253,13 +253,13 @@ crop.remove(); oak.remove(); rock.remove();
 - Crowns keep some rain and snow off what's under them and everything casts its shadow, as the renderer sees fit. What
   stops the wind is the game's to say: it gives the wind simulation its obstacles (hedges, crowns, buildings; below).
 - **Today** the painting kit grows them: `growTree` and `Grove` (trees with their season's dress), `addStone`,
-  `addTuft`, `addMound`, `addFlowers`, the demo's wheat, and the plant kit below (#213's groundwork). They are baked
-  into meshes the caller keeps and takes out with `r.remove`. A tree changes without its meshes being made again
-  (Soil-n-Silo#204): `r.removeTrees(meshes, [[x, z], ...])` folds the trees standing there out of the meshes they were
-  grown into (wood, leaves and the litter under them) and lets go of their springs, and `r.moveTrees(meshes, [{ x, z,
-  dy }])` raises or lowers them whole, when the ground under them moved. The game's wild.ts draws the map's trees in
-  8 × 8-tile blocks made once, clears and moves trees in them this way, paints a tree grown in play on its own, and makes
-  a field's crop and a sapling anew at each stage (a few ms). The handles above can wrap this later.
+  `addCrag`, `addTuft`, `addMound`, `addFlowers`, the demo's wheat, and the plant kit below (#213's groundwork). They
+  are baked into meshes the caller keeps and takes out with `r.remove`. A tree changes without its meshes being made
+  again (Soil-n-Silo#204): `r.removeTrees(meshes, [[x, z], ...])` folds the trees standing there out of the meshes they
+  were grown into (wood, leaves and the litter under them) and lets go of their springs, and `r.moveTrees(meshes,
+  [{ x, z, dy }])` raises or lowers them whole, when the ground under them moved. The game's wild.ts draws the map's
+  trees in 8 × 8-tile blocks made once, clears and moves trees in them this way, paints a tree grown in play on its own,
+  and makes a field's crop and a sapling anew at each stage (a few ms). The handles above can wrap this later.
 
 ## The camera
 
@@ -510,10 +510,17 @@ above, the game stops using it and it becomes the renderer's own.
   A tree's spring is held by each mesh that draws it and freed when the last lets go (`r.remove`, `r.removeTrees`), its
   slot then reused by the next new tree.
 - `MeshBuilder` and `Paint`: geometry in the renderer's format (colours, normals, the brush per vertex, tree ids).
-- `growTree`, `Grove`, `dressFor`, `addStone`, `addReeds`, `addMound`, `addFlowers`, `addFlower`, `groundOf`, `MapLine`: shared
+- `growTree`, `Grove`, `dressFor`, `addStone`, `addCrag`, `addReeds`, `addMound`, `addFlowers`, `addFlower`, `groundOf`, `MapLine`: shared
   painting-kit pieces used by the demo and the game (`wild.ts`, `grass.ts`). `Grove.addTo(r, options)` adds its meshes
   with the given options and returns them. A `Tree`'s `stroke` (broader, fewer strokes) and `fill` (the share of a
   crown's outer strokes) thin it for a crowd; 1 is the demo's.
+- `addCrag`: a faceted, slope-grounded boulder or crag with patchy moss, for clustered rock outcrops (the game's, #257).
+  `CRAG_BOUND` and `CRAG_TRIANGLES`, in `shared.ts` too so the game's rules and tests read them in Node, are how far it
+  reaches past the half-extents it's given and what it's made of: seen from above, a crag lies inside the shadow of the
+  ellipsoid of half-extents `rx·k·skirt`, `ry·k`, `rz·k·skirt` (`k = swell + perCrag·crag`) centred over its spot and
+  turned as it is, on any ground, and no higher than that ellipsoid's top with its centre `ry·(1 − 2·sink)` over the ground
+  at its spot; it's `CRAG_TRIANGLES[detail]` triangles. The game
+  keeps its crags on their rock tiles by them; `brush3d/test/crag.test.ts` holds `addCrag` to them.
 - `addTuft` (used by both the demo and the game's `grass.ts`, #256): builds a meadow grass tuft on a `Ground` in a base
   colour (the game passes `r.landColourAt(x, z)`). Takes optional `TuftOptions` (`blades`, `width`, `spread`) to scale a
   tuft's blades and clump size for the game's zoom range (omitted, it keeps the demo's defaults).
@@ -570,7 +577,7 @@ The game's pixel3d calls, gone since the swap, and what replaced each:
 | Folder | What | Whose |
 |---|---|---|
 | `src/index.ts` | The API: everything above that exists | the game's door in |
-| `src/shared.ts` | The wind simulation, its gusts (`WindRecipe`), the cloud recipe, the land's data and smooth fit, how far a grass tuft, a wildflower and a clump of reeds reach (`TUFT_REACH`, `TUFT_HEIGHT`, `FLOWER_REACH`, `REED_REACH`, `REED_WIDTH`, `REED_HEIGHT`) and `TILE`, loadable in Node on their own (the index exports them too) | shared with the rules |
+| `src/shared.ts` | The wind simulation, its gusts (`WindRecipe`), the cloud recipe, the land's data and smooth fit, how far a crag, a grass tuft, a wildflower and a clump of reeds reach (`CRAG_BOUND`, `CRAG_TRIANGLES`, `TUFT_REACH`, `TUFT_HEIGHT`, `FLOWER_REACH`, `REED_REACH`, `REED_WIDTH`, `REED_HEIGHT`) and `TILE`, loadable in Node on their own (the index exports them too) | shared with the rules |
 | `src/renderer/` | The renderer: its passes, materials, shaders and looks | the renderer's own |
 | `src/land/` | The land painted from the game's map: what the game sends (`map.ts`), the smooth fit (`surface.ts`), the painting and earthworks (`paint.ts`) | the renderer's own (`map.ts` and `surface.ts` shared with the rules) |
 | `src/wind/` | The wind simulation (no drawing; a worker host) | shared with the rules |

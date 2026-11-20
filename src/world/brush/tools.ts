@@ -16,6 +16,8 @@ import {
   type CursorPatch, type NetLabel, type Overlay, type PowerFocus, type StopLabel,
 } from '../legend.ts';
 import { YAW } from './catalog.ts';
+import { plantTile } from './pickTile.ts';
+import { cragTop } from './rocks.ts';
 import { grassAt } from './grassMask.ts';
 import { LEVEL, RISE, TILE } from './scale.ts';
 import { thingHeight, type Things } from './things.ts';
@@ -35,8 +37,6 @@ interface MeadowReeds { reedTopAt(x: number, z: number): number }
 
 /** How near the line of sight through the pointer a truck must drive (m) to change what is under the pointer. */
 const TRUCK_REACH = 3.2;
-/** How far from a tree's tile's middle (tiles) a pick on a plant still finds the tree: a crown leans over its tile's edge. */
-const CROWN_REACH = 0.8;
 /** How strongly an overlay covers the land; the tint of what's linked to the focus, and how strong. */
 const LINK_STRENGTH = 0.55;
 /**
@@ -375,13 +375,14 @@ class BrushPicker implements Picker {
     const seen = this.seen;
     if (!seen) return { tile: ground, building: null };
     const hit = seen.hit, still = seen.px === this.pixel(at) && this.cameraNow(scratch).equals(seen.camera);
-    // What the pick met, as a tile of the map: a tree's own (it leans over the next), else the one it met. A plant low
-    // over open grass is the meadow's grass or flowers, and one low over the water its reeds (grass.ts), not the tree or
-    // rock beside it.
+    // What the pick met, as a tile of the map: a tree's or rock's own (a crown leans over the next), else the one it met. A
+    // plant low over open grass is the meadow's grass or flowers, and one low over the water its reeds (grass.ts), not the
+    // tree or rock beside it.
     const p = hit?.point ?? null;
-    const tree = p && hit?.what === 'plant' && !grassAt(s, p.x, p.z, p.y - this.r.landAt(p.x, p.z), this.meadow.reedTopAt(p.x, p.z)) ? treeTile(s, p) : null;
-    const met = p ? tree ?? tileOf(s, p) : null;
-    const tile = still && tree ? tree : ground;
+    const plant = p && hit?.what === 'plant' && !grassAt(s, p.x, p.z, p.y - this.r.landAt(p.x, p.z), this.meadow.reedTopAt(p.x, p.z))
+      ? plantTile(s, p, (x, z) => this.r.landAt(x, z), cragTop) : null;
+    const met = p ? plant ?? tileOf(s, p) : null;
+    const tile = still && plant ? plant : ground;
     // A building's or truck's own mesh, if it still stands for it; else the building on the tile the pick met.
     let building: number | null = null;
     if (hit?.what === 'thing' && typeof hit.tag === 'number') {
@@ -438,20 +439,6 @@ const scratch = new THREE.Matrix4();
 function tileOf(s: GameState, p: THREE.Vector3): Tile | null {
   const x = Math.floor(p.x / TILE), y = Math.floor(p.z / TILE);
   return inMap(s, x, y) ? { x, y } : null;
-}
-
-/** The tree (or rock) on the map nearest a point a pick met on a plant, if one's close enough for its crown to be there. */
-function treeTile(s: GameState, p: THREE.Vector3): Tile | null {
-  const fx = p.x / TILE, fz = p.z / TILE;
-  let best: Tile | null = null, near = CROWN_REACH;
-  for (let y = Math.floor(fz) - 1; y <= Math.floor(fz) + 1; y++) for (let x = Math.floor(fx) - 1; x <= Math.floor(fx) + 1; x++) {
-    if (!inMap(s, x, y)) continue;
-    const t = s.map.terrain[y * s.map.width + x];
-    if (t !== TERRAIN.tree && t !== TERRAIN.rock) continue;
-    const d = Math.hypot(fx - (x + 0.5), fz - (y + 0.5));
-    if (d < near) { near = d; best = { x, y }; }
-  }
-  return best;
 }
 
 /**
