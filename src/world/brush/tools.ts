@@ -16,7 +16,7 @@ import {
   type CursorPatch, type NetLabel, type Overlay, type PowerFocus, type StopLabel,
 } from '../legend.ts';
 import { YAW } from './catalog.ts';
-import { grassAt, type GrassMode } from './grassMask.ts';
+import { grassAt } from './grassMask.ts';
 import { LEVEL, RISE, TILE } from './scale.ts';
 import { thingHeight, type Things } from './things.ts';
 
@@ -90,10 +90,9 @@ export class BrushTools {
   /** The power networks' reach on the ground, per tile index (the power overlay's), as last worked out. */
   private reach = new Map<number, number>();
 
-  /** `grass`: the meadow grass's density as shown (grass.ts), for telling its tufts from a tree in a pick. */
-  constructor(r: BrushRenderer, state: GameState, things: Things, lie: Lie, grass: () => GrassMode) {
+  constructor(r: BrushRenderer, state: GameState, things: Things, lie: Lie) {
     this.r = r; this.things = things; this.lie = lie;
-    this.picker = new BrushPicker(r, state, things, grass);
+    this.picker = new BrushPicker(r, state, things);
     this.preview = new BrushPreview(r, things, (lines) => this.frames(lines));
   }
 
@@ -350,10 +349,9 @@ class BrushPicker implements Picker {
   private readonly trucksSeen = new Map<number, { x: number; z: number }>();
   private changesSeen = -1;
   private layoutSeen = '';
-  private readonly grass: () => GrassMode;
 
-  constructor(r: BrushRenderer, state: GameState, things: Things, grass: () => GrassMode) {
-    this.r = r; this.things = things; this.grass = grass;
+  constructor(r: BrushRenderer, state: GameState, things: Things) {
+    this.r = r; this.things = things;
     this.layoutSeen = `${layoutOf(state)} ${reliefOf(state)}`;
   }
 
@@ -375,7 +373,7 @@ class BrushPicker implements Picker {
     // What the pick met, as a tile of the map: a tree's own (it leans over the next), else the one it met. A plant low
     // over open grass is the meadow's grass (grass.ts), not the tree or rock beside it.
     const p = hit?.point ?? null;
-    const tree = p && hit?.what === 'plant' && !grassAt(s, p.x, p.z, p.y - this.r.landAt(p.x, p.z), this.grass()) ? treeTile(s, p) : null;
+    const tree = p && hit?.what === 'plant' && !grassAt(s, p.x, p.z, p.y - this.r.landAt(p.x, p.z)) ? treeTile(s, p) : null;
     const met = p ? tree ?? tileOf(s, p) : null;
     const tile = still && tree ? tree : ground;
     // A building's or truck's own mesh, if it still stands for it; else the building on the tile the pick met.

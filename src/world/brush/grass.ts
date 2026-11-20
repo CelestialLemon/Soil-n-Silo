@@ -7,9 +7,9 @@ import type { Land } from '../../game/map.ts';
 import { layoutOf, type GameState } from '../../game/state.ts';
 import type { Lie } from '../ground.ts';
 import {
-  boxesIn, fringeFade, GRASS_FRINGE, GRASS_PROFILES, grassBlocks, grassLayout, inBuilding, layoutChanges,
+  boxesIn, fringeFade, GRASS_FRINGE, GRASS_PROFILE, grassBlocks, grassLayout, inBuilding, layoutChanges,
   tileHabitat, tileSeed, wetDistance,
-  type FootprintBox, type GrassBlockRect, type GrassLayout, type GrassMode, type GrassProfile,
+  type FootprintBox, type GrassBlockRect, type GrassLayout,
 } from './grassMask.ts';
 import { TILE } from './scale.ts';
 
@@ -57,14 +57,12 @@ export class Grass {
   /** Blocks to make again: hidden until they are (and made first), and the rest. */
   private readonly urgent = new Set<number>();
   private readonly dirty = new Set<number>();
-  private mode: GrassMode;
   /** The game's layout as the grass last followed it. */
   private layout = -1;
   private seen: GrassLayout;
-  private lastState: GameState;
 
-  constructor(r: BrushRenderer, lie: Lie, land: Land, s: GameState, initialMode: GrassMode) {
-    this.r = r; this.lie = lie; this.land = land; this.mode = initialMode; this.lastState = s;
+  constructor(r: BrushRenderer, lie: Lie, land: Land, s: GameState) {
+    this.r = r; this.lie = lie; this.land = land;
     this.seed = s.scenario.seed;
     this.reach = Math.min(GRASS_FRINGE, land.margin);
     this.ground = groundOf((x, z) => r.landAt(x, z));
@@ -72,22 +70,8 @@ export class Grass {
     this.grid = grassBlocks(s.map.width, s.map.height, this.reach);
     for (const rect of this.grid) this.blockById.set(rect.id, rect);
     this.seen = grassLayout(s);
-    if (this.mode !== 'off') this.rebuildAll(s);
+    this.rebuildAll(s);
     r.onLandChange((area) => this.landChanged(area));
-  }
-
-  /** The density shown. */
-  get shown(): GrassMode { return this.mode; }
-
-  /** Switches the look option in place without leaking meshes or geometries. */
-  setMode(next: GrassMode) {
-    if (next === this.mode) return;
-    this.clearAll();
-    this.mode = next;
-    if (this.mode === 'off') return;
-    // On an earthwork's new ground not drawn yet: queued (sync makes them once it is).
-    if (this.r.landAhead) for (const rect of this.grid) this.dirty.add(rect.id);
-    else this.rebuildAll(this.lastState);
   }
 
   /**
@@ -95,8 +79,6 @@ export class Grass {
    * they're made), and queued blocks made again within `REBUILD_BUDGET` ms.
    */
   sync(s: GameState) {
-    this.lastState = s;
-    if (this.mode === 'off') return;
     const layout = layoutOf(s);
     if (layout !== this.layout) {
       this.layout = layout;
@@ -115,7 +97,6 @@ export class Grass {
    * they were) keep showing meanwhile.
    */
   private landChanged(area: LandArea) {
-    if (this.mode === 'off') return;
     const x0 = Math.floor(area.x0 / TILE), z0 = Math.floor(area.z0 / TILE), x1 = Math.ceil(area.x1 / TILE) - 1, z1 = Math.ceil(area.z1 / TILE) - 1;
     for (const rect of this.grid) {
       if (rect.x1 <= x0 || rect.x0 > x1 || rect.y1 <= z0 || rect.y0 > z1) continue;
@@ -167,7 +148,6 @@ export class Grass {
     tx: number,
     ty: number,
     onMap: boolean,
-    profile: GrassProfile,
     boxes: readonly FootprintBox[],
     fade = 1,
   ) {
@@ -184,20 +164,20 @@ export class Grass {
     };
 
     const placeTuft = (wx: number, wz: number, lush: number) => {
-      const tall = (profile.tall[0] + lush * profile.tall[1]) * heightScale * (0.88 + rand() * 0.24);
-      addTuft(mb, this.ground, wx, wz, tall, this.tuftColor(wx, wz, rand), rand, profile.tuft);
+      const tall = (GRASS_PROFILE.tall[0] + lush * GRASS_PROFILE.tall[1]) * heightScale * (0.88 + rand() * 0.24);
+      addTuft(mb, this.ground, wx, wz, tall, this.tuftColor(wx, wz, rand), rand, GRASS_PROFILE.tuft);
     };
 
-    for (let a = 0; a < profile.attempts; a++) {
+    for (let a = 0; a < GRASS_PROFILE.attempts; a++) {
       const wx = x0 + minU + rand() * (maxU - minU);
       const wz = z0 + minV + rand() * (maxV - minV);
       const lush = Math.min(1, this.patchLush(wx, wz) * 0.85 + waterBoost + skirtBoost + rockBoost);
-      const prob = (profile.baseProb + lush * profile.lushProb) * deepWoods * groundScale * seasonDensity * fade;
+      const prob = (GRASS_PROFILE.baseProb + lush * GRASS_PROFILE.lushProb) * deepWoods * groundScale * seasonDensity * fade;
       if (rand() > prob) continue;
       if (!canPlace(wx, wz)) continue;
       placeTuft(wx, wz, lush);
       // Organic tussock clumping: occasionally add a nearby companion tuft in lush spots.
-      if (lush > 0.42 && rand() < profile.clusterProb * lush * fade) {
+      if (lush > 0.42 && rand() < GRASS_PROFILE.clusterProb * lush * fade) {
         const ang = rand() * Math.PI * 2, dist = 0.42 + rand() * 0.55;
         const cx = wx + Math.cos(ang) * dist, cz = wz + Math.sin(ang) * dist;
         if (canPlace(cx, cz)) placeTuft(cx, cz, lush * 0.92);
@@ -232,7 +212,6 @@ export class Grass {
 
   private rebuildBlock(s: GameState, rect: GrassBlockRect) {
     this.drop(this.blocks.get(rect.id)?.meshes ?? []);
-    const profile = GRASS_PROFILES[this.mode as Exclude<GrassMode, 'off'>];
     const { width: w, height: h } = s.map;
     const boxes = boxesIn(s, rect.x0, rect.y0, rect.x1, rect.y1);
     const mb = new MeshBuilder('grass');
@@ -240,18 +219,11 @@ export class Grass {
       const fade = fringeFade(x, y, w, h, this.reach);
       if (fade <= 0) continue;
       const onMap = x >= 0 && y >= 0 && x < w && y < h;
-      this.scatterTile(mb, s, x, y, onMap, profile, boxes, fade);
+      this.scatterTile(mb, s, x, y, onMap, boxes, fade);
     }
     // Culled whole (not cut into tiles: a block is small, and made again often).
     const meshes = mb.vertexCount ? [this.r.add(mb.build(), 'grass', { cull: true, castShadow: false, reflect: false })] : [];
     this.blocks.set(rect.id, { meshes, heights: this.heightsUnder(rect) });
-  }
-
-  private clearAll() {
-    this.urgent.clear();
-    this.dirty.clear();
-    for (const b of this.blocks.values()) this.drop(b.meshes);
-    this.blocks.clear();
   }
 
   private drop(meshes: THREE.Mesh[]) {

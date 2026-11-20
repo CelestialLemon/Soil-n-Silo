@@ -11,8 +11,8 @@ import { newGame, sizeOf, type Building, type Dir } from '../src/game/state.ts';
 import { COUNTRY, landRelief, Lie } from '../src/world/ground.ts';
 import { YAW } from '../src/world/brush/catalog.ts';
 import {
-  blockOf, boxesIn, BUILDING_MARGIN, CLIFF_MARGIN, FIELD_MARGIN, fringeFade, GRASS_BLOCK, GRASS_FRINGE, GRASS_MODES,
-  GRASS_PROFILES, grassAt, grassTop, grassBlocks, grassLayout, inBuilding, layoutChanges, MAX_BLADE_REACH, ROCK_MARGIN,
+  blockOf, boxesIn, BUILDING_MARGIN, CLIFF_MARGIN, FIELD_MARGIN, fringeFade, GRASS_BLOCK, GRASS_FRINGE, GRASS_PROFILE,
+  GRASS_TOP, grassAt, grassBlocks, grassLayout, inBuilding, layoutChanges, MAX_BLADE_REACH, ROCK_MARGIN,
   tileHabitat, tileSeed, WATER_MARGIN, wetDistance,
 } from '../src/world/brush/grassMask.ts';
 import { TILE } from '../src/world/brush/scale.ts';
@@ -182,11 +182,6 @@ test('building, field, and water-wheel race footprints mask grass cleanly and cl
     const bx = wcx - sin * 6.5, bz = wcz - cos * 6.5;
     assert.equal(inBuilding(wBoxes, bx, bz, wheelRace), false, `rot ${rot}: behind wheel should be clear`);
   }
-
-  // Profile ordering: quiet < meadow < lush.
-  assert.deepEqual([...GRASS_MODES], ['off', 'quiet', 'meadow', 'lush']);
-  assert.ok(GRASS_PROFILES.quiet.attempts < GRASS_PROFILES.meadow.attempts);
-  assert.ok(GRASS_PROFILES.meadow.attempts < GRASS_PROFILES.lush.attempts);
 });
 
 test('every tuft the masks let stand keeps its blades\' whole reach off every building, field and wheel race', () => {
@@ -194,9 +189,9 @@ test('every tuft the masks let stand keeps its blades\' whole reach off every bu
   const s = newGame(sc), land = generateLand(sc, COUNTRY), lie = new Lie(s, land), wet = wetDistance(land);
   s.credits = 1e6;
   const { width: w, height: h } = s.map;
-  // The reach is brush3d's promise for a tuft at its tallest in Lush, the densest and tallest.
-  const lush = GRASS_PROFILES.lush;
-  assert.equal(MAX_BLADE_REACH, Math.max(...Object.values(GRASS_PROFILES).map((p) => p.tuft.spread + TUFT_REACH * (p.tall[0] + p.tall[1]) * 1.12)));
+  // The reach is brush3d's promise for a tuft at its tallest.
+  const p = GRASS_PROFILE;
+  assert.equal(MAX_BLADE_REACH, p.tuft.spread + TUFT_REACH * (p.tall[0] + p.tall[1]) * 1.12);
 
   // Place a silo and a field in open grass, plus attach a synthetic water wheel to test its race too.
   let silo = null, field = null;
@@ -236,7 +231,7 @@ test('every tuft the masks let stand keeps its blades\' whole reach off every bu
       const hab = tileHabitat(s, land, lie.relief, wet, tx, ty, true);
       if (!hab) continue;
       const rand = mulberry32(tileSeed(s.scenario.seed, tx, ty));
-      for (let a = 0; a < lush.attempts * 4; a++) {
+      for (let a = 0; a < p.attempts * 4; a++) {
         const wx = tx * TILE + hab.minU + rand() * (hab.maxU - hab.minU);
         const wz = ty * TILE + hab.minV + rand() * (hab.maxV - hab.minV);
         if (inBuilding(boxes, wx, wz, wheelRace)) continue;
@@ -338,14 +333,10 @@ test('a pick low over open grass is the meadow\'s grass, not the tree or rock be
   }
   assert.ok(tree && grass);
   const mid = ([x, y]: [number, number]) => [(x + 0.5) * TILE, (y + 0.5) * TILE] as const;
-  // Each density's tallest blade is under its top; none when the grass is off.
-  for (const m of ['quiet', 'meadow', 'lush'] as const) {
-    assert.ok(grassTop(m) > 1.2 * (GRASS_PROFILES[m].tall[0] + GRASS_PROFILES[m].tall[1]) * 1.12, m);
-  }
-  assert.ok(grassTop('quiet') < grassTop('meadow') && grassTop('meadow') < grassTop('lush'));
-  assert.equal(grassAt(s, ...mid(grass), 0.4, 'meadow'), true, 'a blade over open grass');
-  assert.equal(grassAt(s, ...mid(grass), 0.4, 'off'), false, 'a low branch over open grass, the grass off');
-  assert.equal(grassAt(s, ...mid(grass), grassTop('lush') + 0.5, 'lush'), false, 'a crown leaning over open grass');
-  assert.equal(grassAt(s, ...mid(tree), 0.4, 'meadow'), false, 'the foot of a tree, or a rock, on its own tile');
-  assert.equal(grassAt(s, -2, -2, 0.4, 'meadow'), true, 'a blade in the country beyond the map');
+  // The tallest blade is under the grass's top.
+  assert.ok(GRASS_TOP > 1.2 * (GRASS_PROFILE.tall[0] + GRASS_PROFILE.tall[1]) * 1.12);
+  assert.equal(grassAt(s, ...mid(grass), 0.4), true, 'a blade over open grass');
+  assert.equal(grassAt(s, ...mid(grass), GRASS_TOP + 0.5), false, 'a crown leaning over open grass');
+  assert.equal(grassAt(s, ...mid(tree), 0.4), false, 'the foot of a tree, or a rock, on its own tile');
+  assert.equal(grassAt(s, -2, -2, 0.4), true, 'a blade in the country beyond the map');
 });

@@ -11,9 +11,6 @@ import { TILE } from './scale.ts';
 // Pure placement, masking, and block-change rules for meadow grass tufts (#256). Kept separate from `grass.ts` with
 // no Three.js or renderer runtime imports so `npm test` exercises them directly in Node (as `landMap.ts` does for `land.ts`).
 
-export const GRASS_MODES = ['off', 'quiet', 'meadow', 'lush'] as const;
-export type GrassMode = (typeof GRASS_MODES)[number];
-
 /**
  * Tiles a side of one map or country-fringe block: one mesh, made again whole when anything in it changes. Small, so
  * making one again fits the frame's budget (grass.ts).
@@ -37,32 +34,24 @@ export interface GrassProfile {
   tuft: Required<TuftOptions>;
 }
 
-export const GRASS_PROFILES: Record<Exclude<GrassMode, 'off'>, GrassProfile> = {
-  quiet: {
-    attempts: 3, baseProb: 0.06, lushProb: 0.56, clusterProb: 0.22,
-    tall: [0.30, 0.24],
-    tuft: { blades: [3, 2], width: [0.046, 0.022], spread: 0.08 },
-  },
-  meadow: {
-    attempts: 6, baseProb: 0.10, lushProb: 0.72, clusterProb: 0.32,
-    tall: [0.36, 0.32],
-    tuft: { blades: [3, 3], width: [0.052, 0.026], spread: 0.10 },
-  },
-  lush: {
-    attempts: 11, baseProb: 0.18, lushProb: 0.82, clusterProb: 0.42,
-    tall: [0.40, 0.36],
-    tuft: { blades: [4, 3], width: [0.055, 0.028], spread: 0.11 },
-  },
+/**
+ * The meadow's density: dense, taller tussocks (the developer's pick on #256, `lush` of the quiet, meadow and lush
+ * compared on its PR).
+ */
+export const GRASS_PROFILE: GrassProfile = {
+  attempts: 11, baseProb: 0.18, lushProb: 0.82, clusterProb: 0.42,
+  tall: [0.40, 0.36],
+  tuft: { blades: [4, 3], width: [0.055, 0.028], spread: 0.11 },
 };
 
-/** The tallest a tuft is asked to be (m) in a density: its full lushness, at the most of its random 0.88–1.12 (grass.ts). */
-const maxTall = (p: GrassProfile) => (p.tall[0] + p.tall[1]) * 1.12;
+/** The tallest a tuft is asked to be (m): its full lushness, at the most of its random 0.88–1.12 (grass.ts). */
+const MAX_TALL = (GRASS_PROFILE.tall[0] + GRASS_PROFILE.tall[1]) * 1.12;
 
 /**
- * The furthest (m) any blade reaches from its tuft's spot across the ground, at rest, in any density: brush3d's promise
- * for `addTuft` (`TUFT_REACH`, held to it by its brush3d/test/tuft.test.ts), ≈ 0.825 m in Lush.
+ * The furthest (m) any blade reaches from its tuft's spot across the ground, at rest: brush3d's promise for `addTuft`
+ * (`TUFT_REACH`, held to it by its brush3d/test/tuft.test.ts), ≈ 0.825 m.
  */
-export const MAX_BLADE_REACH = Math.max(...Object.values(GRASS_PROFILES).map((p) => p.tuft.spread + TUFT_REACH * maxTall(p)));
+export const MAX_BLADE_REACH = GRASS_PROFILE.tuft.spread + TUFT_REACH * MAX_TALL;
 
 /** Margins (m) kept clear around cliff faces, non-grass neighbours, and footprints. */
 export const CLIFF_MARGIN = 0.85;
@@ -312,11 +301,8 @@ export function layoutChanges(was: GrassLayout, now: GrassLayout, width: number)
   return { urgent, dirty };
 }
 
-/** How high (m) a meadow tuft's tip stands over the land at most, at a density: its tallest blade (addTuft); none when off. */
-export function grassTop(mode: GrassMode): number {
-  if (mode === 'off') return 0;
-  return TUFT_HEIGHT * maxTall(GRASS_PROFILES[mode]) + 0.05;
-}
+/** How high (m) a meadow tuft's tip stands over the land at most: its tallest blade (addTuft). */
+export const GRASS_TOP = TUFT_HEIGHT * MAX_TALL + 0.05;
 
 /**
  * Whether what a pick calls a plant, at (x, z) m and `above` m over the land, is the meadow's grass (#256) rather than a
@@ -324,8 +310,8 @@ export function grassTop(mode: GrassMode): number {
  * so its pick can't tell them apart; the game can. A tree's crown leaning over the next tile stands higher. (A branch
  * hanging lower than the grass's tips over the next tile is taken for grass: picked on its crown or its own tile instead.)
  */
-export function grassAt(s: GameState, x: number, z: number, above: number, mode: GrassMode): boolean {
-  if (above >= grassTop(mode)) return false;
+export function grassAt(s: GameState, x: number, z: number, above: number): boolean {
+  if (above >= GRASS_TOP) return false;
   const tx = Math.floor(x / TILE), ty = Math.floor(z / TILE);
   return tx < 0 || ty < 0 || tx >= s.map.width || ty >= s.map.height || terrainAt(s, tx, ty) === TERRAIN.grass;
 }
