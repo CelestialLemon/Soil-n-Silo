@@ -33,7 +33,7 @@ country the game draws round it in tiles too, then `beyond`, a coarse grid of he
   reads as a river of sawtooth bends and ponds like square puddles. So the beds follow a smoothed field of how far each
   point is inside the water instead: the distance to the water's tile outline, smoothed *along* the shore (so a
   staircase of tiles becomes its slope, while a narrow river keeps its width), rounded a little every way, grown back
-  out where the water is wide (the smoothing draws a pond in), and, in `organic`, wandering a little. A bend's outer
+  out where the water is wide (the smoothing draws a pond in), and wandering a little. A bend's outer
   corner is cut, its inner corner filled, a pond an oval. The rules don't change: the water stays on its tiles.
   - *How far it may go.* The bed reaches at most 0.45 of a tile into a dry tile beside the water (inside where the
     water's sheet runs flat past its last wet tile, and clear of a tree, which stands within 0.15 of its tile's middle),
@@ -44,10 +44,10 @@ country the game draws round it in tiles too, then `beyond`, a coarse grid of he
   - *What stays square.* Round a pad (a water wheel's, any worked ground) and at a fall (water beside water at another
     level, where the game lays the banks' water under them, #228) the shore keeps to the tiles' outline, so a building
     stands square to the water and a fall's edges stay where they were.
-  - *The paint.* With it, the water's tiles are painted as land and the bed by how deep it is, so the colours follow the
+  - *The paint.* The water's tiles are painted as land and the bed by how deep it is, so the colours follow the
     curve too: a damp band up the bank (half a tile at most) and a shingle of small stones in patches along the waterline.
-  - `LandLook.shores` picks it: `organic` (the default), `gentle` (rounded and smoothed, no wander) or `off` (the tiles'
-    squares, exactly as before #258). It costs about 0.3 s more when a land is made (the commissions' lands, in
+  - *The look* is the developer's pick on Soil-n-Silo#283 (`organic`, wandering a little, over a calmer one that didn't
+    and the tiles' squares as before). It costs about 0.3 s more when a land is made (the commissions' lands, in
     Node; the field 0.15 to 0.2 s of it, skipping the land far from water) and a few more triangles (under 3%, the
     bank tiles cut in quarters).
 - **Falls.** Where the river steps down a level, the cliff face runs between its two beds, and the game's water slides down

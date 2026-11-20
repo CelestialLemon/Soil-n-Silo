@@ -15,11 +15,7 @@
 //
 // Pure arithmetic on the tiles, so it runs in Node (tools/land.ts checks it). paint.ts carves the beds with it.
 
-/** How the water's shores are drawn: as the tiles' squares were (off), gently rounded, or rounded and wandering. */
-export type ShoreMode = 'off' | 'gentle' | 'organic';
-export const SHORE_MODES: readonly ShoreMode[] = ['off', 'gentle', 'organic'];
-
-/** A shore style's numbers: how far the field is blurred, how far the shore wanders, and how its bed is laid. */
+/** The shore's numbers: how far the field is blurred, how far the shore wanders, and how its bed is laid. */
 interface Style {
   /**
    * How far (tiles, a Gaussian's sigma) the outline is smoothed along the shore (`along`: a staircase of tiles into its
@@ -33,10 +29,11 @@ interface Style {
   /** Where the bed starts down (field, tiles: negative is out on the bank), and over how far (tiles) it reaches its deepest. */
   start: number; bank: number;
 }
-const STYLE: Record<Exclude<ShoreMode, 'off'>, Style> = {
-  gentle: { along: 1.2, round: 0.35, coarse: 1, grow: 0.2, meander: 0, wave: 4, start: -0.08, bank: 0.7 },
-  organic: { along: 1.5, round: 0.4, coarse: 1.2, grow: 0.25, meander: 0.12, wave: 3.5, start: -0.12, bank: 0.75 },
-};
+/**
+ * The shore as the developer picked it on Soil-n-Silo#283 ("organic": rounded, and wandering a little, over a calmer one
+ * that didn't wander).
+ */
+const STYLE: Style = { along: 1.5, round: 0.4, coarse: 1.2, grow: 0.25, meander: 0.12, wave: 3.5, start: -0.12, bank: 0.75 };
 
 /** Samples a tile side of the field. */
 const RES = 4;
@@ -83,8 +80,6 @@ const boxDist = (x: number, y: number, px: number, py: number) => Math.hypot(Mat
 
 /** The shores' field over the land: built once, then updated round earthworks. */
 export class ShoreField {
-  readonly mode: Exclude<ShoreMode, 'off'>;
-  private readonly style: Style;
   private readonly width: number;
   private readonly height: number;
   private readonly tiles: ShoreTiles;
@@ -104,8 +99,8 @@ export class ShoreField {
   private readonly nx: number;
   private readonly ny: number;
 
-  constructor(tiles: ShoreTiles, mode: Exclude<ShoreMode, 'off'>) {
-    this.tiles = tiles; this.mode = mode; this.style = STYLE[mode];
+  constructor(tiles: ShoreTiles) {
+    this.tiles = tiles;
     this.width = tiles.width; this.height = tiles.height;
     this.kind = new Uint8Array(this.width * this.height);
     this.wet = new Uint8Array(this.width * this.height);
@@ -119,7 +114,7 @@ export class ShoreField {
   }
 
   /** How far the field and the kinds reach from a tile that changed (tiles). */
-  static readonly REACH = Math.ceil(CAP + HOLD_OUT + 3 * Math.max(...Object.values(STYLE).map((s) => s.along + s.round + s.coarse)) + WIDE) + 1;
+  static readonly REACH = Math.ceil(CAP + HOLD_OUT + 3 * (STYLE.along + STYLE.round + STYLE.coarse) + WIDE) + 1;
 
   /**
    * The tiles changed in [x0, x1) × [y0, y1) (read again from `tiles`): the kinds and the field worked out again as far as
@@ -175,7 +170,7 @@ export class ShoreField {
     // How far each tile is from the water's edge, so the work far from it (where every stage gives what it was given) is
     // skipped: the field's the same, only sooner.
     const edge = this.edges();
-    const st = this.style, Kc = Math.ceil(3 * st.coarse * RES), Kt = Math.ceil(3 * st.along * RES), Ki = Math.ceil(3 * st.round * RES), Kg = Kc + Kt + Ki;
+    const st = STYLE, Kc = Math.ceil(3 * st.coarse * RES), Kt = Math.ceil(3 * st.along * RES), Ki = Math.ceil(3 * st.round * RES), Kg = Kc + Kt + Ki;
     const sx0 = x0 * RES, sy0 = y0 * RES, sx1 = x1 * RES, sy1 = y1 * RES;
     const gx0 = Math.max(0, sx0 - Kg), gy0 = Math.max(0, sy0 - Kg), gx1 = Math.min(this.nx, sx1 + Kg), gy1 = Math.min(this.ny, sy1 + Kg);
     const gw = gx1 - gx0, gh = gy1 - gy0, raw = new Float32Array(gw * gh);
@@ -239,7 +234,7 @@ export class ShoreField {
       let v = round[o] + st.grow * smooth(NARROW, 2, wide[o]);
       // Wandering near the shore.
       const near = 1 - smooth(1, 1.5, Math.abs(own));
-      if (st.meander > 0 && near > 0) v += st.meander * near * wander(px / st.wave, py / st.wave);
+      if (near > 0) v += st.meander * near * wander(px / st.wave, py / st.wave);
       this.base[at] = v;
       this.keep[at] = own > 0 && calm[o] <= still(Ki) ? floor(o, px, py, KEEP) : -Infinity;
     }
@@ -267,7 +262,7 @@ export class ShoreField {
   depth(tx: number, ty: number, px: number, py: number): number {
     const W = this.width, k = this.kind[ty * W + tx];
     if (k === SOLID) return 0;
-    const s = this.style;
+    const s = STYLE;
     let d = smooth(s.start, s.start + s.bank, this.at(px, py));
     if (d === 0) return 0;
     let solid = GATE, wet = Infinity;

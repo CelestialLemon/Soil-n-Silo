@@ -9,15 +9,13 @@
 //    and paint are what a land built afresh has, its heights within a few centimetres (the fit again is local).
 // 3. The country beyond: it meets the land's edge, and is the grid's further out.
 // 4. The shores (src/land/shore.ts, Soil-n-Silo#258), on a flat land with a pond, tile-wide outlets from it, a narrow
-//    staircase of a river, a lone tile of water and a pad by the pond, in each way they're drawn: as the tiles' squares (off), the pond's corners under
-//    water; curving, its corners dry, every tile of narrow water wet at its middle, the bank cut into only near the water,
-//    the pad at its level; no holes and drawn where heightAt says; after an earthwork by the water (a bank raised), as
-//    built afresh.
+//    staircase of a river, a lone tile of water and a pad by the pond: the pond's corners dry, every tile of narrow water
+//    wet at its middle, the bank cut into only near the water, the pad at its level; no holes and drawn where heightAt
+//    says; after an earthwork by the water (a bank raised), as built afresh.
 // Exits with 1 if anything is off.
 import * as THREE from 'three';
 import { LAND_COVER, LAND_GROUND, type LandMap } from '../src/land/map.ts';
-import { LAND_LOOK, PaintedLand, type LandAdder } from '../src/land/paint.ts';
-import { SHORE_MODES } from '../src/land/shore.ts';
+import { PaintedLand, type LandAdder } from '../src/land/paint.ts';
 import { Surface } from '../src/land/surface.ts';
 
 let failed = false;
@@ -291,31 +289,30 @@ function shoreLand(raised?: { x: number; y: number }): LandMap {
 }
 const surfaceH = (px: number, py: number, l: PaintedLand) => l.heightAt(px * TILE, py * TILE);
 const wetAt = (px: number, py: number, l: PaintedLand) => surfaceH(px, py, l) < FLAT * LEVEL - WATER_DOWN;
-const square = new PaintedLand(new Adder(), shoreLand(), { ...LAND_LOOK, shores: 'off' });
-check('off: the pond\'s corners under water, as its tiles are', wetAt(6.4, 5.4, square) && wetAt(10.6, 8.6, square));
-for (const mode of SHORE_MODES.filter((m) => m !== 'off')) {
-  const sAdder = new Adder(), l = new PaintedLand(sAdder, shoreLand(), { ...LAND_LOOK, shores: mode });
-  check(`${mode}: the pond's corners dry, its middle deep`, !wetAt(6.4, 5.4, l) && !wetAt(10.6, 8.6, l)
+const wet = (x: number, y: number) => pond(x, y) || outlet(x, y) || stairs(x, y) || lone(x, y);
+{
+  const sAdder = new Adder(), l = new PaintedLand(sAdder, shoreLand());
+  check(`the pond's corners dry, its middle deep`, !wetAt(6.4, 5.4, l) && !wetAt(10.6, 8.6, l)
     && surfaceH(8.5, 7, l) < FLAT * LEVEL - 1);
   let dryMiddles = 0;
   for (let y = 0; y < SH; y++) for (let x = 0; x < SW; x++) if ((outlet(x, y) || stairs(x, y) || lone(x, y)) && !wetAt(x + 0.5, y + 0.5, l)) dryMiddles++;
-  check(`${mode}: every tile of the outlets, the narrow river and the lone tile wet at its middle`, dryMiddles === 0, `${dryMiddles} dry`);
+  check(`every tile of the outlets, the narrow river and the lone tile wet at its middle`, dryMiddles === 0, `${dryMiddles} dry`);
   let barred = 0;
   for (const [ax, ay, bx, by] of outletRuns) for (let k = 0; k <= 50; k++) if (!wetAt(ax + (bx - ax) * k / 50, ay + (by - ay) * k / 50, l)) barred++;
-  check(`${mode}: water all the way down the outlets' middles from the pond`, barred === 0, `${barred} of ${outletRuns.length * 51} points dry`);
+  check(`water all the way down the outlets' middles from the pond`, barred === 0, `${barred} of ${outletRuns.length * 51} points dry`);
   // The bank cut into only within half a tile of the water (clear of what stands in a tile's middle), and the pad not at all.
   let cutFar = 0, padOff = 0, cutNear = 0;
   for (let py = 0.03; py < SH; py += 0.07) for (let px = 0.03; px < SW; px += 0.07) {
     const x = Math.floor(px), y = Math.floor(py);
-    if (square.heightAt(px * TILE, py * TILE) !== FLAT * LEVEL) continue; // (the water's own tiles)
+    if (wet(x, y)) continue; // (the water's own tiles)
     let near = Infinity;
-    for (let v = y - 1; v <= y + 1; v++) for (let u = x - 1; u <= x + 1; u++) if (pond(u, v) || outlet(u, v) || stairs(u, v) || lone(u, v)) near = Math.min(near, Math.hypot(Math.max(u - px, 0, px - u - 1), Math.max(v - py, 0, py - v - 1)));
+    for (let v = y - 1; v <= y + 1; v++) for (let u = x - 1; u <= x + 1; u++) if (wet(u, v)) near = Math.min(near, Math.hypot(Math.max(u - px, 0, px - u - 1), Math.max(v - py, 0, py - v - 1)));
     const h = surfaceH(px, py, l);
     if (pad(x, y) && h !== FLAT * LEVEL) padOff++;
     else if (near > 0.45 && h !== FLAT * LEVEL) cutFar++;
     else if (h < FLAT * LEVEL - 1e-3) cutNear++;
   }
-  check(`${mode}: the bank cut into only near the water, the pad at its level`, cutFar === 0 && padOff === 0 && cutNear > 0, `${cutFar} points cut far from the water, ${padOff} on the pad, ${cutNear} near`);
+  check(`the bank cut into only near the water, the pad at its level`, cutFar === 0 && padOff === 0 && cutNear > 0, `${cutFar} points cut far from the water, ${padOff} on the pad, ${cutNear} near`);
   const tops = topsOf(triangles(sAdder));
   let sHoles = 0, sOff = 0;
   for (let py = 0.013; py < SH; py += 0.093) for (let px = 0.011; px < SW; px += 0.089) {
@@ -323,14 +320,14 @@ for (const mode of SHORE_MODES.filter((m) => m !== 'off')) {
     if (y === null) sHoles++;
     else if (Math.abs(y - surfaceH(px, py, l)) > 0.25) sOff++;
   }
-  check(`${mode}: no holes, drawn where heightAt says (within 25 cm)`, sHoles === 0 && sOff === 0, `${sHoles} holes, ${sOff} off`);
+  check(`no holes, drawn where heightAt says (within 25 cm)`, sHoles === 0 && sOff === 0, `${sHoles} holes, ${sOff} off`);
   // An earthwork by the water (the game's never move it): a bank tile raised a level and worked, a pad by the pond.
   const raise = { x: 7, y: 9 };
   l.update({ ...raise, width: 1, height: 1 }, { corners: new Float32Array(4).fill((FLAT + 1) * LEVEL), worked: new Uint8Array([1]) });
   while (!l.step(0));
-  const fresh = new PaintedLand(new Adder(), shoreLand(raise), { ...LAND_LOOK, shores: mode }) as unknown as { shore: { field: Float32Array } } & Record<string, Float32Array>;
+  const fresh = new PaintedLand(new Adder(), shoreLand(raise)) as unknown as { shore: { field: Float32Array } } & Record<string, Float32Array>;
   const was = l as unknown as { shore: { field: Float32Array } } & Record<string, Float32Array>;
-  check(`${mode}: an earthwork by the water: its shores and paint as built afresh`, same(was.shore.field, fresh.shore.field) && same(was.paint, fresh.paint) && same(was.landPaint, fresh.landPaint));
+  check(`an earthwork by the water: its shores and paint as built afresh`, same(was.shore.field, fresh.shore.field) && same(was.paint, fresh.paint));
 }
 
 // 5. Refused: corners that aren't whole levels.

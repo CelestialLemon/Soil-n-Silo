@@ -165,7 +165,7 @@ country past the edge is clearly duller, so where you can build reads at a glanc
 so the land never shows half a change. The river and the ponds' shores curve over the tile rules (#258, epic #265,
 2026-11-20): the beds follow a smoothed field of the water's tiles, so a bend is a curve and a pond an oval, with a damp
 bank and a shingle at the waterline, while a water wheel's pad and a fall keep their square edges and the rules don't
-change (`LandLook.shores`: organic, gentle or off, the developer's pick on its PR). Still open: the river's falls are a
+change (done 2026-11-21: the developer picked the organic look, which wanders a little, on PR #283). Still open: the river's falls are a
 plain chute for now and don't read as a waterfall (#241); the per-tile frost and ground paint still step a little way up
 a curving bank; grass tufts on the land, and the water wheel's race cut into its bank (`brush3d/docs/LAND.md`); the game
 and brush3d each fit the ground after an earthwork, about 10 ms twice (#210).

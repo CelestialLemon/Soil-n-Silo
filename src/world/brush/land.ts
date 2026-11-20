@@ -1,4 +1,4 @@
-import { LAND_LOOK, type BrushRenderer, type LandRect, type ShoreMode } from '../../../brush3d/src/index.ts';
+import type { BrushRenderer, LandRect } from '../../../brush3d/src/index.ts';
 import type { Land } from '../../game/map.ts';
 import { layoutOf, reliefOf, type GameState } from '../../game/state.ts';
 import type { Lie } from '../ground.ts';
@@ -26,20 +26,11 @@ export class BrushLand {
   private relief: number;
   private layout: number;
 
-  constructor(r: BrushRenderer, s: GameState, land: Land, lie: Lie, shores: ShoreMode = LAND_LOOK.shores) {
+  constructor(r: BrushRenderer, s: GameState, land: Land, lie: Lie) {
     this.r = r; this.land = land; this.lie = lie;
     const map = landMapOf(s, land, SCALE);
     this.sent = { corners: map.corners, worked: map.worked, cover: map.cover, ground: map.ground }; this.map = map.map;
-    r.setLand(map, { ...LAND_LOOK, shores });
-    this.relief = reliefOf(s); this.layout = layoutOf(s);
-  }
-
-  /** The land painted again with its shores drawn another way (#258's comparison: the HUD's button). */
-  restyle(s: GameState, shores: ShoreMode) {
-    this.lie.update();
-    const map = landMapOf(s, this.land, SCALE);
-    this.sent = { corners: map.corners, worked: map.worked, cover: map.cover, ground: map.ground };
-    this.r.setLand(map, { ...LAND_LOOK, shores });
+    r.setLand(map);
     this.relief = reliefOf(s); this.layout = layoutOf(s);
   }
 
