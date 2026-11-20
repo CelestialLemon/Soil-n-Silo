@@ -9,7 +9,7 @@ import { layoutOf, type GameState } from '../../game/state.ts';
 import type { Lie } from '../ground.ts';
 import {
   blockOf, boxesIn, FLOWER_PROFILES, FLOWER_SEASONS, flowersBloom, fringeFade, GRASS_FRINGE, GRASS_PROFILES, grassBlocks, grassLayout,
-  inBuilding, layoutChanges, meadowTop, REED_PROFILES, REED_SEASONS, reedBand, reedShore, reedTop, tileHabitat, tileSeed, wetDistance,
+  inBuilding, layoutChanges, meadowTop, REED_PROFILES, REED_SEASONS, reedBand, reedShore, reedSpot, reedTop, tileHabitat, tileSeed, wetDistance,
   type FlowerMode, type FlowerProfile, type FlowerSeason, type FootprintBox, type GrassBlockRect, type GrassLayout,
   type GrassMode, type GrassProfile, type ReedMode, type ReedProfile, type ReedSeason, type TileHabitat,
 } from './grassMask.ts';
@@ -23,7 +23,8 @@ import { TILE } from './scale.ts';
 // golden straw in autumn and dry, frost-tipped stalks in winter.
 //
 // - The reeds line the water's edge as drawn: where the land brush3d draws (`r.landAt`, its bed square or curving) meets
-//   the water's surface (grassMask.ts's reedShore and reedBand), from a little up the bank to a little into the shallows.
+//   the water's surface (grassMask.ts's reedShore and reedBand), from a little up the bank to a little into the shallows
+//   (each clump's middle: its stalks spread a little either way).
 //   None by a fall, on a cliff or a steep tile, in a footprint or a wheel's race, or near a rock's crags. Rooted in the
 //   ground, they stand in a flood's water and in the winter's ice rather than float on them.
 //
@@ -65,8 +66,6 @@ const STRAYS = 0.1;
 const REED_SALT = 0x2ee0267;
 /** How much thicker the reed beds are by still water (a pond or a lake) than by the running river. */
 const STILL_LIFT = 0.12;
-/** The steepest ground a clump of reeds stands on (the y of its normal): a bank, not a cliff. */
-const REED_SLOPE = 0.75;
 
 /** What the meadow shows: its grass's density and its flowers'. */
 export interface MeadowLooks { grass: GrassMode; flowers: FlowerMode; reeds: ReedMode }
@@ -125,10 +124,10 @@ export class Meadow {
     r.onLandChange((area) => this.landChanged(area));
   }
 
-  /** How high (m) the meadow's plants stand at most, as shown: for telling them from a tree in a pick (tools.ts). */
-  get top(): number { return meadowTop(this.looks.grass, this.flowering ? this.looks.flowers : 'off', this.looks.reeds); }
+  /** How high (m) the meadow's grass and flowers stand at most, as shown: for telling them from a tree in a pick (tools.ts). */
+  get top(): number { return meadowTop(this.looks.grass, this.flowering ? this.looks.flowers : 'off'); }
 
-  /** How high (m) its reeds stand at most, as shown: over the water, for telling them from a tree in a pick (tools.ts). */
+  /** How high (m) its reeds stand at most, as shown: by the water, for telling them from a tree in a pick (tools.ts). */
   get reedTop(): number { return reedTop(this.looks.reeds); }
 
   /** Whether the flowers bloom: on, and not in winter. */
@@ -447,11 +446,7 @@ export class Meadow {
       tip: this.reedTip, tipMix: season.tipMix, heads: profile.heads * season.heads,
     };
     const band = (wx: number, wz: number) => reedBand(shore.surface - this.r.landAt(wx, wz));
-    const canPlace = (wx: number, wz: number): boolean => {
-      if (wx < x0 + shore.minU || wx > x0 + shore.maxU || wz < z0 + shore.minV || wz > z0 + shore.maxV) return false;
-      if (boxes.length && inBuilding(boxes, wx, wz, wheelRace)) return false;
-      return this.ground.normal(wx, wz).y >= REED_SLOPE;
-    };
+    const canPlace = (wx: number, wz: number) => reedSpot(shore, tx, ty, wx, wz, boxes, wheelRace, () => this.ground.normal(wx, wz).y);
     for (let a = 0; a < profile.attempts; a++) {
       const wx = x0 + shore.minU + rand() * (shore.maxU - shore.minU), wz = z0 + shore.minV + rand() * (shore.maxV - shore.minV);
       const prob = band(wx, wz) * this.bedsAt(wx, wz, lift, profile) * season.density * fade;

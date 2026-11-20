@@ -3,17 +3,21 @@ import { test } from 'node:test';
 import { REED_HEIGHT, REED_REACH, REED_WIDTH } from '../brush3d/src/shared.ts';
 import { generateLand, TERRAIN } from '../src/game/map.ts';
 import { joins, spanOf, STEEP } from '../src/game/relief.ts';
+import { place } from '../src/game/build.ts';
 import { must } from '../src/game/result.ts';
+import { mulberry32 } from '../src/game/rng.ts';
 import { scenarioById } from '../src/game/scenarios.ts';
 import { SEASON_IDS } from '../src/game/seasons.ts';
-import { newGame } from '../src/game/state.ts';
+import { newGame, sizeOf } from '../src/game/state.ts';
 import { COUNTRY, landRelief } from '../src/world/ground.ts';
+import { YAW } from '../src/world/brush/catalog.ts';
 import {
-  BUILDING_MARGIN, FIELD_MARGIN, grassAt, MAX_REED_REACH, meadowTop, REED_DEEP, REED_HIGH, REED_MODES, REED_PROFILES,
-  REED_SEASONS, reedBand, reedReach, reedShore, reedTop,
+  boxesIn, BUILDING_MARGIN, FIELD_MARGIN, grassAt, MAX_REED_REACH, meadowTop, REED_DEEP, REED_HIGH, REED_MODES,
+  REED_PROFILES, REED_SEASONS, REED_SLOPE, reedBand, reedReach, reedShore, reedSpot, reedTop,
 } from '../src/world/brush/grassMask.ts';
 import { WATER_DOWN } from '../src/world/brush/landMap.ts';
 import { LEVEL, TILE } from '../src/world/brush/scale.ts';
+import { wheelRace } from './wheelRace.ts';
 
 // The reeds along the water's edge (#267): their densities and seasons, which tiles are a shore they may line, how near
 // the water's edge as drawn they stand, how far a clump reaches against the margins kept round buildings and rocks, and
@@ -143,14 +147,74 @@ test('a rock beside a shore keeps the reeds a clump\'s reach off it', () => {
   assert.ok(checked > 0);
 });
 
-test('a pick low over the water is the reeds, while they show', () => {
+test('a pick low over the water or its banks is the reeds, while they show, and inland it isn\'t', () => {
   const sc = must(scenarioById('c1'), 'c1');
-  const s = newGame(sc), { width: w } = s.map;
-  const i = s.map.terrain.findIndex((t) => t === TERRAIN.water);
-  const x = ((i % w) + 0.5) * TILE, z = (Math.floor(i / w) + 0.5) * TILE;
-  const top = meadowTop('meadow', 'meadow', 'lush');
-  assert.equal(top, Math.max(meadowTop('meadow', 'meadow'), reedTop('lush')));
-  assert.equal(grassAt(s, x, z, 0.5, top, reedTop('lush')), true, 'a reed over the water');
-  assert.equal(grassAt(s, x, z, 0.5, top, reedTop('off')), false, 'a low branch over the water, the reeds off');
-  assert.equal(grassAt(s, x, z, reedTop('lush') + 0.5, top, reedTop('lush')), false, 'a crown over the water');
+  const s = newGame(sc), { width: w, height: h } = s.map, T = (x: number, y: number) => s.map.terrain[y * w + x];
+  const mid = (i: number): [number, number] => [((i % w) + 0.5) * TILE, (Math.floor(i / w) + 0.5) * TILE];
+  const near = (i: number, r: number) => {
+    const x = i % w, y = Math.floor(i / w);
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      const nx = x + dx, ny = y + dy;
+      if (nx >= 0 && ny >= 0 && nx < w && ny < h && T(nx, ny) === TERRAIN.water) return true;
+    }
+    return false;
+  };
+  const water = s.map.terrain.findIndex((t) => t === TERRAIN.water);
+  const bank = s.map.terrain.findIndex((t, i) => t === TERRAIN.grass && near(i, 1));
+  const inland = s.map.terrain.findIndex((t, i) => t === TERRAIN.grass && !near(i, 3));
+  assert.ok(water >= 0 && bank >= 0 && inland >= 0);
+  const top = meadowTop('meadow', 'meadow'), reeds = reedTop('lush'), stalk = (top + reeds) / 2;
+  assert.ok(top < stalk && stalk < reeds, 'a reed stands over the grass and flowers');
+  assert.equal(grassAt(s, ...mid(water), 0.5, top, reeds), true, 'a reed over the water');
+  assert.equal(grassAt(s, ...mid(water), 0.5, top, reedTop('off')), false, 'a low branch over the water, the reeds off');
+  assert.equal(grassAt(s, ...mid(water), reeds + 0.5, top, reeds), false, 'a crown over the water');
+  assert.equal(grassAt(s, ...mid(bank), stalk, top, reeds), true, 'a reed over the bank');
+  assert.equal(grassAt(s, ...mid(bank), stalk, top, reedTop('off')), false, 'a branch over the bank, the reeds off');
+  // Over open grass with no water near, a branch over the grass's top is a tree's, the reeds on or off.
+  assert.equal(grassAt(s, ...mid(inland), stalk, top, reeds), false, 'a branch over the grass, inland');
+  assert.equal(grassAt(s, ...mid(inland), top - 0.05, top, reeds), true, 'a blade over the grass, inland');
+});
+
+test('a clump reedSpot lets stand reaches into no building, field or wheel race', () => {
+  // Water wheels and silos along the banks of First Light's river and Riverlands', and clumps tried densely over every
+  // shore tile round them: each one let stand, its whole reach (MAX_REED_REACH round it) stays out of every footprint
+  // and every race.
+  const ring: [number, number][] = [];
+  for (const r of [0.5, 1]) for (let k = 0; k < 32; k++) ring.push([Math.cos(k * Math.PI / 16) * r * MAX_REED_REACH, Math.sin(k * Math.PI / 16) * r * MAX_REED_REACH]);
+  let stood = 0, refused = 0, into = 0;
+  for (const id of ['c1', 'c7']) {
+    const sc = must(scenarioById(id), id);
+    const s = newGame(sc), land = generateLand(sc, COUNTRY), relief = landRelief(land), { width: w, height: h } = s.map;
+    s.credits = 1e9;
+    for (let y = 0; y < h; y += 2) for (let x = 0; x < w; x += 3) for (const rot of [0, 1, 2, 3] as const) place(s, 'wheel', x, y, rot);
+    for (let y = 0; y < h; y += 3) for (let x = 1; x < w; x += 4) place(s, 'silo', x, y, 0);
+    const wheels = s.buildings.filter((b) => b.type === 'wheel');
+    assert.ok(wheels.length > 3, `${id}: wheels on the banks`);
+    const boxes = boxesIn(s, -2, -2, w + 2, h + 2), rand = mulberry32(0x267);
+    for (let ty = 0; ty < h; ty++) for (let tx = 0; tx < w; tx++) {
+      const shore = reedShore(s, land, relief, tx, ty, true);
+      if (!shore) continue;
+      for (let a = 0; a < 40; a++) {
+        const wx = tx * TILE + rand() * TILE, wz = ty * TILE + rand() * TILE;
+        if (!reedSpot(shore, tx, ty, wx, wz, boxes, wheelRace, () => 1)) { refused++; continue; }
+        stood++;
+        for (const [dx, dz] of ring) {
+          const vx = wx + dx, vz = wz + dz;
+          for (const o of s.buildings) {
+            const n = sizeOf(o);
+            if (vx > o.x * TILE && vx < (o.x + n) * TILE && vz > o.y * TILE && vz < (o.y + n) * TILE) into++;
+            if (o.type !== 'wheel') continue;
+            const yaw = YAW[o.rot], ox = vx - (o.x + n / 2) * TILE, oz = vz - (o.y + n / 2) * TILE;
+            if (wheelRace(ox * Math.cos(yaw) - oz * Math.sin(yaw), ox * Math.sin(yaw) + oz * Math.cos(yaw), 0) > 0) into++;
+          }
+        }
+      }
+    }
+  }
+  assert.ok(stood > 1000 && refused > 1000, `${stood} clumps stood, ${refused} refused`);
+  assert.equal(into, 0, `${into} points of a clump's reach in a footprint or a race`);
+  // And none on ground steeper than a bank.
+  const shore = { surface: 0, minU: 0, maxU: TILE, minV: 0, maxV: TILE, still: false };
+  assert.equal(reedSpot(shore, 0, 0, 1, 1, [], wheelRace, () => REED_SLOPE - 0.01), false);
+  assert.equal(reedSpot(shore, 0, 0, 1, 1, [], wheelRace, () => REED_SLOPE), true);
 });

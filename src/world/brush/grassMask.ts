@@ -197,7 +197,8 @@ export const MAX_REED_REACH = Math.max(...Object.values(REED_PROFILES).map(reedR
 /**
  * How much a spot `depth` m under the water's surface (above it, below zero) is the reeds' (0..1): most at the waterline,
  * out into the shallows to `REED_DEEP` and up the bank to `REED_HIGH`. The reeds line the water as drawn: the bed brush3d
- * carves, square or curving, wherever it meets the water.
+ * carves, square or curving, wherever it meets the water. The spot is a clump's middle: its stalks root within half its
+ * `across` of it, so on a steep bank a stalk can stand a little deeper in the shallows or higher up the bank than that.
  */
 export const REED_DEEP = 0.24, REED_HIGH = 0.32;
 export function reedBand(depth: number): number {
@@ -265,6 +266,24 @@ export function reedShore(s: GameState, land: Land, relief: Relief, tx: number, 
   }
   if (minU >= maxU || minV >= maxV) return null;
   return { surface: level * LEVEL - WATER_DOWN, minU, maxU, minV, maxV, still };
+}
+
+/** The steepest ground a clump of reeds stands on (the y of its normal): a bank, not a cliff. */
+export const REED_SLOPE = 0.75;
+
+/**
+ * Whether a clump of reeds may stand at (wx, wz) m on shore tile (tx, ty) (`shore`, reedShore's): within the tile's bounds,
+ * outside every footprint and water wheel's race (`boxes`, boxesIn's, with brush3d's `wheelRace` as `race`), on ground no
+ * steeper than REED_SLOPE (`up`, the y of the ground's normal there, asked only when the rest let it stand).
+ */
+export function reedSpot(
+  shore: ReedShore, tx: number, ty: number, wx: number, wz: number, boxes: readonly FootprintBox[],
+  race: (lx: number, lz: number, pad: number) => number, up: () => number,
+): boolean {
+  const x0 = tx * TILE, z0 = ty * TILE;
+  if (wx < x0 + shore.minU || wx > x0 + shore.maxU || wz < z0 + shore.minV || wz > z0 + shore.maxV) return false;
+  if (boxes.length && inBuilding(boxes, wx, wz, race)) return false;
+  return up() >= REED_SLOPE;
 }
 
 /** Margins (m) kept clear around cliff faces, non-grass neighbours, and footprints. */
@@ -532,21 +551,30 @@ export function flowerTop(mode: FlowerMode): number {
   return p.flower.lift[0] + p.flower.lift[1] + flowerReach(p) + 0.05;
 }
 
-/** How high (m) the meadow's plants stand at most: its grass's tips, its flowers' blooms or its reeds', whichever's highest. */
-export const meadowTop = (grass: GrassMode, flowers: FlowerMode, reeds: ReedMode = 'off') =>
-  Math.max(grassTop(grass), flowerTop(flowers), reedTop(reeds));
+/** How high (m) the meadow's plants stand at most over open grass: its grass's tips or its flowers' blooms, whichever's higher. */
+export const meadowTop = (grass: GrassMode, flowers: FlowerMode) => Math.max(grassTop(grass), flowerTop(flowers));
+
+/** How near (tiles) the water a grass tile's reeds can stand: on a shore (water in the 3×3, reedShore), and a clump's reach past it. */
+const REED_NEAR = 2;
 
 /**
  * Whether what a pick calls a plant, at (x, z) m and `above` m over the land, is the meadow's grass, flowers or reeds
- * (#256, #266, #267) rather than a tree or a rock: lower than the meadow's `top` (meadowTop) over a tile of open grass
- * (or off the map), or lower than its reeds' (`water`, reedTop) over a water tile. brush3d paints grass and flowers as it
- * does a tree's leaves, so its pick can't tell them apart; the game can. A tree's crown leaning over the next tile stands
- * higher. (A branch hanging lower than the meadow's top over the next tile is taken for the meadow: picked on its crown
- * or its own tile instead.)
+ * (#256, #266, #267) rather than a tree or a rock: lower than the meadow's `top` (meadowTop) over a tile of open grass, or
+ * lower than its reeds' (`reeds`, reedTop) over the water and the grass within REED_NEAR tiles of it (or off the map,
+ * either). brush3d paints the meadow as it does a tree's leaves, so its pick can't tell them apart; the game can. A
+ * tree's crown leaning over the next tile stands higher. (A branch hanging lower than the meadow's top over the next tile
+ * is taken for the meadow: picked on its crown or its own tile instead.)
  */
-export function grassAt(s: GameState, x: number, z: number, above: number, top: number, water = 0): boolean {
-  const tx = Math.floor(x / TILE), ty = Math.floor(z / TILE);
-  if (tx < 0 || ty < 0 || tx >= s.map.width || ty >= s.map.height) return above < top;
+export function grassAt(s: GameState, x: number, z: number, above: number, top: number, reeds = 0): boolean {
+  const tx = Math.floor(x / TILE), ty = Math.floor(z / TILE), { width: w, height: h } = s.map;
+  if (tx < 0 || ty < 0 || tx >= w || ty >= h) return above < Math.max(top, reeds);
   const t = terrainAt(s, tx, ty);
-  return t === TERRAIN.grass ? above < top : t === TERRAIN.water && above < water;
+  if (t === TERRAIN.water) return above < reeds;
+  if (t !== TERRAIN.grass) return false;
+  if (above < top) return true;
+  if (above >= reeds) return false;
+  for (let y = Math.max(0, ty - REED_NEAR); y <= Math.min(h - 1, ty + REED_NEAR); y++) {
+    for (let x2 = Math.max(0, tx - REED_NEAR); x2 <= Math.min(w - 1, tx + REED_NEAR); x2++) if (terrainAt(s, x2, y) === TERRAIN.water) return true;
+  }
+  return false;
 }

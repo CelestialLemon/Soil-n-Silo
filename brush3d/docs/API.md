@@ -529,8 +529,8 @@ above, the game stops using it and it becomes the renderer's own.
   toward `tip` each one's tip goes), and `heads` (the share of stalks with a bulrush's brown seed head, in `head`'s
   colour). Omitted, each keeps the demo's, and the demo's stalks come out as before. `REED_REACH`, `REED_WIDTH` and
   `REED_HEIGHT` (in `shared.ts` too) are how far a clump reaches: at most `across / √2 + REED_REACH * tall + width +
-  REED_WIDTH` m across the ground from its spot and `REED_HEIGHT * tall` m above the ground there (`tall` and `width` the
-  sums of their pairs), at rest, as a tuft's; `brush3d/test/reed.test.ts` holds the stalks to them.
+  REED_WIDTH` m across the ground from its spot and `REED_HEIGHT * tall` m above the ground at each stalk's own root
+  (`tall` and `width` the sums of their pairs), at rest, as a tuft's; `brush3d/test/reed.test.ts` holds the stalks to them.
 - The plant kit (`kit/plants.ts`, #213): `CropPatch` (a field's crop, one soft blanket over its bed; one `CropTile` a
   tile with which neighbours it joins, at its stage 0–3: just sown, young, flowering, ripe; `addTo(r)` returns its
   meshes), `speciesTree(species, x, z, size, seed)` and `speciesHeight` (a `Tree` for each of `SPECIES`: the game's six

@@ -30,7 +30,7 @@ import { thingHeight, type Things } from './things.ts';
 //
 // Units: the Scene's are the game's (a tile 1, heights as ground.ts's Lie has them); brush3d's are metres (scale.ts).
 
-/** How high the meadow's plants stand as shown (m): over open grass (`top`), and its reeds over the water (`reedTop`). */
+/** How high the meadow's plants stand as shown (m): its grass and flowers (`top`), and its reeds by the water (`reedTop`). */
 interface MeadowHeights { readonly top: number; readonly reedTop: number }
 
 /** How near the line of sight through the pointer a truck must drive (m) to change what is under the pointer. */
