@@ -16,7 +16,7 @@ const SHAPES: (FlowerOptions | undefined)[] = [
   { size: [0.08, 0.04], lift: [0.2, 0.3] },
   { size: [0.2, 0.1], lift: [0.5, 0.5] },
 ];
-const FLUTTER = 0.15 * Math.hypot(1, 0.5, 0.5);
+const FLUTTER = 0.15 * 1.3 * Math.hypot(1, 0.5, 0.5);
 
 test('a bloom stays within FLOWER_REACH of its middle, its middle within its lift', () => {
   const ground = groundOf((x, z) => 0.3 * x - 0.2 * z + Math.sin(x * 1.7) * Math.cos(z * 1.3));

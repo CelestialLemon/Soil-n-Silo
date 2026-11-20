@@ -6,7 +6,7 @@
  * A bloom reaches at most `FLOWER_REACH * size` metres from its middle, across the ground and up (`size` the dab's, from
  * `FlowerOptions.size`): it's a square card `2 * size` across turned to face the camera, any way round, so its corner
  * is up to √2 × `size` out; and the wind's flutter moves it across the view by under 0.15 × `size` (FOLIAGE_VERT,
- * renderer/materials.ts), up to 1.23 times that with its sideways and upward parts. So it stands no higher than
- * `lift + FLOWER_REACH * size` over the ground.
+ * renderer/materials.ts), up to 1.3 times that in a gust and 1.23 times that again with its sideways and upward parts:
+ * 1.65 × `size` in all. So it stands no higher than `lift + FLOWER_REACH * size` over the ground.
  */
-export const FLOWER_REACH = 1.6;
+export const FLOWER_REACH = 1.7;
