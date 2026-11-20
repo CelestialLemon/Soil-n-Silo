@@ -54,7 +54,8 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      the chunks round it, over frames, swapped at once. `landAt` and `landHit` answer from the same fit. Open: falls that
      read as waterfalls (Soil-n-Silo#241; a plain chute for now), the wheel's race, and one fit shared with the game's
      (Soil-n-Silo#210). Grass tufts are the game's (Soil-n-Silo#256): `landColourAt` gives them the ground's colour as
-     drawn, `onLandChange` says where an earthwork redrew the land, and `cull` adds a small mesh culled whole, uncut.
+     drawn, `onLandChange` says where an earthwork redrew the land, `landAhead` that `landAt` runs ahead of the land
+     drawn (an earthwork fitted, not yet swapped in), and `cull` adds a small mesh culled whole, uncut.
   9. Soil-n-Silo#213 the crops and trees (done 2026-11-16, Soil-n-Silo#225 and Soil-n-Silo#227): the game's five crops
      at their four stages as one soft blanket over each bed (`CropPatch`), and its tree species, with the pine a soft
      cone, the willow weeping and the poplar a column (`growSpecies`; oak, birch, apple and the bushes are `Grove.grow`'s).
