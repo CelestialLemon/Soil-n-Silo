@@ -115,9 +115,8 @@ recipe and the land's smooth fit); [docs/API.md](docs/API.md) has the API, in th
   (`video.ts`), the frame's cost (`profile.ts`) and the lightning's flash check (`flash.ts`), on `browser.ts`; the wind's,
   water's, clouds' and land's checks (`wind.ts`, `water.ts`, `clouds.ts`, `land.ts`), the wind engine's build (`wind-build.ts`), and the check
   that the demo imports only the API (`demo-imports.ts`).
-- `test/`: the renderer's own tests that need no browser (`node:test`, run by `npm test`); like the tools, they may reach
-  past the API.
 - `tools/blender/`: the scripts that make the models (`build.py`, the shared `kit.py`, one script a model in `models/`).
+- `test/`: the renderer's unit tests, run in Node by `npm test` (`tuft.test.ts`: how far a grass tuft reaches).
 - `docs/`: the look's rules (`DIRECTION.md`), the renderer's roadmap (`ROADMAP.md`), the API, and the notes on models,
   performance, wind, water, ground and the land.
 - `reference/`: how to pull frames from the reference film (kept out of git: they're copyrighted).

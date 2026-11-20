@@ -559,7 +559,6 @@ The game's pixel3d calls, gone since the swap, and what replaced each:
 | `src/models/` | The solarpunk models (`*.glb`, written by `tools/blender/`) and their catalogue | the game's models |
 | `src/demo/` | The demo viewer and its scenes (farm, meadow, water patch, gallery), the scripted weather | one user of the API |
 | `tools/` | Stills, videos, profiles, the shimmer, pop and flash checks, the wind, cloud, water and land tests | the renderer's tests |
-| `test/` | The renderer's own tests that need no browser (`npm test`) | the renderer's tests |
 
-The tools and `test/` check the renderer's insides, so they may reach past the API (the cloud test reads the cloud map back,
+The tools are tests of the renderer's insides, so they may reach past the API (the cloud test reads the cloud map back,
 the flash check watches the flash limiter); the demo may not (`npm run typecheck` fails if it does).
