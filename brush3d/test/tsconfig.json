@@ -1,0 +1,7 @@
+{
+  // brush3d's own tests run in Node under `npm test` (type stripping, so only erasable TypeScript). Like its tools, they
+  // test the renderer's insides, so they may reach past the API (src/index.ts, src/shared.ts) and load three.js.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": { "types": ["node", "vite/client"] },
+  "include": ["."]
+}

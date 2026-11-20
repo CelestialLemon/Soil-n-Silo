@@ -15,3 +15,5 @@ export { CLOUD_SHAPE, cloudDriftSpeed, cloudShade, type CloudField, type CloudLa
 export { SLACK, Surface, type Ground as SurfaceGround, type Relief } from './land/surface.ts';
 export { checkLand, LAND_COVER, LAND_GROUND, type Beyond, type LandCover, type LandGround, type LandMap, type LandPatch, type LandRect } from './land/map.ts';
 export { TILE } from './models/tile.ts';
+// How far a grass tuft's blades reach (kit/tuft.ts), which the game keeps its grass's margins by (Soil-n-Silo#256).
+export { TUFT_HEIGHT, TUFT_REACH } from './kit/tuft.ts';

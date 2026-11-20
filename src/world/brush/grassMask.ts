@@ -1,4 +1,5 @@
 import type { TuftOptions } from '../../../brush3d/src/index.ts';
+import { TUFT_HEIGHT, TUFT_REACH } from '../../../brush3d/src/shared.ts';
 import { GROUND } from '../../game/ground.ts';
 import { TERRAIN, type Land } from '../../game/map.ts';
 import { joins, SIDES, spanOf, STEEP, type Relief } from '../../game/relief.ts';
@@ -54,13 +55,14 @@ export const GRASS_PROFILES: Record<Exclude<GrassMode, 'off'>, GrassProfile> = {
   },
 };
 
+/** The tallest a tuft is asked to be (m) in a density: its full lushness, at the most of its random 0.88–1.12 (grass.ts). */
+const maxTall = (p: GrassProfile) => (p.tall[0] + p.tall[1]) * 1.12;
+
 /**
- * Maximum horizontal reach (m) of any blade vertex emitted by `addTuft` before wind across all profiles:
- * `spread + maxLean (0.70) * maxBladeHeight (1.2 * maxTall * 1.12)` ≈ 0.825 m in Lush.
+ * The furthest (m) any blade reaches from its tuft's spot across the ground, at rest, in any density: brush3d's promise
+ * for `addTuft` (`TUFT_REACH`, held to it by its brush3d/test/tuft.test.ts), ≈ 0.825 m in Lush.
  */
-export const MAX_BLADE_REACH = Math.max(
-  ...Object.values(GRASS_PROFILES).map((p) => p.tuft.spread + 0.70 * 1.2 * (p.tall[0] + p.tall[1]) * 1.12),
-);
+export const MAX_BLADE_REACH = Math.max(...Object.values(GRASS_PROFILES).map((p) => p.tuft.spread + TUFT_REACH * maxTall(p)));
 
 /** Margins (m) kept clear around cliff faces, non-grass neighbours, and footprints. */
 export const CLIFF_MARGIN = 0.85;
@@ -68,7 +70,7 @@ export const WATER_MARGIN = 0.45;
 export const ROCK_MARGIN = 0.35;
 /**
  * Kept strictly above `MAX_BLADE_REACH` so no blade at rest stands in a building's or field's footprint. The wind's sway
- * is left out, on purpose: the grass shader bends a blade across the view only (brush3d's `acrossView`), never nearer or
+ * is left out, on purpose (as it is from `TUFT_REACH`): the grass shader bends a blade across the view only, never nearer or
  * further, so a blade in a gust can lean over a field's edge or in front of a wall it already stood in front of, but
  * never through a wall. Covering the sway's full reach (up to 0.6 m, in a storm) would leave a bare ring round everything.
  */
@@ -313,8 +315,7 @@ export function layoutChanges(was: GrassLayout, now: GrassLayout, width: number)
 /** How high (m) a meadow tuft's tip stands over the land at most, at a density: its tallest blade (addTuft); none when off. */
 export function grassTop(mode: GrassMode): number {
   if (mode === 'off') return 0;
-  const p = GRASS_PROFILES[mode];
-  return 1.2 * (p.tall[0] + p.tall[1]) * 1.12 + 0.05;
+  return TUFT_HEIGHT * maxTall(GRASS_PROFILES[mode]) + 0.05;
 }
 
 /**

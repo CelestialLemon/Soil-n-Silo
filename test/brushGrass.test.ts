@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { MeshBuilder, rng, srgb } from '../brush3d/src/kit/builder.ts';
-import { addTuft, groundOf } from '../brush3d/src/kit/kit.ts';
+import { TUFT_REACH } from '../brush3d/src/shared.ts';
 import { place, remove, removeAt } from '../src/game/build.ts';
 import { GROUND } from '../src/game/ground.ts';
 import { generateLand, TERRAIN } from '../src/game/map.ts';
 import { must } from '../src/game/result.ts';
+import { mulberry32 } from '../src/game/rng.ts';
 import { scenarioById } from '../src/game/scenarios.ts';
 import { newGame, sizeOf, type Building, type Dir } from '../src/game/state.ts';
 import { COUNTRY, landRelief, Lie } from '../src/world/ground.ts';
@@ -17,8 +17,9 @@ import {
 } from '../src/world/brush/grassMask.ts';
 import { TILE } from '../src/world/brush/scale.ts';
 
-// Pure placement, masking, seasonal sizing, emitted-geometry containment, block-change and picking rules for meadow grass
-// tufts (src/world/brush/grassMask.ts, #256).
+// Pure placement, masking, seasonal sizing, block-change and picking rules for meadow grass tufts
+// (src/world/brush/grassMask.ts, #256). How far a tuft's blades reach is brush3d's promise (`TUFT_REACH`, from shared.ts),
+// which brush3d/test/tuft.test.ts holds its blades to; here the masks are held to it, with no three.js.
 
 /** Exact `wheelRace` geometry from brush3d/src/models/catalog.ts (without Vite's `import.meta.glob`). */
 function wheelRace(lx: number, lz: number, margin = 0.5) {
@@ -188,11 +189,14 @@ test('building, field, and water-wheel race footprints mask grass cleanly and cl
   assert.ok(GRASS_PROFILES.meadow.attempts < GRASS_PROFILES.lush.attempts);
 });
 
-test('emitted Lush grass blade geometry never protrudes into any building, field, or wheel-race footprint', () => {
+test('every tuft the masks let stand keeps its blades\' whole reach off every building, field and wheel race', () => {
   const sc = must(scenarioById('c7'), 'c7');
   const s = newGame(sc), land = generateLand(sc, COUNTRY), lie = new Lie(s, land), wet = wetDistance(land);
   s.credits = 1e6;
   const { width: w, height: h } = s.map;
+  // The reach is brush3d's promise for a tuft at its tallest in Lush, the densest and tallest.
+  const lush = GRASS_PROFILES.lush;
+  assert.equal(MAX_BLADE_REACH, Math.max(...Object.values(GRASS_PROFILES).map((p) => p.tuft.spread + TUFT_REACH * (p.tall[0] + p.tall[1]) * 1.12)));
 
   // Place a silo and a field in open grass, plus attach a synthetic water wheel to test its race too.
   let silo = null, field = null;
@@ -216,12 +220,13 @@ test('emitted Lush grass blade geometry never protrudes into any building, field
   for (const rot of [0, 1, 2, 3] as Dir[]) s.buildings.push({ ...silo, id: 9000 + rot, type: 'wheel', x: spot[0], y: spot[1], rot });
   lie.update();
 
-  const profile = GRASS_PROFILES.lush;
-  const flatGround = groundOf(() => 0);
-  const baseCol = srgb(0x5a9848);
-  const mb = new MeshBuilder('grass');
-
+  // Everywhere a blade of a tuft could reach: rings round its spot out to the full reach, every 11.25°.
+  const reach: [number, number][] = [];
+  for (const r of [0.25, 0.5, 0.75, 1]) for (let k = 0; k < 32; k++) {
+    reach.push([Math.cos(k * Math.PI / 16) * r * MAX_BLADE_REACH, Math.sin(k * Math.PI / 16) * r * MAX_BLADE_REACH]);
+  }
   // Scatter densely across a ring of tiles around every placed building and field.
+  let tufts = 0, violations = 0, inRace = 0;
   for (const b of s.buildings) {
     const n = sizeOf(b);
     const x0 = Math.max(0, b.x - 2), x1 = Math.min(w, b.x + n + 2);
@@ -230,39 +235,29 @@ test('emitted Lush grass blade geometry never protrudes into any building, field
     for (let ty = y0; ty < y1; ty++) for (let tx = x0; tx < x1; tx++) {
       const hab = tileHabitat(s, land, lie.relief, wet, tx, ty, true);
       if (!hab) continue;
-      const rand = rng(tileSeed(s.scenario.seed, tx, ty));
-      const tx0 = tx * TILE, tz0 = ty * TILE;
-      for (let a = 0; a < profile.attempts * 4; a++) {
-        const wx = tx0 + hab.minU + rand() * (hab.maxU - hab.minU);
-        const wz = tz0 + hab.minV + rand() * (hab.maxV - hab.minV);
+      const rand = mulberry32(tileSeed(s.scenario.seed, tx, ty));
+      for (let a = 0; a < lush.attempts * 4; a++) {
+        const wx = tx * TILE + hab.minU + rand() * (hab.maxU - hab.minU);
+        const wz = ty * TILE + hab.minV + rand() * (hab.maxV - hab.minV);
         if (inBuilding(boxes, wx, wz, wheelRace)) continue;
-        // Force worst-case max lushness (1.0) and max random tallness (1.12).
-        const tall = (profile.tall[0] + profile.tall[1]) * hab.heightScale * 1.12;
-        addTuft(mb, flatGround, wx, wz, tall, baseCol, rand, profile.tuft);
+        tufts++;
+        for (const [dx, dz] of reach) {
+          const vx = wx + dx, vz = wz + dz;
+          for (const o of s.buildings) {
+            const m = sizeOf(o);
+            if (vx > o.x * TILE && vx < (o.x + m) * TILE && vz > o.y * TILE && vz < (o.y + m) * TILE) violations++;
+            if (o.type !== 'wheel') continue;
+            // The race itself (no margin), in the wheel's own frame (as inBuilding turns it).
+            const yaw = YAW[o.rot], ox = vx - (o.x + m / 2) * TILE, oz = vz - (o.y + m / 2) * TILE;
+            if (wheelRace(ox * Math.cos(yaw) - oz * Math.sin(yaw), ox * Math.sin(yaw) + oz * Math.cos(yaw), 0) > 0) inRace++;
+          }
+        }
       }
     }
   }
-
-  assert.ok(mb.vertexCount > 500, `expected hundreds of emitted grass vertices, got ${mb.vertexCount}`);
-  const geom = mb.build();
-  const pos = geom.getAttribute('position');
-  let violations = 0, inRace = 0;
-  for (let i = 0; i < pos.count; i++) {
-    const vx = pos.getX(i), vz = pos.getZ(i);
-    for (const b of s.buildings) {
-      const n = sizeOf(b);
-      if (vx > b.x * TILE && vx < (b.x + n) * TILE && vz > b.y * TILE && vz < (b.y + n) * TILE) {
-        violations++;
-      }
-      if (b.type !== 'wheel') continue;
-      // The race itself (no margin), in the wheel's own frame (as inBuilding turns it).
-      const yaw = YAW[b.rot], dx = vx - (b.x + n / 2) * TILE, dz = vz - (b.y + n / 2) * TILE;
-      if (wheelRace(dx * Math.cos(yaw) - dz * Math.sin(yaw), dx * Math.sin(yaw) + dz * Math.cos(yaw), 0) > 0) inRace++;
-    }
-  }
-  assert.equal(inRace, 0, `expected 0 emitted grass blade vertices in a water wheel's race, got ${inRace}`);
-  geom.dispose();
-  assert.equal(violations, 0, `expected 0 emitted grass blade vertices inside building/field footprints, got ${violations}`);
+  assert.ok(tufts > 500, `expected hundreds of tufts by the buildings, got ${tufts}`);
+  assert.equal(inRace, 0, `expected no blade's reach in a water wheel's race, got ${inRace} points`);
+  assert.equal(violations, 0, `expected no blade's reach inside a building or field, got ${violations} points`);
 });
 
 test('blocks: a placement, removal or clearing queues only the blocks it touches, from a cheap layout diff', () => {

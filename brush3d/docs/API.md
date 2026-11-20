@@ -28,7 +28,7 @@ plain code with no drawing in them, so the game's rules and tests can use them w
 
 Everything the game uses comes from one file, `src/index.ts` (in the game's repo, since the move, #200:
 `brush3d/src/index.ts`). The demo is just another user of it: it imports nothing else. One part of it also stands on
-its own: `src/shared.ts`, the wind simulation, the cloud recipe and the land's data and smooth fit (below), which loads in Node with no bundler, for the
+its own: `src/shared.ts`, the wind simulation, the cloud recipe, the land's data and smooth fit (below) and how far a grass tuft reaches, which loads in Node with no bundler, for the
 rules' tests and bots (the rest needs Vite, for the models and the wind's worker). Anything not exported there is
 the renderer's own business and can change without notice: its shaders, materials, passes, uniforms and maps.
 
@@ -512,6 +512,11 @@ above, the game stops using it and it becomes the renderer's own.
 - `addTuft` (used by both the demo and the game's `grass.ts`, #256): builds a meadow grass tuft on a `Ground` in a base
   colour (the game passes `r.landColourAt(x, z)`). Takes optional `TuftOptions` (`blades`, `width`, `spread`) to scale a
   tuft's blades and clump size for the game's zoom range (omitted, it keeps the demo's defaults).
+  `TUFT_REACH` and `TUFT_HEIGHT` (in `shared.ts` too, so the game's rules and tests read them in Node) are how far its
+  blades can reach: at most `spread + TUFT_REACH * tall` m across the ground from the tuft's spot and `TUFT_HEIGHT * tall`
+  m above it, at rest (the wind bends a blade across the view only, never nearer or further, so it never sways into a
+  wall it stands in front of). The game keeps its grass that far off buildings and fields by them; `brush3d/test/tuft.test.ts`
+  holds the blades to them.
 - The plant kit (`kit/plants.ts`, #213): `CropPatch` (a field's crop, one soft blanket over its bed; one `CropTile` a
   tile with which neighbours it joins, at its stage 0–3: just sown, young, flowering, ripe; `addTo(r)` returns its
   meshes), `speciesTree(species, x, z, size, seed)` and `speciesHeight` (a `Tree` for each of `SPECIES`: the game's six
@@ -546,7 +551,7 @@ The game's pixel3d calls, gone since the swap, and what replaced each:
 | Folder | What | Whose |
 |---|---|---|
 | `src/index.ts` | The API: everything above that exists | the game's door in |
-| `src/shared.ts` | The wind simulation, its gusts (`WindRecipe`), the cloud recipe, the land's data and smooth fit, and `TILE`, loadable in Node on their own (the index exports them too) | shared with the rules |
+| `src/shared.ts` | The wind simulation, its gusts (`WindRecipe`), the cloud recipe, the land's data and smooth fit, how far a grass tuft reaches (`TUFT_REACH`, `TUFT_HEIGHT`) and `TILE`, loadable in Node on their own (the index exports them too) | shared with the rules |
 | `src/renderer/` | The renderer: its passes, materials, shaders and looks | the renderer's own |
 | `src/land/` | The land painted from the game's map: what the game sends (`map.ts`), the smooth fit (`surface.ts`), the painting and earthworks (`paint.ts`) | the renderer's own (`map.ts` and `surface.ts` shared with the rules) |
 | `src/wind/` | The wind simulation (no drawing; a worker host) | shared with the rules |
@@ -554,6 +559,7 @@ The game's pixel3d calls, gone since the swap, and what replaced each:
 | `src/models/` | The solarpunk models (`*.glb`, written by `tools/blender/`) and their catalogue | the game's models |
 | `src/demo/` | The demo viewer and its scenes (farm, meadow, water patch, gallery), the scripted weather | one user of the API |
 | `tools/` | Stills, videos, profiles, the shimmer, pop and flash checks, the wind, cloud, water and land tests | the renderer's tests |
+| `test/` | The renderer's own tests that need no browser (`npm test`) | the renderer's tests |
 
-The tools are tests of the renderer's insides, so they may reach past the API (the cloud test reads the cloud map back,
+The tools and `test/` check the renderer's insides, so they may reach past the API (the cloud test reads the cloud map back,
 the flash check watches the flash limiter); the demo may not (`npm run typecheck` fails if it does).
