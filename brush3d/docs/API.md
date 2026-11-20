@@ -513,7 +513,8 @@ above, the game stops using it and it becomes the renderer's own.
   `CRAG_BOUND` and `CRAG_TRIANGLES`, in `shared.ts` too so the game's rules and tests read them in Node, are how far it
   reaches past the half-extents it's given and what it's made of: seen from above, a crag lies inside the shadow of the
   ellipsoid of half-extents `rx·k·skirt`, `ry·k`, `rz·k·skirt` (`k = swell + perCrag·crag`) centred over its spot and
-  turned as it is, on any ground, no higher than that ellipsoid's top; it's `CRAG_TRIANGLES[detail]` triangles. The game
+  turned as it is, on any ground, and no higher than that ellipsoid's top with its centre `ry·(1 − 2·sink)` over the ground
+  at its spot; it's `CRAG_TRIANGLES[detail]` triangles. The game
   keeps its crags on their rock tiles by them; `brush3d/test/crag.test.ts` holds `addCrag` to them.
 - `addTuft` (used by both the demo and the game's `grass.ts`, #256): builds a meadow grass tuft on a `Ground` in a base
   colour (the game passes `r.landColourAt(x, z)`). Takes optional `TuftOptions` (`blades`, `width`, `spread`) to scale a
