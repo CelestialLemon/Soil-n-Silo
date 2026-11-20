@@ -1,8 +1,7 @@
-import { LAND_LOOK, type BrushRenderer, type LandBorder, type LandMap, type LandRect } from '../../../brush3d/src/index.ts';
+import type { BrushRenderer, LandRect } from '../../../brush3d/src/index.ts';
 import type { Land } from '../../game/map.ts';
 import { layoutOf, reliefOf, type GameState } from '../../game/state.ts';
 import type { Lie } from '../ground.ts';
-import { borderChoice, landBorder } from '../../ui/borderChoice.ts';
 import { landMapOf, patchOf, tilesOf, type Scale, type Tiles } from './landMap.ts';
 import { LEVEL, TILE } from './scale.ts';
 
@@ -26,21 +25,14 @@ export class BrushLand {
   private readonly map: LandRect;
   private relief: number;
   private layout: number;
-  /** The land as first sent, its tiles as `sent` has them now: sent whole again when #269's border look is switched. */
-  private readonly whole: LandMap;
 
   constructor(r: BrushRenderer, s: GameState, land: Land, lie: Lie) {
     this.r = r; this.land = land; this.lie = lie;
     const map = landMapOf(s, land, SCALE);
     this.sent = { corners: map.corners, worked: map.worked, cover: map.cover, ground: map.ground }; this.map = map.map;
-    this.whole = map;
-    this.paint(landBorder());
-    borderChoice((b) => this.paint(b));
+    r.setLand(map);
     this.relief = reliefOf(s); this.layout = layoutOf(s);
   }
-
-  /** The land painted afresh (setLand), in its tiles as last sent, with the map's border as `border` (#269's comparison). */
-  private paint(border: LandBorder) { this.r.setLand({ ...this.whole, ...this.sent }, { ...LAND_LOOK, border }); }
 
   /** The land's height (m) at a point (m), as drawn. */
   heightAt(x: number, z: number) { return this.r.landAt(x, z); }

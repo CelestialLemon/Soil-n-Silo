@@ -120,8 +120,7 @@ r.setLand({
   // The country past the tiles, so the camera never sees the end of the world: a coarse grid of heights (metres), a
   // corner at (x0, z0), nx by nz points `cell` metres apart, x fastest. Drawn as distant woods' floor.
   beyond: { nx, nz, cell, x0, z0, height: Float32Array },
-}, look?);                        // LandLook: how strong the ground kinds' tint, how dull the country, how the map's edge meets it
-                                  // (border: LAND_BORDERS, 'off' | 'feathered' | 'organic', #269); LAND_LOOK as the developer picked
+}, look?);                        // LandLook: how strong the ground kinds' tint, how dull the country (LAND_LOOK, as the developer picked)
 r.updateLand({ x, y, width, height }, { corners, worked, cover, ground });   // an earthwork: the new values for just these tiles
 ```
 

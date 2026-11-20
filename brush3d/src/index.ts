@@ -29,7 +29,7 @@ export type { DustSource } from './renderer/dust';
 
 // ---- The land (docs/LAND.md) ----
 export { LAND_COVER, LAND_GROUND, type Beyond, type LandCover, type LandGround, type LandMap, type LandPatch, type LandRect } from './land/map';
-export { LAND_BORDERS, LAND_LOOK, type LandBorder, type LandLook } from './land/paint';
+export { LAND_LOOK, type LandLook } from './land/paint';
 export type { FlashSetting, Flicker, Strike } from './renderer/lightning';
 
 // ---- The wind (docs/WIND.md) and the clouds: the simulation and recipe the rules share, and the renderer's view ----

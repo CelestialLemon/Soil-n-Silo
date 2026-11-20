@@ -8,13 +8,13 @@
 //    painted a step, all swapped in together at the last; only chunks near it are painted again; afterwards its dryness
 //    and paint are what a land built afresh has, its heights within a few centimetres (the fit again is local).
 // 3. The country beyond: it meets the land's edge, and is the grid's further out.
-// 4. The map's border (Soil-n-Silo#269): in every look the map's tiles keep their colour and the country further out is
-//    as dull; feathered and organic fade in between, outside the map; the country beyond takes the land's colour all along
-//    where it meets it.
+// 4. The map's border (Soil-n-Silo#269): the map's tiles keep their colour to their very edge, the country further out is
+//    fully dull, the fade between wanders along the edge, and the country beyond takes the land's colour all along where
+//    it meets it.
 // Exits with 1 if anything is off.
 import * as THREE from 'three';
 import { LAND_COVER, LAND_GROUND, type LandMap } from '../src/land/map.ts';
-import { LAND_BORDERS, LAND_LOOK, PaintedLand, type LandAdder, type LandBorder, type LandLook } from '../src/land/paint.ts';
+import { LAND_LOOK, PaintedLand, type LandAdder, type LandLook } from '../src/land/paint.ts';
 import { Surface } from '../src/land/surface.ts';
 
 let failed = false;
@@ -273,7 +273,7 @@ function topColours(look: LandLook) {
   }
   return { land, beyond };
 }
-const looks = Object.fromEntries(LAND_BORDERS.map((b) => [b, topColours({ ...LAND_LOOK, border: b })])) as Record<LandBorder, ReturnType<typeof topColours>>;
+const drawn = topColours(LAND_LOOK);
 /** How far (tiles) a place is out of the map (less than 0: in it), as its key has it. */
 const outOfMap = (key: string) => {
   const [x, z] = key.split(',').map(Number), px = (x - X0) / TILE, py = (z - Z0) / TILE, m = map.map;
@@ -281,43 +281,59 @@ const outOfMap = (key: string) => {
   return ox > 0 || oy > 0 ? Math.hypot(Math.max(0, ox), Math.max(0, oy)) : Math.max(ox, oy);
 };
 const diff = (p: number[], q: number[]) => Math.max(...p.map((v, k) => Math.abs(v - q[k])));
-const sameWhere = (a: LandBorder, b: LandBorder, where: (d: number) => boolean) => {
-  let worstDiff = 0, n = 0;
-  for (const [key, c] of looks[a].land) if (where(outOfMap(key))) { worstDiff = Math.max(worstDiff, diff(c, looks[b].land.get(key)!)); n++; }
-  return { worstDiff, n };
-};
-// The paint blends each tile with the next over about a tile (colourAt), so "in" is a tile and a half from the edge.
-for (const b of ['feathered', 'organic'] as const) {
-  const inside = sameWhere('off', b, (d) => d < -1.5), outside = sameWhere('off', b, (d) => d > 4.5);
-  check(`${b}: the map's tiles as off has them`, inside.n > 100 && inside.worstDiff < 1e-6, `${inside.worstDiff} off, over ${inside.n}`);
-  check(`${b}: the country past the fade as dull as off has it`, outside.n > 100 && outside.worstDiff < 1e-6, `${outside.worstDiff} off, over ${outside.n}`);
+// The map's tiles not dulled, to their very edge: as a land whose country isn't dull has them.
+{
+  const bright = topColours({ ...LAND_LOOK, beyond: { light: 1, chroma: 1 } });
+  let worst = 0, n = 0;
+  for (const [key, c] of drawn.land) if (outOfMap(key) <= 1e-9) { worst = Math.max(worst, diff(c, bright.land.get(key)!)); n++; }
+  check('the map\'s tiles not dulled, to their very edge', n > 100 && worst < 1e-6, `${worst} off, over ${n}`);
 }
-/** How bright a look's tops are, on average, at d (tiles) out of the map. */
-const brightness = (b: LandBorder, from: number, to: number) => {
+/** How much of the country's dullness a point (tiles) takes, as the land paints it. */
+const dullness = (px: number, py: number) => (land0 as unknown as { dullness(px: number, py: number): number }).dullness(px, py);
+const land0 = new PaintedLand(new Adder(), makeLand());
+{
+  // Past the fade (it ends at most 3.35 tiles out), every top fully dull.
+  let worst = 0, n = 0;
+  for (const key of drawn.land.keys()) {
+    if (outOfMap(key) <= 3.5) continue;
+    const [x, z] = key.split(',').map(Number);
+    worst = Math.max(worst, 1 - dullness((x - X0) / TILE, (z - Z0) / TILE)); n++;
+  }
+  check('the country past the fade fully dull', n > 100 && worst < 1e-9, `${worst} short, over ${n}`);
+}
+/** How bright the tops are, on average, at d (tiles) out of the map. */
+const brightness = (from: number, to: number) => {
   let s = 0, n = 0;
-  for (const [key, c] of looks[b].land) { const d = outOfMap(key); if (d >= from && d < to) { s += c[0] + c[1] + c[2]; n++; } }
+  for (const [key, c] of drawn.land) { const d = outOfMap(key); if (d >= from && d < to) { s += c[0] + c[1] + c[2]; n++; } }
   return s / n;
 };
-const [inMap, firstTile, pastFade] = [brightness('feathered', -3, -1.5), brightness('feathered', 0.75, 1.25), brightness('feathered', 3, 5)];
-check('feathered: a tile out, between the map\'s brightness and the country\'s', firstTile < inMap && firstTile > pastFade, `${inMap.toFixed(3)}, ${firstTile.toFixed(3)}, ${pastFade.toFixed(3)}`);
-// Feathered and organic dull nothing on the map, to its very edge: as a land whose country isn't dull has it.
-for (const b of ['feathered', 'organic'] as const) {
-  const bright = topColours({ ...LAND_LOOK, border: b, beyond: { light: 1, chroma: 1 } });
-  let worst = 0, n = 0;
-  for (const [key, c] of looks[b].land) if (outOfMap(key) <= 1e-9) { worst = Math.max(worst, diff(c, bright.land.get(key)!)); n++; }
-  check(`${b}: the map's tiles not dulled, to their very edge`, n > 100 && worst < 1e-6, `${worst} off, over ${n}`);
+const [inMap, firstTile, pastFade] = [brightness(-3, -1.5), brightness(0.75, 1.25), brightness(3.5, 5)];
+check('a tile out, between the map\'s brightness and the country\'s', firstTile < inMap && firstTile > pastFade, `${inMap.toFixed(3)}, ${firstTile.toFixed(3)}, ${pastFade.toFixed(3)}`);
+{
+  // The fade's outer edge wanders: a tile and a half out, round the map, some places fully dull and some barely.
+  const m = map.map, out = 1.5, at: number[] = [];
+  for (let k = 0; k <= m.width * 4; k++) {
+    const px = m.x + k / 4;
+    at.push(dullness(px, m.y - out), dullness(px, m.y + m.height + out));
+  }
+  for (let k = 0; k <= m.height * 4; k++) {
+    const py = m.y + k / 4;
+    at.push(dullness(m.x - out, py), dullness(m.x + m.width + out, py));
+  }
+  const lo = Math.min(...at), hi = Math.max(...at);
+  check('the fade\'s outer edge wanders along the map\'s sides', hi - lo > 0.3, `${lo.toFixed(2)} to ${hi.toFixed(2)} a tile and a half out`);
 }
-// Every point of the land's outer edge as the country beyond draws it there: straight between its vertices on the edge.
-for (const b of LAND_BORDERS) {
+{
+  // Every point of the land's outer edge as the country beyond draws it there: straight between its vertices on the edge.
   // Each side: where a point on it is across (x, or z) and along it.
   const sides = [[0, X0], [0, X0 + W * TILE], [1, Z0], [1, Z0 + H * TILE]].map(([k, at]) => ({
     on: (x: number, z: number) => Math.abs([x, z][k] - at) < 1e-6, along: (x: number, z: number) => [z, x][k],
   }));
   let worstEdge = 0, n = 0;
   for (const { on, along } of sides) {
-    const grid = [...looks[b].beyond].map(([key, c]) => [key.split(',').map(Number), c] as const)
+    const grid = [...drawn.beyond].map(([key, c]) => [key.split(',').map(Number), c] as const)
       .filter(([[x, z]]) => on(x, z)).map(([[x, z], c]) => [along(x, z), c] as const).sort((p, q) => p[0] - q[0]);
-    for (const [key, c] of looks[b].land) {
+    for (const [key, c] of drawn.land) {
       const [x, z] = key.split(',').map(Number);
       if (!on(x, z)) continue;
       const s = along(x, z), i = grid.findIndex(([g], k) => k + 1 < grid.length && g <= s + 1e-6 && grid[k + 1][0] >= s - 1e-6);
@@ -327,8 +343,9 @@ for (const b of LAND_BORDERS) {
       n++;
     }
   }
-  check(`${b}: the country beyond and the land one colour all along where they meet`, n > 100 && worstEdge < 1e-5, `${worstEdge} off, over ${n} points`);
+  check('the country beyond and the land one colour all along where they meet', n > 100 && worstEdge < 1e-5, `${worstEdge} off, over ${n} points`);
 }
+land0.dispose();
 
 // 5. Refused: corners that aren't whole levels.
 let threw = false;

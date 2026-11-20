@@ -166,10 +166,10 @@ so the land never shows half a change. Still open: the river's falls are a plain
 waterfall (#241); grass tufts on the land, and the water wheel's race cut into its bank (`brush3d/docs/LAND.md`); the game
 and brush3d each fit the ground after an earthwork, about 10 ms twice (#210).
 
-Since, for #269 (epic #265): the map's edge is no longer a ruler-straight colour cut. The duller country fades in over
-about two tiles just outside the map, so the map's own tiles keep their full colour and the edge still reads at a
-glance (#228). The developer picks between `feathered` (the default) and `organic` (the fade's outer edge wanders) on the
-PR's preview; the switch goes before it merges. And the straight dark seam where the land met the distant country in
+Since, for #269 (epic #265, done 2026-11-21): the map's edge is no longer a ruler-straight colour cut. The duller
+country fades in over the first one to three tiles just outside the map, its outer edge wandering like a brush's (the
+developer's pick on PR #281, "organic", over an even fade), so the map's own tiles keep their full colour and the edge
+still reads at a glance (#228). And the straight dark seam where the land met the distant country in
 autumn and winter is gone: the distant country now starts from the land's own colour at its edge and fades to its woods'
 floor over three of its 16 m cells, and the land's outermost strip matches it all along the edge.
 
