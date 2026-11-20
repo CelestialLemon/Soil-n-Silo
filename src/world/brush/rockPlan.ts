@@ -85,7 +85,7 @@ export function rockFootprint(s: RockShape): RockFootprint {
 /**
  * The outcrops' style, the developer's pick on PR #278 (`bold`, over a calmer, mossier `soft`): crags about 1.4× as tall
  * (`heightScale`, on a base sized for a calm crag), sharp (`crag`), lightly mossed (`moss`), leaning up to `tilt`
- * radians, and every tile with its talus.
+ * radians, and talus at the foot of every lone or edge tile (not only some).
  */
 const STYLE = { heightScale: 1.42, crag: 0.8, moss: 0.4, tilt: 0.28 } as const;
 

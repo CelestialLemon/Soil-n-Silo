@@ -112,8 +112,8 @@ options behind a HUD button and a URL option on the PR's preview, and no rules c
   their tops (seasonal). brush3d's painting kit draws them (`addCrag`). The country's rocks near the map are drawn in
   8 × 8-tile pieces, so an earthwork at the map's edge remakes only the pieces it touches. Picking a crag finds its rock
   tile, and a tree's crown leaning over the rock still finds the tree. The developer picked the bold look on PR #278:
-  crags about 1.4× as tall as the calmer, mossier option, sharper, with talus on every tile; the other looks and their
-  switch are gone.
+  crags about 1.4× as tall as the calmer, mossier option, sharper, with talus at every lone or edge tile's foot; the other
+  looks and their switch are gone.
 
 ## One renderer: the swap to brush3d (2026-11-16)
 
