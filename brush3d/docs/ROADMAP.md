@@ -54,6 +54,10 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      the chunks round it, over frames, swapped at once. `landAt` and `landHit` answer from the same fit. Open: falls that
      read as waterfalls (Soil-n-Silo#241; a plain chute for now), grass tufts, the wheel's race, and one fit shared with the
      game's (Soil-n-Silo#210).
+     Since, Soil-n-Silo#269: `LandLook.border` fades the country's dullness in by place over about two tiles outside the
+     map (feathered, or organic with a wandering outer edge) rather than tile by tile, and the country beyond's mesh starts
+     from the land's colour where it meets it (it was the woods' floor's dark green against autumn's and winter's pale
+     grass: a straight dark seam), fading to its own over three of its cells. `tools/land.ts` checks both.
   9. Soil-n-Silo#213 the crops and trees (done 2026-11-16, Soil-n-Silo#225 and Soil-n-Silo#227): the game's five crops
      at their four stages as one soft blanket over each bed (`CropPatch`), and its tree species, with the pine a soft
      cone, the willow weeping and the poplar a column (`growSpecies`; oak, birch, apple and the bushes are `Grove.grow`'s).

@@ -8,10 +8,12 @@
 //    painted a step, all swapped in together at the last; only chunks near it are painted again; afterwards its dryness
 //    and paint are what a land built afresh has, its heights within a few centimetres (the fit again is local).
 // 3. The country beyond: it meets the land's edge, and is the grid's further out.
+// 4. The map's border (Soil-n-Silo#269): in every look the map's tiles keep their colour and the country further out is
+//    as dull; feathered and organic fade in between; the country beyond takes the land's colour where it meets it.
 // Exits with 1 if anything is off.
 import * as THREE from 'three';
 import { LAND_COVER, LAND_GROUND, type LandMap } from '../src/land/map.ts';
-import { PaintedLand, type LandAdder } from '../src/land/paint.ts';
+import { LAND_BORDERS, LAND_LOOK, PaintedLand, type LandAdder, type LandBorder } from '../src/land/paint.ts';
 import { Surface } from '../src/land/surface.ts';
 
 let failed = false;
@@ -255,7 +257,55 @@ const live = adder.live.size;
 land.dispose();
 check('taken away, every mesh out and freed', adder.live.size === 0 && adder.removed === live && adder.freed === live, `${adder.live.size} left, ${adder.freed} of ${live} freed`);
 
-// 4. Refused: corners that aren't whole levels.
+// 4. The map's border (#269).
+console.log('The map\'s border');
+/** Each top vertex's colour drawn by a land in a border look, by its place (the country beyond's apart). */
+function topColours(border: LandBorder) {
+  const a = new Adder(), l = new PaintedLand(a, makeLand(), { ...LAND_LOOK, border }), apron = (l as unknown as { apron: THREE.Mesh }).apron;
+  const land = new Map<string, number[]>(), beyond = new Map<string, number[]>();
+  for (const m of a.live) {
+    const g = m.geometry, pos = g.getAttribute('position'), nrm = g.getAttribute('normal'), col = g.getAttribute('color');
+    for (let i = 0; i < pos.count; i++) {
+      if (nrm.getY(i) < 0.5) continue;
+      (m === apron ? beyond : land).set(`${pos.getX(i).toFixed(3)},${pos.getZ(i).toFixed(3)}`, [col.getX(i), col.getY(i), col.getZ(i)]);
+    }
+  }
+  return { land, beyond };
+}
+const looks = Object.fromEntries(LAND_BORDERS.map((b) => [b, topColours(b)])) as Record<LandBorder, ReturnType<typeof topColours>>;
+/** How far (tiles) a place is out of the map (less than 0: in it), as its key has it. */
+const outOfMap = (key: string) => {
+  const [x, z] = key.split(',').map(Number), px = (x - X0) / TILE, py = (z - Z0) / TILE, m = map.map;
+  const ox = Math.max(m.x - px, px - (m.x + m.width)), oy = Math.max(m.y - py, py - (m.y + m.height));
+  return ox > 0 || oy > 0 ? Math.hypot(Math.max(0, ox), Math.max(0, oy)) : Math.max(ox, oy);
+};
+const diff = (p: number[], q: number[]) => Math.max(...p.map((v, k) => Math.abs(v - q[k])));
+const sameWhere = (a: LandBorder, b: LandBorder, where: (d: number) => boolean) => {
+  let worstDiff = 0, n = 0;
+  for (const [key, c] of looks[a].land) if (where(outOfMap(key))) { worstDiff = Math.max(worstDiff, diff(c, looks[b].land.get(key)!)); n++; }
+  return { worstDiff, n };
+};
+// The paint blends each tile with the next over about a tile (colourAt), so "in" is a tile and a half from the edge.
+for (const b of ['feathered', 'organic'] as const) {
+  const inside = sameWhere('off', b, (d) => d < -1.5), outside = sameWhere('off', b, (d) => d > 4.5);
+  check(`${b}: the map's tiles as off has them`, inside.n > 100 && inside.worstDiff < 1e-6, `${inside.worstDiff} off, over ${inside.n}`);
+  check(`${b}: the country past the fade as dull as off has it`, outside.n > 100 && outside.worstDiff < 1e-6, `${outside.worstDiff} off, over ${outside.n}`);
+}
+/** How bright a look's tops are, on average, at d (tiles) out of the map. */
+const brightness = (b: LandBorder, from: number, to: number) => {
+  let s = 0, n = 0;
+  for (const [key, c] of looks[b].land) { const d = outOfMap(key); if (d >= from && d < to) { s += c[0] + c[1] + c[2]; n++; } }
+  return s / n;
+};
+const [inMap, firstTile, pastFade] = [brightness('feathered', -3, -1.5), brightness('feathered', 0.75, 1.25), brightness('feathered', 3, 5)];
+check('feathered: a tile out, between the map\'s brightness and the country\'s', firstTile < inMap && firstTile > pastFade, `${inMap.toFixed(3)}, ${firstTile.toFixed(3)}, ${pastFade.toFixed(3)}`);
+for (const b of LAND_BORDERS) {
+  let worstEdge = 0, n = 0;
+  for (const [key, c] of looks[b].beyond) { const own = looks[b].land.get(key); if (own) { worstEdge = Math.max(worstEdge, diff(c, own)); n++; } }
+  check(`${b}: the country beyond takes the land's colour where they meet`, n > 20 && worstEdge < 1e-6, `${worstEdge} off, over ${n} points`);
+}
+
+// 5. Refused: corners that aren't whole levels.
 let threw = false;
 try { new PaintedLand(new Adder(), { ...makeLand(), corners: new Float32Array(W * H * 4).fill(0.5) }); } catch { threw = true; }
 check('corners that aren\'t whole levels are refused', threw);

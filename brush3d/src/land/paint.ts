@@ -55,18 +55,41 @@ export const STEP_BUDGET = 3;
 /** The four sides as tile steps (north, east, south, west), as the game's relief.ts has them. */
 const SIDES = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const;
 
-/** The land's look: the knobs the developer picked between on #202's previews (Soil-n-Silo#228). */
+/**
+ * How the map's edge meets the duller country round it (Soil-n-Silo#269). In each the map's own tiles keep their full
+ * colour, so where the player can build still reads at a glance (#228); only the country just outside changes:
+ * - off: the country dull from the first tile out, blended over about a tile, so the edge reads as a straight cut;
+ * - feathered: the dullness fades in over about two tiles outside the map (FEATHER), an even, soft edge;
+ * - organic: the same fade, its outer edge wandering in and out along the map's side like a brush's (ORGANIC).
+ */
+export type LandBorder = 'off' | 'feathered' | 'organic';
+export const LAND_BORDERS: readonly LandBorder[] = ['off', 'feathered', 'organic'];
+
+/** The land's look: the knobs the developer picked between on #202's previews (Soil-n-Silo#228), and #269's border. */
 export interface LandLook {
   /** How strongly each ground kind tints the paint: 0 not at all, 1 as GROUND_TINT has it. */
   groundTint: number;
   /** The country round the map: its colours' lightness and colourfulness (1, as the map's). */
   beyond: { light: number; chroma: number };
+  /** How the map's edge meets the country (LandBorder). */
+  border: LandBorder;
 }
 /**
  * The land's look as the developer picked it (Soil-n-Silo#228): the ground kinds subtle, as GROUND_TINT has them; the country
  * round the map clearly duller, so where the player can build reads at a glance. (The cliffs' strata were picked too.)
  */
-export const LAND_LOOK: LandLook = { groundTint: 1, beyond: { light: 0.78, chroma: 0.55 } };
+export const LAND_LOOK: LandLook = { groundTint: 1, beyond: { light: 0.78, chroma: 0.55 }, border: 'feathered' };
+/**
+ * Where the country's dullness fades in (tiles out from the map's edge, less than 0 inside it), feathered: from nothing a
+ * quarter of a tile in (the map's tiles keep their colour, but for the faintest shade at their very edge) to the
+ * country's full dullness 1.75 tiles out.
+ */
+const FEATHER = [-0.25, 1.75] as const;
+/**
+ * Organic: the fade starts as the feathered one's, and reaches full dullness between `near` and `far` tiles out, wandering
+ * between them over about `wave` tiles along the edge, with a finer ragging (`rag` tiles, every few tiles) on top.
+ */
+const ORGANIC = { near: 0.8, far: 3, wave: 6, rag: 0.35 };
 
 const srgb = (hex: number) => new THREE.Color(hex);
 /** The land's colours (sRGB; the season turns the greens, seasonLook.ts). */
@@ -560,8 +583,9 @@ export class PaintedLand {
       default: c.copy(COL.lush).lerp(COL.dry, this.dry[t]);
     }
     if (cover !== LAND_COVER.water) this.tint(c, this.ground[t]);
+    // (Feathered or organic, the country's dullness is laid on by place, as each point is painted: dullness.)
     const x = t % this.width, y = (t - x) / this.width;
-    if (!this.onMap(x, y)) this.dull(c);
+    if (this.look.border === 'off' && !this.onMap(x, y)) this.dull(c);
     out[o] = c.r; out[o + 1] = c.g; out[o + 2] = c.b; out[o + 3] = (PAINT[cover] ?? PAINT[0]).meadow;
   }
 
@@ -577,6 +601,31 @@ export class PaintedLand {
   private dull(c: THREE.Color) {
     const { light, chroma } = this.look.beyond, y = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
     c.setRGB((y + (c.r - y) * chroma) * light, (y + (c.g - y) * chroma) * light, (y + (c.b - y) * chroma) * light);
+  }
+
+  /** `c` taken `k` of the way (0 to 1) to the country's dullness. */
+  private dullBy(c: THREE.Color, k: number) {
+    if (k <= 0) return;
+    if (k >= 1) { this.dull(c); return; }
+    const d = SCRATCH.dulled.copy(c);
+    this.dull(d);
+    c.lerp(d, k);
+  }
+
+  /**
+   * How much of the country's dullness a point (tiles) takes, feathered or organic: 0 on the map, 1 out in the country,
+   * fading in over the first tiles out (FEATHER, ORGANIC). Round the map's corners it fades by the distance to the corner.
+   */
+  private dullness(px: number, py: number): number {
+    const m = this.map, ox = Math.max(m.x - px, px - (m.x + m.width)), oy = Math.max(m.y - py, py - (m.y + m.height));
+    // How far out of the map (tiles); less than 0, how far in from its nearest side.
+    const d = ox > 0 || oy > 0 ? Math.hypot(Math.max(0, ox), Math.max(0, oy)) : Math.max(ox, oy);
+    if (d <= FEATHER[0]) return 0;
+    if (this.look.border !== 'organic') return smooth(FEATHER[0], FEATHER[1], d);
+    const { near, far, wave, rag } = ORGANIC;
+    const swell = Math.min(1, Math.max(0, noise2(px / wave + 11.3, py / wave - 4.7) * 0.5 + 0.5));
+    const reach = near + (far - near) * swell + rag * noise2(px * 0.45 - 3.1, py * 0.45 + 5.9);
+    return smooth(FEATHER[0], reach, d);
   }
 
   private onMap(x: number, y: number) { const m = this.map; return x >= m.x && y >= m.y && x < m.x + m.width && y < m.y + m.height; }
@@ -664,13 +713,23 @@ export class PaintedLand {
   /** The height (m) of the vertex `vertex` added last. */
   private vy = 0;
 
+  /**
+   * The colour of the land's top at a point (tiles), into `c`, before its slope wears it or the water's bed darkens it:
+   * the tiles' paint there, as dull as the country is there, with the meadow's drift.
+   */
+  private topColour(px: number, py: number, c: THREE.Color) {
+    const meadow = this.colourAt(px, py, c);
+    if (this.look.border !== 'off') this.dullBy(c, this.dullness(px, py));
+    // The meadow's drift: rises lime, hollows emerald, in broad soft patches.
+    const k = noise2((this.x0 + px * this.tile) * 0.02 + 7, (this.z0 + py * this.tile) * 0.02 - 3) * 0.5 + 0.5;
+    c.lerp(COL.lime, smooth(0.55, 0.9, k) * 0.35 * meadow).lerp(COL.emerald, smooth(0.6, 0.95, 1 - k) * 0.35 * meadow);
+  }
+
   /** A vertex of a tile's top at (u, v) across it. */
   private vertex(b: MeshBuilder, tx: number, ty: number, u: number, v: number): number {
     const px = tx + u, py = ty + v, y = this.vy = this.drawn(tx, ty, u, v), n = this.normal(tx, ty, u, v, SCRATCH.n), c = SCRATCH.c;
-    const meadow = this.colourAt(px, py, c), cover = this.cover[ty * this.width + tx], wx = this.x0 + px * this.tile, wz = this.z0 + py * this.tile;
-    // The meadow's drift: rises lime, hollows emerald, in broad soft patches.
-    const k = noise2(wx * 0.02 + 7, wz * 0.02 - 3) * 0.5 + 0.5;
-    c.lerp(COL.lime, smooth(0.55, 0.9, k) * 0.35 * meadow).lerp(COL.emerald, smooth(0.6, 0.95, 1 - k) * 0.35 * meadow);
+    this.topColour(px, py, c);
+    const cover = this.cover[ty * this.width + tx], wx = this.x0 + px * this.tile, wz = this.z0 + py * this.tile;
     // A steep bank wears to bare turf.
     const steep = smooth(0.35, 0.9, Math.hypot(n.x, n.z) / Math.max(1e-3, n.y));
     if (cover !== LAND_COVER.water) c.lerp(COL.worn, steep * 0.5);
@@ -731,10 +790,12 @@ export class PaintedLand {
   private face(b: MeshBuilder, x: number, y: number, side: number, next: [number, number] | null) {
     const own = this.sideLine(x, y, side), low = next ? this.sideLine(next[0], next[1], (side + 2) % 4) : (s: number) => own(s) - SKIRT;
     const steps = next ? Math.max(this.steps(x, y, side), this.steps(next[0], next[1], (side + 2) % 4)) : this.steps(x, y, side);
-    const [a, c] = SIDE_ENDS[side], out = SCRATCH.out.set(SIDES[side][0], 0, SIDES[side][1]), onMap = this.onMap(x, y);
+    const [a, c] = SIDE_ENDS[side], out = SCRATCH.out.set(SIDES[side][0], 0, SIDES[side][1]);
     const wx = (u: number) => this.x0 + (x + u) * this.tile, wz = (v: number) => this.z0 + (y + v) * this.tile;
+    // As dull as the country is at the side's middle (off: the tile's, whole).
+    const dull = this.look.border === 'off' ? (this.onMap(x, y) ? 0 : 1) : this.dullness(x + (a[0] + c[0]) / 2, y + (a[1] + c[1]) / 2);
     const lipColour = SCRATCH.lip.copy(COL.lip), floor = SCRATCH.floor.copy(COL.floor);
-    if (!onMap) { this.dull(lipColour); this.dull(floor); }
+    this.dullBy(lipColour, dull); this.dullBy(floor, dull);
     for (let k = 0; k < steps; k++) {
       const s0 = k / steps, s1 = (k + 1) / steps, top: Line = [own(s0), own(s1)], bottom: Line = [low(s0), low(s1)];
       if (top[0] <= bottom[0] + 1e-6 && top[1] <= bottom[1] + 1e-6) continue;
@@ -746,7 +807,7 @@ export class PaintedLand {
       const L = this.level, from = Math.floor(Math.min(...bottom) / L / STRATUM), to = Math.ceil(Math.max(...under) / L / STRATUM);
       for (let n = from; n < to; n++) {
         const lo = n * STRATUM * L, hi = (n + 1) * STRATUM * L, shade = SCRATCH.band.copy((n * STRATUM >= STONE_FROM ? STONE : EARTH)[n & 1]);
-        if (!onMap) this.dull(shade);
+        this.dullBy(shade, dull);
         band(b, p0, p1, [bottom, [lo, lo]], [under, [hi, hi]], shade, out, FACE_PAINT);
       }
     }
@@ -775,13 +836,22 @@ export class PaintedLand {
     const lx0 = this.x0, lx1 = this.x0 + this.width * this.tile, lz0 = this.z0, lz1 = this.z0 + this.height * this.tile;
     const lines = (from: number, n: number, edges: number[]) => [...new Set([...Array.from({ length: n }, (_, k) => from + k * bd.cell), ...edges])].sort((p, q) => p - q);
     const xs = lines(bd.x0, bd.nx, [lx0, lx1]), zs = lines(bd.z0, bd.nz, [lz0, lz1]), b = new MeshBuilder('paint'), nx = xs.length;
-    const c = SCRATCH.c, n = SCRATCH.n, e = 1;
+    const c = SCRATCH.c, n = SCRATCH.n, e = 1, reach = APRON_BLEND * bd.cell;
     for (const z of zs) for (const x of xs) {
       const y = this.heightAt(x, z);
       n.set(this.heightAt(x - e, z) - this.heightAt(x + e, z), 2 * e, this.heightAt(x, z - e) - this.heightAt(x, z + e)).normalize();
       const k = noise2(x * 0.015 + 2, z * 0.015 + 8) * 0.5 + 0.5;
       c.copy(COL.floor).lerp(COL.emerald, k * 0.3);
       this.dull(c);
+      // Where it meets the land, the land's own colour at its edge, fading to the distant floor's over APRON_BLEND cells,
+      // so no straight seam shows where the two meshes meet (Soil-n-Silo#269: the land's edge is the country's grass,
+      // which autumn and winter turn pale, against the floor's dark green).
+      const ex = Math.min(lx1, Math.max(lx0, x)), ez = Math.min(lz1, Math.max(lz0, z)), away = Math.hypot(x - ex, z - ez);
+      if (away < reach) {
+        const edge = SCRATCH.edge;
+        this.topColour((ex - this.x0) / this.tile, (ez - this.z0) / this.tile, edge);
+        c.lerp(edge, 1 - smooth(0, reach, away));
+      }
       b.vertex({ x, y, z }, n, c, [0.3, 1.5, 0.7, 0]);
     }
     for (let j = 0; j + 1 < zs.length; j++) for (let i = 0; i + 1 < nx; i++) {
@@ -807,6 +877,8 @@ interface Taken { tiles: number[]; values: Uint8Array }
 const grown = (w: Window | null, x: number, y: number): Window => w
   ? { x0: Math.min(w.x0, x), y0: Math.min(w.y0, y), x1: Math.max(w.x1, x + 1), y1: Math.max(w.y1, y + 1) }
   : { x0: x, y0: y, x1: x + 1, y1: y + 1 };
+/** Over how many of its cells the country beyond fades from the land's colour at its edge to its own (apronMesh). */
+const APRON_BLEND = 3;
 /** How far (tiles) the dryness is blurred, each way. */
 const DRY_BLUR = 3;
 /** Where along a tile's side a point s (0 to 1, in the order sideOf lists its ends) lies across the tile. */
@@ -815,6 +887,7 @@ const SIDE_AT: ((s: number) => [number, number])[] = [(s) => [s, 0], (s) => [1, 
 const SIDE_ENDS: [[number, number], [number, number]][] = [[[0, 0], [1, 0]], [[1, 0], [1, 1]], [[0, 1], [1, 1]], [[0, 0], [0, 1]]];
 const SCRATCH = {
   a: new THREE.Color(), c: new THREE.Color(), lip: new THREE.Color(), floor: new THREE.Color(), band: new THREE.Color(),
+  dulled: new THREE.Color(), edge: new THREE.Color(),
   n: new THREE.Vector3(), out: new THREE.Vector3(),
 };
 const ab = new THREE.Vector3(), ac = new THREE.Vector3(), cross = new THREE.Vector3();
