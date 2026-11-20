@@ -1,29 +1,40 @@
 import * as THREE from 'three';
 import {
-  addFlower, addTuft, groundOf, MeshBuilder, noise2, rng, smooth, srgb, wheelRace,
-  type BrushRenderer, type Ground, type LandArea,
+  addFlower, addReeds, addTuft, groundOf, MeshBuilder, noise2, rng, smooth, srgb, wheelRace,
+  type BrushRenderer, type Ground, type LandArea, type ReedOptions,
 } from '../../../brush3d/src/index.ts';
 import type { Land } from '../../game/map.ts';
 import { layoutOf, type GameState } from '../../game/state.ts';
 import type { Lie } from '../ground.ts';
 import {
-  boxesIn, FLOWER_PROFILE, FLOWER_SEASONS, flowersBloom, fringeFade, GRASS_FRINGE, GRASS_PROFILE, grassBlocks, grassLayout,
-  inBuilding, layoutChanges, tileHabitat, tileSeed, wetDistance,
-  type FlowerSeason, type FootprintBox, type GrassBlockRect, type GrassLayout, type TileHabitat,
+  blockOf, boxesIn, FLOWER_PROFILE, FLOWER_SEASONS, flowersBloom, fringeFade, GRASS_FRINGE, GRASS_PROFILE, grassBlocks, grassLayout,
+  inBuilding, layoutChanges, MAX_REED_REACH, REED_PROFILE, REED_SEASONS, REED_TOP, reedBand, reedShore, reedSpot,
+  tileHabitat, tileSeed, wetDistance,
+  type FlowerSeason, type FootprintBox, type GrassBlockRect, type GrassLayout, type ReedSeason, type TileHabitat,
 } from './grassMask.ts';
 import { TILE } from './scale.ts';
 
 // The meadow across the valley floor: grass tufts (#256), painted blades swaying in the living wind, coloured from the
 // land's own painted ground (`r.landColourAt`) so they blend into the ground paint and turn with the season (and shorten
 // in winter so light snow lets frosted tips show while deep snow buries them cleanly); and wildflowers among them (#266),
-// in soft drifts of the season's colours, gathered at the woods' skirts and the hills' edges, none in winter.
+// in soft drifts of the season's colours, gathered at the woods' skirts and the hills' edges, none in winter; and reeds
+// along the water's edge (#267), in beds with open bank between, thicker by still water, green in spring and summer,
+// golden straw in autumn and dry, frost-tipped stalks in winter.
 //
-// - Both grow where the grass may (grassMask.ts's tileHabitat, footprints, slopes), each from its own random numbers, so
-//   the grass is the same with the flowers or without. A flood (flood.ts) takes none away: both stay rooted on the ground
-//   under it, and brush3d's water hides what's below its surface, so the taller poke out of the shallows and deep water
-//   covers them (the developer, on #266).
-// - Built in 4 × 4-tile blocks across the playable map and its country fringe, each a mesh for the grass and one for the
-//   flowers. What changes in play
+// - The reeds line the water's edge as drawn: where the land brush3d draws (`r.landAt`, its bed square or curving) meets
+//   the water's surface (grassMask.ts's reedShore and reedBand), from a little up the bank to a little into the shallows
+//   (each clump's middle: its stalks spread a little either way).
+//   None by a fall, on a cliff or a steep tile, in a footprint or a wheel's race, or near a rock's crags. Rooted in the
+//   ground, they stand in the winter's ice rather than float on it.
+// - The grass and flowers grow where the grass may (grassMask.ts's tileHabitat, footprints, slopes), each from its own
+//   random numbers, so the grass is the same with the flowers or without.
+// - A flood (flood.ts) takes no plant away: grass, flowers and reeds all stay rooted on the ground under it, and brush3d's
+//   water hides what's below its surface, so the taller poke out of the shallows and deep water covers them (the
+//   developer, on #266 and #267). At its height an ordinary flood stands over a metre deep at the river's edge, so the
+//   river's reeds go mostly under it (the tallest tips show in places, and more while it rises or drains); a severe one
+//   covers them all.
+// - Built in 4 × 4-tile blocks across the playable map and its country fringe, each a mesh for the grass, one for the
+//   flowers and one for the reeds. What changes in play
 //   (a building or field placed or taken away, a tree or rock cleared, an earthwork) makes again only the blocks it
 //   touches, found by comparing the layout's terrain and buildings with the last (grassMask.ts's layoutChanges), and
 //   made again a few a frame within `REBUILD_BUDGET` (#204), so a long build drag never hitches.
@@ -53,6 +64,10 @@ const PATCH = 7;
 const WANDER = 2.5;
 /** The share of clumps in a colour of their own, not their patch's: a few strays among a drift. */
 const STRAYS = 0.1;
+/** Mixed into a tile's seed for its reeds' random numbers, apart from its grass's and flowers'. */
+const REED_SALT = 0x2ee0267;
+/** How much thicker the reed beds are by still water (a pond or a lake) than by the running river. */
+const STILL_LIFT = 0.12;
 
 export class Meadow {
   private readonly r: BrushRenderer;
@@ -65,7 +80,7 @@ export class Meadow {
   private readonly reach: number;
   private readonly grid: GrassBlockRect[];
   private readonly blockById = new Map<number, GrassBlockRect>();
-  /** Each block's grass and flowers (none: none in it), and the land's height under it as it was made (`heightsUnder`). */
+  /** Each block's grass, flowers and reeds (none: none in it), and the land's height under it as it was made (`heightsUnder`). */
   private readonly blocks = new Map<number, Block>();
   /** Blocks to make again: hidden until they are (and made first), and the rest. */
   private readonly urgent = new Set<number>();
@@ -74,6 +89,10 @@ export class Meadow {
   private readonly season: FlowerSeason;
   private readonly palette: THREE.Color[];
   private readonly flowering: boolean;
+  /** The reeds' season, its colours as three.js wants them. */
+  private readonly reedSeason: ReedSeason;
+  private readonly reedPalette: THREE.Color[];
+  private readonly reedTip: THREE.Color;
   /** The game's layout as the meadow last followed it. */
   private layout = -1;
   private seen: GrassLayout;
@@ -84,6 +103,9 @@ export class Meadow {
     this.season = FLOWER_SEASONS[s.scenario.climate.season];
     this.flowering = flowersBloom(s.scenario.climate.season);
     this.palette = this.season.palette.map((c) => srgb(c.hex));
+    this.reedSeason = REED_SEASONS[s.scenario.climate.season];
+    this.reedPalette = this.reedSeason.palette.map((c) => srgb(c.hex));
+    this.reedTip = srgb(this.reedSeason.tip);
     this.reach = Math.min(GRASS_FRINGE, land.margin);
     this.ground = groundOf((x, z) => r.landAt(x, z));
     this.wetDist = wetDistance(land);
@@ -92,6 +114,22 @@ export class Meadow {
     this.seen = grassLayout(s);
     this.rebuildAll(s);
     r.onLandChange((area) => this.landChanged(area));
+  }
+
+  /**
+   * How high (m) its reeds stand at most at (x, z) m, as shown: their top (REED_TOP) where a clump on show stands within
+   * its reach (MAX_REED_REACH) of the point, else 0. For telling them from a tree in a pick (tools.ts).
+   */
+  reedTopAt(x: number, z: number): number {
+    const R = MAX_REED_REACH, ids = new Set<number>();
+    for (const wx of [x - R, x + R]) for (const wz of [z - R, z + R]) ids.add(blockOf(Math.floor(wx / TILE), Math.floor(wz / TILE)));
+    for (const id of ids) {
+      // (Only a block's reeds on show: none while it's hidden, waiting to be made again.)
+      const b = this.blocks.get(id), c = b?.clumps;
+      if (!c || !b.reeds?.visible) continue;
+      for (let i = 0; i < c.length; i += 2) if ((c[i] - x) ** 2 + (c[i + 1] - z) ** 2 < R * R) return REED_TOP;
+    }
+    return 0;
   }
 
   /**
@@ -147,7 +185,7 @@ export class Meadow {
     this.dirty.delete(id);
     this.urgent.add(id);
     const b = this.blocks.get(id);
-    for (const m of [b?.grass, b?.flowers]) if (m) m.visible = false;
+    for (const m of [b?.grass, b?.flowers, b?.reeds]) if (m) m.visible = false;
   }
 
   // ---- Meadow colour & lushness ----
@@ -207,6 +245,31 @@ export class Meadow {
       if (at < 0) return this.palette[i];
     }
     return this.palette[this.palette.length - 1];
+  }
+
+  // ---- The reeds' beds and colours ----
+
+  /**
+   * Where the reed beds are (0..1) along a shore at world metres (wx, wz): broad stretches with a finer break-up, so a bed
+   * has a ragged end and open bank between; raised by still water (`lift`).
+   */
+  private bedsAt(wx: number, wz: number, lift: number): number {
+    const p = REED_PROFILE;
+    const s = (this.seed % 977) * 0.19 + 57;
+    const broad = noise2(wx * 0.08 + s, wz * 0.08 - s * 0.5) * 0.5 + 0.5;
+    const fine = noise2(wx * 0.31 - s * 0.3, wz * 0.31 + s) * 0.5 + 0.5;
+    return smooth(p.beds[0], p.beds[1], broad * 0.7 + fine * 0.3 + lift);
+  }
+
+  /** The reeds' palette's colour at `t` (0..1) along its weights. */
+  private reedColour(t: number): THREE.Color {
+    const colours = this.reedSeason.palette, total = colours.reduce((a, c) => a + c.weight, 0);
+    let at = t * total;
+    for (let i = 0; i < colours.length; i++) {
+      at -= colours[i].weight;
+      if (at < 0) return this.reedPalette[i];
+    }
+    return this.reedPalette[this.reedPalette.length - 1];
   }
 
   // ---- Per-tile scattering ----
@@ -302,6 +365,43 @@ export class Meadow {
     }
   }
 
+  /**
+   * A tile's reeds, if it's a shore (grassMask.ts's reedShore): candidate spots taken by how near the water's edge as drawn
+   * they are (reedBand, from the land's height there against the water's surface) and by the beds field, each a clump of
+   * one colour with a few more beside it in the bed, each one's spot added to `clumps` (x, z m). Thinned in the country
+   * fringe.
+   */
+  private scatterReeds(
+    mb: MeshBuilder, clumps: number[], s: GameState, tx: number, ty: number, onMap: boolean, boxes: readonly FootprintBox[], fade: number,
+  ) {
+    const shore = reedShore(s, this.land, this.lie.relief, tx, ty, onMap);
+    if (!shore) return;
+    const profile = REED_PROFILE, season = this.reedSeason;
+    const rand = rng(tileSeed(this.seed ^ REED_SALT, tx, ty));
+    const x0 = tx * TILE, z0 = ty * TILE, lift = shore.still ? STILL_LIFT : 0;
+    const options: ReedOptions = {
+      ...profile.reed, tall: [profile.reed.tall[0] * season.tall, profile.reed.tall[1] * season.tall],
+      tip: this.reedTip, tipMix: season.tipMix, heads: profile.heads * season.heads,
+    };
+    const band = (wx: number, wz: number) => reedBand(shore.surface - this.r.landAt(wx, wz));
+    const canPlace = (wx: number, wz: number) => reedSpot(shore, tx, ty, wx, wz, boxes, wheelRace, () => this.ground.normal(wx, wz).y);
+    for (let a = 0; a < profile.attempts; a++) {
+      const wx = x0 + shore.minU + rand() * (shore.maxU - shore.minU), wz = z0 + shore.minV + rand() * (shore.maxV - shore.minV);
+      const prob = band(wx, wz) * this.bedsAt(wx, wz, lift) * season.density * fade;
+      if (rand() >= prob || !canPlace(wx, wz)) continue;
+      options.colour = this.reedColour(rand());
+      addReeds(mb, this.ground, wx, wz, rand, options);
+      clumps.push(wx, wz);
+      // A few more round it in the bed, where the water's edge lets them.
+      const more = profile.companions[0] + Math.floor(rand() * profile.companions[1]);
+      for (let k = 0; k < more; k++) {
+        const ang = rand() * Math.PI * 2, dist = 0.35 + rand() * 0.5;
+        const cx = wx + Math.cos(ang) * dist, cz = wz + Math.sin(ang) * dist;
+        if (rand() < band(cx, cz) && canPlace(cx, cz)) { addReeds(mb, this.ground, cx, cz, rand, options); clumps.push(cx, cz); }
+      }
+    }
+  }
+
   // ---- Block building & budgeted draining ----
 
   private rebuildAll(s: GameState) {
@@ -327,25 +427,33 @@ export class Meadow {
     }
   }
 
-  /** Makes a block again, its grass and flowers (and notes the land under it as it was made). */
+  /** Makes a block again, its grass, flowers and reeds (and notes the land under it as it was made). */
   private rebuildBlock(s: GameState, rect: GrassBlockRect) {
     const was = this.blocks.get(rect.id);
     this.drop(was?.grass);
     this.drop(was?.flowers);
+    this.drop(was?.reeds);
     const block: Block = { heights: this.heightsUnder(rect) };
     const { width: w, height: h } = s.map;
     const boxes = boxesIn(s, rect.x0, rect.y0, rect.x1, rect.y1);
     const grass = new MeshBuilder('grass');
     const flowers = this.flowering ? new MeshBuilder('foliage') : null;
+    const reeds = new MeshBuilder('grass'), clumps: number[] = [];
     for (let y = rect.y0; y < rect.y1; y++) for (let x = rect.x0; x < rect.x1; x++) {
       const fade = fringeFade(x, y, w, h, this.reach);
       if (fade <= 0) continue;
       const onMap = x >= 0 && y >= 0 && x < w && y < h;
       this.scatterTile(grass, flowers, s, x, y, onMap, boxes, fade);
+      this.scatterReeds(reeds, clumps, s, x, y, onMap, boxes, fade);
     }
     // Culled whole (not cut into tiles: a block is small, and made again often). The flowers keep no rain off (cover).
     if (grass.vertexCount) block.grass = this.r.add(grass.build(), 'grass', { cull: true, castShadow: false, reflect: false });
     if (flowers?.vertexCount) block.flowers = this.r.add(flowers.build(), 'foliage', { cull: true, castShadow: false, reflect: false, cover: 'none' });
+    // The reeds stand in the water, so they show in it.
+    if (reeds.vertexCount) {
+      block.reeds = this.r.add(reeds.build(), 'grass', { cull: true, castShadow: false });
+      block.clumps = Float32Array.from(clumps);
+    }
     this.blocks.set(rect.id, block);
   }
 
@@ -356,5 +464,5 @@ export class Meadow {
   }
 }
 
-/** A block's grass and flowers, as made, and the land's height under it then. */
-interface Block { grass?: THREE.Mesh; flowers?: THREE.Mesh; heights: Float32Array }
+/** A block's grass, flowers and reeds, as made, where its reeds' clumps stand (x, z m), and the land's height under it then. */
+interface Block { grass?: THREE.Mesh; flowers?: THREE.Mesh; reeds?: THREE.Mesh; clumps?: Float32Array; heights: Float32Array }

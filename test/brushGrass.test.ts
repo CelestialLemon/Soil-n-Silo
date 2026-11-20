@@ -10,6 +10,7 @@ import { scenarioById } from '../src/game/scenarios.ts';
 import { newGame, sizeOf, type Building, type Dir } from '../src/game/state.ts';
 import { COUNTRY, landRelief, Lie } from '../src/world/ground.ts';
 import { YAW } from '../src/world/brush/catalog.ts';
+import { wheelRace } from './wheelRace.ts';
 import {
   blockOf, boxesIn, BUILDING_MARGIN, CLIFF_MARGIN, FIELD_MARGIN, fringeFade, GRASS_BLOCK, GRASS_FRINGE, GRASS_PROFILE,
   GRASS_TOP, grassAt, grassBlocks, grassLayout, inBuilding, layoutChanges, MAX_BLADE_REACH, ROCK_MARGIN,
@@ -20,15 +21,6 @@ import { TILE } from '../src/world/brush/scale.ts';
 // Pure placement, masking, seasonal sizing, block-change and picking rules for meadow grass tufts
 // (src/world/brush/grassMask.ts, #256). How far a tuft's blades reach is brush3d's promise (`TUFT_REACH`, from shared.ts),
 // which brush3d/test/tuft.test.ts holds its blades to; here the masks are held to it, with no three.js.
-
-/** Exact `wheelRace` geometry from brush3d/src/models/catalog.ts (without Vite's `import.meta.glob`). */
-function wheelRace(lx: number, lz: number, margin = 0.5) {
-  const ease = (a: number, b: number, v: number) => {
-    const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
-    return t * t * (3 - 2 * t);
-  };
-  return (1 - ease(1, 1 + margin, Math.abs(lx))) * ease(1.7 - margin, 1.7, lz) * (1 - ease(8, 8 + margin, lz));
-}
 
 test('non-grass tiles, off-map tracks, and steep banks are excluded from grass tufts', () => {
   const sc = must(scenarioById('c7'), 'c7');
