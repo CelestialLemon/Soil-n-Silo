@@ -29,7 +29,7 @@ export type { DustSource } from './renderer/dust';
 
 // ---- The land (docs/LAND.md) ----
 export { LAND_COVER, LAND_GROUND, type Beyond, type LandCover, type LandGround, type LandMap, type LandPatch, type LandRect } from './land/map';
-export { LAND_LOOK, type LandLook } from './land/paint';
+export { LAND_LOOK, type LandArea, type LandLook } from './land/paint';
 export type { FlashSetting, Flicker, Strike } from './renderer/lightning';
 
 // ---- The wind (docs/WIND.md) and the clouds: the simulation and recipe the rules share, and the renderer's view ----
@@ -44,8 +44,8 @@ export { blocksWind, GROUPS, MODELS, TILE, TOUR, wheelRace, type ModelInfo, type
 // ---- The painting kit: the level below the game's API, which the demo's scenes are built with (docs/API.md) ----
 export { MeshBuilder, noise2, PLAIN, rng, srgb, type Paint } from './kit/builder';
 export {
-  addDab, addFlowers, addMound, addReeds, addStone, addTuft, C, groundOf, growTree, MapLine, smooth, treeWind,
-  type Ground, type Near, type Stream, type Tree, type TreeForm, type TreeKind,
+  addDab, addFlower, addFlowers, addMound, addReeds, addStone, addTuft, C, groundOf, growTree, MapLine, smooth, treeWind,
+  type Ground, type Near, type Stream, type Tree, type TreeForm, type TreeKind, type FlowerOptions, type TuftOptions,
 } from './kit/kit';
 export { dressFor, Grove, type Dress } from './kit/seasonTrees';
 export {

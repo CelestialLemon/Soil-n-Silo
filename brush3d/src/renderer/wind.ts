@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { half } from './dust';
-import type { WindSnapshot } from '../wind/sim';
+import { half } from './dust.ts';
+import type { WindSnapshot } from '../wind/sim.ts';
 
 // Wind: the game owns it (src/wind, #36) and hands the renderer each tick's snapshot of the living wind over the world; the
 // renderer draws exactly that, never easing or altering it. Every material reads the same map: grass and wheat the ground

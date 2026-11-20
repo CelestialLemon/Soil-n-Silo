@@ -16,6 +16,7 @@ import {
   type CursorPatch, type NetLabel, type Overlay, type PowerFocus, type StopLabel,
 } from '../legend.ts';
 import { YAW } from './catalog.ts';
+import { grassAt } from './grassMask.ts';
 import { LEVEL, RISE, TILE } from './scale.ts';
 import { thingHeight, type Things } from './things.ts';
 
@@ -369,9 +370,11 @@ class BrushPicker implements Picker {
     const seen = this.seen;
     if (!seen) return { tile: ground, building: null };
     const hit = seen.hit, still = seen.px === this.pixel(at) && this.cameraNow(scratch).equals(seen.camera);
-    // What the pick met, as a tile of the map: a tree's own (it leans over the next), else the one it met.
-    const met = hit ? (hit.what === 'plant' ? treeTile(s, hit.point) : null) ?? tileOf(s, hit.point) : null;
-    const tree = hit?.what === 'plant' ? treeTile(s, hit.point) : null;
+    // What the pick met, as a tile of the map: a tree's own (it leans over the next), else the one it met. A plant low
+    // over open grass is the meadow's grass or flowers (grass.ts), not the tree or rock beside it.
+    const p = hit?.point ?? null;
+    const tree = p && hit?.what === 'plant' && !grassAt(s, p.x, p.z, p.y - this.r.landAt(p.x, p.z)) ? treeTile(s, p) : null;
+    const met = p ? tree ?? tileOf(s, p) : null;
     const tile = still && tree ? tree : ground;
     // A building's or truck's own mesh, if it still stands for it; else the building on the tile the pick met.
     let building: number | null = null;

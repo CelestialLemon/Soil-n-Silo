@@ -167,8 +167,14 @@ so the land never shows half a change. The river and the ponds' shores curve ove
 bank and a shingle at the waterline, while a water wheel's pad and a fall keep their square edges and the rules don't
 change (done 2026-11-21: the developer picked the organic look, which wanders a little, on PR #283). Still open: the river's falls are a
 plain chute for now and don't read as a waterfall (#241); the per-tile frost and ground paint still step a little way up
-a curving bank; grass tufts on the land, and the water wheel's race cut into its bank (`brush3d/docs/LAND.md`); the game
-and brush3d each fit the ground after an earthwork, about 10 ms twice (#210).
+a curving bank; the water wheel's race cut into its bank (`brush3d/docs/LAND.md`); the game and brush3d each fit the
+ground after an earthwork, about 10 ms twice (#210). Meadow grass tufts across the open grass, swaying in the living wind
+(#256, epic #265's Wave 1, done 2026-11-21): dense, taller tussocks, the developer's pick of three densities (lush). Wildflowers among them in soft
+drifts, gathered at the woods' skirts and the hills' edges, in the season's colours (spring's white, yellow, peach and sky
+blue in full drifts, summer's vibrant ones as sparse as autumn's over its drier grass, autumn's warm specks, none in
+winter), built in the grass's blocks (#266, epic #265's Wave 1, done 2026-11-21: meadow, the developer's pick of three
+densities). A flood takes no plant away: the meadow stays rooted under the water, which hides what's below its surface,
+so the taller poke out of the shallows and deep water covers them (the developer's call, 2026-11-21).
 
 ## The buildings and trucks as models, with their goods (2026-11-16)
 
