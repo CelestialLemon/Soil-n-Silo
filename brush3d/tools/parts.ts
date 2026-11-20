@@ -11,7 +11,7 @@
 // Exits with 1 if anything is off.
 import * as THREE from 'three';
 import { EASE, GLOW, Parts } from '../src/renderer/parts.ts';
-import { Picker, SMOKE_INK } from '../src/renderer/pick.ts';
+import { GRASS_INK, Picker, SMOKE_INK } from '../src/renderer/pick.ts';
 
 let failed = false;
 function check(name: string, ok: boolean, detail = '') {
@@ -198,6 +198,31 @@ const angleOf = (p: Parts, slot: number) => (p.texture.image.data as Float32Arra
   mid.position.set(-5, 10, 0); mid.lookAt(-5.8, -1, 0); mid.updateMatrixWorld();
   const pond = river.hit(pixels(5, SMOKE_INK), mid, new THREE.Vector2(0, 0), new THREE.Vector2(1e-4, 1e-4), []);
   check('smoke over the river: its water', pond?.what === 'water' && Math.abs(pond.point.y) < 1e-6, JSON.stringify(pond));
+
+  // Meadow grass (#256): marked with GRASS_INK, so picking sees past blades to the land or building behind them
+  // from all four isometric views, never classifying open grass as 'plant'.
+  const groundPicker = new Picker({
+    landHit: (ray) => ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3()),
+    waterAt: () => null,
+    tagged: () => [building],
+  });
+  let allFourLand = true;
+  for (let v = 0; v < 4; v++) {
+    const ang = (Math.PI / 4) + (v * Math.PI) / 2;
+    const cam = new THREE.OrthographicCamera(-20, 20, 20, -20, 0.1, 200);
+    // Point at open grass at (8, 0, 0), well outside the building box, with a 0.8 m tall blade in front of the ground.
+    cam.position.set(8 + Math.cos(ang) * 60, 40, Math.sin(ang) * 60);
+    cam.lookAt(8, 0, 0);
+    cam.updateMatrixWorld();
+    const bladeDepth = cam.position.distanceTo(new THREE.Vector3(8, 0, 0)) - 2.0;
+    const full = groundPicker.hit(pixels(bladeDepth, GRASS_INK), cam, new THREE.Vector2(0, 0), new THREE.Vector2(1e-4, 1e-4), [{ mesh: building, matrix: building.matrixWorld, tag: 'bakery' }]);
+    const half = groundPicker.hit(pixels(bladeDepth, GRASS_INK * 0.5), cam, new THREE.Vector2(0, 0), new THREE.Vector2(1e-4, 1e-4), [{ mesh: building, matrix: building.matrixWorld, tag: 'bakery' }]);
+    if (full?.what !== 'land' || half?.what !== 'land') allFourLand = false;
+  }
+  check('meadow grass picks as land (never plant) across all 4 views, full and half-covered MSAA', allFourLand);
+  // Grass blade in front of a tagged building still picks the building.
+  const grassFront = pick(GRASS_INK);
+  check('meadow grass in front of a building still picks the building', grassFront?.tag === 'bakery', JSON.stringify(grassFront));
 }
 
 if (failed) process.exit(1);

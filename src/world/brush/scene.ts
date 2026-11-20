@@ -68,7 +68,7 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
   // from it each frame rather than worked out afresh in every pixel: a third of the GPU's frame (#210, the developer's
   // pick on #239). The light, shadows and weather stay live, as do a cliff's faces and the country past the land; an
   // earthwork bakes again only the patch it changed (brush3d's changeGround).
-  timed('bake', () => { r.setFields('ground', 4096); grass.ensureBaked(); });
+  timed('bake', () => { r.setFields('ground', 4096); });
   settings.listen((s) => tools.setLooks(s.highlight, s.overlayStyle));
   const began = mark - Object.values(pieces).reduce((a, b) => a + b, 0);
   /** The load's times, once the first frame is drawn; and while a profile runs, the game's loop stands still. */

@@ -899,8 +899,8 @@ export class BrushRenderer {
   }
   private painted: PaintedLand | null = null;
   private landsSet = 0;
-  /** Changes whenever the land as drawn does (a new land, an earthwork swapped in). */
-  private get landRevision() { return `${this.landsSet} ${this.painted?.revision ?? 0}`; }
+  /** Changes whenever the land as drawn does (a new land, or an earthwork swapped in). */
+  get landRevision(): string { return `${this.landsSet} ${this.painted?.revision ?? 0}`; }
 
   /**
    * An earthwork (or anything else that changes the land's tiles): the new values for the tiles in `rect` (LandPatch, each
@@ -913,6 +913,14 @@ export class BrushRenderer {
 
   /** The land's height (m) at a point of the world, as drawn (setLand's; 0 before there is one). */
   landAt(x: number, z: number): number { return this.painted?.heightAt(x, z) ?? 0; }
+
+  /**
+   * The land's painted colour (linear RGB, before season turning) at a point of the world (m), as drawn (setLand's;
+   * meadow green before there is one).
+   */
+  landColourAt(x: number, z: number, into = new THREE.Color()): THREE.Color {
+    return this.painted ? this.painted.landColourAt(x, z, into) : into.setHex(0x5a9848);
+  }
 
   /** Where a line of sight (view.rayAt) first meets the land as drawn, or null if it misses or there's no land yet. */
   landHit(ray: THREE.Ray, into?: THREE.Vector3): THREE.Vector3 | null { return this.painted?.hit(ray, into) ?? null; }

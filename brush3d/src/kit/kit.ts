@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { MeshBuilder, noise2, srgb, type Paint } from './builder';
-import { DRAG, type Obstacle } from '../wind/sim';
-import { TREE_BEND, type TreeKind, type TreeSpec } from '../renderer/trees';
+import { MeshBuilder, noise2, srgb, type Paint } from './builder.ts';
+import { DRAG, type Obstacle } from '../wind/sim.ts';
+import { TREE_BEND, type TreeKind, type TreeSpec } from '../renderer/trees.ts';
 
 // The pieces scenes are built from: the palette, trees, stones, grass, reeds, and lines on the map (streams, paths, fences).
 // Every piece stands on a Ground, so any scene's land can carry them.

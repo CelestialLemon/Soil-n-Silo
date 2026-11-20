@@ -385,6 +385,24 @@ export class PaintedLand {
     return this.beyondAt(x, z);
   }
 
+  /**
+   * The land's painted colour (linear RGB, before season turning) at a point of the world (x, z in metres), as drawn:
+   * blurred dryness, `LAND_LOOK.groundTint`, `LAND_LOOK.beyond` dulling, noise-warped tile blending, and meadow drift.
+   */
+  landColourAt(x: number, z: number, into = new THREE.Color()): THREE.Color {
+    const px = (x - this.x0) / this.tile, py = (z - this.z0) / this.tile;
+    if (px >= 0 && py >= 0 && px <= this.width && py <= this.height) {
+      const tx = Math.min(this.width - 1, Math.floor(px)), ty = Math.min(this.height - 1, Math.floor(py));
+      const n = this.normal(tx, ty, px - tx, py - ty, SCRATCH.n);
+      this.topColour(px, py, this.cover[ty * this.width + tx], x, z, n, into);
+      return into;
+    }
+    const k = noise2(x * 0.015 + 2, z * 0.015 + 8) * 0.5 + 0.5;
+    into.copy(COL.floor).lerp(COL.emerald, k * 0.3);
+    this.dull(into);
+    return into;
+  }
+
   /** Where a line of sight first meets the land, or null if it misses (on the CPU: no wait for the GPU). */
   hit(ray: { origin: THREE.Vector3; direction: THREE.Vector3 }, into = new THREE.Vector3()): THREE.Vector3 | null {
     const o = ray.origin, d = ray.direction, len = d.length();
@@ -664,10 +682,9 @@ export class PaintedLand {
   /** The height (m) of the vertex `vertex` added last. */
   private vy = 0;
 
-  /** A vertex of a tile's top at (u, v) across it. */
-  private vertex(b: MeshBuilder, tx: number, ty: number, u: number, v: number): number {
-    const px = tx + u, py = ty + v, y = this.vy = this.drawn(tx, ty, u, v), n = this.normal(tx, ty, u, v, SCRATCH.n), c = SCRATCH.c;
-    const meadow = this.colourAt(px, py, c), cover = this.cover[ty * this.width + tx], wx = this.x0 + px * this.tile, wz = this.z0 + py * this.tile;
+  /** The painted top colour (linear RGB, before season turning) at tile point (px, py) and world (wx, wz), into `c`. */
+  private topColour(px: number, py: number, cover: number, wx: number, wz: number, n: THREE.Vector3, c: THREE.Color): number {
+    const meadow = this.colourAt(px, py, c);
     // The meadow's drift: rises lime, hollows emerald, in broad soft patches.
     const k = noise2(wx * 0.02 + 7, wz * 0.02 - 3) * 0.5 + 0.5;
     c.lerp(COL.lime, smooth(0.55, 0.9, k) * 0.35 * meadow).lerp(COL.emerald, smooth(0.6, 0.95, 1 - k) * 0.35 * meadow);
@@ -676,6 +693,14 @@ export class PaintedLand {
     if (cover !== LAND_COVER.water) c.lerp(COL.worn, steep * 0.5);
     // The bed darkens as it deepens.
     if (cover === LAND_COVER.water) c.lerp(COL.deep, (this.carve(px, py) / BED) * 0.7);
+    return steep;
+  }
+
+  /** A vertex of a tile's top at (u, v) across it. */
+  private vertex(b: MeshBuilder, tx: number, ty: number, u: number, v: number): number {
+    const px = tx + u, py = ty + v, y = this.vy = this.drawn(tx, ty, u, v), n = this.normal(tx, ty, u, v, SCRATCH.n), c = SCRATCH.c;
+    const cover = this.cover[ty * this.width + tx], wx = this.x0 + px * this.tile, wz = this.z0 + py * this.tile;
+    const steep = this.topColour(px, py, cover, wx, wz, n, c);
     const pt = PAINT[cover] ?? PAINT[0];
     const drift = Math.min(1, pt.drift + steep * 0.4 + noise2(wx * 0.21 + 3, wz * 0.21 - 9) * 0.15);
     return b.vertex({ x: wx, y, z: wz }, n, c, [drift, pt.brush, 0.7 + noise2(wx * 0.05, wz * 0.05) * 0.9, 0]);

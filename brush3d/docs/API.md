@@ -135,11 +135,16 @@ r.updateLand({ x, y, width, height }, { corners, worked, cover, ground });   // 
   `Lie` fits the same tiles: within half a level of the rules' height, exactly level on worked tiles and at the water,
   sharp at cliffs), so the hills are the same shape. Under the water's tiles the land sinks into a bed; the game lays its
   water (below) a little under the tiles' level, over it.
-- **The drawn surface is the game's to query**, so a truck, a dropped good and the tile cursor sit on what the player
-  sees: `r.landAt(x, z)` gives the land's height there (metres), and `r.landHit(ray)` where a line of sight (from
-  `r.view.rayAt`) first meets it, or null, on the CPU with no wait for the GPU. The rules go on asking `relief.ts`.
-- Not yet: grass tufts where the cover says grass, and the cuts models need where they stand (the water wheel's race in
-  its bank, `wheelRace` in the catalogue).
+- **The drawn surface is the game's to query**, so a truck, a dropped good, grass tufts and the tile cursor sit on what
+  the player sees: `r.landAt(x, z)` gives the land's height there (metres), `r.landColourAt(x, z, into?)` gives the
+  painted ground colour there (linear RGB, before season turning, matching the blurred dryness, `groundTint`, `beyond`
+  dulling and meadow drift), `r.landHit(ray)` gives where a line of sight (from `r.view.rayAt`) first meets it or null,
+  and `r.landRevision` changes whenever `setLand` replaces the land or `updateLand` finishes swapping refitted chunks in
+  (so grass and lines resync with the drawn surface). All run on the CPU with no wait for the GPU. The rules go on
+  asking `relief.ts`.
+- Not yet: the cuts models need where they stand (the water wheel's race in its bank, `wheelRace` in the catalogue).
+  Meadow grass tufts (#256) are placed by the game's `grass.ts` with `addTuft`, `r.landAt`, `r.landColourAt` and
+  `r.landRevision`.
 
 ### Water (today; the game's river in #202, floods, ice and mud in #207)
 
@@ -301,8 +306,10 @@ r.requestPick(clientX, clientY).then((hit) => {});  // a frame or two later, nev
 - The pick sees the frame last drawn, as its camera saw it: `point` is where the pointer met what's drawn there, so the
   game finds the tile from it (`Math.floor(point.x / TILE)`).
 - A build preview, a route or a wire is drawn over the finished picture, never into the G-buffer: never picked.
-- Smoke (#205) is drawn into the G-buffer but is no thing: it marks its pixels (`SMOKE_INK`, as its ink), and a pick on
-  one looks past it along the same line of sight (to the building behind, the land, or nothing: the sky).
+- Smoke (#205) and meadow grass (#256) are drawn into the G-buffer but are not things to click on: they mark their
+  pixels (`SMOKE_INK` / `GRASS_INK`, as their ink), and a pick on one looks past it along the same line of sight (to the
+  building behind, the land, the water, or nothing: the sky), so open grass beside a tree or rock never picks as a
+  plant.
 - Like pixel3d's `pick` and `requestPick` were, so the game's hover logic carried over.
 
 ## The game's tools on the picture (today, #206)
@@ -498,11 +505,13 @@ above, the game stops using it and it becomes the renderer's own.
   A tree's spring is held by each mesh that draws it and freed when the last lets go (`r.remove`, `r.removeTrees`), its
   slot then reused by the next new tree.
 - `MeshBuilder` and `Paint`: geometry in the renderer's format (colours, normals, the brush per vertex, tree ids).
-- `growTree`, `Grove`, `dressFor`, `addStone`, `addTuft`, `addReeds`, `addMound`, `addFlowers`, `groundOf`, `MapLine`:
-  the demo's pieces. `Grove.addTo(r, options)` adds its meshes with the given options and returns them. A `Tree`'s
-  `stroke` (broader, fewer strokes) and `fill` (the share of a crown's outer strokes) thin it for a crowd; 1 is the demo's.
-  `addTuft` takes optional `TuftOptions` (`blades`, `width`, `spread`) to scale a tuft's blades and clump size for the
-  game's zoom range (omitted, it keeps the demo's defaults).
+- `growTree`, `Grove`, `dressFor`, `addStone`, `addReeds`, `addMound`, `addFlowers`, `groundOf`, `MapLine`: shared
+  painting-kit pieces used by the demo and the game (`wild.ts`, `grass.ts`). `Grove.addTo(r, options)` adds its meshes
+  with the given options and returns them. A `Tree`'s `stroke` (broader, fewer strokes) and `fill` (the share of a
+  crown's outer strokes) thin it for a crowd; 1 is the demo's.
+- `addTuft` (used by both the demo and the game's `grass.ts`, #256): builds a meadow grass tuft on a `Ground` in a base
+  colour (the game passes `r.landColourAt(x, z)`). Takes optional `TuftOptions` (`blades`, `width`, `spread`) to scale a
+  tuft's blades and clump size for the game's zoom range (omitted, it keeps the demo's defaults).
 - The plant kit (`kit/plants.ts`, #213): `CropPatch` (a field's crop, one soft blanket over its bed; one `CropTile` a
   tile with which neighbours it joins, at its stage 0–3: just sown, young, flowering, ripe; `addTo(r)` returns its
   meshes), `speciesTree(species, x, z, size, seed)` and `speciesHeight` (a `Tree` for each of `SPECIES`: the game's six

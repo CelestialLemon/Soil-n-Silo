@@ -133,6 +133,31 @@ for (const t of tris) {
 }
 check('every triangle faces the way its normal does', backwards === 0, `${backwards} of ${tris.length} the wrong way round`);
 check('the cliff and the land\'s edge have faces', faces > 100, `${faces} upright triangles`);
+// landColourAt matches the built top vertices' colours (linear RGB) and handles the country beyond.
+{
+  let colourErr = 0, checked = 0;
+  for (const m of adder.live) {
+    const pos = m.geometry.getAttribute('position'), nrm = m.geometry.getAttribute('normal'), col = m.geometry.getAttribute('color');
+    const c = new THREE.Color();
+    for (let i = 0; i < pos.count; i++) {
+      // Top vertices face upward (cliff faces have y == 0).
+      if (nrm.getY(i) < 0.5) continue;
+      const x = pos.getX(i), z = pos.getZ(i);
+      // Skip tile borders where two adjacent tiles have distinct cover/slope.
+      const fx = (x - X0) / TILE, fz = (z - Z0) / TILE;
+      if (fx <= 0.1 || fz <= 0.1 || fx >= W - 0.1 || fz >= H - 0.1) continue;
+      if (Math.abs(fx - Math.round(fx)) < 1e-3 || Math.abs(fz - Math.round(fz)) < 1e-3) continue;
+      land.landColourAt(x, z, c);
+      colourErr = Math.max(colourErr, Math.abs(c.r - col.getX(i)), Math.abs(c.g - col.getY(i)), Math.abs(c.b - col.getZ(i)));
+      checked++;
+    }
+  }
+  const onMap = land.landColourAt(...world(15.5, 10.5));
+  const offMap = land.landColourAt(...world(1.5, 10.5));
+  const beyond = land.landColourAt(X0 - 40, Z0 + 20);
+  check('landColourAt matches top vertex colours on the mesh', checked > 1000 && colourErr < 1e-5, `${checked} vertices, max err ${colourErr.toExponential(2)}`);
+  check('landColourAt dulls off-map country and covers the beyond apron', offMap.g < onMap.g && beyond.r > 0 && beyond.g > 0 && beyond.b > 0);
+}
 // Lines of sight: straight down, and slanting across the cliff, meet the land where heightAt has it.
 const [dx, dz] = world(18.3, 9.6), down = land.hit({ origin: new THREE.Vector3(dx, 100, dz), direction: new THREE.Vector3(0, -1, 0) });
 check('straight down, at heightAt', !!down && Math.abs(down.y - land.heightAt(dx, dz)) < 1e-3, `${down?.y} for ${land.heightAt(dx, dz)}`);

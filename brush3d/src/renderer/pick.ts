@@ -28,10 +28,12 @@ export interface PickWorld {
 }
 
 /**
- * What smoke (#205) writes as its ink in the G-buffer: under the lines' threshold (post.ts: none drawn on it, as on any
- * painted surface), but not 0, so a pick tells a puff from what's painted. A pick sees past smoke: it's no thing.
+ * What smoke (#205) and meadow grass (#256) write as their ink in the G-buffer: under the lines' threshold (post.ts: none
+ * drawn on it, as on any painted surface), but not 0, so a pick tells them from trees, rocks and inked things. A pick sees
+ * past them: neither is a thing to click on.
  */
 export const SMOKE_INK = 1 / 256;
+export const GRASS_INK = SMOKE_INK;
 
 const COPY_VERT = /* glsl */ `
 void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }
@@ -121,10 +123,10 @@ export class Picker {
     const ray = new THREE.Ray(at.unproject(camera), camera.getWorldDirection(new THREE.Vector3()));
     const along = depth - camera.near, point = ray.at(along, new THREE.Vector3()), tol = slack(depth);
     const things = placed ?? this.snapshot();
-    // Smoke, over most of the pixel (its samples averaged: with what's painted, less; with what's inked, far more): what's
-    // behind it along the line of sight (or, against the sky, nothing).
-    const ink = pixels[nearest * 4 + 3], smoke = (k: number) => k > SMOKE_INK * 0.5 && k < SMOKE_INK * 1.5;
-    if (smoke(ink)) return this.past(ray, along - tol, things, pose);
+    // Smoke or meadow grass over half or more of the pixel's samples (with what's painted, less; with what's inked, far
+    // more): what's behind it along the line of sight (or, against the sky, nothing).
+    const ink = pixels[nearest * 4 + 3], seeThrough = (k: number) => k > SMOKE_INK * 0.4 && k < SMOKE_INK * 1.5;
+    if (seeThrough(ink)) return this.past(ray, along - tol, things, pose);
     // A tagged thing the line of sight meets where the depth says it does (the nearest such meeting): its box narrows
     // them down, its triangles decide, so the empty air in a box (round a turbine's mast, under its blades) isn't it.
     // A thing's leaves (a planted roof) are dabs drawn bigger than their cards: their box is enough.
@@ -158,7 +160,7 @@ export class Picker {
     // (Known limit: a crown's edge over a building with a puff in the next pixel picks the building, a pixel's worth; the
     // samples can't tell it from a puff's edge, which is common, over its own chimney's building.)
     let byPuff = false;
-    for (let i = 0; i < 9; i++) if (smoke(pixels[i * 4 + 3])) byPuff = true;
+    for (let i = 0; i < 9; i++) if (seeThrough(pixels[i * 4 + 3])) byPuff = true;
     if (byPuff && ink > SMOKE_INK * 0.1 && ink < 0.99) {
       const seen = this.past(ray, 0, things, pose);
       if (seen) return seen;

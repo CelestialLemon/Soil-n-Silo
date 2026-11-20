@@ -1,25 +1,21 @@
+import type { TuftOptions } from '../../../brush3d/src/index.ts';
 import { GROUND } from '../../game/ground.ts';
 import { TERRAIN, type Land } from '../../game/map.ts';
 import { joins, SIDES, spanOf, STEEP, type Relief } from '../../game/relief.ts';
 import { sizeOf, terrainAt, type GameState } from '../../game/state.ts';
-import type { GrassMode } from '../../ui/grassChoice.ts';
 import { YAW } from './catalog.ts';
 import { TILE } from './scale.ts';
 
 // Pure placement, masking, and block-signature rules for meadow grass tufts (#256). Kept separate from `grass.ts` with
-// no Three.js or renderer imports so `npm test` exercises them directly in Node (as `landMap.ts` does for `land.ts`).
+// no Three.js or renderer runtime imports so `npm test` exercises them directly in Node (as `landMap.ts` does for `land.ts`).
 
-/** Tiles a side of one map block (matches `Wild` and `PaintedLand`). */
+export const GRASS_MODES = ['off', 'quiet', 'meadow', 'lush'] as const;
+export type GrassMode = (typeof GRASS_MODES)[number];
+
+/** Tiles a side of one map or country-fringe block (matches `Wild` and `PaintedLand`). */
 export const GRASS_BLOCK = 8;
 /** Tiles beyond the map where grass tufts fade out into the country. */
 export const GRASS_FRINGE = 4;
-
-/** Margins (m) kept clear around cliff faces, non-grass neighbours, and footprints. */
-export const CLIFF_MARGIN = 0.85;
-export const WATER_MARGIN = 0.45;
-export const ROCK_MARGIN = 0.35;
-export const BUILDING_MARGIN = 0.45;
-export const FIELD_MARGIN = 0.30;
 
 export interface GrassProfile {
   /** Candidate spots tried per open grass tile. */
@@ -33,7 +29,7 @@ export interface GrassProfile {
   /** Tuft height (m): base and extra at full lushness. */
   tall: [number, number];
   /** Shape options passed to `addTuft`. */
-  tuft: { blades: [number, number]; width: [number, number]; spread: number };
+  tuft: Required<TuftOptions>;
 }
 
 export const GRASS_PROFILES: Record<Exclude<GrassMode, 'off'>, GrassProfile> = {
@@ -54,6 +50,22 @@ export const GRASS_PROFILES: Record<Exclude<GrassMode, 'off'>, GrassProfile> = {
   },
 };
 
+/**
+ * Maximum horizontal reach (m) of any blade vertex emitted by `addTuft` before wind across all profiles:
+ * `spread + maxLean (0.70) * maxBladeHeight (1.2 * maxTall * 1.12)` ≈ 0.825 m in Lush.
+ */
+export const MAX_BLADE_REACH = Math.max(
+  ...Object.values(GRASS_PROFILES).map((p) => p.tuft.spread + 0.70 * 1.2 * (p.tall[0] + p.tall[1]) * 1.12),
+);
+
+/** Margins (m) kept clear around cliff faces, non-grass neighbours, and footprints. */
+export const CLIFF_MARGIN = 0.85;
+export const WATER_MARGIN = 0.45;
+export const ROCK_MARGIN = 0.35;
+/** Kept strictly above `MAX_BLADE_REACH` so no emitted blade tip protrudes into a building or field footprint. */
+export const BUILDING_MARGIN = 0.90;
+export const FIELD_MARGIN = 0.85;
+
 export interface FootprintBox {
   x0: number; x1: number; z0: number; z1: number;
   wheel?: { cx: number; cz: number; cos: number; sin: number };
@@ -63,6 +75,22 @@ export interface TileHabitat {
   minU: number; maxU: number; minV: number; maxV: number;
   waterBoost: number; skirtBoost: number; rockBoost: number;
   deepWoods: number; groundScale: number; seasonDensity: number; heightScale: number;
+}
+
+export interface GrassBlockRect {
+  id: number;
+  x0: number; y0: number; x1: number; y1: number;
+  /** Whether this block contains any playable map tiles (`false` for pure country-fringe blocks). */
+  onMap: boolean;
+}
+
+export interface BlockSig {
+  /** Terrain, building footprints, and mode: changes on placement/removal/tree clearing. */
+  layout: string;
+  /** Relief corners and sampled surface heights: changes on earthworks (gated by `r.landRevision`). */
+  relief: string;
+  /** IDs of buildings whose footprints or wheel races touch this block. */
+  buildingIds: number[];
 }
 
 /** Deterministic tile hash in 0..2^32-1 for per-tile seeding (rebuilding a block never shifts neighbouring tiles). */
@@ -108,7 +136,7 @@ export function inBuilding(
       const dx = x - b.wheel.cx, dz = z - b.wheel.cz;
       const lx = dx * b.wheel.cos - dz * b.wheel.sin;
       const lz = dx * b.wheel.sin + dz * b.wheel.cos;
-      if (wheelRaceAt(lx, lz, 0.8) > 0) return true;
+      if (wheelRaceAt(lx, lz, BUILDING_MARGIN) > 0) return true;
     }
   }
   return false;
@@ -139,16 +167,31 @@ export function boxesIn(s: GameState, x0: number, y0: number, x1: number, y1: nu
   return out;
 }
 
-/** Buildings whose footprint (or wheel race) can reach past the map edge into the country fringe. */
-export function borderBoxes(s: GameState): FootprintBox[] {
-  const { width: w, height: h } = s.map;
-  const out: FootprintBox[] = [];
-  for (const b of s.buildings) {
-    const n = sizeOf(b), pad = b.type === 'wheel' ? 3 : 1;
-    if (b.x - pad >= 0 && b.x + n + pad <= w && b.y - pad >= 0 && b.y + n + pad <= h) continue;
-    out.push(makeBox(b));
+/** All 8 × 8-tile blocks covering the playable map `[0, w) × [0, h)` and its `reach`-tile country fringe. */
+export function grassBlocks(w: number, h: number, reach: number): GrassBlockRect[] {
+  const out: GrassBlockRect[] = [];
+  const bx0 = Math.floor(-reach / GRASS_BLOCK), bx1 = Math.floor((w + reach - 1) / GRASS_BLOCK);
+  const by0 = Math.floor(-reach / GRASS_BLOCK), by1 = Math.floor((h + reach - 1) / GRASS_BLOCK);
+  for (let by = by0; by <= by1; by++) for (let bx = bx0; bx <= bx1; bx++) {
+    const x0 = Math.max(-reach, bx * GRASS_BLOCK), x1 = Math.min(w + reach, (bx + 1) * GRASS_BLOCK);
+    const y0 = Math.max(-reach, by * GRASS_BLOCK), y1 = Math.min(h + reach, (by + 1) * GRASS_BLOCK);
+    if (x0 >= x1 || y0 >= y1) continue;
+    out.push({
+      id: (by + 64) * 1024 + (bx + 64),
+      x0, y0, x1, y1,
+      onMap: x1 > 0 && x0 < w && y1 > 0 && y0 < h,
+    });
   }
   return out;
+}
+
+/** Density fade (0..1) for tile `(x, y)`: 1 on the playable map, tapering smoothly over `reach` country-fringe tiles. */
+export function fringeFade(x: number, y: number, w: number, h: number, reach: number): number {
+  if (x >= 0 && y >= 0 && x < w && y < h) return 1;
+  const beyond = Math.hypot(Math.max(0, -x, x - w + 1), Math.max(0, -y, y - h + 1));
+  const t = Math.min(1, Math.max(0, beyond / (reach + 0.5)));
+  const fade = (1 - t * t * (3 - 2 * t)) * 0.65;
+  return fade > 0.05 ? fade : 0;
 }
 
 /**
@@ -223,9 +266,55 @@ export function tileHabitat(
 }
 
 /**
- * Compact state signature of a map block (plus its 1-tile terrain/relief halo and nearby buildings) so only blocks
- * touched by a placement, clearing, or earthwork rebuild.
+ * Compact layout + relief signature of any map or country-fringe block (plus its 1-tile terrain/relief halo and nearby
+ * buildings) so only blocks touched by a placement, clearing, or earthwork rebuild.
  */
+export function blockSig(
+  s: GameState,
+  land: Land,
+  relief: Relief,
+  yAt: (tx: number, ty: number) => number,
+  mode: GrassMode,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): BlockSig {
+  const { width: w, height: h } = s.map, M = land.margin, W = land.width, H = land.height;
+  const hx0 = Math.max(-M, x0 - 1), hy0 = Math.max(-M, y0 - 1);
+  const hx1 = Math.min(W - M, x1 + 1), hy1 = Math.min(H - M, y1 + 1);
+  let tHash = 2166136261, hHash = 2166136261;
+  const mix = (acc: number, v: number) => Math.imul(acc ^ v, 16777619) >>> 0;
+  const corner = relief.corner;
+  for (let y = hy0; y < hy1; y++) for (let x = hx0; x < hx1; x++) {
+    const li = (y + M) * W + (x + M);
+    const onMap = x >= 0 && y >= 0 && x < w && y < h;
+    tHash = mix(tHash, onMap ? terrainAt(s, x, y) : land.terrain[li]);
+    const c4 = li * 4;
+    for (let k = 0; k < 4; k++) hHash = mix(hHash, corner[c4 + k]);
+    if (x >= x0 && x < x1 && y >= y0 && y < y1) {
+      // Three non-collinear samples catch both elevation shifts and pure antisymmetric tilts across a tile.
+      hHash = mix(hHash, Math.round(yAt(x + 0.25, y + 0.25) * 1000));
+      hHash = mix(hHash, Math.round(yAt(x + 0.75, y + 0.25) * 1000));
+      hHash = mix(hHash, Math.round(yAt(x + 0.25, y + 0.75) * 1000));
+    }
+  }
+  let bPart = '';
+  const buildingIds: number[] = [];
+  for (const b of s.buildings) {
+    const n = sizeOf(b), pad = b.type === 'wheel' ? 3 : 1;
+    if (b.x + n + pad <= x0 || b.x - pad >= x1 || b.y + n + pad <= y0 || b.y - pad >= y1) continue;
+    bPart += `${b.id}:${b.type}:${b.x},${b.y},${b.rot};`;
+    buildingIds.push(b.id);
+  }
+  return {
+    layout: `${mode}|${tHash}|${bPart}`,
+    relief: `${hHash}`,
+    buildingIds,
+  };
+}
+
+/** Combined layout + relief key for a block. */
 export function blockKey(
   s: GameState,
   land: Land,
@@ -237,54 +326,6 @@ export function blockKey(
   x1: number,
   y1: number,
 ): string {
-  const { width: w, height: h } = s.map, M = land.margin, W = land.width;
-  const hx0 = Math.max(0, x0 - 1), hy0 = Math.max(0, y0 - 1), hx1 = Math.min(w, x1 + 1), hy1 = Math.min(h, y1 + 1);
-  let tHash = 2166136261, hHash = 2166136261;
-  const mix = (acc: number, v: number) => Math.imul(acc ^ v, 16777619) >>> 0;
-  const corner = relief.corner;
-  for (let y = hy0; y < hy1; y++) for (let x = hx0; x < hx1; x++) {
-    const li = (y + M) * W + x + M;
-    tHash = mix(tHash, terrainAt(s, x, y));
-    const c4 = li * 4;
-    hHash = mix(hHash, (corner[c4] | (corner[c4 + 1] << 5) | (corner[c4 + 2] << 10) | (corner[c4 + 3] << 15)));
-    if (x >= x0 && x < x1 && y >= y0 && y < y1) {
-      hHash = mix(hHash, Math.round(yAt(x + 0.5, y + 0.5) * 1000));
-    }
-  }
-  let bPart = '';
-  for (const b of s.buildings) {
-    const n = sizeOf(b), pad = b.type === 'wheel' ? 3 : 1;
-    if (b.x + n + pad <= x0 || b.x - pad >= x1 || b.y + n + pad <= y0 || b.y - pad >= y1) continue;
-    bPart += `${b.id}:${b.type}:${b.x},${b.y},${b.rot};`;
-  }
-  return `${mode}|${tHash}|${hHash}|${bPart}`;
-}
-
-/** State signature of the map's 1-tile outer perimeter so interior edits never touch the country fringe. */
-export function countrySig(
-  s: GameState,
-  land: Land,
-  relief: Relief,
-  yAt: (tx: number, ty: number) => number,
-  mode: GrassMode,
-): string {
-  const { width: w, height: h } = s.map, M = land.margin, W = land.width;
-  const corner = relief.corner;
-  let tHash = 2166136261, hHash = 2166136261;
-  const mix = (acc: number, v: number) => Math.imul(acc ^ v, 16777619) >>> 0;
-  const visit = (x: number, y: number) => {
-    tHash = mix(tHash, terrainAt(s, x, y));
-    const c4 = ((y + M) * W + x + M) * 4;
-    hHash = mix(hHash, (corner[c4] | (corner[c4 + 1] << 5) | (corner[c4 + 2] << 10) | (corner[c4 + 3] << 15)));
-    hHash = mix(hHash, Math.round(yAt(x + 0.5, y + 0.5) * 1000));
-  };
-  for (let x = 0; x < w; x++) { visit(x, 0); if (h > 1) visit(x, h - 1); }
-  for (let y = 1; y < h - 1; y++) { visit(0, y); if (w > 1) visit(w - 1, y); }
-  let bPart = '';
-  for (const b of s.buildings) {
-    const n = sizeOf(b), pad = b.type === 'wheel' ? 3 : 1;
-    if (b.x - pad >= 0 && b.x + n + pad <= w && b.y - pad >= 0 && b.y + n + pad <= h) continue;
-    bPart += `${b.id}:${b.type}:${b.x},${b.y},${b.rot};`;
-  }
-  return `${mode}|${tHash}|${hHash}|${bPart}`;
+  const sig = blockSig(s, land, relief, yAt, mode, x0, y0, x1, y1);
+  return `${sig.layout}|${sig.relief}`;
 }

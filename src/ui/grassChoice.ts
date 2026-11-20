@@ -3,8 +3,9 @@
 // frame-rate baseline. A URL option (`?grass=off|quiet|meadow|lush`), kept for reloads and remembered for the next
 // visit, and a button in the HUD's row of panel buttons (top right) that says which is shown and cycles through them.
 
-export const GRASS_MODES = ['off', 'quiet', 'meadow', 'lush'] as const;
-export type GrassMode = (typeof GRASS_MODES)[number];
+import { GRASS_MODES, type GrassMode } from '../world/brush/grassMask.ts';
+
+export { GRASS_MODES, type GrassMode };
 
 const STORED = 'grass-choice';
 const isMode = (v: string): v is GrassMode => (GRASS_MODES as readonly string[]).includes(v);
