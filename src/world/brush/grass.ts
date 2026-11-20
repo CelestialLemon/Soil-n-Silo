@@ -4,14 +4,12 @@ import {
   type BrushRenderer, type Ground, type LandArea,
 } from '../../../brush3d/src/index.ts';
 import type { Land } from '../../game/map.ts';
-import { flooded } from '../../game/flood.ts';
 import { layoutOf, type GameState } from '../../game/state.ts';
 import type { Lie } from '../ground.ts';
 import {
-  blockOf, boxesIn, FLOWER_PROFILES, FLOWER_SEASONS, flowersBloom, fringeFade, GRASS_FRINGE, GRASS_PROFILE, grassBlocks, grassLayout,
+  boxesIn, FLOWER_PROFILE, FLOWER_SEASONS, flowersBloom, fringeFade, GRASS_FRINGE, GRASS_PROFILE, grassBlocks, grassLayout,
   inBuilding, layoutChanges, tileHabitat, tileSeed, wetDistance,
-  type FlowerMode, type FlowerProfile, type FlowerSeason, type FootprintBox, type GrassBlockRect, type GrassLayout,
-  type TileHabitat,
+  type FlowerSeason, type FootprintBox, type GrassBlockRect, type GrassLayout, type TileHabitat,
 } from './grassMask.ts';
 import { TILE } from './scale.ts';
 
@@ -21,8 +19,9 @@ import { TILE } from './scale.ts';
 // in soft drifts of the season's colours, gathered at the woods' skirts and the hills' edges, none in winter.
 //
 // - Both grow where the grass may (grassMask.ts's tileHabitat, footprints, slopes), each from its own random numbers, so
-//   the grass is the same with the flowers on or off. No flowers on a tile a flood covers (flood.ts): they'd stand over its
-//   water. They grow back as it drains.
+//   the grass is the same with the flowers or without. A flood (flood.ts) takes none away: both stay rooted on the ground
+//   under it, and brush3d's water hides what's below its surface, so the taller poke out of the shallows and deep water
+//   covers them (the developer, on #266).
 // - Built in 4 × 4-tile blocks across the playable map and its country fringe, each a mesh for the grass and one for the
 //   flowers. What changes in play
 //   (a building or field placed or taken away, a tree or rock cleared, an earthwork) makes again only the blocks it
@@ -55,9 +54,6 @@ const WANDER = 2.5;
 /** The share of clumps in a colour of their own, not their patch's: a few strays among a drift. */
 const STRAYS = 0.1;
 
-/** What the meadow shows: its flowers' density (its grass has one, lush). */
-export interface MeadowLooks { flowers: FlowerMode }
-
 export class Meadow {
   private readonly r: BrushRenderer;
   private readonly lie: Lie;
@@ -74,20 +70,19 @@ export class Meadow {
   /** Blocks to make again: hidden until they are (and made first), and the rest. */
   private readonly urgent = new Set<number>();
   private readonly dirty = new Set<number>();
-  private looks: MeadowLooks;
-  /** The flowers' season (it never changes during a commission), its colours as three.js wants them. */
+  /** The flowers' season (it never changes during a commission), its colours as three.js wants them, and whether they bloom. */
   private readonly season: FlowerSeason;
   private readonly palette: THREE.Color[];
-  /** The game's layout as the meadow last followed it, and the tiles a flood covered (flood.ts's `flooded`). */
+  private readonly flowering: boolean;
+  /** The game's layout as the meadow last followed it. */
   private layout = -1;
-  private wet: Uint8Array | null = null;
   private seen: GrassLayout;
-  private lastState: GameState;
 
-  constructor(r: BrushRenderer, lie: Lie, land: Land, s: GameState, looks: MeadowLooks) {
-    this.r = r; this.lie = lie; this.land = land; this.looks = { ...looks }; this.lastState = s;
+  constructor(r: BrushRenderer, lie: Lie, land: Land, s: GameState) {
+    this.r = r; this.lie = lie; this.land = land;
     this.seed = s.scenario.seed;
     this.season = FLOWER_SEASONS[s.scenario.climate.season];
+    this.flowering = flowersBloom(s.scenario.climate.season);
     this.palette = this.season.palette.map((c) => srgb(c.hex));
     this.reach = Math.min(GRASS_FRINGE, land.margin);
     this.ground = groundOf((x, z) => r.landAt(x, z));
@@ -99,42 +94,11 @@ export class Meadow {
     r.onLandChange((area) => this.landChanged(area));
   }
 
-  /** Whether the flowers bloom: on, and not in winter. */
-  private get flowering(): boolean { return flowersBloom(this.looks.flowers, this.lastState.scenario.climate.season); }
-
-  /**
-   * Switches the flowers' look option in place without leaking meshes or geometries: only the flowers are made again (the
-   * grass keeps showing while they change, and the flowers in winter don't change at all).
-   */
-  setLooks(next: Partial<MeadowLooks>) {
-    const was = this.flowering ? this.looks.flowers : 'off';
-    this.looks = { ...this.looks, ...next };
-    if ((this.flowering ? this.looks.flowers : 'off') === was) return;
-    for (const b of this.blocks.values()) b.flowers = this.drop(b.flowers);
-    // The flowers made now follow the flood as it is now.
-    this.wet = this.flowering ? flooded(this.lastState).tiles : null;
-    // None to make when they were only taken away.
-    if (!this.flowering) return;
-    // On an earthwork's new ground not drawn yet: queued (sync makes them once it is).
-    if (this.r.landAhead) { this.queueAll(); return; }
-    for (const rect of this.grid) {
-      // A block waiting to be made again is made whole; the rest only in their flowers.
-      const queued = this.urgent.delete(rect.id) || this.dirty.delete(rect.id);
-      this.rebuildBlock(this.lastState, rect, queued ? undefined : { grass: false, flowers: true });
-    }
-  }
-
-  /** Every block queued to be made again. */
-  private queueAll() {
-    for (const rect of this.grid) this.queue(rect.id);
-  }
-
   /**
    * Follows the game: the blocks a change in its layout touches are queued (those a new building stands in hidden till
    * they're made), and queued blocks made again within `REBUILD_BUDGET` ms.
    */
   sync(s: GameState) {
-    this.lastState = s;
     const layout = layoutOf(s);
     if (layout !== this.layout) {
       this.layout = layout;
@@ -143,7 +107,6 @@ export class Meadow {
       for (const id of urgent) this.hide(id);
       for (const id of dirty) this.queue(id);
     }
-    if (this.flowering) this.followFlood(s);
     // Not on an earthwork's new ground till it's drawn (the swap's landChanged queues what it moved).
     if ((this.urgent.size || this.dirty.size) && !this.r.landAhead) this.drain(s);
   }
@@ -151,24 +114,6 @@ export class Meadow {
   /** A block queued to be made again (behind the hidden ones), its plants showing meanwhile. */
   private queue(id: number) {
     if (this.blockById.has(id) && !this.urgent.has(id)) this.dirty.add(id);
-  }
-
-  /**
-   * The blocks whose tiles a flood has just covered or left queued, so their flowers go and come back with it: those it
-   * covered with their flowers hidden till they're made (their grass showing meanwhile).
-   */
-  private followFlood(s: GameState) {
-    const now = flooded(s).tiles;
-    if (now === this.wet) return;
-    const was = this.wet, w = s.map.width;
-    this.wet = now;
-    if (!was) return;
-    for (let i = 0; i < now.length; i++) {
-      if (now[i] === was[i]) continue;
-      const id = blockOf(i % w, Math.floor(i / w)), flowers = this.blocks.get(id)?.flowers;
-      if (now[i] && flowers) flowers.visible = false;
-      this.queue(id);
-    }
   }
 
   /**
@@ -227,7 +172,8 @@ export class Meadow {
    * Where the wildflowers drift (0..1) at world metres (wx, wz): broad soft patches with a finer break-up, so drifts
    * have ragged edges and open meadow between; raised by the tile's habitat (`lift`: tree skirts, hill edges, banks).
    */
-  private driftAt(wx: number, wz: number, lift: number, p: FlowerProfile): number {
+  private driftAt(wx: number, wz: number, lift: number): number {
+    const p = FLOWER_PROFILE;
     const s = (this.seed % 991) * 0.17 + 31;
     const broad = noise2(wx * 0.055 - s, wz * 0.055 + s * 0.6) * 0.5 + 0.5;
     const fine = noise2(wx * 0.19 + s * 0.4, wz * 0.19 - s) * 0.5 + 0.5;
@@ -267,7 +213,7 @@ export class Meadow {
 
   /** A tile's grass and flowers, where its habitat lets them grow. */
   private scatterTile(
-    grass: MeshBuilder | null,
+    grass: MeshBuilder,
     flowers: MeshBuilder | null,
     s: GameState,
     tx: number,
@@ -275,7 +221,6 @@ export class Meadow {
     onMap: boolean,
     boxes: readonly FootprintBox[],
     fade: number,
-    wet: Uint8Array | null,
   ) {
     const hab = tileHabitat(s, this.land, this.lie.relief, this.wetDist, tx, ty, onMap);
     if (!hab) return;
@@ -285,8 +230,8 @@ export class Meadow {
       if (boxes.length && inBuilding(boxes, wx, wz, wheelRace)) return false;
       return this.ground.normal(wx, wz).y >= 0.82;
     };
-    if (grass) this.scatterGrass(grass, tx, ty, hab, canPlace, fade);
-    if (flowers && !(onMap && wet?.[ty * s.map.width + tx])) this.scatterFlowers(flowers, tx, ty, hab, canPlace, FLOWER_PROFILES[this.looks.flowers as Exclude<FlowerMode, 'off'>], fade);
+    this.scatterGrass(grass, tx, ty, hab, canPlace, fade);
+    if (flowers) this.scatterFlowers(flowers, tx, ty, hab, canPlace, fade);
   }
 
   private scatterGrass(
@@ -335,16 +280,16 @@ export class Meadow {
     ty: number,
     hab: TileHabitat,
     canPlace: (wx: number, wz: number) => boolean,
-    profile: FlowerProfile,
     fade: number,
   ) {
+    const profile = FLOWER_PROFILE;
     const { minU, maxU, minV, maxV, waterBoost, skirtBoost, edgeBoost, deepWoods, groundScale } = hab;
     const { density, clump } = this.season;
     const rand = rng(tileSeed(this.seed ^ FLOWER_SALT, tx, ty));
     const x0 = tx * TILE, z0 = ty * TILE, lift = skirtBoost * 0.6 + edgeBoost + waterBoost * 0.4;
     for (let a = 0; a < profile.attempts; a++) {
       const wx = x0 + minU + rand() * (maxU - minU), wz = z0 + minV + rand() * (maxV - minV);
-      const prob = this.driftAt(wx, wz, lift, profile) * density * deepWoods * groundScale * fade;
+      const prob = this.driftAt(wx, wz, lift) * density * deepWoods * groundScale * fade;
       if (rand() >= prob) continue;
       const colour = rand() < STRAYS ? this.paletteAt(rand()) : this.patchColour(wx, wz);
       const blooms = Math.max(1, Math.round((profile.clump[0] + Math.floor(rand() * profile.clump[1])) * clump));
@@ -365,7 +310,6 @@ export class Meadow {
     for (const rect of this.grid) this.rebuildBlock(s, rect);
     this.layout = layoutOf(s);
     this.seen = grassLayout(s);
-    this.wet = this.flowering ? flooded(s).tiles : null;
   }
 
   /** Makes queued blocks again, the hidden first, until `REBUILD_BUDGET` ms are spent (at least one a frame). */
@@ -383,27 +327,25 @@ export class Meadow {
     }
   }
 
-  /** Makes a block again: its grass and flowers both, or only the `layers` asked (the land under it as it was made). */
-  private rebuildBlock(s: GameState, rect: GrassBlockRect, layers = { grass: true, flowers: true }) {
-    const block = this.blocks.get(rect.id) ?? { heights: this.heightsUnder(rect) };
-    if (layers.grass) block.grass = this.drop(block.grass);
-    if (layers.flowers) block.flowers = this.drop(block.flowers);
+  /** Makes a block again, its grass and flowers (and notes the land under it as it was made). */
+  private rebuildBlock(s: GameState, rect: GrassBlockRect) {
+    const was = this.blocks.get(rect.id);
+    this.drop(was?.grass);
+    this.drop(was?.flowers);
+    const block: Block = { heights: this.heightsUnder(rect) };
     const { width: w, height: h } = s.map;
     const boxes = boxesIn(s, rect.x0, rect.y0, rect.x1, rect.y1);
-    const grass = layers.grass ? new MeshBuilder('grass') : null;
-    const flowers = layers.flowers && this.flowering ? new MeshBuilder('foliage') : null;
-    const wet = flowers ? flooded(s).tiles : null;
+    const grass = new MeshBuilder('grass');
+    const flowers = this.flowering ? new MeshBuilder('foliage') : null;
     for (let y = rect.y0; y < rect.y1; y++) for (let x = rect.x0; x < rect.x1; x++) {
       const fade = fringeFade(x, y, w, h, this.reach);
       if (fade <= 0) continue;
       const onMap = x >= 0 && y >= 0 && x < w && y < h;
-      this.scatterTile(grass, flowers, s, x, y, onMap, boxes, fade, wet);
+      this.scatterTile(grass, flowers, s, x, y, onMap, boxes, fade);
     }
     // Culled whole (not cut into tiles: a block is small, and made again often). The flowers keep no rain off (cover).
-    if (grass?.vertexCount) block.grass = this.r.add(grass.build(), 'grass', { cull: true, castShadow: false, reflect: false });
+    if (grass.vertexCount) block.grass = this.r.add(grass.build(), 'grass', { cull: true, castShadow: false, reflect: false });
     if (flowers?.vertexCount) block.flowers = this.r.add(flowers.build(), 'foliage', { cull: true, castShadow: false, reflect: false, cover: 'none' });
-    // Both made: the land under it is as it is now.
-    if (layers.grass && layers.flowers) block.heights = this.heightsUnder(rect);
     this.blocks.set(rect.id, block);
   }
 

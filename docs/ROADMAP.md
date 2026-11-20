@@ -167,8 +167,10 @@ waterfall (#241); the water wheel's race cut into its bank (`brush3d/docs/LAND.m
 ground after an earthwork, about 10 ms twice (#210). Meadow grass tufts across the open grass, swaying in the living wind
 (#256, epic #265's Wave 1, done 2026-11-21): dense, taller tussocks, the developer's pick of three densities (lush). Wildflowers among them in soft
 drifts, gathered at the woods' skirts and the hills' edges, in the season's colours (spring's white, yellow, peach and sky
-blue, summer's vibrant drifts, autumn's sparse warm specks, none in winter), built in the grass's blocks and gone from
-a flood's water till it drains (#266): in review, its density (subtle, meadow or lush) the developer's pick.
+blue in full drifts, summer's vibrant ones as sparse as autumn's over its drier grass, autumn's warm specks, none in
+winter), built in the grass's blocks (#266, epic #265's Wave 1, done 2026-11-21: meadow, the developer's pick of three
+densities). A flood takes no plant away: the meadow stays rooted under the water, which hides what's below its surface,
+so the taller poke out of the shallows and deep water covers them (the developer's call, 2026-11-21).
 
 ## The buildings and trucks as models, with their goods (2026-11-16)
 

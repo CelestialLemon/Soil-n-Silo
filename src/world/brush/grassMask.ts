@@ -55,9 +55,6 @@ const MAX_TALL = (GRASS_PROFILE.tall[0] + GRASS_PROFILE.tall[1]) * 1.12;
  */
 export const MAX_BLADE_REACH = GRASS_PROFILE.tuft.spread + TUFT_REACH * MAX_TALL;
 
-export const FLOWER_MODES = ['off', 'subtle', 'meadow', 'lush'] as const;
-export type FlowerMode = (typeof FLOWER_MODES)[number];
-
 export interface FlowerProfile {
   /** Candidate spots tried per open grass tile; each that takes is a clump of blooms. */
   attempts: number;
@@ -72,10 +69,12 @@ export interface FlowerProfile {
   flower: Required<FlowerOptions>;
 }
 
-export const FLOWER_PROFILES: Record<Exclude<FlowerMode, 'off'>, FlowerProfile> = {
-  subtle: { attempts: 8, drift: [0.66, 0.80], clump: [1, 3], flower: { size: [0.07, 0.03], lift: [0.16, 0.16], crisp: true } },
-  meadow: { attempts: 12, drift: [0.60, 0.74], clump: [2, 3], flower: { size: [0.075, 0.035], lift: [0.18, 0.22], crisp: true } },
-  lush: { attempts: 16, drift: [0.54, 0.70], clump: [2, 4], flower: { size: [0.08, 0.04], lift: [0.20, 0.30], crisp: true } },
+/**
+ * The wildflowers' density: drifts across the meadow (the developer's pick on #266, `meadow` of the subtle, meadow and
+ * lush compared on its PR). The season thins them (FLOWER_SEASONS).
+ */
+export const FLOWER_PROFILE: FlowerProfile = {
+  attempts: 12, drift: [0.60, 0.74], clump: [2, 3], flower: { size: [0.075, 0.035], lift: [0.18, 0.22], crisp: true },
 };
 
 export interface FlowerSeason {
@@ -94,9 +93,10 @@ export const FLOWER_SEASONS: Record<Season, FlowerSeason> = {
     density: 1, clump: 1,
     palette: [{ hex: 0xf7f2e4, weight: 3 }, { hex: 0xf5cf3e, weight: 3 }, { hex: 0xf6b48f, weight: 2 }, { hex: 0x9cc8ec, weight: 2 }],
   },
-  // Vibrant drifts: the farm demo's pinks, reds and violets with the white and yellow.
+  // A few vibrant drifts: the farm demo's pinks, reds and violets with the white and yellow, as sparse as autumn's (the
+  // developer, on #266: the full drifts were too much over summer's drier grass; spring is when the meadow blooms).
   summer: {
-    density: 1.2, clump: 1.2,
+    density: 0.3, clump: 0.5,
     palette: [
       { hex: 0xf08bb0, weight: 2 }, { hex: 0xe8574a, weight: 2 }, { hex: 0xa77ad8, weight: 2 }, { hex: 0xf5cf3e, weight: 2 },
       { hex: 0xf7f2e4, weight: 1 },
@@ -110,11 +110,11 @@ export const FLOWER_SEASONS: Record<Season, FlowerSeason> = {
   winter: { density: 0, clump: 0, palette: [] },
 };
 
-/** Whether any wildflowers bloom at a density in a season. */
-export const flowersBloom = (mode: FlowerMode, season: Season) => mode !== 'off' && FLOWER_SEASONS[season].density > 0;
+/** Whether any wildflowers bloom in a season. */
+export const flowersBloom = (season: Season) => FLOWER_SEASONS[season].density > 0;
 
-/** The furthest (m) a bloom reaches from its middle at a density: brush3d's promise for `addFlower` (`FLOWER_REACH`). */
-export const flowerReach = (p: FlowerProfile) => FLOWER_REACH * (p.flower.size[0] + p.flower.size[1]);
+/** The furthest (m) a bloom reaches from its middle: brush3d's promise for `addFlower` (`FLOWER_REACH`). */
+export const BLOOM_REACH = FLOWER_REACH * (FLOWER_PROFILE.flower.size[0] + FLOWER_PROFILE.flower.size[1]);
 
 /** Margins (m) kept clear around cliff faces, non-grass neighbours, and footprints. */
 export const CLIFF_MARGIN = 0.85;
@@ -372,14 +372,10 @@ export function layoutChanges(was: GrassLayout, now: GrassLayout, width: number)
 export const GRASS_TOP = TUFT_HEIGHT * MAX_TALL + 0.05;
 
 /**
- * How high (m) a wildflower's bloom stands over the land at most, at a density: its highest (addFlower); none when off.
- * Under the grass's top (GRASS_TOP) at every density, so a pick under it is the meadow's.
+ * How high (m) a wildflower's bloom stands over the land at most: its highest (addFlower). Under the grass's top
+ * (GRASS_TOP), so a pick under that is the meadow's.
  */
-export function flowerTop(mode: FlowerMode): number {
-  if (mode === 'off') return 0;
-  const p = FLOWER_PROFILES[mode];
-  return p.flower.lift[0] + p.flower.lift[1] + flowerReach(p) + 0.05;
-}
+export const FLOWER_TOP = FLOWER_PROFILE.flower.lift[0] + FLOWER_PROFILE.flower.lift[1] + BLOOM_REACH + 0.05;
 
 /**
  * Whether what a pick calls a plant, at (x, z) m and `above` m over the land, is the meadow's grass or flowers (#256,
