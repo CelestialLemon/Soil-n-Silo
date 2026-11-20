@@ -8,6 +8,7 @@ import { COUNTRY, Lie, LEVEL_HEIGHT, standY } from '../ground.ts';
 import type { Heights, Scene } from '../scene.ts';
 import { BrushCover } from './cover.ts';
 import { BrushLand } from './land.ts';
+import { shoresChoice, shoresLook } from '../../ui/shoresChoice.ts';
 import { BrushLens } from './lens.ts';
 import { causeCases, gameCases, profileGame, profilePanel, type LoadTimes, type ProfileHost } from './profile.ts';
 import { RISE, TILE } from './scale.ts';
@@ -53,7 +54,7 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
   const r = timed('renderer', () => new BrushRenderer(canvas, { shadowFollow: true }));
   followSettings(r, settings);
   const land = timed('map', () => generateLand(state.scenario, COUNTRY)), lie = timed('lie', () => new Lie(state, land));
-  const ground = timed('land', () => new BrushLand(r, state, land, lie)), sky = new BrushSky(r, state), cover = new BrushCover(r, land), water = timed('water', () => new BrushWater(r, land, lie));
+  const ground = timed('land', () => new BrushLand(r, state, land, lie, shoresLook())), sky = new BrushSky(r, state), cover = new BrushCover(r, land), water = timed('water', () => new BrushWater(r, land, lie));
   // The goods trucks carry and buildings hand next door (#203), drawn with the things.
   const goods = new Goods(r);
   const things = new Things(r, lie, goods), wild = timed('wild', () => new Wild(r, lie, land, state)), wind = timed('wind', () => new BrushWind(r, state, land));
@@ -86,6 +87,8 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
     hold: (on) => { held = lens.held = on; if (!on) { sky.resend(); cover.resend(); } },
   };
   let current = state;
+  // #258's comparison (removed before its PR merges): the shores' button paints the land again its way.
+  shoresChoice((mode) => ground.restyle(current, mode));
   if (new URLSearchParams(location.search).has('profile')) profilePanel(profile);
   return {
     camera, heights, picker: tools.picker, preview: tools.preview, held: () => held,
