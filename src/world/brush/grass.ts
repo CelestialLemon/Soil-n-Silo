@@ -90,8 +90,6 @@ export class Meadow {
   private readonly blockById = new Map<number, GrassBlockRect>();
   /** Each block's grass, flowers and reeds (none: none in it), and the land's height under it as it was made (`heightsUnder`). */
   private readonly blocks = new Map<number, Block>();
-  /** The tiles with reeds as made (`reedKey`), for telling a reed from a branch in a pick (`reedTopAt`). */
-  private readonly reedTiles = new Set<number>();
   /** Blocks to make again: hidden until they are (and made first), and the rest. */
   private readonly urgent = new Set<number>();
   private readonly dirty = new Set<number>();
@@ -131,19 +129,18 @@ export class Meadow {
   get top(): number { return meadowTop(this.looks.grass, this.flowering ? this.looks.flowers : 'off'); }
 
   /**
-   * How high (m) its reeds stand at most at (x, z) m, as shown: their top where a tile with reeds is within a clump's reach
-   * of the point, else 0 (none can stand there). For telling them from a tree in a pick (tools.ts).
+   * How high (m) its reeds stand at most at (x, z) m, as shown: their top where a clump on show stands within its reach
+   * (MAX_REED_REACH) of the point, else 0. For telling them from a tree in a pick (tools.ts).
    */
   reedTopAt(x: number, z: number): number {
     if (this.looks.reeds === 'off') return 0;
-    const tx = Math.floor(x / TILE), tz = Math.floor(z / TILE);
-    // (A clump reaches less than a tile past its own: MAX_REED_REACH.)
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-      const nx = tx + dx, ny = tz + dy;
-      if (!this.reedTiles.has(reedKey(nx, ny))) continue;
-      if (x > nx * TILE - MAX_REED_REACH && x < (nx + 1) * TILE + MAX_REED_REACH && z > ny * TILE - MAX_REED_REACH && z < (ny + 1) * TILE + MAX_REED_REACH) {
-        return reedTop(this.looks.reeds);
-      }
+    const R = MAX_REED_REACH, ids = new Set<number>();
+    for (const wx of [x - R, x + R]) for (const wz of [z - R, z + R]) ids.add(blockOf(Math.floor(wx / TILE), Math.floor(wz / TILE)));
+    for (const id of ids) {
+      // (Only a block's reeds on show: none while it's hidden or its reeds are dropped, waiting to be made again.)
+      const b = this.blocks.get(id), c = b?.clumps;
+      if (!c || !b.reeds?.visible) continue;
+      for (let i = 0; i < c.length; i += 2) if ((c[i] - x) ** 2 + (c[i + 1] - z) ** 2 < R * R) return reedTop(this.looks.reeds);
     }
     return 0;
   }
@@ -451,9 +448,12 @@ export class Meadow {
   /**
    * A tile's reeds, if it's a shore (grassMask.ts's reedShore): candidate spots taken by how near the water's edge as drawn
    * they are (reedBand, from the land's height there against the water's surface) and by the beds field, each a clump of
-   * one colour with a few more beside it in the bed. Thinned in the country fringe.
+   * one colour with a few more beside it in the bed, each one's spot added to `clumps` (x, z m). Thinned in the country
+   * fringe.
    */
-  private scatterReeds(mb: MeshBuilder, s: GameState, tx: number, ty: number, onMap: boolean, boxes: readonly FootprintBox[], fade: number) {
+  private scatterReeds(
+    mb: MeshBuilder, clumps: number[], s: GameState, tx: number, ty: number, onMap: boolean, boxes: readonly FootprintBox[], fade: number,
+  ) {
     const shore = reedShore(s, this.land, this.lie.relief, tx, ty, onMap);
     if (!shore) return;
     const profile = REED_PROFILES[this.looks.reeds as Exclude<ReedMode, 'off'>], season = this.reedSeason;
@@ -471,13 +471,13 @@ export class Meadow {
       if (rand() >= prob || !canPlace(wx, wz)) continue;
       options.colour = this.reedColour(rand());
       addReeds(mb, this.ground, wx, wz, rand, options);
-      this.reedTiles.add(reedKey(tx, ty));
+      clumps.push(wx, wz);
       // A few more round it in the bed, where the water's edge lets them.
       const more = profile.companions[0] + Math.floor(rand() * profile.companions[1]);
       for (let k = 0; k < more; k++) {
         const ang = rand() * Math.PI * 2, dist = 0.35 + rand() * 0.5;
         const cx = wx + Math.cos(ang) * dist, cz = wz + Math.sin(ang) * dist;
-        if (rand() < band(cx, cz) && canPlace(cx, cz)) addReeds(mb, this.ground, cx, cz, rand, options);
+        if (rand() < band(cx, cz) && canPlace(cx, cz)) { addReeds(mb, this.ground, cx, cz, rand, options); clumps.push(cx, cz); }
       }
     }
   }
@@ -518,19 +518,20 @@ export class Meadow {
     const flowers = layers.flowers && this.flowering ? new MeshBuilder('foliage') : null;
     const reeds = layers.reeds && this.looks.reeds !== 'off' ? new MeshBuilder('grass') : null;
     const wet = flowers ? flooded(s).tiles : null;
-    if (layers.reeds) for (let y = rect.y0; y < rect.y1; y++) for (let x = rect.x0; x < rect.x1; x++) this.reedTiles.delete(reedKey(x, y));
+    const clumps: number[] = [];
     for (let y = rect.y0; y < rect.y1; y++) for (let x = rect.x0; x < rect.x1; x++) {
       const fade = fringeFade(x, y, w, h, this.reach);
       if (fade <= 0) continue;
       const onMap = x >= 0 && y >= 0 && x < w && y < h;
       this.scatterTile(grass, flowers, s, x, y, onMap, boxes, fade, wet);
-      if (reeds) this.scatterReeds(reeds, s, x, y, onMap, boxes, fade);
+      if (reeds) this.scatterReeds(reeds, clumps, s, x, y, onMap, boxes, fade);
     }
     // Culled whole (not cut into tiles: a block is small, and made again often). The flowers keep no rain off (cover).
     if (grass?.vertexCount) block.grass = this.r.add(grass.build(), 'grass', { cull: true, castShadow: false, reflect: false });
     if (flowers?.vertexCount) block.flowers = this.r.add(flowers.build(), 'foliage', { cull: true, castShadow: false, reflect: false, cover: 'none' });
     // The reeds stand in the water, so they show in it.
     if (reeds?.vertexCount) block.reeds = this.r.add(reeds.build(), 'grass', { cull: true, castShadow: false });
+    if (layers.reeds) block.clumps = block.reeds ? Float32Array.from(clumps) : undefined;
     // All made: the land under it is as it is now.
     if (LAYERS.every((l) => layers[l])) block.heights = this.heightsUnder(rect);
     this.blocks.set(rect.id, block);
@@ -543,8 +544,5 @@ export class Meadow {
   }
 }
 
-/** A tile's key in `Meadow.reedTiles`: the map's tiles and the country's round it, to 1024 tiles past its edges. */
-const reedKey = (x: number, y: number) => (y + 1024) * 4096 + x + 1024;
-
-/** A block's grass, flowers and reeds, as made, and the land's height under it then. */
-interface Block { grass?: THREE.Mesh; flowers?: THREE.Mesh; reeds?: THREE.Mesh; heights: Float32Array }
+/** A block's grass, flowers and reeds, as made, where its reeds' clumps stand (x, z m), and the land's height under it then. */
+interface Block { grass?: THREE.Mesh; flowers?: THREE.Mesh; reeds?: THREE.Mesh; clumps?: Float32Array; heights: Float32Array }
