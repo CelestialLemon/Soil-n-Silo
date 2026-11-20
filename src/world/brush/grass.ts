@@ -122,16 +122,28 @@ export class Meadow {
       if (layers.flowers) b.flowers = this.drop(b.flowers);
     }
     if (!this.on) { this.urgent.clear(); this.dirty.clear(); return; }
-    this.wet = this.flowering ? flooded(this.lastState).tiles : null;
-    // On an earthwork's new ground not drawn yet: queued (sync makes them once it is).
-    if (this.r.landAhead) { for (const rect of this.grid) this.queue(rect.id); return; }
     // Turned on from nothing: the layout it last followed is old, so it's all made afresh.
-    if (was.grass === 'off' && was.flowers === 'off') { this.rebuildAll(this.lastState); return; }
+    if (was.grass === 'off' && was.flowers === 'off') {
+      if (this.r.landAhead) this.queueAll(); else this.rebuildAll(this.lastState);
+      return;
+    }
+    // The layers to make: none when one was only taken away.
+    const make = { grass: layers.grass && this.looks.grass !== 'off', flowers: layers.flowers && this.flowering };
+    // The flowers made now follow the flood as it is now (and a grass change leaves them following it as they did).
+    if (layers.flowers) this.wet = this.flowering ? flooded(this.lastState).tiles : null;
+    if (!make.grass && !make.flowers) return;
+    // On an earthwork's new ground not drawn yet: queued (sync makes them once it is).
+    if (this.r.landAhead) { this.queueAll(); return; }
     for (const rect of this.grid) {
       // A block waiting to be made again is made whole; the rest only in the layer that changed.
       const queued = this.urgent.delete(rect.id) || this.dirty.delete(rect.id);
-      this.rebuildBlock(this.lastState, rect, queued ? undefined : layers);
+      this.rebuildBlock(this.lastState, rect, queued ? undefined : make);
     }
+  }
+
+  /** Every block queued to be made again. */
+  private queueAll() {
+    for (const rect of this.grid) this.queue(rect.id);
   }
 
   /**
@@ -159,14 +171,22 @@ export class Meadow {
     if (this.blockById.has(id) && !this.urgent.has(id)) this.dirty.add(id);
   }
 
-  /** The blocks whose tiles a flood has just covered or left queued, so their flowers go and come back with it. */
+  /**
+   * The blocks whose tiles a flood has just covered or left queued, so their flowers go and come back with it: those it
+   * covered with their flowers hidden till they're made (their grass showing meanwhile).
+   */
   private followFlood(s: GameState) {
     const now = flooded(s).tiles;
     if (now === this.wet) return;
     const was = this.wet, w = s.map.width;
     this.wet = now;
     if (!was) return;
-    for (let i = 0; i < now.length; i++) if (now[i] !== was[i]) this.queue(blockOf(i % w, Math.floor(i / w)));
+    for (let i = 0; i < now.length; i++) {
+      if (now[i] === was[i]) continue;
+      const id = blockOf(i % w, Math.floor(i / w)), flowers = this.blocks.get(id)?.flowers;
+      if (now[i] && flowers) flowers.visible = false;
+      this.queue(id);
+    }
   }
 
   /**
