@@ -45,7 +45,7 @@ export { blocksWind, GROUPS, MODELS, TILE, TOUR, wheelRace, type ModelInfo, type
 export { MeshBuilder, noise2, PLAIN, rng, srgb, type Paint } from './kit/builder';
 export {
   addDab, addFlowers, addMound, addReeds, addStone, addTuft, C, groundOf, growTree, MapLine, smooth, treeWind,
-  type Ground, type Near, type Stream, type Tree, type TreeForm, type TreeKind,
+  type Ground, type Near, type Stream, type Tree, type TreeForm, type TreeKind, type TuftOptions,
 } from './kit/kit';
 export { dressFor, Grove, type Dress } from './kit/seasonTrees';
 export {

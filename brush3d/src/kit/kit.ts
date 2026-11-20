@@ -262,19 +262,32 @@ export function addStone(b: MeshBuilder, ground: Ground, x: number, z: number, s
   for (let i = 0; i < idx.count; i += 3) b.tri(i0 + idx.getX(i), i0 + idx.getX(i + 1), i0 + idx.getX(i + 2));
 }
 
+/** Optional shape overrides for `addTuft`; omitted values keep the demo's exact defaults. */
+export interface TuftOptions {
+  /** Blade count: `[min, spread]` (`min + floor(rand() * spread)`), default `[4, 4]`. */
+  blades?: [number, number];
+  /** Blade half-width (m): `[min, spread]`, default `[0.035, 0.02]`. */
+  width?: [number, number];
+  /** How far each blade's root stands off the tuft's middle (m), default `0.04`. */
+  spread?: number;
+}
+
 /** A tuft of long grass, in the ground's own colour, a little deeper at the root: the grass is part of the meadow's paint. */
-export function addTuft(g: MeshBuilder, ground: Ground, x: number, z: number, tall: number, base: THREE.Color, rand: () => number) {
+export function addTuft(g: MeshBuilder, ground: Ground, x: number, z: number, tall: number, base: THREE.Color, rand: () => number, options?: TuftOptions) {
   const y = ground.height(x, z), n = ground.normal(x, z);
   const root = base.clone().lerp(C.teal, 0.35).multiplyScalar(0.82);
   const tip = base.clone().lerp(C.lime, 0.1);
   const mid = root.clone().lerp(tip, 0.55);
-  const blades = 4 + Math.floor(rand() * 4);
+  const [bMin, bSpread] = options?.blades ?? [4, 4];
+  const [wMin, wSpread] = options?.width ?? [0.035, 0.02];
+  const spread = options?.spread ?? 0.04;
+  const blades = bMin + Math.floor(rand() * bSpread);
   const paint: Paint = [0.8, 0.85, 0.8, 0.6];
   for (let k = 0; k < blades; k++) {
-    const a = rand() * Math.PI * 2, h = tall * (0.6 + rand() * 0.6), w = 0.035 + rand() * 0.02;
+    const a = rand() * Math.PI * 2, h = tall * (0.6 + rand() * 0.6), w = wMin + rand() * wSpread;
     const lean = 0.25 + rand() * 0.45, seed = rand();
     const dx = Math.cos(a), dz = Math.sin(a), px = -dz * w, pz = dx * w, across = Math.atan2(dx, -dz);
-    const bx = x + dx * 0.04, bz = z + dz * 0.04;
+    const bx = x + dx * spread, bz = z + dz * spread;
     const v0 = g.vertex({ x: bx - px, y: y - 0.02, z: bz - pz }, n, root, paint, [0, 0], [0, seed, -w, across]);
     const v1 = g.vertex({ x: bx + px, y: y - 0.02, z: bz + pz }, n, root, paint, [0, 0], [0, seed, w, across]);
     const mx = bx + dx * lean * h * 0.4, mz = bz + dz * lean * h * 0.4, my = y + h * 0.55;

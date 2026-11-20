@@ -501,6 +501,8 @@ above, the game stops using it and it becomes the renderer's own.
 - `growTree`, `Grove`, `dressFor`, `addStone`, `addTuft`, `addReeds`, `addMound`, `addFlowers`, `groundOf`, `MapLine`:
   the demo's pieces. `Grove.addTo(r, options)` adds its meshes with the given options and returns them. A `Tree`'s
   `stroke` (broader, fewer strokes) and `fill` (the share of a crown's outer strokes) thin it for a crowd; 1 is the demo's.
+  `addTuft` takes optional `TuftOptions` (`blades`, `width`, `spread`) to scale a tuft's blades and clump size for the
+  game's zoom range (omitted, it keeps the demo's defaults).
 - The plant kit (`kit/plants.ts`, #213): `CropPatch` (a field's crop, one soft blanket over its bed; one `CropTile` a
   tile with which neighbours it joins, at its stage 0–3: just sown, young, flowering, ripe; `addTo(r)` returns its
   meshes), `speciesTree(species, x, z, size, seed)` and `speciesHeight` (a `Tree` for each of `SPECIES`: the game's six
