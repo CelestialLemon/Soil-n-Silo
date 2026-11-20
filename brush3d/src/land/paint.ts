@@ -94,6 +94,7 @@ const PAINT: Record<number, { drift: number; brush: number; meadow: number }> = 
   [LAND_COVER.track]: { drift: 0.55, brush: 2.5, meadow: 0 },
   [LAND_COVER.rock]: { drift: 0.6, brush: 2, meadow: 0.3 },
   [LAND_COVER.woods]: { drift: 0.3, brush: 1.5, meadow: 0.4 },
+  // Water's tiles are painted as grass (the shores); its bed takes only its drift and brush from here.
   [LAND_COVER.water]: { drift: 0.5, brush: 2, meadow: 0 },
 };
 const FACE_PAINT: Paint = [0.5, 2.5, 0, 0];
