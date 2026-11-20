@@ -57,7 +57,9 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      drawn, `onLandChange` says where an earthwork redrew the land, `landAhead` that `landAt` runs ahead of the land
      drawn (an earthwork fitted, not yet swapped in), and `cull` adds a small mesh culled whole, uncut. So are the
      wildflowers among them (Soil-n-Silo#266): `addFlower` is one of the demo's blooms, with `crisp` edges for the game's
-     far-off camera and `FLOWER_REACH` how far it reaches.
+     far-off camera and `FLOWER_REACH` how far it reaches. And the reeds along the water (Soil-n-Silo#267): `addReeds`
+     takes `ReedOptions` (the clump's size and colours, and bulrush seed heads), `REED_REACH`, `REED_WIDTH` and
+     `REED_HEIGHT` how far a clump reaches; the game places them from `landAt`, so they follow the bed as drawn.
   9. Soil-n-Silo#213 the crops and trees (done 2026-11-16, Soil-n-Silo#225 and Soil-n-Silo#227): the game's five crops
      at their four stages as one soft blanket over each bed (`CropPatch`), and its tree species, with the pine a soft
      cone, the willow weeping and the poplar a column (`growSpecies`; oak, birch, apple and the bushes are `Grove.grow`'s).

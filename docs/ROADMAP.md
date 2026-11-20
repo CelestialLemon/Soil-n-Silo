@@ -168,7 +168,12 @@ ground after an earthwork, about 10 ms twice (#210). Meadow grass tufts across t
 (#256, epic #265): in review, its density (quiet, meadow or lush) the developer's pick. Wildflowers among them in soft
 drifts, gathered at the woods' skirts and the hills' edges, in the season's colours (spring's white, yellow, peach and sky
 blue, summer's vibrant drifts, autumn's sparse warm specks, none in winter), built in the grass's blocks and gone from
-a flood's water till it drains (#266): in review, its density (subtle, meadow or lush) the developer's pick.
+a flood's water till it drains (#266): in review, its density (subtle, meadow or lush) the developer's pick. Reeds
+line the river's banks and the ponds, in beds with gaps, where the land as drawn meets the water (so they follow the
+shores as brush3d draws them, square or curving), fresh green in spring and summer with brown bulrush heads, golden straw
+in autumn, frost-touched dry stalks in winter; none by a fall, a cliff, a building, a wheel or its race, they stand in a
+flood or the ice rather than float, and they move with an earthwork (#267): in review, sparse or lush (the default) the
+developer's pick.
 
 ## The buildings and trucks as models, with their goods (2026-11-16)
 
