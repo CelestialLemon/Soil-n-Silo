@@ -1,15 +1,17 @@
-import type { TuftOptions } from '../../../brush3d/src/index.ts';
-import { TUFT_HEIGHT, TUFT_REACH } from '../../../brush3d/src/shared.ts';
+import type { FlowerOptions, TuftOptions } from '../../../brush3d/src/index.ts';
+import { FLOWER_REACH, TUFT_HEIGHT, TUFT_REACH } from '../../../brush3d/src/shared.ts';
 import { GROUND } from '../../game/ground.ts';
 import { TERRAIN, type Land } from '../../game/map.ts';
 import { joins, SIDES, spanOf, STEEP, type Relief } from '../../game/relief.ts';
 import type { BuildingId } from '../../game/data.ts';
+import type { Season } from '../../game/seasons.ts';
 import { sizeOf, terrainAt, type GameState } from '../../game/state.ts';
 import { YAW } from './catalog.ts';
 import { TILE } from './scale.ts';
 
-// Pure placement, masking, and block-change rules for meadow grass tufts (#256). Kept separate from `grass.ts` with
-// no Three.js or renderer runtime imports so `npm test` exercises them directly in Node (as `landMap.ts` does for `land.ts`).
+// Pure placement, masking, and block-change rules for the meadow: its grass tufts (#256) and its wildflowers (#266), which
+// grow where the grass may, in the same blocks. Kept separate from `grass.ts` with no Three.js or renderer runtime imports
+// so `npm test` exercises them directly in Node (as `landMap.ts` does for `land.ts`).
 
 /**
  * Tiles a side of one map or country-fringe block: one mesh, made again whole when anything in it changes. Small, so
@@ -53,6 +55,67 @@ const MAX_TALL = (GRASS_PROFILE.tall[0] + GRASS_PROFILE.tall[1]) * 1.12;
  */
 export const MAX_BLADE_REACH = GRASS_PROFILE.tuft.spread + TUFT_REACH * MAX_TALL;
 
+export interface FlowerProfile {
+  /** Candidate spots tried per open grass tile; each that takes is a clump of blooms. */
+  attempts: number;
+  /**
+   * Where the drifts are: the drift field (0..1, grass.ts's `driftAt`) eased from none at the first to full at the second.
+   * Higher, fewer and smaller drifts with more open meadow between.
+   */
+  drift: [number, number];
+  /** Blooms in a clump: `[min, spread]` (`min + floor(rand() * spread)`), times the season's `clump`. */
+  clump: [number, number];
+  /** The blooms' shape, passed to `addFlower`. */
+  flower: Required<FlowerOptions>;
+}
+
+/**
+ * The wildflowers' density: drifts across the meadow (the developer's pick on #266, `meadow` of the subtle, meadow and
+ * lush compared on its PR). The season thins them (FLOWER_SEASONS).
+ */
+export const FLOWER_PROFILE: FlowerProfile = {
+  attempts: 12, drift: [0.60, 0.74], clump: [2, 3], flower: { size: [0.075, 0.035], lift: [0.18, 0.22], crisp: true },
+};
+
+export interface FlowerSeason {
+  /** How thickly they bloom against spring's (the chance a candidate takes is multiplied by it): none in winter's snow. */
+  density: number;
+  /** How many blooms to a clump, against spring's. */
+  clump: number;
+  /** The colours (sRGB) and how often each is a drift's. */
+  palette: readonly { hex: number; weight: number }[];
+}
+
+/** The wildflowers by season: the season never changes during a commission, so the meadow reads it once. */
+export const FLOWER_SEASONS: Record<Season, FlowerSeason> = {
+  // Fresh blooms: white, yellow, peach and sky blue.
+  spring: {
+    density: 1, clump: 1,
+    palette: [{ hex: 0xf7f2e4, weight: 3 }, { hex: 0xf5cf3e, weight: 3 }, { hex: 0xf6b48f, weight: 2 }, { hex: 0x9cc8ec, weight: 2 }],
+  },
+  // A few vibrant drifts: the farm demo's pinks, reds and violets with the white and yellow, as sparse as autumn's (the
+  // developer, on #266: the full drifts were too much over summer's drier grass; spring is when the meadow blooms).
+  summer: {
+    density: 0.3, clump: 0.5,
+    palette: [
+      { hex: 0xf08bb0, weight: 2 }, { hex: 0xe8574a, weight: 2 }, { hex: 0xa77ad8, weight: 2 }, { hex: 0xf5cf3e, weight: 2 },
+      { hex: 0xf7f2e4, weight: 1 },
+    ],
+  },
+  // Sparse warm specks: the last few blooms, ochre, amber, rust and cream.
+  autumn: {
+    density: 0.3, clump: 0.5,
+    palette: [{ hex: 0xe0a33a, weight: 3 }, { hex: 0xf0b84a, weight: 2 }, { hex: 0xcf6b3a, weight: 2 }, { hex: 0xeedcae, weight: 1 }],
+  },
+  winter: { density: 0, clump: 0, palette: [] },
+};
+
+/** Whether any wildflowers bloom in a season. */
+export const flowersBloom = (season: Season) => FLOWER_SEASONS[season].density > 0;
+
+/** The furthest (m) a bloom reaches from its middle: brush3d's promise for `addFlower` (`FLOWER_REACH`). */
+export const BLOOM_REACH = FLOWER_REACH * (FLOWER_PROFILE.flower.size[0] + FLOWER_PROFILE.flower.size[1]);
+
 /** Margins (m) kept clear around cliff faces, non-grass neighbours, and footprints. */
 export const CLIFF_MARGIN = 0.85;
 export const WATER_MARGIN = 0.45;
@@ -74,6 +137,8 @@ export interface FootprintBox {
 export interface TileHabitat {
   minU: number; maxU: number; minV: number; maxV: number;
   waterBoost: number; skirtBoost: number; rockBoost: number;
+  /** At a hill's edge: a bank or cliff on a side (the wildflowers gather there). */
+  edgeBoost: number;
   deepWoods: number; groundScale: number; seasonDensity: number; heightScale: number;
 }
 
@@ -220,12 +285,13 @@ export function tileHabitat(
     else if (k === TERRAIN.rock) rockNear = true;
   }
 
-  let minU = 0.08, maxU = TILE - 0.08, minV = 0.08, maxV = TILE - 0.08;
+  let minU = 0.08, maxU = TILE - 0.08, minV = 0.08, maxV = TILE - 0.08, edge = false;
   for (let d = 0; d < 4; d++) {
     const [dx, dy] = SIDES[d], nx = tx + dx, ny = ty + dy, nlx = nx + M, nly = ny + M;
     let margin = 0;
     if (!joins(relief, lx, ly, d)) {
       margin = CLIFF_MARGIN;
+      edge = true;
     } else if (!onMap && nx >= 0 && ny >= 0 && nx < s.map.width && ny < s.map.height) {
       margin = BUILDING_MARGIN + 0.05;
     } else {
@@ -249,6 +315,7 @@ export function tileHabitat(
     waterBoost: wetDist[li] <= 1 ? 0.30 : wetDist[li] <= 2 ? 0.16 : 0,
     skirtBoost: treesNear >= 1 && treesNear <= 3 ? 0.24 : 0,
     rockBoost: rockNear ? 0.16 : 0,
+    edgeBoost: edge ? 0.14 : 0,
     deepWoods: treesNear >= 5 ? 0 : treesNear === 4 ? 0.55 : 1,
     groundScale: gKind === GROUND.stony ? 0.68 : gKind === GROUND.sand ? 0.76 : gKind === GROUND.silt ? 1.12 : 1,
     seasonDensity: winter ? 0.80 : 1,
@@ -305,10 +372,17 @@ export function layoutChanges(was: GrassLayout, now: GrassLayout, width: number)
 export const GRASS_TOP = TUFT_HEIGHT * MAX_TALL + 0.05;
 
 /**
- * Whether what a pick calls a plant, at (x, z) m and `above` m over the land, is the meadow's grass (#256) rather than a
- * tree or a rock: low, and over a tile of open grass (or off the map). brush3d paints grass as it does a tree's leaves,
- * so its pick can't tell them apart; the game can. A tree's crown leaning over the next tile stands higher. (A branch
- * hanging lower than the grass's tips over the next tile is taken for grass: picked on its crown or its own tile instead.)
+ * How high (m) a wildflower's bloom stands over the land at most: its highest (addFlower). Under the grass's top
+ * (GRASS_TOP), so a pick under that is the meadow's.
+ */
+export const FLOWER_TOP = FLOWER_PROFILE.flower.lift[0] + FLOWER_PROFILE.flower.lift[1] + BLOOM_REACH + 0.05;
+
+/**
+ * Whether what a pick calls a plant, at (x, z) m and `above` m over the land, is the meadow's grass or flowers (#256,
+ * #266) rather than a tree or a rock: lower than the grass's tips (GRASS_TOP, over the flowers' blooms), and over a tile
+ * of open grass (or off the map). brush3d paints grass and flowers as it does a tree's leaves, so its pick can't tell them
+ * apart; the game can. A tree's crown leaning over the next tile stands higher. (A branch hanging lower than the grass's
+ * tips over the next tile is taken for the meadow: picked on its crown or its own tile instead.)
  */
 export function grassAt(s: GameState, x: number, z: number, above: number): boolean {
   if (above >= GRASS_TOP) return false;

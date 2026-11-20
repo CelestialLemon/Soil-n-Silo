@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { MeshBuilder, noise2, srgb, type Paint } from './builder.ts';
 import { DRAG, type Obstacle } from '../wind/sim.ts';
+import { CRISP_EDGE } from '../renderer/dabs.ts';
 import { TREE_BEND, type TreeKind, type TreeSpec } from '../renderer/trees.ts';
 
 // The pieces scenes are built from: the palette, trees, stones, grass, reeds, and lines on the map (streams, paths, fences).
@@ -337,15 +338,38 @@ export function addMound(b: MeshBuilder, x: number, y: number, z: number, radius
   }
 }
 
+/** Optional shape overrides for `addFlower`; omitted values keep the demo's exact defaults. */
+export interface FlowerOptions {
+  /** The bloom's dab size (m, half its card's side): `[min, spread]` (`min + rand() * spread`), default `[0.055, 0.035]`. */
+  size?: [number, number];
+  /** How high its middle stands over the ground (m): `[min, spread]`, default `[0.18, 0.22]`. */
+  lift?: [number, number];
+  /**
+   * Crisper edges (materials.ts's `CRISP_EDGE`), as the crops' blooms have (plants.ts): fewer part-covered pixels round a
+   * small bright bloom, which change as the camera moves (the game's, far off). Off by default (the demo's).
+   */
+  crisp?: boolean;
+}
+
+/**
+ * One wildflower: a dab of `col` (a touch lighter or darker) a little over the ground at (x, z), fluttering in the wind as
+ * leaves do. Its reach is kit/flower.ts's `FLOWER_REACH`.
+ */
+export function addFlower(b: MeshBuilder, ground: Ground, x: number, z: number, col: THREE.Color, rand: () => number, options?: FlowerOptions) {
+  const [lMin, lSpread] = options?.lift ?? [0.18, 0.22];
+  const [sMin, sSpread] = options?.size ?? [0.055, 0.035];
+  const y = ground.height(x, z) + lMin + rand() * lSpread;
+  addDab(b, new THREE.Vector3(x, y, z), new THREE.Vector3(0, 1, 0), col.clone().offsetHSL(0, 0, (rand() - 0.5) * 0.08),
+    sMin + rand() * sSpread, rand(), [0.2 + (options?.crisp ? CRISP_EDGE : 0), 1, -1, 0.3]);
+}
+
 /** A drift of wildflowers of one colour. */
 export function addFlowers(b: MeshBuilder, ground: Ground, cx: number, cz: number, col: THREE.Color, count: number,
   rand: () => number, ok: (x: number, z: number) => boolean) {
   for (let k = 0; k < count; k++) {
     const x = cx + (rand() - 0.5) * 2.4, z = cz + (rand() - 0.5) * 2.4;
     if (!ok(x, z)) continue;
-    const y = ground.height(x, z) + 0.18 + rand() * 0.22;
-    addDab(b, new THREE.Vector3(x, y, z), new THREE.Vector3(0, 1, 0), col.clone().offsetHSL(0, 0, (rand() - 0.5) * 0.08),
-      0.055 + rand() * 0.035, rand(), [0.2, 1, -1, 0.3]);
+    addFlower(b, ground, x, z, col, rand);
   }
 }
 

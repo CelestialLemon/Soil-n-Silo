@@ -505,7 +505,7 @@ above, the game stops using it and it becomes the renderer's own.
   A tree's spring is held by each mesh that draws it and freed when the last lets go (`r.remove`, `r.removeTrees`), its
   slot then reused by the next new tree.
 - `MeshBuilder` and `Paint`: geometry in the renderer's format (colours, normals, the brush per vertex, tree ids).
-- `growTree`, `Grove`, `dressFor`, `addStone`, `addReeds`, `addMound`, `addFlowers`, `groundOf`, `MapLine`: shared
+- `growTree`, `Grove`, `dressFor`, `addStone`, `addReeds`, `addMound`, `addFlowers`, `addFlower`, `groundOf`, `MapLine`: shared
   painting-kit pieces used by the demo and the game (`wild.ts`, `grass.ts`). `Grove.addTo(r, options)` adds its meshes
   with the given options and returns them. A `Tree`'s `stroke` (broader, fewer strokes) and `fill` (the share of a
   crown's outer strokes) thin it for a crowd; 1 is the demo's.
@@ -517,6 +517,12 @@ above, the game stops using it and it becomes the renderer's own.
   m above it, at rest (the wind bends a blade across the view only, never nearer or further, so it never sways into a
   wall it stands in front of). The game keeps its grass that far off buildings and fields by them; `brush3d/test/tuft.test.ts`
   holds the blades to them.
+- `addFlower` (the demo's `addFlowers` drifts are made of it; the game's `grass.ts` places its own, #266): one wildflower,
+  a dab of a colour a little over a `Ground`, fluttering in the wind. Takes optional `FlowerOptions`: `size` and `lift`
+  (`[min, spread]` m; omitted, the demo's), and `crisp` (crisper edges, `CRISP_EDGE`, as the crops' blooms have: fewer
+  part-covered pixels round a small bright bloom far off). `FLOWER_REACH` (in `shared.ts` too) is how far it reaches: at
+  most `FLOWER_REACH * size` m from its middle, across the ground or up, flutter and all; `brush3d/test/flower.test.ts`
+  holds the blooms to it.
 - The plant kit (`kit/plants.ts`, #213): `CropPatch` (a field's crop, one soft blanket over its bed; one `CropTile` a
   tile with which neighbours it joins, at its stage 0–3: just sown, young, flowering, ripe; `addTo(r)` returns its
   meshes), `speciesTree(species, x, z, size, seed)` and `speciesHeight` (a `Tree` for each of `SPECIES`: the game's six
@@ -551,7 +557,7 @@ The game's pixel3d calls, gone since the swap, and what replaced each:
 | Folder | What | Whose |
 |---|---|---|
 | `src/index.ts` | The API: everything above that exists | the game's door in |
-| `src/shared.ts` | The wind simulation, its gusts (`WindRecipe`), the cloud recipe, the land's data and smooth fit, how far a grass tuft reaches (`TUFT_REACH`, `TUFT_HEIGHT`) and `TILE`, loadable in Node on their own (the index exports them too) | shared with the rules |
+| `src/shared.ts` | The wind simulation, its gusts (`WindRecipe`), the cloud recipe, the land's data and smooth fit, how far a grass tuft and a wildflower reach (`TUFT_REACH`, `TUFT_HEIGHT`, `FLOWER_REACH`) and `TILE`, loadable in Node on their own (the index exports them too) | shared with the rules |
 | `src/renderer/` | The renderer: its passes, materials, shaders and looks | the renderer's own |
 | `src/land/` | The land painted from the game's map: what the game sends (`map.ts`), the smooth fit (`surface.ts`), the painting and earthworks (`paint.ts`) | the renderer's own (`map.ts` and `surface.ts` shared with the rules) |
 | `src/wind/` | The wind simulation (no drawing; a worker host) | shared with the rules |

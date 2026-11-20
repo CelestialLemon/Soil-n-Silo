@@ -81,6 +81,7 @@ test('edge margins tighten next to water, rocks, cliffs, and the playable map ed
   for (let k = 0; k < 4; k++) land.corner[southLi * 4 + k] += 3;
   const nearCliff = tileHabitat(s, land, relief, wet, tx, ty, true)!;
   assert.ok(nearCliff.maxV <= TILE - CLIFF_MARGIN);
+  assert.ok(nearCliff.edgeBoost > 0, 'a hill\'s edge, where the wildflowers gather');
 
   let fx = -1;
   for (let x = 2; x < w - 2; x++) {

@@ -1,31 +1,37 @@
 import * as THREE from 'three';
 import {
-  addTuft, groundOf, MeshBuilder, noise2, rng, smooth, wheelRace,
+  addFlower, addTuft, groundOf, MeshBuilder, noise2, rng, smooth, srgb, wheelRace,
   type BrushRenderer, type Ground, type LandArea,
 } from '../../../brush3d/src/index.ts';
 import type { Land } from '../../game/map.ts';
 import { layoutOf, type GameState } from '../../game/state.ts';
 import type { Lie } from '../ground.ts';
 import {
-  boxesIn, fringeFade, GRASS_FRINGE, GRASS_PROFILE, grassBlocks, grassLayout, inBuilding, layoutChanges,
-  tileHabitat, tileSeed, wetDistance,
-  type FootprintBox, type GrassBlockRect, type GrassLayout,
+  boxesIn, FLOWER_PROFILE, FLOWER_SEASONS, flowersBloom, fringeFade, GRASS_FRINGE, GRASS_PROFILE, grassBlocks, grassLayout,
+  inBuilding, layoutChanges, tileHabitat, tileSeed, wetDistance,
+  type FlowerSeason, type FootprintBox, type GrassBlockRect, type GrassLayout, type TileHabitat,
 } from './grassMask.ts';
 import { TILE } from './scale.ts';
 
-// Meadow grass tufts across the valley floor (#256): painted blades swaying in the living wind, coloured from the land's
-// own painted ground (`r.landColourAt`) so they blend into the ground paint and turn with the season (and shorten in
-// winter so light snow lets frosted tips show while deep snow buries them cleanly).
+// The meadow across the valley floor: grass tufts (#256), painted blades swaying in the living wind, coloured from the
+// land's own painted ground (`r.landColourAt`) so they blend into the ground paint and turn with the season (and shorten
+// in winter so light snow lets frosted tips show while deep snow buries them cleanly); and wildflowers among them (#266),
+// in soft drifts of the season's colours, gathered at the woods' skirts and the hills' edges, none in winter.
 //
-// - Built in 4 × 4-tile blocks across the playable map and its country fringe, each one mesh. What changes in play
+// - Both grow where the grass may (grassMask.ts's tileHabitat, footprints, slopes), each from its own random numbers, so
+//   the grass is the same with the flowers or without. A flood (flood.ts) takes none away: both stay rooted on the ground
+//   under it, and brush3d's water hides what's below its surface, so the taller poke out of the shallows and deep water
+//   covers them (the developer, on #266).
+// - Built in 4 × 4-tile blocks across the playable map and its country fringe, each a mesh for the grass and one for the
+//   flowers. What changes in play
 //   (a building or field placed or taken away, a tree or rock cleared, an earthwork) makes again only the blocks it
 //   touches, found by comparing the layout's terrain and buildings with the last (grassMask.ts's layoutChanges), and
 //   made again a few a frame within `REBUILD_BUDGET` (#204), so a long build drag never hitches.
 // - A block a new building stands in, or whose ground an earthwork just moved (`r.onLandChange`, as it's swapped in), is
 //   hidden until it's made again, first in the queue: its grass never pokes through the building or floats over (or
 //   sinks into) the new ground for a frame. The rest (grass growing back, a repaint) keep showing until they're made.
-// - Ground-hugging tufts skip sun shadows and water reflections (`castShadow: false, reflect: false`): the painted
-//   ground already reflects in rivers and ponds, and skipping grass reflections saves ~0.6–1.1 ms GPU on water maps.
+// - Ground-hugging tufts and flowers skip sun shadows and water reflections (`castShadow: false, reflect: false`): the
+//   painted ground already reflects in rivers and ponds, and skipping grass reflections saves ~0.6–1.1 ms GPU on water maps.
 
 /** Per-frame CPU budget (ms) for making queued blocks again during play (matches `PaintedLand.step`). */
 const REBUILD_BUDGET = 2.5;
@@ -40,8 +46,15 @@ const MOVED = 0.1;
 const QUARTERS = [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]] as const;
 
 const SCRATCH = new THREE.Color();
+/** Mixed into a tile's seed for its flowers' random numbers, apart from its grass's. */
+const FLOWER_SALT = 0x5eed266;
+/** The drifts' colour patches: about this many metres across, their edges wandering by up to `WANDER` m. */
+const PATCH = 7;
+const WANDER = 2.5;
+/** The share of clumps in a colour of their own, not their patch's: a few strays among a drift. */
+const STRAYS = 0.1;
 
-export class Grass {
+export class Meadow {
   private readonly r: BrushRenderer;
   private readonly lie: Lie;
   private readonly land: Land;
@@ -52,18 +65,25 @@ export class Grass {
   private readonly reach: number;
   private readonly grid: GrassBlockRect[];
   private readonly blockById = new Map<number, GrassBlockRect>();
-  /** Each block's mesh (none: no grass in it), and the land's height under it as it was made (`heightsUnder`). */
-  private readonly blocks = new Map<number, { meshes: THREE.Mesh[]; heights: Float32Array }>();
+  /** Each block's grass and flowers (none: none in it), and the land's height under it as it was made (`heightsUnder`). */
+  private readonly blocks = new Map<number, Block>();
   /** Blocks to make again: hidden until they are (and made first), and the rest. */
   private readonly urgent = new Set<number>();
   private readonly dirty = new Set<number>();
-  /** The game's layout as the grass last followed it. */
+  /** The flowers' season (it never changes during a commission), its colours as three.js wants them, and whether they bloom. */
+  private readonly season: FlowerSeason;
+  private readonly palette: THREE.Color[];
+  private readonly flowering: boolean;
+  /** The game's layout as the meadow last followed it. */
   private layout = -1;
   private seen: GrassLayout;
 
   constructor(r: BrushRenderer, lie: Lie, land: Land, s: GameState) {
     this.r = r; this.lie = lie; this.land = land;
     this.seed = s.scenario.seed;
+    this.season = FLOWER_SEASONS[s.scenario.climate.season];
+    this.flowering = flowersBloom(s.scenario.climate.season);
+    this.palette = this.season.palette.map((c) => srgb(c.hex));
     this.reach = Math.min(GRASS_FRINGE, land.margin);
     this.ground = groundOf((x, z) => r.landAt(x, z));
     this.wetDist = wetDistance(land);
@@ -85,10 +105,15 @@ export class Grass {
       const now = grassLayout(s), { urgent, dirty } = layoutChanges(this.seen, now, s.map.width);
       this.seen = now;
       for (const id of urgent) this.hide(id);
-      for (const id of dirty) if (this.blockById.has(id) && !this.urgent.has(id)) this.dirty.add(id);
+      for (const id of dirty) this.queue(id);
     }
     // Not on an earthwork's new ground till it's drawn (the swap's landChanged queues what it moved).
     if ((this.urgent.size || this.dirty.size) && !this.r.landAhead) this.drain(s);
+  }
+
+  /** A block queued to be made again (behind the hidden ones), its plants showing meanwhile. */
+  private queue(id: number) {
+    if (this.blockById.has(id) && !this.urgent.has(id)) this.dirty.add(id);
   }
 
   /**
@@ -102,7 +127,7 @@ export class Grass {
       if (rect.x1 <= x0 || rect.x0 > x1 || rect.y1 <= z0 || rect.y0 > z1) continue;
       const was = this.blocks.get(rect.id)?.heights, now = this.heightsUnder(rect);
       if (!was || now.some((y, i) => Math.abs(y - was[i]) > MOVED)) this.hide(rect.id);
-      else if (!this.urgent.has(rect.id)) this.dirty.add(rect.id);
+      else this.queue(rect.id);
     }
   }
 
@@ -121,7 +146,8 @@ export class Grass {
     if (!this.blockById.has(id)) return;
     this.dirty.delete(id);
     this.urgent.add(id);
-    for (const m of this.blocks.get(id)?.meshes ?? []) m.visible = false;
+    const b = this.blocks.get(id);
+    for (const m of [b?.grass, b?.flowers]) if (m) m.visible = false;
   }
 
   // ---- Meadow colour & lushness ----
@@ -140,47 +166,138 @@ export class Grass {
     return smooth(0.30, 0.86, broad * 0.72 + med * 0.28);
   }
 
-  // ---- Per-tile grass scattering ----
+  // ---- The wildflowers' drifts and colours ----
 
+  /**
+   * Where the wildflowers drift (0..1) at world metres (wx, wz): broad soft patches with a finer break-up, so drifts
+   * have ragged edges and open meadow between; raised by the tile's habitat (`lift`: tree skirts, hill edges, banks).
+   */
+  private driftAt(wx: number, wz: number, lift: number): number {
+    const p = FLOWER_PROFILE;
+    const s = (this.seed % 991) * 0.17 + 31;
+    const broad = noise2(wx * 0.055 - s, wz * 0.055 + s * 0.6) * 0.5 + 0.5;
+    const fine = noise2(wx * 0.19 + s * 0.4, wz * 0.19 - s) * 0.5 + 0.5;
+    return smooth(p.drift[0], p.drift[1], broad * 0.66 + fine * 0.34 + lift);
+  }
+
+  /**
+   * A drift's colour at (wx, wz): the season's palette by patches about `PATCH` m across (the nearest of a jittered grid
+   * of points, its edges wandering), so a drift is mostly one colour and two meet along a ragged edge.
+   */
+  private patchColour(wx: number, wz: number): THREE.Color {
+    const s = (this.seed % 983) * 0.11;
+    const px = wx + noise2(wx * 0.11 + s, wz * 0.11) * WANDER, pz = wz + noise2(wx * 0.11, wz * 0.11 - s) * WANDER;
+    const cx = Math.floor(px / PATCH), cz = Math.floor(pz / PATCH);
+    let best = Infinity, pick = 0;
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const h = tileSeed(this.seed ^ FLOWER_SALT, cx + dx, cz + dz);
+      const qx = (cx + dx + (h & 0xffff) / 0x10000) * PATCH, qz = (cz + dz + (h >>> 16) / 0x10000) * PATCH;
+      const d = (qx - px) ** 2 + (qz - pz) ** 2;
+      if (d < best) { best = d; pick = tileSeed(h, 7, 11) / 2 ** 32; }
+    }
+    return this.paletteAt(pick);
+  }
+
+  /** The palette's colour at `t` (0..1) along its weights. */
+  private paletteAt(t: number): THREE.Color {
+    const colours = this.season.palette, total = colours.reduce((a, c) => a + c.weight, 0);
+    let at = t * total;
+    for (let i = 0; i < colours.length; i++) {
+      at -= colours[i].weight;
+      if (at < 0) return this.palette[i];
+    }
+    return this.palette[this.palette.length - 1];
+  }
+
+  // ---- Per-tile scattering ----
+
+  /** A tile's grass and flowers, where its habitat lets them grow. */
   private scatterTile(
-    mb: MeshBuilder,
+    grass: MeshBuilder,
+    flowers: MeshBuilder | null,
     s: GameState,
     tx: number,
     ty: number,
     onMap: boolean,
     boxes: readonly FootprintBox[],
-    fade = 1,
+    fade: number,
   ) {
     const hab = tileHabitat(s, this.land, this.lie.relief, this.wetDist, tx, ty, onMap);
     if (!hab) return;
+    const x0 = tx * TILE, z0 = ty * TILE;
+    const canPlace = (wx: number, wz: number): boolean => {
+      if (wx < x0 + hab.minU || wx > x0 + hab.maxU || wz < z0 + hab.minV || wz > z0 + hab.maxV) return false;
+      if (boxes.length && inBuilding(boxes, wx, wz, wheelRace)) return false;
+      return this.ground.normal(wx, wz).y >= 0.82;
+    };
+    this.scatterGrass(grass, tx, ty, hab, canPlace, fade);
+    if (flowers) this.scatterFlowers(flowers, tx, ty, hab, canPlace, fade);
+  }
+
+  private scatterGrass(
+    mb: MeshBuilder,
+    tx: number,
+    ty: number,
+    hab: TileHabitat,
+    canPlace: (wx: number, wz: number) => boolean,
+    fade: number,
+  ) {
+    const profile = GRASS_PROFILE;
     const { minU, maxU, minV, maxV, waterBoost, skirtBoost, rockBoost, deepWoods, groundScale, seasonDensity, heightScale } = hab;
     const rand = rng(tileSeed(this.seed, tx, ty));
     const x0 = tx * TILE, z0 = ty * TILE;
 
-    const canPlace = (wx: number, wz: number): boolean => {
-      if (wx < x0 + minU || wx > x0 + maxU || wz < z0 + minV || wz > z0 + maxV) return false;
-      if (boxes.length && inBuilding(boxes, wx, wz, wheelRace)) return false;
-      return this.ground.normal(wx, wz).y >= 0.82;
-    };
-
     const placeTuft = (wx: number, wz: number, lush: number) => {
-      const tall = (GRASS_PROFILE.tall[0] + lush * GRASS_PROFILE.tall[1]) * heightScale * (0.88 + rand() * 0.24);
-      addTuft(mb, this.ground, wx, wz, tall, this.tuftColor(wx, wz, rand), rand, GRASS_PROFILE.tuft);
+      const tall = (profile.tall[0] + lush * profile.tall[1]) * heightScale * (0.88 + rand() * 0.24);
+      addTuft(mb, this.ground, wx, wz, tall, this.tuftColor(wx, wz, rand), rand, profile.tuft);
     };
 
-    for (let a = 0; a < GRASS_PROFILE.attempts; a++) {
+    for (let a = 0; a < profile.attempts; a++) {
       const wx = x0 + minU + rand() * (maxU - minU);
       const wz = z0 + minV + rand() * (maxV - minV);
       const lush = Math.min(1, this.patchLush(wx, wz) * 0.85 + waterBoost + skirtBoost + rockBoost);
-      const prob = (GRASS_PROFILE.baseProb + lush * GRASS_PROFILE.lushProb) * deepWoods * groundScale * seasonDensity * fade;
+      const prob = (profile.baseProb + lush * profile.lushProb) * deepWoods * groundScale * seasonDensity * fade;
       if (rand() > prob) continue;
       if (!canPlace(wx, wz)) continue;
       placeTuft(wx, wz, lush);
       // Organic tussock clumping: occasionally add a nearby companion tuft in lush spots.
-      if (lush > 0.42 && rand() < GRASS_PROFILE.clusterProb * lush * fade) {
+      if (lush > 0.42 && rand() < profile.clusterProb * lush * fade) {
         const ang = rand() * Math.PI * 2, dist = 0.42 + rand() * 0.55;
         const cx = wx + Math.cos(ang) * dist, cz = wz + Math.sin(ang) * dist;
         if (canPlace(cx, cz)) placeTuft(cx, cz, lush * 0.92);
+      }
+    }
+  }
+
+  /**
+   * A tile's wildflowers: candidate spots taken by the drift field (so they gather in drifts, not evenly), each a clump of
+   * a few blooms of one colour, the patch's (or now and then a stray). Thinned as the grass is in deep woods and on poor
+   * ground, and in the country fringe.
+   */
+  private scatterFlowers(
+    mb: MeshBuilder,
+    tx: number,
+    ty: number,
+    hab: TileHabitat,
+    canPlace: (wx: number, wz: number) => boolean,
+    fade: number,
+  ) {
+    const profile = FLOWER_PROFILE;
+    const { minU, maxU, minV, maxV, waterBoost, skirtBoost, edgeBoost, deepWoods, groundScale } = hab;
+    const { density, clump } = this.season;
+    const rand = rng(tileSeed(this.seed ^ FLOWER_SALT, tx, ty));
+    const x0 = tx * TILE, z0 = ty * TILE, lift = skirtBoost * 0.6 + edgeBoost + waterBoost * 0.4;
+    for (let a = 0; a < profile.attempts; a++) {
+      const wx = x0 + minU + rand() * (maxU - minU), wz = z0 + minV + rand() * (maxV - minV);
+      const prob = this.driftAt(wx, wz, lift) * density * deepWoods * groundScale * fade;
+      if (rand() >= prob) continue;
+      const colour = rand() < STRAYS ? this.paletteAt(rand()) : this.patchColour(wx, wz);
+      const blooms = Math.max(1, Math.round((profile.clump[0] + Math.floor(rand() * profile.clump[1])) * clump));
+      for (let k = 0; k < blooms; k++) {
+        // The first at the spot, the rest round it, closer in more often.
+        const ang = rand() * Math.PI * 2, dist = k === 0 ? 0 : 0.08 + rand() * rand() * 0.34;
+        const fx = wx + Math.cos(ang) * dist, fz = wz + Math.sin(ang) * dist;
+        if (canPlace(fx, fz)) addFlower(mb, this.ground, fx, fz, colour, rand, profile.flower);
       }
     }
   }
@@ -210,23 +327,34 @@ export class Grass {
     }
   }
 
+  /** Makes a block again, its grass and flowers (and notes the land under it as it was made). */
   private rebuildBlock(s: GameState, rect: GrassBlockRect) {
-    this.drop(this.blocks.get(rect.id)?.meshes ?? []);
+    const was = this.blocks.get(rect.id);
+    this.drop(was?.grass);
+    this.drop(was?.flowers);
+    const block: Block = { heights: this.heightsUnder(rect) };
     const { width: w, height: h } = s.map;
     const boxes = boxesIn(s, rect.x0, rect.y0, rect.x1, rect.y1);
-    const mb = new MeshBuilder('grass');
+    const grass = new MeshBuilder('grass');
+    const flowers = this.flowering ? new MeshBuilder('foliage') : null;
     for (let y = rect.y0; y < rect.y1; y++) for (let x = rect.x0; x < rect.x1; x++) {
       const fade = fringeFade(x, y, w, h, this.reach);
       if (fade <= 0) continue;
       const onMap = x >= 0 && y >= 0 && x < w && y < h;
-      this.scatterTile(mb, s, x, y, onMap, boxes, fade);
+      this.scatterTile(grass, flowers, s, x, y, onMap, boxes, fade);
     }
-    // Culled whole (not cut into tiles: a block is small, and made again often).
-    const meshes = mb.vertexCount ? [this.r.add(mb.build(), 'grass', { cull: true, castShadow: false, reflect: false })] : [];
-    this.blocks.set(rect.id, { meshes, heights: this.heightsUnder(rect) });
+    // Culled whole (not cut into tiles: a block is small, and made again often). The flowers keep no rain off (cover).
+    if (grass.vertexCount) block.grass = this.r.add(grass.build(), 'grass', { cull: true, castShadow: false, reflect: false });
+    if (flowers?.vertexCount) block.flowers = this.r.add(flowers.build(), 'foliage', { cull: true, castShadow: false, reflect: false, cover: 'none' });
+    this.blocks.set(rect.id, block);
   }
 
-  private drop(meshes: THREE.Mesh[]) {
-    for (const m of meshes) { this.r.remove(m); m.geometry.dispose(); }
+  /** Takes a mesh out of the picture and frees it. */
+  private drop(m: THREE.Mesh | undefined): undefined {
+    if (m) { this.r.remove(m); m.geometry.dispose(); }
+    return undefined;
   }
 }
+
+/** A block's grass and flowers, as made, and the land's height under it then. */
+interface Block { grass?: THREE.Mesh; flowers?: THREE.Mesh; heights: Float32Array }

@@ -371,7 +371,7 @@ class BrushPicker implements Picker {
     if (!seen) return { tile: ground, building: null };
     const hit = seen.hit, still = seen.px === this.pixel(at) && this.cameraNow(scratch).equals(seen.camera);
     // What the pick met, as a tile of the map: a tree's own (it leans over the next), else the one it met. A plant low
-    // over open grass is the meadow's grass (grass.ts), not the tree or rock beside it.
+    // over open grass is the meadow's grass or flowers (grass.ts), not the tree or rock beside it.
     const p = hit?.point ?? null;
     const tree = p && hit?.what === 'plant' && !grassAt(s, p.x, p.z, p.y - this.r.landAt(p.x, p.z)) ? treeTile(s, p) : null;
     const met = p ? tree ?? tileOf(s, p) : null;
