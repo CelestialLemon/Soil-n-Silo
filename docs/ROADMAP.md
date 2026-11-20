@@ -142,6 +142,14 @@ the poplar a column. Saplings are small trees, and every tree changes with the s
 on #227, "for now": the crops' lay and the pine may be revisited. The candidates not picked (crops in rows of soil, a
 tiered or a Scots pine, a pollarded willow) are in #227's history. The demo shows them all at `?scene=plants`.
 
+The far woods (the country's woods past the map, a crown of a few strokes for each 2 × 2 tiles, brush3d's `addCanopy`) in
+winter (#268, epic #265, in review): they were dark chocolate and near-black balls on the snow, beside the lacy near trees.
+Two looks are up for the developer's pick on the PR, behind the HUD's **Far woods** button and `?farwoods=`: `frosted` (the
+default; bare woods a fan of thin taupe twig strokes with the ground between them, pines spruce cones) and `misty` (bare
+woods soft pale-grey masses). Both face the strokes mostly up, so they're lit as the ground is and take the snow and frost
+as the near trees do, and in the other seasons shape the pines as cones and the poplars as columns and lift the crowns'
+dark undersides. `off` is the look before. The same draws, and no more GPU on c4 and c5 (0.1–0.5 ms less).
+
 ## The tools in the painted look (2026-11-16)
 
 In brush3d, the game's tools work on the painted world (#206; #232 the groundwork, #233 the

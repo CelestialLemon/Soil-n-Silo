@@ -173,3 +173,12 @@ export function noise2(x: number, y: number) {
 }
 
 export const srgb = (hex: number) => new THREE.Color(hex);
+
+/** One leafy dab: a camera-facing card the foliage material shapes into a brush mark. */
+export function addDab(b: MeshBuilder, p: THREE.Vector3, n: THREE.Vector3, c: THREE.Color, size: number, seed: number, paint: Paint) {
+  const i0 = b.vertex(p, n, c, paint, [0, 0], [-1, -1, size, seed]);
+  b.vertex(p, n, c, paint, [0, 0], [1, -1, size, seed]);
+  b.vertex(p, n, c, paint, [0, 0], [1, 1, size, seed]);
+  b.vertex(p, n, c, paint, [0, 0], [-1, 1, size, seed]);
+  b.quad(i0, i0 + 1, i0 + 2, i0 + 3);
+}

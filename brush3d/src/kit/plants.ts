@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { MeshBuilder, noise2, rng, srgb, type Paint } from './builder';
-import { C, addDab, smooth, type Ground, type Tree, type TreeForm } from './kit';
-import { CRISP_EDGE, STIFF_STROKE } from '../renderer/materials';
+import { addDab, MeshBuilder, noise2, rng, srgb, type Paint } from './builder';
+import { C, smooth, type Ground, type Tree, type TreeForm } from './kit';
+import { CRISP_EDGE, STIFF_STROKE } from '../renderer/paintFlags';
 import { TREE_BEND, type TreeKind, type TreeSpec } from '../renderer/trees';
 import type { Season } from '../renderer/season';
 import type { BrushRenderer } from '../renderer/renderer';
@@ -35,27 +35,17 @@ interface SpeciesLook {
   leaf?: THREE.Color;
   /** A grown tree's size against the kit's (about 4 m tall at 1). */
   scale: number;
-  /** Its crown's colour from afar, in each season (the far woods' crowns, `addCanopy`). */
-  far: Record<Season, THREE.Color>;
 }
 
-const FAR_BARE = srgb(0x7a6758);
-/** Each species: its tree for the kit (pine's, willow's and poplar's own shapes are growSpecies's), and its colours from afar. */
+/** Each species: its tree for the kit (pine's, willow's and poplar's own shapes are growSpecies's). */
 const LOOKS: Record<Species, SpeciesLook> = {
-  oak: { kind: 'broadleaf', leaf: srgb(0x3f7f44), scale: 1.5,
-    far: { spring: srgb(0x76a84e), summer: srgb(0x467348), autumn: srgb(0xd98a32), winter: FAR_BARE } },
-  birch: { kind: 'broadleaf', leaf: srgb(0x86b850), scale: 1.25,
-    far: { spring: srgb(0x91bc61), summer: srgb(0x9cc068), autumn: srgb(0xe3b43c), winter: srgb(0x8c6c66) } },
-  pine: { kind: 'cypress', leaf: srgb(0x2b5e4c), scale: 1.4,
-    far: { spring: srgb(0x28564f), summer: srgb(0x28564f), autumn: srgb(0x28564f), winter: srgb(0x28564f) } },
-  willow: { kind: 'broadleaf', form: 'willow', leaf: srgb(0x6f9c48), scale: 1.25,
-    far: { spring: srgb(0x91bc61), summer: srgb(0x83b390), autumn: srgb(0xcdb04a), winter: srgb(0xb48d42) } },
-  poplar: { kind: 'cypress', leaf: srgb(0x3f7a44), scale: 1.6,
-    far: { spring: srgb(0x588650), summer: srgb(0x2e633d), autumn: srgb(0xe3b43c), winter: FAR_BARE } },
-  apple: { kind: 'fruit', form: 'orchard', scale: 1.05,
-    far: { spring: srgb(0xe9c3c0), summer: srgb(0x567843), autumn: srgb(0xc0782e), winter: FAR_BARE } },
-  bush: { kind: 'bush', form: 'thicket', scale: 1.3,
-    far: { spring: srgb(0x76a84e), summer: srgb(0x52823c), autumn: srgb(0xa8502f), winter: srgb(0x6d5644) } },
+  oak: { kind: 'broadleaf', leaf: srgb(0x3f7f44), scale: 1.5 },
+  birch: { kind: 'broadleaf', leaf: srgb(0x86b850), scale: 1.25 },
+  pine: { kind: 'cypress', leaf: srgb(0x2b5e4c), scale: 1.4 },
+  willow: { kind: 'broadleaf', form: 'willow', leaf: srgb(0x6f9c48), scale: 1.25 },
+  poplar: { kind: 'cypress', leaf: srgb(0x3f7a44), scale: 1.6 },
+  apple: { kind: 'fruit', form: 'orchard', scale: 1.05 },
+  bush: { kind: 'bush', form: 'thicket', scale: 1.3 },
 };
 
 /**
@@ -70,23 +60,6 @@ export function speciesTree(species: Species, x: number, z: number, size: number
 /** How tall a grown tree of the species stands, roughly (m). */
 export const speciesHeight = (species: Species) => LOOKS[species].scale * TALL[species];
 const TALL: Record<Species, number> = { oak: 4.2, birch: 4.2, pine: 6.4, willow: 4.6, poplar: 7.2, apple: 4.2, bush: 1.4 };
-
-/**
- * A far wood's crown: a loose ball of broad strokes `radius` across, its foot at (x, y, z), in the species' colour from afar
- * in the season. For woods too far off to tell one tree's limbs from another's, at a sliver of a tree's cost.
- */
-export function addCanopy(b: MeshBuilder, x: number, y: number, z: number, radius: number, species: Species, season: Season, rand: () => number) {
-  const base = LOOKS[species].far[season];
-  const cy = y + radius * 1.3, n = Math.round(3 + 1.5 * radius);
-  for (let i = 0; i < n; i++) {
-    const u = rand() * 2 - 1, phi = rand() * Math.PI * 2, s = Math.sqrt(1 - u * u);
-    const dir = new THREE.Vector3(s * Math.cos(phi), u < 0 ? u * 0.6 : u, s * Math.sin(phi));
-    const p = new THREE.Vector3(x, cy, z).addScaledVector(dir, radius * (0.55 + rand() * 0.4));
-    const lit = smooth(-0.2, 0.9, dir.y);
-    const c = base.clone().offsetHSL(-0.02 * lit, 0.04 * lit, 0.08 * lit - 0.06).offsetHSL(0, 0, (rand() - 0.5) * 0.05);
-    addDab(b, p, dir, c, (0.42 + rand() * 0.14) * radius, rand(), [0.7, 0.5 + rand() * 0.3, -1, 0.6]);
-  }
-}
 
 // ---- Crops ----
 

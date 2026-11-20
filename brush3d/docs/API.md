@@ -497,7 +497,8 @@ above, the game stops using it and it becomes the renderer's own.
   `r.shelter.changed()` after moving cover yourself (the whole map), or `r.shelter.changedIn(layer, box)` for a part.
   A tree's spring is held by each mesh that draws it and freed when the last lets go (`r.remove`, `r.removeTrees`), its
   slot then reused by the next new tree.
-- `MeshBuilder` and `Paint`: geometry in the renderer's format (colours, normals, the brush per vertex, tree ids).
+- `MeshBuilder` and `Paint`: geometry in the renderer's format (colours, normals, the brush per vertex, tree ids); `addDab`, one
+  foliage dab.
 - `growTree`, `Grove`, `dressFor`, `addStone`, `addTuft`, `addReeds`, `addMound`, `addFlowers`, `groundOf`, `MapLine`:
   the demo's pieces. `Grove.addTo(r, options)` adds its meshes with the given options and returns them. A `Tree`'s
   `stroke` (broader, fewer strokes) and `fill` (the share of a crown's outer strokes) thin it for a crowd; 1 is the demo's.
@@ -506,8 +507,10 @@ above, the game stops using it and it becomes the renderer's own.
   meshes), `speciesTree(species, x, z, size, seed)` and `speciesHeight` (a `Tree` for each of `SPECIES`: the game's six
   and its bush), `growSpecies(grove, ground, species, tree, rand)` (grows a tree into a `Grove` in its species' own shape:
   the pine a soft cone, the willow weeping, the poplar a column, the rest through `grove.grow`; use it rather than
-  `grove.grow` for the game's species), `addCanopy` (a far wood's crown, a few broad strokes in the species' colour for
-  the season), `CROP_NAMES`. The demo's `?scene=plants` shows every crop at every stage and every species, in any season.
+  `grove.grow` for the game's species), `addCanopy(b, x, y, z, radius, species, season, rand, mode?)` (a far wood's
+  crown, a few broad strokes in the species' colour for the season; `mode`, one of `FAR_WOODS_MODES`, is Soil-n-Silo#268's
+  comparison of looks: `'frosted'` the default, `'misty'`, or `'off'` as before; `kit/farWoods.ts`), `CROP_NAMES`. The
+  demo's `?scene=plants` shows every crop at every stage and every species, in any season.
 - `loadModel` and `ModelSet`: the models, merged into the inked and planted meshes; `MODELS`, `TILE`, `blocksWind`,
   `wheelRace` from the catalogue.
 

@@ -10,6 +10,7 @@ import { GROUND_TOOLS_GLSL } from './overlay';
 import { GLOW, PART_TEXELS } from './parts';
 import { SMOKE_INK } from './pick';
 import { SMOKE } from './nightLights';
+import { CRISP_EDGE, STIFF_STROKE } from './paintFlags';
 
 // The scene's materials. Each has a main variant (writes colour and the G-buffer) and a depth variant for the sun's
 // shadow map, built from the same vertex code so wind and billboarding cast the shadows they should.
@@ -291,12 +292,6 @@ void main() {
   place(wp.xyz);
 }
 `;
-
-/** Added to a foliage dab's aPaint.x (its colour drift, under 2 otherwise) to give it crisper edges: see FOLIAGE_VERT. */
-export const CRISP_EDGE = 2;
-/** Added to a foliage dab's aPaint.x to mark it as stiff (#13's winter twigs, and fallen leaves): it moves only with its
- * tree, if any, never fluttering or turning over on its own. Adds to CRISP_EDGE. */
-export const STIFF_STROKE = 4;
 
 /**
  * Foliage dabs: each card is a quad centred on `position`, turned to face whichever camera draws it (the view or the sun),

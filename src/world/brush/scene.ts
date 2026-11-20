@@ -3,6 +3,7 @@ import { generateLand } from '../../game/map.ts';
 import { MAX_LEVEL } from '../../game/relief.ts';
 import type { GameState } from '../../game/state.ts';
 import type { SettingsStore } from '../../ui/settings.ts';
+import { farWoodsChoice, farWoodsMode } from '../../ui/farWoodsChoice.ts';
 import { Camera } from '../camera.ts';
 import { COUNTRY, Lie, LEVEL_HEIGHT, standY } from '../ground.ts';
 import type { Heights, Scene } from '../scene.ts';
@@ -56,7 +57,9 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
   const ground = timed('land', () => new BrushLand(r, state, land, lie)), sky = new BrushSky(r, state), cover = new BrushCover(r, land), water = timed('water', () => new BrushWater(r, land, lie));
   // The goods trucks carry and buildings hand next door (#203), drawn with the things.
   const goods = new Goods(r);
-  const things = new Things(r, lie, goods), wild = timed('wild', () => new Wild(r, lie, land, state)), wind = timed('wind', () => new BrushWind(r, state, land));
+  const things = new Things(r, lie, goods), wild = timed('wild', () => new Wild(r, lie, land, state, farWoodsMode())), wind = timed('wind', () => new BrushWind(r, state, land));
+  // The far woods' look, #268's comparison (its button goes once the developer has picked).
+  farWoodsChoice((mode) => wild.setFarWoods(mode));
   const lens = new BrushLens(r, canvas);
   const camera = new Camera(lens, canvas, map, start, changed);
   const tools = timed('tools', () => new BrushTools(r, state, things, lie));

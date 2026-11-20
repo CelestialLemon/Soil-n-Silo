@@ -42,16 +42,17 @@ export { steadyWind, WIND_SCALE, windName, type WindStrength } from './renderer/
 export { blocksWind, GROUPS, MODELS, TILE, TOUR, wheelRace, type ModelInfo, type Stand } from './models/catalog';
 
 // ---- The painting kit: the level below the game's API, which the demo's scenes are built with (docs/API.md) ----
-export { MeshBuilder, noise2, PLAIN, rng, srgb, type Paint } from './kit/builder';
+export { addDab, MeshBuilder, noise2, PLAIN, rng, srgb, type Paint } from './kit/builder';
 export {
-  addDab, addFlowers, addMound, addReeds, addStone, addTuft, C, groundOf, growTree, MapLine, smooth, treeWind,
+  addFlowers, addMound, addReeds, addStone, addTuft, C, groundOf, growTree, MapLine, smooth, treeWind,
   type Ground, type Near, type Stream, type Tree, type TreeForm, type TreeKind,
 } from './kit/kit';
 export { dressFor, Grove, type Dress } from './kit/seasonTrees';
 export {
-  addCanopy, CROP_NAMES, CropPatch, growSpecies, SPECIES, speciesHeight, speciesTree, type CropName, type CropStage, type CropTile,
+  CROP_NAMES, CropPatch, growSpecies, SPECIES, speciesHeight, speciesTree, type CropName, type CropStage, type CropTile,
   type Species,
 } from './kit/plants';
+export { addCanopy, FAR_WOODS_MODES, type FarWoodsMode } from './kit/farWoods';
 export { loadModel, ModelSet, ModelParts } from './kit/model';
 
 // ---- Tools: measuring a frame ----

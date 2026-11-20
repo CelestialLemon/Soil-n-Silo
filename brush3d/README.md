@@ -103,9 +103,9 @@ recipe and the land's smooth fit); [docs/API.md](docs/API.md) has the API, in th
 - `src/land/`: the land painted from the game's map: what the game sends (`map.ts`), the smooth fit (`surface.ts`) and
   the painting and earthworks (`paint.ts`) (`docs/LAND.md`).
 - `src/wind/`: the living wind's simulation, which the game's rules read too (`docs/WIND.md`).
-- `src/kit/`: the painting kit the scenes are built with: `MeshBuilder` (`builder.ts`), the pieces (`kit.ts`: trees,
-  stones, grass, reeds, lines on the map, water), the trees' season dress (`seasonTrees.ts`) and the models' importer
-  (`model.ts`).
+- `src/kit/`: the painting kit the scenes are built with: `MeshBuilder` and `addDab` (`builder.ts`), the pieces (`kit.ts`:
+  trees, stones, grass, reeds, lines on the map, water), the trees' season dress (`seasonTrees.ts`), the game's crops and
+  species (`plants.ts`), the far woods' crowns (`farWoods.ts`, loads in Node) and the models' importer (`model.ts`).
 - `src/models/`: the models, `*.glb`, listed by `catalog.ts` (`docs/MODELS.md`).
 - `src/demo/`: the demo viewer, the scripted weather standing in for the game (`timeline.ts`), and its scenes in
   `scenes/`: `farm.ts` (the *Dear Alice* aerial, rebuilt and grown into a valley), `meadow.ts` (the first slice),
