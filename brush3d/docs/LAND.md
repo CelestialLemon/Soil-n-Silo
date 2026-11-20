@@ -40,10 +40,12 @@ country the game draws round it in tiles too, then `beyond`, a coarse grid of he
 - **The country.** The tiles off the map are drawn the same, clearly duller (`LandLook.beyond`, the developer's pick), so
   the edge of the buildable map reads. How the dullness comes in at the map's edge is `LandLook.border` (Soil-n-Silo#269):
   `off` tile by tile (a straight cut about a tile wide), `feathered` by place over about two tiles just outside the map,
-  `organic` the same with its outer edge wandering; in each the map's own tiles keep their colour. Past the tiles,
-  `beyond` is a coarse floor of distant woods out to the horizon. It starts from the land's own colour where it meets the
-  land's edge and fades to the woods' floor over three of its cells, so no seam shows there in any season; the land's outer
-  edge is skirted down 3 m so no crack shows where they meet.
+  `organic` the same with its outer edge wandering; in each the map's own tiles keep their colour, to their very edge.
+  Past the tiles, `beyond` is a coarse floor of distant woods out to the horizon. It starts from the land's own colour
+  where it meets the land's edge and fades to the woods' floor over three of its cells; and since its cells are 16 m and
+  run straight between their corners, the land's last cell in from its edge is taken towards that same straight run, so
+  the two meet in one colour all along the edge and no seam shows there in any season. The land's outer edge is skirted
+  down 3 m so no crack shows where they meet.
 - **Chunks.** The land is meshes of 8 by 8 tiles, each cut into the renderer's tiles so a pass draws only what it sees.
 
 ## Earthworks without a hitch

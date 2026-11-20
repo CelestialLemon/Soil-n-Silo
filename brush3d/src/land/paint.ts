@@ -80,11 +80,10 @@ export interface LandLook {
  */
 export const LAND_LOOK: LandLook = { groundTint: 1, beyond: { light: 0.78, chroma: 0.55 }, border: 'feathered' };
 /**
- * Where the country's dullness fades in (tiles out from the map's edge, less than 0 inside it), feathered: from nothing a
- * quarter of a tile in (the map's tiles keep their colour, but for the faintest shade at their very edge) to the
- * country's full dullness 1.75 tiles out.
+ * Where the country's dullness fades in (tiles out from the map's edge), feathered: from nothing at the edge (the map's
+ * tiles keep their whole colour, to their very edge) to the country's full dullness 1.75 tiles out.
  */
-const FEATHER = [-0.25, 1.75] as const;
+const FEATHER = [0, 1.75] as const;
 /**
  * Organic: the fade starts as the feathered one's, and reaches full dullness between `near` and `far` tiles out, wandering
  * between them over about `wave` tiles along the edge, with a finer ragging (`rag` tiles, every few tiles) on top.
@@ -190,6 +189,11 @@ export class PaintedLand {
   private apron: THREE.Mesh | null = null;
   private apronGeometry: THREE.BufferGeometry | null = null;
   private readonly beyond: LandMap['beyond'];
+  /**
+   * Where the country beyond's grid lines meet the land's edges (tiles across and down the land, its corners among them):
+   * its colour is the land's there, and runs straight between them (alongApron).
+   */
+  private readonly apronAt: { xs: number[]; ys: number[] } | null;
   private readonly fields: { x: number; z: number; side: number; turn: number };
   /** The lowest and highest the land is drawn (m), for tracing a line of sight. */
   private low = 0;
@@ -200,6 +204,11 @@ export class PaintedLand {
     this.adder = adder; this.look = look;
     this.width = m.width; this.height = m.height; this.tile = m.tile; this.level = m.level; this.x0 = m.x0; this.z0 = m.z0;
     this.map = { ...m.map }; this.beyond = m.beyond ?? null;
+    const lines = this.apronLines(), on = (v: number, n: number) => v > -1e-6 && v < n + 1e-6;
+    this.apronAt = lines && {
+      xs: lines.xs.map((x) => (x - this.x0) / this.tile).filter((x) => on(x, this.width)),
+      ys: lines.zs.map((z) => (z - this.z0) / this.tile).filter((y) => on(y, this.height)),
+    };
     const n = m.width * m.height;
     this.relief = { width: m.width, height: m.height, corner: Float64Array.from(m.corners, (c) => Math.round(c / m.level)) };
     this.worked = Uint8Array.from(m.worked); this.cover = Uint8Array.from(m.cover); this.ground = Uint8Array.from(m.ground);
@@ -370,11 +379,13 @@ export class PaintedLand {
       if (S !== this.detail[i]) { this.detail[i] = S; dirty.add(i); }
     });
     // What's drawn changes up to two tiles round each tile that did: its sides' steps and faces (its neighbours'), the
-    // water's bed, its paint (blended over the next tile and a little more). The country beyond meets the land's edge.
+    // water's bed, its paint (blended over the next tile and a little more). The country beyond meets the land's edge; and
+    // the land's colour within a cell of that runs between the edge tiles' colours a cell apart (alongApron): further round.
+    const reach = this.beyond ? Math.ceil(this.beyond.cell / this.tile) : 0;
     for (const t of dirty) {
-      near(t, 2, (x, y) => this.pending.add(Math.floor(y / CHUNK) * this.cols + Math.floor(x / CHUNK)));
-      const x = t % W, y = (t - x) / W;
-      if (this.beyond && (x === 0 || y === 0 || x === W - 1 || y === H - 1)) this.apronMoved = true;
+      const x = t % W, y = (t - x) / W, edge = this.beyond !== null && (x === 0 || y === 0 || x === W - 1 || y === H - 1);
+      near(t, edge ? 2 + reach : 2, (x, y) => this.pending.add(Math.floor(y / CHUNK) * this.cols + Math.floor(x / CHUNK)));
+      if (edge) this.apronMoved = true;
     }
   }
 
@@ -725,6 +736,37 @@ export class PaintedLand {
     c.lerp(COL.lime, smooth(0.55, 0.9, k) * 0.35 * meadow).lerp(COL.emerald, smooth(0.6, 0.95, 1 - k) * 0.35 * meadow);
   }
 
+  /**
+   * Within a cell of the country beyond's grid of the land's outer edge, `c` (a point's colour, tiles) taken towards the
+   * colour the country beyond has where it meets the land: the land's at its grid's lines, and straight between them. At
+   * the edge it's that, so the two meshes meet in one colour all along it, not only at the grid's lines (Soil-n-Silo#269).
+   * Near a corner it's taken towards both sides' colours, the nearer the more.
+   */
+  private alongApron(px: number, py: number, c: THREE.Color) {
+    const at = this.apronAt;
+    if (!at) return;
+    const reach = this.beyond!.cell / this.tile, W = this.width, H = this.height;
+    // How far in from each side (west, east, north, south): along it, its grid's lines, a point on it.
+    const sides: [number, number, number[], (l: number) => [number, number]][] = [
+      [px, py, at.ys, (l) => [0, l]], [W - px, py, at.ys, (l) => [W, l]], [py, px, at.xs, (l) => [l, 0]], [H - py, px, at.xs, (l) => [l, H]],
+    ];
+    let r = 0, g = 0, b = 0, sum = 0, most = 0;
+    const e = SCRATCH.alongA, f = SCRATCH.alongB;
+    for (const [d, along, lines, on] of sides) {
+      if (d >= reach) continue;
+      let i = 0;
+      while (i + 2 < lines.length && lines[i + 1] <= along) i++;
+      const t = Math.min(1, Math.max(0, (along - lines[i]) / (lines[i + 1] - lines[i])));
+      this.topColour(...on(lines[i]), e);
+      this.topColour(...on(lines[i + 1]), f);
+      e.lerp(f, t);
+      if (d <= 1e-9) { c.copy(e); return; }
+      const k = 1 - smooth(0, reach, d), w = k / d;
+      r += e.r * w; g += e.g * w; b += e.b * w; sum += w; most = Math.max(most, k);
+    }
+    if (sum > 0) c.lerp(SCRATCH.alongA.setRGB(r / sum, g / sum, b / sum), most);
+  }
+
   /** A vertex of a tile's top at (u, v) across it. */
   private vertex(b: MeshBuilder, tx: number, ty: number, u: number, v: number): number {
     const px = tx + u, py = ty + v, y = this.vy = this.drawn(tx, ty, u, v), n = this.normal(tx, ty, u, v, SCRATCH.n), c = SCRATCH.c;
@@ -735,6 +777,8 @@ export class PaintedLand {
     if (cover !== LAND_COVER.water) c.lerp(COL.worn, steep * 0.5);
     // The bed darkens as it deepens.
     if (cover === LAND_COVER.water) c.lerp(COL.deep, (this.carve(px, py) / BED) * 0.7);
+    // (Last: the country beyond has neither the banks' wear nor the beds' depth.)
+    this.alongApron(px, py, c);
     const pt = PAINT[cover] ?? PAINT[0];
     const drift = Math.min(1, pt.drift + steep * 0.4 + noise2(wx * 0.21 + 3, wz * 0.21 - 9) * 0.15);
     return b.vertex({ x: wx, y, z: wz }, n, c, [drift, pt.brush, 0.7 + noise2(wx * 0.05, wz * 0.05) * 0.9, 0]);
@@ -829,13 +873,20 @@ export class PaintedLand {
     return k >= 1 ? far : edge() + (far - edge()) * k;
   }
 
+  /** The country beyond's grid lines (m), across and down, with the land's edges among them; null if there's none. */
+  private apronLines(): { xs: number[]; zs: number[] } | null {
+    const bd = this.beyond;
+    if (!bd) return null;
+    const lines = (from: number, n: number, edges: number[]) => [...new Set([...Array.from({ length: n }, (_, k) => from + k * bd.cell), ...edges])].sort((p, q) => p - q);
+    return { xs: lines(bd.x0, bd.nx, [this.x0, this.x0 + this.width * this.tile]), zs: lines(bd.z0, bd.nz, [this.z0, this.z0 + this.height * this.tile]) };
+  }
+
   /** The country beyond as one mesh: distant woods' floor on a coarse grid round the land, its lines meeting the land's edges. */
   private apronMesh(): THREE.BufferGeometry | null {
     const bd = this.beyond;
     if (!bd) return null;
     const lx0 = this.x0, lx1 = this.x0 + this.width * this.tile, lz0 = this.z0, lz1 = this.z0 + this.height * this.tile;
-    const lines = (from: number, n: number, edges: number[]) => [...new Set([...Array.from({ length: n }, (_, k) => from + k * bd.cell), ...edges])].sort((p, q) => p - q);
-    const xs = lines(bd.x0, bd.nx, [lx0, lx1]), zs = lines(bd.z0, bd.nz, [lz0, lz1]), b = new MeshBuilder('paint'), nx = xs.length;
+    const { xs, zs } = this.apronLines()!, b = new MeshBuilder('paint'), nx = xs.length;
     const c = SCRATCH.c, n = SCRATCH.n, e = 1, reach = APRON_BLEND * bd.cell;
     for (const z of zs) for (const x of xs) {
       const y = this.heightAt(x, z);
@@ -887,7 +938,7 @@ const SIDE_AT: ((s: number) => [number, number])[] = [(s) => [s, 0], (s) => [1, 
 const SIDE_ENDS: [[number, number], [number, number]][] = [[[0, 0], [1, 0]], [[1, 0], [1, 1]], [[0, 1], [1, 1]], [[0, 0], [0, 1]]];
 const SCRATCH = {
   a: new THREE.Color(), c: new THREE.Color(), lip: new THREE.Color(), floor: new THREE.Color(), band: new THREE.Color(),
-  dulled: new THREE.Color(), edge: new THREE.Color(),
+  dulled: new THREE.Color(), edge: new THREE.Color(), alongA: new THREE.Color(), alongB: new THREE.Color(),
   n: new THREE.Vector3(), out: new THREE.Vector3(),
 };
 const ab = new THREE.Vector3(), ac = new THREE.Vector3(), cross = new THREE.Vector3();

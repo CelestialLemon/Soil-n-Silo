@@ -171,7 +171,7 @@ about two tiles just outside the map, so the map's own tiles keep their full col
 glance (#228). The developer picks between `feathered` (the default) and `organic` (the fade's outer edge wanders) on the
 PR's preview; the switch goes before it merges. And the straight dark seam where the land met the distant country in
 autumn and winter is gone: the distant country now starts from the land's own colour at its edge and fades to its woods'
-floor over three of its 16 m cells.
+floor over three of its 16 m cells, and the land's outermost strip matches it all along the edge.
 
 ## The buildings and trucks as models, with their goods (2026-11-16)
 
