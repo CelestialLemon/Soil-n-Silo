@@ -508,7 +508,7 @@ above, the game stops using it and it becomes the renderer's own.
   and its bush), `growSpecies(grove, ground, species, tree, rand)` (grows a tree into a `Grove` in its species' own shape:
   the pine a soft cone, the willow weeping, the poplar a column, the rest through `grove.grow`; use it rather than
   `grove.grow` for the game's species), `addCanopy(b, x, y, z, radius, species, season, rand, mode?)` (a far wood's
-  crown, a few broad strokes in the species' colour for the season; `mode`, one of `FAR_WOODS_MODES`, is Soil-n-Silo#268's
+  crown, a few broad strokes in the species' colour for the season, on a thin trunk but in `'off'`; `mode`, one of `FAR_WOODS_MODES`, is Soil-n-Silo#268's
   comparison of looks: `'frosted'` the default, `'misty'`, or `'off'` as before; `kit/farWoods.ts`), `CROP_NAMES`. The
   demo's `?scene=plants` shows every crop at every stage and every species, in any season.
 - `loadModel` and `ModelSet`: the models, merged into the inked and planted meshes; `MODELS`, `TILE`, `blocksWind`,

@@ -62,7 +62,8 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      `?scene=plants`; its other frames are unchanged.
      The far woods' crowns (`addCanopy`, now `kit/farWoods.ts`, which loads in Node) in winter (Soil-n-Silo#268, in
      review): two looks for the developer's pick, `frosted` and `misty` (the `mode` argument), in place of the dark balls
-     on the snow; `off` as before. The demo doesn't draw them; its frames are unchanged.
+     on the snow; `off` as before. Each crown in both looks stands on a trunk, a bare one's with limbs forking up. The demo
+     doesn't draw them; its frames are unchanged.
   10. Soil-n-Silo#211 the swap (done 2026-11-16): brush3d is the game's only renderer, the default, with no flag or
       fallback; the pixel world, its models and the pixel3d-renderer dependency are gone. The renderer didn't change.
       Left open: the developer's checks on the laptop and the MacBook (Soil-n-Silo#210), and the river's falls

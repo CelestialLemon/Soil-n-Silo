@@ -148,9 +148,10 @@ Two looks are up for the developer's pick on the PR, behind the HUD's **Far wood
 default; bare woods a fan of thin taupe twig strokes with the ground between them, pines spruce cones) and `misty` (bare
 woods soft pale-grey masses). Both face the strokes mostly up, so they're lit as the ground is and take the snow and frost
 as the near trees do, and in the other seasons shape the pines as cones and the poplars as columns and lift the crowns'
-dark undersides. `off` is the look before. The same draws and no more to fill, though frosted's bare woods have three
-times the strokes (on c5, about 51,000 to 27,000); the GPU's frame on c4 and c5, near and widest, clear, storm, blizzard
-and golden hour, measured the same or 0.1–0.5 ms less.
+dark undersides. `off` is the look before. Up close, where the far woods meet the near, a crown was loose strokes floating
+over the ground, so in both looks every far crown now stands on a thin trunk of short upright strokes, and a bare wood's has
+a few limbs forking up into its twigs (frosted's twigs: four times the strokes, smaller). The same draws; on c5 the GPU's
+frame is the same as `off` to 0.4 ms more in frosted, the same in misty.
 
 ## The tools in the painted look (2026-11-16)
 

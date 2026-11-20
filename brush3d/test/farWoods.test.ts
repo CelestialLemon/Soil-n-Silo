@@ -7,9 +7,10 @@ import type { Species } from '../src/kit/plants.ts';
 import { STIFF_STROKE } from '../src/renderer/paintFlags.ts';
 import { SEASONS, type Season } from '../src/renderer/season.ts';
 
-// The far woods' crowns (brush3d's addCanopy, #268): `off` paints them as before, and the new looks' strokes cover no more
-// than before, have no dark side in winter, and lift the other seasons' dark undersides. (The frame's cost is measured in the
-// game: see the PR.)
+// The far woods' crowns (brush3d's addCanopy, #268): `off` paints them as before, and the new looks' crown strokes cover no
+// more than before, have no dark side in winter, and lift the other seasons' dark undersides; and in the new looks every
+// crown stands on a trunk, its wood thin, upright and dark under the snow. (The frame's cost is measured in the game: see the
+// PR.)
 
 const SPECIES: readonly Species[] = ['oak', 'birch', 'pine', 'willow', 'poplar', 'apple', 'bush'];
 
@@ -49,17 +50,24 @@ function before(b: MeshBuilder, x: number, y: number, z: number, radius: number,
   }
 }
 
-/** What a wood's strokes come to: how many, how much they fill (each card is size² × 4), and how they face and colour. */
-function measure(g: THREE.BufferGeometry) {
+/** Whether a stroke is a far tree's trunk or limb (they alone have no rim light). */
+const isWood = (g: THREE.BufferGeometry, i: number) => g.getAttribute('aPaint').getW(i) === 0;
+
+/**
+ * What a wood's strokes come to: how many, how much they fill (each card is size² × 4), and how they face and colour. Its
+ * crowns' strokes, or (`wood`) its trunks' and limbs'.
+ */
+function measure(g: THREE.BufferGeometry, wood = false) {
   const nrm = g.getAttribute('normal'), col = g.getAttribute('color'), card = g.getAttribute('aCard'), paint = g.getAttribute('aPaint');
-  let fill = 0, biggest = 0, lowest = Infinity, light = 0, stiff = 0;
+  let fill = 0, biggest = 0, lowest = Infinity, light = 0, stiff = 0, strokes = 0;
   for (let i = 0; i < card.count; i += 4) {
+    if (isWood(g, i) !== wood) continue;
+    strokes++;
     fill += card.getZ(i) ** 2; biggest = Math.max(biggest, card.getZ(i));
     lowest = Math.min(lowest, nrm.getY(i));
     light += 0.2126 * col.getX(i) + 0.7152 * col.getY(i) + 0.0722 * col.getZ(i);
     if (paint.getX(i) >= STIFF_STROKE) stiff++;
   }
-  const strokes = card.count / 4;
   return { strokes, fill, biggest, lowest, light: light / strokes, stiff: stiff / strokes };
 }
 
@@ -72,16 +80,48 @@ test('off paints the far woods exactly as before #268, in every season', () => {
   }
 });
 
-test('the new looks\' strokes cover no more than before, none is bigger, and frosted\'s bare woods have three times as many', () => {
+test('the new looks\' crowns cover no more than before, no stroke is bigger, and frosted\'s bare woods have four times as many', () => {
   for (const mode of FAR_WOODS_MODES) for (const season of SEASONS) for (const species of SPECIES) {
     const now = measure(wood(species, season, mode)), was = measure(wood(species, season, 'off'));
     assert.ok(now.fill <= was.fill * 1.02, `${mode} ${species} in ${season}: fills ${(now.fill / was.fill).toFixed(2)} of before`);
     assert.ok(now.biggest <= was.biggest * 1.02, `${mode} ${species} in ${season}: its biggest stroke`);
-    // Frosted's bare woods are three times the strokes, smaller; the rest as many as before.
-    const more = mode === 'frosted' && season === 'winter' && species !== 'pine' ? 3 : 1;
+    // Frosted's bare woods are four times the strokes, smaller; the rest as many as before.
+    const more = mode === 'frosted' && season === 'winter' && species !== 'pine' ? 4 : 1;
     assert.equal(now.strokes, was.strokes * more, `${mode} ${species} in ${season}: strokes`);
   }
 });
+
+test('every crown in the new looks stands on its trunk: thin upright strokes from its foot up into it, a bare wood\'s limbs forking', () => {
+  for (const mode of ['frosted', 'misty'] as const) for (const season of SEASONS) for (const species of SPECIES) {
+    const g = wood(species, season, mode), pos = g.getAttribute('position'), card = g.getAttribute('aCard'), paint = g.getAttribute('aPaint');
+    const trunks = new Map<string, { foot: number; top: number; limbs: number }>();
+    for (let i = 0; i < card.count; i += 4) {
+      if (!isWood(g, i)) continue;
+      const key = `${pos.getX(i).toFixed(3)},${pos.getZ(i).toFixed(3)}`, t = trunks.get(key) ?? { foot: Infinity, top: -Infinity, limbs: 0 };
+      assert.ok(Math.abs(paint.getZ(i) - Math.PI / 2) < 0.7 && paint.getY(i) <= Math.fround(0.2), `${mode} ${species} in ${season}: a thin, upright stroke`);
+      if (paint.getZ(i) === Math.fround(Math.PI / 2)) { t.foot = Math.min(t.foot, pos.getY(i) - card.getZ(i)); t.top = Math.max(t.top, pos.getY(i) + card.getZ(i)); } else t.limbs++;
+      trunks.set(key, t);
+    }
+    assert.equal(trunks.size, 40, `${mode} ${species} in ${season}: ${trunks.size} trunks for 40 crowns`);
+    // Each reaches down into the ground at its foot (1 m up, in wood()), and up past its crown's lowest strokes.
+    for (const t of trunks.values()) assert.ok(t.foot <= 1 && t.top > 3, `${mode} ${species} in ${season}: a trunk from ${t.foot.toFixed(2)} to ${t.top.toFixed(2)}`);
+    const forks = season === 'winter' && species !== 'pine';
+    for (const t of trunks.values()) assert.ok(forks ? t.limbs >= 2 : t.limbs === 0, `${mode} ${species} in ${season}: ${t.limbs} limbs`);
+    // The wood is a sliver of the crown's cost: its cards fill under half the crowns' (and its marks a fifth of its cards).
+    const w = measure(g, true), c = measure(g);
+    assert.ok(w.fill < 0.5 * c.fill, `${mode} ${species} in ${season}: the wood fills ${(w.fill / c.fill).toFixed(2)} of the crowns`);
+    // Facing across: no snow lies on it, and it doesn't flutter.
+    assert.ok(w.lowest > 0 && measureHighest(g) < 0.1 && w.stiff === 1, `${mode} ${species} in ${season}: the wood faces across, stiff`);
+  }
+});
+
+/** How far up the wood's strokes face, at most. */
+function measureHighest(g: THREE.BufferGeometry) {
+  const nrm = g.getAttribute('normal');
+  let most = -Infinity;
+  for (let i = 0; i < nrm.count; i += 4) if (isWood(g, i)) most = Math.max(most, nrm.getY(i));
+  return most;
+}
 
 test('in winter the new looks have no dark side: lighter bare woods, every stroke facing up, the bare ones stiff', () => {
   for (const mode of ['frosted', 'misty'] as const) for (const species of SPECIES) {
