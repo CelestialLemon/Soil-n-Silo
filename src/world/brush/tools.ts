@@ -30,8 +30,8 @@ import { thingHeight, type Things } from './things.ts';
 //
 // Units: the Scene's are the game's (a tile 1, heights as ground.ts's Lie has them); brush3d's are metres (scale.ts).
 
-/** How high the meadow's plants stand as shown (m): its grass and flowers (`top`), and its reeds by the water (`reedTop`). */
-interface MeadowHeights { readonly top: number; readonly reedTop: number }
+/** How high the meadow's plants stand as shown (m): its grass and flowers (`top`), and its reeds where they stand (`reedTopAt`). */
+interface MeadowHeights { readonly top: number; reedTopAt(x: number, z: number): number }
 
 /** How near the line of sight through the pointer a truck must drive (m) to change what is under the pointer. */
 const TRUCK_REACH = 3.2;
@@ -379,7 +379,7 @@ class BrushPicker implements Picker {
     // over open grass is the meadow's grass or flowers, and one low over the water its reeds (grass.ts), not the tree or
     // rock beside it.
     const p = hit?.point ?? null, m = this.meadow;
-    const tree = p && hit?.what === 'plant' && !grassAt(s, p.x, p.z, p.y - this.r.landAt(p.x, p.z), m.top, m.reedTop) ? treeTile(s, p) : null;
+    const tree = p && hit?.what === 'plant' && !grassAt(s, p.x, p.z, p.y - this.r.landAt(p.x, p.z), m.top, m.reedTopAt(p.x, p.z)) ? treeTile(s, p) : null;
     const met = p ? tree ?? tileOf(s, p) : null;
     const tile = still && tree ? tree : ground;
     // A building's or truck's own mesh, if it still stands for it; else the building on the tile the pick met.

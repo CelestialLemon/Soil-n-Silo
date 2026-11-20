@@ -147,32 +147,24 @@ test('a rock beside a shore keeps the reeds a clump\'s reach off it', () => {
   assert.ok(checked > 0);
 });
 
-test('a pick low over the water or its banks is the reeds, while they show, and inland it isn\'t', () => {
+test('a pick low over the water or its banks is the reeds where they stand, and elsewhere it isn\'t', () => {
+  // `reeds` is the reeds' top where a clump stands within reach of the point, else 0 (grass.ts's reedTopAt).
   const sc = must(scenarioById('c1'), 'c1');
-  const s = newGame(sc), { width: w, height: h } = s.map, T = (x: number, y: number) => s.map.terrain[y * w + x];
+  const s = newGame(sc), { width: w } = s.map;
   const mid = (i: number): [number, number] => [((i % w) + 0.5) * TILE, (Math.floor(i / w) + 0.5) * TILE];
-  const near = (i: number, r: number) => {
-    const x = i % w, y = Math.floor(i / w);
-    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
-      const nx = x + dx, ny = y + dy;
-      if (nx >= 0 && ny >= 0 && nx < w && ny < h && T(nx, ny) === TERRAIN.water) return true;
-    }
-    return false;
-  };
-  const water = s.map.terrain.findIndex((t) => t === TERRAIN.water);
-  const bank = s.map.terrain.findIndex((t, i) => t === TERRAIN.grass && near(i, 1));
-  const inland = s.map.terrain.findIndex((t, i) => t === TERRAIN.grass && !near(i, 3));
-  assert.ok(water >= 0 && bank >= 0 && inland >= 0);
+  const water = s.map.terrain.findIndex((t) => t === TERRAIN.water), grass = s.map.terrain.findIndex((t) => t === TERRAIN.grass);
+  const tree = s.map.terrain.findIndex((t) => t === TERRAIN.tree);
   const top = meadowTop('meadow', 'meadow'), reeds = reedTop('lush'), stalk = (top + reeds) / 2;
   assert.ok(top < stalk && stalk < reeds, 'a reed stands over the grass and flowers');
   assert.equal(grassAt(s, ...mid(water), 0.5, top, reeds), true, 'a reed over the water');
-  assert.equal(grassAt(s, ...mid(water), 0.5, top, reedTop('off')), false, 'a low branch over the water, the reeds off');
+  assert.equal(grassAt(s, ...mid(water), 0.5, top, 0), false, 'a low branch over the water, no reeds there');
   assert.equal(grassAt(s, ...mid(water), reeds + 0.5, top, reeds), false, 'a crown over the water');
-  assert.equal(grassAt(s, ...mid(bank), stalk, top, reeds), true, 'a reed over the bank');
-  assert.equal(grassAt(s, ...mid(bank), stalk, top, reedTop('off')), false, 'a branch over the bank, the reeds off');
-  // Over open grass with no water near, a branch over the grass's top is a tree's, the reeds on or off.
-  assert.equal(grassAt(s, ...mid(inland), stalk, top, reeds), false, 'a branch over the grass, inland');
-  assert.equal(grassAt(s, ...mid(inland), top - 0.05, top, reeds), true, 'a blade over the grass, inland');
+  assert.equal(grassAt(s, ...mid(grass), stalk, top, reeds), true, 'a reed over the bank');
+  assert.equal(grassAt(s, ...mid(grass), stalk, top, 0), false, 'a branch over the grass, no reeds there');
+  assert.equal(grassAt(s, ...mid(grass), top - 0.05, top, 0), true, 'a blade over the grass');
+  assert.equal(grassAt(s, -2, -2, stalk, top, 0), false, 'a branch beyond the map, no reeds there');
+  assert.equal(grassAt(s, -2, -2, stalk, top, reeds), true, 'a reed beyond the map');
+  assert.equal(grassAt(s, ...mid(tree), 0.5, top, reeds), false, 'the foot of a tree on its own tile');
 });
 
 test('a clump reedSpot lets stand reaches into no building, field or wheel race', () => {

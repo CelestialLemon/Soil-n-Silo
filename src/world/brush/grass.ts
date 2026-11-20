@@ -9,7 +9,8 @@ import { layoutOf, type GameState } from '../../game/state.ts';
 import type { Lie } from '../ground.ts';
 import {
   blockOf, boxesIn, FLOWER_PROFILES, FLOWER_SEASONS, flowersBloom, fringeFade, GRASS_FRINGE, GRASS_PROFILES, grassBlocks, grassLayout,
-  inBuilding, layoutChanges, meadowTop, REED_PROFILES, REED_SEASONS, reedBand, reedShore, reedSpot, reedTop, tileHabitat, tileSeed, wetDistance,
+  inBuilding, layoutChanges, MAX_REED_REACH, meadowTop, REED_PROFILES, REED_SEASONS, reedBand, reedShore, reedSpot, reedTop,
+  tileHabitat, tileSeed, wetDistance,
   type FlowerMode, type FlowerProfile, type FlowerSeason, type FootprintBox, type GrassBlockRect, type GrassLayout,
   type GrassMode, type GrassProfile, type ReedMode, type ReedProfile, type ReedSeason, type TileHabitat,
 } from './grassMask.ts';
@@ -89,6 +90,8 @@ export class Meadow {
   private readonly blockById = new Map<number, GrassBlockRect>();
   /** Each block's grass, flowers and reeds (none: none in it), and the land's height under it as it was made (`heightsUnder`). */
   private readonly blocks = new Map<number, Block>();
+  /** The tiles with reeds as made (`reedKey`), for telling a reed from a branch in a pick (`reedTopAt`). */
+  private readonly reedTiles = new Set<number>();
   /** Blocks to make again: hidden until they are (and made first), and the rest. */
   private readonly urgent = new Set<number>();
   private readonly dirty = new Set<number>();
@@ -127,8 +130,23 @@ export class Meadow {
   /** How high (m) the meadow's grass and flowers stand at most, as shown: for telling them from a tree in a pick (tools.ts). */
   get top(): number { return meadowTop(this.looks.grass, this.flowering ? this.looks.flowers : 'off'); }
 
-  /** How high (m) its reeds stand at most, as shown: by the water, for telling them from a tree in a pick (tools.ts). */
-  get reedTop(): number { return reedTop(this.looks.reeds); }
+  /**
+   * How high (m) its reeds stand at most at (x, z) m, as shown: their top where a tile with reeds is within a clump's reach
+   * of the point, else 0 (none can stand there). For telling them from a tree in a pick (tools.ts).
+   */
+  reedTopAt(x: number, z: number): number {
+    if (this.looks.reeds === 'off') return 0;
+    const tx = Math.floor(x / TILE), tz = Math.floor(z / TILE);
+    // (A clump reaches less than a tile past its own: MAX_REED_REACH.)
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const nx = tx + dx, ny = tz + dy;
+      if (!this.reedTiles.has(reedKey(nx, ny))) continue;
+      if (x > nx * TILE - MAX_REED_REACH && x < (nx + 1) * TILE + MAX_REED_REACH && z > ny * TILE - MAX_REED_REACH && z < (ny + 1) * TILE + MAX_REED_REACH) {
+        return reedTop(this.looks.reeds);
+      }
+    }
+    return 0;
+  }
 
   /** Whether the flowers bloom: on, and not in winter. */
   private get flowering(): boolean { return flowersBloom(this.looks.flowers, this.lastState.scenario.climate.season); }
@@ -453,6 +471,7 @@ export class Meadow {
       if (rand() >= prob || !canPlace(wx, wz)) continue;
       options.colour = this.reedColour(rand());
       addReeds(mb, this.ground, wx, wz, rand, options);
+      this.reedTiles.add(reedKey(tx, ty));
       // A few more round it in the bed, where the water's edge lets them.
       const more = profile.companions[0] + Math.floor(rand() * profile.companions[1]);
       for (let k = 0; k < more; k++) {
@@ -499,6 +518,7 @@ export class Meadow {
     const flowers = layers.flowers && this.flowering ? new MeshBuilder('foliage') : null;
     const reeds = layers.reeds && this.looks.reeds !== 'off' ? new MeshBuilder('grass') : null;
     const wet = flowers ? flooded(s).tiles : null;
+    if (layers.reeds) for (let y = rect.y0; y < rect.y1; y++) for (let x = rect.x0; x < rect.x1; x++) this.reedTiles.delete(reedKey(x, y));
     for (let y = rect.y0; y < rect.y1; y++) for (let x = rect.x0; x < rect.x1; x++) {
       const fade = fringeFade(x, y, w, h, this.reach);
       if (fade <= 0) continue;
@@ -522,6 +542,9 @@ export class Meadow {
     return undefined;
   }
 }
+
+/** A tile's key in `Meadow.reedTiles`: the map's tiles and the country's round it, to 1024 tiles past its edges. */
+const reedKey = (x: number, y: number) => (y + 1024) * 4096 + x + 1024;
 
 /** A block's grass, flowers and reeds, as made, and the land's height under it then. */
 interface Block { grass?: THREE.Mesh; flowers?: THREE.Mesh; reeds?: THREE.Mesh; heights: Float32Array }
