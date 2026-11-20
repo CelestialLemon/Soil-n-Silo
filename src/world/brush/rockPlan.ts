@@ -84,6 +84,15 @@ export function rockFootprint(s: RockShape): RockFootprint {
   return { qxx, qxz, qzz, fx: Math.sqrt(qxx), fz: Math.sqrt(qzz) };
 }
 
+/**
+ * Where `(px, pz)` (m from a crag's centre) lies against its footprint: under 1 inside the projected ellipse, 1 on its
+ * rim (`p · Q⁻¹ · p`).
+ */
+export function footprintDistance2(fp: RockFootprint, px: number, pz: number): number {
+  const det = Math.max(1e-12, fp.qxx * fp.qzz - fp.qxz * fp.qxz);
+  return (fp.qzz * px * px - 2 * fp.qxz * px * pz + fp.qxx * pz * pz) / det;
+}
+
 interface OutcropStyle {
   heightScale: number;
   crag: number;
@@ -141,7 +150,7 @@ function quadrantClearance(
  * Clamps a stone offset `(dx, dz)` from tile centre and computes any uniform scale `<= 1` needed so the crag's full
  * conservative footprint stays inside the union of occupied rock tiles (respecting both cardinal and diagonal bits).
  */
-export function clampToRock(
+function clampToRock(
   dx: number, dz: number, shape: RockShape, mask: number,
 ): { dx: number; dz: number; scale: number } {
   const half = TILE * 0.5;

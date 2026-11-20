@@ -370,7 +370,7 @@ class BrushPicker implements Picker {
     if (!seen) return { tile: ground, building: null };
     const hit = seen.hit, still = seen.px === this.pixel(at) && this.cameraNow(scratch).equals(seen.camera);
     // What the pick met, as a tile of the map: a tree's or rock's own, else the tile it met.
-    const plant = hit?.what === 'plant' ? plantTile(s, hit.point, this.r.landAt(hit.point.x, hit.point.z), rocksLook()) : null;
+    const plant = hit?.what === 'plant' ? plantTile(s, hit.point, (x, z) => this.r.landAt(x, z), rocksLook()) : null;
     const met = hit ? plant ?? tileOf(s, hit.point) : null;
     const tile = still && plant ? plant : ground;
     // A building's or truck's own mesh, if it still stands for it; else the building on the tile the pick met.
