@@ -120,7 +120,7 @@ r.setLand({
   // The country past the tiles, so the camera never sees the end of the world: a coarse grid of heights (metres), a
   // corner at (x0, z0), nx by nz points `cell` metres apart, x fastest. Drawn as distant woods' floor.
   beyond: { nx, nz, cell, x0, z0, height: Float32Array },
-}, look?);                        // LandLook: how strong the ground kinds' tint, how dull the country (LAND_LOOK, as the developer picked)
+}, look?);                        // LandLook: how strong the ground kinds' tint, how dull the country, how the shores are drawn (LAND_LOOK, as the developer picked)
 r.updateLand({ x, y, width, height }, { corners, worked, cover, ground });   // an earthwork: the new values for just these tiles
 ```
 
@@ -135,6 +135,11 @@ r.updateLand({ x, y, width, height }, { corners, worked, cover, ground });   // 
   `Lie` fits the same tiles: within half a level of the rules' height, exactly level on worked tiles and at the water,
   sharp at cliffs), so the hills are the same shape. Under the water's tiles the land sinks into a bed; the game lays its
   water (below) a little under the tiles' level, over it.
+- **Curving shores** (`LandLook.shores`: `SHORE_MODES`, a `ShoreMode`, Soil-n-Silo#258): the beds follow a smoothed
+  field over the water's tiles, so the river curves and a pond is an oval rather than the tiles' squares (`'organic'`,
+  the default, wanders a little; `'gentle'` doesn't; `'off'` is the tiles' squares). Nothing the game sends changes:
+  the water's tiles stay the rules', a pad and a fall keep their square edges, and `landAt`/`landHit` give the curving
+  beds as drawn (LAND.md).
 - **The drawn surface is the game's to query**, so a truck, a dropped good and the tile cursor sit on what the player
   sees: `r.landAt(x, z)` gives the land's height there (metres), and `r.landHit(ray)` where a line of sight (from
   `r.view.rayAt`) first meets it, or null, on the CPU with no wait for the GPU. The rules go on asking `relief.ts`.

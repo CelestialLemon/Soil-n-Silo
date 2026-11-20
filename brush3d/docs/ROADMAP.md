@@ -75,6 +75,11 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
       hour and before dawn, 4.6–5.5 ms less GPU at High, about 3 at Medium and Low, noon as before. Medium and Low draw the
       reflection at half size (`reflectionScale`). The test point's push grows with the coarser texels (`shadowSlack`),
       so shadows come up a little short at a low sun (docs/PERFORMANCE.md).
+      And curving shores (Soil-n-Silo#258, epic Soil-n-Silo#265, 2026-11-20, `src/land/shore.ts`, `LandLook.shores`): the
+      water's beds follow a field of the water's tiles smoothed along their shore, so the river's bends curve and the
+      ponds are ovals, a damp band and a shingle along the waterline; pads and falls keep their square edges. About 0.2 to
+      0.3 s more to make a land, under 3% more of its triangles, the frame's GPU time unchanged within noise; `off`
+      draws the land exactly as before (docs/LAND.md).
 - **Weather, epic #3** (planned 2026-10-30): season, weather and hour change the whole picture. The decisions are in #3; in
   short, the game owns the weather's state and logic and the renderer only draws it. The order:
   1. #6 performance: measure the frame and set the weather's budget (done 2026-10-30: the farm 17.5 ms on the laptop,

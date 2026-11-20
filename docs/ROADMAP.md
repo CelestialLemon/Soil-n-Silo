@@ -162,8 +162,12 @@ their shape. Cliffs are sharp where tiles don't meet, and their faces show strat
 The river and ponds sit in beds under their tiles, with the water 0.48 m under the level, so the banks stand over it. The
 country past the edge is clearly duller, so where you can build reads at a glance, and distant woods run to the horizon
 (the developer's picks on #228). An earthwork repaints only the chunks round it, spread over frames and swapped in at once,
-so the land never shows half a change. Still open: the river's falls are a plain chute for now and don't read as a
-waterfall (#241); grass tufts on the land, and the water wheel's race cut into its bank (`brush3d/docs/LAND.md`); the game
+so the land never shows half a change. The river and the ponds' shores curve over the tile rules (#258, epic #265,
+2026-11-20): the beds follow a smoothed field of the water's tiles, so a bend is a curve and a pond an oval, with a damp
+bank and a shingle at the waterline, while a water wheel's pad and a fall keep their square edges and the rules don't
+change (`LandLook.shores`: organic, gentle or off, the developer's pick on its PR). Still open: the river's falls are a
+plain chute for now and don't read as a waterfall (#241); the per-tile frost and ground paint still step a little way up
+a curving bank; grass tufts on the land, and the water wheel's race cut into its bank (`brush3d/docs/LAND.md`); the game
 and brush3d each fit the ground after an earthwork, about 10 ms twice (#210).
 
 ## The buildings and trucks as models, with their goods (2026-11-16)

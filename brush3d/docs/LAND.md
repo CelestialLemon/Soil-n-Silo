@@ -26,10 +26,28 @@ country the game draws round it in tiles too, then `beyond`, a coarse grid of he
 - **Cliffs.** Where neighbours don't meet, a wall runs from the upper tile's side down to the lower one's, with a turf lip
   at the top and bands of earth (stone from level 8 up) every two levels: the strata, the developer's pick over soft earth and
   grey rock (Soil-n-Silo#228).
-- **The water's beds.** Under each water tile the ground sinks into a bed, 1.2 m at its deepest, rising to the bank over
-  the last three quarters of a tile where dry ground is beside it. The water itself is the game's water map (`setWater`,
-  `WATER.md`); the game lays it a little under its tiles' level (Soil-n-Silo's `WATER_DOWN`, 0.48 m), so the banks stand over
-  it and the shore is where the bed rises through it.
+- **The water's beds.** The ground sinks into a bed under the water, 1.2 m at its deepest. The water itself is the game's
+  water map (`setWater`, `WATER.md`); the game lays it a little under its tiles' level (Soil-n-Silo's `WATER_DOWN`, 0.48 m),
+  so the banks stand over it and the shore is where the bed rises through it.
+- **Curving shores** (`shore.ts`, Soil-n-Silo#258). The rules' water is whole tiles; a bed cut to each tile's square
+  reads as a river of sawtooth bends and ponds like square puddles. So the beds follow a smoothed field of how far each
+  point is inside the water instead: the distance to the water's tile outline, smoothed *along* the shore (so a
+  staircase of tiles becomes its slope, while a narrow river keeps its width), rounded a little every way, grown back
+  out where the water is wide (the smoothing draws a pond in), and, in `organic`, wandering a little. A bend's outer
+  corner is cut, its inner corner filled, a pond an oval. The rules don't change: the water stays on its tiles.
+  - *How far it may go.* The bed reaches at most 0.45 of a tile into a dry tile beside the water (inside where the
+    water's sheet runs flat past its last wet tile, and clear of a tree, which stands within 0.15 of its tile's middle),
+    and only into a bank at the water's level that isn't worked. A corner of a wide pond may come up out of the water,
+    but every tile of narrow water (a river a tile or two wide, a lone tile, a river's end) keeps water at its middle.
+  - *What stays square.* Round a pad (a water wheel's, any worked ground) and at a fall (water beside water at another
+    level, where the game lays the banks' water under them, #228) the shore keeps to the tiles' outline, so a building
+    stands square to the water and a fall's edges stay where they were.
+  - *The paint.* With it, the water's tiles are painted as land and the bed by how deep it is, so the colours follow the
+    curve too: a damp band up the bank (half a tile at most) and a shingle of small stones in patches along the waterline.
+  - `LandLook.shores` picks it: `organic` (the default), `gentle` (rounded and smoothed, no wander) or `off` (the tiles'
+    squares, exactly as before #258). It costs about 0.2 to 0.3 s more when a land is made (the commissions' lands,
+    in Node; the field 0.1 to 0.15 s of it, skipping the land far from water) and a few more triangles (under 3%, the
+    bank tiles cut in quarters).
 - **Falls.** Where the river steps down a level, the cliff face runs between its two beds, and the game's water slides down
   over it, a ramp a tile long (its banks beside the fall get the water below's level, under them, so the sheet doesn't stand
   out over them). A stand-in: a fall that reads as one is Soil-n-Silo#241.
@@ -51,7 +69,8 @@ to do). Nothing on screen changes in that call. Over the next frames, about `STE
    drawn land don't both fall in one frame.
 2. The ground is fitted again within 8 tiles of the change (further out it hardly moves): set up in one frame, its 128
    sweeps of the solver eight at a time over the next, then finished, with how dry the ground lies round it (all of it,
-   if the water moved) and the chunks whose ground or paint moved. The sweeps run in the same order however they're
+   if the water moved), the shores round it if there's water near (`ShoreField.REACH`, 16 tiles), and the chunks whose
+   ground, paint or shore moved. The sweeps run in the same order however they're
    spread, so the ground fits exactly as if it were done at once.
 3. The following frames paint those chunks again, a few a frame.
 4. Once all are painted, they're swapped in at once, so the land never shows half an earthwork. The things that read the
@@ -73,6 +92,8 @@ at their level, which is where a boat or a dropped good on the water belongs.
 ## Not yet
 
 - Falls that read as waterfalls (Soil-n-Silo#241).
+- The paint the game lays per tile beside the water (its frost on the hollows, the ground kinds) still steps along the
+  tiles' sides, a little way up a curving bank: by a large pond in winter, a pale band of frost shows the tiles' steps.
 - Grass tufts where the cover says grass (the meadow's), round what stands on it.
 - The cuts models need where they stand: the water wheel's race in its bank (`wheelRace` in the catalogue).
 - The game fits the same tiles a second time for its `Lie` (about 10 ms an earthwork, all in one frame); one fit shared
