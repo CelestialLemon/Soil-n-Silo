@@ -28,7 +28,7 @@ plain code with no drawing in them, so the game's rules and tests can use them w
 
 Everything the game uses comes from one file, `src/index.ts` (in the game's repo, since the move, #200:
 `brush3d/src/index.ts`). The demo is just another user of it: it imports nothing else. One part of it also stands on
-its own: `src/shared.ts`, the wind simulation, the cloud recipe and the land's data and smooth fit (below), which loads in Node with no bundler, for the
+its own: `src/shared.ts`, the wind simulation, the cloud recipe, the land's data and smooth fit (below) and how far a grass tuft reaches, which loads in Node with no bundler, for the
 rules' tests and bots (the rest needs Vite, for the models and the wind's worker). Anything not exported there is
 the renderer's own business and can change without notice: its shaders, materials, passes, uniforms and maps.
 
@@ -135,11 +135,17 @@ r.updateLand({ x, y, width, height }, { corners, worked, cover, ground });   // 
   `Lie` fits the same tiles: within half a level of the rules' height, exactly level on worked tiles and at the water,
   sharp at cliffs), so the hills are the same shape. Under the water's tiles the land sinks into a bed; the game lays its
   water (below) a little under the tiles' level, over it.
-- **The drawn surface is the game's to query**, so a truck, a dropped good and the tile cursor sit on what the player
-  sees: `r.landAt(x, z)` gives the land's height there (metres), and `r.landHit(ray)` where a line of sight (from
-  `r.view.rayAt`) first meets it, or null, on the CPU with no wait for the GPU. The rules go on asking `relief.ts`.
-- Not yet: grass tufts where the cover says grass, and the cuts models need where they stand (the water wheel's race in
-  its bank, `wheelRace` in the catalogue).
+- **The drawn surface is the game's to query**, so a truck, a dropped good, grass tufts and the tile cursor sit on what
+  the player sees: `r.landAt(x, z)` gives the land's height there (metres), `r.landColourAt(x, z, into?)` the painted
+  ground's colour there as drawn (linear RGB, before the season turns it), and `r.landHit(ray)` where a line of sight
+  (from `r.view.rayAt`) first meets it, or null, on the CPU with no wait for the GPU. `r.onLandChange((area) => {})`
+  calls back whenever the land as drawn changes (a new land, an earthwork swapped in), with where (`{ x0, z0, x1, z1 }`,
+  metres) its height or paint may have changed, as the frame that first draws it begins (`setLand` calls back at once,
+  with the old land's area and the new one's); it returns a function that stops the calls. `r.landAhead` is true while
+  `landAt` already answers for an earthwork's new ground that isn't drawn yet (fitted, its chunks still being painted):
+  the game's grass (#256) isn't made again meanwhile, and the blocks whose ground moved are hidden at the swap and made
+  again, never left floating over the old ground. The rules go on asking `relief.ts`.
+- Not yet: the cuts models need where they stand (the water wheel's race in its bank, `wheelRace` in the catalogue).
 
 ### Water (today; the game's river in #202, floods, ice and mud in #207)
 
@@ -488,6 +494,7 @@ above, the game stops using it and it becomes the renderer's own.
 - `r.add(geometry, kind, options)` and `r.remove(mesh)`: a mesh of one kind (`'ground'`, `'grass'`, `'crop'`,
   `'foliage'`, `'paint'`, `'ink'`, `'water'`), with how it casts shadows, shelters, reflects and turns with the season.
   `remove` frees the tiles it cut a mesh into (`tile`); a geometry the caller gave stays the caller's to dispose.
+  `cull: true` culls a small mesh whole, uncut, for one added and taken out often (a block of the game's grass).
   Give the ground its square (`fields`) even when its brush isn't baked: the clouds' map is laid over it, and without it
   covers only 128 m round the origin, the clouds' shadows smeared in streaks past it (#201).
   `r.setFields(kind, size)` bakes a kind's brush once the scene is built; the ground's is baked again by itself where the
@@ -498,9 +505,18 @@ above, the game stops using it and it becomes the renderer's own.
   A tree's spring is held by each mesh that draws it and freed when the last lets go (`r.remove`, `r.removeTrees`), its
   slot then reused by the next new tree.
 - `MeshBuilder` and `Paint`: geometry in the renderer's format (colours, normals, the brush per vertex, tree ids).
-- `growTree`, `Grove`, `dressFor`, `addStone`, `addTuft`, `addReeds`, `addMound`, `addFlowers`, `groundOf`, `MapLine`:
-  the demo's pieces. `Grove.addTo(r, options)` adds its meshes with the given options and returns them. A `Tree`'s
-  `stroke` (broader, fewer strokes) and `fill` (the share of a crown's outer strokes) thin it for a crowd; 1 is the demo's.
+- `growTree`, `Grove`, `dressFor`, `addStone`, `addReeds`, `addMound`, `addFlowers`, `groundOf`, `MapLine`: shared
+  painting-kit pieces used by the demo and the game (`wild.ts`, `grass.ts`). `Grove.addTo(r, options)` adds its meshes
+  with the given options and returns them. A `Tree`'s `stroke` (broader, fewer strokes) and `fill` (the share of a
+  crown's outer strokes) thin it for a crowd; 1 is the demo's.
+- `addTuft` (used by both the demo and the game's `grass.ts`, #256): builds a meadow grass tuft on a `Ground` in a base
+  colour (the game passes `r.landColourAt(x, z)`). Takes optional `TuftOptions` (`blades`, `width`, `spread`) to scale a
+  tuft's blades and clump size for the game's zoom range (omitted, it keeps the demo's defaults).
+  `TUFT_REACH` and `TUFT_HEIGHT` (in `shared.ts` too, so the game's rules and tests read them in Node) are how far its
+  blades can reach: at most `spread + TUFT_REACH * tall` m across the ground from the tuft's spot and `TUFT_HEIGHT * tall`
+  m above it, at rest (the wind bends a blade across the view only, never nearer or further, so it never sways into a
+  wall it stands in front of). The game keeps its grass that far off buildings and fields by them; `brush3d/test/tuft.test.ts`
+  holds the blades to them.
 - The plant kit (`kit/plants.ts`, #213): `CropPatch` (a field's crop, one soft blanket over its bed; one `CropTile` a
   tile with which neighbours it joins, at its stage 0–3: just sown, young, flowering, ripe; `addTo(r)` returns its
   meshes), `speciesTree(species, x, z, size, seed)` and `speciesHeight` (a `Tree` for each of `SPECIES`: the game's six
@@ -535,7 +551,7 @@ The game's pixel3d calls, gone since the swap, and what replaced each:
 | Folder | What | Whose |
 |---|---|---|
 | `src/index.ts` | The API: everything above that exists | the game's door in |
-| `src/shared.ts` | The wind simulation, its gusts (`WindRecipe`), the cloud recipe, the land's data and smooth fit, and `TILE`, loadable in Node on their own (the index exports them too) | shared with the rules |
+| `src/shared.ts` | The wind simulation, its gusts (`WindRecipe`), the cloud recipe, the land's data and smooth fit, how far a grass tuft reaches (`TUFT_REACH`, `TUFT_HEIGHT`) and `TILE`, loadable in Node on their own (the index exports them too) | shared with the rules |
 | `src/renderer/` | The renderer: its passes, materials, shaders and looks | the renderer's own |
 | `src/land/` | The land painted from the game's map: what the game sends (`map.ts`), the smooth fit (`surface.ts`), the painting and earthworks (`paint.ts`) | the renderer's own (`map.ts` and `surface.ts` shared with the rules) |
 | `src/wind/` | The wind simulation (no drawing; a worker host) | shared with the rules |

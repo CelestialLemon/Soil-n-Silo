@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { windBetween, type WindSnapshot } from '../wind/sim';
-import { CROWN_HEIGHT, CROWN_PROFILE } from './wind';
+import { windBetween, type WindSnapshot } from '../wind/sim.ts';
+import { CROWN_HEIGHT, CROWN_PROFILE } from './wind.ts';
 
 // Trees with weight (#36): each tree is a mass on a spring, pushed by the wind at its crown. It leans into a gust with a
 // lag, overshoots a little and rocks to a stop after the gust passes, each kind at its own pace, a bigger tree of a kind
