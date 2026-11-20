@@ -8,8 +8,20 @@ export { rockMask, rockTileKey, type RocksLook } from './rockPlan.ts';
 
 // Emits a planned rock outcrop tile into a brush3d MeshBuilder (#257).
 
-/** The crags' drawn surfaces, for picking (pickTile.ts): read from the same kit that draws them. */
-export const cragTop = cragTops({ addCrag, groundOf, MeshBuilder, rng });
+const FLAT = groundOf(() => 0);
+
+/** The crags' drawn surfaces, for picking (pickTile.ts): read from the same `addCrag` that draws them. */
+export const cragTop = cragTops((p) => {
+  const b = new MeshBuilder('paint');
+  addCrag(b, FLAT, p.x, p.z, {
+    rx: p.rx, ry: p.ry, rz: p.rz, yaw: p.yaw, pitch: p.pitch, roll: p.roll, sink: p.sink, crag: p.crag, moss: p.moss, detail: p.detail,
+  }, rng(p.seed));
+  const g = b.build(), index = g.getIndex();
+  if (!index) throw new Error('a crag is built indexed');
+  const crag = { pos: Float32Array.from(g.getAttribute('position').array), idx: Array.from(index.array) };
+  g.dispose();
+  return crag;
+});
 
 const STONE_COOL = srgb(0x84878b);
 const STONE_MID = srgb(0x978f83);

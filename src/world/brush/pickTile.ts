@@ -1,4 +1,3 @@
-import type { addCrag, groundOf, MeshBuilder, rng } from '../../../brush3d/src/index.ts';
 import { TERRAIN } from '../../game/map.ts';
 import { buildingAt, inMap, type GameState } from '../../game/state.ts';
 import type { Tile } from '../scene.ts';
@@ -24,29 +23,22 @@ const SURFACE_REACH = 0.3, SURFACE_SLACK = 0.2;
  */
 export type CragTop = (piece: PlannedRock, wx: number, wz: number) => number | null;
 
+/** A crag's triangles as drawn on flat ground: its vertices' positions (x, y, z, ...) and its triangles' corners. */
+export interface CragMesh { pos: ArrayLike<number>; idx: ArrayLike<number> }
+
 /**
- * Reads crags' surfaces from their own triangles, each crag made once (on flat ground, as `addCrag` would draw it: a
- * crag's top doesn't change with the slope, only its buried skirt) and kept. The painting kit is given, so this file
- * loads in Node without the renderer: the game gives brush3d's (rocks.ts), the tests the kit's.
+ * Reads crags' surfaces from their own triangles, each crag made once by `build` (on flat ground, as `addCrag` would draw
+ * it: a crag's top doesn't change with the slope, only its buried skirt) and kept. The crag's maker is given, so this
+ * file loads in Node without the renderer: the game gives brush3d's `addCrag` (rocks.ts), the tests a stand-in.
  */
-export function cragTops(kit: {
-  addCrag: typeof addCrag; groundOf: typeof groundOf; MeshBuilder: typeof MeshBuilder; rng: typeof rng;
-}): CragTop {
-  const flat = kit.groundOf(() => 0);
-  const made = new Map<string, { pos: Float32Array; idx: ArrayLike<number> }>();
+export function cragTops(build: (piece: PlannedRock) => CragMesh): CragTop {
+  const made = new Map<string, CragMesh>();
   return (p, wx, wz) => {
     // Everything addCrag is given: clearing a neighbour can turn or reshape a crag that keeps its place and seed.
     const key = [p.seed, p.x, p.z, p.rx, p.ry, p.rz, p.yaw, p.pitch, p.roll, p.sink, p.crag, p.moss, p.detail].join();
     let crag = made.get(key);
     if (!crag) {
-      const b = new kit.MeshBuilder('paint');
-      kit.addCrag(b, flat, p.x, p.z, {
-        rx: p.rx, ry: p.ry, rz: p.rz, yaw: p.yaw, pitch: p.pitch, roll: p.roll, sink: p.sink, crag: p.crag, moss: p.moss, detail: p.detail,
-      }, kit.rng(p.seed));
-      const g = b.build(), index = g.getIndex();
-      if (!index) throw new Error('a crag is built indexed');
-      crag = { pos: Float32Array.from(g.getAttribute('position').array), idx: Array.from(index.array) };
-      g.dispose();
+      crag = build(p);
       if (made.size >= 512) made.clear();
       made.set(key, crag);
     }

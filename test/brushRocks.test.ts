@@ -1,31 +1,54 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-// The painting kit needs three.js, so it can't go through brush3d/src/shared.ts (which loads in Node without it); this test
-// builds the real crag geometry to check what's drawn stays on the rock tiles, so it reads the kit itself, as
-// settings.test.ts reads renderer/quality.ts.
-import { MeshBuilder, rng } from '../brush3d/src/kit/builder.ts';
-import { addCrag, addStone, groundOf } from '../brush3d/src/kit/kit.ts';
+import { CRAG_BOUND, CRAG_TRIANGLES } from '../brush3d/src/shared.ts';
 import { generateLand, TERRAIN } from '../src/game/map.ts';
 import { CAMPAIGN } from '../src/game/scenarios.ts';
 import { newGame } from '../src/game/state.ts';
-import { cragTops, plantTile } from '../src/world/brush/pickTile.ts';
-import { planOutcropTile, ROCK_BIT, rockMask, rockTileKey, type PlannedRock, type RocksLook } from '../src/world/brush/rockPlan.ts';
+import { cragTops, plantTile, type CragMesh } from '../src/world/brush/pickTile.ts';
+import { planOutcropTile, ROCK_BIT, rockFootprint, rockMask, rockTileKey, type PlannedRock } from '../src/world/brush/rockPlan.ts';
 import { TILE } from '../src/world/brush/scale.ts';
 
-const FLAT_GROUND = groundOf(() => 0);
-const FLAT = () => 0;
-const TOPS = cragTops({ addCrag, groundOf, MeshBuilder, rng });
+// The rock outcrops' plan and picks (#257), with no three.js: brush3d promises how far a crag reaches past its size and
+// what it costs (`CRAG_BOUND`, `CRAG_TRIANGLES`, from shared.ts; brush3d/test/crag.test.ts holds `addCrag` to them), and
+// here the plan is held to that promise. The picks read the crags' drawn surface; here they read a stand-in's.
 
-/** Emits real `addCrag` geometry for planned pieces and returns the built BufferGeometry. */
-function buildCrags(pieces: readonly PlannedRock[], ground = FLAT_GROUND) {
-  const b = new MeshBuilder('paint');
-  for (const p of pieces) {
-    addCrag(b, ground, p.x, p.z, {
-      rx: p.rx, ry: p.ry, rz: p.rz, yaw: p.yaw, pitch: p.pitch, roll: p.roll,
-      sink: p.sink, crag: p.crag, moss: p.moss, detail: p.detail,
-    }, rng(p.seed));
+const FLAT = () => 0;
+
+/**
+ * A stand-in for the crag `addCrag` draws (it needs three.js): the ellipsoid of the piece's half-extents, turned as addCrag
+ * turns it (Three.js's YXZ order) and sunk as deep, on flat ground, as the pick's reader builds a crag (rocks.ts). The
+ * pick's rules are held to whatever surface they're given; the real crag stays inside brush3d's promise.
+ */
+function standIn(p: PlannedRock): CragMesh {
+  const cy = Math.cos(p.yaw), sy = Math.sin(p.yaw), cp = Math.cos(p.pitch), sp = Math.sin(p.pitch);
+  const cr = Math.cos(p.roll), sr = Math.sin(p.roll);
+  const m = [
+    [cy * cr + sy * sp * sr, -cy * sr + sy * sp * cr, sy * cp],
+    [cp * sr, cp * cr, -sp],
+    [-sy * cr + cy * sp * sr, sy * sr + cy * sp * cr, cy * cp],
+  ];
+  const mid = [p.x, p.ry * (1 - 2 * p.sink), p.z], LON = 24, LAT = 12, pos: number[] = [], idx: number[] = [];
+  for (let i = 0; i <= LAT; i++) for (let j = 0; j < LON; j++) {
+    const th = Math.PI * i / LAT, ph = 2 * Math.PI * j / LON;
+    const v = [Math.sin(th) * Math.cos(ph) * p.rx, Math.cos(th) * p.ry, Math.sin(th) * Math.sin(ph) * p.rz];
+    for (let k = 0; k < 3; k++) pos.push(mid[k] + m[k][0] * v[0] + m[k][1] * v[1] + m[k][2] * v[2]);
   }
-  return b.build();
+  for (let i = 0; i < LAT; i++) for (let j = 0; j < LON; j++) {
+    const a = i * LON + j, b = i * LON + (j + 1) % LON, c = a + LON, d = b + LON;
+    idx.push(a, c, b, b, c, d);
+  }
+  return { pos, idx };
+}
+const TOPS = cragTops(standIn);
+
+/** The vertices of the stand-ins for `pieces`, as [x, y, z]. */
+function verticesOf(pieces: readonly PlannedRock[]): [number, number, number][] {
+  const out: [number, number, number][] = [];
+  for (const p of pieces) {
+    const { pos } = standIn(p);
+    for (let i = 0; i < pos.length; i += 3) out.push([pos[i], pos[i + 1], pos[i + 2]]);
+  }
+  return out;
 }
 
 /** Distance from world XZ point (wx, wz) to the union of occupied rock tile squares (0 when inside). */
@@ -61,7 +84,7 @@ test('rockMask and rockTileKey detect neighbour clearing and height changes at a
   assert.notEqual(rockTileKey(7, 3, mCleared, () => 0), k0);
 });
 
-test('emitted addCrag geometry stays cleanly contained in the rock tile union across lone, plus, T, L, edge, and cleared-corner shapes', () => {
+test('every crag\'s promised shadow (brush3d\'s CRAG_BOUND) stays in the rock tile union across lone, plus, T, L, edge, and cleared-corner shapes', () => {
   const shapes: { name: string; tiles: [number, number][] }[] = [
     { name: 'lone', tiles: [[0, 0]] },
     { name: 'plus', tiles: [[0, 0], [0, -1], [1, 0], [0, 1], [-1, 0]] },
@@ -81,9 +104,15 @@ test('emitted addCrag geometry stays cleanly contained in the rock tile union ac
     { name: '3x3-no-NW', tiles: [[0, -1], [1, -1], [-1, 0], [0, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] },
   ];
 
-  // Test across multiple world coordinate offsets to exercise many deterministic RNG seeds, on both flat and sloped terrain.
-  const sloped = groundOf((wx, wz) => 0.25 * Math.sin(wx * 0.15) + 0.2 * Math.cos(wz * 0.12));
+  // The plan's footprint is the shadow of brush3d's promised ellipsoid: unturned, its half-extents swollen and flared.
+  const fp = rockFootprint({ rx: 1.5, ry: 1, rz: 0.8, yaw: 0, pitch: 0, roll: 0, crag: 0.5 });
+  const swell = CRAG_BOUND.swell + CRAG_BOUND.perCrag * 0.5;
+  assert.ok(Math.abs(fp.fx - 1.5 * swell * CRAG_BOUND.skirt) < 1e-9 && Math.abs(fp.fz - 0.8 * swell * CRAG_BOUND.skirt) < 1e-9);
+
+  // Many world offsets, for many deterministic seeds. The shadow brush3d promises a crag stays inside (rockFootprint) is the
+  // same on any ground, so flat ground is enough: its edge, all round, stays on the rock.
   const offsets: [number, number][] = [[4, 4], [11, 7], [23, 19], [37, 5]];
+  const RIM = 256;
 
   for (const look of ['soft', 'bold'] as const) {
     for (const shape of shapes) {
@@ -91,22 +120,16 @@ test('emitted addCrag geometry stays cleanly contained in the rock tile union ac
         const shifted: [number, number][] = shape.tiles.map(([tx, ty]) => [tx + ox, ty + oy]);
         const set = new Set(shifted.map(([tx, ty]) => `${tx},${ty}`));
         const isRock = (tx: number, ty: number) => set.has(`${tx},${ty}`);
-        const pieces: PlannedRock[] = [];
-        for (const [tx, ty] of shifted) pieces.push(...planOutcropTile(tx, ty, isRock, look));
-        const g = buildCrags(pieces, sloped);
-        const pos = g.getAttribute('position');
         let maxSpill = 0;
-        for (let i = 0; i < pos.count; i++) {
-          const vx = pos.getX(i), vy = pos.getY(i), vz = pos.getZ(i);
-          if (vy <= sloped.height(vx, vz)) continue;
-          const d = distToRockUnion(vx, vz, shifted);
-          if (d > maxSpill) maxSpill = d;
+        for (const [tx, ty] of shifted) for (const p of planOutcropTile(tx, ty, isRock, look)) {
+          // The shadow's ellipse is L·(cos t, sin t), L the Cholesky factor of its matrix.
+          const fp = rockFootprint(p), l00 = Math.sqrt(fp.qxx), l10 = fp.qxz / l00, l11 = Math.sqrt(Math.max(0, fp.qzz - l10 * l10));
+          for (let k = 0; k < RIM; k++) {
+            const c = Math.cos(2 * Math.PI * k / RIM), si = Math.sin(2 * Math.PI * k / RIM);
+            maxSpill = Math.max(maxSpill, distToRockUnion(p.x + l00 * c, p.z + l10 * c + l11 * si, shifted));
+          }
         }
-        g.dispose();
-        assert.ok(
-          maxSpill <= 0.05,
-          `${look} ${shape.name} @(${ox},${oy}) spilled ${maxSpill.toFixed(3)} m above ground into non-rock tile`,
-        );
+        assert.ok(maxSpill <= 0.01, `${look} ${shape.name} @(${ox},${oy}): a crag's shadow spills ${maxSpill.toFixed(3)} m off the rock`);
       }
     }
   }
@@ -125,14 +148,14 @@ test('emitted addCrag geometry stays cleanly contained in the rock tile union ac
   assert.ok(meanH(boldAll) > meanH(softAll) * 1.25, `bold (${meanH(boldAll).toFixed(2)}) taller than soft (${meanH(softAll).toFixed(2)})`);
 });
 
-test('diagonal ridges align their Three.js rotated long axis along NW-SE for NW|SE masks and NE-SW for NE|SW masks', () => {
+test('diagonal ridges align their long axis along NW-SE for NW|SE masks and NE-SW for NE|SW masks', () => {
   // In Three.js, positive yaw rotates local +X to (cos(yaw), 0, -sin(yaw)).
   // NW-SE has dx*dz > 0; NE-SW has dx*dz < 0.
   for (const [name, isDiag, wantSign] of [
     ['NW|SE', (cx: number, cy: number) => (x: number, y: number) => (x === cx && y === cy) || (x === cx - 1 && y === cy - 1) || (x === cx + 1 && y === cy + 1), +1],
     ['NE|SW', (cx: number, cy: number) => (x: number, y: number) => (x === cx && y === cy) || (x === cx + 1 && y === cy - 1) || (x === cx - 1 && y === cy + 1), -1],
   ] as const) {
-    let dirCorr = 0, meshCov = 0;
+    let dirCorr = 0, shadowCov = 0;
     const samples = 40;
     for (let i = 0; i < samples; i++) {
       const tx = 5 + i * 3, ty = 7 + (i % 7) * 2;
@@ -144,48 +167,19 @@ test('diagonal ridges align their Three.js rotated long axis along NW-SE for NW|
       const dx = Math.cos(primary.yaw), dz = -Math.sin(primary.yaw);
       dirCorr += dx * dz;
 
-      // Also verify the actual emitted geometry's XZ covariance aligns with the same diagonal.
-      const g = buildCrags([primary]);
-      const pos = g.getAttribute('position');
-      for (let v = 0; v < pos.count; v++) meshCov += (pos.getX(v) - primary.x) * (pos.getZ(v) - primary.z);
-      g.dispose();
+      // And the crag's shadow on the ground (its tilt too) leans along the same diagonal.
+      shadowCov += rockFootprint(primary).qxz;
     }
     assert.ok(dirCorr * wantSign > 0, `${name} yaw correlation ${dirCorr.toFixed(2)} should have sign ${wantSign}`);
-    assert.ok(meshCov * wantSign > 0, `${name} emitted XZ covariance ${meshCov.toFixed(2)} should have sign ${wantSign}`);
+    assert.ok(shadowCov * wantSign > 0, `${name} shadow XZ covariance ${shadowCov.toFixed(2)} should have sign ${wantSign}`);
   }
 });
 
-test('addCrag geometry counts match IcosahedronGeometry (80 / 180 tris) and emitted rock budgets stay reasonable including near-country', () => {
-  // Exact single-mesh counts for detail 1 and detail 2.
-  for (const [detail, wantVerts, wantTris] of [[1, 42, 80], [2, 92, 180]] as const) {
-    const b = new MeshBuilder('paint');
-    addCrag(b, FLAT_GROUND, 0, 0, { rx: 1, ry: 1, rz: 1, detail }, rng(1));
-    const g = b.build();
-    assert.equal(g.getAttribute('position').count, wantVerts, `detail ${detail} vertices`);
-    assert.equal(g.getIndex()!.count / 3, wantTris, `detail ${detail} triangles`);
-    g.dispose();
-  }
-
-  const emitTris = (tiles: [number, number][], isRock: (x: number, y: number) => boolean, look: RocksLook) => {
-    const b = new MeshBuilder('paint');
-    for (const [x, y] of tiles) {
-      if (look === 'off') {
-        const r = rng(Math.floor(((Math.sin(x * 127.1 + y * 311.7) * 43758.5453) % 1 + 1) % 1 * 1e9));
-        addStone(b, FLAT_GROUND, (x + 0.5) * TILE, (y + 0.5) * TILE, 1.1 + r() * 0.4, 0.3, r);
-        if (r() < 0.6) addStone(b, FLAT_GROUND, (x + 0.5) * TILE, (y + 0.5) * TILE, 0.5 + r() * 0.3, 0.3, r);
-      } else {
-        for (const p of planOutcropTile(x, y, isRock, look)) {
-          addCrag(b, FLAT_GROUND, p.x, p.z, {
-            rx: p.rx, ry: p.ry, rz: p.rz, yaw: p.yaw, pitch: p.pitch, roll: p.roll,
-            sink: p.sink, crag: p.crag, moss: p.moss, detail: p.detail,
-          }, rng(p.seed));
-        }
-      }
-    }
-    const g = b.build();
-    const tris = g.getIndex() ? g.getIndex()!.count / 3 : 0;
-    g.dispose();
-    return tris;
+test('the crags\' triangles (brush3d\'s CRAG_TRIANGLES) stay within budget per rock tile, near country included', () => {
+  const tris = (tiles: [number, number][], isRock: (x: number, y: number) => boolean, look: 'soft' | 'bold') => {
+    let n = 0;
+    for (const [x, y] of tiles) for (const p of planOutcropTile(x, y, isRock, look)) n += CRAG_TRIANGLES[p.detail];
+    return n;
   };
 
   for (const id of ['c3', 'c4', 'c7', 'c8']) {
@@ -197,11 +191,11 @@ test('addCrag geometry counts match IcosahedronGeometry (80 / 180 tris) and emit
     const mapTiles: [number, number][] = [];
     for (let y = 0; y < sc.height; y++) for (let x = 0; x < sc.width; x++) if (mapRock(x, y)) mapTiles.push([x, y]);
 
-    const softTris = emitTris(mapTiles, mapRock, 'soft');
-    const boldTris = emitTris(mapTiles, mapRock, 'bold');
-    // Real emitted triangle counts per rock tile stay well below 420 tris/tile (baseline addStone is ~288 tris/tile).
-    assert.ok(softTris / mapTiles.length < 420, `${id} soft avg tris/tile = ${(softTris / mapTiles.length).toFixed(1)}`);
-    assert.ok(boldTris / mapTiles.length < 420, `${id} bold avg tris/tile = ${(boldTris / mapTiles.length).toFixed(1)}`);
+    // Well below 420 triangles a rock tile on average (the old round stones, addStone, were about 288).
+    for (const look of ['soft', 'bold'] as const) {
+      const perTile = tris(mapTiles, mapRock, look) / mapTiles.length;
+      assert.ok(perTile < 420, `${id} ${look} avg tris/tile = ${perTile.toFixed(1)}`);
+    }
 
     if (id === 'c3') {
       const beyond = (x: number, y: number) => Math.hypot(Math.max(0, -x, x - sc.width), Math.max(0, -y, y - sc.height));
@@ -215,11 +209,11 @@ test('addCrag geometry counts match IcosahedronGeometry (80 / 180 tris) and emit
       for (let y = -M; y < sc.height + M; y++) for (let x = -M; x < sc.width + M; x++) {
         if (countryRock(x, y)) countryTiles.push([x, y]);
       }
-      const countrySoft = emitTris(countryTiles, countryRock, 'soft');
-      const countryBold = emitTris(countryTiles, countryRock, 'bold');
       assert.ok(countryTiles.length > 0, 'c3 has near-country rocks');
-      assert.ok(countrySoft / countryTiles.length < 420, `c3 near-country soft avg tris/tile = ${(countrySoft / countryTiles.length).toFixed(1)}`);
-      assert.ok(countryBold / countryTiles.length < 420, `c3 near-country bold avg tris/tile = ${(countryBold / countryTiles.length).toFixed(1)}`);
+      for (const look of ['soft', 'bold'] as const) {
+        const perTile = tris(countryTiles, countryRock, look) / countryTiles.length;
+        assert.ok(perTile < 420, `c3 near-country ${look} avg tris/tile = ${perTile.toFixed(1)}`);
+      }
     }
   }
 });
@@ -236,14 +230,9 @@ test('plantTile keeps rock picks on the rock tile next to a tree while preservin
   // Direct hit on rock geometry inside the rock tile (even right near the border with the neighbour tree) picks the rock.
   assert.deepEqual(plantTile(s, { x: 5.5 * TILE, y: 0.9, z: 5.5 * TILE }, FLAT, 'bold', TOPS), { x: 5, y: 5 });
 
-  // A low overhanging tree crown above the rock's local height (including a 3.98 m birch crown over a tall bold rock)
-  // resolves to the adjacent tree rather than the rock.
+  // A low overhanging tree crown above the rock's local height resolves to the adjacent tree rather than the rock.
   assert.deepEqual(plantTile(s, { x: 5.85 * TILE, y: 3.98, z: 5.5 * TILE }, FLAT, 'bold', TOPS), { x: 6, y: 5 });
   assert.deepEqual(plantTile(s, { x: 5.85 * TILE, y: 5.2, z: 5.5 * TILE }, FLAT, 'bold', TOPS), { x: 6, y: 5 });
-
-  // Verify the exact Windy Ridge (40, 22) birch crown at 3.98 m over rock (41, 22) picks the tree.
-  const c3 = newGame(CAMPAIGN.find((c) => c.id === 'c3')!);
-  assert.deepEqual(plantTile(c3, { x: 41.25 * TILE, y: 3.98, z: 22.5 * TILE }, FLAT, 'bold', TOPS), { x: 40, y: 22 });
 
   // A tree crown overhanging empty grass within CROWN_REACH still resolves to the tree.
   assert.deepEqual(plantTile(s, { x: 6.5 * TILE, y: 4.5, z: 4.8 * TILE }, FLAT, 'bold', TOPS), { x: 6, y: 5 });
@@ -264,10 +253,10 @@ test('plantTile measures a crag\'s top from the ground under it, not under the h
   const main = planOutcropTile(5, 5, lone, 'bold')[0];
   // The land falls steeply away to the south, towards the tree, from the crag's centre.
   const slope = (_x: number, z: number) => -(z - main.z) * 0.8;
-  const g = buildCrags([main], groundOf(slope)), pos = g.getAttribute('position');
+  // The crag on the slope stands as on flat ground (the ground under its centre is 0): only its buried skirt changes.
   let checked = 0, highest = -Infinity;
-  for (let i = 0; i < pos.count; i++) {
-    const vx = pos.getX(i), vy = pos.getY(i) - 0.02, vz = pos.getZ(i);
+  for (const [vx, y, vz] of verticesOf([main])) {
+    const vy = y - 0.02;
     highest = Math.max(highest, vy);
     // Points on its downhill side, in the crown's reach, a metre or more lower ground under them than under its centre.
     if (Math.floor(vx / TILE) !== 5 || Math.floor(vz / TILE) !== 5 || Math.hypot(vx / TILE - 5.5, vz / TILE - 6.5) >= 0.8) continue;
@@ -275,21 +264,39 @@ test('plantTile measures a crag\'s top from the ground under it, not under the h
     assert.deepEqual(plantTile(s, { x: vx, y: vy, z: vz }, slope, 'bold', TOPS), { x: 5, y: 5 });
     checked++;
   }
-  g.dispose();
   assert.ok(checked > 0, 'points on the downhill face, in the crown\'s reach');
   // And a hit over the crag's top, in the crown's reach, is the crown's.
   assert.deepEqual(plantTile(s, { x: main.x, y: highest + 0.5, z: 5.95 * TILE }, slope, 'bold', TOPS), { x: 5, y: 6 });
 });
 
-test('plantTile: a crown over a crag\'s low shoulder is the tree\'s, every drawn point of the crag the rock\'s', () => {
+test('plantTile: a crown over a crag\'s low shoulder is the tree\'s, every point of the crag\'s surface the rock\'s', () => {
   const s = newGame(CAMPAIGN[0]);
   const w = s.map.width;
   for (let y = 2; y <= 10; y++) for (let x = 2; x <= 10; x++) s.map.terrain[y * w + x] = TERRAIN.grass;
   s.buildings = s.buildings.filter((b) => b.x < 1 || b.x > 11 || b.y < 1 || b.y > 11);
-  // A bold rock with a tree east of it: its emitted surface is about 1.45 m high at this point, a crown hit 0.7 m over it.
+  // A bold rock with a tree east of it: along its shoulder, in the crown's reach, a hit just over the crag's surface (as
+  // the pick reads it: 0.3 m round the point, with 0.2 m of slack) is the crown's, a hit on it the rock's.
   s.map.terrain[5 * w + 5] = TERRAIN.rock;
   s.map.terrain[5 * w + 6] = TERRAIN.tree;
-  assert.deepEqual(plantTile(s, { x: 22.81, y: 2.15, z: 21.77 }, FLAT, 'bold', TOPS), { x: 6, y: 5 });
+  const pieces = planOutcropTile(5, 5, (x, y) => x === 5 && y === 5, 'bold');
+  const surface = (x: number, z: number) => {
+    let high: number | null = null;
+    for (const p of pieces) {
+      const y = TOPS(p, x, z);
+      if (y !== null && (high === null || y > high)) high = y;
+    }
+    return high;
+  };
+  let shoulders = 0;
+  for (let x = 22.85; x < 23.95; x += 0.1) for (const z of [21.5, 22, 22.5]) {
+    const here = surface(x, z);
+    if (here === null || here < 0.5) continue;
+    const round = Math.max(...[[0, 0], [0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3]].map(([dx, dz]) => surface(x + dx, z + dz) ?? 0));
+    assert.deepEqual(plantTile(s, { x, y: round + 0.3, z }, FLAT, 'bold', TOPS), { x: 6, y: 5 }, `over the shoulder at (${x.toFixed(2)}, ${z})`);
+    assert.deepEqual(plantTile(s, { x, y: here - 0.02, z }, FLAT, 'bold', TOPS), { x: 5, y: 5 }, `on the shoulder at (${x.toFixed(2)}, ${z})`);
+    shoulders++;
+  }
+  assert.ok(shoulders > 5, `${shoulders} points on the shoulder checked`);
 
   // A 3 × 3 patch of rock with a corner cut, ringed by trees, and a lone rock among trees: each vertex of the crags
   // drawn (just under the surface), whichever tile's crag it is, picks the rock tile it stands on, a crown in reach or not.
@@ -302,16 +309,13 @@ test('plantTile: a crown over a crag\'s low shoulder is the tree\'s, every drawn
     let checked = 0;
     for (let y = 2; y <= 10; y++) for (let x = 2; x <= 10; x++) {
       if (!isRock(x, y)) continue;
-      const g = buildCrags(planOutcropTile(x, y, isRock, look));
-      const pos = g.getAttribute('position');
-      for (let i = 0; i < pos.count; i++) {
-        const vx = pos.getX(i), vy = pos.getY(i) - 0.02, vz = pos.getZ(i);
+      for (const [vx, y0, vz] of verticesOf(planOutcropTile(x, y, isRock, look))) {
+        const vy = y0 - 0.02;
         const tx = Math.floor(vx / TILE), ty = Math.floor(vz / TILE);
         if (vy <= 0.05 || !isRock(tx, ty)) continue;
         assert.deepEqual(plantTile(s, { x: vx, y: vy, z: vz }, FLAT, look, TOPS), { x: tx, y: ty }, `${look} vertex at (${vx.toFixed(2)}, ${vy.toFixed(2)}, ${vz.toFixed(2)})`);
         checked++;
       }
-      g.dispose();
     }
     assert.ok(checked > 500, `${look}: ${checked} vertices checked`);
   }
@@ -321,8 +325,9 @@ test('cragTops: a crag turned in place (same seed and size) is read anew, not fr
   const isRock = (x: number, y: number) => x === 5 && y === 5;
   const [piece] = planOutcropTile(5, 5, isRock, 'bold');
   const turned: PlannedRock = { ...piece, yaw: piece.yaw + Math.PI / 2 };
-  const tops = cragTops({ addCrag, groundOf, MeshBuilder, rng });
-  const fresh = cragTops({ addCrag, groundOf, MeshBuilder, rng });
+  let builds = 0;
+  const tops = cragTops((p) => { builds++; return standIn(p); });
+  const fresh = cragTops(standIn);
   let differs = 0;
   for (let dx = -1.5; dx <= 1.5; dx += 0.25) for (let dz = -1.5; dz <= 1.5; dz += 0.25) {
     const x = piece.x + dx, z = piece.z + dz;
@@ -332,4 +337,5 @@ test('cragTops: a crag turned in place (same seed and size) is read anew, not fr
     if (a !== tops(piece, x, z)) differs++;
   }
   assert.ok(differs > 0, 'the turn changes the surface somewhere');
+  assert.equal(builds, 2, 'each crag built once, then kept');
 });

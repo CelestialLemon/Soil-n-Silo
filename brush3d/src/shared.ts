@@ -15,3 +15,5 @@ export { CLOUD_SHAPE, cloudDriftSpeed, cloudShade, type CloudField, type CloudLa
 export { SLACK, Surface, type Ground as SurfaceGround, type Relief } from './land/surface.ts';
 export { checkLand, LAND_COVER, LAND_GROUND, type Beyond, type LandCover, type LandGround, type LandMap, type LandPatch, type LandRect } from './land/map.ts';
 export { TILE } from './models/tile.ts';
+// How far a crag reaches past its size, and its triangles (kit/crag.ts), which the game plans its outcrops by (Soil-n-Silo#257).
+export { CRAG_BOUND, CRAG_TRIANGLES } from './kit/crag.ts';

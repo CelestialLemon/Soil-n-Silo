@@ -1,3 +1,4 @@
+import { CRAG_BOUND } from '../../../brush3d/src/shared.ts';
 import { mulberry32, noise2 } from '../../game/rng.ts';
 import { hash } from '../trees.ts';
 import { TILE } from './scale.ts';
@@ -66,12 +67,12 @@ export interface RockFootprint {
 }
 
 /**
- * Conservative worst-case XZ ellipsoid footprint for `addCrag`, accounting for both simplex noise octaves
- * (`1.16 + 0.14 * crag`), lower-skirt flare (`1.10` encloses `(1 + 0.16 * max(0, -uy))` on the unit sphere), tilt, and yaw.
+ * The XZ shadow of the ellipsoid brush3d promises a crag stays inside (`CRAG_BOUND`: its noise's swell, its skirt's
+ * flare), turned by its tilt and yaw.
  */
 export function rockFootprint(s: RockShape): RockFootprint {
-  const k = 1.16 + 0.14 * s.crag;
-  const ax = s.rx * k * 1.1, ay = s.ry * k, az = s.rz * k * 1.1;
+  const k = CRAG_BOUND.swell + CRAG_BOUND.perCrag * s.crag;
+  const ax = s.rx * k * CRAG_BOUND.skirt, ay = s.ry * k, az = s.rz * k * CRAG_BOUND.skirt;
   const cy = Math.cos(s.yaw), sy = Math.sin(s.yaw);
   const cp = Math.cos(s.pitch), sp = Math.sin(s.pitch);
   const cr = Math.cos(s.roll), sr = Math.sin(s.roll);
