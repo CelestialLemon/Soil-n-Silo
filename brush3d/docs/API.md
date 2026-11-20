@@ -136,15 +136,13 @@ r.updateLand({ x, y, width, height }, { corners, worked, cover, ground });   // 
   sharp at cliffs), so the hills are the same shape. Under the water's tiles the land sinks into a bed; the game lays its
   water (below) a little under the tiles' level, over it.
 - **The drawn surface is the game's to query**, so a truck, a dropped good, grass tufts and the tile cursor sit on what
-  the player sees: `r.landAt(x, z)` gives the land's height there (metres), `r.landColourAt(x, z, into?)` gives the
-  painted ground colour there (linear RGB, before season turning, matching the blurred dryness, `groundTint`, `beyond`
-  dulling and meadow drift), `r.landHit(ray)` gives where a line of sight (from `r.view.rayAt`) first meets it or null,
-  and `r.landRevision` changes whenever `setLand` replaces the land or `updateLand` finishes swapping refitted chunks in
-  (so grass and lines resync with the drawn surface). All run on the CPU with no wait for the GPU. The rules go on
-  asking `relief.ts`.
+  the player sees: `r.landAt(x, z)` gives the land's height there (metres), `r.landColourAt(x, z, into?)` the painted
+  ground's colour there as drawn (linear RGB, before the season turns it), and `r.landHit(ray)` where a line of sight
+  (from `r.view.rayAt`) first meets it, or null, on the CPU with no wait for the GPU. `r.onLandChange((area) => {})`
+  calls back whenever the land as drawn changes (a new land, an earthwork swapped in), with where (`{ x0, z0, x1, z1 }`,
+  metres) its height or paint may have changed, as the frame that first draws it begins: the game's grass is hidden
+  there and made again (#256), never left floating over the old ground. The rules go on asking `relief.ts`.
 - Not yet: the cuts models need where they stand (the water wheel's race in its bank, `wheelRace` in the catalogue).
-  Meadow grass tufts (#256) are placed by the game's `grass.ts` with `addTuft`, `r.landAt`, `r.landColourAt` and
-  `r.landRevision`.
 
 ### Water (today; the game's river in #202, floods, ice and mud in #207)
 
@@ -306,10 +304,8 @@ r.requestPick(clientX, clientY).then((hit) => {});  // a frame or two later, nev
 - The pick sees the frame last drawn, as its camera saw it: `point` is where the pointer met what's drawn there, so the
   game finds the tile from it (`Math.floor(point.x / TILE)`).
 - A build preview, a route or a wire is drawn over the finished picture, never into the G-buffer: never picked.
-- Smoke (#205) and meadow grass (#256) are drawn into the G-buffer but are not things to click on: they mark their
-  pixels (`SMOKE_INK` / `GRASS_INK`, as their ink), and a pick on one looks past it along the same line of sight (to the
-  building behind, the land, the water, or nothing: the sky), so open grass beside a tree or rock never picks as a
-  plant.
+- Smoke (#205) is drawn into the G-buffer but is no thing: it marks its pixels (`SMOKE_INK`, as its ink), and a pick on
+  one looks past it along the same line of sight (to the building behind, the land, or nothing: the sky).
 - Like pixel3d's `pick` and `requestPick` were, so the game's hover logic carried over.
 
 ## The game's tools on the picture (today, #206)
@@ -495,6 +491,7 @@ above, the game stops using it and it becomes the renderer's own.
 - `r.add(geometry, kind, options)` and `r.remove(mesh)`: a mesh of one kind (`'ground'`, `'grass'`, `'crop'`,
   `'foliage'`, `'paint'`, `'ink'`, `'water'`), with how it casts shadows, shelters, reflects and turns with the season.
   `remove` frees the tiles it cut a mesh into (`tile`); a geometry the caller gave stays the caller's to dispose.
+  `cull: true` culls a small mesh whole, uncut, for one added and taken out often (a block of the game's grass).
   Give the ground its square (`fields`) even when its brush isn't baked: the clouds' map is laid over it, and without it
   covers only 128 m round the origin, the clouds' shadows smeared in streaks past it (#201).
   `r.setFields(kind, size)` bakes a kind's brush once the scene is built; the ground's is baked again by itself where the

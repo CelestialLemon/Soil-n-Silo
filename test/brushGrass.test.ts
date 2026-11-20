@@ -1,26 +1,24 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import * as THREE from 'three';
 import { MeshBuilder, rng, srgb } from '../brush3d/src/kit/builder.ts';
 import { addTuft, groundOf } from '../brush3d/src/kit/kit.ts';
-import { GRASS_INK, Picker } from '../brush3d/src/renderer/pick.ts';
-import { place, remove, removeAt, reshape } from '../src/game/build.ts';
+import { place, remove, removeAt } from '../src/game/build.ts';
 import { GROUND } from '../src/game/ground.ts';
 import { generateLand, TERRAIN } from '../src/game/map.ts';
 import { must } from '../src/game/result.ts';
 import { scenarioById } from '../src/game/scenarios.ts';
-import { newGame, sizeOf, type Dir } from '../src/game/state.ts';
+import { newGame, sizeOf, type Building, type Dir } from '../src/game/state.ts';
 import { COUNTRY, landRelief, Lie } from '../src/world/ground.ts';
 import { YAW } from '../src/world/brush/catalog.ts';
 import {
-  blockKey, blockSig, boxesIn, BUILDING_MARGIN, CLIFF_MARGIN, FIELD_MARGIN, fringeFade, GRASS_BLOCK, GRASS_FRINGE,
-  GRASS_MODES, GRASS_PROFILES, grassBlocks, inBuilding, MAX_BLADE_REACH, ROCK_MARGIN, tileHabitat, tileSeed,
-  WATER_MARGIN, wetDistance,
+  blockOf, boxesIn, BUILDING_MARGIN, CLIFF_MARGIN, FIELD_MARGIN, fringeFade, GRASS_BLOCK, GRASS_FRINGE, GRASS_MODES,
+  GRASS_PROFILES, GRASS_TOP, grassAt, grassBlocks, grassLayout, inBuilding, layoutChanges, MAX_BLADE_REACH, ROCK_MARGIN,
+  tileHabitat, tileSeed, WATER_MARGIN, wetDistance,
 } from '../src/world/brush/grassMask.ts';
 import { TILE } from '../src/world/brush/scale.ts';
 
-// Pure placement, masking, seasonal sizing, emitted-geometry containment, chunked block-rebuild, and picking rules for
-// meadow grass tufts (src/world/brush/grassMask.ts, brush3d/src/renderer/pick.ts, #256).
+// Pure placement, masking, seasonal sizing, emitted-geometry containment, block-change and picking rules for meadow grass
+// tufts (src/world/brush/grassMask.ts, #256).
 
 /** Exact `wheelRace` geometry from brush3d/src/models/catalog.ts (without Vite's `import.meta.glob`). */
 function wheelRace(lx: number, lz: number, margin = 0.5) {
@@ -207,6 +205,15 @@ test('emitted Lush grass blade geometry never protrudes into any building, field
     if (res.ok) field = res.value.building;
   }
   assert.ok(silo && field);
+  // And a water wheel (its race reaches out in front of it), on open grass, turned each way in turn below.
+  let spot: [number, number] | null = null;
+  for (let y = 12; y < h - 12 && !spot; y++) for (let x = 12; x < w - 12 && !spot; x++) {
+    let open = true;
+    for (let dy = -3; dy < 6 && open; dy++) for (let dx = -3; dx < 6 && open; dx++) open = s.map.terrain[(y + dy) * w + x + dx] === TERRAIN.grass && !s.buildings.some((b) => x + dx >= b.x && x + dx < b.x + sizeOf(b) && y + dy >= b.y && y + dy < b.y + sizeOf(b));
+    if (open) spot = [x, y];
+  }
+  assert.ok(spot);
+  for (const rot of [0, 1, 2, 3] as Dir[]) s.buildings.push({ ...silo, id: 9000 + rot, type: 'wheel', x: spot[0], y: spot[1], rot });
   lie.update();
 
   const profile = GRASS_PROFILES.lush;
@@ -239,7 +246,7 @@ test('emitted Lush grass blade geometry never protrudes into any building, field
   assert.ok(mb.vertexCount > 500, `expected hundreds of emitted grass vertices, got ${mb.vertexCount}`);
   const geom = mb.build();
   const pos = geom.getAttribute('position');
-  let violations = 0;
+  let violations = 0, inRace = 0;
   for (let i = 0; i < pos.count; i++) {
     const vx = pos.getX(i), vz = pos.getZ(i);
     for (const b of s.buildings) {
@@ -247,139 +254,99 @@ test('emitted Lush grass blade geometry never protrudes into any building, field
       if (vx > b.x * TILE && vx < (b.x + n) * TILE && vz > b.y * TILE && vz < (b.y + n) * TILE) {
         violations++;
       }
+      if (b.type !== 'wheel') continue;
+      // The race itself (no margin), in the wheel's own frame (as inBuilding turns it).
+      const yaw = YAW[b.rot], dx = vx - (b.x + n / 2) * TILE, dz = vz - (b.y + n / 2) * TILE;
+      if (wheelRace(dx * Math.cos(yaw) - dz * Math.sin(yaw), dx * Math.sin(yaw) + dz * Math.cos(yaw), 0) > 0) inRace++;
     }
   }
+  assert.equal(inRace, 0, `expected 0 emitted grass blade vertices in a water wheel's race, got ${inRace}`);
   geom.dispose();
   assert.equal(violations, 0, `expected 0 emitted grass blade vertices inside building/field footprints, got ${violations}`);
 });
 
-test('chunked map and fringe blocks isolate edits, split layout vs relief sigs, and respond to mode switches', () => {
+test('blocks: a placement, removal or clearing queues only the blocks it touches, from a cheap layout diff', () => {
   const sc = must(scenarioById('c7'), 'c7');
-  const s = newGame(sc), land = generateLand(sc, COUNTRY), lie = new Lie(s, land);
+  const s = newGame(sc), land = generateLand(sc, COUNTRY);
   s.credits = 1e6;
   const { width: w, height: h } = s.map, reach = Math.min(GRASS_FRINGE, land.margin);
-  const rects = grassBlocks(w, h, reach);
-  const mapRects = rects.filter((r) => r.onMap);
-  const fringeRects = rects.filter((r) => !r.onMap);
-  assert.ok(mapRects.length > 0 && fringeRects.length >= 8, `expected chunked fringe blocks, got ${fringeRects.length}`);
+  const rects = grassBlocks(w, h, reach), byId = new Map(rects.map((r) => [r.id, r]));
+  assert.ok(rects.filter((r) => !r.onMap).length >= 8, 'the country fringe has blocks of its own');
   assert.ok(rects.every((r) => r.x1 - r.x0 <= GRASS_BLOCK && r.y1 - r.y0 <= GRASS_BLOCK));
+  // blockOf names the block that holds a tile, on the map or in the fringe.
+  for (const [x, y] of [[0, 0], [5, 9], [-1, -reach], [w - 1, h + reach - 1], [-reach, h - 1]]) {
+    const r = byId.get(blockOf(x, y));
+    assert.ok(r && x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1, `tile ${x},${y} in its block`);
+  }
   assert.equal(fringeFade(5, 5, w, h, reach), 1);
   assert.ok(fringeFade(-1, 5, w, h, reach) > 0 && fringeFade(-1, 5, w, h, reach) < 1);
   assert.equal(fringeFade(-reach - 1, 5, w, h, reach), 0);
 
-  const yAt = (tx: number, ty: number) => lie.y(tx, ty);
-  const allSigs = (mode: 'quiet' | 'meadow' | 'lush' = 'meadow') =>
-    new Map(rects.map((r) => [r.id, blockSig(s, land, lie.relief, yAt, mode, r.x0, r.y0, r.x1, r.y1)]));
-  const diffKeys = (a: Map<number, ReturnType<typeof blockSig>>, b: Map<number, ReturnType<typeof blockSig>>) =>
-    rects.filter((r) => {
-      const sa = a.get(r.id)!, sb = b.get(r.id)!;
-      return sa.layout !== sb.layout || sa.relief !== sb.relief;
-    });
+  const changes = (f: () => void) => {
+    const was = grassLayout(s);
+    f();
+    return layoutChanges(was, grassLayout(s), w);
+  };
+  const onMapOnly = (ids: Set<number>) => [...ids].every((id) => byId.get(id)?.onMap);
+  assert.deepEqual(changes(() => {}), { urgent: new Set(), dirty: new Set() });
 
-  const before = allSigs('meadow');
+  // A silo placed inside the map: the blocks its box reaches, hidden till made again; nothing else.
+  let silo: Building | null = null;
+  const placed = changes(() => {
+    for (let y = 12; y < h - 12 && !silo; y++) for (let x = 12; x < w - 12 && !silo; x++) {
+      const res = place(s, 'silo', x, y, 0);
+      if (res.ok) silo = res.value.building;
+    }
+  });
+  const b = silo as Building | null;
+  if (!b) throw new Error('no room for a silo');
+  const n = sizeOf(b);
+  assert.ok(placed.urgent.size >= 1 && placed.urgent.size <= 4 && placed.dirty.size === 0, JSON.stringify([...placed.urgent]));
+  assert.ok(onMapOnly(placed.urgent), 'an inner building touches no fringe block');
+  for (const [x, y] of [[b.x - 1, b.y - 1], [b.x + n, b.y + n]]) assert.ok(placed.urgent.has(blockOf(x, y)));
 
-  // Mode switch changes layout sig on every block.
-  const quiet = allSigs('quiet');
-  const lush = allSigs('lush');
-  assert.equal(diffKeys(before, quiet).length, rects.length);
-  assert.equal(diffKeys(before, lush).length, rects.length);
+  // Taken away: the same blocks, but grass grows back (no hurry).
+  const removed = changes(() => assert.equal(remove(s, b).ok, true));
+  assert.equal(removed.urgent.size, 0);
+  assert.deepEqual(removed.dirty, placed.urgent);
 
-  // Place a silo deep inside the map -> only 1–4 blocks' layout sigs change, smoothing stays local, 0 fringe blocks change.
-  let placed = null;
-  for (let y = 12; y < h - 12 && !placed; y++) for (let x = 12; x < w - 12 && !placed; x++) {
-    const res = place(s, 'silo', x, y, 0);
-    if (res.ok) placed = res.value.building;
-  }
-  assert.ok(placed);
-  lie.update();
-  const afterPlace = allSigs('meadow');
-  const changedPlace = diffKeys(before, afterPlace);
-  const changedLayout = rects.filter((r) => afterPlace.get(r.id)!.layout !== before.get(r.id)!.layout);
-  const addedBlocks = rects.filter((r) =>
-    afterPlace.get(r.id)!.buildingIds.some((id) => !before.get(r.id)!.buildingIds.includes(id)),
-  );
-  assert.ok(changedLayout.length >= 1 && changedLayout.length <= 4, `expected 1-4 layout-changed blocks, got ${changedLayout.length}`);
-  assert.ok(changedPlace.length >= changedLayout.length && changedPlace.length <= 9, `expected localized relief spread (<=9 blocks), got ${changedPlace.length}`);
-  assert.ok(addedBlocks.length >= 1 && addedBlocks.length <= 4, 'newly placed building must appear in 1-4 blocks buildingIds');
-  assert.equal(changedPlace.filter((r) => !r.onMap).length, 0, 'interior building must not dirty any fringe block');
+  // A tree cleared: the blocks round its tile (its neighbours' grass depends on it), none urgent.
+  let at = [-1, -1];
+  const cleared = changes(() => {
+    for (let y = 8; y < h - 8 && at[0] < 0; y++) for (let x = 8; x < w - 8 && at[0] < 0; x++) {
+      if (s.map.terrain[y * w + x] === TERRAIN.tree && removeAt(s, x, y).ok) at = [x, y];
+    }
+  });
+  assert.ok(at[0] >= 0);
+  assert.equal(cleared.urgent.size, 0);
+  assert.ok(cleared.dirty.size >= 1 && cleared.dirty.size <= 4 && onMapOnly(cleared.dirty));
+  assert.ok(cleared.dirty.has(blockOf(at[0], at[1])));
 
-  // Removing the silo removes its buildingId from the block's layout signature.
-  assert.equal(remove(s, placed).ok, true);
-  lie.update();
-  const afterRemove = allSigs('meadow');
-  assert.equal(
-    rects.filter((r) => afterRemove.get(r.id)!.layout !== before.get(r.id)!.layout).length,
-    0,
-  );
+  // A water wheel's race reaches three tiles out: its blocks are all hidden too.
+  const wheel = { ...s.buildings[0], id: 9999, type: 'wheel' as const, x: 20, y: 20, rot: 0 as Dir };
+  const wheeled = changes(() => s.buildings.push(wheel));
+  for (const [x, y] of [[17, 17], [20 + sizeOf(wheel) + 2, 20 + sizeOf(wheel) + 2]]) assert.ok(wheeled.urgent.has(blockOf(x, y)));
+  s.buildings.pop();
 
-  // Clearing an interior tree touches only 1–4 map blocks and 0 fringe blocks.
-  const beforeTree = allSigs('meadow');
-  let cleared = false;
-  for (let y = 8; y < h - 8 && !cleared; y++) for (let x = 8; x < w - 8 && !cleared; x++) {
-    if (s.map.terrain[y * w + x] === TERRAIN.tree) cleared = removeAt(s, x, y).ok;
-  }
-  assert.ok(cleared);
-  const changedTree = diffKeys(beforeTree, allSigs('meadow'));
-  assert.ok(changedTree.length >= 1 && changedTree.length <= 4);
-  assert.equal(changedTree.filter((r) => !r.onMap).length, 0);
-
-  // Border earthwork dirties only the local 1–2 adjacent fringe blocks, not the entire perimeter.
-  const beforeBorder = allSigs('meadow');
-  let borderMoved = false;
-  for (let x = 12; x < w - 12 && !borderMoved; x++) {
-    const res = reshape(s, { how: 'raise', from: { x, y: 0 }, to: { x, y: 0 }, at: { x, y: 0 } });
-    if (res.ok) { lie.update(); borderMoved = true; }
-  }
-  assert.ok(borderMoved);
-  const changedBorder = diffKeys(beforeBorder, allSigs('meadow'));
-  const changedFringe = changedBorder.filter((r) => !r.onMap);
-  assert.ok(changedFringe.length >= 1 && changedFringe.length <= 3, `expected 1-3 dirty fringe blocks, got ${changedFringe.length}`);
-  assert.ok(changedFringe.length < fringeRects.length, 'border earthwork must not dirty all fringe blocks');
-
-  // blockKey and tileSeed remain deterministic.
-  const r0 = mapRects[0];
-  assert.equal(
-    blockKey(s, land, lie.relief, yAt, 'meadow', r0.x0, r0.y0, r0.x1, r0.y1),
-    blockKey(s, land, lie.relief, yAt, 'meadow', r0.x0, r0.y0, r0.x1, r0.y1),
-  );
   assert.equal(tileSeed(42, 7, 13), tileSeed(42, 7, 13));
   assert.notEqual(tileSeed(42, 7, 13), tileSeed(42, 8, 13));
 });
 
-test('meadow grass is transparent to picking beside trees and rocks from all 4 views', () => {
-  // Open grass tile (10, 10) right next to a tree on (10, 9) and a rock on (11, 10).
-  const gx = (10 + 0.5) * TILE, gz = (10 + 0.5) * TILE;
-  const picker = new Picker({
-    landHit: (ray) => ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3()),
-    waterAt: () => null,
-    tagged: () => [],
-  });
-  const pixels = (depth: number, ink: number) =>
-    Float32Array.from({ length: 36 }, (_, i) => (i % 4 === 2 ? depth : i % 4 === 3 ? ink : 0));
-
-  for (let view = 0; view < 4; view++) {
-    const yaw = (Math.PI / 4) + (view * Math.PI) / 2;
-    const pitch = Math.PI / 6; // 30° camera pitch, matching the game
-    const dist = 120;
-    const cam = new THREE.OrthographicCamera(-40, 40, 22.5, -22.5, 0.1, 400);
-    cam.position.set(
-      gx + Math.cos(yaw) * Math.cos(pitch) * dist,
-      Math.sin(pitch) * dist,
-      gz + Math.sin(yaw) * Math.cos(pitch) * dist,
-    );
-    cam.lookAt(gx, 0, gz);
-    cam.updateMatrixWorld();
-
-    // A 0.85 m grass blade on tile (10, 10) sits ~1.7 m nearer along the 30° view ray than the ground.
-    const bladeDepth = dist - 1.7;
-    const grassHit = picker.hit(pixels(bladeDepth, GRASS_INK), cam, new THREE.Vector2(0, 0), new THREE.Vector2(1e-4, 1e-4), []);
-    assert.ok(grassHit, `view ${view}: grass pick returned null`);
-    assert.equal(grassHit.what, 'land', `view ${view}: meadow grass must pick as 'land', not 'plant'`);
-    assert.equal(Math.floor(grassHit.point.x / TILE), 10);
-    assert.equal(Math.floor(grassHit.point.z / TILE), 10);
-
-    // An actual tree crown or rock (ink = 0.0) standing above the land still picks as 'plant'.
-    const treeHit = picker.hit(pixels(dist - 4.0, 0), cam, new THREE.Vector2(0, 0), new THREE.Vector2(1e-4, 1e-4), []);
-    assert.equal(treeHit?.what, 'plant', `view ${view}: tree/rock must still pick as 'plant'`);
+test('a pick low over open grass is the meadow\'s grass, not the tree or rock beside it', () => {
+  const sc = must(scenarioById('c7'), 'c7');
+  const s = newGame(sc), { width: w, height: h } = s.map;
+  let tree: [number, number] | null = null, grass: [number, number] | null = null;
+  for (let y = 4; y < h - 4 && !(tree && grass); y++) for (let x = 4; x < w - 4; x++) {
+    const t = s.map.terrain[y * w + x];
+    if (t === TERRAIN.tree && !tree) tree = [x, y];
+    if (t === TERRAIN.grass && !grass) grass = [x, y];
   }
+  assert.ok(tree && grass);
+  const mid = ([x, y]: [number, number]) => [(x + 0.5) * TILE, (y + 0.5) * TILE] as const;
+  // The tallest blade of the lushest profile is under GRASS_TOP.
+  assert.ok(GRASS_TOP > 1.2 * (GRASS_PROFILES.lush.tall[0] + GRASS_PROFILES.lush.tall[1]) * 1.12);
+  assert.equal(grassAt(s, ...mid(grass), 0.4), true, 'a blade over open grass');
+  assert.equal(grassAt(s, ...mid(grass), GRASS_TOP + 0.5), false, 'a crown leaning over open grass');
+  assert.equal(grassAt(s, ...mid(tree), 0.4), false, 'the foot of a tree, or a rock, on its own tile');
+  assert.equal(grassAt(s, -2, -2, 0.4), true, 'a blade in the country beyond the map');
 });

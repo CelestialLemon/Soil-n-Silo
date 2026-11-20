@@ -8,7 +8,7 @@ import { SNOW_GLSL } from './snow';
 import { WET_GLSL, WET_INK_GLSL } from './wet';
 import { GROUND_TOOLS_GLSL } from './overlay';
 import { GLOW, PART_TEXELS } from './parts';
-import { GRASS_INK, SMOKE_INK } from './pick';
+import { SMOKE_INK } from './pick';
 import { SMOKE } from './nightLights';
 
 // The scene's materials. Each has a main variant (writes colour and the G-buffer) and a depth variant for the sun's
@@ -864,8 +864,7 @@ void main() {
     float cover = gSnow > 0.0 ? snowBuries(p, gSnow) : 0.0;
     if (cover > 0.0) col = mix(col, snowPaint(light, 0.06, 0.0), cover);
   }
-  // Marked to see past when picking (GRASS_INK, pick.ts): grass blades sit on the land, not as trees or rocks.
-  writeGBuffer(exposeHere(col), n, vViewDepth, ${GRASS_INK.toFixed(8)}, 1.0);
+  writeGBuffer(exposeHere(col), n, vViewDepth, 0.0, 1.0);
 }
 `;
 

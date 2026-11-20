@@ -1,43 +1,34 @@
 import * as THREE from 'three';
 import {
   addTuft, groundOf, MeshBuilder, noise2, rng, smooth, wheelRace,
-  type BrushRenderer, type Ground,
+  type BrushRenderer, type Ground, type LandArea,
 } from '../../../brush3d/src/index.ts';
 import type { Land } from '../../game/map.ts';
 import { layoutOf, type GameState } from '../../game/state.ts';
 import type { Lie } from '../ground.ts';
 import {
-  blockSig, boxesIn, fringeFade, GRASS_FRINGE, GRASS_PROFILES, grassBlocks, inBuilding,
+  boxesIn, fringeFade, GRASS_FRINGE, GRASS_PROFILES, grassBlocks, grassLayout, inBuilding, layoutChanges,
   tileHabitat, tileSeed, wetDistance,
-  type BlockSig, type FootprintBox, type GrassBlockRect, type GrassMode, type GrassProfile,
+  type FootprintBox, type GrassBlockRect, type GrassLayout, type GrassMode, type GrassProfile,
 } from './grassMask.ts';
 import { TILE } from './scale.ts';
 
 // Meadow grass tufts across the valley floor (#256): painted blades swaying in the living wind, coloured from the land's
-// own painted ground (`r.landColourAt`) so they blend seamlessly into the ground paint and turn with the season (and
-// shorten in winter so light snow lets frosted tips show while deep snow buries them cleanly).
+// own painted ground (`r.landColourAt`) so they blend into the ground paint and turn with the season (and shorten in
+// winter so light snow lets frosted tips show while deep snow buries them cleanly).
 //
-// - Built in chunked 8 × 8-tile blocks across both the playable map and its country fringe (matching `Wild` and
-//   `PaintedLand`): placing or removing a building or field, clearing a tree, or doing earthworks rebuilds only the
-//   affected block(s) without shelter redraws or frame hitches (#204).
-// - Earthwork-driven height rebuilds wait for `r.landRevision` to advance (after `PaintedLand` swaps its refitted
-//   ground chunks in) and drain dirty blocks within `REBUILD_BUDGET` ms per frame, so tufts never float/sink mid-swap
-//   and multi-block earthwork drags never hitch. Newly placed buildings or fields rebuild their block(s) immediately so
-//   grass never pokes through a new footprint.
+// - Built in 4 × 4-tile blocks across the playable map and its country fringe, each one mesh. What changes in play
+//   (a building or field placed or taken away, a tree or rock cleared, an earthwork) makes again only the blocks it
+//   touches, found by comparing the layout's terrain and buildings with the last (grassMask.ts's layoutChanges), and
+//   made again a few a frame within `REBUILD_BUDGET` (#204), so a long build drag never hitches.
+// - A block a new building stands in, or whose land was just redrawn (`r.onLandChange`, as an earthwork is swapped in),
+//   is hidden until it's made again, first in the queue: its grass never pokes through the building or floats over (or
+//   sinks into) the old ground for a frame. The rest (grass growing back) keep showing until they're made again.
 // - Ground-hugging tufts skip sun shadows and water reflections (`castShadow: false, reflect: false`): the painted
 //   ground already reflects in rivers and ponds, and skipping grass reflections saves ~0.6–1.1 ms GPU on water maps.
 
-/** Tile cut size (m) passed to `r.add` so each 8 × 8 block opts into frustum culling with `TILE_REACH` wind padding. */
-const CUT = 64;
-/** Per-frame CPU budget (ms) for rebuilding queued dirty grass blocks during play (matches `PaintedLand.step`). */
+/** Per-frame CPU budget (ms) for making queued blocks again during play (matches `PaintedLand.step`). */
 const REBUILD_BUDGET = 2.5;
-
-interface Block {
-  layout: string;
-  relief: string;
-  buildingIds: Set<number>;
-  meshes: THREE.Mesh[];
-}
 
 const SCRATCH = new THREE.Color();
 
@@ -52,12 +43,14 @@ export class Grass {
   private readonly reach: number;
   private readonly grid: GrassBlockRect[];
   private readonly blockById = new Map<number, GrassBlockRect>();
-  private readonly blocks = new Map<number, Block>();
-  /** Dirty block IDs queued for budgeted per-frame rebuilding. */
+  private readonly blocks = new Map<number, THREE.Mesh[]>();
+  /** Blocks to make again: hidden until they are (and made first), and the rest. */
+  private readonly urgent = new Set<number>();
   private readonly dirty = new Set<number>();
   private mode: GrassMode;
+  /** The game's layout as the grass last followed it. */
   private layout = -1;
-  private landRev = '';
+  private seen: GrassLayout;
   private lastState: GameState;
 
   constructor(r: BrushRenderer, lie: Lie, land: Land, s: GameState, initialMode: GrassMode) {
@@ -68,7 +61,9 @@ export class Grass {
     this.wetDist = wetDistance(land);
     this.grid = grassBlocks(s.map.width, s.map.height, this.reach);
     for (const rect of this.grid) this.blockById.set(rect.id, rect);
+    this.seen = grassLayout(s);
     if (this.mode !== 'off') this.rebuildAll(s);
+    r.onLandChange((area) => this.landChanged(area));
   }
 
   /** Switches the look option in place without leaking meshes or geometries. */
@@ -76,46 +71,40 @@ export class Grass {
     if (next === this.mode) return;
     this.clearAll();
     this.mode = next;
-    this.layout = -1;
-    this.landRev = '';
     if (this.mode !== 'off') this.rebuildAll(this.lastState);
   }
 
   /**
-   * Follows the game: newly placed buildings/fields clear their block(s) immediately so grass never pokes through;
-   * clearings, removals, and post-swap terrain changes (`r.landRevision`) rebuild dirty blocks within a small
-   * per-frame CPU budget (`REBUILD_BUDGET`).
+   * Follows the game: the blocks a change in its layout touches are queued (those a new building stands in hidden till
+   * they're made), and queued blocks made again within `REBUILD_BUDGET` ms.
    */
   sync(s: GameState) {
     this.lastState = s;
     if (this.mode === 'off') return;
-    const layout = layoutOf(s), landRev = this.r.landRevision;
-    const layoutChanged = layout !== this.layout;
-    const landChanged = landRev !== this.landRev;
-
-    if (layoutChanged || landChanged) {
-      const yAt = (tx: number, ty: number) => this.r.landAt(tx * TILE, ty * TILE);
-      for (const rect of this.grid) {
-        const prev = this.blocks.get(rect.id);
-        if (!prev) { this.dirty.add(rect.id); continue; }
-        const sig = blockSig(s, this.land, this.lie.relief, yAt, this.mode, rect.x0, rect.y0, rect.x1, rect.y1);
-        if (layoutChanged && sig.layout !== prev.layout) {
-          const addedBuilding = sig.buildingIds.some((id) => !prev.buildingIds.has(id));
-          if (addedBuilding) {
-            this.dirty.delete(rect.id);
-            this.rebuildBlock(s, rect, sig);
-            continue;
-          }
-          this.dirty.add(rect.id);
-        } else if (landChanged && sig.relief !== prev.relief) {
-          this.dirty.add(rect.id);
-        }
-      }
+    const layout = layoutOf(s);
+    if (layout !== this.layout) {
       this.layout = layout;
-      this.landRev = landRev;
+      const now = grassLayout(s), { urgent, dirty } = layoutChanges(this.seen, now, s.map.width);
+      this.seen = now;
+      for (const id of urgent) this.hide(id);
+      for (const id of dirty) if (this.blockById.has(id) && !this.urgent.has(id)) this.dirty.add(id);
     }
+    if (this.urgent.size || this.dirty.size) this.drain(s);
+  }
 
-    if (this.dirty.size > 0) this.drainDirty(s, REBUILD_BUDGET);
+  /** The land as drawn changed in `area` (m): its blocks hidden, to be made again on it first. */
+  private landChanged(area: LandArea) {
+    if (this.mode === 'off') return;
+    const x0 = Math.floor(area.x0 / TILE), z0 = Math.floor(area.z0 / TILE), x1 = Math.ceil(area.x1 / TILE) - 1, z1 = Math.ceil(area.z1 / TILE) - 1;
+    for (const rect of this.grid) if (rect.x1 > x0 && rect.x0 <= x1 && rect.y1 > z0 && rect.y0 <= z1) this.hide(rect.id);
+  }
+
+  /** A block queued first, its grass hidden till it's made again. */
+  private hide(id: number) {
+    if (!this.blockById.has(id)) return;
+    this.dirty.delete(id);
+    this.urgent.add(id);
+    for (const m of this.blocks.get(id) ?? []) m.visible = false;
   }
 
   // ---- Meadow colour & lushness ----
@@ -183,36 +172,31 @@ export class Grass {
   // ---- Block building & budgeted draining ----
 
   private rebuildAll(s: GameState) {
+    this.urgent.clear();
     this.dirty.clear();
-    const yAt = (tx: number, ty: number) => this.r.landAt(tx * TILE, ty * TILE);
-    for (const rect of this.grid) {
-      const sig = blockSig(s, this.land, this.lie.relief, yAt, this.mode, rect.x0, rect.y0, rect.x1, rect.y1);
-      this.rebuildBlock(s, rect, sig);
-    }
+    for (const rect of this.grid) this.rebuildBlock(s, rect);
     this.layout = layoutOf(s);
-    this.landRev = this.r.landRevision;
+    this.seen = grassLayout(s);
   }
 
-  private drainDirty(s: GameState, budget: number) {
-    const end = performance.now() + budget;
-    const yAt = (tx: number, ty: number) => this.r.landAt(tx * TILE, ty * TILE);
+  /** Makes queued blocks again, the hidden first, until `REBUILD_BUDGET` ms are spent (at least one a frame). */
+  private drain(s: GameState) {
+    const end = performance.now() + REBUILD_BUDGET;
     let done = 0;
-    for (const id of this.dirty) {
-      if (done > 0 && performance.now() >= end) break;
-      this.dirty.delete(id);
-      const rect = this.blockById.get(id);
-      if (!rect) continue;
-      const sig = blockSig(s, this.land, this.lie.relief, yAt, this.mode, rect.x0, rect.y0, rect.x1, rect.y1);
-      this.rebuildBlock(s, rect, sig);
-      done++;
+    for (const queue of [this.urgent, this.dirty]) {
+      for (const id of queue) {
+        if (done > 0 && performance.now() >= end) return;
+        queue.delete(id);
+        const rect = this.blockById.get(id);
+        if (rect) this.rebuildBlock(s, rect);
+        done++;
+      }
     }
   }
 
-  private rebuildBlock(s: GameState, rect: GrassBlockRect, sig: BlockSig) {
-    if (this.mode === 'off') return;
-    const prev = this.blocks.get(rect.id);
-    if (prev) this.drop(prev.meshes);
-    const profile = GRASS_PROFILES[this.mode];
+  private rebuildBlock(s: GameState, rect: GrassBlockRect) {
+    this.drop(this.blocks.get(rect.id) ?? []);
+    const profile = GRASS_PROFILES[this.mode as Exclude<GrassMode, 'off'>];
     const { width: w, height: h } = s.map;
     const boxes = boxesIn(s, rect.x0, rect.y0, rect.x1, rect.y1);
     const mb = new MeshBuilder('grass');
@@ -222,20 +206,14 @@ export class Grass {
       const onMap = x >= 0 && y >= 0 && x < w && y < h;
       this.scatterTile(mb, s, x, y, onMap, profile, boxes, fade);
     }
-    const meshes = mb.vertexCount
-      ? [this.r.add(mb.build(), 'grass', { tile: CUT, castShadow: false, reflect: false })]
-      : [];
-    this.blocks.set(rect.id, {
-      layout: sig.layout,
-      relief: sig.relief,
-      buildingIds: new Set(sig.buildingIds),
-      meshes,
-    });
+    // Culled whole (not cut into tiles: a block is small, and made again often).
+    this.blocks.set(rect.id, mb.vertexCount ? [this.r.add(mb.build(), 'grass', { cull: true, castShadow: false, reflect: false })] : []);
   }
 
   private clearAll() {
+    this.urgent.clear();
     this.dirty.clear();
-    for (const b of this.blocks.values()) this.drop(b.meshes);
+    for (const meshes of this.blocks.values()) this.drop(meshes);
     this.blocks.clear();
   }
 

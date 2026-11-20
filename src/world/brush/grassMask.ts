@@ -2,18 +2,22 @@ import type { TuftOptions } from '../../../brush3d/src/index.ts';
 import { GROUND } from '../../game/ground.ts';
 import { TERRAIN, type Land } from '../../game/map.ts';
 import { joins, SIDES, spanOf, STEEP, type Relief } from '../../game/relief.ts';
+import type { BuildingId } from '../../game/data.ts';
 import { sizeOf, terrainAt, type GameState } from '../../game/state.ts';
 import { YAW } from './catalog.ts';
 import { TILE } from './scale.ts';
 
-// Pure placement, masking, and block-signature rules for meadow grass tufts (#256). Kept separate from `grass.ts` with
+// Pure placement, masking, and block-change rules for meadow grass tufts (#256). Kept separate from `grass.ts` with
 // no Three.js or renderer runtime imports so `npm test` exercises them directly in Node (as `landMap.ts` does for `land.ts`).
 
 export const GRASS_MODES = ['off', 'quiet', 'meadow', 'lush'] as const;
 export type GrassMode = (typeof GRASS_MODES)[number];
 
-/** Tiles a side of one map or country-fringe block (matches `Wild` and `PaintedLand`). */
-export const GRASS_BLOCK = 8;
+/**
+ * Tiles a side of one map or country-fringe block: one mesh, made again whole when anything in it changes. Small, so
+ * making one again fits the frame's budget (grass.ts).
+ */
+export const GRASS_BLOCK = 4;
 /** Tiles beyond the map where grass tufts fade out into the country. */
 export const GRASS_FRINGE = 4;
 
@@ -62,7 +66,12 @@ export const MAX_BLADE_REACH = Math.max(
 export const CLIFF_MARGIN = 0.85;
 export const WATER_MARGIN = 0.45;
 export const ROCK_MARGIN = 0.35;
-/** Kept strictly above `MAX_BLADE_REACH` so no emitted blade tip protrudes into a building or field footprint. */
+/**
+ * Kept strictly above `MAX_BLADE_REACH` so no blade at rest stands in a building's or field's footprint. The wind's sway
+ * is left out, on purpose: the grass shader bends a blade across the view only (brush3d's `acrossView`), never nearer or
+ * further, so a blade in a gust can lean over a field's edge or in front of a wall it already stood in front of, but
+ * never through a wall. Covering the sway's full reach (up to 0.6 m, in a storm) would leave a bare ring round everything.
+ */
 export const BUILDING_MARGIN = 0.90;
 export const FIELD_MARGIN = 0.85;
 
@@ -82,15 +91,6 @@ export interface GrassBlockRect {
   x0: number; y0: number; x1: number; y1: number;
   /** Whether this block contains any playable map tiles (`false` for pure country-fringe blocks). */
   onMap: boolean;
-}
-
-export interface BlockSig {
-  /** Terrain, building footprints, and mode: changes on placement/removal/tree clearing. */
-  layout: string;
-  /** Relief corners and sampled surface heights: changes on earthworks (gated by `r.landRevision`). */
-  relief: string;
-  /** IDs of buildings whose footprints or wheel races touch this block. */
-  buildingIds: number[];
 }
 
 /** Deterministic tile hash in 0..2^32-1 for per-tile seeding (rebuilding a block never shifts neighbouring tiles). */
@@ -265,67 +265,61 @@ export function tileHabitat(
   };
 }
 
-/**
- * Compact layout + relief signature of any map or country-fringe block (plus its 1-tile terrain/relief halo and nearby
- * buildings) so only blocks touched by a placement, clearing, or earthwork rebuild.
- */
-export function blockSig(
-  s: GameState,
-  land: Land,
-  relief: Relief,
-  yAt: (tx: number, ty: number) => number,
-  mode: GrassMode,
-  x0: number,
-  y0: number,
-  x1: number,
-  y1: number,
-): BlockSig {
-  const { width: w, height: h } = s.map, M = land.margin, W = land.width, H = land.height;
-  const hx0 = Math.max(-M, x0 - 1), hy0 = Math.max(-M, y0 - 1);
-  const hx1 = Math.min(W - M, x1 + 1), hy1 = Math.min(H - M, y1 + 1);
-  let tHash = 2166136261, hHash = 2166136261;
-  const mix = (acc: number, v: number) => Math.imul(acc ^ v, 16777619) >>> 0;
-  const corner = relief.corner;
-  for (let y = hy0; y < hy1; y++) for (let x = hx0; x < hx1; x++) {
-    const li = (y + M) * W + (x + M);
-    const onMap = x >= 0 && y >= 0 && x < w && y < h;
-    tHash = mix(tHash, onMap ? terrainAt(s, x, y) : land.terrain[li]);
-    const c4 = li * 4;
-    for (let k = 0; k < 4; k++) hHash = mix(hHash, corner[c4 + k]);
-    if (x >= x0 && x < x1 && y >= y0 && y < y1) {
-      // Three non-collinear samples catch both elevation shifts and pure antisymmetric tilts across a tile.
-      hHash = mix(hHash, Math.round(yAt(x + 0.25, y + 0.25) * 1000));
-      hHash = mix(hHash, Math.round(yAt(x + 0.75, y + 0.25) * 1000));
-      hHash = mix(hHash, Math.round(yAt(x + 0.25, y + 0.75) * 1000));
-    }
-  }
-  let bPart = '';
-  const buildingIds: number[] = [];
-  for (const b of s.buildings) {
-    const n = sizeOf(b), pad = b.type === 'wheel' ? 3 : 1;
-    if (b.x + n + pad <= x0 || b.x - pad >= x1 || b.y + n + pad <= y0 || b.y - pad >= y1) continue;
-    bPart += `${b.id}:${b.type}:${b.x},${b.y},${b.rot};`;
-    buildingIds.push(b.id);
-  }
-  return {
-    layout: `${mode}|${tHash}|${bPart}`,
-    relief: `${hHash}`,
-    buildingIds,
-  };
+/** The id of the block (grassBlocks') that holds tile (x, y), on the map or in its fringe. */
+export const blockOf = (x: number, y: number) => (Math.floor(y / GRASS_BLOCK) + 64) * 1024 + (Math.floor(x / GRASS_BLOCK) + 64);
+
+/** Where a building stands, as far as the grass is concerned. */
+interface Standing { type: BuildingId; x: number; y: number; rot: number }
+const same = (a: Standing | undefined, b: Standing | undefined) => !!a && !!b && a.type === b.type && a.x === b.x && a.y === b.y && a.rot === b.rot;
+
+/** What of the game's layout the grass stands round: the map's terrain, and each building where it stands. */
+export interface GrassLayout { terrain: Uint8Array; buildings: Map<number, Standing> }
+
+export function grassLayout(s: GameState): GrassLayout {
+  const buildings = new Map<number, Standing>();
+  for (const b of s.buildings) buildings.set(b.id, { type: b.type, x: b.x, y: b.y, rot: b.rot });
+  return { terrain: Uint8Array.from(s.map.terrain), buildings };
 }
 
-/** Combined layout + relief key for a block. */
-export function blockKey(
-  s: GameState,
-  land: Land,
-  relief: Relief,
-  yAt: (tx: number, ty: number) => number,
-  mode: GrassMode,
-  x0: number,
-  y0: number,
-  x1: number,
-  y1: number,
-): string {
-  const sig = blockSig(s, land, relief, yAt, mode, x0, y0, x1, y1);
-  return `${sig.layout}|${sig.relief}`;
+/**
+ * The blocks touched by what changed between two layouts of a map `width` tiles across: `urgent`, those a building now
+ * stands in (or its wheel's race reaches), whose grass must go before the building is drawn; `dirty`, the rest (a tree
+ * or rock cleared, a building taken away: grass grows back). A tile's grass depends on its neighbours' terrain, so a
+ * changed tile touches the blocks round it too. Costs a look at each tile and building, not a block's worth of work.
+ */
+export function layoutChanges(was: GrassLayout, now: GrassLayout, width: number): { urgent: Set<number>; dirty: Set<number> } {
+  const urgent = new Set<number>(), dirty = new Set<number>();
+  const touch = (into: Set<number>, x0: number, y0: number, x1: number, y1: number) => {
+    for (let y = Math.floor(y0 / GRASS_BLOCK); y <= Math.floor(y1 / GRASS_BLOCK); y++) {
+      for (let x = Math.floor(x0 / GRASS_BLOCK); x <= Math.floor(x1 / GRASS_BLOCK); x++) into.add(blockOf(x * GRASS_BLOCK, y * GRASS_BLOCK));
+    }
+  };
+  for (let i = 0; i < now.terrain.length; i++) {
+    if (was.terrain[i] === now.terrain[i]) continue;
+    const x = i % width, y = (i - x) / width;
+    touch(dirty, x - 1, y - 1, x + 1, y + 1);
+  }
+  // A building's box (makeBox) reaches less than a tile past its footprint; a wheel's race, three.
+  const around = (b: Standing, into: Set<number>) => {
+    const n = sizeOf(b), pad = b.type === 'wheel' ? 3 : 1;
+    touch(into, b.x - pad, b.y - pad, b.x + n + pad - 1, b.y + n + pad - 1);
+  };
+  for (const [id, b] of now.buildings) if (!same(was.buildings.get(id), b)) around(b, urgent);
+  for (const [id, b] of was.buildings) if (!same(now.buildings.get(id), b)) around(b, dirty);
+  for (const id of urgent) dirty.delete(id);
+  return { urgent, dirty };
+}
+
+/** How high (m) a meadow tuft's tip stands over the land at most: the tallest blade (addTuft) of the lushest profile. */
+export const GRASS_TOP = Math.max(...Object.values(GRASS_PROFILES).map((p) => 1.2 * (p.tall[0] + p.tall[1]) * 1.12)) + 0.05;
+
+/**
+ * Whether what a pick calls a plant, at (x, z) m and `above` m over the land, is the meadow's grass (#256) rather than a
+ * tree or a rock: low, and over a tile of open grass (or off the map). brush3d paints grass as it does a tree's leaves,
+ * so its pick can't tell them apart; the game can. A tree's crown leaning over the next tile stands higher.
+ */
+export function grassAt(s: GameState, x: number, z: number, above: number): boolean {
+  if (above >= GRASS_TOP) return false;
+  const tx = Math.floor(x / TILE), ty = Math.floor(z / TILE);
+  return tx < 0 || ty < 0 || tx >= s.map.width || ty >= s.map.height || terrainAt(s, tx, ty) === TERRAIN.grass;
 }

@@ -11,7 +11,7 @@
 // Exits with 1 if anything is off.
 import * as THREE from 'three';
 import { LAND_COVER, LAND_GROUND, type LandMap } from '../src/land/map.ts';
-import { PaintedLand, type LandAdder } from '../src/land/paint.ts';
+import { PaintedLand, type LandAdder, type LandArea } from '../src/land/paint.ts';
 import { Surface } from '../src/land/surface.ts';
 
 let failed = false;
@@ -262,6 +262,29 @@ let midFit = true;
 for (let k = 0; k < 40 && !land.step(0); k++) if ((land as unknown as { fitting: unknown }).fitting && land.heightAt(...pondAt) !== pondBefore) midFit = false;
 while (!land.step(0));
 check('a tile turned to water: as it was until fitted, then its bed', midFit && land.heightAt(...pondAt) < pondBefore - 0.3, `${pondBefore} then ${land.heightAt(...pondAt)}`);
+
+// A tile repainted, its height as it was (a rock cleared): landColourAt answers the paint as drawn until it's swapped in
+// (what the game colours its grass from), and the swap says where the land changed (onSwap: the game remakes its grass
+// there).
+{
+  // A grass tile among grass, away from the water (a water tile changing would refit its bed, and the dryness round it).
+  let tx = -1, ty = -1;
+  for (let y = 3; y < H - 3 && tx < 0; y++) for (let x = 3; x < W - 3 && tx < 0; x++) {
+    let open = map.cover[y * W + x] === LAND_COVER.grass;
+    for (let j = -3; j <= 3; j++) for (let i = -3; i <= 3; i++) if (map.cover[(y + j) * W + x + i] === LAND_COVER.water) open = false;
+    if (open) { tx = x; ty = y; }
+  }
+  const at = world(tx + 0.5, ty + 0.5), before = land.landColourAt(...at).clone(), swaps: LandArea[] = [];
+  land.onSwap = (a) => swaps.push(a);
+  land.update({ x: tx, y: ty, width: 1, height: 1 }, { cover: new Uint8Array([LAND_COVER.bare]) });
+  let held = true;
+  for (let k = 0; k < 40 && !land.step(0); k++) if (!swaps.length && !land.landColourAt(...at).equals(before)) held = false;
+  while (!land.step(0));
+  land.onSwap = null;
+  const a = swaps[0], after = land.landColourAt(...at);
+  check('a tile repainted: its colour as drawn until swapped in, then the new', held && !after.equals(before), `${before.getHexString()} then ${after.getHexString()}`);
+  check('and the swap says where', swaps.length === 1 && a.x0 < at[0] && a.x1 > at[0] && a.z0 < at[1] && a.z1 > at[1] && a.x1 - a.x0 <= 6 * TILE, JSON.stringify(swaps));
+}
 
 // The land's edge raised: the country beyond made again to meet it.
 const apronAt = () => {

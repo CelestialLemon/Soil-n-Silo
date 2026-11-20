@@ -231,7 +231,7 @@ void main() {
       vec4 b = texture2D(tAux, uv + o);
       float dd = depthOf(b) - d;
       float sil = smoothstep(0.06, 0.16, dd);
-      float crease = (b.w > 0.02 ? b.w : 0.0) * smoothstep(0.3, 0.55, length(aux.xy - b.xy));
+      float crease = b.w * smoothstep(0.3, 0.55, length(aux.xy - b.xy));
       edge = max(edge, max(sil, crease * 0.85));
     }
     edge *= aux.w;
