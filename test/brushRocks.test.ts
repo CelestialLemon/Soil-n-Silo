@@ -316,3 +316,20 @@ test('plantTile: a crown over a crag\'s low shoulder is the tree\'s, every drawn
     assert.ok(checked > 500, `${look}: ${checked} vertices checked`);
   }
 });
+
+test('cragTops: a crag turned in place (same seed and size) is read anew, not from the old one kept', () => {
+  const isRock = (x: number, y: number) => x === 5 && y === 5;
+  const [piece] = planOutcropTile(5, 5, isRock, 'bold');
+  const turned: PlannedRock = { ...piece, yaw: piece.yaw + Math.PI / 2 };
+  const tops = cragTops({ addCrag, groundOf, MeshBuilder, rng });
+  const fresh = cragTops({ addCrag, groundOf, MeshBuilder, rng });
+  let differs = 0;
+  for (let dx = -1.5; dx <= 1.5; dx += 0.25) for (let dz = -1.5; dz <= 1.5; dz += 0.25) {
+    const x = piece.x + dx, z = piece.z + dz;
+    tops(piece, x, z);
+    const a = tops(turned, x, z), b = fresh(turned, x, z);
+    assert.equal(a, b);
+    if (a !== tops(piece, x, z)) differs++;
+  }
+  assert.ok(differs > 0, 'the turn changes the surface somewhere');
+});

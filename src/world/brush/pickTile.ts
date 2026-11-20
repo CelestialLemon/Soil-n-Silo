@@ -35,7 +35,8 @@ export function cragTops(kit: {
   const flat = kit.groundOf(() => 0);
   const made = new Map<string, { pos: Float32Array; idx: ArrayLike<number> }>();
   return (p, wx, wz) => {
-    const key = `${p.seed},${p.x},${p.z},${p.rx},${p.ry},${p.rz}`;
+    // Everything addCrag is given: clearing a neighbour can turn or reshape a crag that keeps its place and seed.
+    const key = [p.seed, p.x, p.z, p.rx, p.ry, p.rz, p.yaw, p.pitch, p.roll, p.sink, p.crag, p.moss, p.detail].join();
     let crag = made.get(key);
     if (!crag) {
       const b = new kit.MeshBuilder('paint');
