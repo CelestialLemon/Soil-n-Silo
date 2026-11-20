@@ -18,6 +18,7 @@ import {
 import { YAW } from './catalog.ts';
 import { plantTile } from './pickTile.ts';
 import { cragTop } from './rocks.ts';
+import { grassAt } from './grassMask.ts';
 import { LEVEL, RISE, TILE } from './scale.ts';
 import { thingHeight, type Things } from './things.ts';
 
@@ -30,6 +31,9 @@ import { thingHeight, type Things } from './things.ts';
 // in the settings (HIGHLIGHT_LOOKS, OVERLAY_LOOKS).
 //
 // Units: the Scene's are the game's (a tile 1, heights as ground.ts's Lie has them); brush3d's are metres (scale.ts).
+
+/** How high the meadow's reeds stand as shown (m), where they stand (grass.ts's `reedTopAt`); its grass and flowers stand under GRASS_TOP. */
+interface MeadowReeds { reedTopAt(x: number, z: number): number }
 
 /** How near the line of sight through the pointer a truck must drive (m) to change what is under the pointer. */
 const TRUCK_REACH = 3.2;
@@ -89,9 +93,10 @@ export class BrushTools {
   /** The power networks' reach on the ground, per tile index (the power overlay's), as last worked out. */
   private reach = new Map<number, number>();
 
-  constructor(r: BrushRenderer, state: GameState, things: Things, lie: Lie) {
+  /** `meadow`: how high its reeds stand where they do (grass.ts), for telling them from a tree in a pick. */
+  constructor(r: BrushRenderer, state: GameState, things: Things, lie: Lie, meadow: MeadowReeds) {
     this.r = r; this.things = things; this.lie = lie;
-    this.picker = new BrushPicker(r, state, things);
+    this.picker = new BrushPicker(r, state, things, meadow);
     this.preview = new BrushPreview(r, things, (lines) => this.frames(lines));
   }
 
@@ -348,9 +353,10 @@ class BrushPicker implements Picker {
   private readonly trucksSeen = new Map<number, { x: number; z: number }>();
   private changesSeen = -1;
   private layoutSeen = '';
+  private readonly meadow: MeadowReeds;
 
-  constructor(r: BrushRenderer, state: GameState, things: Things) {
-    this.r = r; this.things = things;
+  constructor(r: BrushRenderer, state: GameState, things: Things, meadow: MeadowReeds) {
+    this.r = r; this.things = things; this.meadow = meadow;
     this.layoutSeen = `${layoutOf(state)} ${reliefOf(state)}`;
   }
 
@@ -369,9 +375,13 @@ class BrushPicker implements Picker {
     const seen = this.seen;
     if (!seen) return { tile: ground, building: null };
     const hit = seen.hit, still = seen.px === this.pixel(at) && this.cameraNow(scratch).equals(seen.camera);
-    // What the pick met, as a tile of the map: a tree's or rock's own, else the tile it met.
-    const plant = hit?.what === 'plant' ? plantTile(s, hit.point, (x, z) => this.r.landAt(x, z), cragTop) : null;
-    const met = hit ? plant ?? tileOf(s, hit.point) : null;
+    // What the pick met, as a tile of the map: a tree's or rock's own (a crown leans over the next), else the one it met. A
+    // plant low over open grass is the meadow's grass or flowers, and one low over the water its reeds (grass.ts), not the
+    // tree or rock beside it.
+    const p = hit?.point ?? null;
+    const plant = p && hit?.what === 'plant' && !grassAt(s, p.x, p.z, p.y - this.r.landAt(p.x, p.z), this.meadow.reedTopAt(p.x, p.z))
+      ? plantTile(s, p, (x, z) => this.r.landAt(x, z), cragTop) : null;
+    const met = p ? plant ?? tileOf(s, p) : null;
     const tile = still && plant ? plant : ground;
     // A building's or truck's own mesh, if it still stands for it; else the building on the tile the pick met.
     let building: number | null = null;

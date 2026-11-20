@@ -17,3 +17,9 @@ export { checkLand, LAND_COVER, LAND_GROUND, type Beyond, type LandCover, type L
 export { TILE } from './models/tile.ts';
 // How far a crag reaches past its size, and its triangles (kit/crag.ts), which the game plans its outcrops by (Soil-n-Silo#257).
 export { CRAG_BOUND, CRAG_TRIANGLES } from './kit/crag.ts';
+// How far a grass tuft's blades reach (kit/tuft.ts), which the game keeps its grass's margins by (Soil-n-Silo#256).
+export { TUFT_HEIGHT, TUFT_REACH } from './kit/tuft.ts';
+// And how far a wildflower's bloom reaches (kit/flower.ts), for the game's margins and its pick (Soil-n-Silo#266).
+export { FLOWER_REACH } from './kit/flower.ts';
+// And how far a clump of reeds reaches (kit/reed.ts), for the game's margins and its pick (Soil-n-Silo#267).
+export { REED_HEIGHT, REED_REACH, REED_WIDTH } from './kit/reed.ts';
