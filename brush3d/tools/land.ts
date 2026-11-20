@@ -8,6 +8,10 @@
 //    painted a step, all swapped in together at the last; only chunks near it are painted again; afterwards its dryness
 //    and paint are what a land built afresh has, its heights within a few centimetres (the fit again is local).
 // 3. The country beyond: it meets the land's edge, and is the grid's further out.
+// 4. The shores (src/land/shore.ts, Soil-n-Silo#258), on a flat land with a pond, tile-wide outlets from it, a narrow
+//    staircase of a river, a lone tile of water and a pad by the pond: the pond's corners dry, every tile of narrow water
+//    wet at its middle, the bank cut into only near the water, the pad at its level; no holes and drawn where heightAt
+//    says; after an earthwork by the water (a bank raised), as built afresh.
 // Exits with 1 if anything is off.
 import * as THREE from 'three';
 import { LAND_COVER, LAND_GROUND, type LandMap } from '../src/land/map.ts';
@@ -92,27 +96,30 @@ check('in the river, its bed under its level', wetOver <= 1e-9 && deepest > 0.5,
 
 // Seen from above: a grid of points over the land, each under a top triangle at heightAt's height (to 8 cm, a little more
 // than the paint's own 4 cm, for the flat triangles' chords; 25 cm in the beds).
-const tris = triangles(adder), B = 4, buckets = new Map<string, number[]>();
-tris.forEach((t, i) => {
-  const xs = [t.a.x, t.b.x, t.c.x], zs = [t.a.z, t.b.z, t.c.z];
-  for (let bx = Math.floor(Math.min(...xs) / B); bx <= Math.floor(Math.max(...xs) / B); bx++) for (let bz = Math.floor(Math.min(...zs) / B); bz <= Math.floor(Math.max(...zs) / B); bz++) {
-    const key = `${bx},${bz}`;
-    buckets.set(key, [...(buckets.get(key) ?? []), i]);
-  }
-});
-/** The highest top drawn over a point, or null where nothing is. */
-function drawnAt(x: number, z: number): number | null {
-  let best: number | null = null;
-  for (const i of buckets.get(`${Math.floor(x / B)},${Math.floor(z / B)}`) ?? []) {
-    const { a, b, c } = tris[i], d = (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z);
-    if (Math.abs(d) < 1e-9) continue;
-    const l1 = ((b.z - c.z) * (x - c.x) + (c.x - b.x) * (z - c.z)) / d, l2 = ((c.z - a.z) * (x - c.x) + (a.x - c.x) * (z - c.z)) / d, l3 = 1 - l1 - l2;
-    if (l1 < -1e-7 || l2 < -1e-7 || l3 < -1e-7) continue;
-    const y = l1 * a.y + l2 * b.y + l3 * c.y;
-    best = best === null ? y : Math.max(best, y);
-  }
-  return best;
+/** The highest top drawn over a point of these triangles, or null where nothing is. */
+function topsOf(tris: ReturnType<typeof triangles>) {
+  const B = 4, buckets = new Map<string, number[]>();
+  tris.forEach((t, i) => {
+    const xs = [t.a.x, t.b.x, t.c.x], zs = [t.a.z, t.b.z, t.c.z];
+    for (let bx = Math.floor(Math.min(...xs) / B); bx <= Math.floor(Math.max(...xs) / B); bx++) for (let bz = Math.floor(Math.min(...zs) / B); bz <= Math.floor(Math.max(...zs) / B); bz++) {
+      const key = `${bx},${bz}`;
+      buckets.set(key, [...(buckets.get(key) ?? []), i]);
+    }
+  });
+  return (x: number, z: number): number | null => {
+    let best: number | null = null;
+    for (const i of buckets.get(`${Math.floor(x / B)},${Math.floor(z / B)}`) ?? []) {
+      const { a, b, c } = tris[i], d = (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z);
+      if (Math.abs(d) < 1e-9) continue;
+      const l1 = ((b.z - c.z) * (x - c.x) + (c.x - b.x) * (z - c.z)) / d, l2 = ((c.z - a.z) * (x - c.x) + (a.x - c.x) * (z - c.z)) / d, l3 = 1 - l1 - l2;
+      if (l1 < -1e-7 || l2 < -1e-7 || l3 < -1e-7) continue;
+      const y = l1 * a.y + l2 * b.y + l3 * c.y;
+      best = best === null ? y : Math.max(best, y);
+    }
+    return best;
+  };
 }
+const tris = triangles(adder), drawnAt = topsOf(tris);
 let holes = 0, off = 0, offWorst = 0;
 for (let py = 0.013; py < H; py += 0.137) for (let px = 0.011; px < W; px += 0.131) {
   const [x, z] = world(px, py), y = drawnAt(x, z);
@@ -303,7 +310,75 @@ const live = adder.live.size;
 land.dispose();
 check('taken away, every mesh out and freed', adder.live.size === 0 && adder.removed === live && adder.freed === live, `${adder.live.size} left, ${adder.freed} of ${live} freed`);
 
-// 4. Refused: corners that aren't whole levels.
+// 4. The shores: a flat land 24 x 20 at level 2, a pond 5 x 4 (a pad two tiles square by its east side, two outlets a tile
+// wide from its south side, one straight, one turning as it leaves its corner), a river a tile wide stepping down to the south-east, a lone tile of water; the water's sheet under its tiles' level as the game lays it.
+console.log('The shores');
+const SW = 24, SH = 20, FLAT = 2, WATER_DOWN = 0.48;
+const pond = (x: number, y: number) => x >= 6 && x <= 10 && y >= 5 && y <= 8;
+const stairs = (x: number, y: number) => y >= 11 && y <= 16 && (x === y + 2 || x === y + 3);
+const lone = (x: number, y: number) => x === 18 && y === 4;
+const outlet = (x: number, y: number) => (x === 9 && (y === 9 || y === 10)) || (y === 9 && (x === 5 || x === 6)) || (x === 5 && (y === 10 || y === 11));
+// Down each outlet's middle from the pond: [x, y] (tiles) to [x, y].
+const outletRuns: [number, number, number, number][] = [[9.5, 8.5, 9.5, 10.5], [6.5, 8.5, 6.5, 9.5], [6.5, 9.5, 5.5, 9.5], [5.5, 9.5, 5.5, 11.5]];
+const pad = (x: number, y: number) => x >= 11 && x <= 12 && y >= 5 && y <= 6;
+function shoreLand(raised?: { x: number; y: number }): LandMap {
+  const n = SW * SH, cover = new Uint8Array(n).fill(LAND_COVER.grass), worked = new Uint8Array(n), corners = new Float32Array(n * 4).fill(FLAT * LEVEL);
+  for (let y = 0; y < SH; y++) for (let x = 0; x < SW; x++) {
+    const wet = pond(x, y) || outlet(x, y) || stairs(x, y) || lone(x, y), up = raised?.x === x && raised.y === y;
+    if (wet) cover[y * SW + x] = LAND_COVER.water;
+    if (wet || pad(x, y) || up) worked[y * SW + x] = 1;
+    if (up) corners.fill((FLAT + 1) * LEVEL, (y * SW + x) * 4, (y * SW + x) * 4 + 4);
+  }
+  return {
+    width: SW, height: SH, tile: TILE, level: LEVEL, x0: 0, z0: 0, corners, worked, cover,
+    ground: new Uint8Array(n), map: { x: 2, y: 2, width: 20, height: 16 },
+    beyond: { nx: 9, nz: 9, cell: 16, x0: -32, z0: -32, height: new Float32Array(81).fill(FLAT * LEVEL) },
+  };
+}
+const surfaceH = (px: number, py: number, l: PaintedLand) => l.heightAt(px * TILE, py * TILE);
+const wetAt = (px: number, py: number, l: PaintedLand) => surfaceH(px, py, l) < FLAT * LEVEL - WATER_DOWN;
+const wet = (x: number, y: number) => pond(x, y) || outlet(x, y) || stairs(x, y) || lone(x, y);
+{
+  const sAdder = new Adder(), l = new PaintedLand(sAdder, shoreLand());
+  check(`the pond's corners dry, its middle deep`, !wetAt(6.4, 5.4, l) && !wetAt(10.6, 8.6, l)
+    && surfaceH(8.5, 7, l) < FLAT * LEVEL - 1);
+  let dryMiddles = 0;
+  for (let y = 0; y < SH; y++) for (let x = 0; x < SW; x++) if ((outlet(x, y) || stairs(x, y) || lone(x, y)) && !wetAt(x + 0.5, y + 0.5, l)) dryMiddles++;
+  check(`every tile of the outlets, the narrow river and the lone tile wet at its middle`, dryMiddles === 0, `${dryMiddles} dry`);
+  let barred = 0;
+  for (const [ax, ay, bx, by] of outletRuns) for (let k = 0; k <= 50; k++) if (!wetAt(ax + (bx - ax) * k / 50, ay + (by - ay) * k / 50, l)) barred++;
+  check(`water all the way down the outlets' middles from the pond`, barred === 0, `${barred} of ${outletRuns.length * 51} points dry`);
+  // The bank cut into only within half a tile of the water (clear of what stands in a tile's middle), and the pad not at all.
+  let cutFar = 0, padOff = 0, cutNear = 0;
+  for (let py = 0.03; py < SH; py += 0.07) for (let px = 0.03; px < SW; px += 0.07) {
+    const x = Math.floor(px), y = Math.floor(py);
+    if (wet(x, y)) continue; // (the water's own tiles)
+    let near = Infinity;
+    for (let v = y - 1; v <= y + 1; v++) for (let u = x - 1; u <= x + 1; u++) if (wet(u, v)) near = Math.min(near, Math.hypot(Math.max(u - px, 0, px - u - 1), Math.max(v - py, 0, py - v - 1)));
+    const h = surfaceH(px, py, l);
+    if (pad(x, y) && h !== FLAT * LEVEL) padOff++;
+    else if (near > 0.45 && h !== FLAT * LEVEL) cutFar++;
+    else if (h < FLAT * LEVEL - 1e-3) cutNear++;
+  }
+  check(`the bank cut into only near the water, the pad at its level`, cutFar === 0 && padOff === 0 && cutNear > 0, `${cutFar} points cut far from the water, ${padOff} on the pad, ${cutNear} near`);
+  const tops = topsOf(triangles(sAdder));
+  let sHoles = 0, sOff = 0;
+  for (let py = 0.013; py < SH; py += 0.093) for (let px = 0.011; px < SW; px += 0.089) {
+    const y = tops(px * TILE, py * TILE);
+    if (y === null) sHoles++;
+    else if (Math.abs(y - surfaceH(px, py, l)) > 0.25) sOff++;
+  }
+  check(`no holes, drawn where heightAt says (within 25 cm)`, sHoles === 0 && sOff === 0, `${sHoles} holes, ${sOff} off`);
+  // An earthwork by the water (the game's never move it): a bank tile raised a level and worked, a pad by the pond.
+  const raise = { x: 7, y: 9 };
+  l.update({ ...raise, width: 1, height: 1 }, { corners: new Float32Array(4).fill((FLAT + 1) * LEVEL), worked: new Uint8Array([1]) });
+  while (!l.step(0));
+  const fresh = new PaintedLand(new Adder(), shoreLand(raise)) as unknown as { shore: { field: Float32Array } } & Record<string, Float32Array>;
+  const was = l as unknown as { shore: { field: Float32Array } } & Record<string, Float32Array>;
+  check(`an earthwork by the water: its shores and paint as built afresh`, same(was.shore.field, fresh.shore.field) && same(was.paint, fresh.paint));
+}
+
+// 5. Refused: corners that aren't whole levels.
 let threw = false;
 try { new PaintedLand(new Adder(), { ...makeLand(), corners: new Float32Array(W * H * 4).fill(0.5) }); } catch { threw = true; }
 check('corners that aren\'t whole levels are refused', threw);
