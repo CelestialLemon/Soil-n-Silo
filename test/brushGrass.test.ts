@@ -81,6 +81,7 @@ test('edge margins tighten next to water, rocks, cliffs, and the playable map ed
   for (let k = 0; k < 4; k++) land.corner[southLi * 4 + k] += 3;
   const nearCliff = tileHabitat(s, land, relief, wet, tx, ty, true)!;
   assert.ok(nearCliff.maxV <= TILE - CLIFF_MARGIN);
+  assert.ok(nearCliff.edgeBoost > 0, 'a hill\'s edge, where the wildflowers gather');
 
   let fx = -1;
   for (let x = 2; x < w - 2; x++) {
@@ -343,9 +344,9 @@ test('a pick low over open grass is the meadow\'s grass, not the tree or rock be
     assert.ok(grassTop(m) > 1.2 * (GRASS_PROFILES[m].tall[0] + GRASS_PROFILES[m].tall[1]) * 1.12, m);
   }
   assert.ok(grassTop('quiet') < grassTop('meadow') && grassTop('meadow') < grassTop('lush'));
-  assert.equal(grassAt(s, ...mid(grass), 0.4, 'meadow'), true, 'a blade over open grass');
-  assert.equal(grassAt(s, ...mid(grass), 0.4, 'off'), false, 'a low branch over open grass, the grass off');
-  assert.equal(grassAt(s, ...mid(grass), grassTop('lush') + 0.5, 'lush'), false, 'a crown leaning over open grass');
-  assert.equal(grassAt(s, ...mid(tree), 0.4, 'meadow'), false, 'the foot of a tree, or a rock, on its own tile');
-  assert.equal(grassAt(s, -2, -2, 0.4, 'meadow'), true, 'a blade in the country beyond the map');
+  assert.equal(grassAt(s, ...mid(grass), 0.4, grassTop('meadow')), true, 'a blade over open grass');
+  assert.equal(grassAt(s, ...mid(grass), 0.4, grassTop('off')), false, 'a low branch over open grass, the grass off');
+  assert.equal(grassAt(s, ...mid(grass), grassTop('lush') + 0.5, grassTop('lush')), false, 'a crown leaning over open grass');
+  assert.equal(grassAt(s, ...mid(tree), 0.4, grassTop('meadow')), false, 'the foot of a tree, or a rock, on its own tile');
+  assert.equal(grassAt(s, -2, -2, 0.4, grassTop('meadow')), true, 'a blade in the country beyond the map');
 });
