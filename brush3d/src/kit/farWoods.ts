@@ -132,6 +132,7 @@ function cone(b: MeshBuilder, x: number, y: number, z: number, radius: number, b
     const dir = new THREE.Vector3(Math.cos(phi), up, Math.sin(phi)).normalize();
     const c = base.clone().offsetHSL(0, 0, 0.06 * f - 0.03 + (rand() - 0.5) * 0.05);
     const size = (0.42 + rand() * 0.14) * radius * (1 - 0.45 * f);
-    addDab(b, p, dir, c, size, rand(), [0.5 + CRISP_EDGE, 0.5 + rand() * 0.2, (rand() - 0.5) * 0.6, 0.4]);
+    // Turned 0, across (the renderer turns each a little either way; a turn below 0 would be any way).
+    addDab(b, p, dir, c, size, rand(), [0.5 + CRISP_EDGE, 0.5 + rand() * 0.2, 0, 0.4]);
   }
 }

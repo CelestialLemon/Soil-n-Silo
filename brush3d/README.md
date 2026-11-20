@@ -29,7 +29,7 @@ npm install
 npm run dev                  # the game at http://127.0.0.1:5190/, the demo at http://127.0.0.1:5190/brush3d/:
                              # drag to pan, wheel to zoom, Q/E to turn, 1-5 for the hour, L for lines
 npm run typecheck            # the game and the renderer, their tests and tools, and that the demo uses only the API
-npm test                     # the game's tests, and the renderer's wind, water, view and land checks (brush3d/tools/wind.ts, water.ts, view.ts, land.ts)
+npm test                     # the game's tests, the renderer's own (brush3d/test/), and its wind, water, view and land checks (brush3d/tools/wind.ts, water.ts, view.ts, land.ts)
 npm run render:test:clouds   # the cloud recipe against its GLSL twin, in a browser (needs the dev server)
 npm run render:shot -- out "hour=12" "hour=17.5&view=2"   # headless frames as PNGs (needs the dev server)
 npm run render:motion -- out "zoom=40"                    # how steady the picture is under sub-pixel pans
@@ -116,6 +116,7 @@ recipe and the land's smooth fit); [docs/API.md](docs/API.md) has the API, in th
   water's, clouds' and land's checks (`wind.ts`, `water.ts`, `clouds.ts`, `land.ts`), the wind engine's build (`wind-build.ts`), and the check
   that the demo imports only the API (`demo-imports.ts`).
 - `tools/blender/`: the scripts that make the models (`build.py`, the shared `kit.py`, one script a model in `models/`).
+- `test/`: the renderer's unit tests, run in Node by `npm test` (`farWoods.test.ts`: the far woods' crowns).
 - `docs/`: the look's rules (`DIRECTION.md`), the renderer's roadmap (`ROADMAP.md`), the API, and the notes on models,
   performance, wind, water, ground and the land.
 - `reference/`: how to pull frames from the reference film (kept out of git: they're copyrighted).

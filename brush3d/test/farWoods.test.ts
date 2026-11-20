@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as THREE from 'three';
-import { addDab, MeshBuilder, rng, srgb } from '../brush3d/src/kit/builder.ts';
-import { addCanopy, FAR_WOODS_MODES, type FarWoodsMode } from '../brush3d/src/kit/farWoods.ts';
-import type { Species } from '../brush3d/src/kit/plants.ts';
-import { STIFF_STROKE } from '../brush3d/src/renderer/paintFlags.ts';
-import { SEASONS, type Season } from '../brush3d/src/renderer/season.ts';
+import { addDab, MeshBuilder, rng, srgb } from '../src/kit/builder.ts';
+import { addCanopy, FAR_WOODS_MODES, type FarWoodsMode } from '../src/kit/farWoods.ts';
+import type { Species } from '../src/kit/plants.ts';
+import { STIFF_STROKE } from '../src/renderer/paintFlags.ts';
+import { SEASONS, type Season } from '../src/renderer/season.ts';
 
-// The far woods' crowns (brush3d's addCanopy, #268): `off` paints them as before, and the new looks cost no more to draw,
-// have no dark side in winter, and lift the other seasons' dark undersides.
+// The far woods' crowns (brush3d's addCanopy, #268): `off` paints them as before, and the new looks' strokes cover no more
+// than before, have no dark side in winter, and lift the other seasons' dark undersides. (The frame's cost is measured in the
+// game: see the PR.)
 
 const SPECIES: readonly Species[] = ['oak', 'birch', 'pine', 'willow', 'poplar', 'apple', 'bush'];
 
@@ -71,7 +72,7 @@ test('off paints the far woods exactly as before #268, in every season', () => {
   }
 });
 
-test('the new looks cost no more to fill than before, and no stroke is bigger', () => {
+test('the new looks\' strokes cover no more than before, none is bigger, and frosted\'s bare woods have three times as many', () => {
   for (const mode of FAR_WOODS_MODES) for (const season of SEASONS) for (const species of SPECIES) {
     const now = measure(wood(species, season, mode)), was = measure(wood(species, season, 'off'));
     assert.ok(now.fill <= was.fill * 1.02, `${mode} ${species} in ${season}: fills ${(now.fill / was.fill).toFixed(2)} of before`);

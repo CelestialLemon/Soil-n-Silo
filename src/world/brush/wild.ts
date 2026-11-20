@@ -141,8 +141,11 @@ export class Wild {
   /** The far woods' crowns, in one mesh, painted in the look picked (#268); again whenever it changes. */
   private buildFarWoods() {
     if (this.farMesh) this.drop([this.farMesh]);
-    const crowns = new MeshBuilder('foliage'), rand = rng(213);
-    for (const c of this.farCrowns) addCanopy(crowns, c.x, c.y, c.z, c.radius, c.species, this.season, rand, this.farMode);
+    // Each crown its own strokes' draw, so a crown is the same whichever look its neighbours are in; `off` one draw for all, as
+    // before #268.
+    const crowns = new MeshBuilder('foliage'), before = rng(213);
+    this.farCrowns.forEach((c, i) => addCanopy(crowns, c.x, c.y, c.z, c.radius, c.species, this.season,
+      this.farMode === 'off' ? before : rng(213 + i), this.farMode));
     this.farMesh = crowns.vertexCount ? this.r.add(crowns.build(), 'foliage', { tile: CUT, castShadow: true }) : null;
   }
 
