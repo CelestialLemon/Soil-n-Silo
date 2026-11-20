@@ -429,7 +429,8 @@ export class PaintedLand {
   /**
    * The land's painted colour (linear RGB, before season turning) at a point of the world (x, z in metres), as drawn:
    * blurred dryness, `LAND_LOOK.groundTint`, `LAND_LOOK.beyond` dulling, noise-warped tile blending, meadow drift, and the
-   * shores' damp banks, shingle and beds.
+   * shores' damp banks, shingle and beds. But while an earthwork is `ahead`, the shores (and the ground's slope) are already
+   * the new ground's, as `heightAt` is: the shore field has no drawn copy, so a caller waits for the swap.
    */
   landColourAt(x: number, z: number, into = new THREE.Color()): THREE.Color {
     const px = (x - this.x0) / this.tile, py = (z - this.z0) / this.tile;
