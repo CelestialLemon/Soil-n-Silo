@@ -19,3 +19,5 @@ export { TILE } from './models/tile.ts';
 export { TUFT_HEIGHT, TUFT_REACH } from './kit/tuft.ts';
 // And how far a wildflower's bloom reaches (kit/flower.ts), for the game's margins and its pick (Soil-n-Silo#266).
 export { FLOWER_REACH } from './kit/flower.ts';
+// And how far a clump of reeds reaches (kit/reed.ts), for the game's margins and its pick (Soil-n-Silo#267).
+export { REED_HEIGHT, REED_REACH, REED_WIDTH } from './kit/reed.ts';

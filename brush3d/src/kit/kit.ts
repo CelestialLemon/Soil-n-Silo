@@ -300,19 +300,60 @@ export function addTuft(g: MeshBuilder, ground: Ground, x: number, z: number, ta
   }
 }
 
-/** A clump of reeds. */
-export function addReeds(g: MeshBuilder, ground: Ground, cx: number, cz: number, rand: () => number) {
-  const blades = 8 + Math.floor(rand() * 10), tall = 0.5 + rand() * 0.45;
+/** Optional shape and colour overrides for `addReeds`; omitted values keep the demo's exact defaults. */
+export interface ReedOptions {
+  /** Stalk count: `[min, spread]` (`min + floor(rand() * spread)`), default `[8, 10]`. */
+  blades?: [number, number];
+  /** The clump's height (m): `[min, spread]`, default `[0.5, 0.45]`; each stalk is 0.6 to 1.1 of it. */
+  tall?: [number, number];
+  /** How wide a square the stalks stand in (m), default `0.45`. */
+  across?: number;
+  /** A stalk's half-width at its root (m): `[min, spread]`, default `[0.018, 0.012]`. */
+  width?: [number, number];
+  /** The stalks' colour, default `C.reed` (a green the season turns; a straw or a frosted grey it leaves as it is). */
+  colour?: THREE.Color;
+  /** What the tips lean towards, default `C.lime`, and how far at most (each stalk by a random share), default `0.25`. */
+  tip?: THREE.Color;
+  tipMix?: number;
+  /** The chance a stalk bears a seed head (a bulrush's brown spike near its top), default `0`; and its colour. */
+  heads?: number;
+  head?: THREE.Color;
+}
+
+/** A bulrush's seed head: dark brown. */
+const HEAD = srgb(0x5e4128);
+/** Where along a stalk a seed head runs (0 the root, 1 the tip), and how much wider than the stalk it is (m). */
+const HEAD_FROM = 0.62, HEAD_TO = 0.84, HEAD_WIDER = 0.012;
+
+/** A clump of reeds. Its reach is kit/reed.ts's `REED_REACH`. */
+export function addReeds(g: MeshBuilder, ground: Ground, cx: number, cz: number, rand: () => number, options?: ReedOptions) {
+  const [bMin, bSpread] = options?.blades ?? [8, 10], [tMin, tSpread] = options?.tall ?? [0.5, 0.45];
+  const across = options?.across ?? 0.45, [wMin, wSpread] = options?.width ?? [0.018, 0.012], col = options?.colour ?? C.reed, tipTo = options?.tip ?? C.lime, tipMix = options?.tipMix ?? 0.25;
+  const heads = options?.heads ?? 0, headCol = options?.head ?? HEAD;
+  const blades = bMin + Math.floor(rand() * bSpread), tall = tMin + rand() * tSpread;
   const paint: Paint = [0.6, 0.85, 1.4, 0.5];
   for (let k = 0; k < blades; k++) {
-    const x = cx + (rand() - 0.5) * 0.45, z = cz + (rand() - 0.5) * 0.45, y = ground.height(x, z) - 0.03;
-    const nrm = ground.normal(x, z), a = rand() * Math.PI, w = 0.018 + rand() * 0.012, h = tall * (0.6 + rand() * 0.5);
+    const x = cx + (rand() - 0.5) * across, z = cz + (rand() - 0.5) * across, y = ground.height(x, z) - 0.03;
+    const nrm = ground.normal(x, z), a = rand() * Math.PI, w = wMin + rand() * wSpread, h = tall * (0.6 + rand() * 0.5);
     const px = Math.cos(a) * w, pz = Math.sin(a) * w, lean = (rand() - 0.5) * 0.25, seed = rand();
-    const root = C.reed.clone().lerp(C.teal, 0.4).multiplyScalar(0.75), tip = C.reed.clone().lerp(C.lime, 0.25 * rand());
+    const root = col.clone().lerp(C.teal, 0.4).multiplyScalar(0.75), tip = col.clone().lerp(tipTo, tipMix * rand());
     const v0 = g.vertex({ x: x - px, y, z: z - pz }, nrm, root, paint, [0, 0], [0, seed, -w, a]);
     const v1 = g.vertex({ x: x + px, y, z: z + pz }, nrm, root, paint, [0, 0], [0, seed, w, a]);
-    const v2 = g.vertex({ x: x + lean * h, y: y + h, z: z + lean * h * 0.5 }, nrm, tip, paint, [0, 0], [1, seed]);
-    g.tri(v0, v1, v2);
+    if (!(heads > 0 && rand() < heads)) {
+      const v2 = g.vertex({ x: x + lean * h, y: y + h, z: z + lean * h * 0.5 }, nrm, tip, paint, [0, 0], [1, seed]);
+      g.tri(v0, v1, v2);
+      continue;
+    }
+    // A bulrush: the stalk up to its seed head, the head (a little wider, brown), and the stalk's spike above it.
+    const at = (t: number, half: number, c: THREE.Color, side: number) => g.vertex(
+      { x: x + lean * h * t + side * Math.cos(a) * half, y: y + h * t, z: z + lean * h * 0.5 * t + side * Math.sin(a) * half },
+      nrm, c, paint, [0, 0], [t, seed, side * half, a]);
+    const mid = root.clone().lerp(tip, HEAD_FROM), wh = w * (1 - HEAD_FROM) + HEAD_WIDER;
+    g.quad(v0, v1, at(HEAD_FROM, w * (1 - HEAD_FROM), mid, 1), at(HEAD_FROM, w * (1 - HEAD_FROM), mid, -1));
+    const dark = headCol.clone().multiplyScalar(0.8);
+    g.quad(at(HEAD_FROM, wh, dark, -1), at(HEAD_FROM, wh, dark, 1), at(HEAD_TO, wh, headCol, 1), at(HEAD_TO, wh, headCol, -1));
+    const s0 = at(HEAD_TO, w * (1 - HEAD_TO), tip, -1), s1 = at(HEAD_TO, w * (1 - HEAD_TO), tip, 1);
+    g.tri(s0, s1, g.vertex({ x: x + lean * h, y: y + h, z: z + lean * h * 0.5 }, nrm, tip, paint, [0, 0], [1, seed]));
   }
 }
 
