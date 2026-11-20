@@ -144,26 +144,36 @@ test('a rock beside a shore keeps the reeds a clump\'s reach off it', () => {
   assert.ok(checked > 0);
 });
 
-test('a flood takes no reeds away: they line the same shores under it, and go under its water', () => {
-  // Rooted on the ground, the water hiding what's below its surface (the developer, on #266 and #267). A flood stands at
-  // least a level over the river, deeper at the water's edge (WATER_DOWN under the level) than the tallest reed: only
-  // the tips of the tallest up the bank may show.
+test('a flood takes no reeds away: they line the same shores under it, mostly under an ordinary one, all under a severe one', () => {
+  // Rooted on the ground, the water hiding what's below its surface (the developer, on #266 and #267). The flood's surface
+  // (the rules', which water.ts draws) at its height over each shore tile, against the water's edge there: an ordinary
+  // flood stands over a metre deep at the river's edge, most of the tallest reed (the tips of the tallest show in places,
+  // and more while it rises or drains); a severe one covers every reed, even those furthest up the bank.
   const sc = must(scenarioById('c7'), 'c7');
   const s = newGame(sc), land = generateLand(sc, COUNTRY), relief = landRelief(land), { width: w, height: h } = s.map;
   const shores = () => {
-    const out: string[] = [];
+    const out = new Map<number, number>();
     for (let ty = 0; ty < h; ty++) for (let tx = 0; tx < w; tx++) {
       const r = reedShore(s, land, relief, tx, ty, true);
-      if (r) out.push(`${tx},${ty},${r.surface}`);
+      if (r) out.set(ty * w + tx, r.surface);
     }
     return out;
   };
   const dry = shores();
-  s.scenario.events = [{ kind: 'flood', strength: 'ordinary', start: s.time - 6 * 3600, length: 48 * 3600 }];
-  const f = flooded(s);
-  assert.ok(f.count > 100, `the flood covers ${f.count} tiles`);
-  assert.deepEqual(shores(), dry);
-  assert.ok(LEVEL + WATER_DOWN > REED_TOP, 'the reeds at the river\'s edge go under an ordinary flood');
+  for (const [strength, over] of [['ordinary', 0.75 * REED_TOP], ['severe', REED_TOP + REED_HIGH]] as const) {
+    s.scenario.events = [{ kind: 'flood', strength, start: s.time - 6 * 3600, length: 48 * 3600 }];
+    const f = flooded(s), wet = shores();
+    assert.ok(f.count > 100, `${strength}: the flood covers ${f.count} tiles`);
+    assert.deepEqual([...wet], [...dry], strength);
+    let under = 0;
+    for (const [i, edge] of wet) {
+      if (Number.isNaN(f.surface[i])) continue;
+      const deep = f.surface[i] * LEVEL - edge;
+      assert.ok(deep > over, `${strength}, tile ${i % w}, ${Math.floor(i / w)}: ${deep.toFixed(2)} m deep at the water's edge`);
+      under++;
+    }
+    assert.ok(under > 20, `${strength}: ${under} shore tiles under the flood`);
+  }
 });
 
 test('a pick low over the water or its banks is the reeds where they stand, and elsewhere it isn\'t', () => {

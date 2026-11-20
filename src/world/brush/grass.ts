@@ -30,8 +30,9 @@ import { TILE } from './scale.ts';
 //   random numbers, so the grass is the same with the flowers or without.
 // - A flood (flood.ts) takes no plant away: grass, flowers and reeds all stay rooted on the ground under it, and brush3d's
 //   water hides what's below its surface, so the taller poke out of the shallows and deep water covers them (the
-//   developer, on #266 and #267). A flood stands a level over the river, deeper at its edge than the reeds are tall, so
-//   the river's reeds go under it, the tips of a few up the bank showing.
+//   developer, on #266 and #267). At its height an ordinary flood stands over a metre deep at the river's edge, so the
+//   river's reeds go mostly under it (the tallest tips show in places, and more while it rises or drains); a severe one
+//   covers them all.
 // - Built in 4 × 4-tile blocks across the playable map and its country fringe, each a mesh for the grass, one for the
 //   flowers and one for the reeds. What changes in play
 //   (a building or field placed or taken away, a tree or rock cleared, an earthwork) makes again only the blocks it

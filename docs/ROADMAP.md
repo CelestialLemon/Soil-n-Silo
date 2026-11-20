@@ -175,8 +175,8 @@ bulrush heads, golden straw in autumn, frost-touched dry stalks in winter; none 
 its race, they stand in the ice rather than float, and they move with an earthwork (#267, epic #265's Wave 1, done
 2026-11-21: lush, the developer's pick of two densities). A flood takes no plant away: grass, flowers and reeds stay
 rooted under the water, which hides what's below its surface, so the taller poke out of the shallows and deep water
-covers them (the developer's call, 2026-11-21). A flood stands a level over the river, so the river's reeds go under it,
-the tips of a few up the bank showing.
+covers them (the developer's call, 2026-11-21). At its height an ordinary flood stands over a metre deep at the river's
+edge, so the river's reeds go mostly under it, the tallest tips showing in places; a severe one covers them all.
 
 ## The buildings and trucks as models, with their goods (2026-11-16)
 
