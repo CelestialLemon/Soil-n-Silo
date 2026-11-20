@@ -48,7 +48,7 @@ test('a bloom the masks let stand never reaches a building, field, rock, water o
   const p = FLOWER_PROFILE;
   assert.equal(BLOOM_REACH, FLOWER_REACH * (p.flower.size[0] + p.flower.size[1]));
   assert.ok(BLOOM_REACH < narrowest, `a bloom reaches ${BLOOM_REACH.toFixed(3)} m, past ${narrowest} m`);
-  // And stands no higher than its top, which the pick reads.
+  // And stands no higher than its top (FLOWER_TOP), which stays under the grass's tips the pick reads (GRASS_TOP).
   assert.ok(FLOWER_TOP >= p.flower.lift[0] + p.flower.lift[1] + BLOOM_REACH);
 });
 
@@ -62,9 +62,10 @@ test('a pick low over open grass is the meadow\'s flowers too: every bloom stand
   assert.equal(grassAt(s, x, z, GRASS_TOP + 0.5), false, 'a crown over open grass');
 });
 
-test('a flood takes no plant away: a flooded grass tile still grows its grass and flowers', () => {
+test('a flood takes no plant away: a flooded grass tile keeps its habitat, so it still grows its grass and flowers', () => {
   // Each stays rooted on the ground under the water, and brush3d's water hides what's below its surface: the taller poke
-  // out of the shallows, deep water covers them (the developer, on #266).
+  // out of the shallows, deep water covers them (the developer, on #266). The meadow (grass.ts) never reads the flood; its
+  // plants grow where tileHabitat lets them, which this holds to the same flooded or dry.
   const sc = must(scenarioById('c7'), 'c7');
   const s = newGame(sc), land = generateLand(sc, COUNTRY), lie = new Lie(s, land), wet = wetDistance(land);
   s.scenario.events = [{ kind: 'flood', strength: 'severe', start: s.time - 6 * 3600, length: 48 * 3600 }];

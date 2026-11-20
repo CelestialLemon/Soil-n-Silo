@@ -9,7 +9,7 @@ import { FLOWER_REACH } from '../src/shared.ts';
 // `FLOWER_REACH * size` from the bloom's middle, across the ground or up, with the bloom's middle `lift` over the ground.
 // The flutter is the shader's (FOLIAGE_VERT: under 0.15 × size, across the view), so it's counted from that, not here.
 
-/** The demo's blooms (no options), the game's (src/world/brush/grassMask.ts's FLOWER_PROFILES) and bigger. */
+/** The demo's blooms (no options), ones like the game's (src/world/brush/grassMask.ts's FLOWER_PROFILE) and bigger. */
 const SHAPES: (FlowerOptions | undefined)[] = [
   undefined,
   { size: [0.07, 0.03], lift: [0.16, 0.16], crisp: true },
