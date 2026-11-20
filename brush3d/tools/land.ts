@@ -8,7 +8,7 @@
 //    painted a step, all swapped in together at the last; only chunks near it are painted again; afterwards its dryness
 //    and paint are what a land built afresh has, its heights within a few centimetres (the fit again is local).
 // 3. The country beyond: it meets the land's edge, and is the grid's further out.
-// 4. The shores (src/land/shore.ts, Soil-n-Silo#258), on a flat land with a pond, a tile-wide outlet from it, a narrow
+// 4. The shores (src/land/shore.ts, Soil-n-Silo#258), on a flat land with a pond, tile-wide outlets from it, a narrow
 //    staircase of a river, a lone tile of water and a pad by the pond, in each way they're drawn: as the tiles' squares (off), the pond's corners under
 //    water; curving, its corners dry, every tile of narrow water wet at its middle, the bank cut into only near the water,
 //    the pad at its level; no holes and drawn where heightAt says; after an earthwork by the water (a bank raised), as
@@ -264,14 +264,16 @@ const live = adder.live.size;
 land.dispose();
 check('taken away, every mesh out and freed', adder.live.size === 0 && adder.removed === live && adder.freed === live, `${adder.live.size} left, ${adder.freed} of ${live} freed`);
 
-// 4. The shores: a flat land 24 x 20 at level 2, a pond 5 x 4 (a pad two tiles square by its east side, an outlet a tile
-// wide and two long from its south side), a river a tile wide stepping down to the south-east, a lone tile of water; the water's sheet under its tiles' level as the game lays it.
+// 4. The shores: a flat land 24 x 20 at level 2, a pond 5 x 4 (a pad two tiles square by its east side, two outlets a tile
+// wide from its south side, one straight, one turning as it leaves its corner), a river a tile wide stepping down to the south-east, a lone tile of water; the water's sheet under its tiles' level as the game lays it.
 console.log('The shores');
 const SW = 24, SH = 20, FLAT = 2, WATER_DOWN = 0.48;
 const pond = (x: number, y: number) => x >= 6 && x <= 10 && y >= 5 && y <= 8;
 const stairs = (x: number, y: number) => y >= 11 && y <= 16 && (x === y + 2 || x === y + 3);
 const lone = (x: number, y: number) => x === 18 && y === 4;
-const outlet = (x: number, y: number) => x === 9 && (y === 9 || y === 10);
+const outlet = (x: number, y: number) => (x === 9 && (y === 9 || y === 10)) || (y === 9 && (x === 5 || x === 6)) || (x === 5 && (y === 10 || y === 11));
+// Down each outlet's middle from the pond: [x, y] (tiles) to [x, y].
+const outletRuns: [number, number, number, number][] = [[9.5, 8.5, 9.5, 10.5], [6.5, 8.5, 6.5, 9.5], [6.5, 9.5, 5.5, 9.5], [5.5, 9.5, 5.5, 11.5]];
 const pad = (x: number, y: number) => x >= 11 && x <= 12 && y >= 5 && y <= 6;
 function shoreLand(raised?: { x: number; y: number }): LandMap {
   const n = SW * SH, cover = new Uint8Array(n).fill(LAND_COVER.grass), worked = new Uint8Array(n), corners = new Float32Array(n * 4).fill(FLAT * LEVEL);
@@ -293,11 +295,14 @@ const square = new PaintedLand(new Adder(), shoreLand(), { ...LAND_LOOK, shores:
 check('off: the pond\'s corners under water, as its tiles are', wetAt(6.4, 5.4, square) && wetAt(10.6, 8.6, square));
 for (const mode of SHORE_MODES.filter((m) => m !== 'off')) {
   const sAdder = new Adder(), l = new PaintedLand(sAdder, shoreLand(), { ...LAND_LOOK, shores: mode });
-  check(`${mode}: the pond's corners dry, its middle deep`, !wetAt(6.4, 5.4, l) && !wetAt(10.6, 8.6, l) && !wetAt(6.4, 8.6, l)
+  check(`${mode}: the pond's corners dry, its middle deep`, !wetAt(6.4, 5.4, l) && !wetAt(10.6, 8.6, l)
     && surfaceH(8.5, 7, l) < FLAT * LEVEL - 1);
   let dryMiddles = 0;
   for (let y = 0; y < SH; y++) for (let x = 0; x < SW; x++) if ((outlet(x, y) || stairs(x, y) || lone(x, y)) && !wetAt(x + 0.5, y + 0.5, l)) dryMiddles++;
-  check(`${mode}: every tile of the outlet, the narrow river and the lone tile wet at its middle`, dryMiddles === 0, `${dryMiddles} dry`);
+  check(`${mode}: every tile of the outlets, the narrow river and the lone tile wet at its middle`, dryMiddles === 0, `${dryMiddles} dry`);
+  let barred = 0;
+  for (const [ax, ay, bx, by] of outletRuns) for (let k = 0; k <= 50; k++) if (!wetAt(ax + (bx - ax) * k / 50, ay + (by - ay) * k / 50, l)) barred++;
+  check(`${mode}: water all the way down the outlets' middles from the pond`, barred === 0, `${barred} of ${outletRuns.length * 51} points dry`);
   // The bank cut into only within half a tile of the water (clear of what stands in a tile's middle), and the pad not at all.
   let cutFar = 0, padOff = 0, cutNear = 0;
   for (let py = 0.03; py < SH; py += 0.07) for (let px = 0.03; px < SW; px += 0.07) {

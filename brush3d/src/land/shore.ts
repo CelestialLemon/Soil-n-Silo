@@ -211,9 +211,21 @@ export class ShoreField {
     // (And held to DRY outside before it's rounded: far up the bank counts no more than a little way, or the rounding would
     // drag a small pond's shore in after it.)
     // (Only where the water's narrow: in a wide pond, how far it reaches across lets its corners round off freely; but a
-    // tile pinched between dry sides, a channel a tile wide, is narrow however wide the water beside it.)
+    // channel a tile wide (a tile of water in no square of four) is narrow however wide the water beside it, straight or
+    // turning, and so is the pond's edge where it joins, so the channel isn't cut off from it.)
+    const tx0 = Math.floor(gx0 / RES) - 2, ty0 = Math.floor(gy0 / RES) - 2, tw = Math.ceil(gx1 / RES) + 2 - tx0, th = Math.ceil(gy1 / RES) + 2 - ty0;
+    const narrow = new Uint8Array(tw * th);
+    for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) narrow[y * tw + x] = this.narrow(tx0 + x, ty0 + y) ? 1 : 0;
+    const ease = (px: number, py: number) => {
+      const x = Math.floor(px), y = Math.floor(py);
+      let d = Infinity;
+      for (let v = y - 2; v <= y + 2; v++) for (let u = x - 2; u <= x + 2; u++) {
+        if (narrow[(v - ty0) * tw + u - tx0]) d = Math.min(d, boxDist(u, v, px, py));
+      }
+      return smooth(0.5, 1.25, d);
+    };
     const wide = spread(raw, gw, gh, WIDE * RES, calm, still(WIDE * RES)), floor = (o: number, px: number, py: number, most: number) =>
-      Math.min(this.core(px, py), most) - (this.pinched(Math.floor(px), Math.floor(py)) ? 0 : Math.max(0, wide[o] - NARROW) * 2);
+      Math.min(this.core(px, py), most) - (wide[o] > NARROW ? (wide[o] - NARROW) * 2 * ease(px, py) : 0);
     for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
       const o = j * gw + i;
       if (raw[o] >= CAP) continue;
@@ -233,10 +245,12 @@ export class ShoreField {
     }
   }
 
-  /** Whether a water tile is pinched between dry tiles on opposite sides (off the land counts as more water). */
-  private pinched(x: number, y: number): boolean {
-    const W = this.width, H = this.height, dry = (u: number, v: number) => u >= 0 && v >= 0 && u < W && v < H && !this.wet[v * W + u];
-    return !!this.wet[y * W + x] && ((dry(x - 1, y) && dry(x + 1, y)) || (dry(x, y - 1) && dry(x, y + 1)));
+  /** Whether a tile is water a tile wide: water, and in no square of four tiles of water (off the land counts as water). */
+  private narrow(x: number, y: number): boolean {
+    const W = this.width, H = this.height, wet = (u: number, v: number) => u < 0 || v < 0 || u >= W || v >= H || !!this.wet[v * W + u];
+    if (x < 0 || y < 0 || x >= W || y >= H || !this.wet[y * W + x]) return false;
+    for (let v = y - 1; v <= y; v++) for (let u = x - 1; u <= x; u++) if (wet(u, v) && wet(u + 1, v) && wet(u, v + 1) && wet(u + 1, v + 1)) return false;
+    return true;
   }
 
   /** The field at a point (tiles): about how far inside the water's shore it is, negative out on the bank. */
