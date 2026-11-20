@@ -39,7 +39,7 @@ country the game draws round it in tiles too, then `beyond`, a coarse grid of he
   turns the greens as it does everywhere.
 - **The country.** The tiles off the map are drawn the same, clearly duller (`LandLook.beyond`, the developer's pick), so
   the edge of the buildable map reads. The dullness comes in by place just outside the map (Soil-n-Silo#269), reaching
-  full between one and three tiles out, its outer edge wandering along the map's sides like a brush's; the map's own
+  full about one to three tiles out, its outer edge wandering along the map's sides like a brush's; the map's own
   tiles keep their colour, to their very edge.
   Past the tiles, `beyond` is a coarse floor of distant woods out to the horizon. It starts from the land's own colour
   where it meets the land's edge and fades to the woods' floor over three of its cells; and since its cells are 16 m and

@@ -261,8 +261,8 @@ check('taken away, every mesh out and freed', adder.live.size === 0 && adder.rem
 // 4. The map's border (#269).
 console.log('The map\'s border');
 /** Each top vertex's colour drawn by a land in a look, by its place (the country beyond's apart). */
-function topColours(look: LandLook) {
-  const a = new Adder(), l = new PaintedLand(a, makeLand(), look), apron = (l as unknown as { apron: THREE.Mesh }).apron;
+function topColours(look: LandLook, Land: typeof PaintedLand = PaintedLand) {
+  const a = new Adder(), l = new Land(a, makeLand(), look), apron = (l as unknown as { apron: THREE.Mesh }).apron;
   const land = new Map<string, number[]>(), beyond = new Map<string, number[]>();
   for (const m of a.live) {
     const g = m.geometry, pos = g.getAttribute('position'), nrm = g.getAttribute('normal'), col = g.getAttribute('color');
@@ -282,24 +282,55 @@ const outOfMap = (key: string) => {
 };
 const diff = (p: number[], q: number[]) => Math.max(...p.map((v, k) => Math.abs(v - q[k])));
 // The map's tiles not dulled, to their very edge: as a land whose country isn't dull has them.
+const bright = topColours({ ...LAND_LOOK, beyond: { light: 1, chroma: 1 } });
 {
-  const bright = topColours({ ...LAND_LOOK, beyond: { light: 1, chroma: 1 } });
   let worst = 0, n = 0;
   for (const [key, c] of drawn.land) if (outOfMap(key) <= 1e-9) { worst = Math.max(worst, diff(c, bright.land.get(key)!)); n++; }
   check('the map\'s tiles not dulled, to their very edge', n > 100 && worst < 1e-6, `${worst} off, over ${n}`);
 }
-/** How much of the country's dullness a point (tiles) takes, as the land paints it. */
-const dullness = (px: number, py: number) => (land0 as unknown as { dullness(px: number, py: number): number }).dullness(px, py);
+/**
+ * The land drawn as dull as the country everywhere, map and all: each point's paint fully dulled as it's read, and no fade
+ * on top (apart from the land's own dulling, so a fade drawn weaker or stronger than it means shows).
+ */
+type Painter = { colourAt(px: number, py: number, c: THREE.Color): number; dull(c: THREE.Color): void };
+const allDull = topColours(LAND_LOOK, class extends (PaintedLand as unknown as new (...a: unknown[]) => Painter) {
+  colourAt(px: number, py: number, c: THREE.Color) { const meadow = super.colourAt(px, py, c); this.dull(c); return meadow; }
+  dullness() { return 0; }
+} as unknown as typeof PaintedLand);
 const land0 = new PaintedLand(new Adder(), makeLand());
-{
-  // Past the fade (it ends at most 3.35 tiles out), every top fully dull.
-  let worst = 0, n = 0;
-  for (const key of drawn.land.keys()) {
-    if (outOfMap(key) <= 3.5) continue;
-    const [x, z] = key.split(',').map(Number);
-    worst = Math.max(worst, 1 - dullness((x - X0) / TILE, (z - Z0) / TILE)); n++;
+const meant = (px: number, py: number) => (land0 as unknown as { dullness(px: number, py: number): number }).dullness(px, py);
+/**
+ * How much of the country's dullness a top took, read off the colour drawn: where it sits between how it's drawn not
+ * dulled (`bright`) and fully dulled (`allDull`), 0 to 1; NaN where the two are too alike to tell.
+ */
+const tookDull = (key: string, c: number[]) => {
+  const b = bright.land.get(key)!, f = allDull.land.get(key)!;
+  const span = f.map((v, k) => v - b[k]), len = span.reduce((s, v) => s + v * v, 0);
+  return len < 1e-8 ? NaN : span.reduce((s, v, k) => s + v * (c[k] - b[k]), 0) / len;
+};
+/**
+ * The tops a band (tiles out of the map) holds: how dull each was drawn, and how dull the land means it. Not those within
+ * a cell of the country beyond's grid of the land's outer edge, whose colour runs to the country beyond's there.
+ */
+const band = (from: number, to: number) => {
+  const out: { took: number; meant: number }[] = [], reach = map.beyond!.cell / TILE;
+  for (const [key, c] of drawn.land) {
+    const d = outOfMap(key), [x, z] = key.split(',').map(Number), px = (x - X0) / TILE, py = (z - Z0) / TILE;
+    if (d < from || d >= to || Math.min(px, W - px, py, H - py) < reach) continue;
+    const took = tookDull(key, c);
+    if (!Number.isNaN(took)) out.push({ took, meant: meant(px, py) });
   }
-  check('the country past the fade fully dull', n > 100 && worst < 1e-9, `${worst} short, over ${n}`);
+  return out;
+};
+{
+  // Past the fade (it ends at most 3.35 tiles out), every top drawn fully dull.
+  const past = band(3.5, Infinity), worst = Math.max(...past.map((t) => Math.abs(1 - t.took)));
+  check('the country past the fade drawn fully dull', past.length > 100 && worst < 1e-4, `${worst} short, over ${past.length}`);
+}
+{
+  // In the fade, each top drawn as dull as the land means it: the fade is what's painted, not only worked out.
+  const fade = band(0, 3.5), worst = Math.max(...fade.map((t) => Math.abs(t.took - t.meant)));
+  check('the fade\'s tops drawn as dull as it means', fade.length > 100 && worst < 1e-4, `${worst} off, over ${fade.length}`);
 }
 /** How bright the tops are, on average, at d (tiles) out of the map. */
 const brightness = (from: number, to: number) => {
@@ -310,18 +341,9 @@ const brightness = (from: number, to: number) => {
 const [inMap, firstTile, pastFade] = [brightness(-3, -1.5), brightness(0.75, 1.25), brightness(3.5, 5)];
 check('a tile out, between the map\'s brightness and the country\'s', firstTile < inMap && firstTile > pastFade, `${inMap.toFixed(3)}, ${firstTile.toFixed(3)}, ${pastFade.toFixed(3)}`);
 {
-  // The fade's outer edge wanders: a tile and a half out, round the map, some places fully dull and some barely.
-  const m = map.map, out = 1.5, at: number[] = [];
-  for (let k = 0; k <= m.width * 4; k++) {
-    const px = m.x + k / 4;
-    at.push(dullness(px, m.y - out), dullness(px, m.y + m.height + out));
-  }
-  for (let k = 0; k <= m.height * 4; k++) {
-    const py = m.y + k / 4;
-    at.push(dullness(m.x - out, py), dullness(m.x + m.width + out, py));
-  }
-  const lo = Math.min(...at), hi = Math.max(...at);
-  check('the fade\'s outer edge wanders along the map\'s sides', hi - lo > 0.3, `${lo.toFixed(2)} to ${hi.toFixed(2)} a tile and a half out`);
+  // The fade's outer edge wanders: the tops a tile and a half out, round the map, drawn some fully dull and some barely.
+  const at = band(1.25, 1.75).map((t) => t.took), lo = Math.min(...at), hi = Math.max(...at);
+  check('the fade\'s outer edge wanders along the map\'s sides', at.length > 20 && hi - lo > 0.3, `${lo.toFixed(2)} to ${hi.toFixed(2)} over ${at.length} tops a tile and a half out`);
 }
 {
   // Every point of the land's outer edge as the country beyond draws it there: straight between its vertices on the edge.
