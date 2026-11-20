@@ -8,14 +8,14 @@ import { REED_MODES, type ReedMode } from '../world/brush/grassMask.ts';
 const STORED = 'reed-choice';
 const isMode = (v: string): v is ReedMode => (REED_MODES as readonly string[]).includes(v);
 
-/** Which reed density is picked: the URL's, else the last one picked, else `sparse`. */
+/** Which reed density is picked: the URL's, else the last one picked, else `lush`. */
 function picked(): ReedMode {
   let v = new URLSearchParams(location.search).get('reeds') ?? '';
   try {
     if (!isMode(v)) v = localStorage.getItem(STORED) ?? '';
     else localStorage.setItem(STORED, v);
   } catch { /* no storage: the URL's or the default */ }
-  return isMode(v) ? v : 'sparse';
+  return isMode(v) ? v : 'lush';
 }
 
 let mode: ReedMode = picked();
@@ -33,7 +33,7 @@ export function reedChoice(changed: (m: ReedMode) => void) {
   made = true;
   const b = document.createElement('button');
   b.className = 'cd-panelbtn reed-choice';
-  b.title = 'Reeds along the water (#267): off (baseline), sparse (beds here and there, the default), or lush (longer, thicker beds). Click to cycle';
+  b.title = 'Reeds along the water (#267): off (baseline), sparse (beds here and there), or lush (longer, thicker beds, the default). Click to cycle';
   const show = () => { b.textContent = `Reeds: ${mode}`; };
   show();
   b.onclick = () => {
