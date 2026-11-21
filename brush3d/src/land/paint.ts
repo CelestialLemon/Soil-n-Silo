@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { MeshBuilder, noise2, type Paint } from '../kit/builder.ts';
 import type { MaterialKind } from '../renderer/materials.ts';
 import { checkLand, checkPatch, LAND_COVER, LAND_GROUND, type LandMap, type LandPatch, type LandRect } from './map.ts';
+import { ShoreField } from './shore.ts';
 import { Surface, type Refit } from './surface.ts';
 
 // The land painted from the game's map (Soil-n-Silo#202, docs/LAND.md): the renderer's own ground, in place of a mesh the
@@ -41,8 +42,8 @@ const TOLERANCE = 0.04;
 const NEAR_MAP = 3, NEAR_COUNTRY = 16;
 /** How far (tiles) round an earthwork the ground is fitted again (further out it hardly moves; surface.ts keeps the edge). */
 const SPREAD = 8;
-/** How deep the water's bed lies (m) under its tiles' level at its deepest, and how far (tiles) in from the bank it gets there. */
-const BED = 1.2, BANK = 0.75;
+/** How deep the water's bed lies (m) under its tiles' level at its deepest (shore.ts lays out how far in it gets there). */
+const BED = 1.2;
 /** How deep the turf lip over a cliff is (m), levels a band of a cliff's strata, and the level from which a cliff is stone. */
 const LIP = 0.3, STRATUM = 2, STONE_FROM = 8;
 /** How far (m) the land's outer edge is skirted down, so no crack shows between it and the country beyond. */
@@ -67,6 +68,14 @@ export interface LandLook {
  * round the map clearly duller, so where the player can build reads at a glance. (The cliffs' strata were picked too.)
  */
 export const LAND_LOOK: LandLook = { groundTint: 1, beyond: { light: 0.78, chroma: 0.55 } };
+/**
+ * How the map's edge meets the duller country round it (Soil-n-Silo#269, the developer's pick on its PR #281, "organic"):
+ * the map's own tiles keep their full colour to their very edge, so where the player can build still reads at a glance
+ * (#228), and the country's dullness fades in from nothing at the edge to full between `near` and `far` tiles out,
+ * wandering between them over about `wave` tiles along the edge, with a finer ragging (`rag` tiles, every few tiles) on
+ * top, like a brush's edge.
+ */
+const BORDER = { near: 0.8, far: 3, wave: 6, rag: 0.35 };
 
 const srgb = (hex: number) => new THREE.Color(hex);
 /** The land's colours (sRGB; the season turns the greens, seasonLook.ts). */
@@ -74,6 +83,8 @@ const COL = {
   lush: srgb(0x5a9848), dry: srgb(0x98a652), lime: srgb(0xa6c45a), emerald: srgb(0x40885a),
   worn: srgb(0x9a9460), bare: srgb(0xa88a62), track: srgb(0xc0a274), rock: srgb(0x9a9184), floor: srgb(0x3e6236),
   bed: srgb(0x9a8660), deep: srgb(0x6a5a40), lip: srgb(0x5f8a3a),
+  // The shore's (shore.ts): the bank damp above the water, and a shingle of small stones and sand along the waterline.
+  damp: srgb(0x52603a), shingle: srgb(0xa09682),
 };
 /** Cliff faces: earth for the low levels, stone higher up, a band each STRATUM levels in turn. */
 const EARTH = [srgb(0x9c7e5a), srgb(0x8c714f)], STONE = [srgb(0x8e877a), srgb(0x807a6e)];
@@ -91,6 +102,7 @@ const PAINT: Record<number, { drift: number; brush: number; meadow: number }> = 
   [LAND_COVER.track]: { drift: 0.55, brush: 2.5, meadow: 0 },
   [LAND_COVER.rock]: { drift: 0.6, brush: 2, meadow: 0.3 },
   [LAND_COVER.woods]: { drift: 0.3, brush: 1.5, meadow: 0.4 },
+  // Water's tiles are painted as grass (the shores); its bed takes only its drift and brush from here.
   [LAND_COVER.water]: { drift: 0.5, brush: 2, meadow: 0 },
 };
 const FACE_PAINT: Paint = [0.5, 2.5, 0, 0];
@@ -134,13 +146,17 @@ export class PaintedLand {
   private readonly worked: Uint8Array;
   private readonly cover: Uint8Array;
   private readonly ground: Uint8Array;
-  /** The painted cover and colours currently on screen (committed in `swap()`, never pre-swap pending paint). */
-  private readonly drawnCover: Uint8Array;
+  /** The tiles' paint currently on screen (committed in `swap()`, never pre-swap pending paint). */
   private readonly drawnPaint: Float32Array;
   private readonly surface: Surface;
+  /** The shores' field (shore.ts): where the water's beds are sunk, curving over the tiles. */
+  private readonly shore: ShoreField;
   /** How many pieces each tile is cut into a side. */
   private readonly detail: Uint8Array;
-  /** Each tile's paint (linear RGB, and how much of the meadow's drift it takes), four numbers a tile. */
+  /**
+   * Each tile's paint as land (linear RGB, and how much of the meadow's drift it takes), four numbers a tile, the water's
+   * tiles' too: the bed is painted by how deep the shores' field sinks it (vertex).
+   */
   private readonly paint: Float32Array;
   /** How dry each tile lies (0 lush, by water and low, to 1 dry, high and far from it); and on the way there, how far each
    * is from the water (tiles), how dry it is before the blur, and blurred along its row. */
@@ -182,6 +198,11 @@ export class PaintedLand {
   private apron: THREE.Mesh | null = null;
   private apronGeometry: THREE.BufferGeometry | null = null;
   private readonly beyond: LandMap['beyond'];
+  /**
+   * Where the country beyond's grid lines meet the land's edges (tiles across and down the land, its corners among them):
+   * its colour is the land's there, and runs straight between them (alongApron).
+   */
+  private readonly apronAt: { xs: number[]; ys: number[] } | null;
   private readonly fields: { x: number; z: number; side: number; turn: number };
   /** The lowest and highest the land is drawn (m), for tracing a line of sight. */
   private low = 0;
@@ -192,6 +213,11 @@ export class PaintedLand {
     this.adder = adder; this.look = look;
     this.width = m.width; this.height = m.height; this.tile = m.tile; this.level = m.level; this.x0 = m.x0; this.z0 = m.z0;
     this.map = { ...m.map }; this.beyond = m.beyond ?? null;
+    const lines = this.apronLines(), on = (v: number, n: number) => v > -1e-6 && v < n + 1e-6;
+    this.apronAt = lines && {
+      xs: lines.xs.map((x) => (x - this.x0) / this.tile).filter((x) => on(x, this.width)),
+      ys: lines.zs.map((z) => (z - this.z0) / this.tile).filter((y) => on(y, this.height)),
+    };
     const n = m.width * m.height;
     this.relief = { width: m.width, height: m.height, corner: Float64Array.from(m.corners, (c) => Math.round(c / m.level)) };
     this.worked = Uint8Array.from(m.worked); this.cover = Uint8Array.from(m.cover); this.ground = Uint8Array.from(m.ground);
@@ -200,13 +226,17 @@ export class PaintedLand {
     // answers as it was until it's done, settle. When nothing's under way, those are the land's own.)
     const next = this.next;
     this.surface = new Surface(this.relief, { water: (x, y) => next.cover[y * this.width + x] === LAND_COVER.water, worked: (x, y) => next.worked[y * this.width + x] === 1 });
+    // (The shores read the land's own tiles, as they're answered: worked out again as an earthwork's settled.)
+    this.shore = new ShoreField({
+      width: m.width, height: m.height, corner: this.relief.corner,
+      water: (t) => this.cover[t] === LAND_COVER.water, worked: (t) => this.worked[t] === 1,
+    });
     this.detail = new Uint8Array(n);
     for (let i = 0; i < n; i++) this.detail[i] = this.cut(i % this.width, Math.floor(i / this.width));
     this.dry = new Float32Array(n); this.wet = new Float32Array(n); this.raw = new Float32Array(n); this.rowDry = new Float32Array(n);
     this.dryness(null);
     this.paint = new Float32Array(n * 4);
     for (let i = 0; i < n; i++) this.paintTile(i, this.paint, i * 4);
-    this.drawnCover = this.cover.slice();
     this.drawnPaint = this.paint.slice();
     this.bounds();
     const side = Math.max(m.width, m.height) * m.tile;
@@ -344,6 +374,8 @@ export class PaintedLand {
       const d = this.dryness(watered ? null : fit);
       win = { x0: Math.min(win.x0, d.x0), y0: Math.min(win.y0, d.y0), x1: Math.max(win.x1, d.x1), y1: Math.max(win.y1, d.y1) };
     }
+    // The shores round what changed (quick, unless the water's tiles moved).
+    if (given) for (const t of this.shore.update(given)) dirty.add(t);
     const paint = new Float32Array(4);
     for (let y = win.y0; y < win.y1; y++) for (let x = win.x0; x < win.x1; x++) {
       const t = y * W + x;
@@ -366,11 +398,16 @@ export class PaintedLand {
     });
     for (const t of dirty) this.changed = grown(this.changed, t % W, Math.floor(t / W));
     // What's drawn changes up to two tiles round each tile that did: its sides' steps and faces (its neighbours'), the
-    // water's bed, its paint (blended over the next tile and a little more). The country beyond meets the land's edge.
+    // water's bed, its paint (blended over the next tile and a little more). At the land's edge (only its outermost
+    // tiles' paint is read on it), the country beyond meets it and takes its colour there; and the land's colour within a
+    // cell of the edge runs between the edge's colours a cell apart (alongApron): further round, and the swap says so.
+    const reach = this.beyond ? Math.ceil(this.beyond.cell / this.tile) : 0;
     for (const t of dirty) {
-      near(t, 2, (x, y) => this.pending.add(Math.floor(y / CHUNK) * this.cols + Math.floor(x / CHUNK)));
-      const x = t % W, y = (t - x) / W;
-      if (this.beyond && (x === 0 || y === 0 || x === W - 1 || y === H - 1)) this.apronMoved = true;
+      const x = t % W, y = (t - x) / W, edge = this.beyond !== null && (x === 0 || y === 0 || x === W - 1 || y === H - 1);
+      near(t, edge ? 2 + reach : 2, (x, y) => this.pending.add(Math.floor(y / CHUNK) * this.cols + Math.floor(x / CHUNK)));
+      if (!edge) continue;
+      this.apronMoved = true;
+      this.changed = grown(grown(this.changed, Math.max(0, x - reach), Math.max(0, y - reach)), Math.min(W - 1, x + reach), Math.min(H - 1, y + reach));
     }
   }
 
@@ -391,7 +428,6 @@ export class PaintedLand {
     });
     this.built.clear();
     this.apronMoved = false;
-    this.drawnCover.set(this.cover);
     this.drawnPaint.set(this.paint);
     this.revision++;
     this.ahead = false;
@@ -415,20 +451,42 @@ export class PaintedLand {
 
   /**
    * The land's painted colour (linear RGB, before season turning) at a point of the world (x, z in metres), as drawn:
-   * blurred dryness, `LAND_LOOK.groundTint`, `LAND_LOOK.beyond` dulling, noise-warped tile blending, and meadow drift.
+   * blurred dryness, `LAND_LOOK.groundTint`, `LAND_LOOK.beyond` dulling (fading in by place past the map's edge),
+   * noise-warped tile blending, meadow drift, the shores' damp banks, shingle and beds, and the country beyond's colour
+   * along the land's edge. But while an earthwork is `ahead`, the shores (and the ground's slope) are already the new
+   * ground's, as `heightAt` is: the shore field has no drawn copy, so a caller waits for the swap.
    */
   landColourAt(x: number, z: number, into = new THREE.Color()): THREE.Color {
     const px = (x - this.x0) / this.tile, py = (z - this.z0) / this.tile;
     if (px >= 0 && py >= 0 && px <= this.width && py <= this.height) {
       const tx = Math.min(this.width - 1, Math.floor(px)), ty = Math.min(this.height - 1, Math.floor(py));
       const n = this.normal(tx, ty, px - tx, py - ty, SCRATCH.n);
-      this.topColour(px, py, this.drawnCover[ty * this.width + tx], x, z, n, into, this.drawnPaint);
+      this.topColour(tx, ty, px, py, x, z, n, into, this.drawnPaint);
       return into;
     }
+    return this.beyondColour(x, z, into, this.drawnPaint);
+  }
+
+  /**
+   * The country beyond's colour at a point of the world (m) past the land, into `c`: the distant woods' floor, dulled, and
+   * near the land, the land's own colour at its edge (from `paint`'s tiles), fading to the floor's over APRON_BLEND cells,
+   * so no straight seam shows where the two meshes meet (Soil-n-Silo#269: the land's edge is the country's grass, which
+   * autumn and winter turn pale, against the floor's dark green).
+   */
+  private beyondColour(x: number, z: number, c: THREE.Color, paint: Float32Array = this.paint): THREE.Color {
     const k = noise2(x * 0.015 + 2, z * 0.015 + 8) * 0.5 + 0.5;
-    into.copy(COL.floor).lerp(COL.emerald, k * 0.3);
-    this.dull(into);
-    return into;
+    c.copy(COL.floor).lerp(COL.emerald, k * 0.3);
+    this.dull(c);
+    if (!this.beyond) return c;
+    const lx0 = this.x0, lx1 = this.x0 + this.width * this.tile, lz0 = this.z0, lz1 = this.z0 + this.height * this.tile;
+    const ex = Math.min(lx1, Math.max(lx0, x)), ez = Math.min(lz1, Math.max(lz0, z)), away = Math.hypot(x - ex, z - ez);
+    const reach = APRON_BLEND * this.beyond.cell;
+    if (away < reach) {
+      const edge = SCRATCH.edge;
+      this.baseColour((ex - this.x0) / this.tile, (ez - this.z0) / this.tile, edge, paint);
+      c.lerp(edge, 1 - smooth(0, reach, away));
+    }
+    return c;
   }
 
   /** Where a line of sight first meets the land, or null if it misses (on the CPU: no wait for the GPU). */
@@ -471,30 +529,21 @@ export class PaintedLand {
   /** A tile's height (m) at (u, v) across it, as drawn: the smooth surface, hollowed under water. */
   private drawn(tx: number, ty: number, u: number, v: number): number {
     const h = this.surface.on(tx, ty, u, v) * this.level;
-    return this.cover[ty * this.width + tx] === LAND_COVER.water ? h - this.carve(tx + u, ty + v) : h;
+    return h - BED * this.shore.depth(tx, ty, tx + u, ty + v);
   }
 
-  /** How far (m) the water's bed lies under its tiles' level at a point (in tiles): nothing at the bank, BED in from it. */
-  private carve(px: number, py: number): number {
-    let d = BANK;
-    const fx = Math.floor(px), fy = Math.floor(py);
-    for (let y = fy - 1; y <= fy + 1; y++) for (let x = fx - 1; x <= fx + 1; x++) {
-      if (x < 0 || y < 0 || x >= this.width || y >= this.height || this.cover[y * this.width + x] === LAND_COVER.water) continue;
-      const ex = Math.max(x - px, 0, px - (x + 1)), ey = Math.max(y - py, 0, py - (y + 1));
-      d = Math.min(d, Math.hypot(ex, ey));
-    }
-    return BED * smooth(0, BANK, d);
+  /** How far (m) the bed lies under the smooth surface at a point (in tiles), as the shores' field has it. */
+  private sunk(px: number, py: number): number {
+    const tx = Math.min(this.width - 1, Math.max(0, Math.floor(px))), ty = Math.min(this.height - 1, Math.max(0, Math.floor(py)));
+    return BED * this.shore.depth(tx, ty, px, py);
   }
 
   /** The land's upward normal at (u, v) across a tile. */
   private normal(tx: number, ty: number, u: number, v: number, out: THREE.Vector3) {
     const [hx, hz] = this.surface.slope(tx, ty, u, v), k = this.level / this.tile;
-    let gx = hx * k, gz = hz * k;
-    if (this.cover[ty * this.width + tx] === LAND_COVER.water) {
-      const e = 0.02, px = tx + u, py = ty + v;
-      gx -= (this.carve(px + e, py) - this.carve(px - e, py)) / (2 * e * this.tile);
-      gz -= (this.carve(px, py + e) - this.carve(px, py - e)) / (2 * e * this.tile);
-    }
+    const e = 0.02, px = tx + u, py = ty + v;
+    const gx = hx * k - (this.sunk(px + e, py) - this.sunk(px - e, py)) / (2 * e * this.tile);
+    const gz = hz * k - (this.sunk(px, py + e) - this.sunk(px, py - e)) / (2 * e * this.tile);
     return out.set(-gx, 1, -gz).normalize();
   }
 
@@ -504,7 +553,10 @@ export class PaintedLand {
     const off = Math.max(m.x - 1 - x, x - (m.x + m.width), m.y - 1 - y, y - (m.y + m.height), 0);
     let least = off <= NEAR_MAP ? 4 : off <= NEAR_COUNTRY ? 2 : 1;
     // The water's tiles by a bank, finely, so the bed's slope up to it is drawn.
-    if (this.nearBank(x, y)) least = Math.max(least, 4);
+    if (this.nearBank(x, y) || this.shore.isBank(x, y)) least = Math.max(least, 4);
+    // The water's tiles whose bed rises steeply (beside ground it can't cut into, a lone tile), on and near the map, more
+    // finely still.
+    if (off <= NEAR_MAP && this.shore.isSteep(x, y)) least = 8;
     return DETAILS.find((S) => S >= least && bend / (S * S) <= TOLERANCE) ?? 8;
   }
 
@@ -594,20 +646,22 @@ export class PaintedLand {
     return { x0: bx0, y0: by0, x1: bx1, y1: by1 };
   }
 
-  /** A tile's paint (linear RGB, and how much of the meadow's drift it takes), into `out` from `o`. */
+  /**
+   * A tile's paint as land (linear RGB, and how much of the meadow's drift it takes), into `out` from `o`: a water tile's
+   * as grass by the water (the bed is painted over it by depth, vertex).
+   */
   private paintTile(t: number, out: Float32Array, o = 0) {
-    const c = SCRATCH.a, cover = this.cover[t];
+    const c = SCRATCH.a, water = this.cover[t] === LAND_COVER.water, cover = water ? LAND_COVER.grass : this.cover[t];
     switch (cover) {
       case LAND_COVER.bare: c.copy(COL.bare); break;
       case LAND_COVER.track: c.copy(COL.track); break;
       case LAND_COVER.rock: c.copy(COL.lush).lerp(COL.dry, this.dry[t]).lerp(COL.rock, 0.65); break;
       case LAND_COVER.woods: c.copy(COL.floor); break;
-      case LAND_COVER.water: c.copy(COL.bed); break;
-      default: c.copy(COL.lush).lerp(COL.dry, this.dry[t]);
+      // (A water tile's, as land: lush, as by water.)
+      default: c.copy(COL.lush).lerp(COL.dry, water ? 0 : this.dry[t]);
     }
-    if (cover !== LAND_COVER.water) this.tint(c, this.ground[t]);
-    const x = t % this.width, y = (t - x) / this.width;
-    if (!this.onMap(x, y)) this.dull(c);
+    this.tint(c, this.ground[t]);
+    // (The country's dullness is laid on by place, as each point is painted: dullness.)
     out[o] = c.r; out[o + 1] = c.g; out[o + 2] = c.b; out[o + 3] = (PAINT[cover] ?? PAINT[0]).meadow;
   }
 
@@ -620,12 +674,34 @@ export class PaintedLand {
   }
 
   /** A colour as the country beyond the map has it: a little duller, so where the player can build reads at a glance. */
-  private dull(c: THREE.Color) {
+  private dull(c: THREE.Color): THREE.Color {
     const { light, chroma } = this.look.beyond, y = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
-    c.setRGB((y + (c.r - y) * chroma) * light, (y + (c.g - y) * chroma) * light, (y + (c.b - y) * chroma) * light);
+    return c.setRGB((y + (c.r - y) * chroma) * light, (y + (c.g - y) * chroma) * light, (y + (c.b - y) * chroma) * light);
   }
 
-  private onMap(x: number, y: number) { const m = this.map; return x >= m.x && y >= m.y && x < m.x + m.width && y < m.y + m.height; }
+  /** `c` taken `k` of the way (0 to 1) to the country's dullness. */
+  private dullBy(c: THREE.Color, k: number) {
+    if (k <= 0) return;
+    if (k >= 1) { this.dull(c); return; }
+    const d = SCRATCH.dulled.copy(c);
+    this.dull(d);
+    c.lerp(d, k);
+  }
+
+  /**
+   * How much of the country's dullness a point (tiles) takes: 0 on the map, 1 out in the country, fading in over the first
+   * tiles out (BORDER). Round the map's corners it fades by the distance to the corner.
+   */
+  private dullness(px: number, py: number): number {
+    const m = this.map, ox = Math.max(m.x - px, px - (m.x + m.width)), oy = Math.max(m.y - py, py - (m.y + m.height));
+    // How far out of the map (tiles); less than 0, how far in from its nearest side.
+    const d = ox > 0 || oy > 0 ? Math.hypot(Math.max(0, ox), Math.max(0, oy)) : Math.max(ox, oy);
+    if (d <= 0) return 0;
+    const { near, far, wave, rag } = BORDER;
+    const swell = Math.min(1, Math.max(0, noise2(px / wave + 11.3, py / wave - 4.7) * 0.5 + 0.5));
+    const reach = near + (far - near) * swell + rag * noise2(px * 0.45 - 3.1, py * 0.45 + 5.9);
+    return smooth(0, reach, d);
+  }
 
   /**
    * The ground's colour at a point (tiles), into `c`, and how much of the meadow's drift it takes: the tiles' paints blended
@@ -710,27 +786,93 @@ export class PaintedLand {
   /** The height (m) of the vertex `vertex` added last. */
   private vy = 0;
 
-  /** The painted top colour (linear RGB, before season turning) at tile point (px, py) and world (wx, wz), into `c`. */
-  private topColour(px: number, py: number, cover: number, wx: number, wz: number, n: THREE.Vector3, c: THREE.Color, paint: Float32Array = this.paint): number {
+  /**
+   * The colour of the land's top at a point (tiles), into `c`, before its slope wears it or the shores paint it: the
+   * tiles' paint there (`paint`'s), as dull as the country is there, with the meadow's drift (`drift` of it: topColour
+   * keeps it off the water's bed).
+   */
+  private baseColour(px: number, py: number, c: THREE.Color, paint: Float32Array = this.paint, drift = 1) {
     const meadow = this.colourAt(px, py, c, paint);
+    this.dullBy(c, this.dullness(px, py));
     // The meadow's drift: rises lime, hollows emerald, in broad soft patches.
-    const k = noise2(wx * 0.02 + 7, wz * 0.02 - 3) * 0.5 + 0.5;
-    c.lerp(COL.lime, smooth(0.55, 0.9, k) * 0.35 * meadow).lerp(COL.emerald, smooth(0.6, 0.95, 1 - k) * 0.35 * meadow);
-    // A steep bank wears to bare turf.
-    const steep = smooth(0.35, 0.9, Math.hypot(n.x, n.z) / Math.max(1e-3, n.y));
-    if (cover !== LAND_COVER.water) c.lerp(COL.worn, steep * 0.5);
-    // The bed darkens as it deepens.
-    if (cover === LAND_COVER.water) c.lerp(COL.deep, (this.carve(px, py) / BED) * 0.7);
-    return steep;
+    const k = noise2((this.x0 + px * this.tile) * 0.02 + 7, (this.z0 + py * this.tile) * 0.02 - 3) * 0.5 + 0.5, m = meadow * drift;
+    c.lerp(COL.lime, smooth(0.55, 0.9, k) * 0.35 * m).lerp(COL.emerald, smooth(0.6, 0.95, 1 - k) * 0.35 * m);
   }
 
-  /** A vertex of a tile's top at (u, v) across it. */
+  /**
+   * Within a cell of the country beyond's grid of the land's outer edge, `c` (a point's colour, tiles) taken towards the
+   * colour the country beyond has where it meets the land: the land's at its grid's lines, and straight between them. At
+   * the edge it's that, so the two meshes meet in one colour all along it, not only at the grid's lines (Soil-n-Silo#269).
+   * Near a corner it's taken towards both sides' colours, the nearer the more.
+   */
+  private alongApron(px: number, py: number, c: THREE.Color, paint: Float32Array) {
+    const at = this.apronAt;
+    if (!at) return;
+    const reach = this.beyond!.cell / this.tile, W = this.width, H = this.height;
+    // How far in from each side (west, east, north, south): along it, its grid's lines, a point on it.
+    const sides: [number, number, number[], (l: number) => [number, number]][] = [
+      [px, py, at.ys, (l) => [0, l]], [W - px, py, at.ys, (l) => [W, l]], [py, px, at.xs, (l) => [l, 0]], [H - py, px, at.xs, (l) => [l, H]],
+    ];
+    let r = 0, g = 0, b = 0, sum = 0, most = 0;
+    const e = SCRATCH.alongA, f = SCRATCH.alongB;
+    for (const [d, along, lines, on] of sides) {
+      if (d >= reach) continue;
+      let i = 0;
+      while (i + 2 < lines.length && lines[i + 1] <= along) i++;
+      const t = Math.min(1, Math.max(0, (along - lines[i]) / (lines[i + 1] - lines[i])));
+      this.baseColour(...on(lines[i]), e, paint);
+      this.baseColour(...on(lines[i + 1]), f, paint);
+      e.lerp(f, t);
+      if (d <= 1e-9) { c.copy(e); return; }
+      const k = 1 - smooth(0, reach, d), w = k / d;
+      r += e.r * w; g += e.g * w; b += e.b * w; sum += w; most = Math.max(most, k);
+    }
+    if (sum > 0) c.lerp(SCRATCH.alongA.setRGB(r / sum, g / sum, b / sum), most);
+  }
+
+  /** What the last `topColour` found besides the colour: how steep the ground, and how much shingle and bed it is. */
+  private readonly painted = { steep: 0, shingle: 0, bed: 0 };
+
+  /**
+   * The painted top colour (linear RGB, before season turning) at point (px, py) of tile (tx, ty), world (wx, wz), into
+   * `c` (and `painted`): its base colour (painted as land, the water's tiles too), a steep bank's wear, and as bed where
+   * the shores' field (shore.ts) sinks it, by how deep, so the paint follows the curving shore rather than the tiles; damp
+   * up the bank from the water, and a shingle of small stones along the waterline; and last, the country beyond's colour
+   * at the land's edge. `paint` is the tiles' paint it reads (landColourAt: the one drawn).
+   */
+  private topColour(tx: number, ty: number, px: number, py: number, wx: number, wz: number, n: THREE.Vector3, c: THREE.Color, paint: Float32Array = this.paint) {
+    const shore = this.shore, depth = shore.depth(tx, ty, px, py), field = shore.at(px, py), bed = smooth(0.2, 0.42, depth);
+    // (The meadow's drift is not on the bed.)
+    this.baseColour(px, py, c, paint, 1 - bed);
+    // A steep bank wears to bare turf.
+    const steep = smooth(0.35, 0.9, Math.hypot(n.x, n.z) / Math.max(1e-3, n.y));
+    c.lerp(COL.worn, steep * 0.5 * (1 - bed));
+    // Damp up the bank, broken a little; then the shingle at the waterline, in patches.
+    const broken = noise2(wx * 0.35 + 11, wz * 0.35 - 4);
+    // (Over half a tile up at most: the field's no lower than DRY, a little more with the wander, all up the land.)
+    c.lerp(COL.damp, smooth(-0.55, -0.05, field + 0.1 * broken) * 0.45 * (1 - bed));
+    const shingle = smooth(0.06, 0.2, depth) * (1 - smooth(0.3, 0.5, depth)) * smooth(-0.35, 0.25, noise2(wx * 0.6 - 2, wz * 0.6 + 6));
+    c.lerp(COL.shingle, shingle * 0.6);
+    // The bed, darkening as it deepens; as dull as the country is there, as the land is, so a bed crossing the map's edge
+    // has no seam.
+    const under = SCRATCH.a.copy(COL.bed).lerp(COL.deep, depth * 0.7);
+    this.dullBy(under, this.dullness(px, py));
+    c.lerp(under, bed);
+    // (Last: the country beyond has neither the banks' wear nor the shores. The game's water never comes within a cell of
+    // the land's outer edge: its rim's river runs out as woods, src/world/brush/landMap.ts.)
+    this.alongApron(px, py, c, paint);
+    this.painted.steep = steep; this.painted.shingle = shingle; this.painted.bed = bed;
+  }
+
+  /** A vertex of a tile's top at (u, v) across it, painted as `topColour` has it. */
   private vertex(b: MeshBuilder, tx: number, ty: number, u: number, v: number): number {
     const px = tx + u, py = ty + v, y = this.vy = this.drawn(tx, ty, u, v), n = this.normal(tx, ty, u, v, SCRATCH.n), c = SCRATCH.c;
-    const cover = this.cover[ty * this.width + tx], wx = this.x0 + px * this.tile, wz = this.z0 + py * this.tile;
-    const steep = this.topColour(px, py, cover, wx, wz, n, c);
+    const wx = this.x0 + px * this.tile, wz = this.z0 + py * this.tile;
+    this.topColour(tx, ty, px, py, wx, wz, n, c);
+    const { steep, shingle, bed } = this.painted, own = this.cover[ty * this.width + tx];
+    const cover = bed > 0.5 ? LAND_COVER.water : own === LAND_COVER.water ? LAND_COVER.grass : own;
     const pt = PAINT[cover] ?? PAINT[0];
-    const drift = Math.min(1, pt.drift + steep * 0.4 + noise2(wx * 0.21 + 3, wz * 0.21 - 9) * 0.15);
+    const drift = Math.min(1, pt.drift + steep * 0.4 + shingle * 0.3 + noise2(wx * 0.21 + 3, wz * 0.21 - 9) * 0.15);
     return b.vertex({ x: wx, y, z: wz }, n, c, [drift, pt.brush, 0.7 + noise2(wx * 0.05, wz * 0.05) * 0.9, 0]);
   }
 
@@ -784,10 +926,12 @@ export class PaintedLand {
   private face(b: MeshBuilder, x: number, y: number, side: number, next: [number, number] | null) {
     const own = this.sideLine(x, y, side), low = next ? this.sideLine(next[0], next[1], (side + 2) % 4) : (s: number) => own(s) - SKIRT;
     const steps = next ? Math.max(this.steps(x, y, side), this.steps(next[0], next[1], (side + 2) % 4)) : this.steps(x, y, side);
-    const [a, c] = SIDE_ENDS[side], out = SCRATCH.out.set(SIDES[side][0], 0, SIDES[side][1]), onMap = this.onMap(x, y);
+    const [a, c] = SIDE_ENDS[side], out = SCRATCH.out.set(SIDES[side][0], 0, SIDES[side][1]);
     const wx = (u: number) => this.x0 + (x + u) * this.tile, wz = (v: number) => this.z0 + (y + v) * this.tile;
+    // As dull as the country is at the side's middle.
+    const dull = this.dullness(x + (a[0] + c[0]) / 2, y + (a[1] + c[1]) / 2);
     const lipColour = SCRATCH.lip.copy(COL.lip), floor = SCRATCH.floor.copy(COL.floor);
-    if (!onMap) { this.dull(lipColour); this.dull(floor); }
+    this.dullBy(lipColour, dull); this.dullBy(floor, dull);
     for (let k = 0; k < steps; k++) {
       const s0 = k / steps, s1 = (k + 1) / steps, top: Line = [own(s0), own(s1)], bottom: Line = [low(s0), low(s1)];
       if (top[0] <= bottom[0] + 1e-6 && top[1] <= bottom[1] + 1e-6) continue;
@@ -799,7 +943,7 @@ export class PaintedLand {
       const L = this.level, from = Math.floor(Math.min(...bottom) / L / STRATUM), to = Math.ceil(Math.max(...under) / L / STRATUM);
       for (let n = from; n < to; n++) {
         const lo = n * STRATUM * L, hi = (n + 1) * STRATUM * L, shade = SCRATCH.band.copy((n * STRATUM >= STONE_FROM ? STONE : EARTH)[n & 1]);
-        if (!onMap) this.dull(shade);
+        this.dullBy(shade, dull);
         band(b, p0, p1, [bottom, [lo, lo]], [under, [hi, hi]], shade, out, FACE_PAINT);
       }
     }
@@ -821,20 +965,25 @@ export class PaintedLand {
     return k >= 1 ? far : edge() + (far - edge()) * k;
   }
 
+  /** The country beyond's grid lines (m), across and down, with the land's edges among them; null if there's none. */
+  private apronLines(): { xs: number[]; zs: number[] } | null {
+    const bd = this.beyond;
+    if (!bd) return null;
+    const lines = (from: number, n: number, edges: number[]) => [...new Set([...Array.from({ length: n }, (_, k) => from + k * bd.cell), ...edges])].sort((p, q) => p - q);
+    return { xs: lines(bd.x0, bd.nx, [this.x0, this.x0 + this.width * this.tile]), zs: lines(bd.z0, bd.nz, [this.z0, this.z0 + this.height * this.tile]) };
+  }
+
   /** The country beyond as one mesh: distant woods' floor on a coarse grid round the land, its lines meeting the land's edges. */
   private apronMesh(): THREE.BufferGeometry | null {
     const bd = this.beyond;
     if (!bd) return null;
     const lx0 = this.x0, lx1 = this.x0 + this.width * this.tile, lz0 = this.z0, lz1 = this.z0 + this.height * this.tile;
-    const lines = (from: number, n: number, edges: number[]) => [...new Set([...Array.from({ length: n }, (_, k) => from + k * bd.cell), ...edges])].sort((p, q) => p - q);
-    const xs = lines(bd.x0, bd.nx, [lx0, lx1]), zs = lines(bd.z0, bd.nz, [lz0, lz1]), b = new MeshBuilder('paint'), nx = xs.length;
+    const { xs, zs } = this.apronLines()!, b = new MeshBuilder('paint'), nx = xs.length;
     const c = SCRATCH.c, n = SCRATCH.n, e = 1;
     for (const z of zs) for (const x of xs) {
       const y = this.heightAt(x, z);
       n.set(this.heightAt(x - e, z) - this.heightAt(x + e, z), 2 * e, this.heightAt(x, z - e) - this.heightAt(x, z + e)).normalize();
-      const k = noise2(x * 0.015 + 2, z * 0.015 + 8) * 0.5 + 0.5;
-      c.copy(COL.floor).lerp(COL.emerald, k * 0.3);
-      this.dull(c);
+      this.beyondColour(x, z, c);
       b.vertex({ x, y, z }, n, c, [0.3, 1.5, 0.7, 0]);
     }
     for (let j = 0; j + 1 < zs.length; j++) for (let i = 0; i + 1 < nx; i++) {
@@ -860,6 +1009,8 @@ interface Taken { tiles: number[]; values: Uint8Array }
 const grown = (w: Window | null, x: number, y: number): Window => w
   ? { x0: Math.min(w.x0, x), y0: Math.min(w.y0, y), x1: Math.max(w.x1, x + 1), y1: Math.max(w.y1, y + 1) }
   : { x0: x, y0: y, x1: x + 1, y1: y + 1 };
+/** Over how many of its cells the country beyond fades from the land's colour at its edge to its own (apronMesh). */
+const APRON_BLEND = 3;
 /** How far (tiles) the dryness is blurred, each way. */
 const DRY_BLUR = 3;
 /** Where along a tile's side a point s (0 to 1, in the order sideOf lists its ends) lies across the tile. */
@@ -868,6 +1019,7 @@ const SIDE_AT: ((s: number) => [number, number])[] = [(s) => [s, 0], (s) => [1, 
 const SIDE_ENDS: [[number, number], [number, number]][] = [[[0, 0], [1, 0]], [[1, 0], [1, 1]], [[0, 1], [1, 1]], [[0, 0], [0, 1]]];
 const SCRATCH = {
   a: new THREE.Color(), c: new THREE.Color(), lip: new THREE.Color(), floor: new THREE.Color(), band: new THREE.Color(),
+  dulled: new THREE.Color(), edge: new THREE.Color(), alongA: new THREE.Color(), alongB: new THREE.Color(),
   n: new THREE.Vector3(), out: new THREE.Vector3(),
 };
 const ab = new THREE.Vector3(), ac = new THREE.Vector3(), cross = new THREE.Vector3();

@@ -60,6 +60,13 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      far-off camera and `FLOWER_REACH` how far it reaches. And the reeds along the water (Soil-n-Silo#267): `addReeds`
      takes `ReedOptions` (the clump's size and colours, and bulrush seed heads), `REED_REACH`, `REED_WIDTH` and
      `REED_HEIGHT` how far a clump reaches; the game places them from `landAt`, so they follow the bed as drawn.
+     Since, Soil-n-Silo#269 (done 2026-11-21): the country's dullness fades in by place over the first one to three tiles
+     outside the map, its outer edge wandering like a brush's (the developer's pick on Soil-n-Silo#281, "organic", over an
+     even fade), rather than tile by tile; and the country beyond's mesh starts from the land's colour where it meets it
+     (it was the woods' floor's dark green against autumn's and winter's pale grass: a straight dark seam), fading to its
+     own over three of its cells; the land's last cell in from its edge runs
+     straight between the colours at those cells' corners, as the country beyond does, so they meet in one colour all
+     along. `tools/land.ts` checks both.
   9. Soil-n-Silo#213 the crops and trees (done 2026-11-16, Soil-n-Silo#225 and Soil-n-Silo#227): the game's five crops
      at their four stages as one soft blanket over each bed (`CropPatch`), and its tree species, with the pine a soft
      cone, the willow weeping and the poplar a column (`growSpecies`; oak, birch, apple and the bushes are `Grove.grow`'s).
@@ -85,6 +92,16 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
       hour and before dawn, 4.6–5.5 ms less GPU at High, about 3 at Medium and Low, noon as before. Medium and Low draw the
       reflection at half size (`reflectionScale`). The test point's push grows with the coarser texels (`shadowSlack`),
       so shadows come up a little short at a low sun (docs/PERFORMANCE.md).
+      And curving shores (Soil-n-Silo#258, epic Soil-n-Silo#265, done 2026-11-21, `src/land/shore.ts`): the
+      water's beds follow a field of the water's tiles smoothed along their shore, so the river's bends curve and the
+      ponds are ovals, a damp band and a shingle along the waterline; pads and falls keep their square edges, and a channel a
+      tile wide stays joined to its pond. About 0.3 s more to make a land, an earthwork's update about 1 ms, under 3% more of its triangles, the frame's GPU time unchanged within noise.
+      The developer picked the look that wanders a little (`organic`, Soil-n-Silo#283) over a calmer one (docs/LAND.md).
+- **Crags, for the game's rock outcrops** (Soil-n-Silo#257, epic Soil-n-Silo#265, 2026-11-20): the painting kit's
+  `addCrag`, a boulder or crag cut by three soft cleavage planes from an icosphere (80 or 180 triangles), stretched and
+  tilted, its underside pushed into the slope so it never floats, with strata, a muddy foot and moss on its upward faces.
+  The game lays them out per rock tile from its neighbours (the bold look, the developer's pick on Soil-n-Silo#278). The
+  demo doesn't use it; its frames are unchanged.
 - **Weather, epic #3** (planned 2026-10-30): season, weather and hour change the whole picture. The decisions are in #3; in
   short, the game owns the weather's state and logic and the renderer only draws it. The order:
   1. #6 performance: measure the frame and set the weather's budget (done 2026-10-30: the farm 17.5 ms on the laptop,

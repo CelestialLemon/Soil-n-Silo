@@ -116,8 +116,8 @@ recipe and the land's smooth fit); [docs/API.md](docs/API.md) has the API, in th
   water's, clouds' and land's checks (`wind.ts`, `water.ts`, `clouds.ts`, `land.ts`), the wind engine's build (`wind-build.ts`), and the check
   that the demo imports only the API (`demo-imports.ts`).
 - `tools/blender/`: the scripts that make the models (`build.py`, the shared `kit.py`, one script a model in `models/`).
-- `test/`: the renderer's unit tests, run in Node by `npm test` (`farWoods.test.ts`: the far woods' crowns; `tuft.test.ts`,
-  `flower.test.ts`: how far a grass tuft and a wildflower reach).
+- `test/`: the renderer's unit tests, run in Node by `npm test` (`farWoods.test.ts`: the far woods' crowns; `crag.test.ts`: how
+  far a crag reaches, and its triangles; `tuft.test.ts`, `flower.test.ts`: how far a grass tuft and a wildflower reach).
 - `docs/`: the look's rules (`DIRECTION.md`), the renderer's roadmap (`ROADMAP.md`), the API, and the notes on models,
   performance, wind, water, ground and the land.
 - `reference/`: how to pull frames from the reference film (kept out of git: they're copyrighted).

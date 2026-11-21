@@ -9,7 +9,9 @@ Think of the water as one sheet of cloth laid over the land and pinned at each t
 water stands there. Where the land rises above the cloth, the land hides it, so the shore is exactly where the water
 meets the ground, smooth however big the tiles are. For that to work the cloth has to reach a little past the last wet
 tile: it carries on flat for one more tile (so the shore between a wet tile and a dry one lands where the ground really
-meets the water) and then dives steeply under the land, where it isn't drawn.
+meets the water) and then dives steeply under the land, where it isn't drawn. So the shore's shape is the land's: with
+curving shores (LAND.md, Soil-n-Silo#258) the beds round off the tiles' corners and the cloth, still square, shows only
+where the bed lies under it.
 
 A flood is no special case: it's the river's tiles spreading over the land, at whatever heights the game's rules give
 them. When the game sends a new map, the cloth moves to it over a moment rather than jumping, so a rising flood creeps

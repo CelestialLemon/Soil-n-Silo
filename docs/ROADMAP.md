@@ -101,6 +101,20 @@ only, never saved, the map itself unchanged): the river runs on out of sight, a 
 thicken and the ground rises into wooded hills, with an apron of distant woods beyond them. Everything past the edge is a
 shade duller, so where you can build still reads at a glance. Height on the map itself followed on 2026-10-17, below.
 
+## A living valley (epic #265, from 2026-11-20)
+
+The live valley brought up to the brush3d farm demo's crafted look, one small issue and PR at a time, each with its look
+options behind a HUD button and a URL option on the PR's preview, and no rules changed.
+- **Rock outcrops (#257, done 2026-11-21):** a rock tile used to be one or two round stones in its middle, so a rocky patch read as a grid
+  of dots. Now each rock tile looks at its eight neighbours (`src/world/brush/rockPlan.ts`): inside a patch, big faceted
+  crags and broad shelves shifted toward the patch's middle, bridges over the edges and corners rock tiles share, and at
+  its edges smaller stones and talus; nothing leaves the rock tiles, every crag sits into the slope, and moss grows on
+  their tops (seasonal). brush3d's painting kit draws them (`addCrag`). The country's rocks near the map are drawn in
+  8 × 8-tile pieces, so an earthwork at the map's edge remakes only the pieces it touches. Picking a crag finds its rock
+  tile, and a tree's crown leaning over the rock still finds the tree. The developer picked the bold look on PR #278:
+  crags about 1.4× as tall as the calmer, mossier option, sharper, with talus at every lone or edge tile's foot; the other
+  looks and their switch are gone.
+
 ## One renderer: the swap to brush3d (2026-11-16)
 
 brush3d is now the game's only renderer (#211, the last task of epic #212): it's the default, with no `?renderer=` flag
@@ -173,8 +187,12 @@ their shape. Cliffs are sharp where tiles don't meet, and their faces show strat
 The river and ponds sit in beds under their tiles, with the water 0.48 m under the level, so the banks stand over it. The
 country past the edge is clearly duller, so where you can build reads at a glance, and distant woods run to the horizon
 (the developer's picks on #228). An earthwork repaints only the chunks round it, spread over frames and swapped in at once,
-so the land never shows half a change. Still open: the river's falls are a plain chute for now and don't read as a
-waterfall (#241); the water wheel's race cut into its bank (`brush3d/docs/LAND.md`); the game and brush3d each fit the
+so the land never shows half a change. The river and the ponds' shores curve over the tile rules (#258, epic #265,
+2026-11-20): the beds follow a smoothed field of the water's tiles, so a bend is a curve and a pond an oval, with a damp
+bank and a shingle at the waterline, while a water wheel's pad and a fall keep their square edges and the rules don't
+change (done 2026-11-21: the developer picked the organic look, which wanders a little, on PR #283). Still open: the river's falls are a
+plain chute for now and don't read as a waterfall (#241); the per-tile frost and ground paint still step a little way up
+a curving bank; the water wheel's race cut into its bank (`brush3d/docs/LAND.md`); the game and brush3d each fit the
 ground after an earthwork, about 10 ms twice (#210). Meadow grass tufts across the open grass, swaying in the living wind
 (#256, epic #265's Wave 1, done 2026-11-21): dense, taller tussocks, the developer's pick of three densities (lush). Wildflowers among them in soft
 drifts, gathered at the woods' skirts and the hills' edges, in the season's colours (spring's white, yellow, peach and sky
@@ -188,6 +206,13 @@ its race, they stand in the ice rather than float, and they move with an earthwo
 rooted under the water, which hides what's below its surface, so the taller poke out of the shallows and deep water
 covers them (the developer's call, 2026-11-21). At its height an ordinary flood stands over a metre deep at the river's
 edge, so the river's reeds go mostly under it, the tallest tips showing in places; a severe one covers them all.
+
+Since, for #269 (epic #265, done 2026-11-21): the map's edge is no longer a ruler-straight colour cut. The duller
+country fades in over the first one to three tiles just outside the map, its outer edge wandering like a brush's (the
+developer's pick on PR #281, "organic", over an even fade), so the map's own tiles keep their full colour and the edge
+still reads at a glance (#228). And the straight dark seam where the land met the distant country in
+autumn and winter is gone: the distant country now starts from the land's own colour at its edge and fades to its woods'
+floor over three of its 16 m cells, and the land's outermost strip matches it all along the edge.
 
 ## The buildings and trucks as models, with their goods (2026-11-16)
 
