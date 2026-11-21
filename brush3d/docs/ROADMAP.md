@@ -60,6 +60,13 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      far-off camera and `FLOWER_REACH` how far it reaches. And the reeds along the water (Soil-n-Silo#267): `addReeds`
      takes `ReedOptions` (the clump's size and colours, and bulrush seed heads), `REED_REACH`, `REED_WIDTH` and
      `REED_HEIGHT` how far a clump reaches; the game places them from `landAt`, so they follow the bed as drawn.
+     Since, Soil-n-Silo#269 (done 2026-11-21): the country's dullness fades in by place over the first one to three tiles
+     outside the map, its outer edge wandering like a brush's (the developer's pick on Soil-n-Silo#281, "organic", over an
+     even fade), rather than tile by tile; and the country beyond's mesh starts from the land's colour where it meets it
+     (it was the woods' floor's dark green against autumn's and winter's pale grass: a straight dark seam), fading to its
+     own over three of its cells; the land's last cell in from its edge runs
+     straight between the colours at those cells' corners, as the country beyond does, so they meet in one colour all
+     along. `tools/land.ts` checks both.
   9. Soil-n-Silo#213 the crops and trees (done 2026-11-16, Soil-n-Silo#225 and Soil-n-Silo#227): the game's five crops
      at their four stages as one soft blanket over each bed (`CropPatch`), and its tree species, with the pine a soft
      cone, the willow weeping and the poplar a column (`growSpecies`; oak, birch, apple and the bushes are `Grove.grow`'s).

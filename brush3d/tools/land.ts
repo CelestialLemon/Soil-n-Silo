@@ -8,14 +8,17 @@
 //    painted a step, all swapped in together at the last; only chunks near it are painted again; afterwards its dryness
 //    and paint are what a land built afresh has, its heights within a few centimetres (the fit again is local).
 // 3. The country beyond: it meets the land's edge, and is the grid's further out.
-// 4. The shores (src/land/shore.ts, Soil-n-Silo#258), on a flat land with a pond, tile-wide outlets from it, a narrow
+// 4. The map's border (Soil-n-Silo#269): the map's tiles keep their colour to their very edge, the country further out is
+//    fully dull, the fade between wanders along the edge, and the country beyond takes the land's colour all along where
+//    it meets it.
+// 5. The shores (src/land/shore.ts, Soil-n-Silo#258), on a flat land with a pond, tile-wide outlets from it, a narrow
 //    staircase of a river, a lone tile of water and a pad by the pond: the pond's corners dry, every tile of narrow water
 //    wet at its middle, the bank cut into only near the water, the pad at its level; no holes and drawn where heightAt
 //    says; after an earthwork by the water (a bank raised), as built afresh.
 // Exits with 1 if anything is off.
 import * as THREE from 'three';
 import { LAND_COVER, LAND_GROUND, type LandMap } from '../src/land/map.ts';
-import { PaintedLand, type LandAdder, type LandArea } from '../src/land/paint.ts';
+import { LAND_LOOK, PaintedLand, type LandAdder, type LandArea, type LandLook } from '../src/land/paint.ts';
 import { Surface } from '../src/land/surface.ts';
 
 let failed = false;
@@ -159,6 +162,18 @@ check('the cliff and the land\'s edge have faces', faces > 100, `${faces} uprigh
       checked++;
     }
   }
+  // And the country beyond's mesh, its land-coloured edge too, at its vertices (the land's own skipped).
+  let beyondErr = 0, beyondChecked = 0;
+  const apronMesh = (land as unknown as { apron: THREE.Mesh }).apron, apos = apronMesh.geometry.getAttribute('position');
+  const acol = apronMesh.geometry.getAttribute('color'), ac = new THREE.Color();
+  for (let i = 0; i < apos.count; i++) {
+    const x = apos.getX(i), z = apos.getZ(i), fx = (x - X0) / TILE, fz = (z - Z0) / TILE;
+    if (fx > 0 && fz > 0 && fx < W && fz < H) continue;
+    land.landColourAt(x, z, ac);
+    beyondErr = Math.max(beyondErr, Math.abs(ac.r - acol.getX(i)), Math.abs(ac.g - acol.getY(i)), Math.abs(ac.b - acol.getZ(i)));
+    beyondChecked++;
+  }
+  check('landColourAt matches the country beyond\'s vertex colours, its land-coloured edge too', beyondChecked > 100 && beyondErr < 1e-5, `${beyondChecked} vertices, max err ${beyondErr.toExponential(2)}`);
   const onMap = land.landColourAt(...world(15.5, 10.5));
   const offMap = land.landColourAt(...world(1.5, 10.5));
   const beyond = land.landColourAt(X0 - 40, Z0 + 20);
@@ -293,6 +308,26 @@ check('a tile turned to water: as it was until fitted, then its bed', midFit && 
   check('and the swap says where', swaps.length === 1 && a.x0 < at[0] && a.x1 > at[0] && a.z0 < at[1] && a.z1 > at[1] && a.x1 - a.x0 <= 6 * TILE, JSON.stringify(swaps));
 }
 
+{
+  // A tile at the land's edge repainted: wherever the land's colour changed (the edge's blend runs a cell round it), the
+  // swap says so.
+  const ty = 16, pts: (readonly [number, number])[] = [];
+  for (let y = ty - 8; y <= ty + 8; y += 0.25) for (let x = 0; x <= 8; x += 0.25) pts.push(world(x, y));
+  const before = pts.map((p) => land.landColourAt(...p).clone()), swaps: LandArea[] = [];
+  land.onSwap = (a) => swaps.push(a);
+  land.update({ x: 0, y: ty, width: 1, height: 1 }, { cover: new Uint8Array([LAND_COVER.bare]) });
+  while (!land.step(0));
+  land.onSwap = null;
+  const a = swaps[0];
+  let changed = 0, outside = 0;
+  pts.forEach((p, i) => {
+    if (land.landColourAt(...p).equals(before[i])) return;
+    changed++;
+    if (!a || p[0] < a.x0 || p[0] > a.x1 || p[1] < a.z0 || p[1] > a.z1) outside++;
+  });
+  check('a tile at the land\'s edge repainted: the swap covers all it changed', swaps.length === 1 && changed > 0 && outside === 0, `${outside} of ${changed} changed points outside ${JSON.stringify(swaps)}`);
+}
+
 // The land's edge raised: the country beyond made again to meet it.
 const apronAt = () => {
   const g = (land as unknown as { apronGeometry: THREE.BufferGeometry }).apronGeometry, pos = g.getAttribute('position');
@@ -310,7 +345,136 @@ const live = adder.live.size;
 land.dispose();
 check('taken away, every mesh out and freed', adder.live.size === 0 && adder.removed === live && adder.freed === live, `${adder.live.size} left, ${adder.freed} of ${live} freed`);
 
-// 4. The shores: a flat land 24 x 20 at level 2, a pond 5 x 4 (a pad two tiles square by its east side, two outlets a tile
+// 4. The map's border (#269).
+console.log('The map\'s border');
+/** Each top vertex's colour drawn by a land in a look, by its place (the country beyond's apart). */
+function topColours(look: LandLook, Land: typeof PaintedLand = PaintedLand) {
+  const a = new Adder(), l = new Land(a, makeLand(), look), apron = (l as unknown as { apron: THREE.Mesh }).apron;
+  const land = new Map<string, number[]>(), beyond = new Map<string, number[]>();
+  for (const m of a.live) {
+    const g = m.geometry, pos = g.getAttribute('position'), nrm = g.getAttribute('normal'), col = g.getAttribute('color');
+    for (let i = 0; i < pos.count; i++) {
+      if (nrm.getY(i) < 0.5) continue;
+      (m === apron ? beyond : land).set(`${pos.getX(i).toFixed(3)},${pos.getZ(i).toFixed(3)}`, [col.getX(i), col.getY(i), col.getZ(i)]);
+    }
+  }
+  return { land, beyond };
+}
+const drawn = topColours(LAND_LOOK);
+/** How far (tiles) a place is out of the map (less than 0: in it), as its key has it. */
+const outOfMap = (key: string) => {
+  const [x, z] = key.split(',').map(Number), px = (x - X0) / TILE, py = (z - Z0) / TILE, m = map.map;
+  const ox = Math.max(m.x - px, px - (m.x + m.width)), oy = Math.max(m.y - py, py - (m.y + m.height));
+  return ox > 0 || oy > 0 ? Math.hypot(Math.max(0, ox), Math.max(0, oy)) : Math.max(ox, oy);
+};
+const diff = (p: number[], q: number[]) => Math.max(...p.map((v, k) => Math.abs(v - q[k])));
+// The map's tiles not dulled, to their very edge: as a land whose country isn't dull has them.
+const bright = topColours({ ...LAND_LOOK, beyond: { light: 1, chroma: 1 } });
+{
+  let worst = 0, n = 0;
+  for (const [key, c] of drawn.land) if (outOfMap(key) <= 1e-9) { worst = Math.max(worst, diff(c, bright.land.get(key)!)); n++; }
+  check('the map\'s tiles not dulled, to their very edge', n > 100 && worst < 1e-6, `${worst} off, over ${n}`);
+}
+/**
+ * The land drawn as dull as the country everywhere, map and all: whatever the land dulls by place (its paint, the water's
+ * beds) fully dulled, by the country's dullness itself, not as much as the fade has it (so a fade drawn weaker or stronger
+ * than it means shows).
+ */
+type Painter = { dull(c: THREE.Color): void };
+const allDull = topColours(LAND_LOOK, class extends (PaintedLand as unknown as new (...a: unknown[]) => Painter) {
+  dullBy(c: THREE.Color) { this.dull(c); }
+} as unknown as typeof PaintedLand);
+const land0 = new PaintedLand(new Adder(), makeLand());
+const meant = (px: number, py: number) => (land0 as unknown as { dullness(px: number, py: number): number }).dullness(px, py);
+/**
+ * How much of the country's dullness a top took, read off the colour drawn: where it sits between how it's drawn not
+ * dulled (`bright`) and fully dulled (`allDull`), 0 to 1; NaN where the two are too alike to tell.
+ */
+const tookDull = (key: string, c: number[]) => {
+  const b = bright.land.get(key)!, f = allDull.land.get(key)!;
+  const span = f.map((v, k) => v - b[k]), len = span.reduce((s, v) => s + v * v, 0);
+  return len < 1e-8 ? NaN : span.reduce((s, v, k) => s + v * (c[k] - b[k]), 0) / len;
+};
+/**
+ * The tops a band (tiles out of the map) holds: how dull each was drawn, and how dull the land means it. Not those within
+ * a cell of the country beyond's grid of the land's outer edge, whose colour runs to the country beyond's there.
+ */
+const band = (from: number, to: number) => {
+  const out: { took: number; meant: number }[] = [], reach = map.beyond!.cell / TILE;
+  for (const [key, c] of drawn.land) {
+    const d = outOfMap(key), [x, z] = key.split(',').map(Number), px = (x - X0) / TILE, py = (z - Z0) / TILE;
+    if (d < from || d >= to || Math.min(px, W - px, py, H - py) < reach) continue;
+    const took = tookDull(key, c);
+    if (!Number.isNaN(took)) out.push({ took, meant: meant(px, py) });
+  }
+  return out;
+};
+{
+  // Past the fade (it ends at most 3.35 tiles out), every top drawn fully dull.
+  const past = band(3.5, Infinity), worst = Math.max(...past.map((t) => Math.abs(1 - t.took)));
+  check('the country past the fade drawn fully dull', past.length > 100 && worst < 1e-4, `${worst} short, over ${past.length}`);
+}
+{
+  // In the fade, each top drawn as dull as the land means it: the fade is what's painted, not only worked out.
+  const fade = band(0, 3.5), worst = Math.max(...fade.map((t) => Math.abs(t.took - t.meant)));
+  check('the fade\'s tops drawn as dull as it means', fade.length > 100 && worst < 1e-4, `${worst} off, over ${fade.length}`);
+}
+{
+  // The water's beds dulled by place as the land round them is, read on their own: where a top is all bed (deep, no
+  // shingle), it's the bed's colour as a land not dulled draws it, taken as far to the country's dullness as the fade has
+  // it there (the dullness worked out here, not by the land).
+  const shore = (land0 as unknown as { shore: { depth(tx: number, ty: number, px: number, py: number): number } }).shore;
+  const { light, chroma } = LAND_LOOK.beyond, reach = map.beyond!.cell / TILE;
+  const dulled = (c: number[]) => { const y = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; return c.map((v) => (y + (v - y) * chroma) * light); };
+  let worst = 0, n = 0, out = 0;
+  for (const [key, c] of drawn.land) {
+    const [x, z] = key.split(',').map(Number), px = (x - X0) / TILE, py = (z - Z0) / TILE;
+    const tx = Math.min(W - 1, Math.floor(px)), ty = Math.min(H - 1, Math.floor(py));
+    if (shore.depth(tx, ty, px, py) < 0.5 || Math.min(px, W - px, py, H - py) < reach) continue;
+    const b = bright.land.get(key)!, d = dulled(b), k = meant(px, py);
+    worst = Math.max(worst, diff(c, b.map((v, i) => v + (d[i] - v) * k)));
+    n++; if (k > 0.5) out++;
+  }
+  check('the water\'s beds as dull as the land round them', n > 50 && out > 20 && worst < 1e-5, `${worst} off, over ${n} (${out} more than half dull)`);
+}
+/** How bright the tops are, on average, at d (tiles) out of the map. */
+const brightness = (from: number, to: number) => {
+  let s = 0, n = 0;
+  for (const [key, c] of drawn.land) { const d = outOfMap(key); if (d >= from && d < to) { s += c[0] + c[1] + c[2]; n++; } }
+  return s / n;
+};
+const [inMap, firstTile, pastFade] = [brightness(-3, -1.5), brightness(0.75, 1.25), brightness(3.5, 5)];
+check('a tile out, between the map\'s brightness and the country\'s', firstTile < inMap && firstTile > pastFade, `${inMap.toFixed(3)}, ${firstTile.toFixed(3)}, ${pastFade.toFixed(3)}`);
+{
+  // The fade's outer edge wanders: the tops a tile and a half out, round the map, drawn some fully dull and some barely.
+  const at = band(1.25, 1.75).map((t) => t.took), lo = Math.min(...at), hi = Math.max(...at);
+  check('the fade\'s outer edge wanders along the map\'s sides', at.length > 20 && hi - lo > 0.3, `${lo.toFixed(2)} to ${hi.toFixed(2)} over ${at.length} tops a tile and a half out`);
+}
+{
+  // Every point of the land's outer edge as the country beyond draws it there: straight between its vertices on the edge.
+  // Each side: where a point on it is across (x, or z) and along it.
+  const sides = [[0, X0], [0, X0 + W * TILE], [1, Z0], [1, Z0 + H * TILE]].map(([k, at]) => ({
+    on: (x: number, z: number) => Math.abs([x, z][k] - at) < 1e-6, along: (x: number, z: number) => [z, x][k],
+  }));
+  let worstEdge = 0, n = 0;
+  for (const { on, along } of sides) {
+    const grid = [...drawn.beyond].map(([key, c]) => [key.split(',').map(Number), c] as const)
+      .filter(([[x, z]]) => on(x, z)).map(([[x, z], c]) => [along(x, z), c] as const).sort((p, q) => p[0] - q[0]);
+    for (const [key, c] of drawn.land) {
+      const [x, z] = key.split(',').map(Number);
+      if (!on(x, z)) continue;
+      const s = along(x, z), i = grid.findIndex(([g], k) => k + 1 < grid.length && g <= s + 1e-6 && grid[k + 1][0] >= s - 1e-6);
+      if (i < 0) { worstEdge = Infinity; continue; }
+      const [s0, c0] = grid[i], [s1, c1] = grid[i + 1], t = (s - s0) / (s1 - s0);
+      worstEdge = Math.max(worstEdge, diff(c, c0.map((v, k) => v + (c1[k] - v) * t)));
+      n++;
+    }
+  }
+  check('the country beyond and the land one colour all along where they meet', n > 100 && worstEdge < 1e-5, `${worstEdge} off, over ${n} points`);
+}
+land0.dispose();
+
+// 5. The shores: a flat land 24 x 20 at level 2, a pond 5 x 4 (a pad two tiles square by its east side, two outlets a tile
 // wide from its south side, one straight, one turning as it leaves its corner), a river a tile wide stepping down to the south-east, a lone tile of water; the water's sheet under its tiles' level as the game lays it.
 console.log('The shores');
 const SW = 24, SH = 20, FLAT = 2, WATER_DOWN = 0.48;
@@ -373,12 +537,37 @@ const wet = (x: number, y: number) => pond(x, y) || outlet(x, y) || stairs(x, y)
   const raise = { x: 7, y: 9 };
   l.update({ ...raise, width: 1, height: 1 }, { corners: new Float32Array(4).fill((FLAT + 1) * LEVEL), worked: new Uint8Array([1]) });
   while (!l.step(0));
-  const fresh = new PaintedLand(new Adder(), shoreLand(raise)) as unknown as { shore: { field: Float32Array } } & Record<string, Float32Array>;
+  const freshAdder = new Adder(), freshLand = new PaintedLand(freshAdder, shoreLand(raise));
+  const fresh = freshLand as unknown as { shore: { field: Float32Array } } & Record<string, Float32Array>;
   const was = l as unknown as { shore: { field: Float32Array } } & Record<string, Float32Array>;
   check(`an earthwork by the water: its shores and paint as built afresh`, same(was.shore.field, fresh.shore.field) && same(was.paint, fresh.paint));
+  // And what's drawn: every vertex's place, facing and colour (the chunks painted again for it, none missed). Chunks
+  // meeting at a place each draw a vertex there, so each place's colours are compared together.
+  const drawnBy = (a: Adder) => {
+    const out = new Map<string, number[][]>();
+    for (const m of a.live) {
+      const pos = m.geometry.getAttribute('position'), nrm = m.geometry.getAttribute('normal'), col = m.geometry.getAttribute('color');
+      // (Only the vertices a triangle uses: the country beyond's grid has points under the land, in no triangle.)
+      for (const i of new Set(m.geometry.getIndex()!.array)) {
+        const key = [pos.getX(i), pos.getY(i), pos.getZ(i), nrm.getX(i), nrm.getY(i), nrm.getZ(i)].map((v) => v.toFixed(3)).join();
+        out.set(key, [...(out.get(key) ?? []), [col.getX(i), col.getY(i), col.getZ(i)]]);
+      }
+    }
+    for (const cs of out.values()) cs.sort((p, q) => p[0] - q[0] || p[1] - q[1] || p[2] - q[2]);
+    return out;
+  };
+  const after = drawnBy(sAdder), afresh = drawnBy(freshAdder);
+  let missing = 0, worst = 0;
+  for (const [key, cs] of afresh) {
+    const os = after.get(key);
+    if (!os || os.length !== cs.length) { missing++; continue; }
+    cs.forEach((c, k) => { worst = Math.max(worst, ...c.map((v, i) => Math.abs(v - os[k][i]))); });
+  }
+  check(`and drawn as built afresh`, missing === 0 && after.size === afresh.size && worst < 1e-6, `${missing} of ${afresh.size} places not drawn so (${after.size} drawn), colours ${worst} apart`);
+  freshLand.dispose();
 }
 
-// 5. Refused: corners that aren't whole levels.
+// 6. Refused: corners that aren't whole levels.
 let threw = false;
 try { new PaintedLand(new Adder(), { ...makeLand(), corners: new Float32Array(W * H * 4).fill(0.5) }); } catch { threw = true; }
 check('corners that aren\'t whole levels are refused', threw);

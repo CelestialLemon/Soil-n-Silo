@@ -58,8 +58,14 @@ country the game draws round it in tiles too, then `beyond`, a coarse grid of he
   floor have their own colours; the ground kind tints them a little (clay warmer, sand paler, stony greyer). The season
   turns the greens as it does everywhere.
 - **The country.** The tiles off the map are drawn the same, clearly duller (`LandLook.beyond`, the developer's pick), so
-  the edge of the buildable map reads. Past them, `beyond` is a coarse floor of distant woods out to the horizon; the
-  land's outer edge is skirted down 3 m so no crack shows where they meet.
+  the edge of the buildable map reads. The dullness comes in by place just outside the map (Soil-n-Silo#269), reaching
+  full about one to three tiles out, its outer edge wandering along the map's sides like a brush's; the map's own
+  tiles keep their colour, to their very edge.
+  Past the tiles, `beyond` is a coarse floor of distant woods out to the horizon. It starts from the land's own colour
+  where it meets the land's edge and fades to the woods' floor over three of its cells; and since its cells are 16 m and
+  run straight between their corners, the land's last cell in from its edge is taken towards that same straight run, so
+  the two meet in one colour all along the edge and no seam shows there in any season. The land's outer edge is skirted
+  down 3 m so no crack shows where they meet.
 - **Chunks.** The land is meshes of 8 by 8 tiles, each cut into the renderer's tiles so a pass draws only what it sees.
 
 ## Earthworks without a hitch
@@ -78,8 +84,8 @@ to do). Nothing on screen changes in that call. Over the next frames, about `STE
 3. The following frames paint those chunks again, a few a frame.
 4. Once all are painted, they're swapped in at once, so the land never shows half an earthwork. The things that read the
    ground (the shelter's map, the hollows where thin snow lies, the clouds' map, `landAt`'s grid) are refreshed once for
-   the whole swap, over the changed area only where they can be. If the land's outer edge moved, the country beyond's mesh
-   is made again to meet it.
+   the whole swap, over the changed area only where they can be. If the land changed by its outer edge, the country
+   beyond's mesh is made again to meet it, in shape and colour.
 
 No piece of work is cut short, so a frame goes over 3 ms by the piece it ends on: the longest, one chunk painted or the
 fit set up or finished, take 2 to 5 ms once warm (commission 8's land, in Node). The first earthwork of a session takes
