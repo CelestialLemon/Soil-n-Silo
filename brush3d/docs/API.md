@@ -149,7 +149,7 @@ r.updateLand({ x, y, width, height }, { corners, worked, cover, ground });   // 
   metres) its height or paint may have changed, as the frame that first draws it begins (`setLand` calls back at once,
   with the old land's area and the new one's); it returns a function that stops the calls. `r.landAhead` is true while
   `landAt` already answers for an earthwork's new ground that isn't drawn yet (fitted, its chunks still being painted;
-  `landColourAt` too, for the shores' banks and beds there):
+  `landColourAt` and `bedAt` too, for the shores' banks and beds there):
   the game's grass (#256) isn't made again meanwhile, and the blocks whose ground moved are hidden at the swap and made
   again, never left floating over the old ground. The rules go on asking `relief.ts`.
 - Not yet: the cuts models need where they stand (the water wheel's race in its bank, `wheelRace` in the catalogue).

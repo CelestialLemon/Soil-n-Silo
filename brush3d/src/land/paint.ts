@@ -444,8 +444,9 @@ export class PaintedLand {
    * land), the shingle from SHINGLE_FROM, the bed proper deeper. While an earthwork is `ahead`, the new ground's.
    */
   bedAt(x: number, z: number): number {
-    const px = (x - this.x0) / this.tile, py = (z - this.z0) / this.tile;
-    if (px < 0 || py < 0 || px > this.width || py > this.height) return 0;
+    // (Bounded in metres: a point on the land's very edge mustn't round past it, as tiles.)
+    if (x < this.x0 || z < this.z0 || x > this.x0 + this.width * this.tile || z > this.z0 + this.height * this.tile) return 0;
+    const px = Math.min(this.width, (x - this.x0) / this.tile), py = Math.min(this.height, (z - this.z0) / this.tile);
     return this.sunk(px, py) / BED;
   }
 

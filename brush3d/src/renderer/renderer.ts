@@ -956,6 +956,7 @@ export class BrushRenderer {
   /**
    * How deep the bed of the water's shores lies at a point of the world (m), as drawn (setLand's): 0 to 1 of its deepest,
    * 0 on dry ground; the ground is drawn as dry bank (no shingle, no bed) below `BANK_DRY` (shared.ts). 0 before there's a land.
+   * While `landAhead`, the new ground's, as landAt's.
    */
   bedAt(x: number, z: number): number { return this.painted?.bedAt(x, z) ?? 0; }
 

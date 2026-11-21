@@ -274,6 +274,10 @@ check('and drawn: the raised tiles\' tops at their level', drawnNow.some((t) => 
 console.log('The country beyond');
 const edgeX = X0 + W * TILE, mid = Z0 + 10 * TILE;
 check('it meets the land\'s edge', Math.abs(land.heightAt(edgeX + 1e-6, mid) - land.heightAt(edgeX - 1e-6, mid)) < 1e-3);
+// bedAt on the land's very edge reads the land, without rounding past it (Soil-n-Silo#290); beyond it, no bed.
+const edgeZ = Z0 + H * TILE, edgeBed = [land.bedAt(edgeX, mid), land.bedAt(X0 + 3 * TILE, edgeZ), land.bedAt(edgeX, edgeZ)];
+check('bedAt on the land\'s very edge: a depth from 0 to 1', edgeBed.every((d) => Number.isFinite(d) && d >= 0 && d <= 1), JSON.stringify(edgeBed));
+check('and just past it, none', land.bedAt(edgeX + 1e-3, mid) === 0 && land.bedAt(X0 - 1e-3, mid) === 0 && land.bedAt(mid, edgeZ + 1e-3) === 0);
 const b = map.beyond!, gx = b.x0 + 18 * b.cell, gz = b.z0 + 2 * b.cell;
 check('further out, the grid\'s heights', Math.abs(land.heightAt(gx, gz) - b.height[2 * b.nx + 18]) < 1e-5, `${land.heightAt(gx, gz)} for ${b.height[2 * b.nx + 18]}`);
 

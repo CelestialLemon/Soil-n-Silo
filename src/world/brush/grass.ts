@@ -3,12 +3,12 @@ import {
   addFlower, addReeds, addTuft, groundOf, MeshBuilder, noise2, rng, smooth, srgb, wheelRace,
   type BrushRenderer, type Ground, type LandArea, type ReedOptions,
 } from '../../../brush3d/src/index.ts';
-import { TERRAIN, type Land } from '../../game/map.ts';
-import { layoutOf, terrainAt, type GameState } from '../../game/state.ts';
+import type { Land } from '../../game/map.ts';
+import { layoutOf, type GameState } from '../../game/state.ts';
 import type { Lie } from '../ground.ts';
 import {
   blockOf, boxesIn, dryBank, FLOWER_PROFILE, FLOWER_SEASONS, flowersBloom, fringeFade, GRASS_FRINGE, GRASS_PROFILE, grassBlocks, grassLayout,
-  inBuilding, layoutChanges, MAX_REED_REACH, REED_PROFILE, REED_SEASONS, REED_TOP, reedBand, reedShore, reedSpot,
+  inBuilding, layoutChanges, MAX_BLADE_REACH, MAX_REED_REACH, REED_PROFILE, REED_SEASONS, REED_TOP, reedBand, reedShore, reedSpot,
   tileHabitat, tileSeed, wetDistance,
   type FlowerSeason, type FootprintBox, type GrassBlockRect, type GrassLayout, type ReedSeason, type TileHabitat,
 } from './grassMask.ts';
@@ -135,15 +135,20 @@ export class Meadow {
   }
 
   /**
-   * Whether the meadow's grass may grow at (x, z) m over a water tile of the map: a curving shore's dry bank there, as
-   * the meadow places it (`grows`, #290). For telling a tuft there from a willow's low branch over the water in a pick
-   * (tools.ts).
+   * Whether a tuft or a bloom of the meadow's on show by the water stands within a blade's reach (MAX_BLADE_REACH) of
+   * (x, z) m: on a curving shore's bank its grass may lean out over a water tile (#290). For telling it from a willow's
+   * low branch over the water in a pick (tools.ts), as reedTopAt tells the reeds.
    */
-  bankAt(s: GameState, x: number, z: number): boolean {
-    const tx = Math.floor(x / TILE), ty = Math.floor(z / TILE);
-    if (tx < 0 || ty < 0 || tx >= s.map.width || ty >= s.map.height || terrainAt(s, tx, ty) !== TERRAIN.water) return false;
-    const hab = tileHabitat(s, this.land, this.lie.relief, this.wetDist, tx, ty, true);
-    return !!hab && this.grows(hab, tx, ty, boxesIn(s, tx, ty, tx + 1, ty + 1), x, z);
+  bankAt(x: number, z: number): boolean {
+    const R = MAX_BLADE_REACH, ids = new Set<number>();
+    for (const wx of [x - R, x + R]) for (const wz of [z - R, z + R]) ids.add(blockOf(Math.floor(wx / TILE), Math.floor(wz / TILE)));
+    for (const id of ids) {
+      // (Only a block's grass on show: none while it's hidden, waiting to be made again, or stepped aside.)
+      const b = this.blocks.get(id), c = b?.banks;
+      if (!c || !(b.grass?.visible || b.flowers?.visible)) continue;
+      for (let i = 0; i < c.length; i += 2) if ((c[i] - x) ** 2 + (c[i + 1] - z) ** 2 < R * R) return true;
+    }
+    return false;
   }
 
   /**
@@ -311,10 +316,16 @@ export class Meadow {
     onMap: boolean,
     boxes: readonly FootprintBox[],
     fade: number,
+    banks: number[],
   ) {
     const hab = tileHabitat(s, this.land, this.lie.relief, this.wetDist, tx, ty, onMap);
     if (!hab) return;
-    const canPlace = (wx: number, wz: number) => this.grows(hab, tx, ty, boxes, wx, wz);
+    // (Each spot that takes a plant by the water noted in `banks`, for bankAt.)
+    const canPlace = (wx: number, wz: number) => {
+      const ok = this.grows(hab, tx, ty, boxes, wx, wz);
+      if (ok && hab.wet) banks.push(wx, wz);
+      return ok;
+    };
     this.scatterGrass(grass, tx, ty, hab, canPlace, fade);
     if (flowers) this.scatterFlowers(flowers, tx, ty, hab, canPlace, fade);
   }
@@ -460,16 +471,17 @@ export class Meadow {
     const boxes = boxesIn(s, rect.x0, rect.y0, rect.x1, rect.y1);
     const grass = new MeshBuilder('grass');
     const flowers = this.flowering ? new MeshBuilder('foliage') : null;
-    const reeds = new MeshBuilder('grass'), clumps: number[] = [];
+    const reeds = new MeshBuilder('grass'), clumps: number[] = [], banks: number[] = [];
     for (let y = rect.y0; y < rect.y1; y++) for (let x = rect.x0; x < rect.x1; x++) {
       const fade = fringeFade(x, y, w, h, this.reach);
       if (fade <= 0) continue;
       const onMap = x >= 0 && y >= 0 && x < w && y < h;
-      this.scatterTile(grass, flowers, s, x, y, onMap, boxes, fade);
+      this.scatterTile(grass, flowers, s, x, y, onMap, boxes, fade, banks);
       this.scatterReeds(reeds, clumps, s, x, y, onMap, boxes, fade);
     }
     // Culled whole (not cut into tiles: a block is small, and made again often). The flowers keep no rain off (cover).
     if (grass.vertexCount) block.grass = this.r.add(grass.build(), 'grass', { cull: true, castShadow: false, reflect: false });
+    if (banks.length) block.banks = Float32Array.from(banks);
     if (flowers?.vertexCount) block.flowers = this.r.add(flowers.build(), 'foliage', { cull: true, castShadow: false, reflect: false, cover: 'none' });
     // The reeds stand in the water, so they show in it.
     if (reeds.vertexCount) {
@@ -486,5 +498,8 @@ export class Meadow {
   }
 }
 
-/** A block's grass, flowers and reeds, as made, where its reeds' clumps stand (x, z m), and the land's height under it then. */
-interface Block { grass?: THREE.Mesh; flowers?: THREE.Mesh; reeds?: THREE.Mesh; clumps?: Float32Array; heights: Float32Array }
+/**
+ * A block's grass, flowers and reeds, as made, where its reeds' clumps stand and its tufts and blooms by the water (x, z m),
+ * and the land's height under it then.
+ */
+interface Block { grass?: THREE.Mesh; flowers?: THREE.Mesh; reeds?: THREE.Mesh; clumps?: Float32Array; banks?: Float32Array; heights: Float32Array }
