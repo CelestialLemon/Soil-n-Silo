@@ -105,11 +105,11 @@ test('the new looks\' crowns cover no more than before, no stroke is bigger, and
 test('every crown in the new looks stands on its trunk: thin upright strokes from its foot up into it, a bare wood\'s limbs forking', () => {
   for (const mode of ['frosted', 'misty'] as const) for (const season of SEASONS) for (const species of SPECIES) {
     const g = wood(species, season, mode), pos = g.getAttribute('position'), card = g.getAttribute('aCard'), paint = g.getAttribute('aPaint');
-    const trunks = new Map<string, { spans: [number, number][]; limbs: number; leans: number[]; top: number; forks: number[] }>();
+    const trunks = new Map<string, { spans: [number, number][]; limbs: number; seconds: number; leans: number[]; top: number; forks: number[] }>();
     for (let i = 0; i < card.count; i += 4) {
       if (!isWood(g, i)) continue;
       const key = `${pos.getX(i).toFixed(3)},${pos.getZ(i).toFixed(3)}`;
-      const t = trunks.get(key) ?? { spans: [], limbs: 0, leans: [], top: 0, forks: [] };
+      const t = trunks.get(key) ?? { spans: [], limbs: 0, seconds: 0, leans: [], top: 0, forks: [] };
       // A limb's strokes are rooted (ROOTED_TURN, once for its first, twice for its second); the trunk's aren't.
       const k = Math.floor(paint.getZ(i) / ROOTED_TURN), turn = paint.getZ(i) - k * ROOTED_TURN;
       assert.ok(Math.abs(turn - Math.PI / 2) < 0.85 && paint.getY(i) <= Math.fround(0.2), `${mode} ${species} in ${season}: a thin, upright stroke`);
@@ -120,6 +120,17 @@ test('every crown in the new looks stands on its trunk: thin upright strokes fro
       } else {
         assert.ok(k === 1 || k === 2, `${mode} ${species} in ${season}: a limb's stroke ${k}`);
         if (k === 1) { t.limbs++; t.leans.push(turn - Math.PI / 2); t.forks.push(pos.getY(i)); }
+        // A limb's strokes come in pairs, one after the other: the second from the same point, at the same turn, size and
+        // seed, so the shader lays it on from where the first ends.
+        if (k === 2) {
+          t.seconds++;
+          const j = i - 4;
+          assert.ok(j >= 0 && Math.floor(paint.getZ(j) / ROOTED_TURN) === 1, `${mode} ${species} in ${season}: a limb's second stroke alone`);
+          for (const [a, b] of [[pos.getX(i), pos.getX(j)], [pos.getY(i), pos.getY(j)], [pos.getZ(i), pos.getZ(j)],
+            [paint.getZ(i) - ROOTED_TURN, paint.getZ(j)], [card.getZ(i), card.getZ(j)], [card.getW(i), card.getW(j)]]) {
+            assert.ok(Math.abs(a - b) < 1e-5, `${mode} ${species} in ${season}: a limb's strokes apart`);
+          }
+        }
       }
       trunks.set(key, t);
     }
@@ -134,6 +145,7 @@ test('every crown in the new looks stands on its trunk: thin upright strokes fro
     const forks = season === 'winter' && species !== 'pine';
     for (const t of trunks.values()) {
       assert.ok(forks ? t.limbs >= 2 : t.limbs === 0, `${mode} ${species} in ${season}: ${t.limbs} limbs`);
+      assert.equal(t.seconds, t.limbs, `${mode} ${species} in ${season}: each limb two strokes`);
       if (!forks) continue;
       // They fork out both ways from the trunk's upper part (a Y, not an X: Neon's review of #280), each from a point on it.
       assert.ok(Math.min(...t.leans) < -0.2 && Math.max(...t.leans) > 0.2, `${mode} ${species} in ${season}: limbs leaning ${t.leans.map((l) => l.toFixed(2)).join(", ")}`);

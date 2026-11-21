@@ -124,7 +124,7 @@ function wood(
     // were, they crossed in an X: a broomstick (Gemini 4 Neon's review of #280). Each two strokes end to end, so it's no
     // thicker than the trunk. Lighter as they thin.
     const side = i % 2 ? -1 : 1, lean = side * spread * (i < 2 ? 0.6 + 0.2 * rand() : 0.12 + 0.1 * rand());
-    const len = radius * (0.38 + 0.08 * rand()) / 2, p = new THREE.Vector3(x, y + height * (0.62 + 0.1 * i), z);
+    const len = radius * (0.46 + 0.1 * rand()) / 2, p = new THREE.Vector3(x, y + height * (0.62 + 0.1 * i), z);
     const n = facing(), turn = seed(), c = bark.clone().offsetHSL(0, 0, 0.05 + (rand() - 0.5) * 0.03);
     for (let k = 1; k <= 2; k++) addDab(b, p, n, c.clone().offsetHSL(0, 0, 0.02 * (k - 1)), len, turn, paint(lean, k * ROOTED_TURN));
   }

@@ -297,7 +297,8 @@ void main() {
 export { CRISP_EDGE, STIFF_STROKE };
 
 /**
- * Foliage dabs: each card is a quad centred on `position`, turned to face whichever camera draws it (the view or the sun),
+ * Foliage dabs: each card is a quad centred on `position` (a rooted stroke's moved along its length: ROOTED_TURN, dabs.ts),
+ * turned to face whichever camera draws it (the view or the sun),
  * so the sun's shadow map sees the same clumps the eye does. `normal` is the canopy's (the crown's form and the branch
  * mass's), so a whole crown shades as a few lumps rather than as many pads.
  * aCard: the corner (-1..1), the dab size in metres, and a seed. aPaint.y: the dab's width over its length (1 round, less
@@ -323,7 +324,9 @@ void main() {
   float spin = aPaint.z - rooted * ${ROOTED_TURN.toFixed(6)};
   float a = spin >= 0.0 ? spin + (aCard.w - 0.5) * 0.7 : aCard.w * 6.2831853;
   float shift = rooted > 0.0 ? ${ROOTED_SHIFT.toFixed(2)} + ${ROOTED_STEP.toFixed(2)} * (rooted - 1.0) : 0.0;
-  vec2 c = mat2(cos(a), sin(a), -sin(a), cos(a)) * (aCard.xy + vec2(shift, 0.0));
+  mat2 turned = mat2(cos(a), sin(a), -sin(a), cos(a));
+  // Where the corner is drawn (moved, if rooted), and where it lies in the card (for its shading, the same for any stroke).
+  vec2 c = turned * (aCard.xy + vec2(shift, 0.0)), own = turned * aCard.xy;
   vec4 wc = modelMatrix * vec4(position, 1.0);
   vec3 rest = wc.xyz + (right * c.x + up * c.y) * aCard.z;
   // Wind: the crown moves with its tree (see treeWind and drawnShift); each dab flutters on its own, faster and wider as the
@@ -348,7 +351,7 @@ void main() {
   vRestPos = rest;
   vNormal = normalize(mat3(modelMatrix) * normal);
   // Each dab bulges towards the viewer a little; kept faint, so turning the camera doesn't relight the crown.
-  vDabNormal = normalize(right * c.x * 0.55 + up * c.y * 0.55 + toCam * 0.45);
+  vDabNormal = normalize(right * own.x * 0.55 + up * own.y * 0.55 + toCam * 0.45);
   vColor = color;
   vPaint = aPaint;
   vCard = aCard;

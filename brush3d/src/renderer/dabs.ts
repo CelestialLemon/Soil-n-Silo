@@ -12,7 +12,9 @@ export const STIFF_STROKE = 4;
  * Added k times, the stroke is the k-th of a line of strokes of its size from that point (a limb thinner than one stroke
  * its length would be: a stroke is a fifth as wide as it's long). */
 export const ROOTED_TURN = 8 * Math.PI;
-/** How far a rooted stroke's card moves along its length, against its size: its mark's foot then lies just below its point. */
-export const ROOTED_SHIFT = 0.8;
-/** How much further each stroke after the first in a rooted line moves, against its size (its marks overlap a little). */
-export const ROOTED_STEP = 1.7;
+/** How far a rooted stroke's card moves along its length, against its size. Its mark (dabShape, materials.ts) reaches about
+ * 0.8 of its card either side, give or take its broken edge's 0.12, so its foot then lies a little below its point. */
+export const ROOTED_SHIFT = 0.6;
+/** How much further each stroke after the first in a rooted line moves, against its size: its marks overlap by about 0.4 of
+ * a card, more than their broken edges take, so the line never parts. */
+export const ROOTED_STEP = 1.2;
