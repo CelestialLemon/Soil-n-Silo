@@ -90,6 +90,8 @@ export class Meadow {
   private palette: THREE.Color[];
   /** #288's comparison: the white and yellow blooms paler (PALE_SWATCHES). */
   private pale: boolean;
+  /** Set when the blooms' swatches change (setPale): every block made again on the next sync. */
+  private repaint = false;
   private readonly flowering: boolean;
   /** The reeds' season, its colours as three.js wants them. */
   private readonly reedSeason: ReedSeason;
@@ -124,12 +126,15 @@ export class Meadow {
     return this.season.palette.map((c) => srgb(pale ? PALE_SWATCHES[c.hex] ?? c.hex : c.hex));
   }
 
-  /** #288's comparison: the white and yellow blooms paler or not, every block made again over the next frames. */
+  /**
+   * #288's comparison: the white and yellow blooms paler or not, the whole meadow made again at once on the next sync (a
+   * moment's hitch on the click, rather than the blooms changing block by block while the button already says the new).
+   */
   setPale(on: boolean) {
     if (on === this.pale) return;
     this.pale = on;
     this.palette = this.paletteOf(on);
-    if (this.flowering) for (const rect of this.grid) this.dirty.add(rect.id);
+    if (this.flowering) this.repaint = true;
   }
 
   /**
@@ -162,6 +167,7 @@ export class Meadow {
       for (const id of dirty) this.queue(id);
     }
     // Not on an earthwork's new ground till it's drawn (the swap's landChanged queues what it moved).
+    if (this.repaint && !this.r.landAhead) { this.repaint = false; this.rebuildAll(s); }
     if ((this.urgent.size || this.dirty.size) && !this.r.landAhead) this.drain(s);
   }
 

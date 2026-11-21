@@ -278,7 +278,8 @@ export class BrushRenderer {
   private readonly nightLights = new NightLights();
   /**
    * How far the wildflowers' blooms (the kit's addFlower) settle into the dark at night (Soil-n-Silo#288): 0 not at all
-   * (the default), 1 fully, at full night a third darker and half as vivid; from dusk, as the lamps come on.
+   * (the default), 1 fully: at full night their paint's lightness cut by 30% and its colour by half (in OKLab, before the
+   * light); from dusk, as the lamps come on.
    */
   bloomsAtNight = 0;
   private windNow: [WindSnapshot, WindSnapshot, number] | null = null;
