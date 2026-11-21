@@ -79,13 +79,13 @@ test('edge margins tighten next to water, rocks and cliffs, not at the playable 
   let fx = -1;
   for (let x = 2; x < w - 2; x++) {
     const li = (-1 + M) * land.width + (x + M);
-    if (land.terrain[li] === TERRAIN.grass && land.track[li] === 0 && s.map.terrain[x] === TERRAIN.grass && tileHabitat(s, land, relief, wet, x, -1, false)) {
-      fx = x; break;
-    }
+    // (Open grass on the map beside it, and no cliff on any side: only the map's edge could narrow its side.)
+    const hab = land.terrain[li] === TERRAIN.grass && land.track[li] === 0 && s.map.terrain[x] === TERRAIN.grass ? tileHabitat(s, land, relief, wet, x, -1, false) : null;
+    if (hab && hab.edgeBoost === 0) { fx = x; break; }
   }
   assert.ok(fx >= 0, 'found grass country fringe tile');
   const fringe = tileHabitat(s, land, relief, wet, fx, -1, false)!;
-  if (fringe.edgeBoost === 0) assert.equal(fringe.maxV, TILE - 0.08, 'no bald strip along the map\'s edge');
+  assert.equal(fringe.maxV, TILE - 0.08, 'no bald strip along the map\'s edge');
 });
 
 test('habitat modifiers: tree skirts boost, deep woods thin, stony/sand thin, winter shortens tufts', () => {
