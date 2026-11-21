@@ -155,13 +155,17 @@ r.updateLand({ x, y, width, height }, { corners, worked, cover, ground });   // 
 ### Water (today; the game's river in #202, floods, ice and mud in #207)
 
 ```ts
-r.setWater({ nx, nz, cell, x0, z0, level, flowX, flowZ, mud, ice }, ease?);
+r.setWater({ nx, nz, cell, x0, z0, level, flowX, flowZ, mud, ice, spread }, ease?);
+r.setFloodEdge(look);   // FloodEdgeLook: how the edge of water that has spread over flat ground is drawn (FLOOD_EDGE_LOOK by default)
 ```
 
 A grid over the land, sent again whenever it changes: per cell the water's surface (metres; `NaN` where dry), its flow
 (m/s along x and z), how muddy (0 clear to 1 brown) and how frozen (0 open, 0.3 a skin and shore ice, 1 frozen over). A
 change eases in over a moment (`ease` seconds; `0` at once, for a level loading), so a rising flood creeps. The river, its
-falls and the ponds are just water in this map, with its flow. `docs/WATER.md` has the detail.
+falls and the ponds are just water in this map, with its flow. `spread` (0..1 a cell, optional) marks where the water has
+spread out of its bed, a flood over the meadow: there its edge on flat ground is drawn by the look `setFloodEdge` sets
+(`FLOOD_EDGE_LOOKS`: `off`, `soft`, `ragged`; Soil-n-Silo#287), rounded and wavering rather than along the tiles, and with
+no pale foam line on the ground under muddy water. `docs/WATER.md` has the detail.
 
 ## Things: buildings, vehicles, props and goods (#203, #204, #205, #206)
 

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CLOUD_LIGHT, GBUFFER_OUT, LIGHT_UNIFORMS, MIRROR_SKY, NOISE, OKLAB, PAINT, SHADOW } from './glsl';
 import { WIND_GLSL } from './wind';
-import { HIDDEN_DIVE, WATER_MAP_GLSL } from './water';
+import { FLOOD_EDGE_LOOK, FLOOD_EDGE_LOOKS, HIDDEN_DIVE, WATER_MAP_GLSL } from './water';
 import { RAIN_RINGS_GLSL } from './rain';
 import { SHELTER_GLSL } from './shelter';
 import { SNOW_GLSL } from './snow';
@@ -74,6 +74,8 @@ export function createSharedUniforms() {
     tIceA: { value: null as THREE.Texture | null },
     tIceB: { value: null as THREE.Texture | null },
     uIceOn: { value: 0 },
+    // How the water's edge is drawn on flat ground (#287): FLOOD_EDGE_LOOKS' index (water.ts).
+    uFloodEdge: { value: FLOOD_EDGE_LOOKS.indexOf(FLOOD_EDGE_LOOK) },
     // The land's square (the ground's, see MeshOptions.fields): its centre's x and z, half its side, its turn. The water
     // stops at its edge (half 0: no edge).
     uLandSquare: { value: new THREE.Vector4(0, 0, 0, 0) },
@@ -268,8 +270,6 @@ ${HEAD}
 varying vec2 vFlow;
 varying float vMud;
 varying vec2 vMirrorShift;
-uniform sampler2D tIceA;
-uniform sampler2D tIceB;
 uniform float uIceOn;
 varying vec3 vIce;
 void main() {
@@ -984,6 +984,8 @@ const WATER_SHEET_GLSL = /* glsl */ `
 uniform vec4 uLandSquare;
 bool sheetHidden(vec3 p, float mud) {
   if (mud < -${HIDDEN_DIVE}) return true;
+  // Past the edge's cut on flat ground (#287, waterEdge).
+  if (uFloodEdge != 0 && waterEdge(p.xz) <= 0.0) return true;
   if (uLandSquare.z <= 0.0) return false;
   vec2 d = p.xz - uLandSquare.xy;
   float c = cos(uLandSquare.w), s = sin(uLandSquare.w);
@@ -1323,6 +1325,9 @@ void main() {
       }
     }
   }
+  // Its edge on flat ground (#287): thinning out to the ground beneath, as the look has it (waterEdge).
+  float edge = waterEdge(vWorldPos.xz);
+  if (edge < 1.0) col = mix(texture(uUnder, uv).rgb, col, edge);
   writeGBuffer(col, n, vViewDepth, 0.0, 1.0);
 }
 `;
@@ -1334,7 +1339,7 @@ layout(location = 1) out vec4 gAux;
 #if defined(MIRROR_CLIP) || defined(WATER_SHEET)
 varying vec3 vWorldPos;
 #endif
-#ifdef MIRROR_CLIP
+#if defined(MIRROR_CLIP) || defined(WATER_SHEET)
 ${WATER_MAP_GLSL}
 #endif
 #ifdef WATER_SHEET

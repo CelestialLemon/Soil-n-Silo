@@ -24,7 +24,7 @@ export { hoursOf, lookAt, PRESETS as HOURS, type HourName, type Look } from './r
 // ---- The weather, the ground and the water ----
 export { WEATHER_PRESETS, type CloudDrift, type Haze, type HazeKind, type Weather, type WeatherName } from './renderer/weather';
 export { GROUND_EASE, type GroundMap } from './renderer/ground';
-export { WATER_EASE, type WaterMap } from './renderer/water';
+export { FLOOD_EDGE_LOOK, FLOOD_EDGE_LOOKS, WATER_EASE, type FloodEdgeLook, type WaterMap } from './renderer/water';
 export type { DustSource } from './renderer/dust';
 
 // ---- The land (docs/LAND.md) ----

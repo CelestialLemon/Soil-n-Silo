@@ -234,6 +234,11 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
   with a faint wet band above it; floating things (the boat) get none. Left out: foam on fast water, milky mud, the
   plain wet band. Known: laying out the farm's 250 × 250 map costs 9 to 20 ms per send (a dropped frame; move it to a
   worker if the game sends big maps often), and the demo's boat doesn't float up in a flood (the game's to move).
+  A flood's edge (Soil-n-Silo#287, in review): on flat ground the shore came out in straight runs and sharp corners
+  along the sheet's triangles, with a pale rim. `setWater`'s `spread` marks where water has spread out of its bed, and
+  there `r.setFloodEdge(look)` draws its edge rounded and wavering, one of `FLOOD_EDGE_LOOKS` for the developer's pick
+  (`soft`, `ragged`; `off`, as before, the renderer's default), with no foam line on the ground under muddy water. The
+  demo's frames are unchanged (it sends no spread). 0.2 to 0.4 ms more on the main pass under a severe flood on c7.
 - **Half-res reflections smear up close.** Soft by design, but edges blur at high zoom. Full size would cost about 2.4 ms
   more at 1080p (#19): not within the budget.
 - **Cloud reflections** (#8, #37): the water and the solar glass mirror the clouds overhead, drifting with them. The

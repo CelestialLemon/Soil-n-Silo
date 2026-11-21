@@ -63,7 +63,11 @@ float gWet = 0.0, gMud = 0.0;
 float wetAt(vec3 p) {
   vec2 g = groundState(p.xz).zw;
   gWet = g.x; gMud = g.y;
-  if (gWet + gMud < 0.004 || (uGroundOn > 1.5 && p.y < waterTop(p.xz))) { gWet = 0.0; gMud = 0.0; return 0.0; }
+  if (gWet + gMud < 0.004) { gWet = 0.0; gMud = 0.0; return 0.0; }
+  float drowned = uGroundOn > 1.5 ? waterOver(p) : 0.0;
+  if (drowned >= 1.0) { gWet = 0.0; gMud = 0.0; return 0.0; }
+  // (By the water's edge, less as more of the water shows: #287.)
+  gWet *= 1.0 - drowned; gMud *= 1.0 - drowned;
 #ifdef AT_GROUND
   // Read a little off the point, by a wobble keyed to the world, so a dry patch's edge is painted, not ruled along the
   // roof's (a fifth of a metre either way).
