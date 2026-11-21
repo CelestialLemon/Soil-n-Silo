@@ -2,7 +2,8 @@
 // the game's flood rule (src/demo/water.ts), and the easing between maps. No browser needed.
 //   npm run render:test:water
 // 1. Laying out: wet cells as sent; the sheet runs on flat for one cell past the last wet one, then dives under the land
-//    (DIVE a cell, at most MAX_DIVE), carrying the nearest water's flow and mud; with no water it lies far under everything.
+//    (DIVE a cell, at most MAX_DIVE), carrying the nearest water's flow, mud and spread (#287); with no water it lies far
+//    under everything.
 // 2. The stand-in's rule: water reaches lower ground it can get to and nothing else (a hollow behind a ridge stays dry
 //    until the ridge is overtopped), never off the land.
 // 3. Easing: halfway through, the sheet is halfway between the two maps; a map sent mid-ease starts from what's drawn.
@@ -47,6 +48,14 @@ const two = { ...map, level: new Float32Array(n).fill(NaN) };
 for (let j = 0; j < nz; j++) { two.level[j * nx + 2] = 1; two.level[j * nx + 6] = 3; }
 const laid2 = layWater(two);
 check('between two waters, the higher', near(laid2.data[(2 * nx + 4) * 4], 3 - DIVE), `${laid2.data[(2 * nx + 4) * 4]}`);
+// Where the water has spread out of its bed (#287): as sent on the wet cells, carried to the dry ones with the higher
+// water's flow and mud, and none with no spread sent.
+const spreadMap = { ...two, spread: new Float32Array(n) };
+for (let j = 0; j < nz; j++) spreadMap.spread[j * nx + 6] = 1;
+const laid3 = layWater(spreadMap), sp = (i: number) => laid3.spread[2 * nx + i];
+check('spread as sent, carried with the higher water', sp(6) === 1 && sp(2) === 0 && sp(4) === 1 && sp(8) === 1 && sp(0) === 0,
+  `${[0, 2, 4, 6, 8].map(sp)}`);
+check('no spread sent, none', laid2.spread.every((v) => v === 0));
 let threw = false;
 try { layWater({ ...map, level: new Float32Array(3) }); } catch { threw = true; }
 check('a map of the wrong size is refused', threw);

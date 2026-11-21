@@ -153,7 +153,7 @@ void main() {
   float land = landTop(vec3(g.x, 0.0, g.y));
   if (land < -1e3) return;
   vec3 sheet = waterSheet(g);
-  float base = sheet.z > -${(HIDDEN_DIVE * 0.5).toFixed(3)} && sheet.x > land ? sheet.x : land;
+  float base = sheet.z > -${(HIDDEN_DIVE * 0.5).toFixed(3)} && sheet.x > land && waterEdge(g) > 0.5 ? sheet.x : land;
   float top = base + column;
   vec3 p = vec3(xz.x, base + h, xz.y);
   // Off the screen: nothing more to do.

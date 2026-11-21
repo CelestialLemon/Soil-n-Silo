@@ -40,6 +40,7 @@ renderer.setWater({
   flowX, flowZ,                  // optional Float32Arrays: the flow per cell, m/s (still water if left out)
   mud,                           // optional Float32Array: 0 clear to 1 brown with silt (clear if left out)
   ice,                           // optional Float32Array: 0 open, about 0.3 ice along the banks, 1 frozen over (#14)
+  spread,                        // optional Float32Array: 1 where the water has spread out of its bed (a flood), 0 in it
 }, ease);                        // seconds to ease in (0.6 by default; 0 at once: a level loading, a screenshot)
 renderer.setWater(null);         // no water
 ```
@@ -51,6 +52,10 @@ renderer.setWater(null);         // no water
 - **Flow** is the water's velocity. It carries the ripples and the glints along; calm water is glassy, fast water busy.
   The stream in the demo runs at 0.35 m/s, 3.5 times that in spate.
 - **Mud** turns the water brown and opaque (see below).
+- **Spread** (Soil-n-Silo#287) marks the cells the water has spread to out of its bed (the game's flood tiles). On a
+  flooded meadow the land is as flat as the water, so the land can't shape the shore: the cloth's flat tile beyond and
+  its dive did, in straight runs and sharp corners along its triangles, with a pale foam line all along. Where water has
+  spread, its edge is drawn instead as `r.setFloodEdge(look)` says (see "How it's drawn"); the river's banks keep theirs.
 - **Ice** is how frozen the water is (see "In plain words"). Whether it's freezing or thawing the renderer tells from
   which way it last moved in each cell, so send it rising while it freezes and falling while it thaws; held, it keeps
   the way it was going. Steps however small add up: it turns once the value comes back from the furthest it went. With
@@ -106,6 +111,19 @@ cover only the cells within one of water (into one buffer per grid, with room fo
   banks whole. Lying snow (the ground's map) dusts it in drifts along the wind. Its look (the developer's pick of three
   on #14): milky by the banks (pale, lit as snow is, streaked along the flow), dark over the channel (the bed faint
   through it, a calm mirror, pale cracks).
+
+- **A flood's edge** (Soil-n-Silo#287, `waterEdgeAt` and `waterShows` in `WATER_MAP_GLSL`). `layWater` carries each wet
+  cell's spread to the dry cells beyond it, as it does the ice, and it rides in the ice textures' last channel beside the
+  shore's distance. The shader reads the distance smoothly between the cells' centres (a quadratic B-spline over the
+  nearest nine), so it's 0 at the wet cells' edge, rounding the corners, plus a noise fixed to the world (at most a sixth
+  of a cell either way), and each wet cell keeps a round pool its own size (a lone flooded tile doesn't thin to nothing).
+  The water shows where that reads above 0: `soft` thins it over the outer half cell into the ground drawn beneath it,
+  `ragged` cuts it crisply. The cut always lies inside the sheet's flat cell beyond, so it never shows the dive. Past it,
+  the ground's rain wetness and snow come back (they were cleared under the whole sheet), wet a little further than the
+  water, and the foam line along the ground goes under muddy water (silt, not foam, at a flood's edge) and fades round
+  things standing in it. Cells two or more from the dry skip the work; a map with no spread water (the grid's fourth
+  number 1, not 2) does none of it. Cost on the dev machine, c7 under a severe flood at 1080p: 0.1 to 0.45 ms more on
+  the main pass (most close up); with no flood, none.
 
 - **The look** (#19, `WATER_FRAG`): the water's colour is the bed seen through it (`through`, by how far the light
   travels in the water), the water's own scattered light, and the mirror, mixed by depth (`fres`: little in the

@@ -346,6 +346,20 @@ vec3 waterline(vec3 color, vec3 p, float dy) {
   if (shown <= 0.0 || h < -0.05 || h > 0.3) return color;
   float top = 0.16 + 0.07 * snoise(p.xz * 2.7 + p.y * 1.3);
   float wet = (1.0 - smoothstep(top * 0.6, top, h)) * smoothstep(-0.05, 0.0, h) * shown;
+  // The water's edge on flat ground (#287, waterEdge): the foam only where the water's drawn, and the ground wet a little
+  // past it; under muddy water no foam along the ground, and less round what stands in it.
+  float edged = 1.0, foamy = 1.0;
+  if (uFloodEdge != 0 && uWaterGrid.w > 1.5) {
+    vec2 e = waterEdgeAt(p.xz);
+    edged = waterShows(e.x, e.y);
+    wet *= waterShows(e.x + 0.7 * uWaterGrid.z, e.y);
+    float silt = clamp(sheet.z, 0.0, 1.0) * clamp(e.y, 0.0, 1.0);
+#ifdef FIELDS
+    foamy = 1.0 - silt;
+#else
+    foamy = 1.0 - 0.6 * silt;
+#endif
+  }
   vec3 lab = linToOklab(color);
   vec3 wetColor = oklabToLin(vec3(lab.x * 0.66, lab.yz * 1.15));
   color = mix(color, wetColor, wet * 0.55);
@@ -356,6 +370,7 @@ vec3 waterline(vec3 color, vec3 p, float dy) {
   // water's level barely changes over a pixel, so it measures the height above it as well.)
   float off = abs(h - 0.01);
   float line = (1.0 - smoothstep(0.025, 0.025 + w, off)) * (1.0 - smoothstep(1.5, 3.0, off / max(dy, 1e-5))) * shown;
+  if (uFloodEdge != 0) line *= edged * foamy;
   // Fainter along the ground's shore than round things standing in the water.
 #ifdef FIELDS
   line *= 0.45;

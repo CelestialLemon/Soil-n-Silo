@@ -114,6 +114,15 @@ options behind a HUD button and a URL option on the PR's preview, and no rules c
   tile, and a tree's crown leaning over the rock still finds the tree. The developer picked the bold look on PR #278:
   crags about 1.4× as tall as the calmer, mossier option, sharper, with talus at every lone or edge tile's foot; the other
   looks and their switch are gone.
+- **A flood's edge (#287, in review):** where a flood spread over the flat meadow its edge followed the tiles, in straight
+  runs and sharp corners with little flat puddles, under a bright pale rim (Gemini 4 Neon's review of Wave 1). The game
+  now tells the renderer which water has spread out of the river (`spread` in the water map), and the renderer draws that
+  water's edge its own way (`r.setFloodEdge`), with two looks up for the developer's pick behind the HUD's **Flood edge**
+  button and `?floodedge=`: `soft` (rounded and wavering, the water thinning out over its last metre or so into the grass,
+  the grass just past it wet; the default on the preview) and `ragged` (the same line, crisp). Both drop the pale foam
+  line along the ground under muddy flood water. `off` is the look before. The flood's rules are unchanged (the same tiles
+  flood, and the water still hides what it drowns), and the river's own banks are unchanged. 0.1 to 0.45 ms more on the
+  main pass with a severe flood on c7 at 1080p; nothing without a flood.
 
 ## One renderer: the swap to brush3d (2026-11-16)
 
