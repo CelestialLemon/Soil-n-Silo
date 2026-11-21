@@ -106,7 +106,11 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
       meadow.sync(s);
       tools.sync(s, f);
     },
-    show: (s, f) => tools.show(s, f),
+    show(s, f) {
+      // The grass and flowers stand aside for the overlays and the build tools' lines (#285).
+      meadow.setDetails(f.details);
+      tools.show(s, f);
+    },
     truckAt: (id) => things.truckAt(id),
     stopLabels: () => tools.stopLabels(),
     netLabels: () => tools.netLabels(),

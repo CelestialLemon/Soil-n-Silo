@@ -195,6 +195,8 @@ its race, they stand in the ice rather than float, and they move with an earthwo
 rooted under the water, which hides what's below its surface, so the taller poke out of the shallows and deep water
 covers them (the developer's call, 2026-11-21). At its height an ordinary flood stands over a metre deep at the river's
 edge, so the river's reeds go mostly under it, the tallest tips showing in places; a severe one covers them all.
+While an overlay or the build or earthwork tools show, the grass and flowers step aside (hidden, not remade), so the
+overlays' tints and the grid read clean; the reeds stay (#285, a Wave 1 follow-up).
 
 Since, for #269 (epic #265, done 2026-11-21): the map's edge is no longer a ruler-straight colour cut. The duller
 country fades in over the first one to three tiles just outside the map, its outer edge wandering like a brush's (the
