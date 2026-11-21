@@ -9,7 +9,7 @@ import type { Lie } from '../ground.ts';
 import {
   blockOf, boxesIn, dryBank, FLOWER_PROFILE, FLOWER_SEASONS, flowersBloom, fringeFade, GRASS_FRINGE, GRASS_PROFILE, grassBlocks, grassLayout,
   inBuilding, layoutChanges, MAX_REED_REACH, REED_PROFILE, REED_SEASONS, REED_TOP, reedBand, reedShore, reedSpot,
-  tileHabitat, tileSeed, wetDistance,
+  tileHabitat, tileSeed, waterSurface, wetDistance,
   type FlowerSeason, type FootprintBox, type GrassBlockRect, type GrassLayout, type ReedSeason, type TileHabitat,
 } from './grassMask.ts';
 import { TILE } from './scale.ts';
@@ -132,6 +132,15 @@ export class Meadow {
       for (let i = 0; i < c.length; i += 2) if ((c[i] - x) ** 2 + (c[i + 1] - z) ** 2 < R * R) return REED_TOP;
     }
     return 0;
+  }
+
+  /**
+   * Whether (x, z) m is a curving shore's dry bank over a water tile, where its grass may grow (#290): for telling a
+   * tuft there from a willow's low branch over the water in a pick (tools.ts). (Water never moves in play.)
+   */
+  bankAt(x: number, z: number): boolean {
+    const M = this.land.margin, surface = waterSurface(this.land, this.lie.relief, Math.floor(x / TILE) + M, Math.floor(z / TILE) + M);
+    return !Number.isNaN(surface) && dryBank(surface, this.r.landAt(x, z));
   }
 
   /**
@@ -294,7 +303,7 @@ export class Meadow {
       if (wx < x0 + hab.minU || wx > x0 + hab.maxU || wz < z0 + hab.minV || wz > z0 + hab.maxV) return false;
       if (boxes.length && inBuilding(boxes, wx, wz, wheelRace)) return false;
       // By the water, on the dry bank as drawn (off the shingle and the bed), wherever the curving shore puts it.
-      if (!dryBank(hab.surface, this.r.landAt(wx, wz))) return false;
+      if (!Number.isNaN(hab.surface) && !dryBank(hab.surface, this.r.landAt(wx, wz))) return false;
       return this.ground.normal(wx, wz).y >= 0.82;
     };
     this.scatterGrass(grass, tx, ty, hab, canPlace, fade);

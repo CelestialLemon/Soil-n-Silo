@@ -186,9 +186,10 @@ test('a pick low over the water or its banks is the reeds where they stand, and 
   const top = GRASS_TOP, reeds = REED_TOP, stalk = (top + reeds) / 2;
   assert.ok(top < stalk && stalk < reeds, 'a reed stands over the grass and flowers');
   assert.equal(grassAt(s, ...mid(water), 0.5, reeds), true, 'a reed over the water');
-  // (The grass grows on a curving shore's dry bank over a water tile too, #290: lower than its tips is the meadow's.)
-  assert.equal(grassAt(s, ...mid(water), top - 0.05, 0), true, 'a blade over the water tile\'s dry bank');
-  assert.equal(grassAt(s, ...mid(water), stalk, 0), false, 'a branch over the water, no reeds there');
+  assert.equal(grassAt(s, ...mid(water), 0.5, 0), false, 'a low branch over the water, no reeds there');
+  // (The grass grows on a curving shore's dry bank over a water tile too, #290: lower than its tips there is the meadow's.)
+  assert.equal(grassAt(s, ...mid(water), top - 0.05, 0, true), true, 'a blade on the water tile\'s dry bank');
+  assert.equal(grassAt(s, ...mid(water), stalk, 0, true), false, 'a branch over the water tile\'s dry bank, no reeds there');
   assert.equal(grassAt(s, ...mid(water), reeds + 0.5, reeds), false, 'a crown over the water');
   assert.equal(grassAt(s, ...mid(grass), stalk, reeds), true, 'a reed over the bank');
   assert.equal(grassAt(s, ...mid(grass), stalk, 0), false, 'a branch over the grass, no reeds there');

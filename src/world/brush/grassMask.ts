@@ -268,13 +268,20 @@ export const CLIFF_MARGIN = 0.85;
 export const WATER_MARGIN = 0.45;
 /**
  * How high (m) over the water's surface the land as drawn (`r.landAt`) stands where grass and flowers grow by the water:
- * off the shingle along the waterline and the bed (brush3d paints them from about 0.4 m above the surface down), but
- * right up to the dry bank, wherever the curving shore puts it (#290). Over the reeds' band (REED_HIGH), so the reeds
- * stand below the grass.
+ * off the shingle along the waterline and the bed (brush3d paints the shingle from where the bank has sunk 6% of its
+ * 1.2 m bed, about 0.41 m over the surface, down), but right up to the dry bank, wherever the curving shore puts it (#290).
+ * Over the reeds' band (REED_HIGH), so the reeds stand below the grass.
  */
-export const GRASS_DRY = 0.38;
+export const GRASS_DRY = 0.42;
 /** Whether grass may stand where the land as drawn is `land` m high, by water whose surface is `surface` m (NaN: none). */
 export const dryBank = (surface: number, land: number) => Number.isNaN(surface) || land >= surface + GRASS_DRY;
+
+/** The surface (m) of the water on land tile (lx, ly) (the land's own, its margin in), or NaN if it's not water. */
+export function waterSurface(land: Pick<Land, 'width' | 'height' | 'terrain'>, relief: Relief, lx: number, ly: number): number {
+  if (lx < 0 || ly < 0 || lx >= land.width || ly >= land.height) return NaN;
+  const li = ly * land.width + lx;
+  return land.terrain[li] === TERRAIN.water ? relief.corner[li * 4] * LEVEL - WATER_DOWN : NaN;
+}
 export const ROCK_MARGIN = 0.35;
 /**
  * Kept strictly above `MAX_BLADE_REACH` so no blade at rest stands in a building's or field's footprint. The wind's sway
@@ -441,19 +448,23 @@ export function tileHabitat(
     return land.terrain[nly * W + nlx];
   };
 
-  // The water round it (and on it): its level, and whether it's at two (a fall).
-  let treesNear = 0, rockNear = false, grassNear = false, level = NaN, fall = false;
-  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-    const nx = tx + dx, ny = ty + dy, k = dx === 0 && dy === 0 ? terrain : kindAt(nx, ny);
+  // The water round it (and on it): its level, and whether it's at two (a fall) within two tiles, as brush3d holds a
+  // shore to the tiles where the water beside it drops.
+  let treesNear = 0, rockNear = false, grassNear = false, level = NaN, fall = false, first = NaN;
+  for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+    const nx = tx + dx, ny = ty + dy, near = Math.abs(dx) <= 1 && Math.abs(dy) <= 1;
+    const k = dx === 0 && dy === 0 ? terrain : kindAt(nx, ny);
     if (k === TERRAIN.water) {
       const nlx = nx + M, nly = ny + M;
       if (nlx < 0 || nly < 0 || nlx >= W || nly >= H) continue;
       const lv = relief.corner[(nly * W + nlx) * 4];
-      if (Number.isNaN(level)) level = lv;
-      else if (lv !== level) fall = true;
-    } else if (k === TERRAIN.tree) treesNear++;
+      if (Number.isNaN(first)) first = lv;
+      else if (lv !== first) fall = true;
+      if (near) level = lv;
+    } else if (!near) continue;
+    else if (k === TERRAIN.tree) treesNear++;
     else if (k === TERRAIN.rock) rockNear = true;
-    else if (k === TERRAIN.grass) grassNear = true;
+    else if (k === TERRAIN.grass && (dx !== 0 || dy !== 0)) grassNear = true;
   }
   // A water tile holds grass only where its shore leaves dry bank beside open grass, never by a fall.
   if (terrain === TERRAIN.water && (!grassNear || fall)) return null;
@@ -554,16 +565,16 @@ export const FLOWER_TOP = FLOWER_PROFILE.flower.lift[0] + FLOWER_PROFILE.flower.
 /**
  * Whether what a pick calls a plant, at (x, z) m and `above` m over the land, is the meadow's grass, flowers or reeds
  * (#256, #266, #267) rather than a tree or a rock: lower than the grass's tips (GRASS_TOP, over the flowers' blooms) or its
- * reeds' `reeds` there, over a tile of open grass or water (the grass grows on a curving shore's dry bank over a water
- * tile too, #290), or off the map. `reeds` is the
+ * reeds' `reeds` there, over a tile of open grass or off the map; over the water, lower than its reeds, or than the grass's
+ * tips on a curving shore's dry bank there (`bank`, grass.ts's `bankAt`, #290). `reeds` is the
  * reeds' top where they stand within a clump's reach of the point, else 0 (grass.ts's `reedTopAt`). brush3d paints the
  * meadow as it does a tree's leaves, so its pick can't tell them apart; the game can. A tree's crown leaning over the next
  * tile stands higher. (A branch hanging lower than the grass's tips over the next tile is taken for the meadow: picked on
  * its crown or its own tile instead.)
  */
-export function grassAt(s: GameState, x: number, z: number, above: number, reeds = 0): boolean {
+export function grassAt(s: GameState, x: number, z: number, above: number, reeds = 0, bank = false): boolean {
   const tx = Math.floor(x / TILE), ty = Math.floor(z / TILE);
   if (tx < 0 || ty < 0 || tx >= s.map.width || ty >= s.map.height) return above < Math.max(GRASS_TOP, reeds);
   const t = terrainAt(s, tx, ty);
-  return (t === TERRAIN.grass || t === TERRAIN.water) && above < Math.max(GRASS_TOP, reeds);
+  return t === TERRAIN.grass ? above < Math.max(GRASS_TOP, reeds) : t === TERRAIN.water && above < Math.max(bank ? GRASS_TOP : 0, reeds);
 }

@@ -78,6 +78,15 @@ test('edge margins tighten next to water, rocks, cliffs, and the playable map ed
   assert.equal(dryBank(nearWater.surface, nearWater.surface + GRASS_DRY - 0.01), false, 'the shingle');
   assert.equal(dryBank(nearWater.surface, nearWater.surface + GRASS_DRY + 0.01), true, 'the dry bank');
   assert.equal(dryBank(NaN, -10), true, 'no water near');
+  // Beside a fall (the water beside it drops a level), brush3d keeps the shore to the tiles: so does the grass.
+  // (Past the tiles round it: the water beside it drops to the next tile out.)
+  const lx = tx + M, ly = ty + M, beyond = ((ly - 2) * land.width + lx) * 4, saved = land.corner.slice(beyond, beyond + 4);
+  s.map.terrain[(ty - 2) * w + tx] = TERRAIN.water;
+  for (let k = 0; k < 4; k++) land.corner[beyond + k] = saved[0] - 1;
+  const byFall = tileHabitat(s, land, relief, wet, tx, ty, true)!;
+  assert.ok(Number.isNaN(byFall.surface) && byFall.minV >= WATER_MARGIN, 'kept off a fall\'s water by the tile');
+  for (let k = 0; k < 4; k++) land.corner[beyond + k] = saved[k];
+  s.map.terrain[(ty - 2) * w + tx] = TERRAIN.grass;
 
   s.map.terrain[ty * w + (tx + 1)] = TERRAIN.rock;
   const nearRock = tileHabitat(s, land, relief, wet, tx, ty, true)!;
