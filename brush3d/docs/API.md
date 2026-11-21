@@ -378,6 +378,10 @@ of one cell covers the whole land, so the game can start with one value for the 
 per-tile maps when #207 adds them. None settles under a roof, and less under a crown: that's the renderer's, from what
 it draws. `docs/GROUND.md` has the detail.
 
+`r.setRockSnow(look)` says how the snow lies on stone (`addStone`, `addCrag`, which mark their paint with `stonePaint`):
+one of `ROCK_SNOW_LOOKS`, Soil-n-Silo#286's comparison (`off`, as on everything else, by default: `ROCK_SNOW_LOOK`;
+`patchy`, `shaded`, `both`; see `renderer/snow.ts`). It takes effect at once.
+
 ## The wind, for the rules and the picture (today; the game's turbines since #208)
 
 The game owns the wind. Its rules step the **gusts** (`WindRecipe`) on their own clock, one of the wind's ticks a game step,

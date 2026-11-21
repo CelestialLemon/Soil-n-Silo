@@ -98,6 +98,10 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
   tilted, its underside pushed into the slope so it never floats, with strata, a muddy foot and moss on its upward faces.
   The game lays them out per rock tile from its neighbours (the bold look, the developer's pick on Soil-n-Silo#278). The
   demo doesn't use it; its frames are unchanged.
+  Snow on stone (Soil-n-Silo#286, in review): `addStone` and `addCrag` mark their paint as stone (`stonePaint`, their
+  brushwork negated, which the shader takes back whole), and `r.setRockSnow(look)` picks how the snow lies on it, one of
+  `ROCK_SNOW_LOOKS` for the developer's pick (`patchy`, `shaded`, `both`; `off`, as before, the renderer's default). The
+  demo's frames are unchanged.
 - **Weather, epic #3** (planned 2026-10-30): season, weather and hour change the whole picture. The decisions are in #3; in
   short, the game owns the weather's state and logic and the renderer only draws it. The order:
   1. #6 performance: measure the frame and set the weather's budget (done 2026-10-30: the farm 17.5 ms on the laptop,

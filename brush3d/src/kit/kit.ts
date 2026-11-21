@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { MeshBuilder, noise2, srgb, type Paint } from './builder.ts';
 import { DRAG, type Obstacle } from '../wind/sim.ts';
-import { CRISP_EDGE } from '../renderer/dabs.ts';
+import { CRISP_EDGE, stonePaint } from '../renderer/dabs.ts';
 import { TREE_BEND, type TreeKind, type TreeSpec } from '../renderer/trees.ts';
 
 // The pieces scenes are built from: the palette, trees, stones, grass, reeds, and lines on the map (streams, paths, fences).
@@ -257,7 +257,7 @@ export function addStone(b: MeshBuilder, ground: Ground, x: number, z: number, s
     w.fromBufferAttribute(p, i).applyMatrix4(m);
     q.fromBufferAttribute(n, i);
     const moss = cy > waterY + 0.05 ? Math.max(0, q.y - 0.35) * 1.2 : 0;
-    b.vertex(w, q, base.clone().lerp(C.moss, Math.min(moss, 0.8)), [0.6, 3, 0.8, 0]);
+    b.vertex(w, q, base.clone().lerp(C.moss, Math.min(moss, 0.8)), [stonePaint(0.6), 3, 0.8, 0]);
   }
   const idx = g.getIndex()!;
   for (let i = 0; i < idx.count; i += 3) b.tri(i0 + idx.getX(i), i0 + idx.getX(i + 1), i0 + idx.getX(i + 2));
@@ -394,7 +394,7 @@ export function addCrag(b: MeshBuilder, ground: Ground, x: number, z: number, op
       const m = Math.min(0.78, moss * smooth(0.36, 0.84, ny) * (0.35 + 0.65 * patch));
       if (m > 0.01) CRAG_COL.lerp(C.moss, m);
     }
-    b.vertex({ x: wx, y: wy, z: wz }, { x: nx, y: ny, z: nz }, CRAG_COL, [0.55, 2.6, 0.8, 0]);
+    b.vertex({ x: wx, y: wy, z: wz }, { x: nx, y: ny, z: nz }, CRAG_COL, [stonePaint(0.55), 2.6, 0.8, 0]);
   }
   for (let i = 0; i < idx.length; i += 3) b.tri(i0 + idx[i], i0 + idx[i + 1], i0 + idx[i + 2]);
 }
