@@ -164,7 +164,9 @@ woods soft pale-grey masses). Both face the strokes mostly up, so they're lit as
 as the near trees do, and in the other seasons shape the pines as cones and the poplars as columns and lift the crowns'
 dark undersides. `off` is the look before. Up close, where the far woods meet the near, a crown was loose strokes floating
 over the ground, so in both looks every far crown now stands on a thin trunk of short upright strokes, and a bare wood's has
-a few limbs forking up into its twigs (frosted's twigs: four times the strokes, smaller). The same draws; on c5 the GPU's
+a few limbs forking up into its twigs (frosted's twigs: four times the strokes, smaller). After Gemini 4 Neon's review the
+limbs grow out from the trunk's upper part into a Y from any side, where they had crossed over it in an X (broomsticks),
+and frosted's twig fan is a little wider. The same draws; on c5 the GPU's
 frame is the same as `off` to 0.4 ms more in frosted, the same in misty.
 
 ## The tools in the painted look (2026-11-16)

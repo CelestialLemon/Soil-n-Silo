@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { addDab, MeshBuilder, rng, srgb } from '../src/kit/builder.ts';
 import { addCanopy, FAR_WOODS_MODES, type FarWoodsMode } from '../src/kit/farWoods.ts';
 import type { Species } from '../src/kit/plants.ts';
-import { STIFF_STROKE } from '../src/renderer/dabs.ts';
+import { ROOTED_TURN, STIFF_STROKE } from '../src/renderer/dabs.ts';
 import { SEASONS, type Season } from '../src/renderer/season.ts';
 
 // The far woods' crowns (brush3d's addCanopy, #268): `off` paints them as before, and the new looks' crown strokes cover no
@@ -105,12 +105,22 @@ test('the new looks\' crowns cover no more than before, no stroke is bigger, and
 test('every crown in the new looks stands on its trunk: thin upright strokes from its foot up into it, a bare wood\'s limbs forking', () => {
   for (const mode of ['frosted', 'misty'] as const) for (const season of SEASONS) for (const species of SPECIES) {
     const g = wood(species, season, mode), pos = g.getAttribute('position'), card = g.getAttribute('aCard'), paint = g.getAttribute('aPaint');
-    const trunks = new Map<string, { spans: [number, number][]; limbs: number }>();
+    const trunks = new Map<string, { spans: [number, number][]; limbs: number; leans: number[]; top: number; forks: number[] }>();
     for (let i = 0; i < card.count; i += 4) {
       if (!isWood(g, i)) continue;
-      const key = `${pos.getX(i).toFixed(3)},${pos.getZ(i).toFixed(3)}`, t = trunks.get(key) ?? { spans: [], limbs: 0 };
-      assert.ok(Math.abs(paint.getZ(i) - Math.PI / 2) < 0.7 && paint.getY(i) <= Math.fround(0.2), `${mode} ${species} in ${season}: a thin, upright stroke`);
-      if (paint.getZ(i) === Math.fround(Math.PI / 2)) t.spans.push([pos.getY(i) - card.getZ(i), pos.getY(i) + card.getZ(i)]); else t.limbs++;
+      const key = `${pos.getX(i).toFixed(3)},${pos.getZ(i).toFixed(3)}`;
+      const t = trunks.get(key) ?? { spans: [], limbs: 0, leans: [], top: 0, forks: [] };
+      // A limb's strokes are rooted (ROOTED_TURN, once for its first, twice for its second); the trunk's aren't.
+      const k = Math.floor(paint.getZ(i) / ROOTED_TURN), turn = paint.getZ(i) - k * ROOTED_TURN;
+      assert.ok(Math.abs(turn - Math.PI / 2) < 0.85 && paint.getY(i) <= Math.fround(0.2), `${mode} ${species} in ${season}: a thin, upright stroke`);
+      if (k === 0) {
+        assert.ok(Math.abs(turn - Math.PI / 2) < 1e-6, `${mode} ${species} in ${season}: an upright trunk`);
+        t.spans.push([pos.getY(i) - card.getZ(i), pos.getY(i) + card.getZ(i)]);
+        t.top = Math.max(t.top, pos.getY(i) + card.getZ(i));
+      } else {
+        assert.ok(k === 1 || k === 2, `${mode} ${species} in ${season}: a limb's stroke ${k}`);
+        if (k === 1) { t.limbs++; t.leans.push(turn - Math.PI / 2); t.forks.push(pos.getY(i)); }
+      }
       trunks.set(key, t);
     }
     // One trunk under each crown, where the crown stands.
@@ -122,7 +132,13 @@ test('every crown in the new looks stands on its trunk: thin upright strokes fro
       for (let k = 1; k < spans.length; k++) assert.ok(spans[k][0] < spans[k - 1][1], `${mode} ${species} in ${season}: a gap in a trunk at ${spans[k][0].toFixed(2)}`);
     }
     const forks = season === 'winter' && species !== 'pine';
-    for (const t of trunks.values()) assert.ok(forks ? t.limbs >= 2 : t.limbs === 0, `${mode} ${species} in ${season}: ${t.limbs} limbs`);
+    for (const t of trunks.values()) {
+      assert.ok(forks ? t.limbs >= 2 : t.limbs === 0, `${mode} ${species} in ${season}: ${t.limbs} limbs`);
+      if (!forks) continue;
+      // They fork out both ways from the trunk's upper part (a Y, not an X: Neon's review of #280), each from a point on it.
+      assert.ok(Math.min(...t.leans) < -0.2 && Math.max(...t.leans) > 0.2, `${mode} ${species} in ${season}: limbs leaning ${t.leans.map((l) => l.toFixed(2)).join(", ")}`);
+      for (const f of t.forks) assert.ok(f > t.spans[0][0] + 1 && f < t.top, `${mode} ${species} in ${season}: a limb from ${f.toFixed(2)}`);
+    }
     // The wood is a sliver of the crown's cost: its cards fill under half the crowns' (and its marks a fifth of its cards).
     const w = measure(g, true), c = measure(g);
     assert.ok(w.fill < 0.5 * c.fill, `${mode} ${species} in ${season}: the wood fills ${(w.fill / c.fill).toFixed(2)} of the crowns`);

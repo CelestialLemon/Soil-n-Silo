@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { addDab, srgb, type MeshBuilder, type Paint } from './builder.ts';
 import type { Species } from './plants.ts';
-import { CRISP_EDGE, STIFF_STROKE } from '../renderer/dabs.ts';
+import { CRISP_EDGE, ROOTED_TURN, STIFF_STROKE } from '../renderer/dabs.ts';
 import type { Season } from '../renderer/season.ts';
 
 // The far woods (`addCanopy`): the country's woods too far off to tell one tree's limbs from another's, a crown of a few
@@ -20,9 +20,10 @@ import type { Season } from '../renderer/season.ts';
 // cones and the poplars as columns, as the near ones are, and lift the crowns' dark undersides; misty also cools and pales
 // them a little, as distance does. The same strokes as before, none bigger, in the same one mesh, but for frosted's bare
 // woods: four times the strokes at a little over two fifths the size, so less to fill (4 × 0.42² ≈ 0.7 of it).
-// Under every crown in both looks, its trunk down to the ground, and a bare wood's limbs forking up into its twigs: up close,
-// where the far woods meet the near, a crown without them read as loose strokes floating over the ground, not a tree. They
-// are a few thin strokes standing upright, facing across, so no snow lies on them and they stay dark against it.
+// Under every crown in both looks, its trunk down to the ground, and a bare wood's limbs forking up and out into its twigs:
+// up close, where the far woods meet the near, a crown without them read as loose strokes floating over the ground, not a
+// tree. They are a few thin strokes standing upright, facing across, so no snow lies on them and they stay dark against it;
+// the limbs grow out from the trunk (rooted strokes, ROOTED_TURN), so they fork into a Y from any side.
 
 export const FAR_WOODS_MODES = ['off', 'frosted', 'misty'] as const;
 /** How the far woods are painted (#268's comparison; the one not picked goes, then this): see above. */
@@ -73,16 +74,17 @@ export function addCanopy(
     return wood(b, x, y, z, radius * 0.75, radius, 0, BARK[mode], rand);
   }
   // Poplars stand as columns, the rest as balls (willows and bushes too: far off, their shapes are lost in the wood's).
-  const tall = species === 'poplar' ? [0.55, 1.35] as const : [1, 1] as const, mid = radius * 1.3 * tall[1];
+  const poplar = species === 'poplar', tall = poplar ? [0.55, 1.35] as const : [1, 1] as const, mid = radius * 1.3 * tall[1];
   if (winter) {
-    // Frosted: thin strokes fanning upwards as twigs do, a third of them darker. Misty: round soft dabs, a haze. Neither
-    // flutters in the wind: they're wood (STIFF_STROKE), as the near trees' twigs are.
+    // Frosted: thin strokes fanning upwards as twigs do, a third of them darker, the fan a little wider than tall (but a
+    // poplar's) and its strokes leaning a little further, as the near trees' crowns spread. Misty: round soft dabs, a haze.
+    // Neither flutters in the wind: they're wood (STIFF_STROKE), as the near trees' twigs are.
     ball(b, x, y, z, radius, BARE[mode][species], misty ? n : 4 * n, rand, misty
       ? { tall, lift: 0.3, shade: -0.03, up: [0.15, 0.45], reach: [0.45, 0.5], paint: () => [0.4 + STIFF_STROKE, 0.6 + rand() * 0.3, -1, 0.3] }
-      : { tall, lift: 0.3, shade: -0.03, up: [0.15, 0.5], reach: [0.3, 0.75], size: 0.42, twig: TWIG,
-        paint: () => [0.5 + STIFF_STROKE + CRISP_EDGE, 0.2 + rand() * 0.1, Math.PI / 2 + (rand() - 0.5) * 1.0, 0.3] });
+      : { tall: poplar ? tall : [1.15, 1], lift: 0.3, shade: -0.03, up: [0.15, 0.5], reach: [0.3, 0.75], size: 0.42, twig: TWIG,
+        paint: () => [0.5 + STIFF_STROKE + CRISP_EDGE, 0.2 + rand() * 0.1, Math.PI / 2 + (rand() - 0.5) * 1.2, 0.3] });
     // Its trunk up into the crown's middle, and limbs forking from there up into the twigs (a poplar's held close).
-    return wood(b, x, y, z, mid, radius, species === 'poplar' ? 2 : 3, BARK[mode], rand);
+    return wood(b, x, y, z, mid, radius, poplar ? 2 : 3, BARK[mode], rand, poplar ? 0.45 : 1);
   }
   const base = misty ? FAR[species][season].clone().lerp(HAZE, 0.14) : FAR[species][season];
   ball(b, x, y, z, radius, base, n, rand, { tall, lift: 0.3, shade: misty ? -0.02 : -0.035 });
@@ -95,15 +97,19 @@ export const WOOD_FACING = 0.05;
 
 /**
  * A far tree's wood: its trunk, standing from its foot (x, y, z) up to `height` above it, in short upright strokes, and
- * `limbs` strokes forking up from its top, for a crown `radius` across. Thin (as thin as a stroke goes: a fifth of its
- * length), stiff, and turned no more than the fork's lean, so the trunk stands straight from any side.
+ * `limbs` strokes forking up and out from its upper part (leaning `spread` times as far), for a crown `radius` across. Thin
+ * (as thin as a stroke goes: a fifth of its length), stiff, and turned no more than the fork's lean, so the trunk stands
+ * straight from any side.
  */
-function wood(b: MeshBuilder, x: number, y: number, z: number, height: number, radius: number, limbs: number, bark: THREE.Color, rand: () => number) {
+function wood(
+  b: MeshBuilder, x: number, y: number, z: number, height: number, radius: number, limbs: number, bark: THREE.Color, rand: () => number,
+  spread = 1,
+) {
   // Facing across, each its own way round (the sun lights one side), hardly up.
   const facing = () => { const a = rand() * Math.PI * 2; return new THREE.Vector3(Math.cos(a), WOOD_FACING, Math.sin(a)).normalize(); };
   // A seed of 0.5 and about: the renderer turns a stroke by (seed - 0.5) × 0.7, so these turn by under 0.02.
   const seed = () => 0.5 + (rand() - 0.5) * 0.05;
-  const paint = (lean: number): Paint => [0.3 + STIFF_STROKE + CRISP_EDGE, 0.2, Math.PI / 2 + lean, 0];
+  const paint = (lean: number, rooted = 0): Paint => [0.3 + STIFF_STROKE + CRISP_EDGE, 0.2, Math.PI / 2 + lean + rooted, 0];
   // About 0.75 m a stroke: a stroke's mark is a fifth as wide as it's long, and its card (what the GPU fills) as wide, so short
   // ones keep the trunk thin and cheap. Each reaches 0.85 of a stroke either side of its middle, so they overlap, and the
   // lowest reaches into the ground (which hides it) whatever the view's tilt.
@@ -113,11 +119,14 @@ function wood(b: MeshBuilder, x: number, y: number, z: number, height: number, r
     addDab(b, new THREE.Vector3(x, y + height * f, z), facing(), c, height / seg * 0.85, seed(), paint(0));
   }
   for (let i = 0; i < limbs; i++) {
-    // Leaning out either way in turn, up from the trunk's top into the crown, lighter as they thin.
-    const side = i % 2 ? -1 : 1, lean = side * (0.2 + 0.25 * (i >> 1) + 0.15 * rand()), len = radius * (0.26 + 0.08 * rand());
-    const p = new THREE.Vector3(x, y + height * (0.85 + 0.1 * (i >> 1)) + len * 0.8, z);
-    const c = bark.clone().offsetHSL(0, 0, 0.05 + (rand() - 0.5) * 0.03);
-    addDab(b, p, facing(), c, len, seed(), paint(lean));
+    // Rooted on the trunk's upper part and growing out from it (ROOTED_TURN), leaning out either way in turn, the third
+    // closer to upright, so they fork into a Y from any side, as the near trees' limbs do. Centred on the trunk, as they
+    // were, they crossed in an X: a broomstick (Gemini 4 Neon's review of #280). Each two strokes end to end, so it's no
+    // thicker than the trunk. Lighter as they thin.
+    const side = i % 2 ? -1 : 1, lean = side * spread * (i < 2 ? 0.6 + 0.2 * rand() : 0.12 + 0.1 * rand());
+    const len = radius * (0.38 + 0.08 * rand()) / 2, p = new THREE.Vector3(x, y + height * (0.62 + 0.1 * i), z);
+    const n = facing(), turn = seed(), c = bark.clone().offsetHSL(0, 0, 0.05 + (rand() - 0.5) * 0.03);
+    for (let k = 1; k <= 2; k++) addDab(b, p, n, c.clone().offsetHSL(0, 0, 0.02 * (k - 1)), len, turn, paint(lean, k * ROOTED_TURN));
   }
 }
 
