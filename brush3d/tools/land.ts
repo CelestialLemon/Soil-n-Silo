@@ -274,10 +274,6 @@ check('and drawn: the raised tiles\' tops at their level', drawnNow.some((t) => 
 console.log('The country beyond');
 const edgeX = X0 + W * TILE, mid = Z0 + 10 * TILE;
 check('it meets the land\'s edge', Math.abs(land.heightAt(edgeX + 1e-6, mid) - land.heightAt(edgeX - 1e-6, mid)) < 1e-3);
-// bedAt on the land's very edge reads the land, without rounding past it (Soil-n-Silo#290); beyond it, no bed.
-const edgeZ = Z0 + H * TILE, edgeBed = [land.bedAt(edgeX, mid), land.bedAt(X0 + 3 * TILE, edgeZ), land.bedAt(edgeX, edgeZ)];
-check('bedAt on the land\'s very edge: a depth from 0 to 1', edgeBed.every((d) => Number.isFinite(d) && d >= 0 && d <= 1), JSON.stringify(edgeBed));
-check('and just past it, none', land.bedAt(edgeX + 1e-3, mid) === 0 && land.bedAt(X0 - 1e-3, mid) === 0 && land.bedAt(mid, edgeZ + 1e-3) === 0);
 const b = map.beyond!, gx = b.x0 + 18 * b.cell, gz = b.z0 + 2 * b.cell;
 check('further out, the grid\'s heights', Math.abs(land.heightAt(gx, gz) - b.height[2 * b.nx + 18]) < 1e-5, `${land.heightAt(gx, gz)} for ${b.height[2 * b.nx + 18]}`);
 
@@ -569,6 +565,22 @@ const wet = (x: number, y: number) => pond(x, y) || outlet(x, y) || stairs(x, y)
   }
   check(`and drawn as built afresh`, missing === 0 && after.size === afresh.size && worst < 1e-6, `${missing} of ${afresh.size} places not drawn so (${after.size} drawn), colours ${worst} apart`);
   freshLand.dispose();
+}
+{
+  // r.bedAt (Soil-n-Silo#290) on a land whose east edge is water, with a tile (1.43 m) whose edge in metres, over the tile,
+  // comes to a hair past its width: the bed there as just inside (not rounded off the land, as tiles), none past it.
+  const EW = 8, EH = 6, ET = 1.43, EX = -3.3, n = EW * EH;
+  const cover = new Uint8Array(n).fill(LAND_COVER.grass), worked = new Uint8Array(n);
+  for (let y = 0; y < EH; y++) for (let x = 5; x < EW; x++) { cover[y * EW + x] = LAND_COVER.water; worked[y * EW + x] = 1; }
+  const e = new PaintedLand(new Adder(), {
+    width: EW, height: EH, tile: ET, level: LEVEL, x0: EX, z0: 0, corners: new Float32Array(n * 4).fill(FLAT * LEVEL), worked, cover,
+    ground: new Uint8Array(n), map: { x: 0, y: 0, width: EW, height: EH },
+    beyond: { nx: 9, nz: 9, cell: 16, x0: -64, z0: -64, height: new Float32Array(81).fill(FLAT * LEVEL) },
+  });
+  const edge = EX + EW * ET, z = 2.5 * ET, atEdge = e.bedAt(edge, z), inside = e.bedAt(edge - 1e-6, z);
+  check('bedAt on the land\'s very edge, in the water: its bed, as just inside', (edge - EX) / ET > EW && atEdge > 0.5 && Math.abs(atEdge - inside) < 1e-3, `${atEdge} at the edge, ${inside} inside`);
+  check('and just past it, none', e.bedAt(edge + 1e-3, z) === 0 && e.bedAt(EX - 1e-3, z) === 0 && e.bedAt(edge - ET, EH * ET + 1e-3) === 0);
+  e.dispose();
 }
 
 // 6. Refused: corners that aren't whole levels.

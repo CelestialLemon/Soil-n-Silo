@@ -56,6 +56,12 @@ const MAX_TALL = (GRASS_PROFILE.tall[0] + GRASS_PROFILE.tall[1]) * 1.12;
  */
 export const MAX_BLADE_REACH = GRASS_PROFILE.tuft.spread + TUFT_REACH * MAX_TALL;
 
+/**
+ * How far (m) the wind's sway carries a blade's tip at most, across the view (the grass shader's bend, in a storm): left
+ * out of the margins on purpose (BUILDING_MARGIN), counted where a pick asks what the grass covers (grass.ts's bankAt).
+ */
+export const MAX_BLADE_SWAY = 0.6;
+
 export interface FlowerProfile {
   /** Candidate spots tried per open grass tile; each that takes is a clump of blooms. */
   attempts: number;
@@ -280,7 +286,7 @@ export const ROCK_MARGIN = 0.35;
  * Kept strictly above `MAX_BLADE_REACH` so no blade at rest stands in a building's or field's footprint. The wind's sway
  * is left out, on purpose (as it is from `TUFT_REACH`): the grass shader bends a blade across the view only, never nearer or
  * further, so a blade in a gust can lean over a field's edge or in front of a wall it already stood in front of, but
- * never through a wall. Covering the sway's full reach (up to 0.6 m, in a storm) would leave a bare ring round everything.
+ * never through a wall. Covering the sway's full reach (MAX_BLADE_SWAY, in a storm) would leave a bare ring round everything.
  */
 export const BUILDING_MARGIN = 0.90;
 export const FIELD_MARGIN = 0.85;

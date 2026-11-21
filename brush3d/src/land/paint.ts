@@ -452,8 +452,10 @@ export class PaintedLand {
 
   /** The land's height (m) at a point of the world (x, z in metres), as drawn: the beds and cliffs too. */
   heightAt(x: number, z: number): number {
-    const px = (x - this.x0) / this.tile, py = (z - this.z0) / this.tile;
-    if (px >= 0 && py >= 0 && px <= this.width && py <= this.height) {
+    // (Bounded in metres, as beyondAt clamps to the edge: in tiles, a point on the very edge could round past it, and
+    // the two would hand it back and forth for ever.)
+    if (x >= this.x0 && z >= this.z0 && x <= this.x0 + this.width * this.tile && z <= this.z0 + this.height * this.tile) {
+      const px = Math.min(this.width, (x - this.x0) / this.tile), py = Math.min(this.height, (z - this.z0) / this.tile);
       const tx = Math.min(this.width - 1, Math.floor(px)), ty = Math.min(this.height - 1, Math.floor(py));
       return this.drawn(tx, ty, px - tx, py - ty);
     }
