@@ -8,7 +8,7 @@ import { SNOW_GLSL } from './snow';
 import { WET_GLSL, WET_INK_GLSL } from './wet';
 import { GROUND_TOOLS_GLSL } from './overlay';
 import { GLOW, PART_TEXELS } from './parts';
-import { CRISP_EDGE, STIFF_STROKE } from './dabs';
+import { BLOOM, CRISP_EDGE, STIFF_STROKE } from './dabs';
 import { SMOKE_INK } from './pick';
 import { SMOKE } from './nightLights';
 
@@ -53,6 +53,8 @@ export function createSharedUniforms() {
     uPartsRest: { value: 0 },
     // The night's lights (#205, BrushRenderer.nightLights): how much a lamp or a lit window glows now (0 by day, 1 at night).
     uNightGlow: { value: 0 },
+    // How far the wildflowers' blooms (BLOOM) settle into the dark now: BrushRenderer.bloomsAtNight, by the hour's night.
+    uBloomNight: { value: 0 },
     uViewBack: { value: new THREE.Vector3(0, 0, 1) },
     uViewTarget: { value: new THREE.Vector3() },
     uShadowMap: { value: null as THREE.Texture | null },
@@ -293,8 +295,8 @@ void main() {
 }
 `;
 
-// The flags a foliage dab's aPaint.x carries (CRISP_EDGE, STIFF_STROKE) are in dabs.ts, which the kit's pieces load in Node.
-export { CRISP_EDGE, STIFF_STROKE };
+// The flags a foliage dab's aPaint.x carries (CRISP_EDGE, STIFF_STROKE, BLOOM) are in dabs.ts, which the kit's pieces load in Node.
+export { BLOOM, CRISP_EDGE, STIFF_STROKE };
 
 /**
  * Foliage dabs: each card is a quad centred on `position`, turned to face whichever camera draws it (the view or the sun),
@@ -313,7 +315,12 @@ varying vec4 vCard;
 varying vec3 vDabNormal;
 varying float vCardPx;
 varying float vFlash;
+varying float vBloom;
 void main() {
+  // A bloom's flag comes off first (it adds to the others).
+  float flags = aPaint.x;
+  vBloom = 0.0;
+  if (flags >= ${BLOOM.toFixed(1)}) { flags -= ${BLOOM.toFixed(1)}; vBloom = 1.0; }
   vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
   vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
   vec3 toCam = vec3(viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2]);
@@ -326,7 +333,7 @@ void main() {
   // across the view (see acrossView).
   float s = uWindSpeed, seed = aCard.w;
   float g = windGust(aTree.z > 0.0 ? aTree.xy : wc.xz);
-  float leafy = aPaint.x >= ${STIFF_STROKE.toFixed(1)} ? 0.0 : 1.0;  // wood neither flutters nor turns over
+  float leafy = flags >= ${STIFF_STROKE.toFixed(1)} ? 0.0 : 1.0;  // wood neither flutters nor turns over
   float amp = leafy * min(0.004 + 0.045 * s / (s + 12.0), 0.15 * aCard.z) * (0.7 + 0.6 * g);
   float ph = uWindFlutter * (0.8 + 0.4 * fract(seed * 7.13)) + seed * 40.0;
   vec3 flutter = (windDir3() * sin(ph) + vec3(-uWindDir.y, 0.0, uWindDir.x) * 0.5 * sin(ph * 1.31 + seed * 9.0)
@@ -352,7 +359,7 @@ void main() {
   // Spring's and autumn's strokes (#13, aPaint.x raised by CRISP_EDGE) have crisper edges: their brighter colours make the
   // part-covered pixels along an edge, which change as the camera moves a pixel, shimmer more than green leaves'.
   // The flags add up (a fallen leaf is both): wood's comes off first, then the crisp edge's.
-  float paintX = aPaint.x >= ${STIFF_STROKE.toFixed(1)} ? aPaint.x - ${STIFF_STROKE.toFixed(1)} : aPaint.x;
+  float paintX = flags >= ${STIFF_STROKE.toFixed(1)} ? flags - ${STIFF_STROKE.toFixed(1)} : flags;
   if (paintX >= ${CRISP_EDGE.toFixed(1)}) { paintX -= ${CRISP_EDGE.toFixed(1)}; vCardPx *= 1.8; }
   vPaint.x = paintX;
   place(world + drawnShift(tree));
@@ -426,8 +433,10 @@ varying vec4 vCard;
 varying vec3 vDabNormal;
 varying float vCardPx;
 varying float vFlash;
+varying float vBloom;
 const float BOX = 128.0;
 void main() {
+  vBloom = 0.0;
   vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
   vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
   vec3 toCam = vec3(viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2]);
@@ -477,7 +486,9 @@ varying vec4 vCard;
 varying vec3 vDabNormal;
 varying float vCardPx;
 varying float vFlash;
+varying float vBloom;
 void main() {
+  vBloom = 0.0;
   vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
   vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
   vec3 toCam = vec3(viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2]);
@@ -748,6 +759,8 @@ varying vec4 vCard;
 varying vec3 vDabNormal;
 varying float vCardPx;
 varying float vFlash;
+varying float vBloom;
+uniform float uBloomNight;
 void main() {
   vec2 c = vCard.xy;
   float seed = vCard.w * 91.0;
@@ -812,6 +825,14 @@ void main() {
     if (gSnow > 0.0) col = mix(col, snowPaint(light, 0.07, 0.0), cover);
   }
 #endif
+  // A bloom at night (Soil-n-Silo#288): a pale petal keeps more of its light than the leaves round it under the moon's
+  // blue, so it settles into the dark, dimmer and less vivid, as far as uBloomNight says.
+  if (vBloom > 0.5 && uBloomNight > 0.0) {
+    vec3 bl = linToOklab(col);
+    bl.x *= 1.0 - 0.3 * uBloomNight;
+    bl.yz *= 1.0 - 0.5 * uBloomNight;
+    col = oklabToLinFit(bl);
+  }
 #ifdef SMOKE
   // Marked as smoke, for a pick to see past (SMOKE_INK, pick.ts).
   writeGBuffer(exposeHere(col), n, vViewDepth, ${SMOKE_INK.toFixed(8)}, alpha);

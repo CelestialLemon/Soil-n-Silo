@@ -19,6 +19,7 @@ import { thingHeight, Things } from './things.ts';
 import { BrushTools } from './tools.ts';
 import { BrushWater } from './water.ts';
 import { BrushWind } from './wind.ts';
+import { nightBloom, nightBloomChoice, type NightBloom } from '../../ui/nightBloom.ts';
 import { Wild } from './wild.ts';
 
 // The game drawn by brush3d (epic #212; its only renderer since the swap, #211): the Scene (../scene.ts) the game's loop
@@ -59,7 +60,7 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
   const ground = timed('land', () => new BrushLand(r, state, land, lie)), sky = new BrushSky(r, state), cover = new BrushCover(r, land), water = timed('water', () => new BrushWater(r, land, lie));
   // The goods trucks carry and buildings hand next door (#203), drawn with the things.
   const goods = new Goods(r);
-  const things = new Things(r, lie, goods), wild = timed('wild', () => new Wild(r, lie, land, state)), meadow = timed('meadow', () => new Meadow(r, lie, land, state)), wind = timed('wind', () => new BrushWind(r, state, land));
+  const things = new Things(r, lie, goods), wild = timed('wild', () => new Wild(r, lie, land, state)), meadow = timed('meadow', () => new Meadow(r, lie, land, state, nightBloom() === 'pale')), wind = timed('wind', () => new BrushWind(r, state, land));
   const lens = new BrushLens(r, canvas);
   const camera = new Camera(lens, canvas, map, start, changed);
   const tools = timed('tools', () => new BrushTools(r, state, things, lie, meadow));
@@ -68,6 +69,10 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
   // pick on #239). The light, shadows and weather stay live, as do a cliff's faces and the country past the land; an
   // earthwork bakes again only the patch it changed (brush3d's changeGround).
   timed('bake', () => { r.setFields('ground', 4096); });
+  // #288's comparison (src/ui/nightBloom.ts): how spring's pale blooms sit in the dark.
+  const blooms = (c: NightBloom) => { r.bloomsAtNight = c === 'settle' ? 1 : 0; meadow.setPale(c === 'pale'); };
+  blooms(nightBloom());
+  nightBloomChoice(blooms);
   settings.listen((s) => tools.setLooks(s.highlight, s.overlayStyle));
   const began = mark - Object.values(pieces).reduce((a, b) => a + b, 0);
   /** The load's times, once the first frame is drawn; and while a profile runs, the game's loop stands still. */
