@@ -27,7 +27,7 @@ import { colourLeafStorm, leafStorm, WindField, WindState } from './wind';
 import { DustField, type DustSource } from './dust';
 import { TreeSprings, type TreeSpec } from './trees';
 import { Parts } from './parts';
-import { NightLights } from './nightLights';
+import { glowAt, NightLights } from './nightLights';
 import { WATER_EASE, WaterField, type WaterMap } from './water';
 import { WaterMask } from './waterMask';
 import { GROUND_EASE, GroundField, HollowMap, type GroundMap } from './ground';
@@ -276,6 +276,12 @@ export class BrushRenderer {
   readonly parts = new Parts();
   /** The farm's lights at night (#205): how much they glow at the hour, and the pools they throw. */
   private readonly nightLights = new NightLights();
+  /**
+   * How far the wildflowers' blooms (the kit's addFlower) settle into the dark at night (Soil-n-Silo#288): 0 not at all
+   * (the default), 1 fully: at full night their paint's lightness cut by 30% and its colour by half (in OKLab, before the
+   * light); from dusk, as the lamps come on.
+   */
+  bloomsAtNight = 0;
   private windNow: [WindSnapshot, WindSnapshot, number] | null = null;
   /** Fresh dust, lifted by the gusts where the game's map says (see setDustSource; the renderer's own motion). */
   readonly dust = new DustField();
@@ -1194,6 +1200,7 @@ export class BrushRenderer {
     const dim = THREE.MathUtils.smoothstep(clear.sunEl, -8, 6);
     // The lamps from dusk, and the pools of their light (#205).
     this.nightLights.update(this.shared, this.parts, clear.night, this.shared.uViewTarget.value);
+    this.shared.uBloomNight.value = this.bloomsAtNight * glowAt(clear.night);
     const strength = dim * THREE.MathUtils.lerp(1, CLOUD_NIGHT, clear.night);
     const gap = THREE.MathUtils.lerp(cover, gapCover(cover), strength);
     // What dust and the heat do to the light (air.ts), laid over each.

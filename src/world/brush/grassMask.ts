@@ -111,6 +111,12 @@ export const FLOWER_SEASONS: Record<Season, FlowerSeason> = {
   winter: { density: 0, clump: 0, palette: [] },
 };
 
+/**
+ * #288's comparison, `pale` (src/ui/nightBloom.ts; removed with the options not picked before its PR merges): the white and
+ * yellow swatches with their peak lightness lowered, so they stand out less from the grass at night (and by day).
+ */
+export const PALE_SWATCHES: Readonly<Record<number, number>> = { 0xf7f2e4: 0xe2dbc8, 0xf5cf3e: 0xe0b93a };
+
 /** Whether any wildflowers bloom in a season. */
 export const flowersBloom = (season: Season) => FLOWER_SEASONS[season].density > 0;
 

@@ -57,7 +57,8 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      drawn, `onLandChange` says where an earthwork redrew the land, `landAhead` that `landAt` runs ahead of the land
      drawn (an earthwork fitted, not yet swapped in), and `cull` adds a small mesh culled whole, uncut. So are the
      wildflowers among them (Soil-n-Silo#266): `addFlower` is one of the demo's blooms, with `crisp` edges for the game's
-     far-off camera and `FLOWER_REACH` how far it reaches. And the reeds along the water (Soil-n-Silo#267): `addReeds`
+     far-off camera and `FLOWER_REACH` how far it reaches; its dab is marked `BLOOM`, and `bloomsAtNight` settles the
+     blooms into the dark at night (Soil-n-Silo#288, a candidate on its PR). And the reeds along the water (Soil-n-Silo#267): `addReeds`
      takes `ReedOptions` (the clump's size and colours, and bulrush seed heads), `REED_REACH`, `REED_WIDTH` and
      `REED_HEIGHT` how far a clump reaches; the game places them from `landAt`, so they follow the bed as drawn.
      Since, Soil-n-Silo#269 (done 2026-11-21): the country's dullness fades in by place over the first one to three tiles

@@ -7,7 +7,7 @@ import type { Land } from '../../game/map.ts';
 import { layoutOf, type GameState } from '../../game/state.ts';
 import type { Lie } from '../ground.ts';
 import {
-  blockOf, boxesIn, FLOWER_PROFILE, FLOWER_SEASONS, flowersBloom, fringeFade, GRASS_FRINGE, GRASS_PROFILE, grassBlocks, grassLayout,
+  blockOf, boxesIn, FLOWER_PROFILE, PALE_SWATCHES, FLOWER_SEASONS, flowersBloom, fringeFade, GRASS_FRINGE, GRASS_PROFILE, grassBlocks, grassLayout,
   inBuilding, layoutChanges, MAX_REED_REACH, REED_PROFILE, REED_SEASONS, REED_TOP, reedBand, reedShore, reedSpot,
   tileHabitat, tileSeed, wetDistance,
   type FlowerSeason, type FootprintBox, type GrassBlockRect, type GrassLayout, type ReedSeason, type TileHabitat,
@@ -87,7 +87,11 @@ export class Meadow {
   private readonly dirty = new Set<number>();
   /** The flowers' season (it never changes during a commission), its colours as three.js wants them, and whether they bloom. */
   private readonly season: FlowerSeason;
-  private readonly palette: THREE.Color[];
+  private palette: THREE.Color[];
+  /** #288's comparison: the white and yellow blooms paler (PALE_SWATCHES). */
+  private pale: boolean;
+  /** Set when the blooms' swatches change (setPale): every block made again on the next sync. */
+  private repaint = false;
   private readonly flowering: boolean;
   /** The reeds' season, its colours as three.js wants them. */
   private readonly reedSeason: ReedSeason;
@@ -97,12 +101,13 @@ export class Meadow {
   private layout = -1;
   private seen: GrassLayout;
 
-  constructor(r: BrushRenderer, lie: Lie, land: Land, s: GameState) {
+  constructor(r: BrushRenderer, lie: Lie, land: Land, s: GameState, pale = false) {
     this.r = r; this.lie = lie; this.land = land;
     this.seed = s.scenario.seed;
     this.season = FLOWER_SEASONS[s.scenario.climate.season];
     this.flowering = flowersBloom(s.scenario.climate.season);
-    this.palette = this.season.palette.map((c) => srgb(c.hex));
+    this.pale = pale;
+    this.palette = this.paletteOf(pale);
     this.reedSeason = REED_SEASONS[s.scenario.climate.season];
     this.reedPalette = this.reedSeason.palette.map((c) => srgb(c.hex));
     this.reedTip = srgb(this.reedSeason.tip);
@@ -114,6 +119,22 @@ export class Meadow {
     this.seen = grassLayout(s);
     this.rebuildAll(s);
     r.onLandChange((area) => this.landChanged(area));
+  }
+
+  /** The season's flower colours as three.js wants them, paler white and yellow if `pale` (#288's comparison). */
+  private paletteOf(pale: boolean): THREE.Color[] {
+    return this.season.palette.map((c) => srgb(pale ? PALE_SWATCHES[c.hex] ?? c.hex : c.hex));
+  }
+
+  /**
+   * #288's comparison: the white and yellow blooms paler or not, the whole meadow made again at once on the next sync (a
+   * moment's hitch on the click, rather than the blooms changing block by block while the button already says the new).
+   */
+  setPale(on: boolean) {
+    if (on === this.pale) return;
+    this.pale = on;
+    this.palette = this.paletteOf(on);
+    if (this.flowering) this.repaint = true;
   }
 
   /**
@@ -146,6 +167,7 @@ export class Meadow {
       for (const id of dirty) this.queue(id);
     }
     // Not on an earthwork's new ground till it's drawn (the swap's landChanged queues what it moved).
+    if (this.repaint && !this.r.landAhead) { this.repaint = false; this.rebuildAll(s); }
     if ((this.urgent.size || this.dirty.size) && !this.r.landAhead) this.drain(s);
   }
 
