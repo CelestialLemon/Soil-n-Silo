@@ -399,6 +399,24 @@ const band = (from: number, to: number) => {
   const fade = band(0, 3.5), worst = Math.max(...fade.map((t) => Math.abs(t.took - t.meant)));
   check('the fade\'s tops drawn as dull as it means', fade.length > 100 && worst < 1e-4, `${worst} off, over ${fade.length}`);
 }
+{
+  // The water's beds dulled by place as the land round them is, read on their own: where a top is all bed (deep, no
+  // shingle), it's the bed's colour as a land not dulled draws it, taken as far to the country's dullness as the fade has
+  // it there (the dullness worked out here, not by the land).
+  const shore = (land0 as unknown as { shore: { depth(tx: number, ty: number, px: number, py: number): number } }).shore;
+  const { light, chroma } = LAND_LOOK.beyond, reach = map.beyond!.cell / TILE;
+  const dulled = (c: number[]) => { const y = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; return c.map((v) => (y + (v - y) * chroma) * light); };
+  let worst = 0, n = 0, out = 0;
+  for (const [key, c] of drawn.land) {
+    const [x, z] = key.split(',').map(Number), px = (x - X0) / TILE, py = (z - Z0) / TILE;
+    const tx = Math.min(W - 1, Math.floor(px)), ty = Math.min(H - 1, Math.floor(py));
+    if (shore.depth(tx, ty, px, py) < 0.5 || Math.min(px, W - px, py, H - py) < reach) continue;
+    const b = bright.land.get(key)!, d = dulled(b), k = meant(px, py);
+    worst = Math.max(worst, diff(c, b.map((v, i) => v + (d[i] - v) * k)));
+    n++; if (k > 0.5) out++;
+  }
+  check('the water\'s beds as dull as the land round them', n > 50 && out > 20 && worst < 1e-5, `${worst} off, over ${n} (${out} more than half dull)`);
+}
 /** How bright the tops are, on average, at d (tiles) out of the map. */
 const brightness = (from: number, to: number) => {
   let s = 0, n = 0;
@@ -499,9 +517,34 @@ const wet = (x: number, y: number) => pond(x, y) || outlet(x, y) || stairs(x, y)
   const raise = { x: 7, y: 9 };
   l.update({ ...raise, width: 1, height: 1 }, { corners: new Float32Array(4).fill((FLAT + 1) * LEVEL), worked: new Uint8Array([1]) });
   while (!l.step(0));
-  const fresh = new PaintedLand(new Adder(), shoreLand(raise)) as unknown as { shore: { field: Float32Array } } & Record<string, Float32Array>;
+  const freshAdder = new Adder(), freshLand = new PaintedLand(freshAdder, shoreLand(raise));
+  const fresh = freshLand as unknown as { shore: { field: Float32Array } } & Record<string, Float32Array>;
   const was = l as unknown as { shore: { field: Float32Array } } & Record<string, Float32Array>;
   check(`an earthwork by the water: its shores and paint as built afresh`, same(was.shore.field, fresh.shore.field) && same(was.paint, fresh.paint));
+  // And what's drawn: every vertex's place, facing and colour (the chunks painted again for it, none missed). Chunks
+  // meeting at a place each draw a vertex there, so each place's colours are compared together.
+  const drawnBy = (a: Adder) => {
+    const out = new Map<string, number[][]>();
+    for (const m of a.live) {
+      const pos = m.geometry.getAttribute('position'), nrm = m.geometry.getAttribute('normal'), col = m.geometry.getAttribute('color');
+      // (Only the vertices a triangle uses: the country beyond's grid has points under the land, in no triangle.)
+      for (const i of new Set(m.geometry.getIndex()!.array)) {
+        const key = [pos.getX(i), pos.getY(i), pos.getZ(i), nrm.getX(i), nrm.getY(i), nrm.getZ(i)].map((v) => v.toFixed(3)).join();
+        out.set(key, [...(out.get(key) ?? []), [col.getX(i), col.getY(i), col.getZ(i)]]);
+      }
+    }
+    for (const cs of out.values()) cs.sort((p, q) => p[0] - q[0] || p[1] - q[1] || p[2] - q[2]);
+    return out;
+  };
+  const after = drawnBy(sAdder), afresh = drawnBy(freshAdder);
+  let missing = 0, worst = 0;
+  for (const [key, cs] of afresh) {
+    const os = after.get(key);
+    if (!os || os.length !== cs.length) { missing++; continue; }
+    cs.forEach((c, k) => { worst = Math.max(worst, ...c.map((v, i) => Math.abs(v - os[k][i]))); });
+  }
+  check(`and drawn as built afresh`, missing === 0 && after.size === afresh.size && worst < 1e-6, `${missing} of ${afresh.size} places not drawn so (${after.size} drawn), colours ${worst} apart`);
+  freshLand.dispose();
 }
 
 // 6. Refused: corners that aren't whole levels.

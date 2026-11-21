@@ -84,8 +84,8 @@ to do). Nothing on screen changes in that call. Over the next frames, about `STE
 3. The following frames paint those chunks again, a few a frame.
 4. Once all are painted, they're swapped in at once, so the land never shows half an earthwork. The things that read the
    ground (the shelter's map, the hollows where thin snow lies, the clouds' map, `landAt`'s grid) are refreshed once for
-   the whole swap, over the changed area only where they can be. If the land's outer edge moved, the country beyond's mesh
-   is made again to meet it.
+   the whole swap, over the changed area only where they can be. If the land changed by its outer edge, the country
+   beyond's mesh is made again to meet it, in shape and colour.
 
 No piece of work is cut short, so a frame goes over 3 ms by the piece it ends on: the longest, one chunk painted or the
 fit set up or finished, take 2 to 5 ms once warm (commission 8's land, in Node). The first earthwork of a session takes

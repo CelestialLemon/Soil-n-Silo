@@ -398,13 +398,16 @@ export class PaintedLand {
     });
     for (const t of dirty) this.changed = grown(this.changed, t % W, Math.floor(t / W));
     // What's drawn changes up to two tiles round each tile that did: its sides' steps and faces (its neighbours'), the
-    // water's bed, its paint (blended over the next tile and a little more). The country beyond meets the land's edge; and
-    // the land's colour within a cell of that runs between the edge tiles' colours a cell apart (alongApron): further round.
+    // water's bed, its paint (blended over the next tile and a little more). Near the land's edge (its paint blended onto
+    // the edge), the country beyond meets it and takes its colour there; and the land's colour within a cell of the edge
+    // runs between the edge's colours a cell apart (alongApron): further round, and the swap says so.
     const reach = this.beyond ? Math.ceil(this.beyond.cell / this.tile) : 0;
     for (const t of dirty) {
-      const x = t % W, y = (t - x) / W, edge = this.beyond !== null && (x === 0 || y === 0 || x === W - 1 || y === H - 1);
+      const x = t % W, y = (t - x) / W, edge = this.beyond !== null && Math.min(x, y, W - 1 - x, H - 1 - y) < 2;
       near(t, edge ? 2 + reach : 2, (x, y) => this.pending.add(Math.floor(y / CHUNK) * this.cols + Math.floor(x / CHUNK)));
-      if (edge) this.apronMoved = true;
+      if (!edge) continue;
+      this.apronMoved = true;
+      this.changed = grown(grown(this.changed, Math.max(0, x - reach), Math.max(0, y - reach)), Math.min(W - 1, x + reach), Math.min(H - 1, y + reach));
     }
   }
 
