@@ -311,7 +311,7 @@ check('a tile turned to water: as it was until fitted, then its bed', midFit && 
 {
   // A tile at the land's edge repainted: wherever the land's colour changed (the edge's blend runs a cell round it), the
   // swap says so.
-  const ty = 16, pts: [number, number][] = [];
+  const ty = 16, pts: (readonly [number, number])[] = [];
   for (let y = ty - 8; y <= ty + 8; y += 0.25) for (let x = 0; x <= 8; x += 0.25) pts.push(world(x, y));
   const before = pts.map((p) => land.landColourAt(...p).clone()), swaps: LandArea[] = [];
   land.onSwap = (a) => swaps.push(a);
