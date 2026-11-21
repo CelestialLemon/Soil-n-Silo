@@ -22,6 +22,22 @@ export const SNOW_METRES = 0.9;
 export const SNOW_WHOLE = 0.3;
 
 /**
+ * How the snow lies on stone (Soil-n-Silo#286's comparison, for the developer to pick; the ones not picked go, then this).
+ * Under deep snow the crags' tops went the field's flat white and their feet were buried as deep as the field's snow
+ * lies, so only thin dark steep faces showed: floating slivers.
+ *   off      as on everything else (before #286).
+ *   patchy   less settles on stone: only its flattest tops, never whole, so its shoulders and ridges show round a cap;
+ *            and the drifts bank against its foot to under half the field's depth, along an uneven line.
+ *   shaded   as much as before, but the snow on stone a little cooler than the field's, and its banked foot falling into
+ *            a soft cool shade towards the ground, so a crag stands out of the field with a shadow at its feet.
+ *   both     patchy and shaded.
+ */
+export const ROCK_SNOW_LOOKS = ['off', 'patchy', 'shaded', 'both'] as const;
+export type RockSnowLook = (typeof ROCK_SNOW_LOOKS)[number];
+/** The renderer's own: as before #286 (the demo's frames are unchanged). */
+export const ROCK_SNOW_LOOK: RockSnowLook = 'off';
+
+/**
  * Lying snow, for every material but the water (FRAG_HEAD): needs the light model (PAINT, CLOUD_LIGHT), OKLab and the
  * shelter map. A material calls groundAt(p) once (the snow lying there, as deep as the game says less what shelters it,
  * in gSnow, and the frost in gFrost), then works out how much of its surface the snow covers, and mixes in snowPaint; the
@@ -32,6 +48,7 @@ ${GROUND_GLSL}
 ${HOLLOW_GLSL}
 uniform vec3 uSnowGap[4];    // the snow's paint in the gaps' light: its shade, half-tone, lit band and a stroke in it
 uniform vec3 uSnowCloud[4];  // and under a cloud
+uniform int uRockSnow;       // how the snow lies on stone: ROCK_SNOW_LOOKS' index
 const float SNOW_METRES = ${SNOW_METRES.toFixed(2)};
 // The snow lying here (0..1, the game's depth, less under shelter), the frost (0..1, the game's, less under shelter), and
 // the land's hollow here (hollowAt), read by groundAt.
@@ -157,7 +174,11 @@ export class SnowPaint {
   readonly uniforms = {
     uSnowGap: { value: [0, 1, 2, 3].map(() => new THREE.Color()) },
     uSnowCloud: { value: [0, 1, 2, 3].map(() => new THREE.Color()) },
+    uRockSnow: { value: ROCK_SNOW_LOOKS.indexOf(ROCK_SNOW_LOOK) },
   };
+
+  /** How the snow lies on stone (#286's comparison). */
+  setRockSnow(look: RockSnowLook) { this.uniforms.uRockSnow.value = ROCK_SNOW_LOOKS.indexOf(look); }
 
   /** Sets the snow's colours for the light in the gaps and under a cloud. */
   update(gap: SnowLight, cloud: SnowLight) {
