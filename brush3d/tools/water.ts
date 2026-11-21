@@ -54,7 +54,7 @@ const spreadMap = { ...two, spread: new Float32Array(n) };
 for (let j = 0; j < nz; j++) spreadMap.spread[j * nx + 6] = 1;
 const laid3 = layWater(spreadMap), sp = (i: number) => laid3.spread[2 * nx + i];
 check('spread as sent, carried with the higher water', sp(6) === 1 && sp(2) === 0 && sp(4) === 1 && sp(8) === 1 && sp(0) === 0,
-  `${[0, 2, 4, 6, 8].map(sp)}`);
+  [0, 2, 4, 6, 8].map(sp).join(", "));
 check('no spread sent, none', laid2.spread.every((v) => v === 0));
 let threw = false;
 try { layWater({ ...map, level: new Float32Array(3) }); } catch { threw = true; }
@@ -119,7 +119,7 @@ spreadField.settle(2);
 const midW = spreadField.grid.w;
 spreadField.settle(3);
 check('a flood\'s edge drawn while spread water is sent or easing out, then not', spreadW === 2 && easingW === 2 && midW === 2
-  && spreadField.grid.w === 1, `${[spreadW, easingW, midW, spreadField.grid.w]}`);
+  && spreadField.grid.w === 1, [spreadW, easingW, midW, spreadField.grid.w].join(", "));
 const before = field.a;
 field.set({ nx: 3, nz: 2, cell: 1, x0: 0, z0: 0, level: new Float32Array(6).fill(1) }, 13);
 check('a new grid, new textures at its size', field.a !== before && field.a.image.width === 3 && field.a.image.height === 2);
