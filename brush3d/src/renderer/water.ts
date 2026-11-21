@@ -139,18 +139,19 @@ vec2 waterEdgeAt(vec2 xz) {
   // nearer the dry, so the smoothed reading is at least 0.67, and 0.5 wobbled): skip the rest, the most of a broad flood.
   vec2 mine = shoreCell(c);
   if (mine.x * uWaterGrid.z >= 2.0) return vec2(4.0, smoothstep(0.25, 0.75, mine.y));
-  float v = 0.0, own = mine.x, spread = 0.0;
+  // Smoothed, a lone wet cell (or a thin finger of them) would thin to nothing; the rules flood it, so each wet cell keeps
+  // at least a round pool about its own size, from its centre, reaching over into the cells beside it (so a finger's tip
+  // rounds off rather than stopping square on the cell's side), never as far as a dry cell's centre, where the sheet
+  // starts to dive. It grows in as the cell's distance eases in from the dry (0.5 cell at an edge cell), so a newly flooded
+  // cell doesn't pop in whole as the ease starts; below the wobble's reach until it does.
+  float v = 0.0, spread = 0.0, pool = -1.0;
   for (int z = 0; z < 3; z++) for (int x = 0; x < 3; x++) {
     vec2 d = x == 1 && z == 1 ? mine : shoreCell(c + ivec2(x - 1, z - 1));
     v += wx[x] * wz[z] * d.x;
     spread += wx[x] * wz[z] * d.y;
+    if (d.x > 0.0) pool = max(pool, 0.79 * clamp(2.0 * d.x * uWaterGrid.z, 0.0, 1.0) - 0.17 - 1.25 * length(t - vec2(x - 1, z - 1)));
   }
   float wobble = edgeNoise(xz * 0.3) * 0.55 + edgeNoise(xz * 0.75 + 7.0) * 0.3 + edgeNoise(xz * 1.9 + 3.0) * 0.15;
-  // Smoothed, a lone wet cell (or a thin finger of them) would thin to nothing; the rules flood it, so a wet cell keeps at
-  // least a round pool about its own size (inside it, so it never reaches the dive). It grows in as the cell's distance
-  // eases in from the dry (0.5 cell at an edge cell), so a newly flooded cell doesn't pop in whole as the ease starts;
-  // below the wobble's reach until it does.
-  float pool = own > 0.0 ? 0.79 * clamp(2.0 * own * uWaterGrid.z, 0.0, 1.0) - 0.17 - 1.25 * length(t) : -1.0;
   float e = max(2.0 * v * uWaterGrid.z - 0.5, pool);
   // How much it has spread, sharpened: where the water out of its bed meets the river's, the two blend over the middle of
   // the smoothed spread only, so the river's bank a cell along keeps its shore, the flood's side is cut whole (its dive

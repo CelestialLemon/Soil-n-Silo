@@ -116,7 +116,8 @@ cover only the cells within one of water (into one buffer per grid, with room fo
   cell's spread to the dry cells beyond it, as it does the ice, and it rides in the ice textures' last channel beside the
   shore's distance. The shader reads the distance smoothly between the cells' centres (a quadratic B-spline over the
   nearest nine), so it's 0 at the wet cells' edge, rounding the corners, plus a noise fixed to the world (at most a sixth
-  of a cell either way), and each wet cell keeps a round pool its own size (a lone flooded tile doesn't thin to nothing),
+  of a cell either way), and each wet cell keeps a round pool its own size, reaching a little over its sides (a lone flooded tile or a
+  finger's tip doesn't thin to nothing, or stop square),
   growing in as the cell's distance eases in, so a newly flooded tile doesn't pop in whole. The spread is smoothed the
   same way and sharpened, so where a flood meets the river they blend over about half a cell: the river's bank a cell
   along keeps its shore.
@@ -125,7 +126,7 @@ cover only the cells within one of water (into one buffer per grid, with room fo
   the ground's rain wetness and snow come back (they were cleared under the whole sheet), wet a little further than the
   water, and the foam line along the ground goes under muddy water (from about half a flood's mud: silt, not foam, at a
   flood's edge) and fades round things standing in it. Cells two or more from the dry skip the work; a map with no spread water (the grid's fourth
-  number 1, not 2, from when a flood has eased out) does none of it. Cost on the dev machine, c7 under a severe flood at 1080p: 0.1 to 0.3 ms more on
+  number 1, not 2, from when a flood has eased out) does none of it. Cost on the dev machine, c7 under a severe flood at 1080p: 0.2 to 0.4 ms more on
   the main pass (most close up); with no flood, none.
 
 - **The look** (#19, `WATER_FRAG`): the water's colour is the bed seen through it (`through`, by how far the light

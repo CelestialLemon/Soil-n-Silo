@@ -121,7 +121,7 @@ options behind a HUD button and a URL option on the PR's preview, and no rules c
   button and `?floodedge=`: `soft` (rounded and wavering, the water thinning out over its last metre or so into the grass,
   the grass just past it wet; the default on the preview) and `ragged` (the same line, crisp). Both drop the pale foam
   line along the ground under muddy flood water. `off` is the look before. The flood's rules are unchanged (the same tiles
-  flood, and the water still hides what it drowns), and the river's own banks are unchanged. 0.1 to 0.3 ms more on the
+  flood, and the water still hides what it drowns), and the river's own banks are unchanged. 0.2 to 0.4 ms more on the
   main pass with a severe flood on c7 at 1080p; nothing without a flood.
 
 ## One renderer: the swap to brush3d (2026-11-16)

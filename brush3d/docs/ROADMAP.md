@@ -238,7 +238,7 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
   along the sheet's triangles, with a pale rim. `setWater`'s `spread` marks where water has spread out of its bed, and
   there `r.setFloodEdge(look)` draws its edge rounded and wavering, one of `FLOOD_EDGE_LOOKS` for the developer's pick
   (`soft`, `ragged`; `off`, as before, the renderer's default), with no foam line on the ground under muddy water. The
-  demo's frames are unchanged (it sends no spread). 0.1 to 0.3 ms more on the main pass under a severe flood on c7.
+  demo's frames are unchanged (it sends no spread). 0.2 to 0.4 ms more on the main pass under a severe flood on c7.
 - **Half-res reflections smear up close.** Soft by design, but edges blur at high zoom. Full size would cost about 2.4 ms
   more at 1080p (#19): not within the budget.
 - **Cloud reflections** (#8, #37): the water and the solar glass mirror the clouds overhead, drifting with them. The
