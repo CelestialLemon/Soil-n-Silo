@@ -33,6 +33,13 @@ interface Style {
  * The shore as the developer picked it on Soil-n-Silo#283 ("organic": rounded, and wandering a little, over a calmer one
  * that didn't wander).
  */
+/** How deep (of the bed's deepest, as `depth` gives it) a bed begins to show the shingle along the waterline (paint.ts). */
+export const SHINGLE_FROM = 0.06;
+/**
+ * The deepest (of the bed's deepest) the bed may lie at a point and the ground there still be drawn as dry bank: no
+ * shingle, no bed (`r.bedAt`; the game's meadow grows only there, Soil-n-Silo#290).
+ */
+export const BANK_DRY = SHINGLE_FROM - 0.01;
 const STYLE: Style = { along: 1.5, round: 0.4, coarse: 1.2, grow: 0.25, meander: 0.12, wave: 3.5, start: -0.12, bank: 0.75 };
 
 /** Samples a tile side of the field. */

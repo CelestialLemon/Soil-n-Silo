@@ -116,8 +116,9 @@ options behind a HUD button and a URL option on the PR's preview, and no rules c
   looks and their switch are gone.
 - **Grass to the curving shore (#290, a Wave 1 follow-up):** the meadow's grass and flowers used to stop along a straight
   line about half a metre from a water tile's side, whatever the curving bank did. Now they grow on the land as drawn
-  (its height against the water's surface, as the reeds do): off the shingle and the bed, right up to the dry bank,
-  on a water tile's dry corner too. At a fall, where the shore keeps to the tiles, the old margin stays.
+  (brush3d's `r.bedAt`, how deep its bed lies there): off the shingle and the bed, right up to the dry bank, sloped or
+  flat, on a water tile's dry corner too. At a fall, where the shore keeps to the tiles and the higher water's sheet
+  runs out over the lower bank, the old margin stays too.
 
 ## One renderer: the swap to brush3d (2026-11-16)
 

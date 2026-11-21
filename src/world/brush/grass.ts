@@ -3,13 +3,13 @@ import {
   addFlower, addReeds, addTuft, groundOf, MeshBuilder, noise2, rng, smooth, srgb, wheelRace,
   type BrushRenderer, type Ground, type LandArea, type ReedOptions,
 } from '../../../brush3d/src/index.ts';
-import type { Land } from '../../game/map.ts';
-import { layoutOf, type GameState } from '../../game/state.ts';
+import { TERRAIN, type Land } from '../../game/map.ts';
+import { layoutOf, terrainAt, type GameState } from '../../game/state.ts';
 import type { Lie } from '../ground.ts';
 import {
   blockOf, boxesIn, dryBank, FLOWER_PROFILE, FLOWER_SEASONS, flowersBloom, fringeFade, GRASS_FRINGE, GRASS_PROFILE, grassBlocks, grassLayout,
   inBuilding, layoutChanges, MAX_REED_REACH, REED_PROFILE, REED_SEASONS, REED_TOP, reedBand, reedShore, reedSpot,
-  tileHabitat, tileSeed, waterSurface, wetDistance,
+  tileHabitat, tileSeed, wetDistance,
   type FlowerSeason, type FootprintBox, type GrassBlockRect, type GrassLayout, type ReedSeason, type TileHabitat,
 } from './grassMask.ts';
 import { TILE } from './scale.ts';
@@ -28,7 +28,7 @@ import { TILE } from './scale.ts';
 //   ground, they stand in the winter's ice rather than float on it.
 // - The grass and flowers grow where the grass may (grassMask.ts's tileHabitat, footprints, slopes), each from its own
 //   random numbers, so the grass is the same with the flowers or without. By the water they grow on the land as drawn
-//   (`r.landAt` against the water's surface, grassMask.ts's dryBank), off the shingle and the bed but right up to the dry
+//   (how deep brush3d's bed lies there, `r.bedAt`, grassMask.ts's dryBank), off the shingle and the bed but right up to the dry
 //   bank, wherever the curving shore puts it, on a water tile's dry corner too (#290).
 // - A flood (flood.ts) takes no plant away: grass, flowers and reeds all stay rooted on the ground under it, and brush3d's
 //   water hides what's below its surface, so the taller poke out of the shallows and deep water covers them (the
@@ -135,12 +135,15 @@ export class Meadow {
   }
 
   /**
-   * Whether (x, z) m is a curving shore's dry bank over a water tile, where its grass may grow (#290): for telling a
-   * tuft there from a willow's low branch over the water in a pick (tools.ts). (Water never moves in play.)
+   * Whether the meadow's grass may grow at (x, z) m over a water tile of the map: a curving shore's dry bank there, as
+   * the meadow places it (`grows`, #290). For telling a tuft there from a willow's low branch over the water in a pick
+   * (tools.ts).
    */
-  bankAt(x: number, z: number): boolean {
-    const M = this.land.margin, surface = waterSurface(this.land, this.lie.relief, Math.floor(x / TILE) + M, Math.floor(z / TILE) + M);
-    return !Number.isNaN(surface) && dryBank(surface, this.r.landAt(x, z));
+  bankAt(s: GameState, x: number, z: number): boolean {
+    const tx = Math.floor(x / TILE), ty = Math.floor(z / TILE);
+    if (tx < 0 || ty < 0 || tx >= s.map.width || ty >= s.map.height || terrainAt(s, tx, ty) !== TERRAIN.water) return false;
+    const hab = tileHabitat(s, this.land, this.lie.relief, this.wetDist, tx, ty, true);
+    return !!hab && this.grows(hab, tx, ty, boxesIn(s, tx, ty, tx + 1, ty + 1), x, z);
   }
 
   /**
@@ -285,6 +288,19 @@ export class Meadow {
 
   // ---- Per-tile scattering ----
 
+  /**
+   * Whether grass or flowers may stand at (wx, wz) m on tile (tx, ty), its habitat `hab` (tileHabitat's): within the
+   * tile's bounds, outside every footprint and wheel's race (`boxes`), on the dry bank as drawn by the water (off the
+   * shingle and the bed, wherever the curving shore puts it, dryBank), and on ground gentle enough.
+   */
+  private grows(hab: TileHabitat, tx: number, ty: number, boxes: readonly FootprintBox[], wx: number, wz: number): boolean {
+    const x0 = tx * TILE, z0 = ty * TILE;
+    if (wx < x0 + hab.minU || wx > x0 + hab.maxU || wz < z0 + hab.minV || wz > z0 + hab.maxV) return false;
+    if (boxes.length && inBuilding(boxes, wx, wz, wheelRace)) return false;
+    if (hab.wet && !dryBank(this.r.bedAt(wx, wz))) return false;
+    return this.ground.normal(wx, wz).y >= 0.82;
+  }
+
   /** A tile's grass and flowers, where its habitat lets them grow. */
   private scatterTile(
     grass: MeshBuilder,
@@ -298,14 +314,7 @@ export class Meadow {
   ) {
     const hab = tileHabitat(s, this.land, this.lie.relief, this.wetDist, tx, ty, onMap);
     if (!hab) return;
-    const x0 = tx * TILE, z0 = ty * TILE;
-    const canPlace = (wx: number, wz: number): boolean => {
-      if (wx < x0 + hab.minU || wx > x0 + hab.maxU || wz < z0 + hab.minV || wz > z0 + hab.maxV) return false;
-      if (boxes.length && inBuilding(boxes, wx, wz, wheelRace)) return false;
-      // By the water, on the dry bank as drawn (off the shingle and the bed), wherever the curving shore puts it.
-      if (!Number.isNaN(hab.surface) && !dryBank(hab.surface, this.r.landAt(wx, wz))) return false;
-      return this.ground.normal(wx, wz).y >= 0.82;
-    };
+    const canPlace = (wx: number, wz: number) => this.grows(hab, tx, ty, boxes, wx, wz);
     this.scatterGrass(grass, tx, ty, hab, canPlace, fade);
     if (flowers) this.scatterFlowers(flowers, tx, ty, hab, canPlace, fade);
   }

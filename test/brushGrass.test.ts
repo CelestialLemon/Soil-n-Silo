@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { TUFT_REACH } from '../brush3d/src/shared.ts';
+import { BANK_DRY, TUFT_REACH } from '../brush3d/src/shared.ts';
 import { place, remove, removeAt } from '../src/game/build.ts';
 import { GROUND } from '../src/game/ground.ts';
 import { generateLand, TERRAIN } from '../src/game/map.ts';
@@ -14,7 +14,7 @@ import { wheelRace } from './wheelRace.ts';
 import {
   blockOf, boxesIn, BUILDING_MARGIN, CLIFF_MARGIN, FIELD_MARGIN, fringeFade, GRASS_BLOCK, GRASS_FRINGE, GRASS_PROFILE,
   GRASS_TOP, grassAt, grassBlocks, grassLayout, inBuilding, layoutChanges, MAX_BLADE_REACH, ROCK_MARGIN,
-  tileHabitat, tileSeed, WATER_MARGIN, wetDistance, dryBank, GRASS_DRY,
+  tileHabitat, tileSeed, WATER_MARGIN, wetDistance, dryBank,
 } from '../src/world/brush/grassMask.ts';
 import { TILE } from '../src/world/brush/scale.ts';
 
@@ -38,7 +38,7 @@ test('non-grass tiles, off-map tracks, and steep banks are excluded from grass t
         if (nx >= 0 && ny >= 0 && nx < w && ny < h && s.map.terrain[ny * w + nx] === TERRAIN.grass) grassNear = true;
       }
       if (!grassNear) assert.equal(hab, null);
-      else if (hab) assert.ok(Number.isFinite(hab.surface), 'grass on a water tile only on the dry bank as drawn');
+      else if (hab) assert.ok(hab.wet, 'grass on a water tile only on the dry bank as drawn');
       checkedWater++;
     }
     else if (t === TERRAIN.tree) { assert.equal(hab, null); checkedTree++; }
@@ -70,21 +70,23 @@ test('edge margins tighten next to water, rocks, cliffs, and the playable map ed
   }
   assert.ok(tx >= 0, 'found open grass patch');
 
-  // By the water: no margin along the tile's side, but kept to the dry bank as drawn, over the water's surface (#290).
+  // By the water: no margin along the tile's side, but kept to the dry bank as drawn, off brush3d's shingle and bed (#290).
+  assert.equal(tileHabitat(s, land, relief, wet, tx, ty, true)!.wet, false, 'no water round it');
   s.map.terrain[(ty - 1) * w + tx] = TERRAIN.water;
   const nearWater = tileHabitat(s, land, relief, wet, tx, ty, true)!;
   assert.ok(nearWater.minV < WATER_MARGIN);
-  assert.ok(Number.isFinite(nearWater.surface));
-  assert.equal(dryBank(nearWater.surface, nearWater.surface + GRASS_DRY - 0.01), false, 'the shingle');
-  assert.equal(dryBank(nearWater.surface, nearWater.surface + GRASS_DRY + 0.01), true, 'the dry bank');
-  assert.equal(dryBank(NaN, -10), true, 'no water near');
+  assert.ok(nearWater.wet);
+  assert.equal(dryBank(0), true, 'the dry bank');
+  assert.equal(dryBank(BANK_DRY - 0.001), true, 'the dry bank, the bed just beginning');
+  assert.equal(dryBank(BANK_DRY), false, 'the shingle');
+  assert.equal(dryBank(1), false, 'the bed');
   // Beside a fall (the water beside it drops a level), brush3d keeps the shore to the tiles: so does the grass.
   // (Past the tiles round it: the water beside it drops to the next tile out.)
   const lx = tx + M, ly = ty + M, beyond = ((ly - 2) * land.width + lx) * 4, saved = land.corner.slice(beyond, beyond + 4);
   s.map.terrain[(ty - 2) * w + tx] = TERRAIN.water;
   for (let k = 0; k < 4; k++) land.corner[beyond + k] = saved[0] - 1;
   const byFall = tileHabitat(s, land, relief, wet, tx, ty, true)!;
-  assert.ok(Number.isNaN(byFall.surface) && byFall.minV >= WATER_MARGIN, 'kept off a fall\'s water by the tile');
+  assert.ok(byFall.wet && byFall.minV >= WATER_MARGIN, 'kept off a fall\'s water by the tile');
   for (let k = 0; k < 4; k++) land.corner[beyond + k] = saved[k];
   s.map.terrain[(ty - 2) * w + tx] = TERRAIN.grass;
 

@@ -23,3 +23,6 @@ export { TUFT_HEIGHT, TUFT_REACH } from './kit/tuft.ts';
 export { FLOWER_REACH } from './kit/flower.ts';
 // And how far a clump of reeds reaches (kit/reed.ts), for the game's margins and its pick (Soil-n-Silo#267).
 export { REED_HEIGHT, REED_REACH, REED_WIDTH } from './kit/reed.ts';
+// How deep a shore's bed may lie (r.bedAt) with the ground there still drawn as dry bank (land/shore.ts), which the game's
+// meadow grows to (Soil-n-Silo#290).
+export { BANK_DRY } from './land/shore.ts';

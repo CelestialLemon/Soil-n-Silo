@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { MeshBuilder, noise2, type Paint } from '../kit/builder.ts';
 import type { MaterialKind } from '../renderer/materials.ts';
 import { checkLand, checkPatch, LAND_COVER, LAND_GROUND, type LandMap, type LandPatch, type LandRect } from './map.ts';
-import { ShoreField } from './shore.ts';
+import { SHINGLE_FROM, ShoreField } from './shore.ts';
 import { Surface, type Refit } from './surface.ts';
 
 // The land painted from the game's map (Soil-n-Silo#202, docs/LAND.md): the renderer's own ground, in place of a mesh the
@@ -439,6 +439,16 @@ export class PaintedLand {
     }
   }
 
+  /**
+   * How deep the bed lies at a point of the world (x, z in metres), 0 to 1 of its deepest: 0 on dry ground (and past the
+   * land), the shingle from SHINGLE_FROM, the bed proper deeper. While an earthwork is `ahead`, the new ground's.
+   */
+  bedAt(x: number, z: number): number {
+    const px = (x - this.x0) / this.tile, py = (z - this.z0) / this.tile;
+    if (px < 0 || py < 0 || px > this.width || py > this.height) return 0;
+    return this.sunk(px, py) / BED;
+  }
+
   /** The land's height (m) at a point of the world (x, z in metres), as drawn: the beds and cliffs too. */
   heightAt(x: number, z: number): number {
     const px = (x - this.x0) / this.tile, py = (z - this.z0) / this.tile;
@@ -851,7 +861,7 @@ export class PaintedLand {
     const broken = noise2(wx * 0.35 + 11, wz * 0.35 - 4);
     // (Over half a tile up at most: the field's no lower than DRY, a little more with the wander, all up the land.)
     c.lerp(COL.damp, smooth(-0.55, -0.05, field + 0.1 * broken) * 0.45 * (1 - bed));
-    const shingle = smooth(0.06, 0.2, depth) * (1 - smooth(0.3, 0.5, depth)) * smooth(-0.35, 0.25, noise2(wx * 0.6 - 2, wz * 0.6 + 6));
+    const shingle = smooth(SHINGLE_FROM, 0.2, depth) * (1 - smooth(0.3, 0.5, depth)) * smooth(-0.35, 0.25, noise2(wx * 0.6 - 2, wz * 0.6 + 6));
     c.lerp(COL.shingle, shingle * 0.6);
     // The bed, darkening as it deepens; as dull as the country is there, as the land is, so a bed crossing the map's edge
     // has no seam.

@@ -1,5 +1,5 @@
 import type { FlowerOptions, ReedOptions, TuftOptions } from '../../../brush3d/src/index.ts';
-import { FLOWER_REACH, REED_HEIGHT, REED_REACH, REED_WIDTH, TUFT_HEIGHT, TUFT_REACH } from '../../../brush3d/src/shared.ts';
+import { BANK_DRY, FLOWER_REACH, REED_HEIGHT, REED_REACH, REED_WIDTH, TUFT_HEIGHT, TUFT_REACH } from '../../../brush3d/src/shared.ts';
 import { GROUND } from '../../game/ground.ts';
 import { TERRAIN, type Land } from '../../game/map.ts';
 import { joins, SIDES, spanOf, STEEP, type Relief } from '../../game/relief.ts';
@@ -264,24 +264,17 @@ export function reedSpot(
 
 /** Margins (m) kept clear around cliff faces, non-grass neighbours, and footprints. */
 export const CLIFF_MARGIN = 0.85;
-/** Kept off the water by the tile at a fall, where the shore keeps to the tiles' outline (elsewhere: GRASS_DRY). */
+/**
+ * Kept off the water by the tile at a fall: the shore keeps to the tiles' outline there, and the higher water's sheet
+ * runs a little out over the lower bank (elsewhere the bed as drawn decides, dryBank).
+ */
 export const WATER_MARGIN = 0.45;
 /**
- * How high (m) over the water's surface the land as drawn (`r.landAt`) stands where grass and flowers grow by the water:
- * off the shingle along the waterline and the bed (brush3d paints the shingle from where the bank has sunk 6% of its
- * 1.2 m bed, about 0.41 m over the surface, down), but right up to the dry bank, wherever the curving shore puts it (#290).
- * Over the reeds' band (REED_HIGH), so the reeds stand below the grass.
+ * Whether grass and flowers may stand by the water where brush3d's bed lies `bed` deep (`r.bedAt`, 0 to 1 of its
+ * deepest): on the dry bank as drawn, off the shingle along the waterline and the bed, right up to wherever the curving
+ * shore puts the bank, sloped or flat (brush3d's BANK_DRY, #290).
  */
-export const GRASS_DRY = 0.42;
-/** Whether grass may stand where the land as drawn is `land` m high, by water whose surface is `surface` m (NaN: none). */
-export const dryBank = (surface: number, land: number) => Number.isNaN(surface) || land >= surface + GRASS_DRY;
-
-/** The surface (m) of the water on land tile (lx, ly) (the land's own, its margin in), or NaN if it's not water. */
-export function waterSurface(land: Pick<Land, 'width' | 'height' | 'terrain'>, relief: Relief, lx: number, ly: number): number {
-  if (lx < 0 || ly < 0 || lx >= land.width || ly >= land.height) return NaN;
-  const li = ly * land.width + lx;
-  return land.terrain[li] === TERRAIN.water ? relief.corner[li * 4] * LEVEL - WATER_DOWN : NaN;
-}
+export const dryBank = (bed: number) => bed < BANK_DRY;
 export const ROCK_MARGIN = 0.35;
 /**
  * Kept strictly above `MAX_BLADE_REACH` so no blade at rest stands in a building's or field's footprint. The wind's sway
@@ -299,11 +292,8 @@ export interface FootprintBox {
 
 export interface TileHabitat {
   minU: number; maxU: number; minV: number; maxV: number;
-  /**
-   * The surface (m) of the water whose shore may cross the tile: grass grows there only on the dry bank as drawn
-   * (`dryBank`). NaN: no water beside it, or a fall's (kept off by WATER_MARGIN instead).
-   */
-  surface: number;
+  /** Water on it or beside it, whose shore may cross it: grass grows there only on the dry bank as drawn (`dryBank`). */
+  wet: boolean;
   waterBoost: number; skirtBoost: number; rockBoost: number;
   /** At a hill's edge: a bank or cliff on a side (the wildflowers gather there). */
   edgeBoost: number;
@@ -421,9 +411,9 @@ export function fringeFade(x: number, y: number, w: number, h: number, reach: nu
 /**
  * Evaluates whether map/country tile `(tx, ty)` can hold meadow grass tufts and returns its inner placement bounds
  * and habitat modifiers, or `null` if the tile is excluded (not grass, track, steep bank, or pinched margins). A water tile
- * beside open grass may hold some where the curving shore leaves it dry bank (its `surface`, `dryBank`); and a grass tile
+ * beside open grass may hold some where the curving shore leaves it dry bank (`wet`, `dryBank`); and a grass tile
  * by the water grows right up to the bank as drawn rather than to a margin along the tile's side, but at a fall (water
- * at two levels round it), whose shore keeps to the tiles, it keeps WATER_MARGIN off the water.
+ * at two levels within two tiles), whose shore keeps to the tiles, it keeps WATER_MARGIN off the water too.
  */
 export function tileHabitat(
   s: GameState,
@@ -450,7 +440,7 @@ export function tileHabitat(
 
   // The water round it (and on it): its level, and whether it's at two (a fall) within two tiles, as brush3d holds a
   // shore to the tiles where the water beside it drops.
-  let treesNear = 0, rockNear = false, grassNear = false, level = NaN, fall = false, first = NaN;
+  let treesNear = 0, rockNear = false, grassNear = false, wet = false, fall = false, first = NaN;
   for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
     const nx = tx + dx, ny = ty + dy, near = Math.abs(dx) <= 1 && Math.abs(dy) <= 1;
     const k = dx === 0 && dy === 0 ? terrain : kindAt(nx, ny);
@@ -460,7 +450,7 @@ export function tileHabitat(
       const lv = relief.corner[(nly * W + nlx) * 4];
       if (Number.isNaN(first)) first = lv;
       else if (lv !== first) fall = true;
-      if (near) level = lv;
+      wet ||= near;
     } else if (!near) continue;
     else if (k === TERRAIN.tree) treesNear++;
     else if (k === TERRAIN.rock) rockNear = true;
@@ -468,7 +458,6 @@ export function tileHabitat(
   }
   // A water tile holds grass only where its shore leaves dry bank beside open grass, never by a fall.
   if (terrain === TERRAIN.water && (!grassNear || fall)) return null;
-  const surface = Number.isNaN(level) || fall ? NaN : level * LEVEL - WATER_DOWN;
 
   let minU = 0.08, maxU = TILE - 0.08, minV = 0.08, maxV = TILE - 0.08, edge = false;
   for (let d = 0; d < 4; d++) {
@@ -496,7 +485,7 @@ export function tileHabitat(
   const winter = s.scenario.climate.season === 'winter';
   const gKind = onMap ? s.map.ground[ty * s.map.width + tx] : land.ground[li];
   return {
-    minU, maxU, minV, maxV, surface,
+    minU, maxU, minV, maxV, wet,
     waterBoost: wetDist[li] <= 1 ? 0.30 : wetDist[li] <= 2 ? 0.16 : 0,
     skirtBoost: treesNear >= 1 && treesNear <= 3 ? 0.24 : 0,
     rockBoost: rockNear ? 0.16 : 0,
