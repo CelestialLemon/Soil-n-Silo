@@ -308,6 +308,26 @@ check('a tile turned to water: as it was until fitted, then its bed', midFit && 
   check('and the swap says where', swaps.length === 1 && a.x0 < at[0] && a.x1 > at[0] && a.z0 < at[1] && a.z1 > at[1] && a.x1 - a.x0 <= 6 * TILE, JSON.stringify(swaps));
 }
 
+{
+  // A tile at the land's edge repainted: wherever the land's colour changed (the edge's blend runs a cell round it), the
+  // swap says so.
+  const ty = 16, pts: [number, number][] = [];
+  for (let y = ty - 8; y <= ty + 8; y += 0.25) for (let x = 0; x <= 8; x += 0.25) pts.push(world(x, y));
+  const before = pts.map((p) => land.landColourAt(...p).clone()), swaps: LandArea[] = [];
+  land.onSwap = (a) => swaps.push(a);
+  land.update({ x: 0, y: ty, width: 1, height: 1 }, { cover: new Uint8Array([LAND_COVER.bare]) });
+  while (!land.step(0));
+  land.onSwap = null;
+  const a = swaps[0];
+  let changed = 0, outside = 0;
+  pts.forEach((p, i) => {
+    if (land.landColourAt(...p).equals(before[i])) return;
+    changed++;
+    if (!a || p[0] < a.x0 || p[0] > a.x1 || p[1] < a.z0 || p[1] > a.z1) outside++;
+  });
+  check('a tile at the land\'s edge repainted: the swap covers all it changed', swaps.length === 1 && changed > 0 && outside === 0, `${outside} of ${changed} changed points outside ${JSON.stringify(swaps)}`);
+}
+
 // The land's edge raised: the country beyond made again to meet it.
 const apronAt = () => {
   const g = (land as unknown as { apronGeometry: THREE.BufferGeometry }).apronGeometry, pos = g.getAttribute('position');
