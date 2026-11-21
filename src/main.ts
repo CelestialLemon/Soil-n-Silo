@@ -72,11 +72,12 @@ const loaded = deserialize(localStorage.getItem(SAVE_KEY));
 const saved = loaded.ok ? loaded.value : null;
 /**
  * The game's page again, with `query` (`?menu`). It keeps the page's other options too (`?profile` and the like, which the
- * world reads only once it loads), all but the game's own `play` and `menu`.
+ * world reads only once it loads), all but the game's own `play` and `menu`. As the address is now, not as it loaded: a look's
+ * button (a PR's comparison) changes its option in place.
  */
 const page = (query = '') => {
   const q = new URLSearchParams(query);
-  for (const [k, v] of params) if (k !== 'play' && k !== 'menu' && !q.has(k)) q.set(k, v);
+  for (const [k, v] of new URLSearchParams(location.search)) if (k !== 'play' && k !== 'menu' && !q.has(k)) q.set(k, v);
   return `${location.pathname}${q.size ? `?${q}` : ''}`;
 };
 /** A commission to start straight away (`?play=<id>`); an unknown id falls through to the menu or the saved game. */

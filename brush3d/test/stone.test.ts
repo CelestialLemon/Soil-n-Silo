@@ -8,19 +8,19 @@ import { addCrag, addStone, groundOf } from '../src/kit/kit.ts';
 
 test('a crag and a stone mark every vertex as stone, their brushwork whole', () => {
   const ground = groundOf(() => 0);
-  for (const add of [
-    (b: MeshBuilder) => addCrag(b, ground, 0, 0, { rx: 1, ry: 0.8, rz: 1.2 }, rng(286)),
-    (b: MeshBuilder) => addStone(b, ground, 0, 0, 0.6, 0.3, rng(286)),
-  ]) {
+  // Each with the brushwork it had before it was marked.
+  for (const [add, detail] of [
+    [(b: MeshBuilder) => addCrag(b, ground, 0, 0, { rx: 1, ry: 0.8, rz: 1.2 }, rng(286)), 0.55],
+    [(b: MeshBuilder) => addStone(b, ground, 0, 0, 0.6, 0.3, rng(286)), 0.6],
+  ] as const) {
     const b = new MeshBuilder('paint');
     add(b);
     const paint = b.build().getAttribute('aPaint');
     assert.ok(paint.count > 0);
     for (let i = 0; i < paint.count; i++) {
       const x = paint.getX(i);
-      assert.ok(x < 0 && Math.abs(x) <= 1, `vertex ${i}: aPaint.x ${x}`);
       // Negating is exact, so abs() in the shader gives back exactly the brushwork the stone had unmarked.
-      assert.equal(Math.fround(-x), Math.fround(Math.abs(x)));
+      assert.equal(x, -Math.fround(detail), `vertex ${i}: aPaint.x ${x}`);
     }
   }
 });

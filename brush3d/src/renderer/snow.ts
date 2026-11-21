@@ -26,9 +26,9 @@ export const SNOW_WHOLE = 0.3;
  * Under deep snow the crags' tops went the field's flat white and their feet were buried as deep as the field's snow
  * lies, so only thin dark steep faces showed: floating slivers.
  *   off      as on everything else (before #286).
- *   patchy   less settles on stone: only its flattest tops, never whole, so its shoulders and ridges show round a cap;
+ *   patchy   less settles on stone: only its flattest tops, never the whole rock, so its shoulders and ridges show round a cap;
  *            and the drifts bank against its foot to under half the field's depth, along an uneven line.
- *   shaded   as much as before, but the snow on stone a little cooler than the field's, and its banked foot falling into
+ *   shaded   as much as before, but the snow on stone a little cooler than the field's, even in full sun, and its banked foot falling into
  *            a soft cool shade towards the ground, so a crag stands out of the field with a shadow at its feet.
  *   both     patchy and shaded.
  */

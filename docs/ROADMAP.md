@@ -118,8 +118,8 @@ options behind a HUD button and a URL option on the PR's preview, and no rules c
   were buried as deep as the field's snow lies, so only thin dark steep faces showed: floating slivers (Gemini 4 Neon's
   review of Wave 1). The renderer now lets the snow lie on stone its own way (`r.setRockSnow`), with three looks up for the
   developer's pick behind the HUD's **Rock snow** button and `?rocksnow=`: `patchy` (snow settles only on a rock's flattest
-  tops, never whole, so its shoulders and ridges show round a cap, and the drift at its foot banks to about half the
-  field's depth along an uneven line), `shaded` (as much snow as before, but a little cooler on stone than the field's,
+  tops, never the whole rock, so its shoulders and ridges show round a cap, and the drift at its foot banks to about half the
+  field's depth along an uneven line), `shaded` (as much snow as before, but a little cooler on stone than the field's even in sun,
   falling into a soft cool shade at the rock's foot) and `both` (the default on the preview). `off` is the look before.
   The same GPU time on c5 in a blizzard.
 

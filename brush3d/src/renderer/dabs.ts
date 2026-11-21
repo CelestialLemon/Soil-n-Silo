@@ -3,7 +3,8 @@
 
 /** A painted stone's aPaint.x (how much brushwork shows, above 0: addStone, addCrag) is negated, to mark it as stone, so the
  * snow can lie on it its own way (RockSnowLook, snow.ts; Soil-n-Silo#286). Negated, not raised by a flag: a flag taken off
- * again would round the brushwork a hair off, and change the frame. */
+ * again would round the brushwork a hair off, and change the frame. Only the paint material reads the mark (a stone added to
+ * a 'ground' or 'crop' builder would have its brushwork turned over; nothing does that). */
 export const stonePaint = (detail: number) => -detail;
 
 /** Added to a foliage dab's aPaint.x (its colour drift, under 2 otherwise) to give it crisper edges: see FOLIAGE_VERT. */
