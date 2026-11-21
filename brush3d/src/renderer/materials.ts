@@ -8,7 +8,7 @@ import { SNOW_GLSL } from './snow';
 import { WET_GLSL, WET_INK_GLSL } from './wet';
 import { GROUND_TOOLS_GLSL } from './overlay';
 import { GLOW, PART_TEXELS } from './parts';
-import { CRISP_EDGE, STIFF_STROKE } from './dabs';
+import { CRISP_EDGE, ROOTED_SHIFT, ROOTED_STEP, ROOTED_TURN, STIFF_STROKE } from './dabs';
 import { SMOKE_INK } from './pick';
 import { SMOKE } from './nightLights';
 
@@ -297,11 +297,12 @@ void main() {
 export { CRISP_EDGE, STIFF_STROKE };
 
 /**
- * Foliage dabs: each card is a quad centred on `position`, turned to face whichever camera draws it (the view or the sun),
+ * Foliage dabs: each card is a quad centred on `position` (a rooted stroke's moved along its length: ROOTED_TURN, dabs.ts),
+ * turned to face whichever camera draws it (the view or the sun),
  * so the sun's shadow map sees the same clumps the eye does. `normal` is the canopy's (the crown's form and the branch
  * mass's), so a whole crown shades as a few lumps rather than as many pads.
  * aCard: the corner (-1..1), the dab size in metres, and a seed. aPaint.y: the dab's width over its length (1 round, less
- * a leafy stroke); aPaint.z: the stroke's turn on screen in radians (below zero: any way).
+ * a leafy stroke); aPaint.z: the stroke's turn on screen in radians (below zero: any way; raised by ROOTED_TURN, rooted).
  */
 const FOLIAGE_VERT = /* glsl */ `
 ${HEAD}
@@ -317,8 +318,15 @@ void main() {
   vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
   vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
   vec3 toCam = vec3(viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2]);
-  float a = aPaint.z >= 0.0 ? aPaint.z + (aCard.w - 0.5) * 0.7 : aCard.w * 6.2831853;
-  vec2 c = mat2(cos(a), sin(a), -sin(a), cos(a)) * aCard.xy;
+  // A rooted stroke (ROOTED_TURN, dabs.ts) grows out from its point along its turn: its card moves along its length (the
+  // k-th of a line of them, further).
+  float rooted = max(0.0, floor(aPaint.z / ${ROOTED_TURN.toFixed(6)}));
+  float spin = aPaint.z - rooted * ${ROOTED_TURN.toFixed(6)};
+  float a = spin >= 0.0 ? spin + (aCard.w - 0.5) * 0.7 : aCard.w * 6.2831853;
+  float shift = rooted > 0.0 ? ${ROOTED_SHIFT.toFixed(2)} + ${ROOTED_STEP.toFixed(2)} * (rooted - 1.0) : 0.0;
+  mat2 turned = mat2(cos(a), sin(a), -sin(a), cos(a));
+  // Where the corner is drawn (moved, if rooted), and where it lies in the card (for its shading, the same for any stroke).
+  vec2 c = turned * (aCard.xy + vec2(shift, 0.0)), own = turned * aCard.xy;
   vec4 wc = modelMatrix * vec4(position, 1.0);
   vec3 rest = wc.xyz + (right * c.x + up * c.y) * aCard.z;
   // Wind: the crown moves with its tree (see treeWind and drawnShift); each dab flutters on its own, faster and wider as the
@@ -343,7 +351,7 @@ void main() {
   vRestPos = rest;
   vNormal = normalize(mat3(modelMatrix) * normal);
   // Each dab bulges towards the viewer a little; kept faint, so turning the camera doesn't relight the crown.
-  vDabNormal = normalize(right * c.x * 0.55 + up * c.y * 0.55 + toCam * 0.45);
+  vDabNormal = normalize(right * own.x * 0.55 + up * own.y * 0.55 + toCam * 0.45);
   vColor = color;
   vPaint = aPaint;
   vCard = aCard;

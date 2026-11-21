@@ -156,6 +156,19 @@ the poplar a column. Saplings are small trees, and every tree changes with the s
 on #227, "for now": the crops' lay and the pine may be revisited. The candidates not picked (crops in rows of soil, a
 tiered or a Scots pine, a pollarded willow) are in #227's history. The demo shows them all at `?scene=plants`.
 
+The far woods (the country's woods past the map, a crown of a few strokes for each 2 × 2 tiles, brush3d's `addCanopy`) in
+winter (#268, epic #265, in review): they were dark chocolate and near-black balls on the snow, beside the lacy near trees.
+Two looks are up for the developer's pick on the PR, behind the HUD's **Far woods** button and `?farwoods=`: `frosted` (the
+default; bare woods a fan of thin taupe twig strokes with the ground between them, pines spruce cones) and `misty` (bare
+woods soft pale-grey masses). Both face the strokes mostly up, so they're lit as the ground is and take the snow and frost
+as the near trees do, and in the other seasons shape the pines as cones and the poplars as columns and lift the crowns'
+dark undersides. `off` is the look before. Up close, where the far woods meet the near, a crown was loose strokes floating
+over the ground, so in both looks every far crown now stands on a thin trunk of short upright strokes, and a bare wood's has
+a few limbs forking up into its twigs (frosted's twigs: four times the strokes, smaller). After Gemini 4 Neon's review the
+limbs grow out from the trunk's upper part into a Y from any side, where they had crossed over it in an X (broomsticks),
+and frosted's twig fan is a little wider. The same draws; on c5 the GPU's
+frame is the same as `off` to 0.4 ms more in frosted, the same in misty.
+
 ## The tools in the painted look (2026-11-16)
 
 In brush3d, the game's tools work on the painted world (#206; #232 the groundwork, #233 the
