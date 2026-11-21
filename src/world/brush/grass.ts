@@ -160,10 +160,19 @@ export class Meadow {
   setDetails(on: boolean) {
     if (on === this.details) return;
     this.details = on;
+    this.reshow();
+  }
+
+  /**
+   * Each block's grass, flowers and reeds shown or hidden as they should be (after something else showed every mesh: a
+   * profile run): hidden while the block waits to be made again, the grass and flowers while the details stand aside.
+   */
+  reshow() {
     for (const [id, b] of this.blocks) {
-      if (this.urgent.has(id)) continue;
-      if (b.grass) b.grass.visible = on;
-      if (b.flowers) b.flowers.visible = on;
+      const wait = this.urgent.has(id);
+      if (b.grass) b.grass.visible = !wait && this.details;
+      if (b.flowers) b.flowers.visible = !wait && this.details;
+      if (b.reeds) b.reeds.visible = !wait;
     }
   }
 
