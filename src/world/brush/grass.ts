@@ -7,7 +7,7 @@ import type { Land } from '../../game/map.ts';
 import { layoutOf, type GameState } from '../../game/state.ts';
 import type { Lie } from '../ground.ts';
 import {
-  blockOf, boxesIn, FLOWER_PROFILE, FLOWER_SEASONS, flowersBloom, fringeFade, GRASS_FRINGE, GRASS_PROFILE, grassBlocks, grassLayout,
+  blockOf, boxesIn, dryBank, FLOWER_PROFILE, FLOWER_SEASONS, flowersBloom, fringeFade, GRASS_FRINGE, GRASS_PROFILE, grassBlocks, grassLayout,
   inBuilding, layoutChanges, MAX_REED_REACH, REED_PROFILE, REED_SEASONS, REED_TOP, reedBand, reedShore, reedSpot,
   tileHabitat, tileSeed, wetDistance,
   type FlowerSeason, type FootprintBox, type GrassBlockRect, type GrassLayout, type ReedSeason, type TileHabitat,
@@ -27,7 +27,9 @@ import { TILE } from './scale.ts';
 //   None by a fall, on a cliff or a steep tile, in a footprint or a wheel's race, or near a rock's crags. Rooted in the
 //   ground, they stand in the winter's ice rather than float on it.
 // - The grass and flowers grow where the grass may (grassMask.ts's tileHabitat, footprints, slopes), each from its own
-//   random numbers, so the grass is the same with the flowers or without.
+//   random numbers, so the grass is the same with the flowers or without. By the water they grow on the land as drawn
+//   (`r.landAt` against the water's surface, grassMask.ts's dryBank), off the shingle and the bed but right up to the dry
+//   bank, wherever the curving shore puts it, on a water tile's dry corner too (#290).
 // - A flood (flood.ts) takes no plant away: grass, flowers and reeds all stay rooted on the ground under it, and brush3d's
 //   water hides what's below its surface, so the taller poke out of the shallows and deep water covers them (the
 //   developer, on #266 and #267). At its height an ordinary flood stands over a metre deep at the river's edge, so the
@@ -291,6 +293,8 @@ export class Meadow {
     const canPlace = (wx: number, wz: number): boolean => {
       if (wx < x0 + hab.minU || wx > x0 + hab.maxU || wz < z0 + hab.minV || wz > z0 + hab.maxV) return false;
       if (boxes.length && inBuilding(boxes, wx, wz, wheelRace)) return false;
+      // By the water, on the dry bank as drawn (off the shingle and the bed), wherever the curving shore puts it.
+      if (!dryBank(hab.surface, this.r.landAt(wx, wz))) return false;
       return this.ground.normal(wx, wz).y >= 0.82;
     };
     this.scatterGrass(grass, tx, ty, hab, canPlace, fade);

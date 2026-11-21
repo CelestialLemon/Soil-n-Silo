@@ -14,7 +14,7 @@ import { wheelRace } from './wheelRace.ts';
 import {
   blockOf, boxesIn, BUILDING_MARGIN, CLIFF_MARGIN, FIELD_MARGIN, fringeFade, GRASS_BLOCK, GRASS_FRINGE, GRASS_PROFILE,
   GRASS_TOP, grassAt, grassBlocks, grassLayout, inBuilding, layoutChanges, MAX_BLADE_REACH, ROCK_MARGIN,
-  tileHabitat, tileSeed, WATER_MARGIN, wetDistance,
+  tileHabitat, tileSeed, WATER_MARGIN, wetDistance, dryBank, GRASS_DRY,
 } from '../src/world/brush/grassMask.ts';
 import { TILE } from '../src/world/brush/scale.ts';
 
@@ -30,7 +30,17 @@ test('non-grass tiles, off-map tracks, and steep banks are excluded from grass t
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const t = s.map.terrain[y * w + x];
     const hab = tileHabitat(s, land, relief, wet, x, y, true);
-    if (t === TERRAIN.water) { assert.equal(hab, null); checkedWater++; }
+    // Water holds grass only beside open grass (where its curving shore may leave dry bank, #290), kept to the bank as drawn.
+    if (t === TERRAIN.water) {
+      let grassNear = false;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx >= 0 && ny >= 0 && nx < w && ny < h && s.map.terrain[ny * w + nx] === TERRAIN.grass) grassNear = true;
+      }
+      if (!grassNear) assert.equal(hab, null);
+      else if (hab) assert.ok(Number.isFinite(hab.surface), 'grass on a water tile only on the dry bank as drawn');
+      checkedWater++;
+    }
     else if (t === TERRAIN.tree) { assert.equal(hab, null); checkedTree++; }
     else if (t === TERRAIN.rock) { assert.equal(hab, null); checkedRock++; }
     else if (hab) checkedGrass++;
@@ -60,9 +70,14 @@ test('edge margins tighten next to water, rocks, cliffs, and the playable map ed
   }
   assert.ok(tx >= 0, 'found open grass patch');
 
+  // By the water: no margin along the tile's side, but kept to the dry bank as drawn, over the water's surface (#290).
   s.map.terrain[(ty - 1) * w + tx] = TERRAIN.water;
   const nearWater = tileHabitat(s, land, relief, wet, tx, ty, true)!;
-  assert.ok(nearWater.minV >= WATER_MARGIN);
+  assert.ok(nearWater.minV < WATER_MARGIN);
+  assert.ok(Number.isFinite(nearWater.surface));
+  assert.equal(dryBank(nearWater.surface, nearWater.surface + GRASS_DRY - 0.01), false, 'the shingle');
+  assert.equal(dryBank(nearWater.surface, nearWater.surface + GRASS_DRY + 0.01), true, 'the dry bank');
+  assert.equal(dryBank(NaN, -10), true, 'no water near');
 
   s.map.terrain[ty * w + (tx + 1)] = TERRAIN.rock;
   const nearRock = tileHabitat(s, land, relief, wet, tx, ty, true)!;
