@@ -93,6 +93,8 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
       ponds are ovals, a damp band and a shingle along the waterline; pads and falls keep their square edges, and a channel a
       tile wide stays joined to its pond. About 0.3 s more to make a land, an earthwork's update about 1 ms, under 3% more of its triangles, the frame's GPU time unchanged within noise.
       The developer picked the look that wanders a little (`organic`, Soil-n-Silo#283) over a calmer one (docs/LAND.md).
+      Since, `r.bedAt` says how deep the bed lies at a point and `BANK_DRY` where the ground is still drawn as dry bank,
+      so the game's meadow grows right up to the curving bank (Soil-n-Silo#290).
 - **Crags, for the game's rock outcrops** (Soil-n-Silo#257, epic Soil-n-Silo#265, 2026-11-20): the painting kit's
   `addCrag`, a boulder or crag cut by three soft cleavage planes from an icosphere (80 or 180 triangles), stretched and
   tilted, its underside pushed into the slope so it never floats, with strata, a muddy foot and moss on its upward faces.

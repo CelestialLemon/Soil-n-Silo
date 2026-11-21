@@ -953,6 +953,13 @@ export class BrushRenderer {
     return this.painted ? this.painted.landColourAt(x, z, into) : into.setHex(0x5a9848);
   }
 
+  /**
+   * How deep the bed of the water's shores lies at a point of the world (m), as drawn (setLand's): 0 to 1 of its deepest,
+   * 0 on dry ground; the ground is drawn as dry bank (no shingle, no bed) below `BANK_DRY` (shared.ts). 0 before there's a land.
+   * While `landAhead`, the new ground's, as landAt's.
+   */
+  bedAt(x: number, z: number): number { return this.painted?.bedAt(x, z) ?? 0; }
+
   /** Where a line of sight (view.rayAt) first meets the land as drawn, or null if it misses or there's no land yet. */
   landHit(ray: THREE.Ray, into?: THREE.Vector3): THREE.Vector3 | null { return this.painted?.hit(ray, into) ?? null; }
 

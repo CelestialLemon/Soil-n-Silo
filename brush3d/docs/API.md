@@ -138,7 +138,9 @@ r.updateLand({ x, y, width, height }, { corners, worked, cover, ground });   // 
 - **Curving shores** (Soil-n-Silo#258): the beds follow a smoothed field over the water's tiles, so the river curves and
   a pond is an oval rather than the tiles' squares, wandering a little (the developer's pick). Nothing the game sends changes:
   the water's tiles stay the rules', a pad and a fall keep their square edges, and `landAt`/`landHit`/`landColourAt` give the curving
-  beds as drawn (LAND.md).
+  beds as drawn (LAND.md). `r.bedAt(x, z)` says how deep the bed lies at a point (0 to 1 of its deepest, 0 on dry
+  ground); below `BANK_DRY` (in `shared.ts` too) the ground there is drawn as dry bank, with no shingle or bed (the game's
+  meadow grows right up to there, Soil-n-Silo#290).
 - **The drawn surface is the game's to query**, so a truck, a dropped good, grass tufts and the tile cursor sit on what
   the player sees: `r.landAt(x, z)` gives the land's height there (metres), `r.landColourAt(x, z, into?)` the painted
   ground's colour there as drawn (linear RGB, before the season turns it), and `r.landHit(ray)` where a line of sight
@@ -147,7 +149,7 @@ r.updateLand({ x, y, width, height }, { corners, worked, cover, ground });   // 
   metres) its height or paint may have changed, as the frame that first draws it begins (`setLand` calls back at once,
   with the old land's area and the new one's); it returns a function that stops the calls. `r.landAhead` is true while
   `landAt` already answers for an earthwork's new ground that isn't drawn yet (fitted, its chunks still being painted;
-  `landColourAt` too, for the shores' banks and beds there):
+  `landColourAt` and `bedAt` too, for the shores' banks and beds there):
   the game's grass (#256) isn't made again meanwhile, and the blocks whose ground moved are hidden at the swap and made
   again, never left floating over the old ground. The rules go on asking `relief.ts`.
 - Not yet: the cuts models need where they stand (the water wheel's race in its bank, `wheelRace` in the catalogue).
