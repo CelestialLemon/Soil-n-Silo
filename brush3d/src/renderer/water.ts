@@ -128,8 +128,8 @@ float edgeNoise(vec2 q) {
 }
 // Where a point lies against the water's edge, in cells, wavered: 0 about on the wet cells' edge, more inside. (Smoothed,
 // it reads up to -0.19 at the centre of the furthest cell the sheet runs on flat over before it dives, and less past it:
-// see waterShows.) And how far the water there has spread out of its bed (WaterMap.spread, smoothed as it is): only there
-// is its edge drawn so.
+// see waterShows.) And how far the water there has spread out of its bed (WaterMap.spread, smoothed as it is, then
+// sharpened): only there is its edge drawn so.
 vec2 waterEdgeAt(vec2 xz) {
   vec2 g = (xz - uWaterGrid.xy) * uWaterGrid.z - 0.5, i = floor(g + 0.5), t = g - i;
   vec3 wx = vec3(0.5 * (0.5 - t.x) * (0.5 - t.x), 0.75 - t.x * t.x, 0.5 * (0.5 + t.x) * (0.5 + t.x));
@@ -138,7 +138,7 @@ vec2 waterEdgeAt(vec2 xz) {
   // Two cells or more from the dry, every cell round is wet and the reading well inside (a neighbour is at most a diagonal
   // nearer the dry, so the smoothed reading is at least 0.67, and 0.5 wobbled): skip the rest, the most of a broad flood.
   vec2 mine = shoreCell(c);
-  if (mine.x * uWaterGrid.z >= 2.0) return vec2(4.0, mine.y);
+  if (mine.x * uWaterGrid.z >= 2.0) return vec2(4.0, smoothstep(0.25, 0.75, mine.y));
   float v = 0.0, own = mine.x, spread = 0.0;
   for (int z = 0; z < 3; z++) for (int x = 0; x < 3; x++) {
     vec2 d = x == 1 && z == 1 ? mine : shoreCell(c + ivec2(x - 1, z - 1));
@@ -147,9 +147,15 @@ vec2 waterEdgeAt(vec2 xz) {
   }
   float wobble = edgeNoise(xz * 0.3) * 0.55 + edgeNoise(xz * 0.75 + 7.0) * 0.3 + edgeNoise(xz * 1.9 + 3.0) * 0.15;
   // Smoothed, a lone wet cell (or a thin finger of them) would thin to nothing; the rules flood it, so a wet cell keeps at
-  // least a round pool about its own size (inside it, so it never reaches the dive).
-  float e = max(2.0 * v * uWaterGrid.z - 0.5, own > 0.0 ? 0.62 - 1.25 * length(t) : -1.0);
-  return vec2(e + wobble * 0.17, spread);
+  // least a round pool about its own size (inside it, so it never reaches the dive). It grows in as the cell's distance
+  // eases in from the dry (0.5 cell at an edge cell), so a newly flooded cell doesn't pop in whole as the ease starts;
+  // below the wobble's reach until it does.
+  float pool = own > 0.0 ? 0.79 * clamp(2.0 * own * uWaterGrid.z, 0.0, 1.0) - 0.17 - 1.25 * length(t) : -1.0;
+  float e = max(2.0 * v * uWaterGrid.z - 0.5, pool);
+  // How much it has spread, sharpened: where the water out of its bed meets the river's, the two blend over the middle of
+  // the smoothed spread only, so the river's bank a cell along keeps its shore, the flood's side is cut whole (its dive
+  // hidden), and weights summing to a hair under 1 don't leave the cut a hair open.
+  return vec2(e + wobble * 0.17, smoothstep(0.25, 0.75, spread));
 }
 // How much of the water shows at an edge reading e (waterEdgeAt's, plus how far out to move the cut), 1 inside, 0 past the
 // cut, where it has spread by spread: soft thins out over the outer half cell or so, ragged is crisp. Both are 0 at or below
@@ -297,10 +303,14 @@ export class WaterField {
     return t * t * (3 - 2 * t);
   }
 
-  /** Once the ease is done: stops painting ice that has thawed away, and retires water that has drained away entirely
+  /** Whether any of the water last sent has spread out of its bed (#287). */
+  private toSpread = false;
+
+  /** Once the ease is done: stops painting ice that has thawed away, stops drawing a flood's edge once it has drained, and retires water that has drained away entirely
    * (true if it has just gone). */
   settle(time: number) {
     if (this.iced && !this.toIced && this.blend(time) >= 1) this.iced = false;
+    if (this.grid.w > 1.5 && !this.toSpread && this.blend(time) >= 1) this.grid.w = 1;
     if (!this.any || !this.to || this.to.mid !== null || this.blend(time) < 1) return false;
     this.any = false;
     return true;
@@ -365,9 +375,11 @@ export class WaterField {
     this.iced = toIced || (ease > 0 && fromIced);
     this.upload(this.iceA, iceData(fromIce, thaw, this.from.shore, this.from.spread));
     this.upload(this.iceB, iceData(toIce, thaw, this.to.shore, this.to.spread));
-    // (2: some of the water has spread out of its bed, at either end, so its edge is drawn as the flood's look has it.)
+    // (2: some of the water has spread out of its bed, at either end, so its edge is drawn as the flood's look has it; back
+    // to 1 once it has eased out, settle.)
     const spread = (a: Float32Array) => a.some((v) => v > 0);
-    this.grid.set(this.x0, this.z0, 1 / this.cell, spread(this.to.spread) || (ease > 0 && spread(this.from.spread)) ? 2 : 1);
+    this.toSpread = spread(this.to.spread);
+    this.grid.set(this.x0, this.z0, 1 / this.cell, this.toSpread || (ease > 0 && spread(this.from.spread)) ? 2 : 1);
     this.mirror = laid.mid ?? this.from.mid ?? 0;
     this.floor = laid.mid === null ? null : laid.low;
     this.any = laid.mid !== null || (ease > 0 && this.from.mid !== null);

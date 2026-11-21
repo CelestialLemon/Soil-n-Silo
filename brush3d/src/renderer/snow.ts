@@ -47,8 +47,9 @@ float gAbove = 0.0;   // how high p is over the land under it (AT_GROUND)
 float groundAt(vec3 p) {
   vec2 g = groundState(p.xz).xy;
   gSnow = g.x; gFrost = g.y;
+  if (max(gSnow, gFrost) < 0.004) { gSnow = gFrost = 0.0; return 0.0; }
   float drowned = uGroundOn > 1.5 ? waterOver(p) : 0.0;
-  if (max(gSnow, gFrost) < 0.004 || drowned >= 1.0) { gSnow = gFrost = 0.0; return 0.0; }
+  if (drowned >= 1.0) { gSnow = gFrost = 0.0; return 0.0; }
   // (By the water's edge, less as more of the water shows: #287.)
   gSnow *= 1.0 - drowned; gFrost *= 1.0 - drowned;
 #ifdef AT_GROUND

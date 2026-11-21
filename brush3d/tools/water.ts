@@ -108,6 +108,18 @@ field.set(flooded, 12, 0);
 const box = field.geometry!.boundingBox!;
 check('water reaches the grid\'s edge', box.min.x === map.x0 && box.max.x === map.x0 + nx * map.cell
   && box.min.z === map.z0 && box.max.z === map.z0 + nz * map.cell, `${box.min.x} ${box.max.x}`);
+// A flood's edge (#287): drawn (the grid's fourth number 2) while any water sent has spread, or is easing out of it; back
+// to 1 once a map with none has eased in.
+const spreadField = new WaterField();
+spreadField.set(spreadMap, 0, 0);
+const spreadW = spreadField.grid.w;
+spreadField.set(two, 1, 2);
+const easingW = spreadField.grid.w;
+spreadField.settle(2);
+const midW = spreadField.grid.w;
+spreadField.settle(3);
+check('a flood\'s edge drawn while spread water is sent or easing out, then not', spreadW === 2 && easingW === 2 && midW === 2
+  && spreadField.grid.w === 1, `${[spreadW, easingW, midW, spreadField.grid.w]}`);
 const before = field.a;
 field.set({ nx: 3, nz: 2, cell: 1, x0: 0, z0: 0, level: new Float32Array(6).fill(1) }, 13);
 check('a new grid, new textures at its size', field.a !== before && field.a.image.width === 3 && field.a.image.height === 2);

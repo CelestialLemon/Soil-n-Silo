@@ -1646,6 +1646,7 @@ export class BrushRenderer {
     this.weather.update(time);
     s.uWaterBlend.value = this.water.blend(time);
     if (this.water.settle(time) && this.waterMesh) this.waterMesh.visible = false;
+    s.uWaterGrid.value.w = this.water.grid.w;
     s.uIceOn.value = this.water.iced ? 1 : 0;
     s.uMirrorY.value = this.water.mirror;
     s.uWaterHigh.value = this.water.any ? this.water.wetHigh : -1e6;

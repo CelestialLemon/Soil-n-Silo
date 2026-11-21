@@ -353,7 +353,8 @@ vec3 waterline(vec3 color, vec3 p, float dy) {
     vec2 e = waterEdgeAt(p.xz);
     edged = waterShows(e.x, e.y);
     wet *= waterShows(e.x + 0.7 * uWaterGrid.z, e.y);
-    float silt = clamp(sheet.z, 0.0, 1.0) * clamp(e.y, 0.0, 1.0);
+    // (Silt from about half as muddy as a flood at its height: the game's flood water is 0.85.)
+    float silt = smoothstep(0.15, 0.45, sheet.z) * clamp(e.y, 0.0, 1.0);
 #ifdef FIELDS
     foamy = 1.0 - silt;
 #else
