@@ -117,7 +117,7 @@ recipe and the land's smooth fit); [docs/API.md](docs/API.md) has the API, in th
   that the demo imports only the API (`demo-imports.ts`).
 - `tools/blender/`: the scripts that make the models (`build.py`, the shared `kit.py`, one script a model in `models/`).
 - `test/`: the renderer's unit tests, run in Node by `npm test` (`crag.test.ts`: how far a crag reaches, and its triangles;
-  `tuft.test.ts`, `flower.test.ts`: how far a grass tuft and a wildflower reach).
+  `tuft.test.ts`, `flower.test.ts`: how far a grass tuft and a wildflower reach; `stone.test.ts`: the stones' mark).
 - `docs/`: the look's rules (`DIRECTION.md`), the renderer's roadmap (`ROADMAP.md`), the API, and the notes on models,
   performance, wind, water, ground and the land.
 - `reference/`: how to pull frames from the reference film (kept out of git: they're copyrighted).

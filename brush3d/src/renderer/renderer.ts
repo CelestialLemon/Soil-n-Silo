@@ -31,7 +31,7 @@ import { NightLights } from './nightLights';
 import { WATER_EASE, WaterField, type WaterMap } from './water';
 import { WaterMask } from './waterMask';
 import { GROUND_EASE, GroundField, HollowMap, type GroundMap } from './ground';
-import { SnowPaint } from './snow';
+import { SnowPaint, type RockSnowLook } from './snow';
 import { SunMemory } from './frost';
 import { earthShares } from './wet';
 import type { WindSnapshot } from '../wind/sim';
@@ -1000,6 +1000,12 @@ export class BrushRenderer {
   setOverlay(overlay: Overlay | null) { this.groundTools.setOverlay(overlay); }
   /** How an overlay is painted (OVERLAY_LOOK, a wash in the land's light, by default; the game's player picks it). */
   setOverlayLook(look: OverlayLook = OVERLAY_LOOK) { this.groundTools.setLook(look); }
+
+  /**
+   * How the snow lies on stone (`addStone`, `addCrag`): ROCK_SNOW_LOOKS, Soil-n-Silo#286's comparison; `off` (ROCK_SNOW_LOOK,
+   * as on everything else) by default. Takes effect at once.
+   */
+  setRockSnow(look: RockSnowLook) { this.snow.setRockSnow(look); }
 
   /** The tile grid and the contour lines over the map's tiles while the player builds or does earthworks, or null. */
   setGrid(grid: Grid | null) { this.groundTools.setGrid(grid); }

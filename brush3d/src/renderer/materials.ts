@@ -656,6 +656,11 @@ void main() {
   // aPaint.x is how much brushwork shows here: a painter works the banks, edges and turns of the land and leaves the
   // open lawn as quiet colour.
   float detail = vPaint.x;
+#if !defined(GROUND) && !defined(CROP)
+  // A stone (its brushwork negated, stonePaint in dabs.ts): the snow lies on it its own way (uRockSnow, snow.ts).
+  bool stone = detail < 0.0;
+  detail = abs(detail);
+#endif
   float dab = fields.x * detail;
   float br = fields.y;
   vec3 base = driftColorOf(vColor, fields.w, 1.0, dab);
@@ -714,9 +719,29 @@ void main() {
     float cover = max(snowCover(gSnow, smoothstep(0.6, 0.9, n.y), snowPattern(p.xz), 0.06), snowBuries(p, gSnow));
 #else
     // Stones and wood: their tops, in patches, and buried at their foot.
-    float cover = max(snowCover(gSnow, smoothstep(0.5, 0.85, n.y), snowPattern(p.xz) * 0.6 + br * 0.4, 0.05), snowBuries(p, gSnow));
+    float pattern = snowPattern(p.xz) * 0.6 + br * 0.4;
+    float cover = max(snowCover(gSnow, smoothstep(0.5, 0.85, n.y), pattern, 0.05), snowBuries(p, gSnow));
+    if (stone && uRockSnow > 0) {
+      // #286's comparison (ROCK_SNOW_LOOKS, snow.ts). Patchy: less settles, only on the flattest tops, never the whole rock
+      // (as a thin snow lies, however deep the field's), and the drift at its foot banks to under half the field's depth,
+      // its line wandering.
+      float bank = gSnow * SNOW_METRES;
+      if (uRockSnow != 2) {
+        cover = snowCover(min(gSnow, 0.28), smoothstep(0.55, 0.92, n.y), pattern, 0.05);
+        bank *= 0.5 + 0.14 * snoise(p.xz * 1.7 + 11.0);
+        cover = max(cover, (1.0 - smoothstep(-0.02, 0.06, gAbove - bank)) * snowCover(gSnow, gHollow.z >= 0.0 ? gHollow.y : 1.0, snowPattern(p.xz), 0.06));
+      }
+      // Shaded: its banked foot falling into a soft cool shade towards the ground (and, below, the snow on it a little
+      // cooler than the field's).
+      if (uRockSnow >= 2) light *= 1.0 - 0.55 * (1.0 - smoothstep(0.0, max(bank, 0.05) * 0.9, gAbove));
+    }
 #endif
-    col = mix(col, snowPaint(light, 0.05, fields.x * 1.2 + fine * 0.8), cover);
+    vec3 snowCol = snowPaint(light, 0.05, fields.x * 1.2 + fine * 0.8);
+#if !defined(GROUND) && !defined(CROP)
+    // (Even in full sun: a third of the way to the snow's half-tone, its shade's hue.)
+    if (stone && uRockSnow >= 2) snowCol = mix(snowCol, snowPaint(0.46, 0.05, 0.0), 0.33);
+#endif
+    col = mix(col, snowCol, cover);
     }
   }
 #ifdef GROUND
