@@ -85,8 +85,9 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
   const gl = r.gl.getContext();
   const profile: ProfileHost = {
     r, state: () => current, load: () => load,
-    // Held, nothing is sent; let go, everything is sent again (the case's weather and ground were the profile's).
-    hold: (on) => { held = lens.held = on; if (!on) { sky.resend(); cover.resend(); } },
+    // Held, nothing is sent; let go, everything is sent again (the case's weather and ground were the profile's, and it
+    // showed every mesh).
+    hold: (on) => { held = lens.held = on; if (!on) { sky.resend(); cover.resend(); meadow.reshow(); } },
   };
   let current = state;
   if (new URLSearchParams(location.search).has('profile')) profilePanel(profile);
@@ -106,7 +107,11 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
       meadow.sync(s);
       tools.sync(s, f);
     },
-    show: (s, f) => tools.show(s, f),
+    show(s, f) {
+      // The grass and flowers stand aside for the overlays and the build tools' lines (#285).
+      meadow.setDetails(f.details);
+      tools.show(s, f);
+    },
     truckAt: (id) => things.truckAt(id),
     stopLabels: () => tools.stopLabels(),
     netLabels: () => tools.netLabels(),

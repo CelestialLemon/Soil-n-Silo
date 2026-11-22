@@ -43,6 +43,8 @@ import { TILE } from './scale.ts';
 //   sinks into) the new ground for a frame. The rest (grass growing back, a repaint) keep showing until they're made.
 // - Ground-hugging tufts and flowers skip sun shadows and water reflections (`castShadow: false, reflect: false`): the
 //   painted ground already reflects in rivers and ponds, and skipping grass reflections saves ~0.6–1.1 ms GPU on water maps.
+// - The grass and flowers stand aside (hidden, not made again) while an overlay or the build or earthwork tools show
+//   (ShowFrame.details, `setDetails`), so the overlays' tints and the grid read clean; the reeds by the water stay (#285).
 
 /** Per-frame CPU budget (ms) for making queued blocks again during play (matches `PaintedLand.step`). */
 const REBUILD_BUDGET = 2.5;
@@ -96,6 +98,8 @@ export class Meadow {
   /** The game's layout as the meadow last followed it. */
   private layout = -1;
   private seen: GrassLayout;
+  /** Whether the grass and flowers show (ShowFrame.details): they stand aside for the overlays and the tools' lines. */
+  private details = true;
 
   constructor(r: BrushRenderer, lie: Lie, land: Land, s: GameState) {
     this.r = r; this.lie = lie; this.land = land;
@@ -147,6 +151,29 @@ export class Meadow {
     }
     // Not on an earthwork's new ground till it's drawn (the swap's landChanged queues what it moved).
     if ((this.urgent.size || this.dirty.size) && !this.r.landAhead) this.drain(s);
+  }
+
+  /**
+   * Whether the grass and flowers show: hidden while an overlay or the build or earthwork tools show (ShowFrame.details),
+   * shown again after, nothing made again. The reeds stay; a block hidden till it's made again stays hidden.
+   */
+  setDetails(on: boolean) {
+    if (on === this.details) return;
+    this.details = on;
+    this.reshow();
+  }
+
+  /**
+   * Each block's grass, flowers and reeds shown or hidden as they should be (after something else showed every mesh: a
+   * profile run): hidden while the block waits to be made again, the grass and flowers while the details stand aside.
+   */
+  reshow() {
+    for (const [id, b] of this.blocks) {
+      const wait = this.urgent.has(id);
+      if (b.grass) b.grass.visible = !wait && this.details;
+      if (b.flowers) b.flowers.visible = !wait && this.details;
+      if (b.reeds) b.reeds.visible = !wait;
+    }
   }
 
   /** A block queued to be made again (behind the hidden ones), its plants showing meanwhile. */
@@ -449,6 +476,7 @@ export class Meadow {
     // Culled whole (not cut into tiles: a block is small, and made again often). The flowers keep no rain off (cover).
     if (grass.vertexCount) block.grass = this.r.add(grass.build(), 'grass', { cull: true, castShadow: false, reflect: false });
     if (flowers?.vertexCount) block.flowers = this.r.add(flowers.build(), 'foliage', { cull: true, castShadow: false, reflect: false, cover: 'none' });
+    for (const m of [block.grass, block.flowers]) if (m) m.visible = this.details;
     // The reeds stand in the water, so they show in it.
     if (reeds.vertexCount) {
       block.reeds = this.r.add(reeds.build(), 'grass', { cull: true, castShadow: false });
