@@ -28,7 +28,7 @@ import { DustField, type DustSource } from './dust';
 import { TreeSprings, type TreeSpec } from './trees';
 import { Parts } from './parts';
 import { NightLights } from './nightLights';
-import { WATER_EASE, WaterField, type WaterMap } from './water';
+import { FLOOD_EDGE_LOOKS, WATER_EASE, WaterField, type FloodEdgeLook, type WaterMap } from './water';
 import { WaterMask } from './waterMask';
 import { GROUND_EASE, GroundField, HollowMap, type GroundMap } from './ground';
 import { SnowPaint } from './snow';
@@ -995,6 +995,12 @@ export class BrushRenderer {
   /** How an overlay is painted (OVERLAY_LOOK, a wash in the land's light, by default; the game's player picks it). */
   setOverlayLook(look: OverlayLook = OVERLAY_LOOK) { this.groundTools.setLook(look); }
 
+  /**
+   * How the water's edge is drawn where it creeps over flat ground, a flood's over a meadow: FLOOD_EDGE_LOOKS,
+   * Soil-n-Silo#287's comparison; `off` (FLOOD_EDGE_LOOK, as before) by default. Takes effect at once.
+   */
+  setFloodEdge(look: FloodEdgeLook) { this.shared.uFloodEdge.value = FLOOD_EDGE_LOOKS.indexOf(look); }
+
   /** The tile grid and the contour lines over the map's tiles while the player builds or does earthworks, or null. */
   setGrid(grid: Grid | null) { this.groundTools.setGrid(grid); }
 
@@ -1640,6 +1646,7 @@ export class BrushRenderer {
     this.weather.update(time);
     s.uWaterBlend.value = this.water.blend(time);
     if (this.water.settle(time) && this.waterMesh) this.waterMesh.visible = false;
+    s.uWaterGrid.value.w = this.water.grid.w;
     s.uIceOn.value = this.water.iced ? 1 : 0;
     s.uMirrorY.value = this.water.mirror;
     s.uWaterHigh.value = this.water.any ? this.water.wetHigh : -1e6;

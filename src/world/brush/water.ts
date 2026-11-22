@@ -180,13 +180,17 @@ export class BrushWater {
     }
     // A flood: the rules' surface over each tile it covers, and the river risen to it. Flood water out of the river runs on
     // the way the river beside it does, slower once it leaves the channel (breadth first from the river, as the rules spread it).
+    let spread: Float32Array | undefined;
     if (f.step > 0) {
       const queue: number[] = [];
+      // Where it has spread out of the river over the land: brush3d draws its edge there as the developer's pick has it
+      // (setFloodEdge, #287); the river's own banks stay its bed's.
+      spread = new Float32Array(n);
       for (let y = 0; y < m.height; y++) for (let x = 0; x < m.width; x++) {
         const i = y * m.width + x, k = (y + M) * W + x + M;
         if (Number.isNaN(f.surface[i])) continue;
         if (m.terrain[i] === TERRAIN.water) { level[k] = Math.max(level[k], f.surface[i] * LEVEL + RIVER_LIFT); queue.push(k); continue; }
-        if (f.tiles[i]) level[k] = f.surface[i] * LEVEL + RIVER_LIFT;
+        if (f.tiles[i]) { level[k] = f.surface[i] * LEVEL + RIVER_LIFT; spread[k] = 1; }
       }
       const reached = new Uint8Array(n);
       for (const k of queue) reached[k] = 1;
@@ -202,6 +206,7 @@ export class BrushWater {
       }
     }
     const out: WaterMap = { ...grid.shape, level, flowX, flowZ };
+    if (spread) out.spread = spread;
     if (mud > 0) out.mud = new Float32Array(n).fill(mud);
     if (cover > 0) {
       // The rules' ice, tile by tile from the bank inward (the rules' steps, `frozenBank`, made smooth), so each tile

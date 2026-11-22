@@ -9,6 +9,7 @@ import type { Heights, Scene } from '../scene.ts';
 import { BrushCover } from './cover.ts';
 import { Meadow } from './grass.ts';
 import { BrushLand } from './land.ts';
+import { floodEdgeChoice, floodEdgeLook } from '../../ui/floodEdgeChoice.ts';
 import { BrushLens } from './lens.ts';
 import { causeCases, gameCases, profileGame, profilePanel, type LoadTimes, type ProfileHost } from './profile.ts';
 import { RISE, TILE } from './scale.ts';
@@ -55,6 +56,9 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
   // at most 1080p's, scaled up, brush3d-renderer#28) is the player's setting.
   const r = timed('renderer', () => new BrushRenderer(canvas, { shadowFollow: true }));
   followSettings(r, settings);
+  // #287's comparison (removed before its PR merges): how a flood's edge is drawn on flat ground, and its button.
+  r.setFloodEdge(floodEdgeLook());
+  floodEdgeChoice((look) => r.setFloodEdge(look));
   const land = timed('map', () => generateLand(state.scenario, COUNTRY)), lie = timed('lie', () => new Lie(state, land));
   const ground = timed('land', () => new BrushLand(r, state, land, lie)), sky = new BrushSky(r, state), cover = new BrushCover(r, land), water = timed('water', () => new BrushWater(r, land, lie));
   // The goods trucks carry and buildings hand next door (#203), drawn with the things.

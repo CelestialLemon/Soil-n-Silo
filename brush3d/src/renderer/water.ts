@@ -29,6 +29,11 @@ export interface WaterMap {
    * whether this rose or fell when last it changed.
    */
   ice?: Float32Array;
+  /**
+   * Where the water has spread out of its bed over the land, per cell, 0 to 1 (a flood's: Soil-n-Silo#287): its edge there
+   * is drawn by FLOOD_EDGE_LOOKS (setFloodEdge). None if left out: a river's and a pond's shores are their beds'.
+   */
+  spread?: Float32Array;
 }
 
 /** How far the sheet dives under the land past the flat cell beyond the last wet one, metres a cell, and at most. */
@@ -48,12 +53,32 @@ export const WATER_EASE = 0.6;
 /** The squares the water's footprint is gathered into, metres (WaterField.footprint): a box per square that holds any. */
 export const FOOTPRINT_CELL = 16;
 
+/**
+ * How the water's edge is drawn where it creeps over flat ground (Soil-n-Silo#287's comparison, for the developer to pick;
+ * the ones not picked go, then this). On a flooded meadow the land is as flat as the water, so the shore was where the
+ * sheet's flat cell beyond met its dive: straight runs and sharp corners along the sheet's triangles, a lone wet cell a
+ * flat pentagon, and the ground's pale foam line along all of it.
+ *   off      as before #287.
+ *   soft     the edge rounded and wavering, the water thinning out over its last metre or so into the grass, and the
+ *            grass just past it darker, wet; no foam line on the ground under muddy water, a fainter one round rocks.
+ *   ragged   the edge rounded and wavering further, but crisp, with the wet grass past it; the foam as soft's.
+ * Rounded by the shore's distance (shoreDistance) read smoothly between the cells' centres, and wavering by a noise fixed
+ * to the world (it never crawls). The cut always lies inside the sheet's flat cell beyond, so it only ever takes water
+ * away from what `off` draws, never adds it, and stays within about half a cell of the wet cells' edge. Only where the
+ * game says the water has spread out of its bed (WaterMap's spread): a river's own banks keep their shore, and a map with
+ * no spread water does none of the work.
+ */
+export const FLOOD_EDGE_LOOKS = ['off', 'soft', 'ragged'] as const;
+export type FloodEdgeLook = (typeof FLOOD_EDGE_LOOKS)[number];
+/** The renderer's own: as before #287 (the demo's frames are unchanged). */
+export const FLOOD_EDGE_LOOK: FloodEdgeLook = 'off';
+
 /** The GLSL that reads the water map: its surface anywhere, and the nearest water's, for the reflection's clip. */
 export const WATER_MAP_GLSL = /* glsl */ `
 uniform sampler2D tWaterA;     // the water as it was (level, flow x, flow z, mud per cell)
 uniform sampler2D tWaterB;     // the water as last sent
 uniform float uWaterBlend;     // how far it has eased from A to B
-uniform vec4 uWaterGrid;       // x0, z0, 1 / cell, 0 with no map
+uniform vec4 uWaterGrid;       // x0, z0, 1 / cell, 0 with no map (2 where some has spread out of its bed: #287)
 uniform float uWaterHigh;      // the highest the wet surface is, as it was and as last sent
 vec4 waterCell(ivec2 c) {
   ivec2 n = textureSize(tWaterA, 0);
@@ -84,6 +109,72 @@ float waterTop(vec2 xz) { return waterSheet(xz).x; }
 // the sheet dives from). What the reflection leaves out is what's under it: a fence standing in a flood isn't mirrored
 // below the flood, and nor is a dry hollow lower than the river beside it (mirrored, it would show in the river).
 float waterNear(vec2 xz) { return waterSheet(xz).y; }
+// The water's edge on flat ground (#287, FLOOD_EDGE_LOOKS): the shore's distance (shoreDistance, the ice's cells' z, #14:
+// half a cell at the last wet cell's centre, 0 at a dry one's) smoothed over the cells round a point (a quadratic B-spline
+// over 3 x 3, so a corner or a step of the tiles rounds off over about a cell), and wavered by a noise fixed to the world.
+uniform sampler2D tIceA;
+uniform sampler2D tIceB;
+uniform int uFloodEdge;        // FLOOD_EDGE_LOOKS' index
+// A cell's shore distance (x) and how far its water has spread out of its bed (y).
+vec2 shoreCell(ivec2 c) {
+  c = clamp(c, ivec2(0), textureSize(tIceA, 0) - 1);
+  return mix(texelFetch(tIceA, c, 0).zw, texelFetch(tIceB, c, 0).zw, uWaterBlend);
+}
+float edgeHash(vec2 c) { return fract(sin(dot(c, vec2(127.1, 311.7))) * 43758.5453); }
+float edgeNoise(vec2 q) {
+  vec2 i = floor(q), f = q - i;
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(edgeHash(i), edgeHash(i + vec2(1.0, 0.0)), f.x), mix(edgeHash(i + vec2(0.0, 1.0)), edgeHash(i + vec2(1.0, 1.0)), f.x), f.y) * 2.0 - 1.0;
+}
+// Where a point lies against the water's edge, in cells, wavered: 0 about on the wet cells' edge, more inside. (Smoothed,
+// it reads up to -0.19 at the centre of the furthest cell the sheet runs on flat over before it dives, and less past it:
+// see waterShows.) And how far the water there has spread out of its bed (WaterMap.spread, smoothed as it is, then
+// sharpened): only there is its edge drawn so.
+vec2 waterEdgeAt(vec2 xz) {
+  vec2 g = (xz - uWaterGrid.xy) * uWaterGrid.z - 0.5, i = floor(g + 0.5), t = g - i;
+  vec3 wx = vec3(0.5 * (0.5 - t.x) * (0.5 - t.x), 0.75 - t.x * t.x, 0.5 * (0.5 + t.x) * (0.5 + t.x));
+  vec3 wz = vec3(0.5 * (0.5 - t.y) * (0.5 - t.y), 0.75 - t.y * t.y, 0.5 * (0.5 + t.y) * (0.5 + t.y));
+  ivec2 c = ivec2(i);
+  // Two cells or more from the dry, every cell round is wet and the reading well inside (a neighbour is at most a diagonal
+  // nearer the dry, so the smoothed reading is at least 0.67, and 0.5 wobbled): skip the rest, the most of a broad flood.
+  vec2 mine = shoreCell(c);
+  if (mine.x * uWaterGrid.z >= 2.0) return vec2(4.0, smoothstep(0.25, 0.75, mine.y));
+  // Smoothed, a lone wet cell (or a thin finger of them) would thin to nothing; the rules flood it, so each wet cell keeps
+  // at least a round pool about its own size, from its centre, reaching over into the cells beside it (so a finger's tip
+  // rounds off rather than stopping square on the cell's side), never as far as a dry cell's centre, where the sheet
+  // starts to dive. It grows in as the cell's distance eases in from the dry (0.5 cell at an edge cell), so a newly flooded
+  // cell doesn't pop in whole as the ease starts; below the wobble's reach until it does.
+  float v = 0.0, spread = 0.0, pool = -1.0;
+  for (int z = 0; z < 3; z++) for (int x = 0; x < 3; x++) {
+    vec2 d = x == 1 && z == 1 ? mine : shoreCell(c + ivec2(x - 1, z - 1));
+    v += wx[x] * wz[z] * d.x;
+    spread += wx[x] * wz[z] * d.y;
+    if (d.x > 0.0) pool = max(pool, 0.79 * clamp(2.0 * d.x * uWaterGrid.z, 0.0, 1.0) - 0.17 - 1.25 * length(t - vec2(x - 1, z - 1)));
+  }
+  float wobble = edgeNoise(xz * 0.3) * 0.55 + edgeNoise(xz * 0.75 + 7.0) * 0.3 + edgeNoise(xz * 1.9 + 3.0) * 0.15;
+  float e = max(2.0 * v * uWaterGrid.z - 0.5, pool);
+  // How much it has spread, sharpened: where the water out of its bed meets the river's, the two blend over the middle of
+  // the smoothed spread only, so the river's bank a cell along keeps its shore, the flood's side is cut whole (its dive
+  // hidden), and weights summing to a hair under 1 don't leave the cut a hair open.
+  return vec2(e + wobble * 0.17, smoothstep(0.25, 0.75, spread));
+}
+// How much of the water shows at an edge reading e (waterEdgeAt's, plus how far out to move the cut), 1 inside, 0 past the
+// cut, where it has spread by spread: soft thins out over the outer half cell or so, ragged is crisp. Both are 0 at or below
+// 0, which the wobble (at most +0.17) never lifts the smoothed reading where the sheet dives (at most -0.19) to, so the
+// dive never shows. Where the water is in its bed, all of it (its shore is the bed's).
+float waterShows(float e, float spread) {
+  float shows = uFloodEdge == 1 ? smoothstep(0.0, 0.45, e) : smoothstep(0.0, 0.02, e);
+  return mix(1.0, shows, clamp(spread, 0.0, 1.0));
+}
+// The same at a point, 1 with the look off or no map.
+float waterEdge(vec2 xz) {
+  if (uFloodEdge == 0 || uWaterGrid.w < 1.5) return 1.0;
+  vec2 e = waterEdgeAt(xz);
+  return waterShows(e.x, e.y);
+}
+// How much water is drawn over p: none above the sheet, and by its edge only as much as shows (waterEdge), so what the
+// water covers (the rain's wet, the snow) goes only where the water's drawn.
+float waterOver(vec3 p) { return p.y < waterTop(p.xz) ? waterEdge(p.xz) : 0.0; }
 `;
 
 /**
@@ -95,6 +186,8 @@ interface Laid {
   data: Float32Array;
   /** Per cell: how frozen (#14); a dry cell takes the water's it continues. */
   ice: Float32Array;
+  /** Per cell: how far the water has spread out of its bed (#287); a dry cell takes the water's it continues. */
+  spread: Float32Array;
   /** Per cell: how far into the water it is from the nearest dry cell, metres (0 dry), for where ice forms first (#14). */
   shore: Float32Array;
   /** Cells (Chebyshev) to the nearest wet cell, capped at 255. */
@@ -107,7 +200,7 @@ interface Laid {
 export function layWater(map: WaterMap): Laid {
   const { nx, nz, level } = map, n = nx * nz;
   if (level.length !== n) throw new Error(`water map: ${level.length} levels for ${nx} x ${nz} cells`);
-  const data = new Float32Array(n * 4), dist = new Uint8Array(n).fill(255), ice = new Float32Array(n);
+  const data = new Float32Array(n * 4), dist = new Uint8Array(n).fill(255), ice = new Float32Array(n), spread = new Float32Array(n);
   /** The surface each cell continues, before its dive. */
   const source = new Float32Array(n).fill(-Infinity);
   // Breadth first from the wet cells (to all eight neighbours, so diagonal shores are as near as straight ones): each dry
@@ -120,6 +213,7 @@ export function layWater(map: WaterMap): Laid {
     data[i * 4] = level[i];
     data[i * 4 + 1] = map.flowX?.[i] ?? 0; data[i * 4 + 2] = map.flowZ?.[i] ?? 0; data[i * 4 + 3] = THREE.MathUtils.clamp(map.mud?.[i] ?? 0, 0, 1);
     ice[i] = THREE.MathUtils.clamp(map.ice?.[i] ?? 0, 0, 1);
+    spread[i] = THREE.MathUtils.clamp(map.spread?.[i] ?? 0, 0, 1);
     dist[i] = 0; source[i] = level[i]; queue[count++] = i;
   }
   const wet = new Float32Array(count);
@@ -136,7 +230,7 @@ export function layWater(map: WaterMap): Laid {
         if (si > source[j]) {
           source[j] = si;
           data[j * 4 + 1] = data[i * 4 + 1]; data[j * 4 + 2] = data[i * 4 + 2]; data[j * 4 + 3] = data[i * 4 + 3];
-          ice[j] = ice[i];
+          ice[j] = ice[i]; spread[j] = spread[i];
         }
       }
     }
@@ -152,7 +246,7 @@ export function layWater(map: WaterMap): Laid {
     if (dive > 0) data[i * 4 + 3] = -dive;
   }
   wet.sort((a, b) => a - b);
-  return { data, ice, shore: shoreDistance(map), dist, low: wet[0] ?? 0, high: wet[wet.length - 1] ?? 0, mid: wet.length ? wet[wet.length >> 1] : null };
+  return { data, ice, spread, shore: shoreDistance(map), dist, low: wet[0] ?? 0, high: wet[wet.length - 1] ?? 0, mid: wet.length ? wet[wet.length >> 1] : null };
 }
 
 /**
@@ -210,10 +304,14 @@ export class WaterField {
     return t * t * (3 - 2 * t);
   }
 
-  /** Once the ease is done: stops painting ice that has thawed away, and retires water that has drained away entirely
+  /** Whether any of the water last sent has spread out of its bed (#287). */
+  private toSpread = false;
+
+  /** Once the ease is done: stops painting ice that has thawed away, stops drawing a flood's edge once it has drained, and retires water that has drained away entirely
    * (true if it has just gone). */
   settle(time: number) {
     if (this.iced && !this.toIced && this.blend(time) >= 1) this.iced = false;
+    if (this.grid.w > 1.5 && !this.toSpread && this.blend(time) >= 1) this.grid.w = 1;
     if (!this.any || !this.to || this.to.mid !== null || this.blend(time) < 1) return false;
     this.any = false;
     return true;
@@ -241,12 +339,13 @@ export class WaterField {
       for (let i = 0; i < data.length; i++) data[i] = from.data[i] + (to.data[i] - from.data[i]) * b;
       const dist = new Uint8Array(from.dist.length);
       for (let i = 0; i < dist.length; i++) dist[i] = b < 1 ? Math.min(from.dist[i], to.dist[i]) : to.dist[i];
-      const ice = new Float32Array(from.ice.length), shore = new Float32Array(from.shore.length);
+      const ice = new Float32Array(from.ice.length), shore = new Float32Array(from.shore.length), spread = new Float32Array(from.spread.length);
       for (let i = 0; i < ice.length; i++) ice[i] = from.ice[i] + (to.ice[i] - from.ice[i]) * b;
+      for (let i = 0; i < spread.length; i++) spread[i] = from.spread[i] + (to.spread[i] - from.spread[i]) * b;
       for (let i = 0; i < shore.length; i++) shore[i] = from.shore[i] + (to.shore[i] - from.shore[i]) * b;
       const wet = (b < 1 ? [from, to] : [to]).filter((l) => l.mid !== null);
       this.from = {
-        data, ice, shore, dist, low: Math.min(...wet.map((l) => l.low)), high: Math.max(...wet.map((l) => l.high)),
+        data, ice, spread, shore, dist, low: Math.min(...wet.map((l) => l.low)), high: Math.max(...wet.map((l) => l.high)),
         mid: wet.length ? (to.mid ?? from.mid) : null,
       };
     }
@@ -275,9 +374,13 @@ export class WaterField {
     }
     this.toIced = toIced;
     this.iced = toIced || (ease > 0 && fromIced);
-    this.upload(this.iceA, iceData(fromIce, thaw, this.from.shore));
-    this.upload(this.iceB, iceData(toIce, thaw, this.to.shore));
-    this.grid.set(this.x0, this.z0, 1 / this.cell, 1);
+    this.upload(this.iceA, iceData(fromIce, thaw, this.from.shore, this.from.spread));
+    this.upload(this.iceB, iceData(toIce, thaw, this.to.shore, this.to.spread));
+    // (2: some of the water has spread out of its bed, at either end, so its edge is drawn as the flood's look has it; back
+    // to 1 once it has eased out, settle.)
+    const spread = (a: Float32Array) => a.some((v) => v > 0);
+    this.toSpread = spread(this.to.spread);
+    this.grid.set(this.x0, this.z0, 1 / this.cell, this.toSpread || (ease > 0 && spread(this.from.spread)) ? 2 : 1);
     this.mirror = laid.mid ?? this.from.mid ?? 0;
     this.floor = laid.mid === null ? null : laid.low;
     this.any = laid.mid !== null || (ease > 0 && this.from.mid !== null);
@@ -428,10 +531,10 @@ function cellTexture(nx: number, nz: number) {
 }
 
 /** The ice's texels (RGBA per cell, for one format with the water's): how frozen, and whether it's thawing. */
-/** The ice's texture (#14): per cell how frozen, whether it's thawing, and how far from the shore. */
-function iceData(ice: Float32Array, thaw: Float32Array, shore: Float32Array) {
+/** The ice's texture (#14): per cell how frozen, whether it's thawing, how far from the shore, and how far spread (#287). */
+function iceData(ice: Float32Array, thaw: Float32Array, shore: Float32Array, spread: Float32Array) {
   const out = new Float32Array(ice.length * 4);
-  for (let i = 0; i < ice.length; i++) { out[i * 4] = ice[i]; out[i * 4 + 1] = thaw[i]; out[i * 4 + 2] = shore[i]; }
+  for (let i = 0; i < ice.length; i++) { out[i * 4] = ice[i]; out[i * 4 + 1] = thaw[i]; out[i * 4 + 2] = shore[i]; out[i * 4 + 3] = spread[i]; }
   return out;
 }
 

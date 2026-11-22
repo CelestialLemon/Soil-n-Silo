@@ -163,7 +163,7 @@ void main() {
   float land = landTop(vec3(g.x, 0.0, g.y));
   if (land < -1e3) return;
   vec3 sheet = waterSheet(g);
-  bool wet = sheet.z > -${(HIDDEN_DIVE * 0.5).toFixed(3)} && sheet.x > land;
+  bool wet = sheet.z > -${(HIDDEN_DIVE * 0.5).toFixed(3)} && sheet.x > land && waterEdge(g) > 0.5;
   float base = wet ? sheet.x : land;
   float top = base + COLUMN * (0.85 + 0.3 * fract(rnd.y * 5.13));
   // Off the screen, its whole path (a straight line, so between its ends): nothing more to do.
