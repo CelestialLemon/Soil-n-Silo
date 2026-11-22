@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {
   addCanopy, CropPatch, dressFor, groundOf, Grove, growSpecies, MeshBuilder, rng, speciesTree, type BrushRenderer, type CropStage,
-  type Dress, type Ground, type Species,
+  type Dress, type Ground, type Season, type Species,
 } from '../../../brush3d/src/index.ts';
 import { CROPS, SAPLING_SECONDS } from '../../game/data.ts';
 import { TERRAIN, type Land } from '../../game/map.ts';
@@ -76,6 +76,7 @@ export class Wild {
   private readonly land: Land;
   private readonly dress: Dress | null;
   private readonly ground: Ground;
+  private readonly season: Season;
   private readonly blocks = new Map<number, Block>();
   private readonly fields = new Map<number, Shown>();
   private readonly saplings = new Map<number, Shown>();
@@ -84,11 +85,11 @@ export class Wild {
   private relief = -1;
 
   constructor(r: BrushRenderer, lie: Lie, land: Land, s: GameState) {
-    this.r = r; this.lie = lie; this.land = land;
+    this.r = r; this.lie = lie; this.land = land; this.season = s.scenario.climate.season;
     const M = land.margin;
     this.ground = groundOf((x, z) => lie.y(x / TILE, z / TILE) * RISE * TILE);
     // Fallen leaves and petals lie on the land, not on the water.
-    this.dress = dressFor(s.scenario.climate.season, (x, z) => {
+    this.dress = dressFor(this.season, (x, z) => {
       const lx = Math.floor(x / TILE) + M, ly = Math.floor(z / TILE) + M;
       return lx >= 0 && ly >= 0 && lx < land.width && ly < land.height && land.terrain[ly * land.width + lx] !== TERRAIN.water;
     });
@@ -111,11 +112,12 @@ export class Wild {
 
   private country(s: GameState) {
     const { land, r } = this, M = land.margin, w = s.map.width, h = s.map.height;
-    const lr = landRelief(land), season = s.scenario.climate.season;
+    const lr = landRelief(land);
     const kind = (x: number, y: number) => land.terrain[(y + M) * land.width + x + M];
     const wet = (x: number, y: number) => wetAt((wx, wy) => onLand(wx, wy, w, h, M) && kind(wx, wy) === TERRAIN.water, x, y);
     const species = (x: number, y: number) => treeAt(x, y, baseLevel(lr, x + M, y + M), wet(x, y)).species;
-    const grove = new Grove(this.dress), crowns = new MeshBuilder('foliage'), rand = rng(213);
+    const grove = new Grove(this.dress), crowns = new MeshBuilder('foliage');
+    let farIndex = 0;
     for (let y = -M; y < h + M; y++) for (let x = -M; x < w + M; x++) {
       if (onMap(x, y, w, h)) continue;
       const t = kind(x, y), near = beyond(x + 0.5, y + 0.5, w, h) <= NEAR;
@@ -134,7 +136,7 @@ export class Wild {
       // A crown for each 2 × 2 block of far woods, of the species of its first tile.
       if ((x & 1) || (y & 1)) continue;
       const n = hash(x, y), cx = (x + 1 + (hash(x + 3, y) - 0.5)) * TILE, cz = (y + 1 + (hash(x, y + 3) - 0.5)) * TILE;
-      addCanopy(crowns, cx, this.ground.height(cx, cz) - 0.3, cz, 3.2 + 1.4 * n, species(x, y), season, rand);
+      addCanopy(crowns, cx, this.ground.height(cx, cz) - 0.3, cz, 3.2 + 1.4 * n, species(x, y), this.season, rng(213 + farIndex++));
     }
     grove.addTo(r, { tile: CUT });
     if (crowns.vertexCount) r.add(crowns.build(), 'foliage', { tile: CUT, castShadow: true });

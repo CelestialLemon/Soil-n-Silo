@@ -32,8 +32,11 @@ import { thingHeight, type Things } from './things.ts';
 //
 // Units: the Scene's are the game's (a tile 1, heights as ground.ts's Lie has them); brush3d's are metres (scale.ts).
 
-/** How high the meadow's reeds stand as shown (m), where they stand (grass.ts's `reedTopAt`); its grass and flowers stand under GRASS_TOP. */
-interface MeadowReeds { reedTopAt(x: number, z: number): number }
+/**
+ * How high the meadow's reeds stand as shown (m), where they stand (grass.ts's `reedTopAt`), and whether its grass on a
+ * curving shore's bank reaches a point over the water (`bankAt`); its grass and flowers stand under GRASS_TOP.
+ */
+interface MeadowReeds { reedTopAt(x: number, z: number): number; bankAt(x: number, z: number): boolean }
 
 /** How near the line of sight through the pointer a truck must drive (m) to change what is under the pointer. */
 const TRUCK_REACH = 3.2;
@@ -379,7 +382,7 @@ class BrushPicker implements Picker {
     // plant low over open grass is the meadow's grass or flowers, and one low over the water its reeds (grass.ts), not the
     // tree or rock beside it.
     const p = hit?.point ?? null;
-    const plant = p && hit?.what === 'plant' && !grassAt(s, p.x, p.z, p.y - this.r.landAt(p.x, p.z), this.meadow.reedTopAt(p.x, p.z))
+    const plant = p && hit?.what === 'plant' && !grassAt(s, p.x, p.z, p.y - this.r.landAt(p.x, p.z), this.meadow.reedTopAt(p.x, p.z), this.meadow.bankAt(p.x, p.z))
       ? plantTile(s, p, (x, z) => this.r.landAt(x, z), cragTop) : null;
     const met = p ? plant ?? tileOf(s, p) : null;
     const tile = still && plant ? plant : ground;

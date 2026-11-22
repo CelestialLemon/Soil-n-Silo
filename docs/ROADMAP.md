@@ -114,6 +114,11 @@ options behind a HUD button and a URL option on the PR's preview, and no rules c
   tile, and a tree's crown leaning over the rock still finds the tree. The developer picked the bold look on PR #278:
   crags about 1.4× as tall as the calmer, mossier option, sharper, with talus at every lone or edge tile's foot; the other
   looks and their switch are gone.
+- **Grass to the curving shore (#290, a Wave 1 follow-up):** the meadow's grass and flowers used to stop along a straight
+  line about half a metre from a water tile's side, whatever the curving bank did. Now they grow on the land as drawn
+  (brush3d's `r.bedAt`, how deep its bed lies there): off the shingle and the bed, right up to the dry bank, sloped or
+  flat, on a water tile's dry corner too. At a fall, where the shore keeps to the tiles and the higher water's sheet
+  runs out over the lower bank, the old margin stays too.
 
 ## One renderer: the swap to brush3d (2026-11-16)
 
@@ -155,6 +160,15 @@ are brush3d's trees, and the pine, willow and poplar have shapes of their own, t
 the poplar a column. Saplings are small trees, and every tree changes with the season. These are the developer's picks
 on #227, "for now": the crops' lay and the pine may be revisited. The candidates not picked (crops in rows of soil, a
 tiered or a Scots pine, a pollarded willow) are in #227's history. The demo shows them all at `?scene=plants`.
+
+The far woods (the country's woods past the map, a crown of a few strokes for each 2 × 2 tiles, brush3d's `addCanopy`) in
+winter (#268, epic #265, done 2026-11-22, the developer's pick on #280, `frosted`): they were dark chocolate and near-black
+balls on the snow, beside the lacy near trees. Bare woods are now a fan of thin taupe twig strokes with the ground showing
+between them, pines spruce cones, their strokes facing mostly up so they're lit as the ground is and take the snow and frost
+as the near trees do; in the other seasons pines are cones, poplars columns, and the crowns' dark undersides lifted. Every
+far crown stands on a thin trunk of short upright strokes, and a bare wood's has limbs forking up and out into a Y from any
+side into its twigs (the `misty` and `off` candidates and the temporary **Far woods** HUD button were removed before merge).
+The same draws; on c5 the GPU's frame is unchanged to 0.4 ms more.
 
 ## The tools in the painted look (2026-11-16)
 

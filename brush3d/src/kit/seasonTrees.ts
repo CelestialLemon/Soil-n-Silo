@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { MeshBuilder, rng, srgb, type Paint } from './builder';
-import { C, addDab, growTree, smooth, type Ground, type Tree } from './kit';
-import { CRISP_EDGE, STIFF_STROKE } from '../renderer/materials';
+import { addDab, MeshBuilder, rng, srgb, type Paint } from './builder';
+import { C, growTree, smooth, type Ground, type Tree } from './kit';
+import { CRISP_EDGE, STIFF_STROKE } from '../renderer/dabs';
 import type { BrushRenderer, MeshOptions } from '../renderer/renderer';
 import type { Season } from '../renderer/season';
 import { TREE_BEND, type TreeSpec } from '../renderer/trees';

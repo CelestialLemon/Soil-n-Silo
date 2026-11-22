@@ -103,9 +103,9 @@ recipe and the land's smooth fit); [docs/API.md](docs/API.md) has the API, in th
 - `src/land/`: the land painted from the game's map: what the game sends (`map.ts`), the smooth fit (`surface.ts`) and
   the painting and earthworks (`paint.ts`) (`docs/LAND.md`).
 - `src/wind/`: the living wind's simulation, which the game's rules read too (`docs/WIND.md`).
-- `src/kit/`: the painting kit the scenes are built with: `MeshBuilder` (`builder.ts`), the pieces (`kit.ts`: trees,
-  stones, grass, reeds, lines on the map, water), the trees' season dress (`seasonTrees.ts`) and the models' importer
-  (`model.ts`).
+- `src/kit/`: the painting kit the scenes are built with: `MeshBuilder` and `addDab` (`builder.ts`), the pieces (`kit.ts`:
+  trees, stones, grass, reeds, lines on the map, water), the trees' season dress (`seasonTrees.ts`), the game's crops and
+  species (`plants.ts`), the far woods' crowns (`farWoods.ts`, loads in Node) and the models' importer (`model.ts`).
 - `src/models/`: the models, `*.glb`, listed by `catalog.ts` (`docs/MODELS.md`).
 - `src/demo/`: the demo viewer, the scripted weather standing in for the game (`timeline.ts`), and its scenes in
   `scenes/`: `farm.ts` (the *Dear Alice* aerial, rebuilt and grown into a valley), `meadow.ts` (the first slice),
@@ -116,8 +116,8 @@ recipe and the land's smooth fit); [docs/API.md](docs/API.md) has the API, in th
   water's, clouds' and land's checks (`wind.ts`, `water.ts`, `clouds.ts`, `land.ts`), the wind engine's build (`wind-build.ts`), and the check
   that the demo imports only the API (`demo-imports.ts`).
 - `tools/blender/`: the scripts that make the models (`build.py`, the shared `kit.py`, one script a model in `models/`).
-- `test/`: the renderer's unit tests, run in Node by `npm test` (`crag.test.ts`: how far a crag reaches, and its triangles;
-  `tuft.test.ts`, `flower.test.ts`: how far a grass tuft and a wildflower reach).
+- `test/`: the renderer's unit tests, run in Node by `npm test` (`farWoods.test.ts`: the far woods' crowns; `crag.test.ts`: how
+  far a crag reaches, and its triangles; `tuft.test.ts`, `flower.test.ts`: how far a grass tuft and a wildflower reach).
 - `docs/`: the look's rules (`DIRECTION.md`), the renderer's roadmap (`ROADMAP.md`), the API, and the notes on models,
   performance, wind, water, ground and the land.
 - `reference/`: how to pull frames from the reference film (kept out of git: they're copyrighted).

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { MeshBuilder, noise2, srgb, type Paint } from './builder.ts';
+import { addDab, MeshBuilder, noise2, srgb, type Paint } from './builder.ts';
 import { DRAG, type Obstacle } from '../wind/sim.ts';
 import { CRISP_EDGE } from '../renderer/dabs.ts';
 import { TREE_BEND, type TreeKind, type TreeSpec } from '../renderer/trees.ts';
@@ -36,15 +36,6 @@ export function groundOf(height: (x: number, z: number) => number): Ground {
     height,
     normal: (x, z) => new THREE.Vector3(height(x - e, z) - height(x + e, z), 2 * e, height(x, z - e) - height(x, z + e)).normalize(),
   };
-}
-
-/** One leafy dab: a camera-facing card the foliage material shapes into a brush mark. */
-export function addDab(b: MeshBuilder, p: THREE.Vector3, n: THREE.Vector3, c: THREE.Color, size: number, seed: number, paint: Paint) {
-  const i0 = b.vertex(p, n, c, paint, [0, 0], [-1, -1, size, seed]);
-  b.vertex(p, n, c, paint, [0, 0], [1, -1, size, seed]);
-  b.vertex(p, n, c, paint, [0, 0], [1, 1, size, seed]);
-  b.vertex(p, n, c, paint, [0, 0], [-1, 1, size, seed]);
-  b.quad(i0, i0 + 1, i0 + 2, i0 + 3);
 }
 
 export type { TreeKind };

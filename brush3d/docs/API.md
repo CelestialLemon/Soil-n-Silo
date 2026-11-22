@@ -138,7 +138,9 @@ r.updateLand({ x, y, width, height }, { corners, worked, cover, ground });   // 
 - **Curving shores** (Soil-n-Silo#258): the beds follow a smoothed field over the water's tiles, so the river curves and
   a pond is an oval rather than the tiles' squares, wandering a little (the developer's pick). Nothing the game sends changes:
   the water's tiles stay the rules', a pad and a fall keep their square edges, and `landAt`/`landHit`/`landColourAt` give the curving
-  beds as drawn (LAND.md).
+  beds as drawn (LAND.md). `r.bedAt(x, z)` says how deep the bed lies at a point (0 to 1 of its deepest, 0 on dry
+  ground); below `BANK_DRY` (in `shared.ts` too) the ground there is drawn as dry bank, with no shingle or bed (the game's
+  meadow grows right up to there, Soil-n-Silo#290).
 - **The drawn surface is the game's to query**, so a truck, a dropped good, grass tufts and the tile cursor sit on what
   the player sees: `r.landAt(x, z)` gives the land's height there (metres), `r.landColourAt(x, z, into?)` the painted
   ground's colour there as drawn (linear RGB, before the season turns it), `r.countryAt(x, z)` how far the point is into
@@ -149,7 +151,7 @@ r.updateLand({ x, y, width, height }, { corners, worked, cover, ground });   // 
   metres) its height or paint may have changed, as the frame that first draws it begins (`setLand` calls back at once,
   with the old land's area and the new one's); it returns a function that stops the calls. `r.landAhead` is true while
   `landAt` already answers for an earthwork's new ground that isn't drawn yet (fitted, its chunks still being painted;
-  `landColourAt` too, for the shores' banks and beds there):
+  `landColourAt` and `bedAt` too, for the shores' banks and beds there):
   the game's grass (#256) isn't made again meanwhile, and the blocks whose ground moved are hidden at the swap and made
   again, never left floating over the old ground. The rules go on asking `relief.ts`.
 - Not yet: the cuts models need where they stand (the water wheel's race in its bank, `wheelRace` in the catalogue).
@@ -511,7 +513,8 @@ above, the game stops using it and it becomes the renderer's own.
   `r.shelter.changed()` after moving cover yourself (the whole map), or `r.shelter.changedIn(layer, box)` for a part.
   A tree's spring is held by each mesh that draws it and freed when the last lets go (`r.remove`, `r.removeTrees`), its
   slot then reused by the next new tree.
-- `MeshBuilder` and `Paint`: geometry in the renderer's format (colours, normals, the brush per vertex, tree ids).
+- `MeshBuilder` and `Paint`: geometry in the renderer's format (colours, normals, the brush per vertex, tree ids); `addDab`, one
+  foliage dab.
 - `growTree`, `Grove`, `dressFor`, `addStone`, `addCrag`, `addReeds`, `addMound`, `addFlowers`, `addFlower`, `groundOf`, `MapLine`: shared
   painting-kit pieces used by the demo and the game (`wild.ts`, `grass.ts`). `Grove.addTo(r, options)` adds its meshes
   with the given options and returns them. A `Tree`'s `stroke` (broader, fewer strokes) and `fill` (the share of a
@@ -550,8 +553,10 @@ above, the game stops using it and it becomes the renderer's own.
   meshes), `speciesTree(species, x, z, size, seed)` and `speciesHeight` (a `Tree` for each of `SPECIES`: the game's six
   and its bush), `growSpecies(grove, ground, species, tree, rand)` (grows a tree into a `Grove` in its species' own shape:
   the pine a soft cone, the willow weeping, the poplar a column, the rest through `grove.grow`; use it rather than
-  `grove.grow` for the game's species), `addCanopy` (a far wood's crown, a few broad strokes in the species' colour for
-  the season), `CROP_NAMES`. The demo's `?scene=plants` shows every crop at every stage and every species, in any season.
+  `grove.grow` for the game's species), `addCanopy(b, x, y, z, radius, species, season, rand)` (a far wood's
+  crown, a few broad strokes on a thin trunk in the species' shape and colour for the season, bare woods in winter a
+  frosted fan of upright twigs on forking limbs and pines spruce cones; Soil-n-Silo#268, `kit/farWoods.ts`), `CROP_NAMES`. The
+  demo's `?scene=plants` shows every crop at every stage and every species, in any season.
 - `loadModel` and `ModelSet`: the models, merged into the inked and planted meshes; `MODELS`, `TILE`, `blocksWind`,
   `wheelRace` from the catalogue.
 

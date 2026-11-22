@@ -76,7 +76,6 @@ const saved = loaded.ok ? loaded.value : null;
  */
 const page = (query = '') => {
   const q = new URLSearchParams(query);
-  // (The page's query as it is now, not as it loaded: a look option's button may have changed it since, #288.)
   for (const [k, v] of new URLSearchParams(location.search)) if (k !== 'play' && k !== 'menu' && !q.has(k)) q.set(k, v);
   return `${location.pathname}${q.size ? `?${q}` : ''}`;
 };
