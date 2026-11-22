@@ -7,9 +7,9 @@ import type { Land } from '../../game/map.ts';
 import { layoutOf, type GameState } from '../../game/state.ts';
 import type { Lie } from '../ground.ts';
 import {
-  blockOf, boxesIn, FLOWER_PROFILE, FLOWER_SEASONS, flowersBloom, fringeFade, GRASS_FRINGE, GRASS_PROFILE, grassBlocks, grassLayout,
-  inBuilding, layoutChanges, MAX_REED_REACH, REED_PROFILE, REED_SEASONS, REED_TOP, reedBand, reedShore, reedSpot,
-  outOfMap, tileHabitat, tileOutOfMap, tileSeed, wetDistance,
+  blockOf, boxesIn, dryBank, FLOWER_PROFILE, FLOWER_SEASONS, flowersBloom, fringeFade, GRASS_FRINGE, GRASS_PROFILE, grassBlocks, grassLayout,
+  inBuilding, layoutChanges, MAX_BLADE_REACH, MAX_BLADE_SWAY, MAX_REED_REACH, outOfMap, REED_PROFILE, REED_SEASONS, REED_TOP, reedBand, reedShore, reedSpot,
+  tileHabitat, tileOutOfMap, tileSeed, wetDistance,
   type FlowerSeason, type FootprintBox, type GrassBlockRect, type GrassLayout, type ReedSeason, type TileHabitat,
 } from './grassMask.ts';
 import { TILE } from './scale.ts';
@@ -27,7 +27,9 @@ import { TILE } from './scale.ts';
 //   None by a fall, on a cliff or a steep tile, in a footprint or a wheel's race, or near a rock's crags. Rooted in the
 //   ground, they stand in the winter's ice rather than float on it.
 // - The grass and flowers grow where the grass may (grassMask.ts's tileHabitat, footprints, slopes), each from its own
-//   random numbers, so the grass is the same with the flowers or without.
+//   random numbers, so the grass is the same with the flowers or without. By the water they grow on the land as drawn
+//   (how deep brush3d's bed lies there, `r.bedAt`, grassMask.ts's dryBank), off the shingle and the bed but right up to the dry
+//   bank, wherever the curving shore puts it, on a water tile's dry corner too (#290).
 // - A flood (flood.ts) takes no plant away: grass, flowers and reeds all stay rooted on the ground under it, and brush3d's
 //   water hides what's below its surface, so the taller poke out of the shallows and deep water covers them (the
 //   developer, on #266 and #267). At its height an ordinary flood stands over a metre deep at the river's edge, so the
@@ -143,6 +145,28 @@ export class Meadow {
       for (let i = 0; i < c.length; i += 2) if ((c[i] - x) ** 2 + (c[i + 1] - z) ** 2 < R * R) return REED_TOP;
     }
     return 0;
+  }
+
+  /**
+   * Whether a tuft or a bloom of the meadow's on show over a water tile stands within a blade's reach of (x, z) m, in
+   * the strongest wind (MAX_BLADE_REACH + MAX_BLADE_SWAY): on a curving shore's bank its grass may lean out over the
+   * water (#290). For telling it from a willow's low branch over the water in a pick (tools.ts), as reedTopAt tells the
+   * reeds; a branch higher than the grass is the willow's still (grassAt's GRASS_TOP).
+   */
+  bankAt(x: number, z: number): boolean {
+    const R = MAX_BLADE_REACH + MAX_BLADE_SWAY, ids = new Set<number>();
+    const near = (c: Float32Array | undefined) => {
+      if (c) for (let i = 0; i < c.length; i += 2) if ((c[i] - x) ** 2 + (c[i + 1] - z) ** 2 < R * R) return true;
+      return false;
+    };
+    for (const wx of [x - R, x + R]) for (const wz of [z - R, z + R]) ids.add(blockOf(Math.floor(wx / TILE), Math.floor(wz / TILE)));
+    for (const id of ids) {
+      // (Only the plants on show: none while hidden, waiting to be made again, or stepped aside; the grass and the
+      // flowers each by its own mesh.)
+      const b = this.blocks.get(id);
+      if (b && ((b.grass?.visible && near(b.tufts)) || (b.flowers?.visible && near(b.blooms)))) return true;
+    }
+    return false;
   }
 
   /**
@@ -310,6 +334,19 @@ export class Meadow {
 
   // ---- Per-tile scattering ----
 
+  /**
+   * Whether grass or flowers may stand at (wx, wz) m on tile (tx, ty), its habitat `hab` (tileHabitat's): within the
+   * tile's bounds, outside every footprint and wheel's race (`boxes`), on the dry bank as drawn by the water (off the
+   * shingle and the bed, wherever the curving shore puts it, dryBank), and on ground gentle enough.
+   */
+  private grows(hab: TileHabitat, tx: number, ty: number, boxes: readonly FootprintBox[], wx: number, wz: number): boolean {
+    const x0 = tx * TILE, z0 = ty * TILE;
+    if (wx < x0 + hab.minU || wx > x0 + hab.maxU || wz < z0 + hab.minV || wz > z0 + hab.maxV) return false;
+    if (boxes.length && inBuilding(boxes, wx, wz, wheelRace)) return false;
+    if (hab.wet && !dryBank(this.r.bedAt(wx, wz))) return false;
+    return this.ground.normal(wx, wz).y >= 0.82;
+  }
+
   /** A tile's grass and flowers, where its habitat lets them grow. */
   private scatterTile(
     grass: MeshBuilder,
@@ -320,17 +357,18 @@ export class Meadow {
     onMap: boolean,
     boxes: readonly FootprintBox[],
     fade: Fade,
+    banks: { tufts: number[]; blooms: number[] },
   ) {
     const hab = tileHabitat(s, this.land, this.lie.relief, this.wetDist, tx, ty, onMap);
     if (!hab) return;
-    const x0 = tx * TILE, z0 = ty * TILE;
-    const canPlace = (wx: number, wz: number): boolean => {
-      if (wx < x0 + hab.minU || wx > x0 + hab.maxU || wz < z0 + hab.minV || wz > z0 + hab.maxV) return false;
-      if (boxes.length && inBuilding(boxes, wx, wz, wheelRace)) return false;
-      return this.ground.normal(wx, wz).y >= 0.82;
+    // (Each tuft and bloom placed over the water noted in `banks`, the two apart, for bankAt.)
+    const canPlace = (noted: number[]) => (wx: number, wz: number) => {
+      const ok = this.grows(hab, tx, ty, boxes, wx, wz);
+      if (ok && hab.wet) noted.push(wx, wz);
+      return ok;
     };
-    this.scatterGrass(grass, tx, ty, hab, canPlace, fade);
-    if (flowers) this.scatterFlowers(flowers, tx, ty, hab, canPlace, fade);
+    this.scatterGrass(grass, tx, ty, hab, canPlace(banks.tufts), fade);
+    if (flowers) this.scatterFlowers(flowers, tx, ty, hab, canPlace(banks.blooms), fade);
   }
 
   private scatterGrass(
@@ -475,16 +513,18 @@ export class Meadow {
     const boxes = boxesIn(s, rect.x0, rect.y0, rect.x1, rect.y1);
     const grass = new MeshBuilder('grass');
     const flowers = this.flowering ? new MeshBuilder('foliage') : null;
-    const reeds = new MeshBuilder('grass'), clumps: number[] = [];
+    const reeds = new MeshBuilder('grass'), clumps: number[] = [], banks = { tufts: [] as number[], blooms: [] as number[] };
     for (let y = rect.y0; y < rect.y1; y++) for (let x = rect.x0; x < rect.x1; x++) {
       if (tileOutOfMap(x, y, w, h) >= this.reach) continue;
       const onMap = x >= 0 && y >= 0 && x < w && y < h;
       const fade = onMap ? ON_MAP : this.fringe;
-      this.scatterTile(grass, flowers, s, x, y, onMap, boxes, fade);
+      this.scatterTile(grass, flowers, s, x, y, onMap, boxes, fade, banks);
       this.scatterReeds(reeds, clumps, s, x, y, onMap, boxes, fade);
     }
     // Culled whole (not cut into tiles: a block is small, and made again often). The flowers keep no rain off (cover).
     if (grass.vertexCount) block.grass = this.r.add(grass.build(), 'grass', { cull: true, castShadow: false, reflect: false });
+    if (banks.tufts.length) block.tufts = Float32Array.from(banks.tufts);
+    if (banks.blooms.length) block.blooms = Float32Array.from(banks.blooms);
     if (flowers?.vertexCount) block.flowers = this.r.add(flowers.build(), 'foliage', { cull: true, castShadow: false, reflect: false, cover: 'none' });
     for (const m of [block.grass, block.flowers]) if (m) m.visible = this.details;
     // The reeds stand in the water, so they show in it.
@@ -502,5 +542,11 @@ export class Meadow {
   }
 }
 
-/** A block's grass, flowers and reeds, as made, where its reeds' clumps stand (x, z m), and the land's height under it then. */
-interface Block { grass?: THREE.Mesh; flowers?: THREE.Mesh; reeds?: THREE.Mesh; clumps?: Float32Array; heights: Float32Array }
+/**
+ * A block's grass, flowers and reeds, as made, where its reeds' clumps stand and its tufts and blooms by the water (x, z m),
+ * and the land's height under it then.
+ */
+interface Block {
+  grass?: THREE.Mesh; flowers?: THREE.Mesh; reeds?: THREE.Mesh; clumps?: Float32Array; tufts?: Float32Array; blooms?: Float32Array;
+  heights: Float32Array;
+}
