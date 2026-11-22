@@ -203,7 +203,10 @@ country fades in over the first one to three tiles just outside the map, its out
 developer's pick on PR #281, "organic", over an even fade), so the map's own tiles keep their full colour and the edge
 still reads at a glance (#228). And the straight dark seam where the land met the distant country in
 autumn and winter is gone: the distant country now starts from the land's own colour at its edge and fades to its woods'
-floor over three of its 16 m cells, and the land's outermost strip matches it all along the edge.
+floor over three of its 16 m cells, and the land's outermost strip matches it all along the edge. Then, for #289 (a Wave 1
+follow-up): the meadow no longer keeps a bald strip just outside the map's edge (the buildings' own clearances keep it off
+them), and past the edge it thins as the country dulls (brush3d's `r.countryAt`), along the same wandering curve, rather
+than stepping down at the edge's straight line.
 
 ## The buildings and trucks as models, with their goods (2026-11-16)
 
