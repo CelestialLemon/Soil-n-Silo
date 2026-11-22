@@ -187,8 +187,9 @@ ground after an earthwork, about 10 ms twice (#210). Meadow grass tufts across t
 drifts, gathered at the woods' skirts and the hills' edges, in the season's colours (spring's white, yellow, peach and sky
 blue in full drifts, summer's vibrant ones as sparse as autumn's over its drier grass, autumn's warm specks, none in
 winter), built in the grass's blocks (#266, epic #265's Wave 1, done 2026-11-21: meadow, the developer's pick of three
-densities). At night spring's white and yellow blooms stood out from the dark grass like confetti: lit as the grass is
-(measured, #288), only paler; how they settle into the dark is the developer's pick on #288's PR (off, settle, pale). Reeds line the river's banks and the ponds, in long, thick beds with gaps, where the land as drawn meets the
+densities); the brightest white and yellow swatches are slightly softened to cream and straw so spring's blooms sit quieter
+in the dark grass at night without touching the renderer (#288, done 2026-11-22: the developer's pick `pale` on #294, the
+`settle` shader option and temporary HUD button removed). Reeds line the river's banks and the ponds, in long, thick beds with gaps, where the land as drawn meets the
 water (so they follow the shores as brush3d draws them, square or curving), fresh green in spring and summer with brown
 bulrush heads, golden straw in autumn, frost-touched dry stalks in winter; none by a fall, a cliff, a building, a wheel or
 its race, they stand in the ice rather than float, and they move with an earthwork (#267, epic #265's Wave 1, done
@@ -196,13 +197,18 @@ its race, they stand in the ice rather than float, and they move with an earthwo
 rooted under the water, which hides what's below its surface, so the taller poke out of the shallows and deep water
 covers them (the developer's call, 2026-11-21). At its height an ordinary flood stands over a metre deep at the river's
 edge, so the river's reeds go mostly under it, the tallest tips showing in places; a severe one covers them all.
+While an overlay or the build or earthwork tools show, the grass and flowers step aside (hidden, not remade), so the
+overlays' tints and the grid read clean; the reeds stay (#285, a Wave 1 follow-up).
 
 Since, for #269 (epic #265, done 2026-11-21): the map's edge is no longer a ruler-straight colour cut. The duller
 country fades in over the first one to three tiles just outside the map, its outer edge wandering like a brush's (the
 developer's pick on PR #281, "organic", over an even fade), so the map's own tiles keep their full colour and the edge
 still reads at a glance (#228). And the straight dark seam where the land met the distant country in
 autumn and winter is gone: the distant country now starts from the land's own colour at its edge and fades to its woods'
-floor over three of its 16 m cells, and the land's outermost strip matches it all along the edge.
+floor over three of its 16 m cells, and the land's outermost strip matches it all along the edge. Then, for #289 (a Wave 1
+follow-up): the meadow no longer keeps a bald strip just outside the map's edge (the buildings' own clearances keep it off
+them), and past the edge it thins as the country dulls (brush3d's `r.countryAt`), along the same wandering curve, rather
+than stepping down at the edge's straight line.
 
 ## The buildings and trucks as models, with their goods (2026-11-16)
 

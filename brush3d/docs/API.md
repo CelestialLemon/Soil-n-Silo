@@ -141,7 +141,9 @@ r.updateLand({ x, y, width, height }, { corners, worked, cover, ground });   // 
   beds as drawn (LAND.md).
 - **The drawn surface is the game's to query**, so a truck, a dropped good, grass tufts and the tile cursor sit on what
   the player sees: `r.landAt(x, z)` gives the land's height there (metres), `r.landColourAt(x, z, into?)` the painted
-  ground's colour there as drawn (linear RGB, before the season turns it), and `r.landHit(ray)` where a line of sight
+  ground's colour there as drawn (linear RGB, before the season turns it), `r.countryAt(x, z)` how far the point is into
+  the duller country round the map (0 on the map, 1 out in the country, fading in along the soft border's wandering curve,
+  Soil-n-Silo#269; the game's meadow thins with it, #289), and `r.landHit(ray)` where a line of sight
   (from `r.view.rayAt`) first meets it, or null, on the CPU with no wait for the GPU. `r.onLandChange((area) => {})`
   calls back whenever the land as drawn changes (a new land, an earthwork swapped in), with where (`{ x0, z0, x1, z1 }`,
   metres) its height or paint may have changed, as the frame that first draws it begins (`setLand` calls back at once,
@@ -535,9 +537,6 @@ above, the game stops using it and it becomes the renderer's own.
   part-covered pixels round a small bright bloom far off). `FLOWER_REACH` (in `shared.ts` too) is how far it reaches: at
   most `FLOWER_REACH * size` m from its middle, across the ground or up, flutter and all; `brush3d/test/flower.test.ts`
   holds the blooms to it.
-  Its dab is marked a bloom (`BLOOM`), and `r.bloomsAtNight` (0 to 1, 0 by default) says how far blooms settle into the
-  dark at night, from dusk as the lamps come on: at 1, at full night, their paint's lightness cut by 30% and its colour
-  by half (in OKLab, before the light and exposure; Soil-n-Silo#288).
 - `addReeds` (the demo's banks; the game's `grass.ts` lines its shores with it, Soil-n-Silo#267): a clump of reed stalks
   on a `Ground`. Takes optional `ReedOptions` to size and colour a clump for the game: `blades`, `tall` and `width`
   (`[min, spread]`), `across` (the clump's width, m), `colour`, `tip` and `tipMix` (the stalks' base colour, and how far

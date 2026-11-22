@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { MeshBuilder, rng, srgb } from '../src/kit/builder.ts';
 import { addFlower, groundOf, type FlowerOptions } from '../src/kit/kit.ts';
-import { BLOOM, CRISP_EDGE } from '../src/renderer/dabs.ts';
+import { CRISP_EDGE } from '../src/renderer/dabs.ts';
 import { FLOWER_REACH } from '../src/shared.ts';
 
 // `addFlower`'s blooms stay within what kit/flower.ts promises the game (Soil-n-Silo#266): no further than
@@ -41,7 +41,7 @@ test('a bloom stays within FLOWER_REACH of its middle, its middle within its lif
         assert.ok(out <= FLOWER_REACH * size + 1e-6, `a bloom reaches ${(out / size).toFixed(3)} × its size`);
         nearest = Math.min(nearest, 1 - out / (FLOWER_REACH * size));
         // Crisp edges when asked (the game's), the demo's soft ones otherwise.
-        assert.ok(Math.abs(g.getAttribute('aPaint').getX(i) - (0.2 + BLOOM + (shape?.crisp ? CRISP_EDGE : 0))) < 1e-6);
+        assert.ok(Math.abs(g.getAttribute('aPaint').getX(i) - (0.2 + (shape?.crisp ? CRISP_EDGE : 0))) < 1e-6);
       }
     }
   }

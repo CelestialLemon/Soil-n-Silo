@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { MeshBuilder, noise2, srgb, type Paint } from './builder.ts';
 import { DRAG, type Obstacle } from '../wind/sim.ts';
-import { BLOOM, CRISP_EDGE } from '../renderer/dabs.ts';
+import { CRISP_EDGE } from '../renderer/dabs.ts';
 import { TREE_BEND, type TreeKind, type TreeSpec } from '../renderer/trees.ts';
 
 // The pieces scenes are built from: the palette, trees, stones, grass, reeds, and lines on the map (streams, paths, fences).
@@ -537,7 +537,7 @@ export function addFlower(b: MeshBuilder, ground: Ground, x: number, z: number, 
   const [sMin, sSpread] = options?.size ?? [0.055, 0.035];
   const y = ground.height(x, z) + lMin + rand() * lSpread;
   addDab(b, new THREE.Vector3(x, y, z), new THREE.Vector3(0, 1, 0), col.clone().offsetHSL(0, 0, (rand() - 0.5) * 0.08),
-    sMin + rand() * sSpread, rand(), [0.2 + BLOOM + (options?.crisp ? CRISP_EDGE : 0), 1, -1, 0.3]);
+    sMin + rand() * sSpread, rand(), [0.2 + (options?.crisp ? CRISP_EDGE : 0), 1, -1, 0.3]);
 }
 
 /** A drift of wildflowers of one colour. */
