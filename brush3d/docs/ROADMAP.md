@@ -75,6 +75,12 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      Each is marked tree by tree, so `removeTrees` and `moveTrees` work on them. The developer's picks "for now": the
      crops' lay and the pine may be revisited (the candidates are in Soil-n-Silo#227's history). The demo shows them at
      `?scene=plants`; its other frames are unchanged.
+     The far woods' crowns (`addCanopy`, now `kit/farWoods.ts`, which loads in Node) in winter (Soil-n-Silo#268, done
+     2026-11-22, the developer's pick on #280, `frosted`): bare woods are a fan of thin taupe twig strokes facing mostly up
+     (so they take the light and snow as the near trees do) and pines are spruce cones, in place of the dark balls on the
+     snow; in the other seasons pines are cones, poplars columns, and the crowns' dark undersides lifted. Each crown stands
+     on a trunk, a bare one's with limbs forking up and out into a Y (rooted strokes: `ROOTED_TURN` on a foliage stroke's
+     turn grows it out from its point, `renderer/dabs.ts`). The demo doesn't draw them; its frames are unchanged.
   10. Soil-n-Silo#211 the swap (done 2026-11-16): brush3d is the game's only renderer, the default, with no flag or
       fallback; the pixel world, its models and the pixel3d-renderer dependency are gone. The renderer didn't change.
       Left open: the developer's checks on the laptop and the MacBook (Soil-n-Silo#210), and the river's falls

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { MeshBuilder, PLAIN, rng, srgb, type Paint } from './builder';
-import { addDab, addMound } from './kit';
+import { addDab, MeshBuilder, PLAIN, rng, srgb, type Paint } from './builder';
+import { addMound } from './kit';
 import type { BrushRenderer } from '../renderer/renderer';
 import { GLOW, type Glow, type Parts } from '../renderer/parts';
 
