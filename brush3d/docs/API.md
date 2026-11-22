@@ -143,7 +143,9 @@ r.updateLand({ x, y, width, height }, { corners, worked, cover, ground });   // 
   meadow grows right up to there, Soil-n-Silo#290).
 - **The drawn surface is the game's to query**, so a truck, a dropped good, grass tufts and the tile cursor sit on what
   the player sees: `r.landAt(x, z)` gives the land's height there (metres), `r.landColourAt(x, z, into?)` the painted
-  ground's colour there as drawn (linear RGB, before the season turns it), and `r.landHit(ray)` where a line of sight
+  ground's colour there as drawn (linear RGB, before the season turns it), `r.countryAt(x, z)` how far the point is into
+  the duller country round the map (0 on the map, 1 out in the country, fading in along the soft border's wandering curve,
+  Soil-n-Silo#269; the game's meadow thins with it, #289), and `r.landHit(ray)` where a line of sight
   (from `r.view.rayAt`) first meets it, or null, on the CPU with no wait for the GPU. `r.onLandChange((area) => {})`
   calls back whenever the land as drawn changes (a new land, an earthwork swapped in), with where (`{ x0, z0, x1, z1 }`,
   metres) its height or paint may have changed, as the frame that first draws it begins (`setLand` calls back at once,

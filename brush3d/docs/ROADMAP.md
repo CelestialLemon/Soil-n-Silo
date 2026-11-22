@@ -67,6 +67,8 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      own over three of its cells; the land's last cell in from its edge runs
      straight between the colours at those cells' corners, as the country beyond does, so they meet in one colour all
      along. `tools/land.ts` checks both.
+     And `r.countryAt(x, z)` says how far a point is into that duller country (Soil-n-Silo#289), so the game's meadow thins
+     along the same curve.
   9. Soil-n-Silo#213 the crops and trees (done 2026-11-16, Soil-n-Silo#225 and Soil-n-Silo#227): the game's five crops
      at their four stages as one soft blanket over each bed (`CropPatch`), and its tree species, with the pine a soft
      cone, the willow weeping and the poplar a column (`growSpecies`; oak, birch, apple and the bushes are `Grove.grow`'s).

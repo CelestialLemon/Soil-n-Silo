@@ -200,13 +200,18 @@ its race, they stand in the ice rather than float, and they move with an earthwo
 rooted under the water, which hides what's below its surface, so the taller poke out of the shallows and deep water
 covers them (the developer's call, 2026-11-21). At its height an ordinary flood stands over a metre deep at the river's
 edge, so the river's reeds go mostly under it, the tallest tips showing in places; a severe one covers them all.
+While an overlay or the build or earthwork tools show, the grass and flowers step aside (hidden, not remade), so the
+overlays' tints and the grid read clean; the reeds stay (#285, a Wave 1 follow-up).
 
 Since, for #269 (epic #265, done 2026-11-21): the map's edge is no longer a ruler-straight colour cut. The duller
 country fades in over the first one to three tiles just outside the map, its outer edge wandering like a brush's (the
 developer's pick on PR #281, "organic", over an even fade), so the map's own tiles keep their full colour and the edge
 still reads at a glance (#228). And the straight dark seam where the land met the distant country in
 autumn and winter is gone: the distant country now starts from the land's own colour at its edge and fades to its woods'
-floor over three of its 16 m cells, and the land's outermost strip matches it all along the edge.
+floor over three of its 16 m cells, and the land's outermost strip matches it all along the edge. Then, for #289 (a Wave 1
+follow-up): the meadow no longer keeps a bald strip just outside the map's edge (the buildings' own clearances keep it off
+them), and past the edge it thins as the country dulls (brush3d's `r.countryAt`), along the same wandering curve, rather
+than stepping down at the edge's straight line.
 
 ## The buildings and trucks as models, with their goods (2026-11-16)
 

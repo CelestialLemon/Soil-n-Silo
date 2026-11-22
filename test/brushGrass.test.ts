@@ -12,9 +12,9 @@ import { COUNTRY, landRelief, Lie } from '../src/world/ground.ts';
 import { YAW } from '../src/world/brush/catalog.ts';
 import { wheelRace } from './wheelRace.ts';
 import {
-  blockOf, boxesIn, BUILDING_MARGIN, CLIFF_MARGIN, FIELD_MARGIN, fringeFade, GRASS_BLOCK, GRASS_FRINGE, GRASS_PROFILE,
-  GRASS_TOP, grassAt, grassBlocks, grassLayout, inBuilding, layoutChanges, MAX_BLADE_REACH, ROCK_MARGIN,
-  tileHabitat, tileSeed, WATER_MARGIN, wetDistance, dryBank,
+  blockOf, boxesIn, BUILDING_MARGIN, CLIFF_MARGIN, dryBank, FIELD_MARGIN, fringeFade, GRASS_BLOCK, GRASS_FRINGE, GRASS_PROFILE,
+  GRASS_TOP, grassAt, grassBlocks, grassLayout, inBuilding, layoutChanges, MAX_BLADE_REACH, outOfMap, ROCK_MARGIN,
+  tileHabitat, tileOutOfMap, tileSeed, WATER_MARGIN, wetDistance,
 } from '../src/world/brush/grassMask.ts';
 import { TILE } from '../src/world/brush/scale.ts';
 
@@ -56,7 +56,7 @@ test('non-grass tiles, off-map tracks, and steep banks are excluded from grass t
   assert.ok(checkedWater > 0 && checkedTree > 0 && checkedRock > 0 && checkedGrass > 0 && checkedTrack > 0);
 });
 
-test('edge margins tighten next to water, rocks, cliffs, and the playable map edge', () => {
+test('edge margins tighten next to water, rocks and cliffs, not at the playable map\'s edge', () => {
   const sc = must(scenarioById('c7'), 'c7');
   const s = newGame(sc), land = generateLand(sc, COUNTRY), relief = landRelief(land), wet = wetDistance(land);
   const { width: w, height: h } = s.map, M = land.margin;
@@ -101,16 +101,17 @@ test('edge margins tighten next to water, rocks, cliffs, and the playable map ed
   assert.ok(nearCliff.maxV <= TILE - CLIFF_MARGIN);
   assert.ok(nearCliff.edgeBoost > 0, 'a hill\'s edge, where the wildflowers gather');
 
+  // A country tile beside the map's open grass keeps no margin from it (#289): the buildings' boxes alone keep it clear.
   let fx = -1;
   for (let x = 2; x < w - 2; x++) {
     const li = (-1 + M) * land.width + (x + M);
-    if (land.terrain[li] === TERRAIN.grass && land.track[li] === 0 && tileHabitat(s, land, relief, wet, x, -1, false)) {
-      fx = x; break;
-    }
+    // (Open grass on the map beside it, and no cliff on any side: only the map's edge could narrow its side.)
+    const hab = land.terrain[li] === TERRAIN.grass && land.track[li] === 0 && s.map.terrain[x] === TERRAIN.grass ? tileHabitat(s, land, relief, wet, x, -1, false) : null;
+    if (hab && hab.edgeBoost === 0) { fx = x; break; }
   }
   assert.ok(fx >= 0, 'found grass country fringe tile');
   const fringe = tileHabitat(s, land, relief, wet, fx, -1, false)!;
-  assert.ok(fringe.maxV <= TILE - (BUILDING_MARGIN + 0.05));
+  assert.equal(fringe.maxV, TILE - 0.08, 'no bald strip along the map\'s edge');
 });
 
 test('habitat modifiers: tree skirts boost, deep woods thin, stony/sand thin, winter shortens tufts', () => {
@@ -203,6 +204,28 @@ test('building, field, and water-wheel race footprints mask grass cleanly and cl
   }
 });
 
+test('a building on the map\'s edge keeps the country\'s grass beside it clear, and is made again with it (#289)', () => {
+  const s = newGame(must(scenarioById('c1'), 'c1'));
+  s.credits = 1e6;
+  const { width: w, height: h } = s.map, reach = GRASS_FRINGE;
+  const byId = new Map(grassBlocks(w, h, reach).map((r) => [r.id, r]));
+  const was = grassLayout(s);
+  let b: Building | null = null;
+  for (let x = 2; x < w - 4 && !b; x++) {
+    const res = place(s, 'silo', x, 0, 0);
+    if (res.ok) b = res.value.building;
+  }
+  if (!b) throw new Error('no room for a silo on the map\'s edge');
+  const n = sizeOf(b), cx = (b.x + n / 2) * TILE;
+  // The country block across the edge from it is hidden till made again, and its boxes hold the silo's.
+  const { urgent } = layoutChanges(was, grassLayout(s), w), id = blockOf(b.x, -1), rect = byId.get(id)!;
+  assert.ok(urgent.has(id) && !rect.onMap, 'the country block beside it is made again');
+  const boxes = boxesIn(s, rect.x0, rect.y0, rect.x1, rect.y1);
+  assert.equal(inBuilding(boxes, cx, -BUILDING_MARGIN * 0.5), true, 'its box reaches across the edge');
+  assert.equal(inBuilding(boxes, cx, -BUILDING_MARGIN - 0.05), false);
+  assert.ok(BUILDING_MARGIN > MAX_BLADE_REACH);
+});
+
 test('every tuft the masks let stand keeps its blades\' whole reach off every building, field and wheel race', () => {
   const sc = must(scenarioById('c7'), 'c7');
   const s = newGame(sc), land = generateLand(sc, COUNTRY), lie = new Lie(s, land), wet = wetDistance(land);
@@ -287,9 +310,18 @@ test('blocks: a placement, removal or clearing queues only the blocks it touches
     const r = byId.get(blockOf(x, y));
     assert.ok(r && x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1, `tile ${x},${y} in its block`);
   }
-  assert.equal(fringeFade(5, 5, w, h, reach), 1);
-  assert.ok(fringeFade(-1, 5, w, h, reach) > 0 && fringeFade(-1, 5, w, h, reach) < 1);
-  assert.equal(fringeFade(-reach - 1, 5, w, h, reach), 0);
+  // The fringe's thinning: full on the map, no step at its edge, thinner where the country is duller, gone by `reach`.
+  assert.equal(outOfMap(5 * TILE, 5 * TILE, w, h), 0);
+  assert.equal(outOfMap(-TILE, 5 * TILE, w, h), 1);
+  assert.equal(outOfMap((w + 3) * TILE, (h + 4) * TILE, w, h), 5);
+  assert.equal(tileOutOfMap(5, 5, w, h), 0);
+  assert.equal(tileOutOfMap(-1, 5, w, h), 0);
+  assert.equal(tileOutOfMap(-reach, 5, w, h), reach - 1);
+  assert.equal(fringeFade(0, 0, reach), 1);
+  assert.ok(fringeFade(0.01, 0, reach) > 0.99, 'no step where the map ends');
+  assert.ok(fringeFade(1, 1, reach) < fringeFade(1, 0.5, reach) && fringeFade(1, 0.5, reach) < fringeFade(1, 0, reach));
+  assert.ok(fringeFade(2, 0, reach) < fringeFade(1, 0, reach));
+  assert.equal(fringeFade(reach, 0, reach), 0);
 
   const changes = (f: () => void) => {
     const was = grassLayout(s);

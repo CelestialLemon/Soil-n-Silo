@@ -960,6 +960,12 @@ export class BrushRenderer {
    */
   bedAt(x: number, z: number): number { return this.painted?.bedAt(x, z) ?? 0; }
 
+  /**
+   * How far a point of the world (m) is into the duller country round the map, as drawn (setLand's): 0 on the map, 1 out
+   * in the country, fading in between along the soft border's wandering curve (Soil-n-Silo#269); 0 before there's a land.
+   */
+  countryAt(x: number, z: number): number { return this.painted?.countryAt(x, z) ?? 0; }
+
   /** Where a line of sight (view.rayAt) first meets the land as drawn, or null if it misses or there's no land yet. */
   landHit(ray: THREE.Ray, into?: THREE.Vector3): THREE.Vector3 | null { return this.painted?.hit(ray, into) ?? null; }
 

@@ -233,14 +233,13 @@ export function reedShore(s: GameState, land: Land, relief: Relief, tx: number, 
     if (near) { wet = true; still ||= land.flow[j * 2] === 0 && land.flow[j * 2 + 1] === 0; }
   }
   if (!wet || !dry) return null;
-  // Kept off a rock's crags and a track beside it by the reeds' reach, and off the map's edge from the country as the
-  // grass is (tileHabitat).
+  // Kept off a rock's crags and a track beside it by the reeds' reach. (Across the map's edge, as the grass is: by the
+  // buildings' boxes alone, #289.)
   let minU = 0.05, maxU = TILE - 0.05, minV = 0.05, maxV = TILE - 0.05;
   for (let d = 0; d < 4; d++) {
     const [dx, dy] = SIDES[d], nx = tx + dx, ny = ty + dy, nlx = nx + M, nly = ny + M;
     let margin = 0;
-    if (!onMap && inMap(nx, ny)) margin = BUILDING_MARGIN + 0.05;
-    else if (kindAt(nx, ny) === TERRAIN.rock || land.track[nly * W + nlx] === 1) margin = MAX_REED_REACH + 0.05;
+    if (kindAt(nx, ny) === TERRAIN.rock || land.track[nly * W + nlx] === 1) margin = MAX_REED_REACH + 0.05;
     if (d === 0) minV = Math.max(minV, margin);
     else if (d === 1) maxU = Math.min(maxU, TILE - margin);
     else if (d === 2) maxV = Math.min(maxV, TILE - margin);
@@ -405,13 +404,30 @@ export function grassBlocks(w: number, h: number, reach: number): GrassBlockRect
   return out;
 }
 
-/** Density fade (0..1) for tile `(x, y)`: 1 on the playable map, tapering smoothly over `reach` country-fringe tiles. */
-export function fringeFade(x: number, y: number, w: number, h: number, reach: number): number {
-  if (x >= 0 && y >= 0 && x < w && y < h) return 1;
-  const beyond = Math.hypot(Math.max(0, -x, x - w + 1), Math.max(0, -y, y - h + 1));
-  const t = Math.min(1, Math.max(0, beyond / (reach + 0.5)));
-  const fade = (1 - t * t * (3 - 2 * t)) * 0.65;
-  return fade > 0.05 ? fade : 0;
+/** How far (tiles) a point (x, z m) lies out of the playable map `[0, w) × [0, h)` tiles: 0 on it; round a corner, to the corner. */
+export function outOfMap(x: number, z: number, w: number, h: number): number {
+  const px = x / TILE, pz = z / TILE;
+  return Math.hypot(Math.max(0, -px, px - w), Math.max(0, -pz, pz - h));
+}
+
+/** How far (tiles) tile `(x, y)`'s nearest point lies out of the playable map `[0, w) × [0, h)`: 0 for a map tile. */
+export function tileOutOfMap(x: number, y: number, w: number, h: number): number {
+  return Math.hypot(Math.max(0, -(x + 1), x - w), Math.max(0, -(y + 1), y - h));
+}
+
+/** How much thinner the meadow grows out in the duller country than on the map. */
+export const COUNTRY_THIN = 0.35;
+
+/**
+ * The meadow's density (0..1) at a point `out` tiles out of the map (outOfMap's) where the land takes `country` of the
+ * country's dullness (brush3d's `r.countryAt`): 1 on the map; out past its edge thinned as the country dulls, so the
+ * thinning follows the soft border's wandering curve rather than the map's straight edge (#289), and tapering smoothly
+ * to nothing over `reach` tiles.
+ */
+export function fringeFade(out: number, country: number, reach: number): number {
+  if (out <= 0) return 1;
+  const t = Math.min(1, out / reach);
+  return (1 - COUNTRY_THIN * country) * (1 - t * t * (3 - 2 * t));
 }
 
 /**
@@ -472,8 +488,6 @@ export function tileHabitat(
     if (!joins(relief, lx, ly, d)) {
       margin = CLIFF_MARGIN;
       edge = true;
-    } else if (!onMap && nx >= 0 && ny >= 0 && nx < s.map.width && ny < s.map.height) {
-      margin = BUILDING_MARGIN + 0.05;
     } else {
       const nk = kindAt(nx, ny);
       if (nk === TERRAIN.water) margin = fall ? WATER_MARGIN : 0;
