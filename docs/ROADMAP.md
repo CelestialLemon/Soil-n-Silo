@@ -157,17 +157,13 @@ on #227, "for now": the crops' lay and the pine may be revisited. The candidates
 tiered or a Scots pine, a pollarded willow) are in #227's history. The demo shows them all at `?scene=plants`.
 
 The far woods (the country's woods past the map, a crown of a few strokes for each 2 × 2 tiles, brush3d's `addCanopy`) in
-winter (#268, epic #265, in review): they were dark chocolate and near-black balls on the snow, beside the lacy near trees.
-Two looks are up for the developer's pick on the PR, behind the HUD's **Far woods** button and `?farwoods=`: `frosted` (the
-default; bare woods a fan of thin taupe twig strokes with the ground between them, pines spruce cones) and `misty` (bare
-woods soft pale-grey masses). Both face the strokes mostly up, so they're lit as the ground is and take the snow and frost
-as the near trees do, and in the other seasons shape the pines as cones and the poplars as columns and lift the crowns'
-dark undersides. `off` is the look before. Up close, where the far woods meet the near, a crown was loose strokes floating
-over the ground, so in both looks every far crown now stands on a thin trunk of short upright strokes, and a bare wood's has
-a few limbs forking up into its twigs (frosted's twigs: four times the strokes, smaller). After Gemini 4 Neon's review the
-limbs grow out from the trunk's upper part into a Y from any side, where they had crossed over it in an X (broomsticks),
-and frosted's twig fan is a little wider. The same draws; on c5 the GPU's
-frame is the same as `off` to 0.4 ms more in frosted, the same in misty.
+winter (#268, epic #265, done 2026-11-22, the developer's pick on #280, `frosted`): they were dark chocolate and near-black
+balls on the snow, beside the lacy near trees. Bare woods are now a fan of thin taupe twig strokes with the ground showing
+between them, pines spruce cones, their strokes facing mostly up so they're lit as the ground is and take the snow and frost
+as the near trees do; in the other seasons pines are cones, poplars columns, and the crowns' dark undersides lifted. Every
+far crown stands on a thin trunk of short upright strokes, and a bare wood's has limbs forking up and out into a Y from any
+side into its twigs (the `misty` and `off` candidates and the temporary **Far woods** HUD button were removed before merge).
+The same draws; on c5 the GPU's frame is unchanged to 0.4 ms more.
 
 ## The tools in the painted look (2026-11-16)
 
@@ -208,13 +204,18 @@ its race, they stand in the ice rather than float, and they move with an earthwo
 rooted under the water, which hides what's below its surface, so the taller poke out of the shallows and deep water
 covers them (the developer's call, 2026-11-21). At its height an ordinary flood stands over a metre deep at the river's
 edge, so the river's reeds go mostly under it, the tallest tips showing in places; a severe one covers them all.
+While an overlay or the build or earthwork tools show, the grass and flowers step aside (hidden, not remade), so the
+overlays' tints and the grid read clean; the reeds stay (#285, a Wave 1 follow-up).
 
 Since, for #269 (epic #265, done 2026-11-21): the map's edge is no longer a ruler-straight colour cut. The duller
 country fades in over the first one to three tiles just outside the map, its outer edge wandering like a brush's (the
 developer's pick on PR #281, "organic", over an even fade), so the map's own tiles keep their full colour and the edge
 still reads at a glance (#228). And the straight dark seam where the land met the distant country in
 autumn and winter is gone: the distant country now starts from the land's own colour at its edge and fades to its woods'
-floor over three of its 16 m cells, and the land's outermost strip matches it all along the edge.
+floor over three of its 16 m cells, and the land's outermost strip matches it all along the edge. Then, for #289 (a Wave 1
+follow-up): the meadow no longer keeps a bald strip just outside the map's edge (the buildings' own clearances keep it off
+them), and past the edge it thins as the country dulls (brush3d's `r.countryAt`), along the same wandering curve, rather
+than stepping down at the edge's straight line.
 
 ## The buildings and trucks as models, with their goods (2026-11-16)
 

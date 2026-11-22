@@ -2,25 +2,24 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as THREE from 'three';
 import { addDab, MeshBuilder, rng, srgb } from '../src/kit/builder.ts';
-import { addCanopy, FAR_WOODS_MODES, type FarWoodsMode } from '../src/kit/farWoods.ts';
+import { addCanopy } from '../src/kit/farWoods.ts';
 import type { Species } from '../src/kit/plants.ts';
 import { ROOTED_TURN, STIFF_STROKE } from '../src/renderer/dabs.ts';
 import { SEASONS, type Season } from '../src/renderer/season.ts';
 
-// The far woods' crowns (brush3d's addCanopy, #268): `off` paints them as before, and the new looks' crown strokes cover no
-// more than before, have no dark side in winter, and lift the other seasons' dark undersides; and in the new looks every
-// crown stands on a trunk, its wood thin, upright and dark under the snow. (The frame's cost is measured in the game: see the
-// PR.)
+// The far woods' crowns (brush3d's addCanopy, #268): the picked look's crown strokes cover no more than before, have no
+// dark side in winter, and lift the other seasons' dark undersides; and every crown stands on a trunk, its wood thin,
+// upright and dark under the snow. (The frame's cost is measured in the game: see #280.)
 
 const SPECIES: readonly Species[] = ['oak', 'birch', 'pine', 'willow', 'poplar', 'apple', 'bush'];
 
 /** A wood of crowns of one species, as the game lays them out (one per 2 × 2 tiles, 3.2 to 4.6 m across). */
-function wood(species: Species, season: Season, mode: FarWoodsMode | 'before') {
+function wood(species: Species, season: Season, which: 'now' | 'before' = 'now') {
   const b = new MeshBuilder('foliage'), rand = rng(213), place = rng(7);
   for (let i = 0; i < 40; i++) {
     const x = place() * 200, z = place() * 200, radius = 3.2 + 1.4 * place();
-    if (mode === 'before') before(b, x, 1, z, radius, species, season, rand);
-    else addCanopy(b, x, 1, z, radius, species, season, rand, mode);
+    if (which === 'before') before(b, x, 1, z, radius, species, season, rand);
+    else addCanopy(b, x, 1, z, radius, species, season, rand);
   }
   return b.build();
 }
@@ -82,29 +81,20 @@ function measure(g: THREE.BufferGeometry, wood = false) {
   return { strokes, fill, biggest, lowest, light: light / strokes, stiff: stiff / strokes };
 }
 
-test('off paints the far woods exactly as before #268, in every season', () => {
+test('the crowns cover no more than before, no stroke is bigger, and bare woods in winter have four times as many', () => {
   for (const season of SEASONS) for (const species of SPECIES) {
-    const now = wood(species, season, 'off'), was = wood(species, season, 'before');
-    for (const name of ['position', 'normal', 'color', 'aPaint', 'aCard']) {
-      assert.deepEqual(now.getAttribute(name).array, was.getAttribute(name).array, `${species} in ${season}: ${name}`);
-    }
+    const now = measure(wood(species, season)), was = measure(wood(species, season, 'before'));
+    assert.ok(now.fill <= was.fill * 1.02, `${species} in ${season}: fills ${(now.fill / was.fill).toFixed(2)} of before`);
+    assert.ok(now.biggest <= was.biggest * 1.02, `${species} in ${season}: its biggest stroke`);
+    // Bare woods in winter are four times the strokes, smaller; the rest as many as before.
+    const more = season === 'winter' && species !== 'pine' ? 4 : 1;
+    assert.equal(now.strokes, was.strokes * more, `${species} in ${season}: strokes`);
   }
 });
 
-test('the new looks\' crowns cover no more than before, no stroke is bigger, and frosted\'s bare woods have four times as many', () => {
-  for (const mode of FAR_WOODS_MODES) for (const season of SEASONS) for (const species of SPECIES) {
-    const now = measure(wood(species, season, mode)), was = measure(wood(species, season, 'off'));
-    assert.ok(now.fill <= was.fill * 1.02, `${mode} ${species} in ${season}: fills ${(now.fill / was.fill).toFixed(2)} of before`);
-    assert.ok(now.biggest <= was.biggest * 1.02, `${mode} ${species} in ${season}: its biggest stroke`);
-    // Frosted's bare woods are four times the strokes, smaller; the rest as many as before.
-    const more = mode === 'frosted' && season === 'winter' && species !== 'pine' ? 4 : 1;
-    assert.equal(now.strokes, was.strokes * more, `${mode} ${species} in ${season}: strokes`);
-  }
-});
-
-test('every crown in the new looks stands on its trunk: thin upright strokes from its foot up into it, a bare wood\'s limbs forking', () => {
-  for (const mode of ['frosted', 'misty'] as const) for (const season of SEASONS) for (const species of SPECIES) {
-    const g = wood(species, season, mode), pos = g.getAttribute('position'), card = g.getAttribute('aCard'), paint = g.getAttribute('aPaint');
+test('every crown stands on its trunk: thin upright strokes from its foot up into it, a bare wood\'s limbs forking', () => {
+  for (const season of SEASONS) for (const species of SPECIES) {
+    const g = wood(species, season), pos = g.getAttribute('position'), card = g.getAttribute('aCard'), paint = g.getAttribute('aPaint');
     const trunks = new Map<string, { spans: [number, number][]; limbs: number; seconds: number; leans: number[]; top: number; forks: number[] }>();
     for (let i = 0; i < card.count; i += 4) {
       if (!isWood(g, i)) continue;
@@ -112,50 +102,50 @@ test('every crown in the new looks stands on its trunk: thin upright strokes fro
       const t = trunks.get(key) ?? { spans: [], limbs: 0, seconds: 0, leans: [], top: 0, forks: [] };
       // A limb's strokes are rooted (ROOTED_TURN, once for its first, twice for its second); the trunk's aren't.
       const k = Math.floor(paint.getZ(i) / ROOTED_TURN), turn = paint.getZ(i) - k * ROOTED_TURN;
-      assert.ok(Math.abs(turn - Math.PI / 2) < 0.85 && paint.getY(i) <= Math.fround(0.2), `${mode} ${species} in ${season}: a thin, upright stroke`);
+      assert.ok(Math.abs(turn - Math.PI / 2) < 0.85 && paint.getY(i) <= Math.fround(0.2), `${species} in ${season}: a thin, upright stroke`);
       if (k === 0) {
-        assert.ok(Math.abs(turn - Math.PI / 2) < 1e-6, `${mode} ${species} in ${season}: an upright trunk`);
+        assert.ok(Math.abs(turn - Math.PI / 2) < 1e-6, `${species} in ${season}: an upright trunk`);
         t.spans.push([pos.getY(i) - card.getZ(i), pos.getY(i) + card.getZ(i)]);
         t.top = Math.max(t.top, pos.getY(i) + card.getZ(i));
       } else {
-        assert.ok(k === 1 || k === 2, `${mode} ${species} in ${season}: a limb's stroke ${k}`);
+        assert.ok(k === 1 || k === 2, `${species} in ${season}: a limb's stroke ${k}`);
         if (k === 1) { t.limbs++; t.leans.push(turn - Math.PI / 2); t.forks.push(pos.getY(i)); }
         // A limb's strokes come in pairs, one after the other: the second from the same point, at the same turn, size and
         // seed, so the shader lays it on from where the first ends.
         if (k === 2) {
           t.seconds++;
           const j = i - 4;
-          assert.ok(j >= 0 && Math.floor(paint.getZ(j) / ROOTED_TURN) === 1, `${mode} ${species} in ${season}: a limb's second stroke alone`);
+          assert.ok(j >= 0 && Math.floor(paint.getZ(j) / ROOTED_TURN) === 1, `${species} in ${season}: a limb's second stroke alone`);
           for (const [a, b] of [[pos.getX(i), pos.getX(j)], [pos.getY(i), pos.getY(j)], [pos.getZ(i), pos.getZ(j)],
             [paint.getZ(i) - ROOTED_TURN, paint.getZ(j)], [card.getZ(i), card.getZ(j)], [card.getW(i), card.getW(j)]]) {
-            assert.ok(Math.abs(a - b) < 1e-5, `${mode} ${species} in ${season}: a limb's strokes apart`);
+            assert.ok(Math.abs(a - b) < 1e-5, `${species} in ${season}: a limb's strokes apart`);
           }
         }
       }
       trunks.set(key, t);
     }
     // One trunk under each crown, where the crown stands.
-    assert.deepEqual([...trunks.keys()].sort(), crowns().sort(), `${mode} ${species} in ${season}: a trunk under each crown`);
+    assert.deepEqual([...trunks.keys()].sort(), crowns().sort(), `${species} in ${season}: a trunk under each crown`);
     for (const t of trunks.values()) {
       // Each reaches down into the ground at its foot (1 m up, in wood()), up past its crown's lowest strokes, and unbroken.
       const spans = t.spans.sort((a, b) => a[0] - b[0]), foot = spans[0][0], top = Math.max(...spans.map((s) => s[1]));
-      assert.ok(foot <= 1 && top > 3, `${mode} ${species} in ${season}: a trunk from ${foot.toFixed(2)} to ${top.toFixed(2)}`);
-      for (let k = 1; k < spans.length; k++) assert.ok(spans[k][0] < spans[k - 1][1], `${mode} ${species} in ${season}: a gap in a trunk at ${spans[k][0].toFixed(2)}`);
+      assert.ok(foot <= 1 && top > 3, `${species} in ${season}: a trunk from ${foot.toFixed(2)} to ${top.toFixed(2)}`);
+      for (let k = 1; k < spans.length; k++) assert.ok(spans[k][0] < spans[k - 1][1], `${species} in ${season}: a gap in a trunk at ${spans[k][0].toFixed(2)}`);
     }
     const forks = season === 'winter' && species !== 'pine';
     for (const t of trunks.values()) {
-      assert.ok(forks ? t.limbs >= 2 : t.limbs === 0, `${mode} ${species} in ${season}: ${t.limbs} limbs`);
-      assert.equal(t.seconds, t.limbs, `${mode} ${species} in ${season}: each limb two strokes`);
+      assert.ok(forks ? t.limbs >= 2 : t.limbs === 0, `${species} in ${season}: ${t.limbs} limbs`);
+      assert.equal(t.seconds, t.limbs, `${species} in ${season}: each limb two strokes`);
       if (!forks) continue;
       // They fork out both ways from the trunk's upper part (a Y, not an X: Neon's review of #280), each from a point on it.
-      assert.ok(Math.min(...t.leans) < -0.2 && Math.max(...t.leans) > 0.2, `${mode} ${species} in ${season}: limbs leaning ${t.leans.map((l) => l.toFixed(2)).join(", ")}`);
-      for (const f of t.forks) assert.ok(f > t.spans[0][0] + 1 && f < t.top, `${mode} ${species} in ${season}: a limb from ${f.toFixed(2)}`);
+      assert.ok(Math.min(...t.leans) < -0.2 && Math.max(...t.leans) > 0.2, `${species} in ${season}: limbs leaning ${t.leans.map((l) => l.toFixed(2)).join(", ")}`);
+      for (const f of t.forks) assert.ok(f > t.spans[0][0] + 1 && f < t.top, `${species} in ${season}: a limb from ${f.toFixed(2)}`);
     }
     // The wood is a sliver of the crown's cost: its cards fill under half the crowns' (and its marks a fifth of its cards).
     const w = measure(g, true), c = measure(g);
-    assert.ok(w.fill < 0.5 * c.fill, `${mode} ${species} in ${season}: the wood fills ${(w.fill / c.fill).toFixed(2)} of the crowns`);
+    assert.ok(w.fill < 0.5 * c.fill, `${species} in ${season}: the wood fills ${(w.fill / c.fill).toFixed(2)} of the crowns`);
     // Facing across: no snow lies on it, and it doesn't flutter.
-    assert.ok(w.lowest > 0 && measureHighest(g) < 0.1 && w.stiff === 1, `${mode} ${species} in ${season}: the wood faces across, stiff`);
+    assert.ok(w.lowest > 0 && measureHighest(g) < 0.1 && w.stiff === 1, `${species} in ${season}: the wood faces across, stiff`);
   }
 });
 
@@ -167,20 +157,20 @@ function measureHighest(g: THREE.BufferGeometry) {
   return most;
 }
 
-test('in winter the new looks have no dark side: lighter bare woods, every stroke facing up, the bare ones stiff', () => {
-  for (const mode of ['frosted', 'misty'] as const) for (const species of SPECIES) {
-    const now = measure(wood(species, 'winter', mode)), was = measure(wood(species, 'winter', 'off'));
-    assert.ok(now.lowest >= 0.15, `${mode} ${species}: a stroke faces ${now.lowest.toFixed(2)} up`);
+test('in winter the far woods have no dark side: lighter bare woods, every stroke facing up, the bare ones stiff', () => {
+  for (const species of SPECIES) {
+    const now = measure(wood(species, 'winter')), was = measure(wood(species, 'winter', 'before'));
+    assert.ok(now.lowest >= 0.15, `${species}: a stroke faces ${now.lowest.toFixed(2)} up`);
     if (species === 'pine') continue;
     // Before, the bare woods' strokes averaged 0.07 to 0.14 in light (willow's golden 0.24): none is that dark now.
-    assert.ok(now.light > 0.15, `${mode} ${species}: ${now.light.toFixed(3)} against ${was.light.toFixed(3)} before`);
-    assert.equal(now.stiff, 1, `${mode} ${species}: bare wood doesn't flutter`);
+    assert.ok(now.light > 0.15, `${species}: ${now.light.toFixed(3)} against ${was.light.toFixed(3)} before`);
+    assert.equal(now.stiff, 1, `${species}: bare wood doesn't flutter`);
   }
 });
 
-test('in the other seasons the new looks lift the crowns\' undersides', () => {
-  for (const mode of ['frosted', 'misty'] as const) for (const season of ['spring', 'summer', 'autumn'] as const) for (const species of SPECIES) {
-    const now = measure(wood(species, season, mode)), was = measure(wood(species, season, 'off'));
-    assert.ok(was.lowest < -0.4 && now.lowest > -0.31, `${mode} ${species} in ${season}: ${now.lowest.toFixed(2)} (before ${was.lowest.toFixed(2)})`);
+test('in the other seasons the far woods lift the crowns\' undersides', () => {
+  for (const season of ['spring', 'summer', 'autumn'] as const) for (const species of SPECIES) {
+    const now = measure(wood(species, season)), was = measure(wood(species, season, 'before'));
+    assert.ok(was.lowest < -0.4 && now.lowest > -0.31, `${species} in ${season}: ${now.lowest.toFixed(2)} (before ${was.lowest.toFixed(2)})`);
   }
 });

@@ -439,6 +439,12 @@ export class PaintedLand {
     }
   }
 
+  /**
+   * How much of the country's dullness the land takes at a point of the world (x, z in metres): 0 on the map, 1 out in the
+   * country, fading in over the first tiles out along the soft border's wandering curve (BORDER, dullness).
+   */
+  countryAt(x: number, z: number): number { return this.dullness((x - this.x0) / this.tile, (z - this.z0) / this.tile); }
+
   /** The land's height (m) at a point of the world (x, z in metres), as drawn: the beds and cliffs too. */
   heightAt(x: number, z: number): number {
     const px = (x - this.x0) / this.tile, py = (z - this.z0) / this.tile;

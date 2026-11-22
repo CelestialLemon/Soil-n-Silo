@@ -3,7 +3,6 @@ import { generateLand } from '../../game/map.ts';
 import { MAX_LEVEL } from '../../game/relief.ts';
 import type { GameState } from '../../game/state.ts';
 import type { SettingsStore } from '../../ui/settings.ts';
-import { farWoodsChoice, farWoodsMode } from '../../ui/farWoodsChoice.ts';
 import { Camera } from '../camera.ts';
 import { COUNTRY, Lie, LEVEL_HEIGHT, standY } from '../ground.ts';
 import type { Heights, Scene } from '../scene.ts';
@@ -60,9 +59,7 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
   const ground = timed('land', () => new BrushLand(r, state, land, lie)), sky = new BrushSky(r, state), cover = new BrushCover(r, land), water = timed('water', () => new BrushWater(r, land, lie));
   // The goods trucks carry and buildings hand next door (#203), drawn with the things.
   const goods = new Goods(r);
-  const things = new Things(r, lie, goods), wild = timed('wild', () => new Wild(r, lie, land, state, farWoodsMode())), meadow = timed('meadow', () => new Meadow(r, lie, land, state)), wind = timed('wind', () => new BrushWind(r, state, land));
-  // The far woods' look, #268's comparison (its button goes once the developer has picked).
-  farWoodsChoice((mode) => wild.setFarWoods(mode));
+  const things = new Things(r, lie, goods), wild = timed('wild', () => new Wild(r, lie, land, state)), meadow = timed('meadow', () => new Meadow(r, lie, land, state)), wind = timed('wind', () => new BrushWind(r, state, land));
   const lens = new BrushLens(r, canvas);
   const camera = new Camera(lens, canvas, map, start, changed);
   const tools = timed('tools', () => new BrushTools(r, state, things, lie, meadow));
@@ -88,8 +85,9 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
   const gl = r.gl.getContext();
   const profile: ProfileHost = {
     r, state: () => current, load: () => load,
-    // Held, nothing is sent; let go, everything is sent again (the case's weather and ground were the profile's).
-    hold: (on) => { held = lens.held = on; if (!on) { sky.resend(); cover.resend(); } },
+    // Held, nothing is sent; let go, everything is sent again (the case's weather and ground were the profile's, and it
+    // showed every mesh).
+    hold: (on) => { held = lens.held = on; if (!on) { sky.resend(); cover.resend(); meadow.reshow(); } },
   };
   let current = state;
   if (new URLSearchParams(location.search).has('profile')) profilePanel(profile);
@@ -109,7 +107,11 @@ export function brushScene(state: GameState, canvas: HTMLCanvasElement, settings
       meadow.sync(s);
       tools.sync(s, f);
     },
-    show: (s, f) => tools.show(s, f),
+    show(s, f) {
+      // The grass and flowers stand aside for the overlays and the build tools' lines (#285).
+      meadow.setDetails(f.details);
+      tools.show(s, f);
+    },
     truckAt: (id) => things.truckAt(id),
     stopLabels: () => tools.stopLabels(),
     netLabels: () => tools.netLabels(),

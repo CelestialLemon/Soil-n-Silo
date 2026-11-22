@@ -128,6 +128,8 @@ async function play(initial: GameState) {
   loading.remove();
 
   let speed = 1, paused = false, overlay: Overlay = 'none';
+  /** Whether the small things in the grass showed last frame (ShowFrame.details). */
+  let detailsShown = true;
   // Switching the testing speeds off while at one drops to the top normal speed.
   settings.listen((s) => { if (!s.fastSpeeds && speed > 4) speed = 4; });
   let tool: Tool = { kind: 'select' };
@@ -656,10 +658,13 @@ async function play(initial: GameState) {
     const hi: number[] = [];
     if (selected !== null) hi.push(selected);
     if (hoverBuilding !== null && hoverBuilding !== selected && (tool.kind === 'select' || tool.kind === 'remove')) hi.push(hoverBuilding);
+    // The small things in the grass stand aside for the ground's lines and the overlays; what's under the pointer may
+    // change as they go or come back.
+    const details = shownOverlay === 'none' && tool.kind !== 'build' && tool.kind !== 'earth';
+    if (details !== detailsShown) { detailsShown = details; repick = true; }
     scene.show(state, {
       overlay: shownOverlay,
-      // The small things in the grass stand aside for the ground's lines and the overlays.
-      details: shownOverlay === 'none' && tool.kind !== 'build' && tool.kind !== 'earth',
+      details,
       links: linkedTo(focus), highlight: hi, routes: shown,
       power: {
         all: shownOverlay === 'power' || (tool.kind === 'build' && usesPower(tool.type)), tiles: shownOverlay === 'power',

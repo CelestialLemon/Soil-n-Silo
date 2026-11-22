@@ -67,17 +67,20 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
      own over three of its cells; the land's last cell in from its edge runs
      straight between the colours at those cells' corners, as the country beyond does, so they meet in one colour all
      along. `tools/land.ts` checks both.
+     And `r.countryAt(x, z)` says how far a point is into that duller country (Soil-n-Silo#289), so the game's meadow thins
+     along the same curve.
   9. Soil-n-Silo#213 the crops and trees (done 2026-11-16, Soil-n-Silo#225 and Soil-n-Silo#227): the game's five crops
      at their four stages as one soft blanket over each bed (`CropPatch`), and its tree species, with the pine a soft
      cone, the willow weeping and the poplar a column (`growSpecies`; oak, birch, apple and the bushes are `Grove.grow`'s).
      Each is marked tree by tree, so `removeTrees` and `moveTrees` work on them. The developer's picks "for now": the
      crops' lay and the pine may be revisited (the candidates are in Soil-n-Silo#227's history). The demo shows them at
      `?scene=plants`; its other frames are unchanged.
-     The far woods' crowns (`addCanopy`, now `kit/farWoods.ts`, which loads in Node) in winter (Soil-n-Silo#268, in
-     review): two looks for the developer's pick, `frosted` and `misty` (the `mode` argument), in place of the dark balls
-     on the snow; `off` as before. Each crown in both looks stands on a trunk, a bare one's with limbs forking up and out
-     into a Y (rooted strokes: `ROOTED_TURN` on a foliage stroke's turn grows it out from its point, `renderer/dabs.ts`).
-     The demo doesn't draw them; its frames are unchanged.
+     The far woods' crowns (`addCanopy`, now `kit/farWoods.ts`, which loads in Node) in winter (Soil-n-Silo#268, done
+     2026-11-22, the developer's pick on #280, `frosted`): bare woods are a fan of thin taupe twig strokes facing mostly up
+     (so they take the light and snow as the near trees do) and pines are spruce cones, in place of the dark balls on the
+     snow; in the other seasons pines are cones, poplars columns, and the crowns' dark undersides lifted. Each crown stands
+     on a trunk, a bare one's with limbs forking up and out into a Y (rooted strokes: `ROOTED_TURN` on a foliage stroke's
+     turn grows it out from its point, `renderer/dabs.ts`). The demo doesn't draw them; its frames are unchanged.
   10. Soil-n-Silo#211 the swap (done 2026-11-16): brush3d is the game's only renderer, the default, with no flag or
       fallback; the pixel world, its models and the pixel3d-renderer dependency are gone. The renderer didn't change.
       Left open: the developer's checks on the laptop and the MacBook (Soil-n-Silo#210), and the river's falls

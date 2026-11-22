@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {
   addCanopy, CropPatch, dressFor, groundOf, Grove, growSpecies, MeshBuilder, rng, speciesTree, type BrushRenderer, type CropStage,
-  type Dress, type FarWoodsMode, type Ground, type Season, type Species,
+  type Dress, type Ground, type Season, type Species,
 } from '../../../brush3d/src/index.ts';
 import { CROPS, SAPLING_SECONDS } from '../../game/data.ts';
 import { TERRAIN, type Land } from '../../game/map.ts';
@@ -70,9 +70,6 @@ interface Block { grove: THREE.Mesh[]; trees: Map<number, Standing>; stones: Sho
 /** One 8 × 8-tile chunk of near-country rocks, rebuilt on its own when map-edge relief changes. */
 interface CountryRockChunk { tiles: [number, number][]; nearBorder: boolean; shown: Shown | null }
 
-/** A far wood's crown (beyond NEAR tiles of the map): where it stands, how big and of what, to paint it again in another look. */
-interface FarCrown { x: number; y: number; z: number; radius: number; species: Species }
-
 export class Wild {
   private readonly r: BrushRenderer;
   private readonly lie: Lie;
@@ -80,9 +77,6 @@ export class Wild {
   private readonly dress: Dress | null;
   private readonly ground: Ground;
   private readonly season: Season;
-  private readonly farCrowns: FarCrown[] = [];
-  private farMesh: THREE.Mesh | null = null;
-  private farMode: FarWoodsMode;
   private readonly blocks = new Map<number, Block>();
   private readonly fields = new Map<number, Shown>();
   private readonly saplings = new Map<number, Shown>();
@@ -90,8 +84,8 @@ export class Wild {
   private layout = -1;
   private relief = -1;
 
-  constructor(r: BrushRenderer, lie: Lie, land: Land, s: GameState, farMode: FarWoodsMode) {
-    this.r = r; this.lie = lie; this.land = land; this.season = s.scenario.climate.season; this.farMode = farMode;
+  constructor(r: BrushRenderer, lie: Lie, land: Land, s: GameState) {
+    this.r = r; this.lie = lie; this.land = land; this.season = s.scenario.climate.season;
     const M = land.margin;
     this.ground = groundOf((x, z) => lie.y(x / TILE, z / TILE) * RISE * TILE);
     // Fallen leaves and petals lie on the land, not on the water.
@@ -100,13 +94,6 @@ export class Wild {
       return lx >= 0 && ly >= 0 && lx < land.width && ly < land.height && land.terrain[ly * land.width + lx] !== TERRAIN.water;
     });
     this.country(s);
-  }
-
-  /** Paints the far woods in another look (#268's comparison). */
-  setFarWoods(mode: FarWoodsMode) {
-    if (mode === this.farMode) return;
-    this.farMode = mode;
-    this.buildFarWoods();
   }
 
   /** Follows the game: trees cleared or grown, saplings growing, crops growing, ripening and harvested, earthworks. */
@@ -129,7 +116,8 @@ export class Wild {
     const kind = (x: number, y: number) => land.terrain[(y + M) * land.width + x + M];
     const wet = (x: number, y: number) => wetAt((wx, wy) => onLand(wx, wy, w, h, M) && kind(wx, wy) === TERRAIN.water, x, y);
     const species = (x: number, y: number) => treeAt(x, y, baseLevel(lr, x + M, y + M), wet(x, y)).species;
-    const grove = new Grove(this.dress);
+    const grove = new Grove(this.dress), crowns = new MeshBuilder('foliage');
+    let farIndex = 0;
     for (let y = -M; y < h + M; y++) for (let x = -M; x < w + M; x++) {
       if (onMap(x, y, w, h)) continue;
       const t = kind(x, y), near = beyond(x + 0.5, y + 0.5, w, h) <= NEAR;
@@ -148,10 +136,10 @@ export class Wild {
       // A crown for each 2 × 2 block of far woods, of the species of its first tile.
       if ((x & 1) || (y & 1)) continue;
       const n = hash(x, y), cx = (x + 1 + (hash(x + 3, y) - 0.5)) * TILE, cz = (y + 1 + (hash(x, y + 3) - 0.5)) * TILE;
-      this.farCrowns.push({ x: cx, y: this.ground.height(cx, cz) - 0.3, z: cz, radius: 3.2 + 1.4 * n, species: species(x, y) });
+      addCanopy(crowns, cx, this.ground.height(cx, cz) - 0.3, cz, 3.2 + 1.4 * n, species(x, y), this.season, rng(213 + farIndex++));
     }
     grove.addTo(r, { tile: CUT });
-    this.buildFarWoods();
+    if (crowns.vertexCount) r.add(crowns.build(), 'foliage', { tile: CUT, castShadow: true });
     this.syncCountryStones(s);
   }
 
@@ -186,17 +174,6 @@ export class Wild {
       }
       chunk.shown = { meshes, key };
     }
-  }
-
-  /** The far woods' crowns, in one mesh, painted in the look picked (#268); again whenever it changes. */
-  private buildFarWoods() {
-    if (this.farMesh) this.drop([this.farMesh]);
-    // Each crown its own strokes' draw, so a crown is the same whichever look its neighbours are in; `off` one draw for all, as
-    // before #268.
-    const crowns = new MeshBuilder('foliage'), before = rng(213);
-    this.farCrowns.forEach((c, i) => addCanopy(crowns, c.x, c.y, c.z, c.radius, c.species, this.season,
-      this.farMode === 'off' ? before : rng(213 + i), this.farMode));
-    this.farMesh = crowns.vertexCount ? this.r.add(crowns.build(), 'foliage', { tile: CUT, castShadow: true }) : null;
   }
 
   // ---- The map's trees and rocks, a block at a time ----

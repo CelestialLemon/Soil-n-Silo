@@ -53,7 +53,7 @@ export {
   CROP_NAMES, CropPatch, growSpecies, SPECIES, speciesHeight, speciesTree, type CropName, type CropStage, type CropTile,
   type Species,
 } from './kit/plants';
-export { addCanopy, FAR_WOODS_MODES, type FarWoodsMode } from './kit/farWoods';
+export { addCanopy } from './kit/farWoods';
 export { loadModel, ModelSet, ModelParts } from './kit/model';
 
 // ---- Tools: measuring a frame ----

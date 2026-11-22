@@ -141,7 +141,9 @@ r.updateLand({ x, y, width, height }, { corners, worked, cover, ground });   // 
   beds as drawn (LAND.md).
 - **The drawn surface is the game's to query**, so a truck, a dropped good, grass tufts and the tile cursor sit on what
   the player sees: `r.landAt(x, z)` gives the land's height there (metres), `r.landColourAt(x, z, into?)` the painted
-  ground's colour there as drawn (linear RGB, before the season turns it), and `r.landHit(ray)` where a line of sight
+  ground's colour there as drawn (linear RGB, before the season turns it), `r.countryAt(x, z)` how far the point is into
+  the duller country round the map (0 on the map, 1 out in the country, fading in along the soft border's wandering curve,
+  Soil-n-Silo#269; the game's meadow thins with it, #289), and `r.landHit(ray)` where a line of sight
   (from `r.view.rayAt`) first meets it, or null, on the CPU with no wait for the GPU. `r.onLandChange((area) => {})`
   calls back whenever the land as drawn changes (a new land, an earthwork swapped in), with where (`{ x0, z0, x1, z1 }`,
   metres) its height or paint may have changed, as the frame that first draws it begins (`setLand` calls back at once,
@@ -549,9 +551,9 @@ above, the game stops using it and it becomes the renderer's own.
   meshes), `speciesTree(species, x, z, size, seed)` and `speciesHeight` (a `Tree` for each of `SPECIES`: the game's six
   and its bush), `growSpecies(grove, ground, species, tree, rand)` (grows a tree into a `Grove` in its species' own shape:
   the pine a soft cone, the willow weeping, the poplar a column, the rest through `grove.grow`; use it rather than
-  `grove.grow` for the game's species), `addCanopy(b, x, y, z, radius, species, season, rand, mode?)` (a far wood's
-  crown, a few broad strokes in the species' colour for the season, on a thin trunk but in `'off'`; `mode`, one of `FAR_WOODS_MODES`, is Soil-n-Silo#268's
-  comparison of looks: `'frosted'` the default, `'misty'`, or `'off'` as before; `kit/farWoods.ts`), `CROP_NAMES`. The
+  `grove.grow` for the game's species), `addCanopy(b, x, y, z, radius, species, season, rand)` (a far wood's
+  crown, a few broad strokes on a thin trunk in the species' shape and colour for the season, bare woods in winter a
+  frosted fan of upright twigs on forking limbs and pines spruce cones; Soil-n-Silo#268, `kit/farWoods.ts`), `CROP_NAMES`. The
   demo's `?scene=plants` shows every crop at every stage and every species, in any season.
 - `loadModel` and `ModelSet`: the models, merged into the inked and planted meshes; `MODELS`, `TILE`, `blocksWind`,
   `wheelRace` from the catalogue.
