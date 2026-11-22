@@ -95,18 +95,19 @@ export interface FlowerSeason {
 
 /** The wildflowers by season: the season never changes during a commission, so the meadow reads it once. */
 export const FLOWER_SEASONS: Record<Season, FlowerSeason> = {
-  // Fresh blooms: white, yellow, peach and sky blue.
+  // Fresh blooms: cream, straw, peach and sky blue (cream and straw slightly softened from bright white/yellow so they
+  // sit quieter in the dark grass at night, #288, the developer's pick `pale` on #294).
   spring: {
     density: 1, clump: 1,
-    palette: [{ hex: 0xf7f2e4, weight: 3 }, { hex: 0xf5cf3e, weight: 3 }, { hex: 0xf6b48f, weight: 2 }, { hex: 0x9cc8ec, weight: 2 }],
+    palette: [{ hex: 0xe2dbc8, weight: 3 }, { hex: 0xe0b93a, weight: 3 }, { hex: 0xf6b48f, weight: 2 }, { hex: 0x9cc8ec, weight: 2 }],
   },
-  // A few vibrant drifts: the farm demo's pinks, reds and violets with the white and yellow, as sparse as autumn's (the
+  // A few vibrant drifts: the farm demo's pinks, reds and violets with the cream and straw, as sparse as autumn's (the
   // developer, on #266: the full drifts were too much over summer's drier grass; spring is when the meadow blooms).
   summer: {
     density: 0.3, clump: 0.5,
     palette: [
-      { hex: 0xf08bb0, weight: 2 }, { hex: 0xe8574a, weight: 2 }, { hex: 0xa77ad8, weight: 2 }, { hex: 0xf5cf3e, weight: 2 },
-      { hex: 0xf7f2e4, weight: 1 },
+      { hex: 0xf08bb0, weight: 2 }, { hex: 0xe8574a, weight: 2 }, { hex: 0xa77ad8, weight: 2 }, { hex: 0xe0b93a, weight: 2 },
+      { hex: 0xe2dbc8, weight: 1 },
     ],
   },
   // Sparse warm specks: the last few blooms, ochre, amber, rust and cream.
