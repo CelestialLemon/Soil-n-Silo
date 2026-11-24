@@ -44,6 +44,8 @@ export interface ValleyStats {
   seed: number; season: Season; hasFarmhouse: boolean;
   thingCounts: Partial<Record<ThingKind, number>>;
   fieldAreaM2: number; flowingRillM: number; bridgeCount: number;
+  /** Everything the player has made: things, fields, rills (wet or dry), tracks, hedgerows and planted trees. */
+  landEditCount: number;
 }
 
 /** Everything the UI shows, handed to `render` whenever it changes (every frame is fine: unchanged parts cost nothing). */

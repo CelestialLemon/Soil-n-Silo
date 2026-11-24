@@ -98,7 +98,7 @@ export function createBrief(cb: UiCallbacks): Brief {
   card.append(head, body);
 
   function hasWork(s: ValleyStats): boolean {
-    return s.hasFarmhouse || s.fieldAreaM2 > 0 || s.flowingRillM > 0 || Object.values(s.thingCounts).some((n) => n > 0);
+    return s.landEditCount > 0;
   }
 
   /** Starts a new valley, first asking when it would clear the player's homestead. */

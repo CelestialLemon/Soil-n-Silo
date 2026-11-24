@@ -78,6 +78,18 @@ test('hedgerows grow along a stroke on dry ground', () => {
   assert.ok(!apply(s, { type: 'removeHedge', id: 999 }).ok);
 });
 
+test('a track may not cross a hedgerow, whichever was laid first', () => {
+  const s = land({ height: () => 0 });
+  assert.ok(apply(s, { type: 'addHedge', points: [{ x: -10, z: 0 }, { x: 10, z: 0 }] }).ok);
+  no(apply(s, { type: 'addTrack', points: [{ x: 0, z: -10 }, { x: 0, z: 10 }] }), /hedgerow/);
+  assert.equal(s.tracks.length, 0);
+  assert.ok(apply(s, { type: 'addTrack', points: [{ x: 15, z: -10 }, { x: 15, z: 10 }] }).ok, 'past its end the way is clear');
+  // The reverse order: a hedge across a track is refused too.
+  const r = land({ height: () => 0 });
+  assert.ok(apply(r, { type: 'addTrack', points: [{ x: 0, z: -10 }, { x: 0, z: 10 }] }).ok);
+  no(apply(r, { type: 'addHedge', points: [{ x: -10, z: 0 }, { x: 10, z: 0 }] }), /track/);
+});
+
 test('trees are planted as saplings where there is room; wild trees stay', () => {
   const s = flatLand();
   const r = apply(s, { type: 'plantTree', x: -20, z: 20, species: 'apple' });

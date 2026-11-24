@@ -15,6 +15,7 @@ export function valleyStats(s: GameState): ValleyStats {
     fieldAreaM2: s.fields.reduce((sum, f) => sum + f.areaM2, 0),
     flowingRillM: s.channels.reduce((sum, c) => sum + channelSummary(c).wetLength, 0),
     bridgeCount: s.bridges.length,
+    landEditCount: s.things.length + s.fields.length + s.channels.length + s.tracks.length + s.hedges.length + s.plantedTrees.length,
   };
 }
 

@@ -3,7 +3,7 @@
 import { checkCrossings } from './bridges.ts';
 import { CATALOG } from './catalog.ts';
 import type { Change } from './change.ts';
-import { RILL_HALF, thingObb, trackRect } from './earth.ts';
+import { RILL_HALF, thingObb, TRACK_HALF, trackRect } from './earth.ts';
 import { catmullRom, obbDistance, pathLength, type Point2, polylineDistance } from './geom.ts';
 import { BUILD_HALF, cellIx, cellIz, COVER, heightAt, isWet, slopeAt } from './grid.ts';
 import { err, ok, type Result } from './result.ts';
@@ -22,6 +22,11 @@ export const SAPLING_SCALE = 0.6;
 const BANK_LIP = 1;
 /** How close planted trees may stand to each other and other trees, m. */
 const TREE_SPACING = 1.5;
+/**
+ * How close a track's centreline may come to a hedgerow's, m: its half width and half a cell, matching `addHedge`, which
+ * refuses a hedge sample standing in a track cell (the cells whose centres lie within `TRACK_HALF`).
+ */
+const HEDGE_CLEAR = TRACK_HALF + 0.5;
 
 export const trackPath = (points: readonly Point2[]) => catmullRom(points, PATH_SPACING);
 
@@ -41,6 +46,7 @@ export function canTrack(s: GameState, path: readonly Point2[]): Result<void, st
     if (t) return err(`The ${CATALOG[t.kind].label} is in the way.`);
     for (const k of s.crags) if (Math.hypot(p.x - k.x, p.z - k.z) <= k.radius + 0.6) return err('There is rock in the way.');
     for (const t2 of [...s.wildTrees, ...s.plantedTrees]) if (Math.hypot(p.x - t2.x, p.z - t2.z) <= TRUNK * t2.scale + 0.6) return err('A tree is in the way.');
+    for (const h of s.hedges) if (polylineDistance(p.x, p.z, h.path).d <= HEDGE_CLEAR) return err('A hedgerow runs there.');
   }
   // Grade, measured over 2 m steps on dry ground: bridges carry it over water and rills, and their bank lips.
   const nearWater = (p: Point2) => {
