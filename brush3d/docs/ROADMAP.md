@@ -108,6 +108,15 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
   tilted, its underside pushed into the slope so it never floats, with strata, a muddy foot and moss on its upward faces.
   The game lays them out per rock tile from its neighbours (the bold look, the developer's pick on Soil-n-Silo#278). The
   demo doesn't use it; its frames are unchanged.
+- **Ink lines no longer stripe smooth surfaces** (Soil-n-Silo#252, carried in epic Soil-n-Silo#303, 2026-11-25): walls,
+  roofs, decks and tanks seen with the camera more than 128 m back were hatched with fine parallel ink lines. The G-buffer
+  keeps each pixel's depth in a half float, which counts in 12.5 cm steps past 128 m, and the ink outlines any step over
+  about 6 cm, so a gentle slope's staircase of rounded depths got inked. The depth is now stored less the depth of the
+  camera's target (`src/renderer/auxDepth.ts`), where a half float is finest: the land in view at any zoom stays within
+  128 m of it, in 6 cm steps or finer (under 1 cm near the middle of the screen), and every reader adds it back. The sky
+  still reads as 0 (the aux is cleared to minus the origin), so edges against it are as before. No new target, read or
+  pass. The prototype that read the depth buffer instead (`t3/trace-building-render-lines`) cost +0.19 ms in the post
+  pass and isn't needed. Frames change only where stripes were.
 - **Continuous terrain, organic crops and the craft kit, for the game's v0.2** (Soil-n-Silo#304, #306, #307, #308, epic
   Soil-n-Silo#298, 2026-11-24, awaiting review on the game's PR preview): the game's cozy homestead works in metres, not
   4 m tiles, and these are what it draws with (docs/API.md):

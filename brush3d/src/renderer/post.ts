@@ -1,3 +1,4 @@
+import { DEPTH_ORIGIN_GLSL } from './auxDepth.ts';
 import { FOG_NOISE_CELLS } from './fog';
 import { NOISE, OKLAB } from './glsl';
 import { LIGHTNING_GLSL } from './lightning';
@@ -76,9 +77,11 @@ ${NOISE}
 ${OKLAB}
 ${WIND_GLSL}
 ${MARKS_POST_GLSL}
+${DEPTH_ORIGIN_GLSL}
 
 const float FAR = 1e4;
-float depthOf(vec4 a) { return a.z <= 0.0 ? FAR : a.z; }
+// A pixel's depth (m along the view), the sky's far away.
+float depthOf(vec4 a) { float d = auxDepth(a.z); return d <= 0.0 ? FAR : d; }
 
 // The fog gathers over FOG_SOFT_BASE metres above its base, if it has one, and thins to nothing at its top over uFog.w
 // metres: most of its depth, so a shallow mist lies thickest along the water and in the hollows, and a deep fog veils all
@@ -204,8 +207,8 @@ void main() {
   vec4 aux = texture2D(tAux, uv);
   // Heat shimmer: the picture wavers sideways a fraction of a pixel, in thin bands keyed to the world that rise and drift
   // (the hot air over the land), so it stays with the land as the camera moves.
-  if (uShimmer.x > 0.0 && aux.z > 0.0) {
-    vec3 p = worldAt(uv, aux.z);
+  if (uShimmer.x > 0.0 && auxDepth(aux.z) > 0.0) {
+    vec3 p = worldAt(uv, auxDepth(aux.z));
     vec2 q = vec2(dot(p.xz, normalize(uCamRight.xz)) * 0.8, p.y * 4.0 + dot(p.xz, normalize(uCamUp.xz)) * 2.0 - uShimmer.y * 1.6);
     uv.x += fogNoise(q + uShimmer.y * vec2(0.15, 0.0)) * uShimmer.x / uResolution.x;
     aux = texture2D(tAux, uv);

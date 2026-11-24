@@ -63,6 +63,8 @@ export function createSharedUniforms() {
     uShadowArea: { value: new THREE.Vector2(1, 1) },
     uMirror: { value: 0 },
     uMirrorY: { value: 0 },
+    // What the G-buffer's depth is stored less (auxDepth.ts): the main view's target's depth while it's drawn, else 0.
+    uDepthOrigin: { value: 0 },
     // The game's water map (WaterField, #18): as it was and as last sent, how far it has eased between, and where it lies.
     tWaterA: { value: null as THREE.Texture | null },
     tWaterB: { value: null as THREE.Texture | null },

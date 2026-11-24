@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { DEPTH_ORIGIN_GLSL } from './auxDepth.ts';
 
 // Picking: what's under the pointer (Soil-n-Silo#206, docs/API.md "Picking"). The G-buffer already holds every pixel's
 // depth as drawn, leaves, wind and all, so a pick copies the 3 × 3 pixels round the pointer out of it (a tiny pass into a
@@ -36,18 +37,23 @@ export const SMOKE_INK = 1 / 256;
 const COPY_VERT = /* glsl */ `
 void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }
 `;
-// Each of the 3 × 3 pixels, its aux as the G-buffer has it (view normal, view depth, ink), or nothing off the picture.
+// Each of the 3 × 3 pixels, its aux as the G-buffer has it (view normal, view depth, ink; the depth read back, auxDepth.ts),
+// or nothing off the picture.
 const COPY_FRAG = /* glsl */ `
 uniform sampler2D uPickAux;
+${DEPTH_ORIGIN_GLSL}
 uniform ivec2 uPickAt;
 layout(location = 0) out vec4 outAux;
 void main() {
   ivec2 p = uPickAt + ivec2(gl_FragCoord.xy) - 1, size = textureSize(uPickAux, 0);
-  outAux = p.x < 0 || p.y < 0 || p.x >= size.x || p.y >= size.y ? vec4(0.0) : texelFetch(uPickAux, p, 0);
+  if (p.x < 0 || p.y < 0 || p.x >= size.x || p.y >= size.y) { outAux = vec4(0.0); return; }
+  outAux = texelFetch(uPickAux, p, 0);
+  outAux.z = auxDepth(outAux.z);
 }
 `;
 
-/** How far a depth may be off along the line of sight (m): the G-buffer's half floats round it, by distance. */
+/** How far a depth may be off along the line of sight (m): the G-buffer's half floats round it (by its distance from the
+ * target's depth, auxDepth.ts; this allows for its distance from the camera, which is more). */
 const slack = (depth: number) => 0.3 + depth * 0.004;
 
 export class Picker {
@@ -57,7 +63,7 @@ export class Picker {
   });
   private readonly material = new THREE.ShaderMaterial({
     glslVersion: THREE.GLSL3, vertexShader: COPY_VERT, fragmentShader: COPY_FRAG, depthTest: false, depthWrite: false,
-    uniforms: { uPickAux: { value: null as THREE.Texture | null }, uPickAt: { value: new THREE.Vector2() } },
+    uniforms: { uPickAux: { value: null as THREE.Texture | null }, uDepthOrigin: { value: 0 }, uPickAt: { value: new THREE.Vector2() } },
   });
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -73,10 +79,12 @@ export class Picker {
 
   /**
    * Copies the pixels round device pixel (x, y) of `aux` (from the top left, as the page counts) into the pick's target:
-   * as the picture just drawn has them, before the next frame draws over them.
+   * as the picture just drawn has them, before the next frame draws over them. `depthOrigin` is what its depths were
+   * stored less (auxDepth.ts).
    */
-  copy(gl: THREE.WebGLRenderer, aux: THREE.Texture, x: number, y: number, height: number) {
+  copy(gl: THREE.WebGLRenderer, aux: THREE.Texture, depthOrigin: number, x: number, y: number, height: number) {
     this.material.uniforms.uPickAux.value = aux;
+    this.material.uniforms.uDepthOrigin.value = depthOrigin;
     (this.material.uniforms.uPickAt.value as THREE.Vector2).set(Math.floor(x), height - 1 - Math.floor(y));
     const was = gl.getRenderTarget();
     gl.setRenderTarget(this.target);
