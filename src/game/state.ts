@@ -1,10 +1,18 @@
-// The game's state: the valley's land (its grid), what nature put on it and what the player has made. Plain data; the
-// rules that change it live in their own modules and all go through `apply` (actions.ts).
+// The game's state: the valley's land (its grid), what nature put on it, what the player has made, and the living
+// homestead running on it (`sim`: the clock, Supplies, goods, power, carts and the brief). Plain data; the rules that
+// change the land all go through `apply` (actions.ts), and time moves through `stepSim` (sim.ts).
+import type { BriefState } from './brief.ts';
+import { blankBrief } from './brief.ts';
+import type { Cart } from './carts.ts';
 import type { ThingKind } from './catalog.ts';
 import type { Point2 } from './geom.ts';
+import type { Inventory } from './goods.ts';
 import { createGrid, type Grid, type Rect } from './grid.ts';
+import type { PowerNetwork, PowerSummary } from './power/sim.ts';
+import { starterSupplies, type SuppliesState } from './supplies.ts';
+import type { ThingRuntime } from './workshops.ts';
 
-export const STATE_VERSION = 3;
+export const STATE_VERSION = 4;
 
 /** The valley's one season (brush3d's SEASONS). */
 export const SEASONS = ['spring', 'summer', 'autumn', 'winter'] as const;
@@ -26,8 +34,19 @@ export interface Crag { id: number; x: number; z: number; radius: number; height
 /** A tree: wild (the valley's) or planted (the player's). */
 export interface Tree { id: number; x: number; z: number; species: TreeSpecies; scale: number; seed: number; planted: boolean }
 
-/** A painted field: one connected patch of a crop. */
-export interface Field { id: number; crop: Crop; cellCount: number; areaM2: number; avgMoisture: number; bounds: Rect }
+/**
+ * A painted field: one connected patch of a crop, and how its crop is doing (crops.ts): how far it has grown, the soil's
+ * fertility under it, and the ripe harvest waiting at its edge for the carts.
+ */
+export interface Field {
+  id: number; crop: Crop; cellCount: number; areaM2: number; avgMoisture: number; bounds: Rect;
+  /** 0..1: how grown the crop is (freshly sown fields start at SOWN_GROWTH, so seedlings show at once). */
+  growth: number;
+  /** 0..1: the soil's fertility under it (wheat draws it down, beans and compost build it up). */
+  fertility: number;
+  /** Whole units of ripe harvest waiting at its edge for an Electric Cart; 0 while it grows. */
+  harvestReady: number;
+}
 
 /** The water along a rill's centreline at one sample. */
 export interface FlowSample { x: number; z: number; wet: boolean; waterLevel: number; bedHeight: number; bankHeight: number }
@@ -69,6 +88,32 @@ export interface Valley {
   pond: { x: number; z: number; radius: number; level: number };
 }
 
+/** The living homestead: everything that moves with time rather than with the player's edits. */
+export interface SimState {
+  /** The valley's clock: day 1 is the first, and the hour of day (0..24). */
+  day: number; hour: number;
+  supplies: SuppliesState;
+  /** Each building's goods, recipe, power and status, by its id (workshops.ts). */
+  things: Map<number, ThingRuntime>;
+  carts: Cart[];
+  nextCartId: number;
+  /** Everything delivered to the Depot so far. */
+  delivered: Inventory;
+  /** The wireless power networks as they ran on the last step (power/sim.ts). */
+  networks: PowerNetwork[];
+  powerSummary: PowerSummary;
+  brief: BriefState;
+}
+
+/** A fresh homestead: morning of day 1, the starter Supplies parcel, nothing running yet. */
+export function blankSim(): SimState {
+  return {
+    day: 1, hour: 8, supplies: starterSupplies(), things: new Map(), carts: [], nextCartId: 1, delivered: {}, networks: [],
+    powerSummary: { totalGenW: 0, totalDemandW: 0, totalStoredWh: 0, totalCapWh: 0, anyBlackout: false, lastBlackoutReason: '' },
+    brief: blankBrief(),
+  };
+}
+
 export interface GameState {
   version: typeof STATE_VERSION;
   seed: number;
@@ -87,6 +132,7 @@ export interface GameState {
   hedges: Hedge[];
   plantedTrees: Tree[];
   power: PowerState;
+  sim: SimState;
   nextId: number;
 }
 
@@ -96,7 +142,7 @@ export function blankState(seed: number, season: Season): GameState {
     version: STATE_VERSION, seed, season, revision: 0, grid: createGrid(),
     valley: { homestead: { x: 0, z: 0 }, brook: [], brookLevel: [], pond: { x: 0, z: 0, radius: 0, level: 0 } },
     crags: [], wildTrees: [], things: [], fields: [], channels: [], tracks: [], bridges: [], hedges: [], plantedTrees: [],
-    power: { radii: [], connected: [], powered: [] }, nextId: 1,
+    power: { radii: [], connected: [], powered: [] }, sim: blankSim(), nextId: 1,
   };
 }
 

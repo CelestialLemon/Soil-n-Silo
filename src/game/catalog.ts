@@ -1,4 +1,5 @@
-// The starter homestead (Vertical Slice 1): what the player can place, drawn with brush3d's models (brush3d/docs/MODELS.md).
+// The homestead's roster (Vertical Slice 1 and the core loop of Milestone 2): what the player can place, drawn with
+// brush3d's models (brush3d/docs/MODELS.md), and what each costs from the one capped Supplies pool (docs/DESIGN.md).
 //
 // Footprints are in metres, from each model's real bounds in its own frame (brush3d/src/models/index.json: `lo`, `hi`; x
 // along its front, z out through it), not from the old 4 m tiles (its `tiles`). The bounds are copied here as plain numbers
@@ -32,25 +33,41 @@ interface Spec {
   powerRole: PowerRole;
   /** How far its wireless field reaches, m. 0 when it makes none. */
   powerRange: number;
+  /** What it costs from the capped Supplies pool (refunded in full when it's removed). */
+  cost: number;
+  /** The watts it draws while it works (a `load`); 0 for everything else. */
+  powerDemand: number;
+  /** Fixed in the valley: it can't be moved, turned or removed (the Depot). */
+  immovable: boolean;
 }
 
-const home = { category: 'homestead', padEase: 3.5, maxSlope: 0.14, oneOfEach: true, allowOnField: false, onBank: false, raceOffset: 0, powerRole: 'load', powerRange: 0 } as const;
-const power = { category: 'power', padEase: 2.5, maxSlope: 0.18, oneOfEach: false, allowOnField: false, onBank: false, raceOffset: 0, powerRole: 'source', powerRange: 15 } as const;
-const prop = { category: 'prop', padEase: 0, maxSlope: 0.35, oneOfEach: false, allowOnField: false, onBank: false, raceOffset: 0, powerRole: 'none', powerRange: 0 } as const;
+const fixed = { cost: 0, powerDemand: 0, immovable: false } as const;
+const home = { ...fixed, category: 'homestead', padEase: 3.5, maxSlope: 0.14, oneOfEach: true, allowOnField: false, onBank: false, raceOffset: 0, powerRole: 'load', powerRange: 0 } as const;
+const power = { ...fixed, category: 'power', padEase: 2.5, maxSlope: 0.18, oneOfEach: false, allowOnField: false, onBank: false, raceOffset: 0, powerRole: 'source', powerRange: 15 } as const;
+const prop = { ...fixed, category: 'prop', padEase: 0, maxSlope: 0.35, oneOfEach: false, allowOnField: false, onBank: false, raceOffset: 0, powerRole: 'none', powerRange: 0 } as const;
 
 const SPECS = {
-  farmhouse: { ...home, label: 'Farmhouse', model: 'farmhouse', lo: [-5.8, -5.8], hi: [5.8, 5.8], top: 8.95 },
-  silo: { ...home, label: 'Silo', model: 'silo', padEase: 3, lo: [-3.75, -3.75], hi: [3.75, 3.75], top: 10.05 },
-  mill: { ...home, label: 'Mill', model: 'mill', padEase: 3, lo: [-3.75, -3.75], hi: [3.75, 3.75], top: 7.75 },
-  bakery: { ...home, label: 'Bakery', model: 'bakery', padEase: 3, lo: [-3.75, -3.8], hi: [3.75, 3.75], top: 7.85 },
-  solar: { ...power, label: 'Solar Canopy', model: 'solar_panel', padEase: 0, allowOnField: true, lo: [-3.7, -2.04], hi: [3.7, 2.62], top: 3.3 },
-  turbine: { ...power, label: 'Wind Turbine', model: 'wind_turbine', maxSlope: 0.25, lo: [-2.58, -1.5], hi: [4.95, 1.57], top: 18.75 },
-  waterwheel: { ...power, label: 'Water Wheel', model: 'water_wheel', onBank: true, raceOffset: 4.5, maxSlope: 0.2, lo: [-3.75, -3.8], hi: [3.75, 6.79], top: 4.63 },
-  battery: { ...power, label: 'Battery', model: 'battery', powerRole: 'store', lo: [-3.6, -3.6], hi: [3.6, 3.6], top: 4.52 },
+  // Supplies costs: provisional v0.2 tuning (docs/DESIGN.md, Provisional Supplies Costs). Watts: Milestone 2's power sim.
+  farmhouse: { ...home, label: 'Farmhouse', model: 'farmhouse', powerDemand: 0.5, lo: [-5.8, -5.8], hi: [5.8, 5.8], top: 8.95 },
+  silo: { ...home, label: 'Silo', model: 'silo', padEase: 3, cost: 2, lo: [-3.75, -3.75], hi: [3.75, 3.75], top: 10.05 },
+  mill: { ...home, label: 'Mill', model: 'mill', padEase: 3, cost: 2, powerDemand: 2, lo: [-3.75, -3.75], hi: [3.75, 3.75], top: 7.75 },
+  bakery: { ...home, label: 'Bakery', model: 'bakery', padEase: 3, cost: 2, powerDemand: 2.5, lo: [-3.75, -3.8], hi: [3.75, 3.75], top: 7.85 },
+  coop: { ...home, label: 'Coop', model: 'coop', padEase: 3, cost: 2, powerDemand: 0.5, lo: [-5.67, -5.85], hi: [5.67, 5.69], top: 5.05 },
+  // Pure biology: the composter needs no power.
+  composter: { ...home, label: 'Composter', model: 'composter', padEase: 2.5, cost: 2, powerRole: 'none', lo: [-3.67, -3.68], hi: [3.67, 3.56], top: 3.68 },
+  // Comes with one Electric Cart; draws its full watts while it charges one.
+  garage: { ...home, label: 'Garage', model: 'garage', padEase: 2.5, cost: 2, powerDemand: 1.5, lo: [-3.78, -3.85], hi: [3.78, 3.75], top: 4.7 },
+  // The valley's link to the settlement, set at its edge when the valley grows: a stone platform standing on the ground as
+  // it is (no pad), so the valley's land stays its own.
+  depot: { ...home, label: 'Depot', model: 'depot', padEase: 0, maxSlope: 0.12, powerRole: 'none', immovable: true, lo: [-5.8, -5.8], hi: [5.8, 5.8], top: 10.17 },
+  solar: { ...power, label: 'Solar Canopy', model: 'solar_panel', padEase: 0, allowOnField: true, cost: 1, lo: [-3.7, -2.04], hi: [3.7, 2.62], top: 3.3 },
+  turbine: { ...power, label: 'Wind Turbine', model: 'wind_turbine', maxSlope: 0.25, cost: 3, lo: [-2.58, -1.5], hi: [4.95, 1.57], top: 18.75 },
+  waterwheel: { ...power, label: 'Water Wheel', model: 'water_wheel', onBank: true, raceOffset: 4.5, maxSlope: 0.2, cost: 3, lo: [-3.75, -3.8], hi: [3.75, 6.79], top: 4.63 },
+  battery: { ...power, label: 'Battery', model: 'battery', powerRole: 'store', cost: 1, lo: [-3.6, -3.6], hi: [3.6, 3.6], top: 4.52 },
   // No relay model yet: the relay mast borrows brush3d's slim pylon (a renderer may dress it differently).
   relay: { ...prop, label: 'Power Relay', category: 'power', model: 'pylon', maxSlope: 0.45, powerRole: 'relay', powerRange: 15, lo: [-1, -0.4], hi: [1, 0.88], top: 5.72 },
   bench: { ...prop, label: 'Bench', model: 'bench', lo: [-1.98, -0.46], hi: [1.98, 0.26], top: 1 },
-  lantern: { ...prop, label: 'Solar Lantern', model: 'lantern', powerRole: 'load', lo: [-0.4, -0.3], hi: [0.4, 0.82], top: 3.31 },
+  lantern: { ...prop, label: 'Solar Lantern', model: 'lantern', powerRole: 'load', powerDemand: 0.05, lo: [-0.4, -0.3], hi: [0.4, 0.82], top: 3.31 },
   planter: { ...prop, label: 'Planter', model: 'planter', lo: [-1.7, -1.6], hi: [1.78, 1.4], top: 0.56 },
   crates: { ...prop, label: 'Crates', model: 'crates', lo: [-1.5, -1.2], hi: [1.26, 1.26], top: 1.57 },
 } as const satisfies Record<string, Spec>;
@@ -83,3 +100,8 @@ export const CATALOG: { readonly [K in ThingKind]: ThingDef } =
   Object.fromEntries(THING_KINDS.map((k) => [k, define(k, SPECS[k])])) as { [K in ThingKind]: ThingDef };
 
 export const isThingKind = (k: string): k is ThingKind => Object.hasOwn(SPECS, k);
+
+/** The craft workshops: one of each, each turning goods into other goods (workshops.ts). */
+export const WORKSHOP_KINDS = ['mill', 'coop', 'bakery', 'composter'] as const satisfies readonly ThingKind[];
+export type WorkshopKind = (typeof WORKSHOP_KINDS)[number];
+export const isWorkshop = (k: ThingKind): k is WorkshopKind => (WORKSHOP_KINDS as readonly ThingKind[]).includes(k);

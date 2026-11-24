@@ -1,5 +1,6 @@
 // Every edit the player makes, as data, through one door: `apply` checks it against the rules, changes the state if it's
 // allowed, and says what changed (or, unchanged, why not).
+import { buyCart, retireCart } from './carts.ts';
 import type { ThingKind } from './catalog.ts';
 import type { Change } from './change.ts';
 import { digChannel, fillChannel } from './channels.ts';
@@ -25,7 +26,9 @@ export type Action =
   | { type: 'addHedge'; points: Point2[] }
   | { type: 'removeHedge'; id: number }
   | { type: 'plantTree'; x: number; z: number; species?: TreeSpecies }
-  | { type: 'removeTree'; id: number };
+  | { type: 'removeTree'; id: number }
+  | { type: 'buyCart' }
+  | { type: 'retireCart'; id: number };
 
 const fieldChange = (s: GameState, r: Result<FieldEdit, string>): Result<Change, string> =>
   r.ok ? ok(settle(s, { fields: r.value })) : r;
@@ -47,5 +50,7 @@ export function apply(s: GameState, a: Action): Result<Change, string> {
     case 'removeHedge': return removeHedge(s, a.id);
     case 'plantTree': return plantTree(s, a.x, a.z, a.species);
     case 'removeTree': return removeTree(s, a.id);
+    case 'buyCart': return buyCart(s);
+    case 'retireCart': return retireCart(s, a.id);
   }
 }

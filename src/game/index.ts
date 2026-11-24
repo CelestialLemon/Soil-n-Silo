@@ -17,11 +17,14 @@ export { hash3, makeRng, type Rng } from './rng.ts';
 
 // State and its parts.
 export {
-  blankState, type Bridge, type Channel, type Crag, type Crop, CROPS, type Field, type FlowSample, type GameState, type Hedge,
-  type PowerRadius, type PowerState, type Season, SEASONS, STATE_VERSION, type Thing, type Track, type Tree,
+  blankSim, blankState, type Bridge, type Channel, type Crag, type Crop, CROPS, type Field, type FlowSample, type GameState, type Hedge,
+  type PowerRadius, type PowerState, type Season, SEASONS, type SimState, STATE_VERSION, type Thing, type Track, type Tree,
   TREE_SPECIES, type TreeSpecies, type Valley,
 } from './state.ts';
-export { CATALOG, type Category, isThingKind, type PowerRole, RACE_START, type ThingDef, type ThingKind, THING_KINDS } from './catalog.ts';
+export {
+  CATALOG, type Category, isThingKind, isWorkshop, type PowerRole, RACE_START, type ThingDef, type ThingKind, THING_KINDS,
+  WORKSHOP_KINDS, type WorkshopKind,
+} from './catalog.ts';
 export {
   BANK_FREEBOARD, CLEARING, generateValley, naturalize, SIDE_RISE, TERRACE_DIP, TERRACE_WIDTH, VALLEY_FALL,
 } from './valley/generate.ts';
@@ -46,3 +49,43 @@ export {
 } from './paths.ts';
 export { BRIDGE_WIDTH, checkCrossings, MAX_SPAN, recomputeBridges, trackBridges } from './bridges.ts';
 export { type PowerCandidate, powerFor, previewPower } from './power/graph.ts';
+export { type Networks, networksOf } from './power/radius.ts';
+
+// The living homestead (Milestone 2): time, Supplies, goods, crops, workshops, power, carts and the brief.
+export { stepSim, MAX_SUBSTEP_SECONDS, type SimTickResult } from './sim.ts';
+export { type SimEvent, type SimEventType } from './events.ts';
+export { formatClock, isNight, SECONDS_PER_GAME_HOUR, SUNRISE, SUNSET, sunFactor } from './clock.ts';
+export {
+  canAfford, CART_COST, costOf, DROP_AMOUNT, type DropId, MAX_CARTS, type MilestoneDrop, receiveDrop, refund, sandboxSupplies, spend,
+  STARTER_SUPPLIES, starterSupplies, SUPPLY_CAP, type SuppliesState,
+} from './supplies.ts';
+export {
+  addGood, capacity, countOf, describeInventory, type Good, type GoodCategory, type GoodInfo, GOOD_LABELS, GOODS, type Inventory,
+  isGood, takeGood, totalStored,
+} from './goods.ts';
+export {
+  agrivoltaicCoverage, COMPOST_BOOST, compostField, cropStage, fertilityFactor, fieldYield, growCrops, growthRate, GROWTH_RATE,
+  HARVEST_FERTILITY, harvestField, lightFactor, MIN_FERTILITY, moistureFactor, REPLANT_GROWTH, SOIL_FERTILITY, soilFertility,
+  SOWN_GROWTH, WATERED, wateredness,
+} from './crops.ts';
+export {
+  advanceRecipes, describeRuntime, INPUT_CAP, OUTPUT_CAP, type Recipe, type RecipeInput, RECIPES, runtimeOf, SILO_CAP,
+  startRecipes, syncRuntime, type ThingRuntime, wantsInput,
+} from './workshops.ts';
+export {
+  BATTERY_RATE_W, BATTERY_START, BATTERY_WH, CLOUD_DIM, demandOf, FARMHOUSE_DAY_W, FARMHOUSE_NIGHT_W, GARAGE_CHARGE_W,
+  GARAGE_IDLE_W, generationOf, type PowerNetwork, type PowerSummary, type SimEnv, SOLAR_PEAK_W, stepPower, TURBINE_BASE_W,
+  TURBINE_FULL_WIND, TURBINE_SPAN_W, WATERWHEEL_W,
+} from './power/sim.ts';
+export {
+  CART_SPEED, dockOf, findPath, GROUND, groundAt, MUDDY, type Nav, NAV_CELL, NAV_N, navCellOf, navCenter, navFor, passable, STEEP,
+} from './nav.ts';
+export {
+  addStarterCart, buyCart, type Cart, CART_CAPACITY, CART_LOW, CART_READY, type CartJob, type CartState, CHARGE_PER_HOUR,
+  DRAIN_PER_M, DWELL_HOURS, type Endpoint, endpointLabel, fieldEdge, pathLeft, retireAllCarts, retireCart, stepCarts,
+  TRICKLE_PER_HOUR,
+} from './carts.ts';
+export {
+  blankBrief, type BriefState, LIVING_LAND_FERTILITY, LIVING_LAND_M2, type LivingLandSeal, PANTRY_ORDER, type PantryOrderSeal,
+  type Seal, type SealId, SEAL_LABELS, STEADY_HOURS, type SteadyHomesteadSeal, stepBrief,
+} from './brief.ts';

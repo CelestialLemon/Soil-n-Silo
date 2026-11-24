@@ -20,6 +20,10 @@ export interface Change {
   trees: number[];
   bridges: boolean;
   powerChanged: boolean;
+  /** The Supplies pool changed (something paid for or refunded). */
+  supplies?: boolean;
+  /** The carts changed (one bought, retired, or all gone with the Garage). */
+  carts?: boolean;
   /** The id of what the edit made, if it made something. */
   created?: number;
 }

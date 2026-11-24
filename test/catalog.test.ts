@@ -6,8 +6,11 @@ import { CATALOG, RACE_START, THING_KINDS } from '../src/game/index.ts';
 interface Model { lo: [number, number, number]; hi: [number, number, number]; group: string }
 const models = JSON.parse(readFileSync(new URL('../brush3d/src/models/index.json', import.meta.url), 'utf8')) as Record<string, Model>;
 
-test('every starter thing is drawn with one of brush3d\'s models', () => {
-  assert.deepEqual([...THING_KINDS].sort(), ['bakery', 'battery', 'bench', 'crates', 'farmhouse', 'lantern', 'mill', 'planter', 'relay', 'silo', 'solar', 'turbine', 'waterwheel']);
+test('every thing is drawn with one of brush3d\'s models', () => {
+  assert.deepEqual([...THING_KINDS].sort(), [
+    'bakery', 'battery', 'bench', 'composter', 'coop', 'crates', 'depot', 'farmhouse', 'garage', 'lantern', 'mill', 'planter', 'relay',
+    'silo', 'solar', 'turbine', 'waterwheel',
+  ]);
   for (const k of THING_KINDS) assert.ok(models[CATALOG[k].model], `${k}: model ${CATALOG[k].model}`);
 });
 
@@ -37,19 +40,33 @@ test("the water wheel's house is its core; its race runs out in front of it", ()
 
 test('the roster: one of each homestead building, repeatable power, free props', () => {
   const oneOfEach = THING_KINDS.filter((k) => CATALOG[k].oneOfEach).sort();
-  assert.deepEqual(oneOfEach, ['bakery', 'farmhouse', 'mill', 'silo']);
+  assert.deepEqual(oneOfEach, ['bakery', 'composter', 'coop', 'depot', 'farmhouse', 'garage', 'mill', 'silo']);
   assert.deepEqual(THING_KINDS.filter((k) => CATALOG[k].allowOnField), ['solar']);
   for (const k of ['solar', 'turbine', 'waterwheel'] as const) assert.equal(CATALOG[k].powerRole, 'source');
   assert.equal(CATALOG.battery.powerRole, 'store');
   assert.equal(CATALOG.relay.powerRole, 'relay');
   assert.equal(CATALOG.relay.category, 'power');
-  for (const k of ['farmhouse', 'silo', 'mill', 'bakery', 'lantern'] as const) assert.equal(CATALOG[k].powerRole, 'load');
+  for (const k of ['farmhouse', 'silo', 'mill', 'bakery', 'coop', 'garage', 'lantern'] as const) assert.equal(CATALOG[k].powerRole, 'load');
+  // Pure biology and the settlement's landing need no power.
+  for (const k of ['composter', 'depot'] as const) assert.equal(CATALOG[k].powerRole, 'none');
   for (const k of ['bench', 'planter', 'crates'] as const) { assert.equal(CATALOG[k].category, 'prop'); assert.equal(CATALOG[k].powerRole, 'none'); }
   for (const k of THING_KINDS) {
     const d = CATALOG[k];
     assert.ok(d.label.length > 0 && d.maxSlope > 0 && d.padEase >= 0 && d.top > 0);
     // Power is wireless: only what makes or passes on a field reaches out, and none of it by wire.
     assert.equal(d.powerRange > 0, d.powerRole === 'source' || d.powerRole === 'store' || d.powerRole === 'relay', `${k}: its field`);
-    if (d.category === 'homestead') assert.ok(d.padEase >= 2.5 && d.padEase <= 3.5, `${k} settles a soft pad`);
+    // The Depot alone stands on the ground as it is: it's set when the valley grows, which leaves the land its own.
+    if (d.category === 'homestead' && k !== 'depot') assert.ok(d.padEase >= 2.5 && d.padEase <= 3.5, `${k} settles a soft pad`);
   }
+});
+
+test('Supplies costs: land-craft, the home and props free; workshops 2, tech 1 to 3; only the Depot is fixed', () => {
+  const cost = Object.fromEntries(THING_KINDS.map((k) => [k, CATALOG[k].cost]));
+  assert.deepEqual(cost, {
+    farmhouse: 0, silo: 2, mill: 2, bakery: 2, coop: 2, composter: 2, garage: 2, depot: 0, solar: 1, turbine: 3, waterwheel: 3,
+    battery: 1, relay: 0, bench: 0, lantern: 0, planter: 0, crates: 0,
+  });
+  assert.deepEqual(THING_KINDS.filter((k) => CATALOG[k].immovable), ['depot']);
+  assert.deepEqual(Object.fromEntries(THING_KINDS.filter((k) => CATALOG[k].powerDemand > 0).map((k) => [k, CATALOG[k].powerDemand])),
+    { farmhouse: 0.5, mill: 2, bakery: 2.5, coop: 0.5, garage: 1.5, lantern: 0.05 });
 });
