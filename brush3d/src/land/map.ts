@@ -2,8 +2,11 @@
 // ground it is, which part is the map the player builds on, and the country past it. Plain data and its checks, with no
 // drawing, so the game's tests load it in Node (shared.ts); land/paint.ts paints it.
 
-/** What covers a tile: the paint the land takes there. */
-export const LAND_COVER = { grass: 0, bare: 1, track: 2, rock: 3, woods: 4, water: 5 } as const;
+/**
+ * What covers a tile: the paint the land takes there. `rill` is the continuous terrain's alone (setTerrain): a narrow
+ * runnel's bed, painted as a brook's (its damp banks, its pebbles) at a cell's width.
+ */
+export const LAND_COVER = { grass: 0, bare: 1, track: 2, rock: 3, woods: 4, water: 5, rill: 6 } as const;
 export type LandCover = typeof LAND_COVER[keyof typeof LAND_COVER];
 
 /** What ground a tile is, as the game's map has it: it tints the paint, subtly (loam, the usual, not at all). */

@@ -2,7 +2,7 @@ import {
   hoursOf, type HourName, CHARACTERS, clockHour, SEASONS, type Character, type Season, BrushRenderer, type DrawnKind, QUALITY, type QualityName,
   TOUR, type Stand, MAX_ZOOM, MIN_ZOOM, cloudDriftSpeed, WEATHER_PRESETS, type CloudDrift, type Haze, type HazeKind,
   type Weather, type WeatherName, steadyWind, WIND_SCALE, windName, type WindStrength, startWind, WIND_TICK,
-  type WindGoal, type WindSave, profileTable, runProfile, type ProfileCase, type ProfileRow,
+  type WindGoal, type WindSave, profileTable, runProfile, type ProfileCase, type ProfileRow, type WaterMap,
 } from '../index';
 import { lightningHud, setupLightning, stormLightning } from './lightning';
 import { buildMeadow } from './scenes/meadow';
@@ -10,6 +10,7 @@ import { buildFarm } from './scenes/farm';
 import { buildWaterPatch } from './scenes/waterPatch';
 import { buildGallery } from './scenes/gallery';
 import { buildPlants } from './scenes/plants';
+import { buildTerrain, type TerrainScene } from './scenes/terrain';
 import { defaultCases } from './profile';
 import { SPEEDS, SPELLS, TICK, timelineAt, timelineClock, timelineFrost, timelineLightning, timelineLying, timelinePhase, timelineWater, timelineWet, timelineWind, type SpellName } from './timeline';
 import { DemoWater, USUAL_WATER, type WaterState } from './water';
@@ -24,7 +25,9 @@ import { WindView } from './windView';
 //   season=spring|summer|autumn|winter (#13; none by default: the looks' own day, sun up 6 to 20)  character (the
 //     game's: mild|wet|dry|hot|gales|stormy|hard|highRiver)  sunrise, sunset (the game's clock hours; the season's by default)
 //   The scene is built in the season (summer's with none): its crops, flowers and hay stand in for the game's.
-//   scene=farm|gallery|meadow|water|plants (gallery: every model on its own plot, docs/MODELS.md; water: the water's test patch, #19: a pond, a slow bend, a fast run, a flooded meadow; plants: the game's crops at every stage and a tree of each species, Soil-n-Silo#213)  lines=0  shadows=0  still (hide the buttons)  dpr (pixel ratio)
+//   scene=farm|gallery|meadow|water|plants|terrain (terrain: the continuous terrain the game sends, setTerrain: 1 m cells, a
+//     narrow rill down a slope, fields painted from a mask, a plank bridge, a fence; contours, narrow=0, see scenes/terrain.ts;
+//     gallery: every model on its own plot, docs/MODELS.md; water: the water's test patch, #19: a pond, a slow bend, a fast run, a flooded meadow; plants: the game's crops at every stage and a tree of each species, Soil-n-Silo#213)  lines=0  shadows=0  still (hide the buttons)  dpr (pixel ratio)
 //   wind (m/s, or calm|breeze|gale|storm|hurricane)  windDir (degrees the wind blows towards, from +x towards +z)  gust (0..1)
 //   rhythm (how the gusts come: 0 rare and strong, 1 frequent and mild)  windMap (the living wind from above, #36)
 //   windSeed (which gusts: a whole number)
@@ -86,7 +89,7 @@ if (season) {
 }
 const farmScene = farm ? buildFarm(renderer, season ?? 'summer') : null;
 const galleryScene = gallery ? buildGallery(renderer) : null;
-const scene = farmScene ?? galleryScene ?? (sceneName === 'water' ? buildWaterPatch : plants ? buildPlants : buildMeadow)(renderer, season ?? 'summer');
+const scene = farmScene ?? galleryScene ?? (sceneName === 'water' ? buildWaterPatch : plants ? buildPlants : sceneName === 'terrain' ? buildTerrain : buildMeadow)(renderer, season ?? 'summer');
 /** Settles once the scene's models are in. */
 const loaded = (farmScene ?? galleryScene)?.ready ?? Promise.resolve();
 /** Where the scene shows each model (docs/MODELS.md): the tour's stops. */
@@ -102,7 +105,8 @@ const WATER_PRESETS: Record<string, WaterState> = {
   // Over its banks and spreading over the floodplain.
   flood: { rise: 0.4, flow: 2.5, mud: 0.9, ice: 0 },
 };
-const demoWater = new DemoWater(scene.stream, scene.height);
+// (A scene with water of its own, a rill down a slope, sends its own map.)
+const demoWater: { map(w: WaterState): WaterMap } = (scene as Partial<Pick<TerrainScene, 'water'>>).water ?? new DemoWater(scene.stream, scene.height);
 const waterPreset = WATER_PRESETS[params.get('water') ?? 'usual'] ?? USUAL_WATER;
 const water: WaterState = {
   rise: num('rise', waterPreset.rise), flow: num('flow', waterPreset.flow), mud: num('mud', waterPreset.mud), ice: num('ice', waterPreset.ice),

@@ -79,7 +79,7 @@ const BORDER = { near: 0.8, far: 3, wave: 6, rag: 0.35 };
 
 const srgb = (hex: number) => new THREE.Color(hex);
 /** The land's colours (sRGB; the season turns the greens, seasonLook.ts). */
-const COL = {
+export const COL = {
   lush: srgb(0x5a9848), dry: srgb(0x98a652), lime: srgb(0xa6c45a), emerald: srgb(0x40885a),
   worn: srgb(0x9a9460), bare: srgb(0xa88a62), track: srgb(0xc0a274), rock: srgb(0x9a9184), floor: srgb(0x3e6236),
   bed: srgb(0x9a8660), deep: srgb(0x6a5a40), lip: srgb(0x5f8a3a),
@@ -89,14 +89,14 @@ const COL = {
 /** Cliff faces: earth for the low levels, stone higher up, a band each STRATUM levels in turn. */
 const EARTH = [srgb(0x9c7e5a), srgb(0x8c714f)], STONE = [srgb(0x8e877a), srgb(0x807a6e)];
 /** How each kind of ground tints the land: `mix` of the way towards `toward`, then `lift` lighter (or darker). Loam none. */
-const GROUND_TINT: Record<number, { toward: THREE.Color; mix: number; lift: number }> = {
+export const GROUND_TINT: Record<number, { toward: THREE.Color; mix: number; lift: number }> = {
   [LAND_GROUND.silt]: { toward: srgb(0x54401c), mix: 0.12, lift: -0.04 },
   [LAND_GROUND.clay]: { toward: srgb(0xa4603c), mix: 0.22, lift: -0.02 },
   [LAND_GROUND.sand]: { toward: srgb(0xe0cc94), mix: 0.26, lift: 0.04 },
   [LAND_GROUND.stony]: { toward: srgb(0x8a8a82), mix: 0.26, lift: 0 },
 };
 /** How each cover's ground is painted: colour drift, brush scale (strokes a metre); and how much of the meadow's drift it takes. */
-const PAINT: Record<number, { drift: number; brush: number; meadow: number }> = {
+export const PAINT: Record<number, { drift: number; brush: number; meadow: number }> = {
   [LAND_COVER.grass]: { drift: 0.3, brush: 2, meadow: 1 },
   [LAND_COVER.bare]: { drift: 0.45, brush: 2.5, meadow: 0 },
   [LAND_COVER.track]: { drift: 0.55, brush: 2.5, meadow: 0 },

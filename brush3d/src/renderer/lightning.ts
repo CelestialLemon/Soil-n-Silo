@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { DEPTH_ORIGIN_GLSL } from './auxDepth.ts';
 import { SHADOW_DEPTH } from './glsl';
 import type { SharedUniforms } from './materials';
 
@@ -195,6 +196,7 @@ export class Lightning {
   private geo: THREE.BufferGeometry;
   private boltU = {
     tAux: { value: null as THREE.Texture | null },
+    uDepthOrigin: { value: 0 },
     uRes: { value: new THREE.Vector2(1, 1) },
     uBoltGlow: { value: new Array(MAX_BOLTS).fill(0) },
     uBoltCap: { value: 1 },
@@ -354,9 +356,10 @@ export class Lightning {
   }
 
   /** The bolts, drawn over the finished picture. */
-  draw(gl: THREE.WebGLRenderer, camera: THREE.Camera, haze: THREE.Color) {
+  draw(gl: THREE.WebGLRenderer, camera: THREE.Camera, haze: THREE.Color, depthOrigin: number) {
     if (!this.boltsLive) return;
     this.boltU.uHaze.value.copy(haze);
+    this.boltU.uDepthOrigin.value = depthOrigin;
     gl.render(this.boltScene, camera);
   }
 
@@ -447,6 +450,7 @@ void main() {
 
 const BOLT_FRAG = /* glsl */ `
 uniform sampler2D tAux;
+${DEPTH_ORIGIN_GLSL}
 uniform vec2 uRes;
 uniform vec3 uHaze;
 uniform float uBoltCap;
@@ -456,7 +460,7 @@ vec3 srgb(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.05
 void main() {
   vec2 uv = gl_FragCoord.xy / uRes;
   // Hidden behind what stands nearer the camera, softly.
-  float sd = texture2D(tAux, uv).z;
+  float sd = auxDepth(texture2D(tAux, uv).z);
   float seen = sd <= 0.0 ? 1.0 : smoothstep(vStroke.z - 2.0, vStroke.z - 0.3, sd);
   // Into the haze at the top of the screen, and high up.
   float top = 1.0 - smoothstep(0.62, 1.0, uv.y);

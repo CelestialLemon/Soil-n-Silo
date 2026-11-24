@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { DEPTH_ORIGIN_GLSL } from './auxDepth.ts';
 import { markMaterial, type MaterialKind, type SharedUniforms } from './materials';
 
 // The game's marks on its things (Soil-n-Silo#206): a thing highlighted (under the pointer, or selected) and a thing tinted
@@ -23,6 +24,7 @@ export const HIGHLIGHT_LOOK: HighlightLook = { color: 0xfff0c0, width: 2, glow: 
 
 const MARK_FRAG = /* glsl */ `
 uniform sampler2D uMarksAux;
+${DEPTH_ORIGIN_GLSL}
 uniform vec4 uMarkTint;
 uniform float uMarkHi;
 varying float vViewDepth;
@@ -30,7 +32,7 @@ layout(location = 0) out vec4 gMark;
 void main() {
   // Where something nearer shows, the thing doesn't: no mark (the depth is the G-buffer's, resolved and half-float, so
   // allow for its rounding).
-  float shown = texelFetch(uMarksAux, ivec2(gl_FragCoord.xy), 0).z;
+  float shown = auxDepth(texelFetch(uMarksAux, ivec2(gl_FragCoord.xy), 0).z);
   if (shown > 0.0 && vViewDepth > shown + 0.15 + shown * 0.004) discard;
   // The tint's colour, and in alpha its strength (0..127) plus 128 if highlighted.
   gMark = vec4(uMarkTint.rgb, (floor(uMarkTint.a * 127.0 + 0.5) + (uMarkHi > 0.5 ? 128.0 : 0.0)) / 255.0);

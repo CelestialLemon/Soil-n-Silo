@@ -365,7 +365,8 @@ vec3 waterline(vec3 color, vec3 p, float dy) {
   return color;
 }
 layout(location = 0) out vec4 gColor;
-layout(location = 1) out vec4 gAux;   // view normal xy, view depth, ink (1 inked, 0 painted)
+layout(location = 1) out vec4 gAux;   // view normal xy, view depth (less uDepthOrigin: auxDepth.ts), ink (1 inked, 0 painted)
+uniform float uDepthOrigin;
 void writeGBuffer(vec3 color, vec3 worldNormal, float viewDepth, float ink, float alpha) {
   // (Taken before any fragment leaves, where its neighbours' are still there to compare with.)
   float dy = fwidth(vWorldPos.y);
@@ -379,6 +380,6 @@ void writeGBuffer(vec3 color, vec3 worldNormal, float viewDepth, float ink, floa
   // The reflection is stored premultiplied (over a clear, transparent black), so the water can filter it without darkening
   // the edges of what's reflected.
   gColor = vec4(uMirror > 0.5 ? color * alpha : color, alpha);
-  gAux = vec4(vn.xy, viewDepth, ink);
+  gAux = vec4(vn.xy, viewDepth - uDepthOrigin, ink);
 }
 `;

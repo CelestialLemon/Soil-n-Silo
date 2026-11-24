@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { DEPTH_ORIGIN_GLSL } from './auxDepth.ts';
 import { TILE_REACH } from './tiles';
 
 // The shelter map: what's under cover, seen from straight above, so rain and snow stop at roofs (#10). Three depth maps
@@ -156,7 +157,7 @@ export class ShelterMap {
       glslVersion: THREE.GLSL3,
       vertexShader: OVERLAY_VERT, fragmentShader: OVERLAY_FRAG,
       uniforms: {
-        ...this.uniforms, tAux: { value: null }, uCameraWorld: { value: new THREE.Matrix4() }, uHalf: { value: new THREE.Vector2() },
+        ...this.uniforms, tAux: { value: null }, uDepthOrigin: { value: 0 }, uCameraWorld: { value: new THREE.Matrix4() }, uHalf: { value: new THREE.Vector2() },
         uResolution: { value: new THREE.Vector2() },
       },
       transparent: true, depthTest: false, depthWrite: false,
@@ -365,11 +366,12 @@ export class ShelterMap {
   /**
    * The debug view, over the finished frame: the ground under a roof in blue, hatched; under a crown in pale teal; the
    * tops of the roofs (where rain lands, and snow will lie) in warm yellow; and the map itself, from above, in the corner.
-   * `aux` is the G-buffer's (view normal, view depth); `camera` the view's.
+   * `aux` is the G-buffer's (view normal, view depth, stored less `depthOrigin`: auxDepth.ts); `camera` the view's.
    */
-  drawOverlay(gl: THREE.WebGLRenderer, aux: THREE.Texture, camera: THREE.OrthographicCamera, width: number, height: number) {
+  drawOverlay(gl: THREE.WebGLRenderer, aux: THREE.Texture, depthOrigin: number, camera: THREE.OrthographicCamera, width: number, height: number) {
     const u = this.overlay.uniforms;
     u.tAux.value = aux;
+    u.uDepthOrigin.value = depthOrigin;
     (u.uCameraWorld.value as THREE.Matrix4).copy(camera.matrixWorld);
     (u.uHalf.value as THREE.Vector2).set(camera.right, camera.top);
     (u.uResolution.value as THREE.Vector2).set(width, height);
@@ -390,6 +392,7 @@ const OVERLAY_FRAG = /* glsl */ `
 precision highp float;
 ${SHELTER_GLSL}
 uniform sampler2D tAux;
+${DEPTH_ORIGIN_GLSL}
 uniform mat4 uCameraWorld;
 uniform vec2 uHalf;
 uniform vec2 uResolution;
@@ -409,6 +412,7 @@ void main() {
     return;
   }
   vec4 aux = texture(tAux, vUv);
+  aux.z = auxDepth(aux.z);
   if (aux.z <= 0.0) discard;
   // Where this pixel is: the view's orthographic camera, back along its view by the depth.
   vec3 p = (uCameraWorld * vec4((vUv * 2.0 - 1.0) * uHalf, -aux.z, 1.0)).xyz;

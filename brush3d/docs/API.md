@@ -28,7 +28,7 @@ plain code with no drawing in them, so the game's rules and tests can use them w
 
 Everything the game uses comes from one file, `src/index.ts` (in the game's repo, since the move, #200:
 `brush3d/src/index.ts`). The demo is just another user of it: it imports nothing else. One part of it also stands on
-its own: `src/shared.ts`, the wind simulation, the cloud recipe, the land's data and smooth fit (below) and how far a crag, a grass tuft, a wildflower and a clump of reeds reach, which loads in Node with no bundler, for the
+its own: `src/shared.ts`, the wind simulation, the cloud recipe, the land's data and smooth fit, the continuous terrain's data and its height (below) and how far a crag, a grass tuft, a wildflower and a clump of reeds reach, which loads in Node with no bundler, for the
 rules' tests and bots (the rest needs Vite, for the models and the wind's worker). Anything not exported there is
 the renderer's own business and can change without notice: its shaders, materials, passes, uniforms and maps.
 
@@ -156,16 +156,67 @@ r.updateLand({ x, y, width, height }, { corners, worked, cover, ground });   // 
   again, never left floating over the old ground. The rules go on asking `relief.ts`.
 - Not yet: the cuts models need where they stand (the water wheel's race in its bank, `wheelRace` in the catalogue).
 
+### The land as continuous terrain (today, v0.2)
+
+The game's own heights, drawn as they are: a grid of cells (1 m, say) with a height at each corner, two triangles a cell,
+with no levels, no smooth fit and no beds sunk under the water by the renderer (the heights hold the game's beds, basins,
+rill cuts and pads already). It replaces `setLand`'s land (whichever came last is drawn), and is painted as that land is:
+the meadow's drift, damp banks, shingle, a pond's bed, worked ground as turned soil, the duller country round the map and
+the country beyond.
+
+```ts
+r.setTerrain({
+  nx, nz, cell, x0, z0,          // nx × nz cells `cell` metres square, the north-west corner at (x0, z0)
+  // The cells' corners' heights (metres), (nx + 1) × (nz + 1), row by row along z, x fastest: vertex (ix, iz) at
+  // (x0 + ix·cell, z0 + iz·cell) is height[iz·(nx + 1) + ix].
+  height: Float32Array,
+  // Per cell (nx × nz, the same order): what covers it (LAND_COVER, with `rill` for a narrow runnel's bed, painted damp
+  // earth and pebbles along the line through its cells' middles), what ground (LAND_GROUND; loam if left out) and
+  // whether people have worked it (1: turned soil, no meadow drift; none if left out).
+  cover: Uint8Array, ground?: Uint8Array, worked?: Uint8Array,
+  map?: { x, y, width, height }, // the map the player builds on, in cells (all of it if left out)
+  beyond?: { nx, nz, cell, x0, z0, height },   // the country past it, as setLand's
+}, look?);                       // LandLook, as setLand's
+r.updateTerrain({ x, y, width, height }, { height, cover, ground, worked });   // new values over these cells
+```
+
+- `height` in a patch is the rectangle's **corners**, `(width + 1) × (height + 1)` of them (the ones on its edge, shared
+  with the cells round it, too); the rest are per cell over the rectangle. Any left out stay. Both calls copy and check
+  what they're given (`checkTerrain`, `checkTerrainPatch` in `shared.ts`): a wrong size or a height that isn't finite throws.
+- **One height, everywhere.** A cell is split along its diagonal from its north-east corner to its south-west one. The
+  height between the grid's points is `sampleHeightfield(height, nx, nz, cell, x0, z0, x, z)` (`shared.ts`, so the
+  game's rules and tests read it in Node), the triangle `u + v ≤ 1` (u along x, v along z across the cell) giving
+  `h00 + u·(h10 − h00) + v·(h01 − h00)` and the other `h11 + (1 − u)·(h01 − h11) + (1 − v)·(h10 − h11)`; off the grid,
+  the height at the nearest point of its edge. `r.landAt` answers exactly that over the terrain, and `r.landHit(ray)`
+  meets exactly those triangles (`hitHeightfield` in `shared.ts`, the same walk for the game's own tests), so a thing
+  stood on `landAt` sits on the ground as drawn, to the millimetre, on a 1 m rill's bank as on a hillside.
+- It's drawn in chunks about 16 m a side (`terrainChunkCells(cell)`: 16 cells of 1 m, at least 8), with a skirt down
+  its outer edge. `updateTerrain` returns how many cells changed (0 if nothing did, or the land is `setLand`'s), answers
+  for them at once (`r.landAhead` true meanwhile), and paints the chunks round the change (as far as its paint reaches:
+  the beds' damp a couple of metres, the dryness's blur 12 m for a change of height that shows in it) over the next few
+  frames, about 3 ms a frame, then swaps them in together and calls `onLandChange` with where. `bedAt`, `countryAt`
+  and `landColourAt` answer for it as for `setLand`'s land; `bedAt` is how much of a bed (a pond's or a rill's) a
+  point is painted as, 0 to 1.
+- The demo's `?scene=terrain` shows one: 160 × 160 cells of 1 m, a narrow rill cut down a slope into a pond (its water
+  sent `narrow`), a track over it on a plank bridge, a wheat field fenced round and a bean field (`OrganicCropField`);
+  `contours` adds the contour lines alone, `contours=grid` the grid too, `narrow=0` sends the rill's water as broad water.
+
 ### Water (today; the game's river in #202, floods, ice and mud in #207)
 
 ```ts
-r.setWater({ nx, nz, cell, x0, z0, level, flowX, flowZ, mud, ice }, ease?);
+r.setWater({ nx, nz, cell, x0, z0, level, flowX, flowZ, mud, ice, narrow? }, ease?);
 ```
 
 A grid over the land, sent again whenever it changes: per cell the water's surface (metres; `NaN` where dry), its flow
 (m/s along x and z), how muddy (0 clear to 1 brown) and how frozen (0 open, 0.3 a skin and shore ice, 1 frozen over). A
 change eases in over a moment (`ease` seconds; `0` at once, for a level loading), so a rising flood creeps. The river, its
 falls and the ponds are just water in this map, with its flow. `docs/WATER.md` has the detail.
+
+`narrow: true` is for rills a cell or two wide running down a slope on the continuous terrain (cells of 1 m, a 160 × 160
+grid is fine): round the water the sheet runs on over the dry cells next to it at the level of the water beside them,
+and a sloping rill's water higher up would carry its level over its banks further down (water showing up the banks, in
+steps); narrow, each dry cell takes the lowest of the water next to it instead, so the banks stay dry. Left out (broad
+water: ponds, the river, floods), it's as before, exactly.
 
 ## Things: buildings, vehicles, props and goods (#203, #204, #205, #206)
 
@@ -333,7 +384,7 @@ The looks here are plain until then.
 | The building or crop being placed, a blueprint in green where it fits or red where it doesn't (never picked, casts no shadow, hidden behind what stands in front of it, but shown through a field's crops) | `const m = r.addPreview(geometry, 'fits')`, placed with `m.position` / `m.rotation`; `r.setPreview(m, 'blocked')`; `r.removePreview(m)`; their look `r.setPreviewLook({ fits, blocked, tint, opacity, shade, lines })` (`PREVIEW_LOOK`, the blueprint, by default) |
 | A colour per tile washed over the land in its light: fertility, the ground's kinds, height, water, power, roads, bees | `r.setOverlay({ width, height, color: Uint32Array, strength })` (a colour per tile, sRGB; `OVERLAY_NONE` leaves a tile clear) or `null`; its look `r.setOverlayLook({ lit, edge, rim })` (how much the land's light falls on it, the line between colours, a band of full colour inside each region's border in m; `OVERLAY_LOOK` by default) |
 | Routes and frames on the ground, the power networks' wires between pylon tops (sagging), a range's dashed ring, the tile cursor | `r.setLines([{ points: [{ x, y?, z }, ...], color, style: 'route' \| 'wire' \| 'dashed', width?, opacity?, closed? }], group)` or `null`: a point with no `y` lies on the land; each `group` (say `'routes'`, `'power'`) is replaced on its own |
-| The tile grid and the contour lines while building or doing earthworks | `r.setGrid({ width, height, level })` (a contour each `level` m) or `null` |
+| The tile grid and the contour lines while building or doing earthworks | `r.setGrid({ width, height, level, tile?, x0?, z0?, gridStrength?, contourStrength? })` (a contour each `level` m; how dark the grid's lines and the contours are, 0..1, 0.35 and 0.45 by default: `gridStrength: 0, contourStrength: 0.55` gives the contours alone, for the continuous terrain) or `null` |
 | The HUD's markers, labels and tags | HTML, as now, placed with `r.view.toScreen` |
 
 - **Where each is drawn.** The marks and the overlay are part of the picture: the marks are laid over it after the
@@ -557,6 +608,26 @@ above, the game stops using it and it becomes the renderer's own.
   crown, a few broad strokes on a thin trunk in the species' shape and colour for the season, bare woods in winter a
   frosted fan of upright twigs on forking limbs and pines spruce cones; Soil-n-Silo#268, `kit/farWoods.ts`), `CROP_NAMES`. The
   demo's `?scene=plants` shows every crop at every stage and every species, in any season.
+- The game's crops on the continuous terrain (`kit/organicCrop.ts`): `new OrganicCropField(r, mask, { heightAt, chunkCells?,
+  rows?, seed? })` paints fields from a mask of cells rather than tile by tile. The mask (`CropMask`) is
+  `{ nx, nz, cell, x0, z0, crop, stage }`: per cell `crop` 0 where none grows, else `cropCode(name)` (1 + its index in
+  `CROP_NAMES`), and `stage` 0 just sown to 3 ripe (between two, its height part way). Its blanket stands on `heightAt`
+  (give it `r.landAt`) at every point of a half-metre lattice, so a field hugs a rolling hill; its edge is where the
+  crop's cells end, measured in the world (`cropEdgeDistance(mask, code, x, z)`, out to `EDGE_HALO` m, across chunk
+  lines too) and ragged by seeded noise, so it has no square corners and two chunks meet with no seam. It's drawn in
+  chunks of about 16 m; `update(rect, { crop?, stage? })` (arrays over the rectangle alone) paints again only the chunks
+  within `EDGE_HALO` of the change and returns how many, `refit(rect)` paints them again after the ground under them
+  moved (an earthwork: on `onLandChange`), `dispose()` takes it all out and frees it; `meshes` are its meshes now (each
+  `userData.crop`, so the game's tools show through them). It adds through anything with the renderer's `add` and
+  `remove` (`CropAdder`). The stalks, leaves, flowers and heads are `CropPatch`'s, each cell's from its own seed.
+- Inked timber the game places on its own land (`kit/craft.ts`), each into an inked `MeshBuilder` the caller adds
+  (`r.add(b.build(), 'ink')`), standing on `heightAt` (`r.landAt`): `addPlankBridge(b, { x, z, yaw, length, width,
+  heightAt, deck?, lift?, posts?, seed? })` (planks across two side beams with a kerb each side, or `posts` down to the
+  ground for a jetty; by its middle, the way it spans as a yaw, 0 along +x; its deck `lift` (0.18 m) over the higher of its
+  ends' ground unless `deck` gives the height) and `addRailFence(b, { points, heightAt, closed?, spacing?, rails?,
+  postHeight?, color?, gaps?, seed? })` (posts every `spacing` m (2.3) along the line through `points`, each a little
+  askew, rails at `rails` m (0.42 and 0.78) between them, none between two posts whose middle is within a `gaps` circle:
+  a gate). As the farm demo's bridges and fences.
 - `loadModel` and `ModelSet`: the models, merged into the inked and planted meshes; `MODELS`, `TILE`, `blocksWind`,
   `wheelRace` from the catalogue.
 
@@ -584,14 +655,16 @@ The game's pixel3d calls, gone since the swap, and what replaced each:
 | Folder | What | Whose |
 |---|---|---|
 | `src/index.ts` | The API: everything above that exists | the game's door in |
-| `src/shared.ts` | The wind simulation, its gusts (`WindRecipe`), the cloud recipe, the land's data and smooth fit, how far a crag, a grass tuft, a wildflower and a clump of reeds reach (`CRAG_BOUND`, `CRAG_TRIANGLES`, `TUFT_REACH`, `TUFT_HEIGHT`, `FLOWER_REACH`, `REED_REACH`, `REED_WIDTH`, `REED_HEIGHT`) and `TILE`, loadable in Node on their own (the index exports them too) | shared with the rules |
+| `src/shared.ts` | The wind simulation, its gusts (`WindRecipe`), the cloud recipe, the land's data and smooth fit, the continuous terrain's data, checks, height and hit (`TerrainMap`, `TerrainPatch`, `checkTerrain`, `checkTerrainPatch`, `sampleHeightfield`, `hitHeightfield`, `terrainChunkCells`), how far a crag, a grass tuft, a wildflower and a clump of reeds reach (`CRAG_BOUND`, `CRAG_TRIANGLES`, `TUFT_REACH`, `TUFT_HEIGHT`, `FLOWER_REACH`, `REED_REACH`, `REED_WIDTH`, `REED_HEIGHT`) and `TILE`, loadable in Node on their own (the index exports them too) | shared with the rules |
 | `src/renderer/` | The renderer: its passes, materials, shaders and looks | the renderer's own |
-| `src/land/` | The land painted from the game's map: what the game sends (`map.ts`), the smooth fit (`surface.ts`), the painting and earthworks (`paint.ts`) | the renderer's own (`map.ts` and `surface.ts` shared with the rules) |
+| `src/land/` | The land painted from the game's map: what the game sends (`map.ts`), the smooth fit (`surface.ts`), the painting and earthworks (`paint.ts`); the continuous terrain's data and height (`heightfield.ts`) and its painting (`terrain.ts`) | the renderer's own (`map.ts`, `surface.ts` and `heightfield.ts` shared with the rules) |
 | `src/wind/` | The wind simulation (no drawing; a worker host) | shared with the rules |
 | `src/kit/` | The painting kit: `MeshBuilder`, trees, stones, tufts, the models' loader | below the API (see above) |
 | `src/models/` | The solarpunk models (`*.glb`, written by `tools/blender/`) and their catalogue | the game's models |
-| `src/demo/` | The demo viewer and its scenes (farm, meadow, water patch, gallery), the scripted weather | one user of the API |
+| `src/demo/` | The demo viewer and its scenes (farm, meadow, water patch, gallery, plants, terrain), the scripted weather | one user of the API |
 | `tools/` | Stills, videos, profiles, the shimmer, pop and flash checks, the wind, cloud, water and land tests | the renderer's tests |
 
 The tools are tests of the renderer's insides, so they may reach past the API (the cloud test reads the cloud map back,
-the flash check watches the flash limiter); the demo may not (`npm run typecheck` fails if it does).
+the flash check watches the flash limiter); the demo may not (`npm run typecheck` fails if it does). Nor may the game:
+its picture and screens (`src/world/`, `src/ui/`) import brush3d only through `src/index.ts`, its rules (`src/game/`) only
+through `src/shared.ts` (`tools/demo-imports.ts` checks both in `npm run typecheck`).

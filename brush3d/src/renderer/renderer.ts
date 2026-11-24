@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { cutIntoTiles, grow as grownBound, TILE_REACH } from './tiles';
 import { Pools } from './pools';
 import { CAMERA_DISTANCE, ViewCamera } from './camera';
+import { clearAux, depthOrigin } from './auxDepth.ts';
 import { CloudMap, MIRROR } from './cloudMap';
 import { CLOUD_SHAPE, type CloudShape } from './clouds';
 import { lookAt, type Look } from './look';
@@ -37,6 +38,8 @@ import { earthShares } from './wet';
 import type { WindSnapshot } from '../wind/sim';
 import { LAND_LOOK, PaintedLand, type LandArea, type LandLook } from '../land/paint';
 import type { LandMap, LandPatch, LandRect } from '../land/map';
+import { TerrainLand } from '../land/terrain';
+import type { TerrainMap, TerrainPatch } from '../land/heightfield';
 import { GroundTools, OVERLAY_LOOK, type Grid, type Overlay, type OverlayLook } from './overlay';
 import { HIGHLIGHT_LOOK, Marks, type HighlightLook, type Mark } from './marks';
 import { OnTop, PREVIEW_LOOK, type Line, type PreviewLook, type PreviewState } from './ontop';
@@ -391,7 +394,7 @@ export class BrushRenderer {
     this.post = new THREE.ShaderMaterial({
       vertexShader: POST_VERT, fragmentShader: POST_FRAG, depthTest: false, depthWrite: false,
       uniforms: {
-        tColor: { value: this.gbuffer.textures[0] }, tAux: { value: this.gbuffer.textures[1] },
+        tColor: { value: this.gbuffer.textures[0] }, tAux: { value: this.gbuffer.textures[1] }, uDepthOrigin: this.shared.uDepthOrigin,
         uResolution: { value: new THREE.Vector2(1, 1) }, uLineWidth: { value: 1.5 }, uLines: { value: 1 },
         uTargetDepth: { value: CAMERA_DISTANCE }, uHazeColor: { value: new THREE.Color() }, uHazeDensity: { value: 0.02 },
         uHazeMax: { value: 0.4 }, uHazeFloor: { value: 0 }, uSkyTop: { value: new THREE.Color() }, uSkyBottom: { value: new THREE.Color() },
@@ -909,8 +912,34 @@ export class BrushRenderer {
     const all = was ? { x0: Math.min(was.x0, now.x0), z0: Math.min(was.z0, now.z0), x1: Math.max(was.x1, now.x1), z1: Math.max(was.z1, now.z1) } : now;
     for (const f of this.landChanged) f(all);
   }
+
+  /**
+   * The land as continuous terrain (docs/API.md): the game's own heights at the corners of a grid of cells (1 m, say), two
+   * triangles a cell, with no levels, cliffs or beds worked out by the renderer (the heights hold them already), painted
+   * as setLand's land is, in chunks of about 16 m. Replaces the land setLand or setTerrain sent before; changes to it go to
+   * updateTerrain. landAt, landHit, landColourAt, bedAt, countryAt, landAhead and onLandChange answer for it as for setLand's.
+   */
+  setTerrain(map: TerrainMap, look: LandLook = LAND_LOOK) {
+    this.painted?.dispose();
+    this.painted = new TerrainLand(this, map, look);
+    this.painted.onSwap = (area) => { for (const f of this.landChanged) f(area); };
+    this.landsSet++;
+    const was = this.landArea, now = { x0: map.x0, z0: map.z0, x1: map.x0 + map.nx * map.cell, z1: map.z0 + map.nz * map.cell };
+    this.landArea = now;
+    const all = was ? { x0: Math.min(was.x0, now.x0), z0: Math.min(was.z0, now.z0), x1: Math.max(was.x1, now.x1), z1: Math.max(was.z1, now.z1) } : now;
+    for (const f of this.landChanged) f(all);
+  }
+
+  /**
+   * A change to the terrain setTerrain sent (an earthwork, a rill dug, a field worked): the new values over the cells in
+   * `rect` (TerrainPatch: the heights of their (width + 1) × (height + 1) corners, the rest per cell). landAt and landHit
+   * answer for it at once (landAhead); its chunks (and only those round it) are painted again over the next few frames and
+   * swapped in together, when onLandChange is told where. Returns how many cells changed (0 if the land is setLand's).
+   */
+  updateTerrain(rect: LandRect, patch: TerrainPatch): number { return this.painted instanceof TerrainLand ? this.painted.update(rect, patch) : 0; }
+
   private landArea: LandArea | null = null;
-  private painted: PaintedLand | null = null;
+  private painted: PaintedLand | TerrainLand | null = null;
   private landsSet = 0;
   /** Changes whenever the land as drawn does (a new land, an earthwork swapped in). */
   private get landRevision() { return `${this.landsSet} ${this.painted?.revision ?? 0}`; }
@@ -933,7 +962,7 @@ export class BrushRenderer {
    * its chunks painted and swapped in together once they're all painted. Earthworks given meanwhile wait their turn.
    * Returns how many tiles changed.
    */
-  updateLand(rect: LandRect, patch: LandPatch): number { return this.painted?.update(rect, patch) ?? 0; }
+  updateLand(rect: LandRect, patch: LandPatch): number { return this.painted instanceof PaintedLand ? this.painted.update(rect, patch) : 0; }
 
   /** The land's height (m) at a point of the world, as drawn (setLand's; 0 before there is one). */
   landAt(x: number, z: number): number { return this.painted?.heightAt(x, z) ?? 0; }
@@ -1040,7 +1069,7 @@ export class BrushRenderer {
   pick(clientX: number, clientY: number): PickHit | null {
     const at = this.pickAt(clientX, clientY);
     if (!at) return null;
-    this.picker.copy(this.gl, this.gbuffer.textures[1], at.x, at.y, this.height);
+    this.picker.copy(this.gl, this.gbuffer.textures[1], this.shared.uDepthOrigin.value, at.x, at.y, this.height);
     return this.picker.hit(this.picker.read(this.gl), this.drawnCamera, at.ndc, at.px);
   }
 
@@ -1048,7 +1077,7 @@ export class BrushRenderer {
   async requestPick(clientX: number, clientY: number): Promise<PickHit | null> {
     const at = this.pickAt(clientX, clientY);
     if (!at) return null;
-    this.picker.copy(this.gl, this.gbuffer.textures[1], at.x, at.y, this.height);
+    this.picker.copy(this.gl, this.gbuffer.textures[1], this.shared.uDepthOrigin.value, at.x, at.y, this.height);
     // The camera, the things and their moving parts as the picture was drawn: by the time the pixels come back, they may
     // have moved.
     const camera = this.drawnCamera.clone(), placed = this.picker.snapshot(), pose = this.parts.pose().slice();
@@ -1739,6 +1768,9 @@ export class BrushRenderer {
     // all when none shows. The farthest a lookup reaches (snoise peaks a little past 1, hence the tenth more):
     t?.mark('under');
     gl.setClearColor(0x000000, 0);
+    // The water's passes keep their depths as they are (the water reads the bed's: WATER_FRAG); only the main view's are
+    // stored less its target's depth (auxDepth.ts).
+    s.uDepthOrigin.value = 0;
     const nudge = (WATER_REACH.ripple + WATER_REACH.chop * WATER_REACH.chopMax) * 1.1;
     // Where the passes draw (#249): in the masks' squares (the settings' scissor round them), and not at all with none;
     // or, the masks off, round the water's mesh on screen.
@@ -1788,6 +1820,10 @@ export class BrushRenderer {
     this.gbuffer.resolveDepthBuffer = this.settings.resolveDepth;
     gl.setRenderTarget(this.gbuffer);
     gl.clear(true, true, false);
+    // Its depths stored less its target's (auxDepth.ts: half floats are finest near 0), and its aux cleared to read back
+    // as nothing drawn. The origin stays set till the next frame: the marks, the previews, the post pass and a pick read it.
+    s.uDepthOrigin.value = depthOrigin(this.view.distance);
+    clearAux(gl, s.uDepthOrigin.value);
     this.silhouettes.visible = pre;
     if (pre) {
       for (const [mesh, twin] of this.twins) {
@@ -1812,9 +1848,9 @@ export class BrushRenderer {
     // Lines thin as the camera zooms out, so a busy farm doesn't turn into a comic.
     u.uLineWidth.value = THREE.MathUtils.clamp(0.6 + this.view.zoom / 48, 0.8, 2.2) * this.pixelRatio * 0.75;
     gl.render(this.postScene, this.postCamera);
-    if (this.settings.shelterDebug) this.shelter.drawOverlay(gl, this.gbuffer.textures[1], this.view.camera, this.width, this.height);
+    if (this.settings.shelterDebug) this.shelter.drawOverlay(gl, this.gbuffer.textures[1], s.uDepthOrigin.value, this.view.camera, this.width, this.height);
     t?.mark('bolt', this.lightning.active);
-    this.lightning.draw(gl, cam, u.uHazeColor.value as THREE.Color);
+    this.lightning.draw(gl, cam, u.uHazeColor.value as THREE.Color, s.uDepthOrigin.value);
     // The tools' previews and lines, over it all (ontop.ts).
     this.onTop.draw(gl, cam, this.gbuffer.textures[1], this.output, this.width, this.pixelRatio, this.scene);
     this.drawnCamera.copy(cam);

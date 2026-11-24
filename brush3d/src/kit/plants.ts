@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { addDab, MeshBuilder, noise2, rng, srgb, type Paint } from './builder';
-import { C, smooth, type Ground, type Tree, type TreeForm } from './kit';
-import { CRISP_EDGE, STIFF_STROKE } from '../renderer/dabs';
-import { TREE_BEND, type TreeKind, type TreeSpec } from '../renderer/trees';
-import type { Season } from '../renderer/season';
-import type { BrushRenderer } from '../renderer/renderer';
-import type { Grove } from './seasonTrees';
+import { addDab, MeshBuilder, noise2, rng, srgb, type Paint } from './builder.ts';
+import { C, smooth, type Ground, type Tree, type TreeForm } from './kit.ts';
+import { CRISP_EDGE, STIFF_STROKE } from '../renderer/dabs.ts';
+import { TREE_BEND, type TreeKind, type TreeSpec } from '../renderer/trees.ts';
+import type { Season } from '../renderer/season.ts';
+import type { BrushRenderer } from '../renderer/renderer.ts';
+import type { Grove } from './seasonTrees.ts';
 
 // What the game grows, in its own words (docs/API.md, "What grows"; Soil-n-Silo#213): its five crops at their four stages,
 // and its six tree species and the bushes. The game says which crop, which stage, which species; how each looks is the
@@ -74,8 +74,8 @@ export interface CropTile { x: number; y: number; z: number; crop: CropName; sta
 interface Bloom { color: THREE.Color; per: number; size: number; /** Width over length: 1 round, less a pod. */ shape?: number; /** How far below the top (m). */ sink?: number }
 /** A sunflower's heads on their stems: `size` the head's half-width (m), `per` a square metre. */
 interface Heads { petals: THREE.Color; eye: THREE.Color; size: number; per: number }
-/** A crop at one stage. */
-interface Stand {
+/** A crop at one stage (organicCrop.ts paints the game's fields from these too). */
+export interface Stand {
   /** How tall it stands (m). */
   tall: number;
   /** The mass's colours: its own, its shade in the bands across it, its sunlit tips, and its foot at the field's edge. */
@@ -134,12 +134,30 @@ const FLAXES: Stand[] = [
   { tall: 0.65, ...FLAX, base: srgb(0x8a9e5a), tip: srgb(0xc4b46a), stalks: 4,
     blooms: [{ color: srgb(0x86aee6), per: 14, size: 0.06 }, { color: srgb(0xb89a5a), per: 12, size: 0.05 }] },
 ];
-const STANDS: Record<CropName, Stand[]> = { wheat: WHEAT, beans: BEANS, tomato: TOMATOES, sunflower: SUNFLOWERS, flax: FLAXES };
+export const STANDS: Record<CropName, Stand[]> = { wheat: WHEAT, beans: BEANS, tomato: TOMATOES, sunflower: SUNFLOWERS, flax: FLAXES };
 
 const UP = new THREE.Vector3(0, 1, 0);
 const SIDES: [number, number, number][] = [[1, 0, -1], [2, 1, 0], [4, 0, 1], [8, -1, 0]];
-const LEAF_PAINT: Paint = [0.5 + CRISP_EDGE, 0.7, -1, 0.5];
-const BLOOM_PAINT: Paint = [0.2 + CRISP_EDGE, 1, -1, 0.3];
+export const LEAF_PAINT: Paint = [0.5 + CRISP_EDGE, 0.7, -1, 0.5];
+export const BLOOM_PAINT: Paint = [0.2 + CRISP_EDGE, 1, -1, 0.3];
+
+/** One stalk of a crop at a stage into `g` (a grass builder), from (x, y, z) up `h`, with an ear on it if asked. */
+export function addStalk(g: MeshBuilder, x: number, y: number, z: number, h: number, st: Stand, rand: () => number, ear: boolean) {
+  const w = 0.026, lean = (rand() - 0.5) * 0.12, dir = rand() * Math.PI, seed = rand();
+  const ox = Math.cos(dir) * w, oz = Math.sin(dir) * w, paint: Paint = [0.5, 1.4, 0.4, 0.8];
+  const tip = new THREE.Vector3(x + lean, y + h, z + lean * 0.5);
+  const gold = st.tip.clone().lerp(st.deep, rand() * 0.6), mid = st.root.clone().lerp(gold, 0.7);
+  const a = g.vertex({ x: x - ox, y, z: z - oz }, UP, st.root, paint, [0, 0], [0, seed, -w, dir]);
+  const b = g.vertex({ x: x + ox, y, z: z + oz }, UP, st.root, paint, [0, 0], [0, seed, w, dir]);
+  const c = g.vertex({ x: tip.x + ox * 0.6, y: tip.y - 0.16, z: tip.z + oz * 0.6 }, UP, mid, paint, [0, 0], [0.8, seed, w * 0.6, dir]);
+  const d = g.vertex({ x: tip.x - ox * 0.6, y: tip.y - 0.16, z: tip.z - oz * 0.6 }, UP, mid, paint, [0, 0], [0.8, seed, -w * 0.6, dir]);
+  g.quad(a, b, c, d);
+  if (!ear) return;
+  const e1 = g.vertex({ x: tip.x - ox * 2.2, y: tip.y - 0.06, z: tip.z - oz * 2.2 }, UP, gold, paint, [0, 0], [0.9, seed, -w * 2.2, dir]);
+  const e2 = g.vertex({ x: tip.x + ox * 2.2, y: tip.y - 0.06, z: tip.z + oz * 2.2 }, UP, gold, paint, [0, 0], [0.9, seed, w * 2.2, dir]);
+  const e3 = g.vertex({ x: tip.x + lean * 0.3, y: tip.y + 0.12, z: tip.z }, UP, gold, paint, [0, 0], [1, seed]);
+  g.tri(d, c, e2); g.tri(d, e2, e3); g.tri(d, e3, e1);
+}
 
 /** A set of crop tiles, painted into a few meshes: `add` each tile, then `addTo` a renderer. */
 export class CropPatch {
@@ -184,7 +202,7 @@ export class CropPatch {
       for (let k = 0, n = Math.round(st.stalks * area * 2); k < n; k++) {
         const { x, z, d } = spot();
         if (d < 0.05 || (d > 0.8 && rand() > 0.35)) continue;
-        this.stalk(x, t.y, z, tall(x, z) + st.tall * (0.05 + rand() * 0.15), st, rand, st.ears ?? false);
+        addStalk(this.stalks, x, t.y, z, tall(x, z) + st.tall * (0.05 + rand() * 0.15), st, rand, st.ears ?? false);
       }
     }
     // The broad-leaved crops' plants: each a few leaf strokes over its own top, so the crop reads as plants.
@@ -217,31 +235,13 @@ export class CropPatch {
         const { x, z, d } = spot();
         if (d < 0.2) continue;
         const y = t.y + st.tall * smooth(0, 0.7, d) * (0.95 + rand() * 0.15);
-        this.stalk(x, t.y + tall(x, z) * 0.7, z, y - t.y - tall(x, z) * 0.7, st, rand, false);
+        addStalk(this.stalks, x, t.y + tall(x, z) * 0.7, z, y - t.y - tall(x, z) * 0.7, st, rand, false);
         // The head faces the morning sun, east and up a little: its petals, then its eye a little before them.
         const p = new THREE.Vector3(x, y, z), face = new THREE.Vector3(0.6, 0.5, 0.3).normalize();
         addDab(this.dabs, p, face, h.petals.clone().offsetHSL((rand() - 0.5) * 0.02, 0, (rand() - 0.5) * 0.06), h.size * (0.85 + rand() * 0.3), rand(), [0.2 + CRISP_EDGE, 1, -1, 0.4]);
         addDab(this.dabs, p.clone().addScaledVector(face, h.size * 0.5), face, h.eye, h.size * 0.42, rand(), [0.1 + CRISP_EDGE, 1, -1, 0.1]);
       }
     }
-  }
-
-  /** One stalk, from y up `h`, with an ear on it if asked. */
-  private stalk(x: number, y: number, z: number, h: number, st: Stand, rand: () => number, ear: boolean) {
-    const g = this.stalks, w = 0.026, lean = (rand() - 0.5) * 0.12, dir = rand() * Math.PI, seed = rand();
-    const ox = Math.cos(dir) * w, oz = Math.sin(dir) * w, paint: Paint = [0.5, 1.4, 0.4, 0.8];
-    const tip = new THREE.Vector3(x + lean, y + h, z + lean * 0.5);
-    const gold = st.tip.clone().lerp(st.deep, rand() * 0.6), mid = st.root.clone().lerp(gold, 0.7);
-    const a = g.vertex({ x: x - ox, y, z: z - oz }, UP, st.root, paint, [0, 0], [0, seed, -w, dir]);
-    const b = g.vertex({ x: x + ox, y, z: z + oz }, UP, st.root, paint, [0, 0], [0, seed, w, dir]);
-    const c = g.vertex({ x: tip.x + ox * 0.6, y: tip.y - 0.16, z: tip.z + oz * 0.6 }, UP, mid, paint, [0, 0], [0.8, seed, w * 0.6, dir]);
-    const d = g.vertex({ x: tip.x - ox * 0.6, y: tip.y - 0.16, z: tip.z - oz * 0.6 }, UP, mid, paint, [0, 0], [0.8, seed, -w * 0.6, dir]);
-    g.quad(a, b, c, d);
-    if (!ear) return;
-    const e1 = g.vertex({ x: tip.x - ox * 2.2, y: tip.y - 0.06, z: tip.z - oz * 2.2 }, UP, gold, paint, [0, 0], [0.9, seed, -w * 2.2, dir]);
-    const e2 = g.vertex({ x: tip.x + ox * 2.2, y: tip.y - 0.06, z: tip.z + oz * 2.2 }, UP, gold, paint, [0, 0], [0.9, seed, w * 2.2, dir]);
-    const e3 = g.vertex({ x: tip.x + lean * 0.3, y: tip.y + 0.12, z: tip.z }, UP, gold, paint, [0, 0], [1, seed]);
-    g.tri(d, c, e2); g.tri(d, e2, e3); g.tri(d, e3, e1);
   }
 
   /** Adds the patch to a renderer; returns its meshes (to `remove` from it, and dispose of their geometry, when it goes). */

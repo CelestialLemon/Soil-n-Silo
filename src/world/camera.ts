@@ -1,202 +1,142 @@
-import * as THREE from 'three';
+// The camera: an orthographic three-quarter view (brush3d's 30° pitch) the game steers with its own controller and places
+// on brush3d's view each frame (ViewCamera.place). It turns in one of two ways, the player's camera setting: `orbit` (the
+// default), a free smooth turn (a held Q/E, or a drag), or `snap`, the four cardinal views 90° apart with a damped turn
+// between them (Q/E). Zoom eases towards its goal and keeps the ground under the pointer where it was; panning moves
+// the ground with the pointer; both stay within the valley.
+import { type BrushRenderer, PITCH } from '../../brush3d/src/index.ts';
+import { clamp, VALLEY_HALF, wrapAngle } from '../game/index.ts';
+import type { YawMode } from './options.ts';
 
-// The camera: where the view looks, how far in it is, which of the four views it turns to, and the maths between the page and
-// the ground. It is orthographic at a 30° pitch, turns between four views 90° apart, zooms towards the pointer and pans. It
-// knows the map only by its size (to keep the target on it); the game state is not its business.
-//
-// It works in the game's world units: a tile is 1 across (x along the map's columns, z its rows), and a level stands
-// ground.ts's LEVEL_HEIGHT. A `Lens` puts that on the renderer's own camera: brush3d draws in metres at 4 m a tile
-// (brush/lens.ts).
+/** The zoom's range (CSS pixels a metre): from the whole valley to a close look at a bench. */
+export const ZOOM_MIN = 16, ZOOM_MAX = 96;
+/** Where the camera starts: zoomed to the homestead, looking from the first of the four views. */
+export const START_ZOOM = 34, START_HEADING = Math.PI / 4;
+/** How far from the valley's middle the view's middle may go (m). */
+const PAN_LIMIT = VALLEY_HALF;
+/** How fast each ease closes (1/s): the turn, the zoom, a glide to a place, the ground's height under the view. */
+const TURN_RATE = 9, ZOOM_RATE = 14, GLIDE_RATE = 6, LIFT_RATE = 5;
+/** A held Q or E in orbit mode turns this fast (rad/s). */
+const ORBIT_SPEED = 1.5;
 
-/** The zoom range, as screen pixels per tile of ground, and where a commission starts. */
-const MIN_ZOOM = 16, MAX_ZOOM = 96, START_ZOOM = 32;
-/** How much one wheel notch or key press zooms. */
-const ZOOM_STEP = 1.25;
-const ELEVATION = THREE.MathUtils.degToRad(30);
-const HOME_YAW = THREE.MathUtils.degToRad(45);
-const ZOOM_RATE = 14;               // how fast the zoom eases towards its level (per second, in log space)
-const TURN_SECONDS = 0.3;
+const QUARTER = Math.PI / 2;
+/** The nearest of the four views' headings (45° + 90° n) to a heading. */
+const nearestView = (h: number) => Math.PI / 4 + Math.round((h - Math.PI / 4) / QUARTER) * QUARTER;
+/** Brings `a` round to within half a turn of `b`. */
+const near = (a: number, b: number) => b + wrapAngle(a - b);
+const ease = (rate: number, dt: number) => 1 - Math.exp(-rate * dt);
 
-/**
- * How the camera reaches a renderer: it fits the drawing to the window, places the renderer's view each frame, and maps
- * between world points (in the game's units, above) and the page.
- */
-export interface Lens {
-  /** Sizes the drawing for the window, and lays the canvas out over it; then calls onFit. */
-  fit(): void;
-  /** Called after each fit (the window resized, or a setting changed the drawing): the camera's, set as it is made. */
-  onFit: () => void;
-  /** Places the view: the ground point in the middle of the screen, which way it looks from, its pitch and zoom (CSS px per tile). */
-  place(target: THREE.Vector3, yaw: number, pitch: number, zoom: number): void;
-  /** A world point, as drawn last placed, to normalised device coordinates (x and y −1..1), in place. */
-  project(p: THREE.Vector3): THREE.Vector3;
-  /** The line of sight through normalised device coordinates, in world units, into `ray`. */
-  aim(ndc: THREE.Vector2, ray: THREE.Ray): THREE.Ray;
-}
+export class CameraRig {
+  x: number; z: number;
+  /** The ground's height under the view's middle, eased so the view doesn't jump over a bank. */
+  private y = 0;
+  zoom = START_ZOOM;
+  heading = START_HEADING;
+  private goalZoom = START_ZOOM;
+  private goalHeading = START_HEADING;
+  /** Where the pointer was for the zoom under way (CSS pixels from the screen's middle), so the ground there stays put. */
+  private anchor = { x: 0, y: 0 };
+  private glide: { x: number; z: number } | null = null;
+  private hold = 0;
+  mode: YawMode;
 
-export class Camera {
-  private readonly target: THREE.Vector3;
-  private view4 = 0;
-  /** The zoom, as screen pixels per tile of ground: `zoom` eases towards `zoomGoal`. */
-  private zoom = START_ZOOM;
-  private zoomGoal = START_ZOOM;
-  /** While zooming towards the pointer: the ground point that stays under it, and where the pointer is from the centre. */
-  private zoomAnchor: { ground: THREE.Vector3; dx: number; dy: number } | null = null;
-  private yaw = HOME_YAW;
-  private turnFrom = HOME_YAW;
-  private turnAt = -Infinity;
-  /** The loop's time as of the last update, which a turn starts from. */
-  private time = 0;
-  private readonly forward = new THREE.Vector3();
-  private readonly right = new THREE.Vector3();
-  /** A world point's place on the page. */
-  private readonly projected = new THREE.Vector3();
-  private readonly ray = new THREE.Ray();
-  private readonly ndc = new THREE.Vector2();
-  private readonly ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-  private readonly hit = new THREE.Vector3();
-
-  private readonly lens: Lens;
-  private readonly canvas: HTMLCanvasElement;
-  private readonly map: { width: number; height: number };
-  private readonly changed: () => void;
-
-  /** `start` is the ground point first looked at; `changed` is called whenever what is under a point of the page may have changed. */
-  constructor(
-    lens: Lens,
-    canvas: HTMLCanvasElement,
-    map: { width: number; height: number },
-    start: { x: number; z: number },
-    changed: () => void,
-  ) {
-    this.lens = lens; this.canvas = canvas; this.map = map; this.changed = changed;
-    this.target = new THREE.Vector3(start.x, 0, start.z);
-    lens.onFit = () => this.changed();
-    addEventListener('resize', () => this.fit());
-    this.fit();
+  constructor(x: number, z: number, mode: YawMode) {
+    this.x = x; this.z = z; this.mode = mode;
   }
 
-  private cameraAxes() { this.forward.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)); this.right.set(-this.forward.z, 0, this.forward.x); }
-  turn(dir: 1 | -1) { this.view4 += dir; this.turnFrom = this.yaw; this.turnAt = this.time; this.changed(); }
-  private turning() {
-    const k = Math.min(1, (this.time - this.turnAt) / TURN_SECONDS);
-    const next = this.turnFrom + (HOME_YAW + this.view4 * Math.PI / 2 - this.turnFrom) * (1 - (1 - k) ** 3);
-    if (next !== this.yaw) this.changed();
-    this.yaw = next;
+  /** Puts the view at once where it's going: no ease (a new valley, the first frame). */
+  settle(r: BrushRenderer) {
+    this.zoom = this.goalZoom; this.heading = this.goalHeading;
+    if (this.glide) { this.x = this.glide.x; this.z = this.glide.z; this.glide = null; }
+    this.y = r.landAt(this.x, this.z);
   }
-  pan(dx: number, dy: number) {
-    this.cameraAxes();
-    const tiles = 1 / this.zoom;
-    const before = this.target.clone();
-    this.target.addScaledVector(this.right, -dx * tiles).addScaledVector(this.forward, dy * tiles / Math.sin(ELEVATION));
-    this.clampTarget();
-    // A pan during a zoom carries the zoom's anchor along, so the two don't fight.
-    if (this.zoomAnchor) this.zoomAnchor.ground.add(this.target.clone().sub(before));
-    this.changed();
+
+  setMode(mode: YawMode) {
+    this.mode = mode;
+    if (mode === 'snap') { this.hold = 0; this.goalHeading = nearestView(this.goalHeading); }
   }
-  private clampTarget() {
-    this.target.x = THREE.MathUtils.clamp(this.target.x, 0, this.map.width);
-    this.target.z = THREE.MathUtils.clamp(this.target.z, 0, this.map.height);
+
+  /** Turns a view (snap: 90° to the next cardinal view; orbit: 45° on). */
+  stepYaw(dir: -1 | 1) {
+    if (this.mode === 'snap') this.goalHeading = nearestView(this.goalHeading) + dir * QUARTER;
+    else this.goalHeading += dir * (Math.PI / 4);
   }
-  /** Points the camera at a ground point, optionally at a zoom (screen pixels per tile, reached at once). */
-  lookAt(x: number, z: number, zoom?: number) {
-    this.target.set(x, 0, z); this.clampTarget();
-    if (zoom) { this.setZoom(zoom); this.zoom = this.zoomGoal; }
-    this.changed();
+
+  /** Orbit mode: turns by an angle (a drag). In snap mode it's a turn to the view nearest where it would end. */
+  orbitBy(delta: number) {
+    if (this.mode === 'orbit') { this.goalHeading += delta; this.heading += delta; }
+    else if (Math.abs(delta) >= Math.PI / 4) this.goalHeading = nearestView(this.goalHeading + delta);
   }
-  /** Zooms in (+1) or out (−1) by one step. */
-  zoomStep(dir: number, at?: { x: number; y: number }) { this.setZoom(this.zoomGoal * ZOOM_STEP ** dir, at); }
-  /** Zooms to `goal` screen pixels per tile, keeping the ground under the page point `at` (the pointer) where it is; the centre without one. */
-  setZoom(goal: number, at?: { x: number; y: number }) {
-    goal = THREE.MathUtils.clamp(goal, MIN_ZOOM, MAX_ZOOM);
-    if (goal === this.zoomGoal) return;
-    this.zoomGoal = goal;
-    // The ground under the point, from where the camera is now (target, turn and zoom), not from the last picture drawn:
-    // several wheel events can arrive before the next frame.
-    if (at) {
-      const dx = at.x - innerWidth / 2, dy = at.y - innerHeight / 2, tiles = 1 / this.zoom;
-      this.cameraAxes();
-      const ground = this.target.clone().addScaledVector(this.right, dx * tiles).addScaledVector(this.forward, -dy * tiles / Math.sin(ELEVATION));
-      this.zoomAnchor = { ground, dx, dy };
-    } else this.zoomAnchor = null;
+
+  /** Orbit mode: keeps turning while Q (-1) or E (1) is held; 0 stops. In snap mode, nothing (stepYaw turns it). */
+  setOrbitHold(dir: -1 | 0 | 1) { this.hold = this.mode === 'orbit' ? dir : 0; }
+
+  /** Moves the view by screen pixels (a drag): the ground under the pointer moves with it. */
+  panByScreen(dx: number, dy: number) {
+    const c = Math.cos(this.heading), s = Math.sin(this.heading), k = 1 / this.zoom, f = k / Math.sin(PITCH);
+    this.panByWorld(-dx * k * c - dy * f * s, dx * k * s - dy * f * c);
   }
-  /** One frame of the zoom easing towards its goal. */
-  private zooming(dt: number) {
-    if (this.zoom === this.zoomGoal) return;
-    const k = 1 - Math.exp(-dt * ZOOM_RATE);
-    this.zoom = Math.exp(Math.log(this.zoom) + Math.log(this.zoomGoal / this.zoom) * k);
-    if (Math.abs(Math.log(this.zoomGoal / this.zoom)) < 0.004) this.zoom = this.zoomGoal;
-    if (this.zoomAnchor) {
-      this.cameraAxes();
-      const tiles = 1 / this.zoom;
-      this.target.copy(this.zoomAnchor.ground).addScaledVector(this.right, -this.zoomAnchor.dx * tiles).addScaledVector(this.forward, this.zoomAnchor.dy * tiles / Math.sin(ELEVATION));
-      this.clampTarget();
+
+  /** Moves the view by metres over the ground (the keyboard's pan, along the screen's axes as the game works them out). */
+  panByWorld(dx: number, dz: number) {
+    this.glide = null;
+    this.x = clamp(this.x + dx, -PAN_LIMIT, PAN_LIMIT);
+    this.z = clamp(this.z + dz, -PAN_LIMIT, PAN_LIMIT);
+  }
+
+  /** The screen's right and its up, as directions over the ground (for keyboard panning). */
+  axes() {
+    const c = Math.cos(this.heading), s = Math.sin(this.heading);
+    return { right: { x: c, z: -s }, up: { x: -s, z: -c } };
+  }
+
+  /**
+   * Zooms by a factor (over 1 in), easing to it, keeping the ground under the pointer (CSS pixels from the screen's middle;
+   * left out, the middle) where it was.
+   */
+  zoomBy(factor: number, anchorX = 0, anchorY = 0) {
+    this.goalZoom = clamp(this.goalZoom * factor, ZOOM_MIN, ZOOM_MAX);
+    this.anchor = { x: anchorX, y: anchorY };
+  }
+
+  /** Glides the view to a place (and a zoom). */
+  focusOn(x: number, z: number, zoom?: number) {
+    this.glide = { x: clamp(x, -PAN_LIMIT, PAN_LIMIT), z: clamp(z, -PAN_LIMIT, PAN_LIMIT) };
+    if (zoom !== undefined) { this.goalZoom = clamp(zoom, ZOOM_MIN, ZOOM_MAX); this.anchor = { x: 0, y: 0 }; }
+  }
+
+  /** Eases the turn, the zoom and any glide on by `dt` seconds, and places brush3d's view. Returns whether it moved. */
+  update(r: BrushRenderer, dt: number): boolean {
+    const was = { x: this.x, z: this.z, zoom: this.zoom, heading: this.heading };
+    if (this.hold !== 0) this.goalHeading += this.hold * ORBIT_SPEED * dt;
+    this.goalHeading = near(this.goalHeading, this.heading);
+    const dh = this.goalHeading - this.heading;
+    this.heading = Math.abs(dh) < 1e-4 ? this.goalHeading : this.heading + dh * ease(TURN_RATE, dt);
+    if (Math.abs(this.heading) > 4 * Math.PI) { const w = wrapAngle(this.heading); this.goalHeading += w - this.heading; this.heading = w; }
+    const dz = this.goalZoom - this.zoom;
+    if (dz !== 0) {
+      const next = Math.abs(dz) < 1e-3 ? this.goalZoom : this.zoom + dz * ease(ZOOM_RATE, dt);
+      // The ground under the anchor stays put: it was anchor / zoom from the middle, and is to be at the same place.
+      const k = 1 / this.zoom - 1 / next, c = Math.cos(this.heading), s = Math.sin(this.heading), f = k / Math.sin(PITCH);
+      const ax = this.anchor.x, ay = this.anchor.y;
+      this.zoom = next;
+      this.x = clamp(this.x + ax * k * c + ay * f * s, -PAN_LIMIT, PAN_LIMIT);
+      this.z = clamp(this.z - ax * k * s + ay * f * c, -PAN_LIMIT, PAN_LIMIT);
     }
-    if (this.zoom === this.zoomGoal) this.zoomAnchor = null;
-    this.changed();
-  }
-  /** Sizes the drawing for the window (the lens's way). */
-  fit() { this.lens.fit(); }
-
-  /** One frame: the turn and the zoom ease on (`time` is the loop's, `dt` the frame's seconds) and the renderer's camera is placed. */
-  update(time: number, dt: number) {
-    this.time = time;
-    this.turning();
-    this.zooming(dt);
-    this.lens.place(this.target, this.yaw, ELEVATION, this.zoom);
+    if (this.glide) {
+      const t = ease(GLIDE_RATE, dt);
+      this.x += (this.glide.x - this.x) * t; this.z += (this.glide.z - this.z) * t;
+      if (Math.hypot(this.glide.x - this.x, this.glide.z - this.z) < 0.01) { this.x = this.glide.x; this.z = this.glide.z; this.glide = null; }
+    }
+    this.y += (r.landAt(this.x, this.z) - this.y) * ease(LIFT_RATE, dt);
+    this.place(r);
+    return was.x !== this.x || was.z !== this.z || was.zoom !== this.zoom || was.heading !== this.heading;
   }
 
-  /** A world point's place on the page. */
-  toScreen(x: number, y: number, z: number) {
-    const rect = this.canvas.getBoundingClientRect();
-    this.lens.project(this.projected.set(x, y, z));
-    return { sx: rect.left + (this.projected.x + 1) / 2 * rect.width, sy: rect.top + (1 - this.projected.y) / 2 * rect.height };
+  /** Places brush3d's view as the rig is now. */
+  place(r: BrushRenderer) {
+    r.view.place({ x: this.x, y: this.y, z: this.z, heading: this.heading, zoom: this.zoom });
   }
 
-  /** Aims the line of sight through a point of the page, and returns it. */
-  private aim(x: number, y: number): THREE.Ray {
-    const rect = this.canvas.getBoundingClientRect();
-    this.ndc.set((x - rect.left) / rect.width * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
-    return this.lens.aim(this.ndc, this.ray);
-  }
-
-  /** The point on the ground plane under a point of the page. */
-  groundAt(x: number, y: number): THREE.Vector3 | null {
-    return this.aim(x, y).intersectPlane(this.ground, this.hit) ? this.hit.clone() : null;
-  }
-
-  /**
-   * The line of sight through a point of the page. The view is orthographic, so a world point's distance from it (m) is how
-   * far from that point it is drawn on the screen.
-   */
-  sightAt(x: number, y: number): THREE.Ray {
-    return this.aim(x, y).clone();
-  }
-  /**
-   * The map tile under a point of the page, on the ground (whatever stands there): the first place the line of sight meets
-   * the ground's height `ground` (world units at a point, never above `top`), so a cliff face picks the tile on top of it.
-   */
-  tileAt(x: number, y: number, ground: (x: number, z: number) => number = () => 0, top = 0): { x: number; y: number } | null {
-    const p = this.pointOnGround(x, y, ground, top);
-    const t = p && { x: Math.floor(p.x), y: Math.floor(p.y) };
-    return t && t.x >= 0 && t.y >= 0 && t.x < this.map.width && t.y < this.map.height ? t : null;
-  }
-
-  /**
-   * The point of the ground under a point of the page (in tiles, a tile's centre at +0.5), found as `tileAt` finds its tile;
-   * null if the line of sight misses the ground.
-   */
-  pointOnGround(x: number, y: number, ground: (x: number, z: number) => number = () => 0, top = 0): { x: number; y: number } | null {
-    if (!this.groundAt(x, y)) return null;
-    const ray = this.ray, o = ray.origin, d = ray.direction;
-    if (d.y > -1e-6) return null;
-    // From where the ray is at `top`, in steps a tenth of a tile across the ground, to where it meets it; then halve in on it.
-    const k = (t: number) => o.y + d.y * t - ground(o.x + d.x * t, o.z + d.z * t);
-    let t0 = (o.y - top) / -d.y;
-    const step = 0.1 / Math.max(1e-6, Math.hypot(d.x, d.z)), end = o.y / -d.y + step;
-    let t1 = t0;
-    while (t1 < end && k(t1) > 0) { t0 = t1; t1 += step; }
-    for (let i = 0; i < 12; i++) { const m = (t0 + t1) / 2; if (k(m) > 0) t0 = m; else t1 = m; }
-    return { x: o.x + d.x * t1, y: o.z + d.z * t1 };
-  }
+  /** The heading the view is turning to. */
+  get targetHeading() { return this.goalHeading; }
 }

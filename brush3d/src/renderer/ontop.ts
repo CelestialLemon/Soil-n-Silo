@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { DEPTH_ORIGIN_GLSL } from './auxDepth.ts';
 import { DAB_OUT_GLSL, markMaterial, type MaterialKind, type SharedUniforms } from './materials';
 
 // What the game's tools draw over the finished picture (Soil-n-Silo#206): the building being placed, a blueprint of it in
@@ -61,9 +62,10 @@ const CROP_REACH = 4;
 const HIDDEN = /* glsl */ `
 uniform sampler2D uOnTopAux;
 uniform sampler2D uOnTopCrops;
+${DEPTH_ORIGIN_GLSL}
 bool hiddenAt(float depth) {
   ivec2 at = ivec2(gl_FragCoord.xy);
-  float shown = texelFetch(uOnTopAux, at, 0).z, crop = texelFetch(uOnTopCrops, at, 0).r;
+  float shown = auxDepth(texelFetch(uOnTopAux, at, 0).z), crop = texelFetch(uOnTopCrops, at, 0).r;
   return shown > 0.0 && depth > shown + 0.15 + shown * 0.004 + crop * ${CROP_REACH.toFixed(1)};
 }
 vec3 toSrgbOnTop(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
@@ -121,6 +123,7 @@ void main() { outColor = vec4(0.0); }
 // A crop's leaves, flowers and heads are dabs on cards (CROP_DABS): cut to their shape.
 const CROP_FRAG = /* glsl */ `
 uniform sampler2D uOnTopAux;
+${DEPTH_ORIGIN_GLSL}
 varying float vViewDepth;
 layout(location = 0) out vec4 outColor;
 #ifdef CROP_DABS
@@ -130,7 +133,7 @@ void main() {
 #ifdef CROP_DABS
   if (dabOut()) discard;
 #endif
-  float shown = texelFetch(uOnTopAux, ivec2(gl_FragCoord.xy), 0).z;
+  float shown = auxDepth(texelFetch(uOnTopAux, ivec2(gl_FragCoord.xy), 0).z);
   if (shown <= 0.0 || vViewDepth > shown + 0.02 + shown * 0.0007) discard;
   outColor = vec4(1.0);
 }
@@ -206,7 +209,7 @@ export class OnTop {
     this.lineMaterial = new THREE.ShaderMaterial({
       glslVersion: THREE.GLSL3, vertexShader: LINE_VERT, fragmentShader: LINE_FRAG, vertexColors: true, transparent: true,
       depthWrite: false, depthTest: false, side: THREE.DoubleSide,
-      uniforms: { uOnTopAux: this.aux, uOnTopCrops: { value: this.cropTarget.texture }, uOnTopScreen: this.screen },
+      uniforms: { uOnTopAux: this.aux, uOnTopCrops: { value: this.cropTarget.texture }, uDepthOrigin: shared.uDepthOrigin, uOnTopScreen: this.screen },
     });
   }
 
@@ -226,7 +229,7 @@ export class OnTop {
       glslVersion: THREE.GLSL3, vertexShader: PREVIEW_VERT, fragmentShader: PREVIEW_FRAG, vertexColors: !!geometry.getAttribute('color'),
       transparent: true, depthWrite: false, depthFunc: THREE.LessEqualDepth, side: THREE.DoubleSide,
       uniforms: {
-        uOnTopAux: this.aux, uOnTopCrops: { value: this.cropTarget.texture }, uSunDir: this.sunDir,
+        uOnTopAux: this.aux, uOnTopCrops: { value: this.cropTarget.texture }, uDepthOrigin: this.shared.uDepthOrigin, uSunDir: this.sunDir,
         uPreviewColor: { value: new THREE.Color() }, uPreviewLook: this.lookUniform,
       },
     });

@@ -80,7 +80,8 @@ The farm's buildings and props are a set of 28 solarpunk models made for the gam
 
 ## How it draws
 
-- **One G-buffer pass** at the screen's resolution, 4× MSAA: colour, plus view normal, view depth and an ink flag. Its
+- **One G-buffer pass** at the screen's resolution, 4× MSAA: colour, plus view normal, view depth and an ink flag (half
+  floats; the depth stored less the camera target's, where they're finest: `src/renderer/auxDepth.ts`). Its
   silhouettes are drawn first, depth only, so each pixel is painted once, by the surface that shows.
 - **Painted materials** (ground, grass, foliage, water, crops) shade in OKLab: three bands (shade, half-tone, lit) whose edges
   are broken by brush dabs and strokes keyed to world positions, so the paint stays put as the camera moves. Shade leans to the
