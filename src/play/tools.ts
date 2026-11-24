@@ -23,9 +23,10 @@ export const STROKE_STEP: Record<StrokeTool, number> = {
 export const TURN_STEP = Math.PI / 12;
 
 /** Whether a kind takes part in the power (its wires or radius are worth seeing while it's sited or selected). */
-export const isPowerKind = (k: ThingKind) => CATALOG[k].powerRole !== 'none';
+/** A power building or relay: one that projects a wireless field (a thing that only uses power is not one). */
+export const isPowerKind = (k: ThingKind) => CATALOG[k].powerRange > 0;
 
-/** Whether a tool places something that touches the power. */
+/** Whether a tool places a power building or relay. */
 export function placesPower(tool: ToolId): boolean {
   const k = placedKind(tool);
   return k !== null && isPowerKind(k);

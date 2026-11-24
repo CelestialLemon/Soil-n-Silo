@@ -1,4 +1,4 @@
-// Wireless mode: power buildings and free relays each project a soft field. Fields within reach of each other join a
+// Wireless power: power buildings and free relays each project a soft field. Fields within reach of each other join a
 // network; a homestead building or lantern inside a fed network's field is powered. No wires. Only those fields carry
 // power on: a building or lantern that uses power draws from the fields it stands in, but never joins two of them (a
 // lantern between a canopy and a far relay doesn't pass the canopy's power to the relay).
@@ -37,5 +37,5 @@ export function radiusNetwork(s: GameState): PowerState {
     if (nets.length > 0) connected.push(l.id);
     if (nets.some((r) => fed.has(r))) powered.push(l.id);
   });
-  return { mode: 'wireless', spans: [], radii, connected: connected.sort((a, b) => a - b), powered: powered.sort((a, b) => a - b) };
+  return { radii, connected: connected.sort((a, b) => a - b), powered: powered.sort((a, b) => a - b) };
 }

@@ -6,10 +6,10 @@
 
 export type Category = 'homestead' | 'power' | 'prop';
 /**
- * How a thing takes part in the power preview: a `source` makes power, a `store` holds it, a `load` uses it; a `pylon`
- * carries wires (pylons mode) and a `relay` passes the wireless field on (wireless mode).
+ * How a thing takes part in the power preview: a `source` makes power, a `store` holds it, a `load` uses it, and a `relay`
+ * passes the wireless field on.
  */
-export type PowerRole = 'source' | 'store' | 'load' | 'pylon' | 'relay' | 'none';
+export type PowerRole = 'source' | 'store' | 'load' | 'relay' | 'none';
 
 interface Spec {
   label: string; category: Category;
@@ -30,10 +30,8 @@ interface Spec {
   /** For an `onBank` thing: how far out from its middle along its front (local +z) the wheel turns in the race, m. */
   raceOffset: number;
   powerRole: PowerRole;
-  /** How far its power reaches (wire span in pylons mode, field radius in wireless mode), m. 0 when it reaches nowhere. */
+  /** How far its wireless field reaches, m. 0 when it makes none. */
   powerRange: number;
-  /** How high its wires attach above its foot, m. */
-  wireY: number;
 }
 
 const home = { category: 'homestead', padEase: 3.5, maxSlope: 0.14, oneOfEach: true, allowOnField: false, onBank: false, raceOffset: 0, powerRole: 'load', powerRange: 0 } as const;
@@ -41,21 +39,20 @@ const power = { category: 'power', padEase: 2.5, maxSlope: 0.18, oneOfEach: fals
 const prop = { category: 'prop', padEase: 0, maxSlope: 0.35, oneOfEach: false, allowOnField: false, onBank: false, raceOffset: 0, powerRole: 'none', powerRange: 0 } as const;
 
 const SPECS = {
-  farmhouse: { ...home, label: 'Farmhouse', model: 'farmhouse', lo: [-5.8, -5.8], hi: [5.8, 5.8], top: 8.95, wireY: 6.5 },
-  silo: { ...home, label: 'Silo', model: 'silo', padEase: 3, lo: [-3.75, -3.75], hi: [3.75, 3.75], top: 10.05, wireY: 6 },
-  mill: { ...home, label: 'Mill', model: 'mill', padEase: 3, lo: [-3.75, -3.75], hi: [3.75, 3.75], top: 7.75, wireY: 5.5 },
-  bakery: { ...home, label: 'Bakery', model: 'bakery', padEase: 3, lo: [-3.75, -3.8], hi: [3.75, 3.75], top: 7.85, wireY: 5.5 },
-  solar: { ...power, label: 'Solar Canopy', model: 'solar_panel', padEase: 0, allowOnField: true, lo: [-3.7, -2.04], hi: [3.7, 2.62], top: 3.3, wireY: 2.6 },
-  turbine: { ...power, label: 'Wind Turbine', model: 'wind_turbine', maxSlope: 0.25, lo: [-2.58, -1.5], hi: [4.95, 1.57], top: 18.75, wireY: 5 },
-  waterwheel: { ...power, label: 'Water Wheel', model: 'water_wheel', onBank: true, raceOffset: 4.5, maxSlope: 0.2, lo: [-3.75, -3.8], hi: [3.75, 6.79], top: 4.63, wireY: 3.8 },
-  battery: { ...power, label: 'Battery', model: 'battery', powerRole: 'store', lo: [-3.6, -3.6], hi: [3.6, 3.6], top: 4.52, wireY: 3.6 },
-  pylon: { ...prop, label: 'Wooden Pylon', category: 'power', model: 'pylon', maxSlope: 0.45, powerRole: 'pylon', powerRange: 15, lo: [-1, -0.4], hi: [1, 0.88], top: 5.72, wireY: 5.4 },
-  // No relay model yet: the relay mast borrows the pylon's (a renderer may dress it differently).
-  relay: { ...prop, label: 'Power Relay', category: 'power', model: 'pylon', maxSlope: 0.45, powerRole: 'relay', powerRange: 15, lo: [-1, -0.4], hi: [1, 0.88], top: 5.72, wireY: 5.4 },
-  bench: { ...prop, label: 'Bench', model: 'bench', lo: [-1.98, -0.46], hi: [1.98, 0.26], top: 1, wireY: 0.8 },
-  lantern: { ...prop, label: 'Solar Lantern', model: 'lantern', powerRole: 'load', lo: [-0.4, -0.3], hi: [0.4, 0.82], top: 3.31, wireY: 3 },
-  planter: { ...prop, label: 'Planter', model: 'planter', lo: [-1.7, -1.6], hi: [1.78, 1.4], top: 0.56, wireY: 0.5 },
-  crates: { ...prop, label: 'Crates', model: 'crates', lo: [-1.5, -1.2], hi: [1.26, 1.26], top: 1.57, wireY: 1.2 },
+  farmhouse: { ...home, label: 'Farmhouse', model: 'farmhouse', lo: [-5.8, -5.8], hi: [5.8, 5.8], top: 8.95 },
+  silo: { ...home, label: 'Silo', model: 'silo', padEase: 3, lo: [-3.75, -3.75], hi: [3.75, 3.75], top: 10.05 },
+  mill: { ...home, label: 'Mill', model: 'mill', padEase: 3, lo: [-3.75, -3.75], hi: [3.75, 3.75], top: 7.75 },
+  bakery: { ...home, label: 'Bakery', model: 'bakery', padEase: 3, lo: [-3.75, -3.8], hi: [3.75, 3.75], top: 7.85 },
+  solar: { ...power, label: 'Solar Canopy', model: 'solar_panel', padEase: 0, allowOnField: true, lo: [-3.7, -2.04], hi: [3.7, 2.62], top: 3.3 },
+  turbine: { ...power, label: 'Wind Turbine', model: 'wind_turbine', maxSlope: 0.25, lo: [-2.58, -1.5], hi: [4.95, 1.57], top: 18.75 },
+  waterwheel: { ...power, label: 'Water Wheel', model: 'water_wheel', onBank: true, raceOffset: 4.5, maxSlope: 0.2, lo: [-3.75, -3.8], hi: [3.75, 6.79], top: 4.63 },
+  battery: { ...power, label: 'Battery', model: 'battery', powerRole: 'store', lo: [-3.6, -3.6], hi: [3.6, 3.6], top: 4.52 },
+  // No relay model yet: the relay mast borrows brush3d's slim pylon (a renderer may dress it differently).
+  relay: { ...prop, label: 'Power Relay', category: 'power', model: 'pylon', maxSlope: 0.45, powerRole: 'relay', powerRange: 15, lo: [-1, -0.4], hi: [1, 0.88], top: 5.72 },
+  bench: { ...prop, label: 'Bench', model: 'bench', lo: [-1.98, -0.46], hi: [1.98, 0.26], top: 1 },
+  lantern: { ...prop, label: 'Solar Lantern', model: 'lantern', powerRole: 'load', lo: [-0.4, -0.3], hi: [0.4, 0.82], top: 3.31 },
+  planter: { ...prop, label: 'Planter', model: 'planter', lo: [-1.7, -1.6], hi: [1.78, 1.4], top: 0.56 },
+  crates: { ...prop, label: 'Crates', model: 'crates', lo: [-1.5, -1.2], hi: [1.26, 1.26], top: 1.57 },
 } as const satisfies Record<string, Spec>;
 
 export type ThingKind = keyof typeof SPECS;

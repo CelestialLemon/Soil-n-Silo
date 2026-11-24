@@ -4,7 +4,7 @@ import type { ThingKind } from './catalog.ts';
 import type { Point2 } from './geom.ts';
 import { createGrid, type Grid, type Rect } from './grid.ts';
 
-export const STATE_VERSION = 2;
+export const STATE_VERSION = 3;
 
 /** The valley's one season (brush3d's SEASONS). */
 export const SEASONS = ['spring', 'summer', 'autumn', 'winter'] as const;
@@ -46,15 +46,14 @@ export interface Bridge { id: string; trackId: number; x: number; z: number; yaw
 
 export interface Hedge { id: number; points: Point2[]; path: Point2[] }
 
-export type PowerMode = 'pylons' | 'wireless';
-export interface Vec3 { x: number; y: number; z: number }
-/** A wire between two things (pylons mode). */
-export interface WireSpan { from: number; to: number; a: Vec3; b: Vec3 }
-/** A thing's soft wireless field (wireless mode). */
+/** A power building's or relay's soft wireless field. */
 export interface PowerRadius { id: number; x: number; z: number; radius: number; powered: boolean }
-/** The power preview: which things join a network and which get power (Milestone 1: connectivity, no watts yet). */
+/**
+ * The power preview: which things join a network and which get power (Milestone 1: connectivity, no watts yet). Power is
+ * wireless: no lines, only the fields round power buildings and relays.
+ */
 export interface PowerState {
-  mode: PowerMode; spans: WireSpan[]; radii: PowerRadius[];
+  radii: PowerRadius[];
   /** Things on a network of two or more. */
   connected: number[];
   /** Things on a network with a source or a store. */
@@ -87,7 +86,6 @@ export interface GameState {
   bridges: Bridge[];
   hedges: Hedge[];
   plantedTrees: Tree[];
-  powerMode: PowerMode;
   power: PowerState;
   nextId: number;
 }
@@ -98,7 +96,7 @@ export function blankState(seed: number, season: Season): GameState {
     version: STATE_VERSION, seed, season, revision: 0, grid: createGrid(),
     valley: { homestead: { x: 0, z: 0 }, brook: [], brookLevel: [], pond: { x: 0, z: 0, radius: 0, level: 0 } },
     crags: [], wildTrees: [], things: [], fields: [], channels: [], tracks: [], bridges: [], hedges: [], plantedTrees: [],
-    powerMode: 'pylons', power: { mode: 'pylons', spans: [], radii: [], connected: [], powered: [] }, nextId: 1,
+    power: { radii: [], connected: [], powered: [] }, nextId: 1,
   };
 }
 

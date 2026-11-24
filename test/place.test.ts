@@ -42,7 +42,7 @@ test('the rules say why a spot is wrong', () => {
   assert.ok(placeThing(s, 'solar', -40, -40, 0).ok && placeThing(s, 'solar', -30, -40, 0).ok);
   const steep = land({ height: (x) => 0.3 * x });
   no(canPlace(steep, 'farmhouse', 0, 0, 0), /steep/);
-  assert.ok(canPlace(steep, 'pylon', 0, 0, 0).ok, 'a pole stands on a slope a house cannot');
+  assert.ok(canPlace(steep, 'relay', 0, 0, 0).ok, 'a relay mast stands on a slope a house cannot');
   const v = valley(), crag = v.crags[0];
   no(canPlace(v, 'bench', crag.x, crag.z, 0), /rock/);
   const tree = v.wildTrees.find((t) => Math.abs(t.x) < 50 && Math.abs(t.z) < 50 && v.crags.every((c) => Math.hypot(c.x - t.x, c.z - t.z) > 6));

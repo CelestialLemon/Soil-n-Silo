@@ -1,9 +1,9 @@
 // The play layer: boots a valley from the page's address and wires the game's state (src/game/), the world that draws it
 // (src/world/) and the overlay (src/ui/) together through the controller (controller.ts) and the page's input (input.ts).
 //
-// The address opens the valley (src/world/options.ts): `?seed=`, `?season=`, `?hour=`, `?weather=`, `?quality=`, and the
-// Milestone 1 look choices `?yaw=snap|orbit` and `?wiring=pylons|wireless` (docs/ROADMAP.md).
-import { apply, generateValley } from '../game/index.ts';
+// The address opens the valley (src/world/options.ts): `?seed=`, `?season=`, `?hour=`, `?weather=`, `?quality=`, and
+// `?yaw=orbit|snap` to override the player's camera setting (a free orbit unless they chose snapped views).
+import { generateValley } from '../game/index.ts';
 import { createUi, mountLoading } from '../ui/index.ts';
 import { createWorld, readUrlOptions } from '../world/index.ts';
 import { Play } from './controller.ts';
@@ -26,7 +26,6 @@ export async function startPlay(canvas: HTMLCanvasElement, uiRoot: HTMLElement):
   try {
     const options = readUrlOptions(window.location.search);
     const state = generateValley(options.seed, options.season);
-    if (state.powerMode !== options.wiring) apply(state, { type: 'setPowerMode', mode: options.wiring });
     const world = await createWorld(canvas, state, options);
     stops.push(() => world.dispose());
     const play = new Play(state, world);

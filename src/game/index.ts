@@ -18,11 +18,13 @@ export { hash3, makeRng, type Rng } from './rng.ts';
 // State and its parts.
 export {
   blankState, type Bridge, type Channel, type Crag, type Crop, CROPS, type Field, type FlowSample, type GameState, type Hedge,
-  type PowerMode, type PowerRadius, type PowerState, type Season, SEASONS, STATE_VERSION, type Thing, type Track, type Tree,
-  TREE_SPECIES, type TreeSpecies, type Valley, type Vec3, type WireSpan,
+  type PowerRadius, type PowerState, type Season, SEASONS, STATE_VERSION, type Thing, type Track, type Tree,
+  TREE_SPECIES, type TreeSpecies, type Valley,
 } from './state.ts';
 export { CATALOG, type Category, isThingKind, type PowerRole, RACE_START, type ThingDef, type ThingKind, THING_KINDS } from './catalog.ts';
-export { BANK_FREEBOARD, CLEARING, generateValley, naturalize, SIDE_RISE, VALLEY_FALL } from './valley/generate.ts';
+export {
+  BANK_FREEBOARD, CLEARING, generateValley, naturalize, SIDE_RISE, TERRACE_DIP, TERRACE_WIDTH, VALLEY_FALL,
+} from './valley/generate.ts';
 
 // Edits.
 export { type Action, apply } from './actions.ts';
@@ -43,4 +45,4 @@ export {
   trackPath,
 } from './paths.ts';
 export { BRIDGE_WIDTH, checkCrossings, MAX_SPAN, recomputeBridges, trackBridges } from './bridges.ts';
-export { POWER_MODES, powerFor, setPowerMode } from './power/graph.ts';
+export { powerFor } from './power/graph.ts';

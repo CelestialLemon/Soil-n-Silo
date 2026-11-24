@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   canPlace, cellHeightAt, cellX, cellZ, CLEARING, COVER, generateValley, GRID_N, heightAt, isWet, slopeAt, STATE_VERSION,
-  VALLEY_HALF, VERT_N,
+  VALLEY_FALL, VALLEY_HALF, VERT_N,
 } from '../src/game/index.ts';
-import { same, valley } from './helpers.ts';
+import { brookSpot, same, SEEDS, valley } from './helpers.ts';
 
 test('the same seed grows the same valley; another seed grows another', () => {
   const a = valley(), b = generateValley(7, 'summer'), c = generateValley(8, 'summer');
@@ -125,5 +125,32 @@ test('every season grows', () => {
     const s = generateValley(3, season);
     assert.equal(s.season, season);
     assert.ok(s.wildTrees.length > 0);
+  }
+});
+
+test('the valley falls steadily down the brook, about 5 m across its 120 m', () => {
+  for (const seed of SEEDS) {
+    const { brook, brookLevel } = generateValley(seed, 'spring').valley;
+    const levelAt = (x: number) => brookLevel[brook.reduce((best, p, i) => (Math.abs(p.x - x) < Math.abs(brook[best].x - x) ? i : best), 0)];
+    const drop = Math.abs(levelAt(-60) - levelAt(60));
+    assert.ok(drop >= 4.5 && drop <= 6.5, `seed ${seed}: the brook falls ${drop.toFixed(2)} m across the valley`);
+    assert.ok(Math.abs(VALLEY_FALL * 120 - 5.4) < 1e-9);
+  }
+});
+
+test('beside the upper and middle brook a meadow terrace lies below its water; the far side rises above it', () => {
+  for (const seed of SEEDS) {
+    const s = generateValley(seed, 'spring'), g = s.grid;
+    for (const offset of [-15, 0]) {
+      const b = brookSpot(s, offset);
+      // Out across the terrace, and on down it: from a little to a couple of metres below the brook's water.
+      for (const [along, out] of [[0, 16], [0, 22], [8, 14], [12, 24]]) {
+        const p = b.at(along, out), below = b.level - heightAt(g, p.x, p.z);
+        assert.ok(below > 0.05 && below < 2.5, `seed ${seed}, brook ${b.i}: terrace ${below.toFixed(2)} m below the water ${out} m out, ${along} m down`);
+      }
+      // Across the brook the land climbs: a rill led there meets a sill.
+      const far = b.at(0, -12);
+      assert.ok(heightAt(g, far.x, far.z) > b.level + 0.3, `seed ${seed}, brook ${b.i}: the far side rises`);
+    }
   }
 });

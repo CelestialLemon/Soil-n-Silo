@@ -7,10 +7,9 @@ import { eraseField, type FieldEdit, paintField } from './fields.ts';
 import type { Point2 } from './geom.ts';
 import { moveThing, placeThing, removeThing, rotateThing } from './place.ts';
 import { addHedge, addTrack, plantTree, removeHedge, removeTrack, removeTree } from './paths.ts';
-import { setPowerMode } from './power/graph.ts';
 import { ok, type Result } from './result.ts';
 import { settle } from './settle.ts';
-import type { Crop, GameState, PowerMode, TreeSpecies } from './state.ts';
+import type { Crop, GameState, TreeSpecies } from './state.ts';
 
 export type Action =
   | { type: 'place'; kind: ThingKind; x: number; z: number; yaw: number }
@@ -26,8 +25,7 @@ export type Action =
   | { type: 'addHedge'; points: Point2[] }
   | { type: 'removeHedge'; id: number }
   | { type: 'plantTree'; x: number; z: number; species?: TreeSpecies }
-  | { type: 'removeTree'; id: number }
-  | { type: 'setPowerMode'; mode: PowerMode };
+  | { type: 'removeTree'; id: number };
 
 const fieldChange = (s: GameState, r: Result<FieldEdit, string>): Result<Change, string> =>
   r.ok ? ok(settle(s, { fields: r.value })) : r;
@@ -49,6 +47,5 @@ export function apply(s: GameState, a: Action): Result<Change, string> {
     case 'removeHedge': return removeHedge(s, a.id);
     case 'plantTree': return plantTree(s, a.x, a.z, a.species);
     case 'removeTree': return removeTree(s, a.id);
-    case 'setPowerMode': return setPowerMode(s, a.mode);
   }
 }

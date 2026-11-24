@@ -7,7 +7,7 @@ interface Model { lo: [number, number, number]; hi: [number, number, number]; gr
 const models = JSON.parse(readFileSync(new URL('../brush3d/src/models/index.json', import.meta.url), 'utf8')) as Record<string, Model>;
 
 test('every starter thing is drawn with one of brush3d\'s models', () => {
-  assert.deepEqual([...THING_KINDS].sort(), ['bakery', 'battery', 'bench', 'crates', 'farmhouse', 'lantern', 'mill', 'planter', 'pylon', 'relay', 'silo', 'solar', 'turbine', 'waterwheel']);
+  assert.deepEqual([...THING_KINDS].sort(), ['bakery', 'battery', 'bench', 'crates', 'farmhouse', 'lantern', 'mill', 'planter', 'relay', 'silo', 'solar', 'turbine', 'waterwheel']);
   for (const k of THING_KINDS) assert.ok(models[CATALOG[k].model], `${k}: model ${CATALOG[k].model}`);
 });
 
@@ -41,13 +41,15 @@ test('the roster: one of each homestead building, repeatable power, free props',
   assert.deepEqual(THING_KINDS.filter((k) => CATALOG[k].allowOnField), ['solar']);
   for (const k of ['solar', 'turbine', 'waterwheel'] as const) assert.equal(CATALOG[k].powerRole, 'source');
   assert.equal(CATALOG.battery.powerRole, 'store');
-  assert.equal(CATALOG.pylon.powerRole, 'pylon');
   assert.equal(CATALOG.relay.powerRole, 'relay');
+  assert.equal(CATALOG.relay.category, 'power');
   for (const k of ['farmhouse', 'silo', 'mill', 'bakery', 'lantern'] as const) assert.equal(CATALOG[k].powerRole, 'load');
   for (const k of ['bench', 'planter', 'crates'] as const) { assert.equal(CATALOG[k].category, 'prop'); assert.equal(CATALOG[k].powerRole, 'none'); }
   for (const k of THING_KINDS) {
     const d = CATALOG[k];
-    assert.ok(d.label.length > 0 && d.maxSlope > 0 && d.padEase >= 0 && d.wireY > 0 && d.wireY <= Math.max(d.top, 0.8));
+    assert.ok(d.label.length > 0 && d.maxSlope > 0 && d.padEase >= 0 && d.top > 0);
+    // Power is wireless: only what makes or passes on a field reaches out, and none of it by wire.
+    assert.equal(d.powerRange > 0, d.powerRole === 'source' || d.powerRole === 'store' || d.powerRole === 'relay', `${k}: its field`);
     if (d.category === 'homestead') assert.ok(d.padEase >= 2.5 && d.padEase <= 3.5, `${k} settles a soft pad`);
   }
 });

@@ -1,10 +1,17 @@
 // The seeded pocket valley: ~120 m of rolling meadow inside rising hills, a brook winding down it through a calm pond and
 // out, rocky knolls, wild groves, and a gentle sunlit spot by the brook kept for the farmhouse.
 //
-// The land falls gently down the valley (along the brook) and rises gently away from the brook to either side, so a rill
-// taken off the brook and led downstream along the slope flows (the ground ahead is lower than the brook it left), and one
-// led straight uphill runs dry within a few metres. The brook's surface never rises downstream; its bed and the pond's
-// are carved into the valley with shelving banks a little above the water, so the banks hold it.
+// Its shape is a hillside farm's, built for gravity irrigation (a leat or acequia):
+// - The whole valley falls steadily down the brook's run (VALLEY_FALL: about 5.4 m across its 120 m), and the brook falls
+//   with it, so ground a little way downstream always lies below the brook's water upstream.
+// - On one side (the farming side, where the homestead stands) the brook runs along its own low natural levee, and a
+//   broad, calm meadow terrace falls gently away from it (TERRACE_DIP) before the hills rise beyond TERRACE_WIDTH. The
+//   terrace beside the upper and middle brook lies below the brook's water, so a rill tapped there and led out across
+//   the terrace, or along it downstream, runs a long way on gravity alone.
+// - The other side climbs straight away from the brook (SIDE_RISE), as do the hills round the valley and the ground up
+//   the valley: a rill led that way meets a dry sill within a few metres, which keeps the puzzle.
+// The brook's surface never rises downstream; its bed and the pond's are carved into the valley with shelving banks a
+// little above the water, so the banks hold it.
 import { fbm, noise2 } from '../noise.ts';
 import { catmullRom, clamp, lerp, PathIndex, type Point2, smoothstep } from '../geom.ts';
 import { cellHeightAt, cellX, cellZ, COVER, type Grid, isWet, SOIL, VALLEY_HALF, vertexX, vertexZ } from '../grid.ts';
@@ -13,23 +20,27 @@ import { blankState, type Crag, type GameState, type Season, type Tree, type Tre
 import { wetness } from '../wet.ts';
 import { powerFor } from '../power/graph.ts';
 
-/** How far the land falls per metre down the valley. */
-export const VALLEY_FALL = 0.03;
-/** How far it rises per metre away from the brook. */
-export const SIDE_RISE = 0.025;
+/** How far the land falls per metre down the valley (and the brook with it). */
+export const VALLEY_FALL = 0.045;
+/** How far the far side rises per metre away from the brook. */
+export const SIDE_RISE = 0.04;
+/** How far the farming side's meadow terrace falls away below the brook's levee, m. */
+export const TERRACE_DIP = 0.7;
+/** How far the terrace runs out from the brook before the hills begin to rise, m. */
+export const TERRACE_WIDTH = 34;
 /** How far the brook's banks stand above its water, m. */
-export const BANK_FREEBOARD = 0.2;
+export const BANK_FREEBOARD = 0.15;
 /** How deep the brook's bed lies below its water at the middle, m. */
 const BROOK_DEPTH = 0.7;
 const POND_DEPTH = 1.1;
 /** How far the brook's water drops at least per metre downstream. */
 const BROOK_DROP = 0.004;
-/** How steeply the brook may come down to the pond, per metre. */
-const POND_APPROACH = 0.03;
+/** How steeply the brook may come down to the pond, per metre (steeper than the valley falls, so it never cuts in deep). */
+const POND_APPROACH = 0.07;
 /** The brook's flow, m/s. */
 const BROOK_SPEED = 0.8;
-/** How far from the water's edge the banks are raised to hold it, m. */
-const LEVEE = 3.5;
+/** How far from the water's edge the banks stand level to hold it, m, and how steeply they ease down beyond, per metre. */
+const LEVEE = 2.5, LEVEE_FALL = 0.1;
 /** The homestead clearing's radius, m. */
 export const CLEARING = 16;
 
@@ -37,6 +48,8 @@ interface Knoll { x: number; z: number; radius: number; height: number }
 
 interface Brook {
   path: Point2[]; index: PathIndex; level: number[]; half: number[];
+  /** The farming side, where the terrace lies: 1 left of downstream, -1 right. */
+  farm: 1 | -1;
   pond: { x: number; z: number; radius: number; level: number; seed: number };
 }
 
@@ -60,30 +73,36 @@ export function generateValley(seed: number, season: Season): GameState {
   const pondAt = course[nearestIndex(course, (p) => uOf(p.x), rng.range(6, 18))];
   const pondSeed = subSeed(seed, 2), pondR = rng.range(7, 9);
   const homeAt = nearestIndex(course, (p) => uOf(p.x), rng.range(-24, -12));
+  // The farming side: the homestead's, where the terrace lies.
   const side = rng.next() < 0.5 ? 1 : -1;
   const home = offsetFrom(course, homeAt, side * 16);
+  const onFarm = (x: number, z: number, n = index.nearest(x, z)) => sideOf(course, n.seg, x, z) === side;
 
-  // Knolls for the crags: up the valley's sides, away from the brook, the pond and the homestead.
+  // Knolls for the crags: up the valley's sides, away from the brook, the terrace, the pond and the homestead.
   const knolls: Knoll[] = [];
   for (let tries = 0; knolls.length < 4 && tries < 200; tries++) {
     const x = rng.range(-50, 50), z = rng.range(-50, 50);
-    const dB = index.nearest(x, z).d;
-    if (dB < 18 || Math.hypot(x - home.x, z - home.z) < CLEARING + 14 || Math.hypot(x - pondAt.x, z - pondAt.z) < pondR + 14) continue;
+    const n = index.nearest(x, z), dB = n.d;
+    if (dB < 18 || (onFarm(x, z, n) && dB < TERRACE_WIDTH + 6) || Math.hypot(x - home.x, z - home.z) < CLEARING + 14 || Math.hypot(x - pondAt.x, z - pondAt.z) < pondR + 14) continue;
     if (knolls.some((k) => Math.hypot(k.x - x, k.z - z) < 22)) continue;
     knolls.push({ x, z, radius: rng.range(6, 9), height: rng.range(1.8, 3.2) });
   }
 
   // The natural ground before the water is carved.
   const nSeed = subSeed(seed, 3);
-  const ground = (x: number, z: number, dB = index.nearest(x, z).d) => {
+  const ground = (x: number, z: number, near: Near = index.nearest(x, z)) => {
+    const dB = near.d, farm = onFarm(x, z, near);
     const dH = Math.hypot(x - home.x, z - home.z);
     const r = Math.max(Math.abs(x), Math.abs(z));
-    let h = -VALLEY_FALL * uOf(x) + SIDE_RISE * dB + 0.0012 * Math.max(0, dB - 22) ** 2;
+    // Down the valley; across it, the terrace falling away from the brook's levee on the farming side, the far side rising.
+    let h = -VALLEY_FALL * uOf(x) + (farm ? terrace(dB) : SIDE_RISE * dB + 0.0012 * Math.max(0, dB - 22) ** 2);
     // The hills round the valley, parting where the brook comes in and goes out.
     h += (9 * smoothstep(52, 78, r) + 0.12 * Math.max(0, r - 54)) * smoothstep(5, 26, dB);
-    // Rolling ground, calm by the brook and in the homestead's clearing.
+    // Rolling ground: barely a ripple on the terrace, calm by the brook (so the far bank climbs plainly from it) and in
+    // the homestead's clearing.
     const calm = smoothstep(5, 16, dB) * smoothstep(CLEARING - 2, CLEARING + 10, dH);
-    h += 1.4 * fbm(nSeed, x / 24, z / 24, 4) * calm;
+    const roll = farm ? lerp(0.3, 1.4, smoothstep(TERRACE_WIDTH - 6, TERRACE_WIDTH + 8, dB)) : lerp(0.4, 1.4, smoothstep(10, 26, dB));
+    h += roll * fbm(nSeed, x / 24, z / 24, 4) * calm;
     for (const k of knolls) h += k.height * Math.exp(-((x - k.x) ** 2 + (z - k.z) ** 2) / (k.radius * k.radius));
     return h;
   };
@@ -91,21 +110,16 @@ export function generateValley(seed: number, season: Season): GameState {
   // The brook's water: never rising downstream, flat across the pond.
   const pondR0 = (x: number, z: number) => pondRadius(pondSeed, pondR, Math.atan2(z - pondAt.z, x - pondAt.x));
   const inPond = (x: number, z: number) => Math.hypot(x - pondAt.x, z - pondAt.z) < pondR0(x, z);
-  // The pond fills to just below the lowest ground round its rim, so all its banks hold it.
-  let rim = Infinity;
-  for (let k = 0; k < 64; k++) {
-    const a = (k / 64) * Math.PI * 2, r = pondRadius(pondSeed, pondR, a) + 1.5;
-    const x = pondAt.x + Math.cos(a) * r, z = pondAt.z + Math.sin(a) * r;
-    if (index.nearest(x, z).d > 4) rim = Math.min(rim, ground(x, z) - BANK_FREEBOARD);
-  }
   // Down to the pond the water never rises; it eases down to the pond's level as it nears it (no step where it enters),
-  // lies flat across the pond, then runs on down.
+  // lies flat across the pond, then runs on down. The pond fills to where the brook comes in: on its downhill side the
+  // land falls away, and a low natural bank (carve's levee, like a mill pond's dam) holds it, so the brook above it never
+  // has to cut down into the valley to reach it.
   const natural = course.map((p) => ground(p.x, p.z) - BANK_FREEBOARD);
   const entry = course.findIndex((p) => inPond(p.x, p.z));
   if (entry <= 0) throw new Error('The pond missed the brook');
   const level: number[] = [], half: number[] = [];
   for (let i = 0; i < entry; i++) level.push(Math.min(i > 0 ? level[i - 1] - BROOK_DROP : Infinity, natural[i]));
-  const pondLevel = Math.min(level[entry - 1] - BROOK_DROP, natural[entry], rim);
+  const pondLevel = Math.min(level[entry - 1] - BROOK_DROP, natural[entry]);
   for (let i = entry - 1, along = 0; i >= 0; i--) {
     along += Math.hypot(course[i + 1].x - course[i].x, course[i + 1].z - course[i].z);
     level[i] = Math.min(level[i], pondLevel + POND_APPROACH * along);
@@ -120,7 +134,7 @@ export function generateValley(seed: number, season: Season): GameState {
     level.push(Math.max(Math.min(level[i - 1] - BROOK_DROP, natural[i]), Math.min(level[i - 1] - BROOK_DROP, pondLevel - POND_APPROACH * along)));
   }
   course.forEach((_p, i) => half.push(1.5 + 0.6 * (i / (course.length - 1)) + 0.25 * noise2(subSeed(seed, 4), i * 0.05, 0)));
-  const brook: Brook = { path: course, index, level, half, pond: { x: pondAt.x, z: pondAt.z, radius: pondR, level: pondLevel, seed: pondSeed } };
+  const brook: Brook = { path: course, index, level, half, farm: side, pond: { x: pondAt.x, z: pondAt.z, radius: pondR, level: pondLevel, seed: pondSeed } };
 
   carve(g, ground, brook);
   markWater(g, brook);
@@ -130,6 +144,22 @@ export function generateValley(seed: number, season: Season): GameState {
   naturalize(s);
   s.valley = { homestead: home, brook: course, brookLevel: level, pond: { x: pondAt.x, z: pondAt.z, radius: pondR, level: pondLevel } };
   return s;
+}
+
+/** The nearest spot on the brook's centreline: its distance, segment and place along it. */
+type Near = ReturnType<PathIndex['nearest']>;
+
+/**
+ * The farming side's cross-section, by distance from the brook's centreline: level on the brook's low natural levee, then
+ * falling TERRACE_DIP over the next twenty metres into a broad meadow terrace, rising again past TERRACE_WIDTH to the hills.
+ */
+const terrace = (d: number) =>
+  -TERRACE_DIP * smoothstep(2, 20, d) + 0.02 * Math.max(0, d - TERRACE_WIDTH) + 0.0012 * Math.max(0, d - TERRACE_WIDTH - 6) ** 2;
+
+/** Which side of the path a point lies, from its nearest segment: 1 left of downstream (as offsetFrom), -1 right. */
+function sideOf(path: readonly Point2[], seg: number, x: number, z: number): 1 | -1 {
+  const a = path[Math.max(0, Math.min(path.length - 2, seg))], b = path[Math.max(1, Math.min(path.length - 1, seg + 1))];
+  return (b.x - a.x) * (z - a.z) - (b.z - a.z) * (x - a.x) >= 0 ? 1 : -1;
 }
 
 function nearestIndex(path: readonly Point2[], key: (p: Point2) => number, target: number): number {
@@ -155,25 +185,26 @@ function waterNear(b: Brook, x: number, z: number, maxD = Infinity) {
   const i = Math.max(0, n.seg), j = Math.min(b.path.length - 1, i + 1);
   const wB = lerp(b.level[i], b.level[j], n.t), hw = lerp(b.half[i], b.half[j], n.t);
   const rp = Math.hypot(x - b.pond.x, z - b.pond.z), R = pondRadius(b.pond.seed, b.pond.radius, Math.atan2(z - b.pond.z, x - b.pond.x));
-  return { dB: n.d, wB, hw, eB: n.d - hw, seg: i, eP: rp - R, R };
+  return { near: n, dB: n.d, wB, hw, eB: n.d - hw, seg: i, eP: rp - R, R };
 }
 
 /** Carves the brook's and pond's beds and shelving banks into the natural ground. */
-function carve(g: Grid, ground: (x: number, z: number, dB?: number) => number, b: Brook) {
+function carve(g: Grid, ground: (x: number, z: number, near?: Near) => number, b: Brook) {
   const W = g.nx + 1;
   const bank = (w: number, e: number) => w + BANK_FREEBOARD * smoothstep(0, 1.2, e) + 0.14 * Math.max(0, e - 1.2);
   for (let iz = 0; iz <= g.nz; iz++) for (let ix = 0; ix <= g.nx; ix++) {
     const x = vertexX(g, ix), z = vertexZ(g, iz), n = waterNear(b, x, z);
-    let h = ground(x, z, n.dB);
+    let h = ground(x, z, n.near);
     const wP = b.pond.level;
     // The brook: a rounded bed under its water, shelving banks just above it.
     const pb = n.eB <= 0 ? n.wB - BROOK_DEPTH * (1 - (n.dB / n.hw) ** 2) : bank(n.wB, n.eB);
     // The pond: shelving into a deeper middle.
     const pp = n.eP <= 0 ? wP - POND_DEPTH * smoothstep(0, Math.min(4, n.R * 0.6), -n.eP) - 0.05 : bank(wP, n.eP);
     h = Math.min(h, pb, pp);
-    // Banks hold the water: dry ground beside it never dips below the water's surface.
-    if (n.eB > 0 && n.eP > 0 && n.eB < LEVEE) h = Math.max(h, n.wB + 0.1 * Math.min(1, n.eB / 0.8));
-    if (n.eP > 0 && n.eB > 0 && n.eP < LEVEE) h = Math.max(h, wP + 0.1 * Math.min(1, n.eP / 0.8));
+    // Banks hold the water: dry ground beside it never dips below the water's surface, and where the land beyond lies
+    // lower (the terrace), the bank eases down to it as a low natural levee.
+    const levee = (w: number, e: number) => w + 0.1 * Math.min(1, e / 0.8) - LEVEE_FALL * Math.max(0, e - LEVEE);
+    if (n.eB > 0 && n.eP > 0) h = Math.max(h, levee(n.wB, n.eB), levee(wP, n.eP));
     g.baseHeight[iz * W + ix] = h;
   }
 }
@@ -295,8 +326,9 @@ function grow(s: GameState, rng: ReturnType<typeof makeRng>, b: Brook, home: Poi
   // Groves on the valley's sides.
   for (let gIdx = 0, tries = 0; gIdx < 4 && tries < 60; tries++) {
     const cx = rng.range(-46, 46), cz = rng.range(-46, 46);
-    const dB = b.index.nearest(cx, cz).d;
-    if (dB < 10 || !clear(cx, cz, 10)) continue;
+    const n = b.index.nearest(cx, cz);
+    // Off the terrace, which is kept open for fields and rills.
+    if (n.d < 10 || (sideOf(b.path, n.seg, cx, cz) === b.farm && n.d < TERRACE_WIDTH) || !clear(cx, cz, 10)) continue;
     gIdx++;
     const species = rng.pick(broadleaf), count = 3 + rng.int(5);
     for (let t = 0; t < count * 4 && count > 0; t++) {

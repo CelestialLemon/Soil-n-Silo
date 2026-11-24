@@ -235,33 +235,13 @@
 .ui-moment-dusk .ui-moment-dot { background: #8a77a8; }
 
 .ui-weather { min-width: 7.2em; }
-.ui-turns { display: flex; }
+.ui-turns { display: flex; align-items: center; }
+/* The camera's orbit/snapped setting: a small soft pill, quieter than the turns beside it. */
+.ui-camera-mode { width: 1.85em; height: 1.85em; margin-left: 0.2em; color: var(--ink-3); background: var(--wash); }
+.ui-camera-mode:hover { color: var(--ink); }
+.ui-camera-mode .ui-icon { width: 1.05em; height: 1.05em; }
+.ui-power-view.is-on { background: var(--water-soft); color: var(--ink); }
 
-.ui-compare { border-radius: 1em; padding: 0.3em 0.55em 0.45em; min-width: 17em; }
-.ui-compare.is-folded { min-width: 0; padding-bottom: 0.3em; }
-.ui-compare-head {
-  display: flex;
-  align-items: center;
-  gap: 0.4em;
-  width: 100%;
-  padding: 0.15em 0.1em;
-  color: var(--ink-3);
-}
-.ui-compare-head:hover { color: var(--ink-2); }
-.ui-compare-title { flex: 1; text-align: left; font-size: 0.7em; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
-.ui-compare-chevron { width: 1em; height: 1em; transition: transform 220ms var(--glide); }
-.ui-compare.is-folded .ui-compare-chevron { transform: rotate(90deg); }
-.ui-compare-body { display: grid; gap: 0.35em; margin-top: 0.25em; }
-.ui-compare-row { display: flex; align-items: center; gap: 0.5em; justify-content: space-between; }
-.ui-compare-label { font-size: 0.8em; color: var(--ink-2); }
-.ui-compare-query {
-  justify-self: end;
-  font: 0.7em/1.2 ui-monospace, "SF Mono", "DejaVu Sans Mono", Menlo, monospace;
-  color: var(--ink-3);
-  user-select: text;
-  -webkit-user-select: text;
-  pointer-events: auto;
-}
 
 /* ---- Toasts (top middle) ---- */
 /* Below the sky strip's line and between the postcard and the preview choices, so a toast never covers either. */

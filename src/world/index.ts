@@ -4,15 +4,15 @@
 // camera's eases, the meadow's rebuilds, the moving parts) and answers the play layer's questions about the picture: what's
 // under the pointer, where a point of the world is on the page.
 //
-// Two look choices of Milestone 1 can be flipped on the preview (docs/ROADMAP.md): the camera's turn (`?yaw=snap|orbit`,
-// setYawMode) and the wiring (`?wiring=pylons|wireless`). The world draws the power as the state has it (state.power);
-// setWiringMode records the choice in the URL, and the play layer applies the game's `setPowerMode` action with it.
+// The camera turns in a free orbit by default, or in snapped 90° views: the player's setting (setYawMode), remembered in
+// the browser, which a link's `?yaw=orbit|snap` overrides. The world draws the power as the state has it (state.power):
+// the soft wireless fields round power buildings and relays, no lines.
 import { type BrushRenderer as Renderer, BrushRenderer, QUALITY, type WeatherName } from '../../brush3d/src/index.ts';
 import { type Change, COVER, type GameState, polylineDistance } from '../game/index.ts';
 import { CameraRig, START_ZOOM } from './camera.ts';
 import { Fields } from './fields.ts';
 import { Meadow } from './meadow.ts';
-import { type WorldOptions, type WiringMode, type YawMode, writeUrlParam } from './options.ts';
+import { storeYawMode, type WorldOptions, type YawMode, writeUrlParam } from './options.ts';
 import { Bridges } from './paths.ts';
 import { Sky, type Speed } from './sky.ts';
 import { terrainMap, syncTerrain } from './terrain.ts';
@@ -23,7 +23,9 @@ import { sendGround, sendWater } from './water.ts';
 import { Wild } from './wild.ts';
 import { Wind } from './wind.ts';
 
-export { DEFAULT_OPTIONS, readUrlOptions, WIRING_MODES, writeUrlParam, YAW_MODES, type WiringMode, type WorldOptions, type YawMode } from './options.ts';
+export {
+  CAMERA_YAW_KEY, DEFAULT_OPTIONS, readUrlOptions, storedYawMode, storeYawMode, writeUrlParam, YAW_MODES, type WorldOptions, type YawMode,
+} from './options.ts';
 export { getModelForKind } from './things.ts';
 export type { PreviewSpec } from './tools.ts';
 export type { Speed } from './sky.ts';
@@ -56,11 +58,10 @@ export interface World {
   setContourHints(on: boolean): void;
   /** The ground's moisture as a soft glow (the field tool's). */
   setMoistureOverlay(on: boolean): void;
-  /** In wireless mode, each power field's ring even when nothing's being placed. */
+  /** Each power field's ring even when nothing's being placed. */
   setShowPowerPreview(on: boolean): void;
+  /** The player's camera setting: remembered in the browser (and kept in step with a `?yaw=` the URL already names). */
   setYawMode(mode: YawMode): void;
-  /** Records the wiring choice (and writes it to the URL); the play layer applies the game's setPowerMode action. */
-  setWiringMode(mode: WiringMode): void;
   /** Snap mode: turns to the next view (90°); orbit mode: turns 45°. */
   stepYaw(dir: -1 | 1): void;
   /** Turns by an angle (radians): smoothly in orbit mode, to the nearest view in snap mode. */
@@ -90,7 +91,6 @@ export interface World {
   getZoom(): number;
   getHeading(): number;
   getYawMode(): YawMode;
-  getWiringMode(): WiringMode;
   /** Calls `cb` every frame, before it's drawn, with the seconds since the last; returns what stops it. */
   onFrame(cb: (dt: number) => void): () => void;
   dispose(): void;
@@ -113,7 +113,6 @@ class ValleyWorld implements World {
   private scene: Scene;
   private readonly sky: Sky;
   private readonly rig: CameraRig;
-  private wiring: WiringMode;
   private readonly frameCallbacks = new Set<(dt: number) => void>();
   private readonly resizer: ResizeObserver | null;
   private raf = 0;
@@ -124,7 +123,7 @@ class ValleyWorld implements World {
   private switches = { preview: null as PreviewSpec | null, selected: null as number | null, contours: false, moisture: false, power: false };
 
   constructor(canvas: HTMLCanvasElement, state: GameState, options: WorldOptions, models: ModelCache) {
-    this.canvas = canvas; this.state = state; this.models = models; this.wiring = options.wiring;
+    this.canvas = canvas; this.state = state; this.models = models;
     const r = new BrushRenderer(canvas, { shadowFollow: true });
     this.r = r;
     // On a high-DPI screen the frame is drawn at 1080p's pixel count and scaled up: the renderer's budget (brush3d/docs/PERFORMANCE.md).
@@ -234,8 +233,7 @@ class ValleyWorld implements World {
 
   // ---- The camera ----
 
-  setYawMode(mode: YawMode) { this.rig.setMode(mode); writeUrlParam('yaw', mode); }
-  setWiringMode(mode: WiringMode) { this.wiring = mode; writeUrlParam('wiring', mode); }
+  setYawMode(mode: YawMode) { this.rig.setMode(mode); storeYawMode(mode); writeUrlParam('yaw', mode, true); }
   stepYaw(dir: -1 | 1) { this.rig.stepYaw(dir); }
   orbitBy(deltaRad: number) { this.rig.orbitBy(deltaRad); }
   setOrbitHold(dir: -1 | 0 | 1) { this.rig.setOrbitHold(dir); }
@@ -323,7 +321,6 @@ class ValleyWorld implements World {
   getZoom() { return this.rig.zoom; }
   getHeading() { return this.rig.heading; }
   getYawMode() { return this.rig.mode; }
-  getWiringMode() { return this.wiring; }
 
   onFrame(cb: (dt: number) => void) {
     this.frameCallbacks.add(cb);

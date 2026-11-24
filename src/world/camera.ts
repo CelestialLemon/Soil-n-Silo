@@ -1,7 +1,7 @@
 // The camera: an orthographic three-quarter view (brush3d's 30° pitch) the game steers with its own controller and places
-// on brush3d's view each frame (ViewCamera.place). It turns in one of two ways, a Milestone 1 preview choice (?yaw=):
-// `snap`, the four cardinal views 90° apart with a damped turn between them (Q/E), or `orbit`, a free smooth turn (a
-// held Q/E, or a drag). Zoom eases towards its goal and keeps the ground under the pointer where it was; panning moves
+// on brush3d's view each frame (ViewCamera.place). It turns in one of two ways, the player's camera setting: `orbit` (the
+// default), a free smooth turn (a held Q/E, or a drag), or `snap`, the four cardinal views 90° apart with a damped turn
+// between them (Q/E). Zoom eases towards its goal and keeps the ground under the pointer where it was; panning moves
 // the ground with the pointer; both stay within the valley.
 import { type BrushRenderer, PITCH } from '../../brush3d/src/index.ts';
 import { clamp, VALLEY_HALF, wrapAngle } from '../game/index.ts';

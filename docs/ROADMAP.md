@@ -32,8 +32,9 @@ Each milestone ends in something genuinely playable in the browser on PR preview
 **Status: implemented (2026-11-24), ready for PR-preview review (epic #298, issues #304–#309).** Every tool works in the browser and a
 headless GPU playtest of the First Preview Gate passes with no console errors, at ~60 fps on the built valley at 18 px/m. Game rules
 are in `src/game/` (pure TypeScript, tested in Node); the brush3d bridge is in `src/world/`; input and the tools in hand are in
-`src/play/`; the floating UI is in `src/ui/`. What stays open is the developer's judgement on the preview: the feel, and the two
-preview choices below.
+`src/play/`; the floating UI is in `src/ui/`. After the first PR-preview playtest (2026-11-25) the two preview choices are
+settled (free orbit camera with a snapped setting; wireless relays) and the valley was reshaped so gravity channels flow from
+the brook across a meadow terrace (see *Decisions* below). What stays open is the developer's judgement on the feel.
 
 - **Continuous terrain & close camera:** One seeded ~120 m pocket valley with rolling hills, a curving brook and pond, crags, seasonal trees, meadow grass, wildflowers, and reeds—rendered at `brush3d`'s close zoom (**16–96 px/m**). Generalize `brush3d`'s continuous heightfield land API (drawing from `farm.ts`) so the game works in continuous metres instead of 4 m tiles.
 - **Free placement & soft settling:** Place, move, and freely rotate the **Farmhouse** and a starter set of buildings (Silo, Mill, Bakery, Solar Canopy, Wind Turbine, Water Wheel, Lantern, Bench) anywhere on gentle ground, with smooth natural pads beneath them.
@@ -82,11 +83,21 @@ preview choices below.
 ## Decisions & Preview Choices for Vertical Slice 1
 
 - **Channel flow (decided 2026-11-24):** Gravity-only for v0.2—water obeys downhill/contour flow without thinning the brook's downstream flow when multiple channels tap it.
-- **Camera yaw (to judge on PR preview):** Compare four snapped 90° views vs. smooth free orbit around the valley.
-- **Power wiring (to judge on PR preview):** Compare slim free wooden pylons along paths/yards vs. local wireless radius around power buildings + relays once buildings stand together.
-- **Flipping the preview choices:** Both are buttons in the *Preview choices* card (top right) and URL options: `?yaw=snap|orbit`
-  and `?wiring=pylons|wireless`. They combine with `seed`, `season`, `hour`, `weather` and `quality`, e.g.
-  `?yaw=orbit&wiring=wireless&seed=77&season=winter&hour=golden&weather=soft-rain`. The option not picked is removed before merge.
+- **Camera yaw (decided 2026-11-25: Free Orbit default + Snapped 90° player setting):** The camera turns in a smooth free
+  orbit by default. Snapped 90° views stay as a player setting (the small camera toggle beside the ⟲ ⟳ turn buttons in the
+  sky strip), remembered in the browser (`soil-n-silo:camera-yaw`); a link's `?yaw=orbit|snap` overrides it. The temporary
+  *Preview choices* card is gone.
+- **Power wiring (decided 2026-11-25: Wireless Relays; wooden pylons removed):** Each power building projects a soft local
+  wireless field, and free **Power Relays** carry it on; a building or lantern inside a fed field is powered. The wooden pylon,
+  its overhead wires and `?wiring=` are removed. The fields show as calm thin rings (blue where they carry power,
+  sand-coloured dashes where they don't yet) only in the **power view** (the sky strip's bolt, or `P`) or while a power
+  building or relay is placed, moved or picked; open play shows none (developer's rule, 2026-11-25).
+- **Valley shape for gravity channels (decided 2026-11-25, after the PR #310 playtest):** A plain V-shaped valley left every
+  bank climbing away from the brook, so no rill could be dug. Valleys now fall steadily down the brook (~5.4 m across 120 m),
+  and on the homestead's side the brook runs along a low natural levee above a broad meadow terrace that lies 0.2–2.5 m below
+  the upper and middle brook's water (`src/game/valley/generate.ts`). A rill tapped there and led out across the terrace runs
+  20–60 m on gravity; the far bank and the valley's head still climb, so a rill led uphill stops at a dry sill. The pond fills
+  to where the brook comes in, held on its downhill side by a low natural bank. Contours show every 20 cm while digging.
 - **Weather in Vertical Slice 1 (decided 2026-11-24):** The game's four weathers draw with brush3d presets: Clear → `clear`,
   Breeze → `scattered`, Overcast → `overcast`, Rain (shown as *Showers*) → `soft-rain`. Booting from any other brush3d preset
   maps back to the nearest of the four. Continuous, unpredictable weather comes in Milestone 4.

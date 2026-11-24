@@ -2,7 +2,7 @@
 // while it's in hand.
 import { CATALOG, isThingKind, type ThingKind } from '../game/index.ts';
 import type { IconName } from './icons.ts';
-import type { ToolId, WiringMode } from './types.ts';
+import type { ToolId } from './types.ts';
 
 export type GroupId = 'homestead' | 'power' | 'land' | 'yard';
 
@@ -13,8 +13,6 @@ export interface ToolDef {
   /** Its key, as `KeyboardEvent.key` lower-cased; `shift` when it's taken with Shift. */
   key?: string; shift?: boolean;
   hint: string;
-  /** Shown only in this wiring mode (the pylon in pylons mode, the relay in wireless). */
-  wiring?: WiringMode;
 }
 
 export interface GroupDef { id: GroupId; label: string; icon: IconName; tools: readonly ToolDef[] }
@@ -28,8 +26,8 @@ export function placedKind(tool: ToolId): ThingKind | null {
   return isThingKind(kind) ? kind : null;
 }
 
-function place(kind: ThingKind, icon: IconName, key: string | undefined, hint: string, wiring?: WiringMode): ToolDef {
-  return { id: placeTool(kind), label: CATALOG[kind].label, icon, key, hint, wiring };
+function place(kind: ThingKind, icon: IconName, key: string | undefined, hint: string): ToolDef {
+  return { id: placeTool(kind), label: CATALOG[kind].label, icon, key, hint };
 }
 
 const turn = 'R to turn';
@@ -54,8 +52,7 @@ export const GROUPS: readonly GroupDef[] = [
       place('turbine', 'turbine', '6', `Click to place a Wind Turbine · ridges catch more wind · ${turn}`),
       place('waterwheel', 'waterwheel', '7', `Click a brook bank · the wheel turns in the water · ${turn}`),
       place('battery', 'battery', '8', `Click to place a Battery · ${turn}`),
-      place('pylon', 'pylon', '9', 'Click to raise a Wooden Pylon · wires reach 15 m', 'pylons'),
-      place('relay', 'relay', '9', 'Click to raise a Power Relay · it carries power 15 m around', 'wireless'),
+      place('relay', 'relay', '9', 'Click to raise a Power Relay · free · it carries power 15 m around, no wires'),
     ],
   },
   {
@@ -91,9 +88,9 @@ export function groupOf(tool: ToolId): GroupId | null {
   return GROUPS.find((g) => g.tools.some((t) => t.id === tool))?.id ?? null;
 }
 
-/** The tool a key press picks, in this wiring mode. */
-export function toolForKey(key: string, shift: boolean, wiring: WiringMode): ToolDef | undefined {
-  return ALL.find((t) => t.key === key && (t.shift ?? false) === shift && (t.wiring === undefined || t.wiring === wiring));
+/** The tool a key press picks. */
+export function toolForKey(key: string, shift: boolean): ToolDef | undefined {
+  return ALL.find((t) => t.key === key && (t.shift ?? false) === shift);
 }
 
 /** How a tool's key reads on its badge. */

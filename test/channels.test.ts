@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  apply, canDig, channelPath, channelSummary, FRICTION, type GameState, isWet, JUNCTION, type JunctionPair, junctionPairs, makeRng,
+  apply, canDig, channelPath, channelSummary, FRICTION, type GameState, generateValley, isWet, JUNCTION, type JunctionPair, junctionPairs, makeRng,
   must, type Point2, previewChannelFlow,
 } from '../src/game/index.ts';
 import { segmentsCross } from '../src/game/geom.ts';
-import { brookLand, flatLand, freshValley, land, same } from './helpers.ts';
+import { brookLand, brookSpot, flatLand, freshValley, land, same, SEEDS } from './helpers.ts';
 
 const at = (s: GameState, x: number, z: number) => Math.floor(z - s.grid.z0) * s.grid.nx + Math.floor(x - s.grid.x0);
 const dig = (s: GameState, points: Point2[]) => {
@@ -154,6 +154,35 @@ test('in the generated valley, a rill led downstream from the brook flows and we
   const top = Math.max(...s.valley.brookLevel.slice(Math.max(0, bi - 10), bi + 10));
   for (const f of c.flow) if (f.wet) assert.ok(f.waterLevel <= top + 1e-6);
   assert.ok(channelSummary(c).wetLength >= 10);
+});
+
+test('across seeds, a rill tapped from the upper or middle brook and led out over the terrace flows at least 20 m and waters its banks', () => {
+  for (const seed of SEEDS) {
+    const s = generateValley(seed, 'spring');
+    for (const offset of [-15, 0]) {
+      const b = brookSpot(s, offset);
+      // Straight across the terrace, and slanting down it: either way the water follows.
+      for (const deg of [60, 90]) {
+        const wet = previewChannelFlow(s, b.stroke(deg, 40)).wetLength;
+        assert.ok(wet >= 20, `seed ${seed}, brook ${b.i}, ${deg}° out: flows ${wet.toFixed(1)} m`);
+      }
+      // Across the brook the land climbs: the same rill led there stops dry at a sill within a few metres.
+      const up = previewChannelFlow(s, b.stroke(-90, 30));
+      assert.ok(up.wetLength < 12 && up.sillPoint, `seed ${seed}, brook ${b.i}: uphill flows ${up.wetLength.toFixed(1)} m`);
+    }
+    // Dug for real by the homestead: it flows as the preview said, never above the brook, and wets the field banks beside it.
+    const b = brookSpot(s), points = b.stroke(60, 30), moist = Float32Array.from(s.grid.moisture);
+    const c = dig(s, points), sum = channelSummary(c);
+    assert.ok(sum.wetLength >= 20, `seed ${seed}: dug, it flows ${sum.wetLength.toFixed(1)} m`);
+    const top = Math.max(...s.valley.brookLevel.slice(Math.max(0, b.i - 10), b.i + 10));
+    for (const f of c.flow) if (f.wet) assert.ok(f.waterLevel <= top + 1e-6, `seed ${seed}: never above the brook it drew from`);
+    const mid = b.at(Math.cos(Math.PI / 3) * 15, Math.sin(Math.PI / 3) * 15), n = { x: -Math.sin(Math.PI / 3), z: Math.cos(Math.PI / 3) };
+    for (const k of [-2, 2]) {
+      // 2 m to either side of the rill, 15 m out: dry meadow before, a damp bank now.
+      const q = { x: mid.x + (b.down.x * n.x + b.across.x * n.z) * k, z: mid.z + (b.down.z * n.x + b.across.z * n.z) * k };
+      assert.ok(s.grid.moisture[at(s, q.x, q.z)] > moist[at(s, q.x, q.z)] + 0.2, `seed ${seed}: a wet bank at ${k} m`);
+    }
+  }
 });
 
 test('a rill dug along a high bank beside the brook stays dry: touching the water is not drawing from it', () => {

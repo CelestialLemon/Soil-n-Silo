@@ -2,9 +2,9 @@
 // thing being placed (brush3d's preview: green where it fits, red where it doesn't), the rill being dragged with the water
 // the rules say it would carry (cool blue where it flows, warm amber dashes past the sill where it runs dry, a ring at the
 // sill), a field brush's circle, a track's, a hedge's or a tree's outline, the contour lines while digging, the
-// ground's moisture glow while painting fields, and the power as the game's state has it (state.power): wires sagging
-// between pylons (pylons mode, always: they're real) or each power building's soft wireless radius (wireless mode, while
-// placing power or asked).
+// ground's moisture glow while painting fields, and the power as the game's state has it (state.power): each power
+// building's and relay's soft wireless field, a calm thin ring on the grass, only when the play layer asks for them (the
+// power view, or a power building or relay in hand or picked; power is wireless: no lines run anywhere).
 import type * as THREE from 'three';
 import { type BrushRenderer, type Line, type LinePoint, OVERLAY_LOOK, OVERLAY_NONE, type Overlay } from '../../brush3d/src/index.ts';
 import {
@@ -29,8 +29,14 @@ export type PreviewSpec =
 /** The tools' colours (sRGB). */
 const COL = {
   wet: 0x5fb8e8, dry: 0xd8a860, sill: 0xf0b25a, fits: 0x9dffc0, blocked: 0xff6a50, field: 0xf3e3a0, erase: 0xff9a7a,
-  track: 0xead7a6, hedge: 0x7cc46a, wire: 0x3b2f27, ring: 0x9fd8ff, ringOff: 0xd9c6a0, link: 0xffe3a0,
+  track: 0xead7a6, hedge: 0x7cc46a, ring: 0xa8dcf5, ringOff: 0xdcc9a2,
 };
+
+/** A wireless field's ring: a thin, quiet line in the sky's blue where it carries power, sand-coloured dashes where not. */
+const fieldRing = (x: number, z: number, radius: number, powered: boolean): Line =>
+  powered
+    ? { points: circle(x, z, radius, 72), color: COL.ring, style: 'route', width: 0.16, opacity: 0.6, closed: true }
+    : { points: circle(x, z, radius, 72), color: COL.ringOff, style: 'dashed', width: 0.18, opacity: 0.5, closed: true };
 
 /** A circle of points on the land. */
 function circle(x: number, z: number, radius: number, n = 48): LinePoint[] {
@@ -66,7 +72,9 @@ export class Tools {
   setContours(on: boolean) {
     this.contours = on;
     const g = this.state.grid;
-    this.r.setGrid(on ? { width: g.nx, height: g.nz, tile: g.cell, x0: g.x0, z0: g.z0, level: 0.25, gridStrength: 0, contourStrength: 0.55 } : null);
+    // A contour each 20 cm: on the valley's steady fall (about 5 cm a metre) they lie 3 to 5 m apart, close enough to read
+    // the fall away from the brook at a glance, soft enough to leave the meadow's grass showing.
+    this.r.setGrid(on ? { width: g.nx, height: g.nz, tile: g.cell, x0: g.x0, z0: g.z0, level: 0.2, gridStrength: 0, contourStrength: 0.5 } : null);
   }
 
   setMoisture(on: boolean) {
@@ -121,7 +129,7 @@ export class Tools {
         m.rotation.set(0, spec.yaw, 0);
         m.updateMatrixWorld();
         this.r.setPreview(m, fits ? 'fits' : 'blocked');
-        lines.push(...this.prospectiveLinks(spec.thingKind, spec.x, spec.z, y, spec.ignore));
+        lines.push(...this.prospectiveField(spec.thingKind, spec.x, spec.z, spec.ignore));
         break;
       }
       case 'channel': {
@@ -169,42 +177,24 @@ export class Tools {
   }
 
   /**
-   * What a thing being placed would join: in pylons mode a dashed wire to each powered neighbour within reach; in
-   * wireless mode its own field's ring, if it makes or passes one.
+   * The field a power building or relay being placed would project, at its spot: carrying power (blue) if a fed field
+   * already reaches it or it feeds one itself, waiting (sand) if not. A thing that only uses power makes no field.
    */
-  private prospectiveLinks(kind: ThingKind, x: number, z: number, y: number, ignore?: number): Line[] {
+  private prospectiveField(kind: ThingKind, x: number, z: number, ignore?: number): Line[] {
     const def = CATALOG[kind], role = def.powerRole;
-    if (role === 'none') return [];
-    if (this.state.power.mode === 'wireless') {
-      return def.powerRange > 0 && role !== 'load' && role !== 'pylon' ? [{ points: circle(x, z, def.powerRange, 64), color: COL.ring, style: 'dashed', width: 0.3, opacity: 0.8, closed: true }] : [];
-    }
-    if (role === 'relay') return [];
-    const out: Line[] = [], top = { x, y: y + def.wireY, z };
-    for (const t of this.state.things) {
-      if (t.id === ignore) continue;
-      const other = CATALOG[t.kind];
-      if (other.powerRole === 'none' || other.powerRole === 'relay') continue;
-      const d = Math.hypot(t.x - x, t.z - z);
-      if (d > Math.max(def.powerRange, other.powerRange) || d < 0.5) continue;
-      out.push({ points: [top, { x: t.x, y: this.r.landAt(t.x, t.z) + other.wireY, z: t.z }], color: COL.link, style: 'dashed', width: 0.12, opacity: 0.85 });
-    }
-    return out;
+    if (role === 'none' || role === 'load' || def.powerRange <= 0) return [];
+    const fed = role !== 'relay' || this.state.power.radii.some((f) => f.id !== ignore && f.powered && Math.hypot(f.x - x, f.z - z) <= Math.max(f.radius, def.powerRange));
+    return [fieldRing(x, z, def.powerRange, fed)];
   }
 
-  /** The power as the game has it: wires in pylons mode; in wireless mode, the fields' rings while they're wanted. */
+  /** The power as the game has it: each field's ring, only while asked for (`setShowPower`). */
   private drawPower() {
-    const p = this.state.power, lines: Line[] = [];
-    if (p.mode === 'pylons') {
-      for (const span of p.spans) lines.push({ points: [span.a, span.b], color: COL.wire, style: 'wire', width: 0.05, opacity: 0.95 });
-    } else if (this.showPower || this.placingPower()) {
-      for (const f of p.radii) lines.push({ points: circle(f.x, f.z, f.radius, 64), color: f.powered ? COL.ring : COL.ringOff, style: 'dashed', width: 0.3, opacity: f.powered ? 0.85 : 0.6, closed: true });
+    const lines: Line[] = [];
+    if (this.showPower) {
+      const moving = this.spec?.kind === 'thing' ? this.spec.ignore : undefined;
+      for (const f of this.state.power.radii) if (f.id !== moving) lines.push(fieldRing(f.x, f.z, f.radius, f.powered));
     }
     this.r.setLines(lines.length ? lines : null, 'power');
-  }
-
-  private placingPower() {
-    const s = this.spec;
-    return s?.kind === 'thing' && CATALOG[s.thingKind].powerRole !== 'none';
   }
 
   /** The ground's moisture as a soft blue glow over the valley (no lines between cells), while fields are being painted. */

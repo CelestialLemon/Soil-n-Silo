@@ -1,5 +1,5 @@
 // What the overlay says about the valley, read off the game's state: the postcard's figures, a clicked thing's one plain
-// line ("Agrivoltaic · Shading wheat", "Needs a pylon or power nearby") and the sky's weather in the strip's four words.
+// line ("Agrivoltaic · Shading wheat", "Needs a relay or power nearby") and the sky's weather in the strip's four words.
 import {
   CATALOG, channelSummary, type GameState, polylineDistance, type Thing, type ThingKind, toWorld,
 } from '../game/index.ts';
@@ -62,7 +62,7 @@ function surroundings(s: GameState, t: Thing): string {
 export function thingStatus(s: GameState, t: Thing, hour: number): { line: string; connected?: boolean } {
   const role = CATALOG[t.kind].powerRole, p = s.power;
   const powered = p.powered.includes(t.id), linked = p.connected.includes(t.id);
-  const needs = s.powerMode === 'pylons' ? 'Needs a pylon or power nearby' : 'Needs a relay or power nearby';
+  const needs = 'Needs a relay or power nearby';
   const connected = role === 'none' ? undefined : role === 'load' ? powered : linked;
   const say = (line: string) => ({ line, connected });
   switch (t.kind) {
@@ -77,15 +77,7 @@ export function thingStatus(s: GameState, t: Thing, hour: number): { line: strin
     case 'turbine': return say('Catching the wind');
     case 'waterwheel': return say('Water Wheel · Turning in the brook');
     case 'battery': return say(linked ? "Storing the homestead's power" : needs);
-    case 'pylon': {
-      if (s.powerMode !== 'pylons') return say('Standing idle · power is wireless here');
-      const wires = p.spans.filter((w) => w.from === t.id || w.to === t.id).length;
-      return say(wires > 0 ? `Carrying ${wires} wire${wires === 1 ? '' : 's'}` : 'Needs power within 15 m');
-    }
-    case 'relay': {
-      if (s.powerMode !== 'wireless') return say('Standing idle · power runs on pylons here');
-      return say(powered ? 'Passing power on' : 'Needs power within 15 m');
-    }
+    case 'relay': return say(powered ? 'Passing power on' : 'Needs power within 15 m');
     // A solar lantern charges itself, so it glows either way; the card's pip says whether it's on the homestead's power.
     case 'lantern': return say(isNight(hour) ? 'Glowing along the way' : 'Charging in the sun · glows after dusk');
     case 'bench': case 'planter': case 'crates': return say(surroundings(s, t));

@@ -22,7 +22,7 @@ The previous version (v0.1, Oct 9) was a Factorio-style timed automation game bu
 ## Scale, Camera, and Presentation
 
 - **Valley size:** An intimate pocket valley roughly **100–140 m across** (continuous metres, no coarse 4 m tile grid), framed by soft rising hills and distant woods beyond its playable boundary.
-- **Camera:** Orthographic 3/4 view at 30° pitch, smooth panning and zoom right inside `brush3d`'s sweet spot (**16–96 px/m**, starting around **28–36 px/m**) so brush strokes, roof herbs, water reflections, and swaying crops fill the screen. Supports turning around the valley (4 cardinal views or smooth yaw—to test in Vertical Slice 1).
+- **Camera:** Orthographic 3/4 view at 30° pitch, smooth panning and zoom right inside `brush3d`'s sweet spot (**16–96 px/m**, starting around **28–36 px/m**) so brush strokes, roof herbs, water reflections, and swaying crops fill the screen. Turns around the valley in a **free smooth orbit** by default (a held Q/E or a right drag); players who prefer it can switch to **snapped 90° views** (four cardinal views, Q/E step between them) with the small camera toggle beside the ⟲ ⟳ turn buttons. The setting is remembered in the browser; a link's `?yaw=orbit|snap` overrides it (decided 2026-11-25).
 - **Art direction:** `brush3d`'s *"painted world, inked things"* (`brush3d/docs/DIRECTION.md`), using all 28 handcrafted solarpunk models (`brush3d/docs/MODELS.md`)—**including** the `home` set (`farmhouse`, `bench`, `lantern`, `planter`, `rain_tank`, `crates`) that v0.1 left out, plus a new ceramic-and-copper **helper drone** model.
 - **Build-and-watch:** Point-and-click / brush-and-drag. No player character and no manual crop clicking. Pause, 1×, 2×, and 4× speed controls; building and tinkering while paused is always free.
 
@@ -59,6 +59,7 @@ Working with the land is always **free (0 Supplies)** and freely editable/erasab
 
 ### 3. Gravity Irrigation Channels (Star Mechanic)
 - Drag a narrow **hand-dug irrigation rill** starting from a brook, pond, or uphill Water Pump / Rain Tank.
+- **Valleys built for it:** Every valley falls steadily down its brook (about 5 m across its 120 m), and on the homestead's side the brook runs along a low natural levee above a broad, gentle meadow terrace that lies below its water. A rill tapped from the upper or middle brook and led out across the terrace, or slanting down it, runs 25–55 m on gravity alone; one led up the far bank or up the valley meets a dry sill within a few metres.
 - **Gravity rules (v0.2):** Water flows **downhill or gently along a contour**—never uphill without a powered pump—and channel flow is purely gravity-based (tapping channels does not thin the brook's downstream flow in v0.2; downstream flow budgeting is parked for later). Holding the channel tool paints faint contour ripples across the hillside so you can read the fall of the land at a glance.
 - **Zero-watt irrigation:** A flowing channel keeps a lush green strip of soil moist on both sides for **0 watts**, letting you reserve scarce Supplies instead of spamming pumps or sprinklers.
 - **Flood swales:** Expecting heavy rain or a spring spate? Dig a shallow **overflow swale** to guide rising water around a low meadow into a lower hollow or catch basin.
@@ -93,12 +94,12 @@ Both homestead workshops and solarpunk tech draw from **one single capped Suppli
 
 | Cost | Pieces |
 | --- | --- |
-| **0 (Free)** | Farmhouse, Painted Fields, Gravity Channels, Tracks, Plank Bridges, Hedgerows, Fences, Planted Trees, Yard Props (bench, lantern, planter, crates), Slim Power Pylons / relays |
+| **0 (Free)** | Farmhouse, Painted Fields, Gravity Channels, Tracks, Plank Bridges, Hedgerows, Fences, Planted Trees, Yard Props (bench, lantern, planter, crates), Wireless Power Relays |
 | **1 Supply** | Beehive, Rain Tank, Sprinkler, Water Pump, Weather Station, Solar Canopy, Battery, Electric Cart, Helper Drone |
 | **2 Supplies** | Silo, Composter, Garage, Mill, Coop, Oil Press, Cannery, Spinner, Loom, Bakery |
 | **3 Supplies** | Wind Turbine, Water Wheel, Heated Greenhouse, Biogas Digester |
 
-*(Note: Slim wooden power relays/pylons are free—or power links cleanly along tracks—so players never feel taxed for wiring a scenic homestead. Exact costs and caps will be playtested and tuned from Vertical Slice 2 onward.)*
+*(Note: Power is **wireless** (decided 2026-11-25): each power building projects a soft local field, and free **Wireless Relays** carry it on to buildings farther away. No overhead power lines or poles clutter the valley, and players never feel taxed for powering a scenic homestead. Exact costs and caps will be playtested and tuned from Vertical Slice 2 onward.)*
 
 ---
 

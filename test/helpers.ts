@@ -66,6 +66,34 @@ export function valley(): GameState {
   return shared;
 }
 
+/** The seeds the valley's playability tests sweep: the game's default (1042) and a spread of others. */
+export const SEEDS = [1042, 7, 1, 2, 3, 42] as const;
+
+/**
+ * A spot on a generated valley's brook, `offset` samples (about a metre each) down the brook from the sample nearest the
+ * homestead (negative: upstream): where it is, its water's surface, the way downstream, and the way across to the
+ * homestead's side (the farming terrace).
+ */
+export function brookSpot(s: GameState, offset = 0) {
+  const { brook, brookLevel, homestead: h } = s.valley;
+  let bi = 0;
+  brook.forEach((p, i) => { if (Math.hypot(p.x - h.x, p.z - h.z) < Math.hypot(brook[bi].x - h.x, brook[bi].z - h.z)) bi = i; });
+  const i = Math.max(3, Math.min(brook.length - 4, bi + offset));
+  const a = brook[i - 3], b = brook[i + 3], len = Math.hypot(b.x - a.x, b.z - a.z);
+  const down = { x: (b.x - a.x) / len, z: (b.z - a.z) / len };
+  const side = (h.x - brook[bi].x) * -down.z + (h.z - brook[bi].z) * down.x > 0 ? 1 : -1;
+  const across = { x: -down.z * side, z: down.x * side };
+  /** A point `along` metres downstream and `out` metres across toward the terrace (negative: the far side). */
+  const at = (along: number, out: number): Point2 => ({ x: brook[i].x + down.x * along + across.x * out, z: brook[i].z + down.z * along + across.z * out });
+  /** A straight stroke from the brook's middle, `deg` degrees off downstream toward the terrace (90: straight across). */
+  const stroke = (deg: number, length: number, step = 10): Point2[] => {
+    const r = (deg * Math.PI) / 180, out: Point2[] = [];
+    for (let k = 0; k <= length; k += step) out.push(at(Math.cos(r) * k, Math.sin(r) * k));
+    return out;
+  };
+  return { i, p: brook[i], level: brookLevel[i], down, across, at, stroke };
+}
+
 /** A fresh copy of a valley, for tests that change it. */
 export const freshValley = (seed = 7) => generateValley(seed, 'summer');
 

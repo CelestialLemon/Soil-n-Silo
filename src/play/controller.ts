@@ -9,7 +9,7 @@ import {
 } from '../game/index.ts';
 import {
   placedKind, type SelectedThingView, type Speed, toolDef, type ToolId, type ToolReadout, type UiCallbacks, type UiController,
-  type UiSnapshot, type ValleyStats, type Weather, type WiringMode, type YawMode,
+  type UiSnapshot, type ValleyStats, type Weather, type YawMode,
 } from '../ui/index.ts';
 import { type PreviewSpec, type World, writeUrlParam } from '../world/index.ts';
 import { skyWeather, thingStatus, uiWeather, valleyStats } from './status.ts';
@@ -59,8 +59,6 @@ export class Play implements UiCallbacks {
   private hoverDirty = true;
   private cameraSig = '';
   private readout: ToolReadout | null = null;
-  /** The wiring was just switched: the power stays shown until the next tool or selection. */
-  private wiringPeek = false;
   private lastSpeed: Speed = 1;
   private readonly held = new Set<string>();
   private orbitKeys: number[] = [];
@@ -69,6 +67,8 @@ export class Play implements UiCallbacks {
   private stats: ValleyStats;
   private statsDirty = true;
   private shown = { contours: false, moisture: false, power: false };
+  /** The power view (P): every wireless field shown, whatever is in hand. Off by default; not remembered. */
+  private powerView = false;
   private uiKey = '';
 
   constructor(state: GameState, world: World) {
@@ -117,13 +117,13 @@ export class Play implements UiCallbacks {
     if (this.statsDirty) { this.stats = valleyStats(this.state); this.statsDirty = false; }
     const hour = this.world.getHour(), selected = this.selectedView(hour);
     const snapshot: UiSnapshot = {
-      activeTool: this.tool, yawMode: this.world.getYawMode(), wiringMode: this.state.powerMode, hour,
+      activeTool: this.tool, yawMode: this.world.getYawMode(), powerView: this.powerView, hour,
       speed: this.world.getSpeed(), weather: uiWeather(this.world.getWeather()), stats: this.stats, selected,
       readout: this.currentReadout(),
     };
     if (placedKind(this.tool)) snapshot.placingRotationDeg = compassDeg(this.placeYaw);
     const key = [
-      snapshot.activeTool, snapshot.yawMode, snapshot.wiringMode, Math.floor(hour * 60), snapshot.speed, snapshot.weather,
+      snapshot.activeTool, snapshot.yawMode, snapshot.powerView, Math.floor(hour * 60), snapshot.speed, snapshot.weather,
       JSON.stringify(this.stats), selected ? `${selected.id} ${selected.statusLine} ${selected.connected} ${selected.yawDeg}` : '-',
       snapshot.readout ? `${snapshot.readout.text} ${snapshot.readout.tone}` : '-', snapshot.placingRotationDeg,
     ].join('|');
@@ -156,12 +156,16 @@ export class Play implements UiCallbacks {
 
   // ---- The soft hints over the grass ----
 
+  /**
+   * The wireless fields show only in the power view, or while a power building or relay is picked, placed or moved: open
+   * play keeps the valley clear of rings.
+   */
   private syncSwitches() {
     const tool = this.tool, sel = this.selected === null ? undefined : this.state.things.find((t) => t.id === this.selected);
     const want = {
       contours: tool === 'channel:dig',
       moisture: isFieldTool(tool),
-      power: placesPower(tool) || (this.moving !== null && isPowerKind(this.moving.kind)) || (sel !== undefined && isPowerKind(sel.kind)) || this.wiringPeek,
+      power: this.powerView || placesPower(tool) || (this.moving !== null && isPowerKind(this.moving.kind)) || (sel !== undefined && isPowerKind(sel.kind)),
     };
     const was = this.shown;
     if (want.contours !== was.contours) this.world.setContourHints(want.contours);
@@ -442,7 +446,6 @@ export class Play implements UiCallbacks {
 
   private select(id: number | null) {
     this.selected = id;
-    this.wiringPeek = false;
     this.world.setSelectedThing(id);
   }
 
@@ -511,6 +514,9 @@ export class Play implements UiCallbacks {
           else this.onSetSpeed(0);
         }
         return true;
+      case 'p':
+        if (!repeat) this.onTogglePowerView();
+        return true;
       case '[': case ']':
         this.brush = Math.min(BRUSH.max, Math.max(BRUSH.min, this.brush + (key === ']' ? BRUSH.step : -BRUSH.step)));
         this.hoverDirty = true;
@@ -542,7 +548,6 @@ export class Play implements UiCallbacks {
     this.press = null;
     this.moving = null;
     if (this.selected !== null) this.select(null);
-    this.wiringPeek = false;
     if (tool !== this.tool) { this.turned = false; this.placeYaw = 0; }
     this.tool = tool;
     this.readout = null;
@@ -577,15 +582,8 @@ export class Play implements UiCallbacks {
     this.world.setYawMode(mode);
   }
 
-  onSetWiringMode(mode: WiringMode) {
-    if (mode !== this.state.powerMode) this.act({ type: 'setPowerMode', mode });
-    this.world.setWiringMode(mode);
-    // The pylon and the relay each belong to one mode: put down the one that's no longer offered.
-    if (this.tool === 'place:pylon' || this.tool === 'place:relay') this.onSelectTool('select');
-    this.wiringPeek = true;
-  }
-
   onStepYaw(dir: -1 | 1) { this.world.stepYaw(dir); }
+  onTogglePowerView() { this.powerView = !this.powerView; }
   onSetHour(hour: number) { this.world.setHour(hour); }
 
   onSetSpeed(speed: Speed) {
@@ -596,8 +594,7 @@ export class Play implements UiCallbacks {
   onSetWeather(weather: Weather) { this.world.setWeather(skyWeather(weather)); }
 
   onNewValley(seed: number, season: Season) {
-    const mode = this.state.powerMode, next = generateValley(seed >>> 0, season);
-    if (next.powerMode !== mode) apply(next, { type: 'setPowerMode', mode });
+    const next = generateValley(seed >>> 0, season);
     this.onSelectTool('select');
     this.state = next;
     this.world.resetValley(next);

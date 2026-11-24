@@ -1,5 +1,5 @@
-// The HTML over the canvas (docs/DESIGN.md, "Minimal HUD"): the valley postcard top left, the sky strip and the preview's
-// look choices top right, the tool strip and its readout at the bottom, the building card beside a clicked thing, and soft
+// The HTML over the canvas (docs/DESIGN.md, "Minimal HUD"): the valley postcard top left, the sky strip (with the camera's
+// turns, its orbit or snapped setting and the power view's bolt) top right, the tool strip and its readout at the bottom, the building card beside a clicked thing, and soft
 // toasts. The valley is what you look at: the overlay lets every pointer event through except on its own floating pills.
 //
 // The UI knows nothing of the world or the renderer. The loop hands it a `UiSnapshot` (every frame is fine: it only touches
@@ -8,7 +8,6 @@
 // called `preventDefault`.
 import './style.css';
 import { createBrief } from './brief.ts';
-import { createCompare } from './compare.ts';
 import { el } from './dom.ts';
 import { createRing } from './ring.ts';
 import { createSkyStrip } from './skystrip.ts';
@@ -19,7 +18,7 @@ import type { UiCallbacks, UiController, UiSnapshot } from './types.ts';
 
 export type {
   LandTool, PlaceTool, SelectedThingView, Speed, ToolId, ToolReadout, UiCallbacks, UiController, UiSnapshot, ValleyStats, Weather,
-  WiringMode, YawMode,
+  YawMode,
 } from './types.ts';
 export { SPEEDS, WEATHERS } from './types.ts';
 export { placedKind, placeTool, toolDef } from './tools.ts';
@@ -39,11 +38,10 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks, options: UiO
   const strip = createToolStrip(callbacks, (m) => toasts.show(m, 'info'));
   const brief = createBrief(callbacks);
   const sky = createSkyStrip(callbacks);
-  const compare = createCompare(callbacks);
   const ring = createRing(root, callbacks);
 
   const right = el('div', 'ui-corner-right');
-  right.append(sky.element, compare.element);
+  right.append(sky.element);
   root.classList.add('ui-root');
   root.replaceChildren(brief.element, right, toasts.element, ring.element, strip.element);
 
@@ -65,7 +63,7 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks, options: UiO
       e.preventDefault();
       return;
     }
-    const def = toolForKey(key, e.shiftKey, s.wiringMode);
+    const def = toolForKey(key, e.shiftKey);
     if (def) {
       strip.choose(def.id);
       e.preventDefault();
@@ -79,7 +77,6 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks, options: UiO
       last = snapshot;
       brief.render(snapshot.stats);
       sky.render(snapshot);
-      compare.render(snapshot);
       strip.render(snapshot);
       ring.render(snapshot.selected);
     },

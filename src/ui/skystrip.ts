@@ -1,8 +1,11 @@
 // The sky strip, top right: a small day dial (the sun's dot runs round it; drag it to set the hour), the clock, quick
-// jumps to dawn, noon, golden hour and dusk, the game speed, the weather, and turning the camera.
+// jumps to dawn, noon, golden hour and dusk, the game speed, the weather, and the camera: its ⟲ ⟳ turns and, beside them,
+// a quiet toggle between a free orbit (the default) and snapped 90° views, the player's setting (remembered by the world),
+// and the power view's bolt (P), which shows every wireless power range (they're hidden otherwise, unless a power building
+// or relay is in hand or picked).
 import { button, el, setFlag, setPressed, setText, setTitle } from './dom.ts';
 import { icon, type IconName, setIcon } from './icons.ts';
-import { SPEEDS, type Speed, type UiCallbacks, type UiSnapshot, type Weather, WEATHERS } from './types.ts';
+import { SPEEDS, type Speed, type UiCallbacks, type UiSnapshot, type Weather, WEATHERS, type YawMode } from './types.ts';
 
 export interface SkyStrip { element: HTMLElement; render(s: UiSnapshot): void }
 
@@ -16,6 +19,13 @@ const MOMENTS = [
   { id: 'golden', label: 'Golden hour', hour: 17.5 },
   { id: 'dusk', label: 'Dusk', hour: 19.75 },
 ] as const;
+
+const CAMERA: Record<YawMode, { label: string; icon: IconName; other: YawMode }> = {
+  orbit: { label: 'Free orbit', icon: 'orbit', other: 'snap' },
+  snap: { label: 'Snapped 90° views', icon: 'snap', other: 'orbit' },
+};
+
+const POWER_VIEW = 'Power view (P): show wireless power ranges';
 
 const WEATHER: Record<Weather, { label: string; icon: IconName }> = {
   clear: { label: 'Clear', icon: 'sun' },
@@ -134,7 +144,14 @@ export function createSkyStrip(cb: UiCallbacks): SkyStrip {
   turnLeft.append(icon('turnLeft'));
   const turnRight = button('ui-icon-btn', 'Turn the view right', () => cb.onStepYaw(1));
   turnRight.append(icon('turnRight'));
-  turns.append(turnLeft, turnRight);
+  // The camera's setting: one small toggle beside the turns.
+  const cameraMode = button('ui-icon-btn ui-camera-mode', 'Camera', () => { if (last) cb.onSetYawMode(CAMERA[last.yawMode].other); });
+  const cameraIcon = icon('orbit');
+  cameraMode.append(cameraIcon);
+  // The power view: as small and quiet, beside it.
+  const powerView = button('ui-icon-btn ui-camera-mode ui-power-view', POWER_VIEW, () => cb.onTogglePowerView());
+  powerView.append(icon('power'));
+  turns.append(turnLeft, turnRight, cameraMode, powerView);
 
   strip.append(dial, time, moments, el('span', 'ui-rule'), speeds, weather, el('span', 'ui-rule'), turns);
 
@@ -158,6 +175,10 @@ export function createSkyStrip(cb: UiCallbacks): SkyStrip {
     setIcon(weatherIcon, w.icon);
     setText(weatherText, w.label);
     setTitle(weather, `Weather: ${w.label} (click for the next)`);
+    const cam = CAMERA[s.yawMode];
+    setIcon(cameraIcon, cam.icon);
+    setTitle(cameraMode, `Camera: ${cam.label} (click for ${CAMERA[cam.other].label.toLowerCase()})`);
+    setPressed(powerView, s.powerView);
   }
 
   return { element: strip, render };

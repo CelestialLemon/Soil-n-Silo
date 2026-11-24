@@ -1,6 +1,6 @@
 // The UI's contract with the rest of the game: what it shows (a `UiSnapshot` the loop hands it) and what it asks for
 // (`UiCallbacks`). The UI never reaches into the world or the renderer; it only reads the snapshot and calls back.
-import type { PowerMode, Season, ThingKind } from '../game/index.ts';
+import type { Season, ThingKind } from '../game/index.ts';
 
 /** Placing one of the catalog's things (src/game/catalog.ts). */
 export type PlaceTool = `place:${ThingKind}`;
@@ -14,8 +14,8 @@ export type LandTool =
 /** What the pointer does on the valley. `select` inspects, picks things up and pans. */
 export type ToolId = 'select' | PlaceTool | LandTool;
 
-export type YawMode = 'snap' | 'orbit';
-export type WiringMode = PowerMode;
+/** How the camera turns: a free orbit (the default) or snapped 90° views, the player's setting. */
+export type YawMode = 'orbit' | 'snap';
 export const SPEEDS = [0, 1, 2, 4] as const;
 export type Speed = (typeof SPEEDS)[number];
 export const WEATHERS = ['clear', 'breeze', 'overcast', 'rain'] as const;
@@ -52,7 +52,8 @@ export interface ValleyStats {
 export interface UiSnapshot {
   activeTool: ToolId;
   yawMode: YawMode;
-  wiringMode: WiringMode;
+  /** The power view (P): every wireless power range shown. */
+  powerView: boolean;
   /** Time of day, 0 to 24. */
   hour: number;
   speed: Speed;
@@ -75,10 +76,12 @@ export interface UiCallbacks {
   onRotateSelected(id: number, deltaRad: number): void;
   onRemoveSelected(id: number): void;
   onDeselect(): void;
+  /** The player's camera setting: a free orbit or snapped 90° views. */
   onSetYawMode(mode: YawMode): void;
-  onSetWiringMode(mode: WiringMode): void;
   /** Turn the camera: −1 the ⟲ button, +1 the ⟳ one. */
   onStepYaw(dir: -1 | 1): void;
+  /** The power view on or off (the sky strip's bolt, or P). */
+  onTogglePowerView(): void;
   onSetHour(hour: number): void;
   onSetSpeed(speed: Speed): void;
   onSetWeather(weather: Weather): void;

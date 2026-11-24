@@ -102,7 +102,6 @@ export function createToolStrip(cb: UiCallbacks, toast: (message: string) => voi
     }
     for (const { def, node } of buttons) {
       setPressed(node, def.id === s.activeTool);
-      setHidden(node, def.wiring !== undefined && def.wiring !== s.wiringMode);
       const kind = placedKind(def.id);
       const placed = kind !== null && CATALOG[kind].oneOfEach && (s.stats.thingCounts[kind] ?? 0) > 0;
       setFlag(node, 'is-placed', placed);
