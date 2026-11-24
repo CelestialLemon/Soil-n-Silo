@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  apply, canPlace, CATALOG, COVER, heightAt, isWet, must, placeThing, type Rect, suggestWaterWheelYaw, thingRect, vertexX,
-  vertexZ,
+  apply, canPlace, CATALOG, coreObb, COVER, heightAt, isWet, must, obbDistance, placeThing, type Rect, suggestWaterWheelYaw,
+  thingRect, vertexX, vertexZ,
 } from '../src/game/index.ts';
 import { flatLand, freshValley, land, same, valley } from './helpers.ts';
 
@@ -142,4 +142,35 @@ test('a solar canopy may stand over a painted field (agrivoltaics); other buildi
   assert.match(String((canPlace(s, 'mill', -12, -20, 0) as { error: string }).error), /field/);
   assert.ok(s.grid.fieldOf[(-20 + 80) * s.grid.nx + (-20 + 80)] !== 0, 'the field stays under the canopy');
   assert.equal(CATALOG.solar.padEase, 0);
+});
+
+test('a pad never lifts another building\'s core, and pads settle the same whatever order they were placed in', () => {
+  // A 12 % slope rising toward +z: the mill 8 m uphill of the silo, its pad's fringe reaching over the silo's core.
+  const slope = () => land({ height: (_x, z) => 0.12 * z });
+  const place = (s: ReturnType<typeof slope>, kind: 'silo' | 'mill', z: number) => {
+    const r = apply(s, { type: 'place', kind, x: 0, z, yaw: 0 });
+    assert.ok(r.ok, r.ok ? '' : r.error);
+    return must(s.things.find((t) => t.id === r.value.created), kind);
+  };
+  const a = slope(), siloA = place(a, 'silo', 0), millA = place(a, 'mill', 8);
+  const b = slope(), millB = place(b, 'mill', 8), siloB = place(b, 'silo', 0);
+  const g = a.grid, W = g.nx + 1;
+  for (const [s, t] of [[a, siloA], [a, millA], [b, siloB], [b, millB]] as const) {
+    const core = coreObb(t);
+    let n = 0;
+    for (let iz = 0; iz <= g.nz; iz++) for (let ix = 0; ix <= g.nx; ix++) {
+      if (obbDistance(core, vertexX(g, ix), vertexZ(g, iz)) > 0) continue;
+      n++;
+      assert.equal(s.grid.height[iz * W + ix], Math.fround(t.padTargetY), `the ${t.kind}'s core is flat at its own height`);
+    }
+    assert.ok(n > 40, `${n} vertices under the ${t.kind}'s core`);
+  }
+  assert.equal(siloA.padTargetY, siloB.padTargetY);
+  assert.ok(same(a.grid.height, b.grid.height), 'either order settles the same land');
+  assert.ok(same(a.grid.worked, b.grid.worked));
+  // Taking the mill away gives the silo's pad back as if it stood alone.
+  const alone = slope();
+  place(alone, 'silo', 0);
+  assert.ok(apply(a, { type: 'remove', id: millA.id }).ok);
+  assert.ok(same(a.grid.height, alone.grid.height));
 });

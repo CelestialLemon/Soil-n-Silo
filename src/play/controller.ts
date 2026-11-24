@@ -325,10 +325,13 @@ export class Play implements UiCallbacks {
         } else if (!erase) this.readout = { text: r.error, tone: 'warn' };
         return;
       }
-      case 'channel:dig':
-        this.world.setPreview({ kind: 'channel', points: st.points });
-        this.readout = channelReadout(this.state, st.points);
+      case 'channel:dig': {
+        // One solve per move: the readout's preview is the one drawn.
+        const c = channelReadout(this.state, st.points);
+        this.world.setPreview({ kind: 'channel', points: st.points, preview: c.preview });
+        this.readout = c.readout;
         return;
+      }
       case 'channel:fill': {
         if (!this.pointer) return;
         const hit = this.world.pickAt(this.pointer.x, this.pointer.y);

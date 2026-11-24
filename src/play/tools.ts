@@ -2,7 +2,7 @@
 // live line each one says while it's hovered or dragged ("Flowing 16 m", "The ground is too steep here."). Plain functions
 // of the game's state, so the controller only asks.
 import {
-  canDig, canPlace, canPlant, canTrack, CATALOG, channelPath, type GameState, pathLength, type Point2, previewChannelFlow,
+  canDig, canPlace, canPlant, canTrack, CATALOG, channelPath, type ChannelPreview, type GameState, pathLength, type Point2, previewChannelFlow,
   type ThingKind, trackBridges, trackPath,
 } from '../game/index.ts';
 import { placedKind, type ToolId, type ToolReadout } from '../ui/index.ts';
@@ -47,16 +47,18 @@ export function placeReadout(s: GameState, kind: ThingKind, x: number, z: number
   return { fits: true, readout: null };
 }
 
-/** What a rill being dragged would do: where it flows, where it stops, or why it can't be dug. */
-export function channelReadout(s: GameState, points: readonly Point2[]): ToolReadout {
+/**
+ * What a rill being dragged would do: where it flows, where it stops, or why it can't be dug. `preview` is the water the
+ * rules say it would carry (absent while the stroke is too short), handed on to the world to draw so it solves once.
+ */
+export function channelReadout(s: GameState, points: readonly Point2[]): { readout: ToolReadout; preview?: ChannelPreview } {
   const path = channelPath(points);
-  if (path.length < 2 || pathLength(path) < 1.5) return { text: 'Drag from the brook or pond, downhill or along the contours' };
-  const can = canDig(s, path);
-  if (!can.ok) return { text: can.error, tone: 'warn' };
-  const p = previewChannelFlow(s, points);
-  if (!p.connected) return { text: 'Start from the brook or pond for gravity flow', tone: 'warn' };
-  if (p.sillPoint) return { text: `Flowing ${m(p.wetLength)} · stops dry at uphill sill`, tone: 'warn' };
-  return { text: `Flowing ${m(p.wetLength)}`, tone: 'wet' };
+  if (path.length < 2 || pathLength(path) < 1.5) return { readout: { text: 'Drag from the brook or pond, downhill or along the contours' } };
+  const preview = previewChannelFlow(s, points), can = canDig(s, path);
+  if (!can.ok) return { readout: { text: can.error, tone: 'warn' }, preview };
+  if (!preview.connected) return { readout: { text: 'Start from the brook or pond for gravity flow', tone: 'warn' }, preview };
+  if (preview.sillPoint) return { readout: { text: `Flowing ${m(preview.wetLength)} · stops dry at uphill sill`, tone: 'warn' }, preview };
+  return { readout: { text: `Flowing ${m(preview.wetLength)}`, tone: 'wet' }, preview };
 }
 
 /** What a track being dragged would be: its length and its bridges, or why it can't run there. */

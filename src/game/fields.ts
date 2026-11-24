@@ -134,10 +134,14 @@ function relabel(s: GameState, crops: Uint8Array): FieldEdit {
   const fresh = () => { while (used.has(next)) next++; used.add(next); return next; };
   comps.forEach((_c, k) => { if (idOf[k] === 0) idOf[k] = fresh(); });
 
+  // A cell changed if its field's id or its crop did: painting the other crop over all of a field keeps the field's id
+  // (it is still the patch it overlaps most) but changes what grows there, which must be drawn again.
   let dirty: Rect | undefined;
-  const fieldOf = new Uint16Array(n);
+  const fieldOf = new Uint16Array(n), was = cropCells(s);
   comps.forEach((c, k) => { for (const i of c.cells) fieldOf[i] = idOf[k]; });
-  for (let i = 0; i < n; i++) if (fieldOf[i] !== g.fieldOf[i]) { const ix = i % g.nx; dirty = addCell(dirty, ix, (i - ix) / g.nx); }
+  for (let i = 0; i < n; i++) {
+    if (fieldOf[i] !== g.fieldOf[i] || crops[i] !== was[i]) { const ix = i % g.nx; dirty = addCell(dirty, ix, (i - ix) / g.nx); }
+  }
   const before = new Map(s.fields.map((f) => [f.id, f]));
   g.fieldOf.set(fieldOf);
   s.fields = comps.map((c, k) => fieldOf2(g, idOf[k], CROPS[c.crop - 1], c.cells)).sort((a, b) => a.id - b.id);

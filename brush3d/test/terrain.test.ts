@@ -111,3 +111,39 @@ test('a change on a chunk\'s edge repaints the chunks on both sides', () => {
   assert.equal(checkTriangles(adder, { ...m, height: Float32Array.from(m.height, (v, k) => (k === 4 * (m.nx + 1) + 16 ? h[0] : v)) }), 2 * m.nx * m.nz);
   land.dispose();
 });
+
+/** Every vertex's colour, by where it stands. */
+function colours(adder: Adder): Map<string, number[]> {
+  const out = new Map<string, number[]>();
+  for (const mesh of adder.meshes) {
+    const p = mesh.geometry.getAttribute('position'), c = mesh.geometry.getAttribute('color');
+    for (let i = 0; i < p.count; i++) out.set(`${p.getX(i)} ${p.getY(i)} ${p.getZ(i)}`, [c.getX(i), c.getY(i), c.getZ(i)]);
+  }
+  return out;
+}
+
+test('many small changes add up: a chunk whose paint drifts too far is painted again, not left stale', () => {
+  const m = terrain(), adder = new Adder(), land = new TerrainLand(adder, m);
+  // The first chunks' column tilted a hair each time: each change moves the dryness of the chunks beyond it (blurred
+  // over 12 m) by less than shows, but thirty of them by more.
+  const rect = { x: 0, y: 0, width: 16, height: m.nz }, row = m.nx + 1;
+  for (let k = 0; k < 30; k++) {
+    const h = new Float32Array(17 * (m.nz + 1));
+    for (let j = 0; j <= m.nz; j++) for (let i = 0; i <= 16; i++) { m.height[j * row + i] += 0.004 * (16 - i); h[j * 17 + i] = m.height[j * row + i]; }
+    land.update(rect, { height: h });
+    assert.ok(land.step(Infinity));
+  }
+  // What's drawn is within a shade (PAINT_SHOWS, 1/512) of the terrain painted afresh from the same map.
+  const fresh = new Adder();
+  new TerrainLand(fresh, m);
+  const drawn = colours(adder), want = colours(fresh);
+  assert.equal(drawn.size, want.size);
+  let worst = 0;
+  for (const [at, c] of want) {
+    const d = drawn.get(at);
+    assert.ok(d, `a vertex at ${at}`);
+    for (let k = 0; k < 3; k++) worst = Math.max(worst, Math.abs(d[k] - c[k]));
+  }
+  assert.ok(worst <= 1 / 512, `drawn ${(worst * 512).toFixed(2)} shades off`);
+  land.dispose();
+});

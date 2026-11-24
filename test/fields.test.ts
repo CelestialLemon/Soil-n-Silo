@@ -109,3 +109,18 @@ test('digging a rill or laying a track through a field takes those cells', () =>
   assert.ok(after < before);
   for (const f of s.fields) cellsOf(s, f);
 });
+
+test('painting the other crop over all of a field draws it again, though it keeps its id', () => {
+  const s = flatLand();
+  assert.ok(paint(s, 'wheat', -30, -20, 30, -20, 3).ok);
+  const [wheat] = s.fields, cells = cellsOf(s, wheat), rev = s.revision;
+  // The same stroke, beans: every cell of the field changes crop, none changes whether it's a field.
+  const r = paint(s, 'beans', -30, -20, 30, -20, 3);
+  assert.ok(r.ok);
+  assert.equal(s.fields.length, 1);
+  const [beans] = s.fields;
+  assert.equal(beans.crop, 'beans');
+  assert.deepEqual(cellsOf(s, beans), cells, 'the very same cells');
+  assert.deepEqual(r.value.fields, wheat.bounds, 'it says the whole field is to be drawn again');
+  assert.ok(r.value.revision > rev, 'and the valley has moved on');
+});

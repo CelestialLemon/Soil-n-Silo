@@ -1,8 +1,10 @@
 // Gravity irrigation: how water runs along the dug rills. Source-limited and never rising:
 //
 // - Water enters a rill only where its centreline touches the brook or pond (a contact), carrying that water's surface as
-//   its head. From there it marches along the centreline (and across explicit junctions where one rill's end meets, or its
-//   line crosses, another's), losing FRICTION metres per metre: it can never stand higher than where it came from.
+//   its head. Only samples whose ground lies under that surface stand full whatever their cut; a sample on a bank above it
+//   must clear its bed and stay inside its banks like any other, so a rill dug along a high bank stays dry. From there it
+//   marches along the centreline (and across explicit junctions where one rill's end meets, or its line crosses,
+//   another's), losing FRICTION metres per metre: it can never stand higher than where it came from.
 // - At each step the carried level is held below the rill's natural bank crest (it stays inside the cut), and it flows
 //   only while it clears the cut's bed by MIN_WATER_DEPTH. Where the ground climbs to a sill the level can't clear, the
 //   rill runs dry from there on.
@@ -65,7 +67,9 @@ function solve(g: Grid, paths: readonly (readonly Point2[])[], bedAt: (ch: numbe
     la.push({ to: b, d }); lb.push({ to: a, d });
   };
   for (const line of nodes) for (let i = 1; i < line.length; i++) link(line[i - 1], line[i], Math.hypot(line[i].x - line[i - 1].x, line[i].z - line[i - 1].z));
-  for (let a = 0; a < nodes.length; a++) for (let b = a + 1; b < nodes.length; b++) junctions(nodes[a], nodes[b], link);
+  for (let a = 0; a < nodes.length; a++) for (let b = a + 1; b < nodes.length; b++) {
+    for (const { ia, ib, d } of junctionPairs(paths[a], paths[b])) link(nodes[a][ia], nodes[b][ib], d);
+  }
 
   // Widest-path search: the highest head that can reach each sample, settled highest first.
   const head = new Map<Node, number>();
@@ -100,9 +104,11 @@ function solve(g: Grid, paths: readonly (readonly Point2[])[], bedAt: (ch: numbe
   while (heap.length > 0) {
     const { n, h } = pop();
     if (out.has(n) || h < (head.get(n) ?? DRY)) continue;
-    // In the brook or pond the rill stands in its water; elsewhere the level stays inside the cut and must clear the bed.
-    const inWater = isWet(n.source) && h <= n.source;
-    const level = inWater ? h : Math.min(h, n.bank - FREEBOARD);
+    // Where the ground lies under the surface of the brook or pond it touches, the rill stands in that water, at its
+    // level. Everywhere else, even within reach of the water on a bank above it, the level stays inside the cut and must
+    // clear the bed.
+    const inWater = isWet(n.source) && n.bank <= n.source;
+    const level = inWater ? Math.min(h, n.source) : Math.min(h, n.bank - FREEBOARD);
     const wet = inWater || level > n.bed + MIN_WATER_DEPTH;
     out.set(n, { level, wet });
     if (!wet) continue;
@@ -116,22 +122,73 @@ function solve(g: Grid, paths: readonly (readonly Point2[])[], bedAt: (ch: numbe
   }));
 }
 
-/** Links two rills where one's end comes within JUNCTION of the other's centreline, or their centrelines cross. */
-function junctions(a: Node[], b: Node[], link: (a: Node, b: Node, d: number) => void) {
-  if (a.length === 0 || b.length === 0) return;
-  const nearest = (p: Node, line: Node[]) => {
-    let best = line[0], bd = Infinity;
-    for (const q of line) { const d = Math.hypot(p.x - q.x, p.z - q.z); if (d < bd) { bd = d; best = q; } }
-    return { q: best, d: bd };
+/** Where two rills join: sample `ia` of one links to sample `ib` of the other, `d` apart. */
+export interface JunctionPair { ia: number; ib: number; d: number }
+
+/** A rill's samples in runs of RUN, each with its box: what the junction search tests first, run against run. */
+interface Run { from: number; to: number; minX: number; minZ: number; maxX: number; maxZ: number }
+const RUN = 16;
+const runsOf = new WeakMap<readonly Point2[], Run[]>();
+function runs(path: readonly Point2[]): Run[] {
+  let out = runsOf.get(path);
+  if (out) return out;
+  out = [];
+  // Runs share their end samples, so every segment (k - 1, k) lies wholly within the run holding k.
+  for (let from = 0; path.length > 0; from += RUN) {
+    const to = Math.min(path.length - 1, from + RUN);
+    let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
+    for (let k = from; k <= to; k++) { const p = path[k]; minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z); }
+    out.push({ from, to, minX, minZ, maxX, maxZ });
+    if (to >= path.length - 1) break;
+  }
+  runsOf.set(path, out);
+  return out;
+}
+const near = (r: Run, x: number, z: number, m: number) => x >= r.minX - m && x <= r.maxX + m && z >= r.minZ - m && z <= r.maxZ + m;
+const overlap = (r: Run, o: Run, m: number) => r.minX - m <= o.maxX && o.minX - m <= r.maxX && r.minZ - m <= o.maxZ && o.minZ - m <= r.maxZ;
+
+/** The junctions found between two dug rills, kept while both stand (a rill's path never changes once dug). */
+const pairsOf = new WeakMap<readonly Point2[], WeakMap<readonly Point2[], JunctionPair[]>>();
+
+/**
+ * Where two rills join: each end of one that comes within JUNCTION of the other's centreline links to its nearest sample
+ * there, and where their centrelines cross, the samples past the crossing link. Only runs whose boxes come within reach
+ * are searched, and the pairs between two rills are remembered, so a solve over many rills stays quick.
+ */
+export function junctionPairs(a: readonly Point2[], b: readonly Point2[]): JunctionPair[] {
+  let byB = pairsOf.get(a);
+  const had = byB?.get(b);
+  if (had) return had;
+  const out = findJunctions(a, b);
+  if (!byB) pairsOf.set(a, (byB = new WeakMap()));
+  byB.set(b, out);
+  return out;
+}
+
+function findJunctions(a: readonly Point2[], b: readonly Point2[]): JunctionPair[] {
+  const out: JunctionPair[] = [];
+  if (a.length === 0 || b.length === 0) return out;
+  const ra = runs(a), rb = runs(b);
+  // The sample of a line nearest a point, if one lies within JUNCTION (the first of equals, as a full scan finds it).
+  const nearest = (p: Point2, line: readonly Point2[], lineRuns: Run[]) => {
+    let best = -1, bd = Infinity;
+    for (const r of lineRuns) {
+      if (!near(r, p.x, p.z, JUNCTION)) continue;
+      for (let k = r.from; k <= r.to; k++) { const d = Math.hypot(p.x - line[k].x, p.z - line[k].z); if (d < bd) { bd = d; best = k; } }
+    }
+    return bd <= JUNCTION ? { k: best, d: bd } : undefined;
   };
-  for (const [ends, other] of [[a, b], [b, a]] as const) for (const e of [ends[0], ends[ends.length - 1]]) {
-    const { q, d } = nearest(e, other);
-    if (d <= JUNCTION) link(e, q, d);
+  for (const e of [0, a.length - 1]) { const n = nearest(a[e], b, rb); if (n) out.push({ ia: e, ib: n.k, d: n.d }); }
+  for (const e of [0, b.length - 1]) { const n = nearest(b[e], a, ra); if (n) out.push({ ia: n.k, ib: e, d: n.d }); }
+  const crossings: JunctionPair[] = [];
+  for (const r of ra) for (const o of rb) {
+    if (!overlap(r, o, 0)) continue;
+    for (let i = r.from + 1; i <= r.to; i++) for (let j = o.from + 1; j <= o.to; j++) {
+      if (segmentsCross(a[i - 1], a[i], b[j - 1], b[j])) crossings.push({ ia: i, ib: j, d: Math.hypot(a[i].x - b[j].x, a[i].z - b[j].z) });
+    }
   }
-  for (let i = 1; i < a.length; i++) for (let j = 1; j < b.length; j++) {
-    const x = segmentsCross(a[i - 1], a[i], b[j - 1], b[j]);
-    if (x) link(a[i], b[j], Math.hypot(a[i].x - b[j].x, a[i].z - b[j].z));
-  }
+  crossings.sort((p, q) => p.ia - q.ia || p.ib - q.ib);
+  return out.concat(crossings);
 }
 
 /** The water along every rill as the land stands now. */
@@ -190,21 +247,25 @@ export interface ChannelPreview {
 export function previewChannelFlow(s: GameState, points: readonly Point2[]): ChannelPreview {
   const g = s.grid, path = channelPath(points);
   if (path.length === 0) return { samples: [], connected: false, wetLength: 0, dryLength: 0 };
-  // The new rill's cut, exactly as recomposeEarth would make it.
-  const W = g.nx + 1, cores = protectedCores(s), cut = new Map<number, number>();
-  forVerticesNear(g, path, CHANNEL_REACH, (ix, iz, d) => {
-    if (inCore(cores, vertexX(g, ix), vertexZ(g, iz))) return;
-    const i = iz * W + ix, h = Math.fround(g.landHeight[i] - channelCut(d));
-    if (h < g.height[i]) cut.set(i, h);
-  });
-  const view = cut.size === 0 ? g.height : withCut(g.height, cut);
+  const view = heightsWithRill(s, path);
   const mine = s.channels.length;
   const flows = solve(g, [...s.channels.map((c) => c.path), path], (_ch, x, z) => sampleHeight(g, view, x, z));
   return summarize(flows[mine]);
 }
 
-function withCut(height: Float32Array, cut: Map<number, number>): Float32Array {
-  const h = Float32Array.from(height);
+/**
+ * The live heights with a new rill cut along `path`, exactly as recomposeEarth would cut it, without digging it (the live
+ * heights themselves if it would cut nothing).
+ */
+export function heightsWithRill(s: GameState, path: readonly Point2[]): Float32Array {
+  const g = s.grid, W = g.nx + 1, cores = protectedCores(s), cut = new Map<number, number>();
+  forVerticesNear(g, path, CHANNEL_REACH, (ix, iz, d) => {
+    if (inCore(cores, vertexX(g, ix), vertexZ(g, iz))) return;
+    const i = iz * W + ix, h = Math.fround(g.landHeight[i] - channelCut(d));
+    if (h < g.height[i]) cut.set(i, h);
+  });
+  if (cut.size === 0) return g.height;
+  const h = Float32Array.from(g.height);
   for (const [i, v] of cut) h[i] = v;
   return h;
 }

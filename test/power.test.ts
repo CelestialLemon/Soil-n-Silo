@@ -69,3 +69,28 @@ test('nothing is powered without a source; a battery alone feeds its network', (
   const battery = put(s, 'battery', -40, -30);
   assert.deepEqual(s.power.powered, [house, lantern, battery].sort((a, b) => a - b));
 });
+
+test('wireless mode: a lantern draws from the fields it stands in but never carries power on between them', () => {
+  const s = flatLand();
+  assert.ok(apply(s, { type: 'setPowerMode', mode: 'wireless' }).ok);
+  // A canopy and a relay 28 m apart (each field 15 m): out of each other's reach.
+  const solar = put(s, 'solar', -40, -30), relay = put(s, 'relay', -12, -30);
+  // The mill stands in the relay's field only.
+  const mill = put(s, 'mill', 0, -30);
+  assert.deepEqual(s.power.powered, [solar]);
+  // A lantern halfway, inside both fields: lit by the canopy, but the relay (and the mill past it) stay dark.
+  const lantern = put(s, 'lantern', -26, -30);
+  assert.deepEqual(s.power.powered, [solar, lantern]);
+  assert.ok(!s.power.powered.includes(relay) && !s.power.powered.includes(mill), 'no relay through a lantern');
+  assert.deepEqual(s.power.radii.map((v) => [v.id, v.powered]), [[solar, true], [relay, false]]);
+  assert.deepEqual(s.power.connected, [solar, relay, mill, lantern].sort((a, b) => a - b), 'each sits in a field it shares');
+  // A building between them (a farmhouse uses power too) carries none on either.
+  assert.ok(apply(s, { type: 'remove', id: lantern }).ok);
+  const house = put(s, 'farmhouse', -26, -30);
+  assert.ok(!s.power.powered.includes(relay));
+  assert.ok(s.power.powered.includes(house));
+  // A second relay in its place, within reach of both, joins them for real.
+  assert.ok(apply(s, { type: 'remove', id: house }).ok);
+  put(s, 'relay', -26, -30);
+  assert.ok(s.power.powered.includes(relay) && s.power.powered.includes(mill));
+});

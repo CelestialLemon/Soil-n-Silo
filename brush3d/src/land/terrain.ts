@@ -61,9 +61,13 @@ export class TerrainLand {
   private readonly cover: Uint8Array;
   private readonly ground: Uint8Array;
   private readonly worked: Uint8Array;
-  /** Each cell's paint as land (linear RGB, and how much of the meadow's drift it takes), and the one on screen. */
+  /**
+   * Each cell's paint as land (linear RGB, and how much of the meadow's drift it takes); the one on screen (each cell's as
+   * its chunk was last swapped in); and the one each chunk waiting to be swapped in was painted with.
+   */
   private readonly paint: Float32Array;
   private readonly drawnPaint: Float32Array;
+  private readonly builtPaint: Float32Array;
   /** How dry each cell lies (0 lush to 1 dry); how far each is from water (m); before the blur; blurred along its row. */
   private readonly dry: Float32Array;
   private readonly wet: Float32Array;
@@ -108,6 +112,7 @@ export class TerrainLand {
     this.paint = new Float32Array(n * 4);
     this.repaint();
     this.drawnPaint = this.paint.slice();
+    this.builtPaint = this.paint.slice();
     this.bounds();
     const w = m.nx * m.cell, h = m.nz * m.cell;
     this.fields = { x: m.x0 + w / 2, z: m.z0 + h / 2, side: Math.max(w, h), turn: 0 };
@@ -166,11 +171,12 @@ export class TerrainLand {
     if (changed === 0 || !any) return 0;
     if (shape) this.bounds();
     // The paint follows the height (its dryness) and the water: the cells whose paint that changes, too.
-    const was = this.paint.slice();
     this.repaint();
     let painted: Window | null = null;
-    // (Only by more than shows: the dryness blurs over DRY_BLUR, and a small cut moves it a hair over many metres.)
-    for (let t = 0; t < NX * NZ; t++) for (let c = 0; c < 4; c++) if (Math.abs(this.paint[t * 4 + c] - was[t * 4 + c]) > PAINT_SHOWS) {
+    // (Only by more than shows: the dryness blurs over DRY_BLUR, and a small cut moves it a hair over many metres. Against
+    // the paint on screen, not the last change's, so many small changes add up until their chunk is painted again.)
+    const drawn = this.drawnPaint;
+    for (let t = 0; t < NX * NZ; t++) for (let c = 0; c < 4; c++) if (Math.abs(this.paint[t * 4 + c] - drawn[t * 4 + c]) > PAINT_SHOWS) {
       painted = grown(painted, t % NX, Math.floor(t / NX), t % NX + 1, Math.floor(t / NX) + 1);
       break;
     }
@@ -210,6 +216,7 @@ export class TerrainLand {
         const k = this.pending.values().next().value!;
         this.pending.delete(k);
         this.built.set(k, this.chunkGeometry(k));
+        this.forChunkCells(k, (t) => { for (let c = 0; c < 4; c++) this.builtPaint[t * 4 + c] = this.paint[t * 4 + c]; });
       } else this.swap();
     }
   }
@@ -226,9 +233,10 @@ export class TerrainLand {
       for (const [k, g] of this.built) this.setChunk(k, g);
       if (this.apronMoved) { this.addApron(false); this.addApron(); }
     });
+    // On screen now: each swapped chunk's cells as it was painted; the rest as they were.
+    for (const k of this.built.keys()) this.forChunkCells(k, (t) => { for (let c = 0; c < 4; c++) this.drawnPaint[t * 4 + c] = this.builtPaint[t * 4 + c]; });
     this.built.clear();
     this.apronMoved = false;
-    this.drawnPaint.set(this.paint);
     this.revision++;
     this.ahead = false;
     const w = this.changed;
@@ -237,6 +245,12 @@ export class TerrainLand {
       const c = this.cell;
       this.onSwap({ x0: this.x0 + w.x0 * c, z0: this.z0 + w.y0 * c, x1: this.x0 + w.x1 * c, z1: this.z0 + w.y1 * c });
     }
+  }
+
+  /** Calls `fn` with each cell of chunk `k`. */
+  private forChunkCells(k: number, fn: (t: number) => void) {
+    const cc = this.chunkCells, i0 = (k % this.cols) * cc, j0 = Math.floor(k / this.cols) * cc;
+    for (let j = j0; j < Math.min(this.nz, j0 + cc); j++) for (let i = i0; i < Math.min(this.nx, i0 + cc); i++) fn(j * this.nx + i);
   }
 
   // ---- What the game asks ----

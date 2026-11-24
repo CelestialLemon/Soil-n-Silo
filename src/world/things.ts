@@ -74,11 +74,13 @@ export class Things {
       const old = this.items.get(id);
       if (old) { dropAll(this.r, old.meshes); this.items.delete(id); }
       this.waiting.delete(id);
+      // Placed, moved, turned or taken away: what blocks the wind may have changed either way (a removed building must
+      // stop sheltering its lee now, not at some later edit).
+      this.windChanged = true;
       const t = this.state.things.find((o) => o.id === id);
       if (!t) continue;
       if (landSent && this.r.landAhead && CATALOG[t.kind].padEase > 0) this.waiting.add(id);
       else this.build(t);
-      this.windChanged = true;
     }
     if (change.powerChanged) for (const it of this.items.values()) it.shown = '';
   }

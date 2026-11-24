@@ -3,7 +3,7 @@
 // tracks and rills whenever either changes.
 import { CHANNEL_REACH, RILL_HALF } from './earth.ts';
 import { pathBounds, type Point2, polylineDistance } from './geom.ts';
-import { cellIx, cellIz, type Grid, heightAt, isWet } from './grid.ts';
+import { cellIx, cellIz, type Grid, isWet, sampleHeight } from './grid.ts';
 import { err, ok, type Result } from './result.ts';
 import type { Bridge, Channel, GameState, Track } from './state.ts';
 
@@ -37,16 +37,17 @@ function crossings(g: Grid, channels: readonly Channel[], path: readonly Point2[
   return out;
 }
 
-/** The bridge a crossing needs, or why it can't have one. */
-function span(g: Grid, path: readonly Point2[], c: Crossing): Result<Omit<Bridge, 'id' | 'trackId'>, string> {
+/** The bridge a crossing needs, or why it can't have one, on the land `h` (the live land unless asked of another). */
+function span(g: Grid, path: readonly Point2[], c: Crossing, h: Float32Array = g.height): Result<Omit<Bridge, 'id' | 'trackId'>, string> {
   if (c.from === 0 || c.to === path.length - 1) return err('A track must reach dry ground on both sides of the water.');
   const a = path[c.from - 1], b = path[c.to + 1];
   const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz);
   if (len + 2 * BEARING > MAX_SPAN) return err(`That crossing is too wide for a plank bridge (${len.toFixed(1)} m; at most ${MAX_SPAN - 2 * BEARING} m).`);
   // The deck rests on the banks where the crossing ends and where its planks end, BEARING further on.
   const ux = len > 0 ? dx / len : 0, uz = len > 0 ? dz / len : 0;
-  const ha = Math.max(heightAt(g, a.x, a.z), heightAt(g, a.x - ux * BEARING, a.z - uz * BEARING));
-  const hb = Math.max(heightAt(g, b.x, b.z), heightAt(g, b.x + ux * BEARING, b.z + uz * BEARING));
+  const at = (x: number, z: number) => sampleHeight(g, h, x, z);
+  const ha = Math.max(at(a.x, a.z), at(a.x - ux * BEARING, a.z - uz * BEARING));
+  const hb = Math.max(at(b.x, b.z), at(b.x + ux * BEARING, b.z + uz * BEARING));
   if (Math.abs(ha - hb) > MAX_BANK_STEP) return err('The banks are too uneven for a bridge to rest on both.');
   let water = -Infinity;
   for (let i = c.from; i <= c.to; i++) {
@@ -57,10 +58,15 @@ function span(g: Grid, path: readonly Point2[], c: Crossing): Result<Omit<Bridge
   return ok({ x: (a.x + b.x) / 2, z: (a.z + b.z) / 2, yaw: Math.atan2(dx, dz), length: len + 2 * BEARING, width: BRIDGE_WIDTH, deckY });
 }
 
-/** Whether a track along this centreline can bridge every crossing it makes. */
-export function checkCrossings(s: GameState, path: readonly Point2[]): Result<void, string> {
-  for (const c of crossings(s.grid, s.channels, path)) {
-    const r = span(s.grid, path, c);
+/**
+ * Whether a track along this centreline can bridge every crossing it makes: over the rills dug now, or (to ask whether a
+ * new rill may be dug) over `channels` on the land `h` they would leave.
+ */
+export function checkCrossings(
+  s: GameState, path: readonly Point2[], channels: readonly Channel[] = s.channels, h: Float32Array = s.grid.height,
+): Result<void, string> {
+  for (const c of crossings(s.grid, channels, path)) {
+    const r = span(s.grid, path, c, h);
     if (!r.ok) return r;
   }
   return ok(undefined);

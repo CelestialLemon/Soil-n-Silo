@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  apply, channelSummary, FRICTION, type GameState, isWet, must, type Point2, previewChannelFlow,
+  apply, canDig, channelPath, channelSummary, FRICTION, type GameState, isWet, JUNCTION, type JunctionPair, junctionPairs, makeRng,
+  must, type Point2, previewChannelFlow,
 } from '../src/game/index.ts';
-import { brookLand, freshValley, land, same } from './helpers.ts';
+import { segmentsCross } from '../src/game/geom.ts';
+import { brookLand, flatLand, freshValley, land, same } from './helpers.ts';
 
 const at = (s: GameState, x: number, z: number) => Math.floor(z - s.grid.z0) * s.grid.nx + Math.floor(x - s.grid.x0);
 const dig = (s: GameState, points: Point2[]) => {
@@ -152,4 +154,87 @@ test('in the generated valley, a rill led downstream from the brook flows and we
   const top = Math.max(...s.valley.brookLevel.slice(Math.max(0, bi - 10), bi + 10));
   for (const f of c.flow) if (f.wet) assert.ok(f.waterLevel <= top + 1e-6);
   assert.ok(channelSummary(c).wetLength >= 10);
+});
+
+test('a rill dug along a high bank beside the brook stays dry: touching the water is not drawing from it', () => {
+  // A brook along x = -2 (surface -0.2), and east of it a bank standing 1.9 m high, its foot carved down to the bed.
+  const s = land({ height: (x) => (x >= 0.5 ? 1.9 : 0), water: (x) => (Math.abs(x + 2) <= 1.5 ? -0.2 : undefined), flow: () => ({ x: 0, z: 0.8 }) });
+  const moist = Float32Array.from(s.grid.moisture), water = Float32Array.from(s.grid.waterLevel);
+  // Within a metre of the water's edge (x = 0) all its length, its bed well above the water.
+  const points = [{ x: 0.9, z: -10 }, { x: 0.9, z: 10 }];
+  const preview = previewChannelFlow(s, points);
+  for (const p of preview.samples) assert.ok(p.bedHeight > 1, `a high bed at z = ${p.z.toFixed(2)}`);
+  assert.ok(!preview.connected && preview.samples.every((p) => !p.wet), 'no water climbs onto the bank');
+  const c = dig(s, points);
+  assert.ok(c.flow.every((p) => !p.wet));
+  assert.ok(same(s.grid.waterLevel, water), 'no rill water on the bank');
+  assert.ok(same(s.grid.moisture, moist), 'and no wet bank from it');
+  // A rill cut down into the water from the same bank (its line reaching into the brook) does draw from it.
+  const tap = previewChannelFlow(s, [{ x: -1.5, z: 12 }, { x: -0.6, z: 12 }, { x: -0.6, z: 20 }]);
+  assert.ok(tap.connected);
+  for (const p of tap.samples) if (p.wet) assert.ok(p.waterLevel <= -0.2 + 1e-6 && (p.bankHeight <= -0.2 || p.waterLevel > p.bedHeight));
+});
+
+test('a rill can\'t be dug where it would leave a track no bridge could cross', () => {
+  const s = flatLand();
+  // A track ending at z = -10; a rill across its very end would leave it running into a ditch.
+  assert.ok(apply(s, { type: 'addTrack', points: [{ x: -20, z: -30 }, { x: -20, z: -10 }] }).ok);
+  const across = [{ x: -26, z: -10 }, { x: -14, z: -10 }];
+  const r = apply(s, { type: 'digChannel', points: across });
+  assert.ok(!r.ok && /track/.test(r.error), r.ok ? 'dug' : r.error);
+  assert.equal(s.channels.length, 0, 'nothing dug');
+  assert.ok(!canDig(s, channelPath(across)).ok, 'the drag says so too');
+  // Laid the other way round, the track is refused the same crossing.
+  const t = flatLand();
+  assert.ok(apply(t, { type: 'digChannel', points: across }).ok);
+  assert.ok(!apply(t, { type: 'addTrack', points: [{ x: -20, z: -30 }, { x: -20, z: -10 }] }).ok);
+  // Across the track's middle, a bridge spans it: that rill may be dug.
+  const mid = apply(s, { type: 'digChannel', points: [{ x: -26, z: -20 }, { x: -14, z: -20 }] });
+  assert.ok(mid.ok && mid.value.bridges);
+  assert.equal(s.bridges.length, 1);
+});
+
+/** Junctions between two rills as the solver first found them: every end against every sample, every segment pair. */
+function junctionsByScan(a: readonly Point2[], b: readonly Point2[]): JunctionPair[] {
+  const out: JunctionPair[] = [];
+  const nearest = (p: Point2, line: readonly Point2[]) => {
+    let best = 0, bd = Infinity;
+    line.forEach((q, k) => { const d = Math.hypot(p.x - q.x, p.z - q.z); if (d < bd) { bd = d; best = k; } });
+    return { k: best, d: bd };
+  };
+  for (const e of [0, a.length - 1]) { const n = nearest(a[e], b); if (n.d <= JUNCTION) out.push({ ia: e, ib: n.k, d: n.d }); }
+  for (const e of [0, b.length - 1]) { const n = nearest(b[e], a); if (n.d <= JUNCTION) out.push({ ia: n.k, ib: e, d: n.d }); }
+  for (let i = 1; i < a.length; i++) for (let j = 1; j < b.length; j++) {
+    if (segmentsCross(a[i - 1], a[i], b[j - 1], b[j])) out.push({ ia: i, ib: j, d: Math.hypot(a[i].x - b[j].x, a[i].z - b[j].z) });
+  }
+  return out;
+}
+
+test('junctions found by box are the ones a full scan finds, and many rills side by side stay quick to solve', () => {
+  // Wandering rills, crossing and ending near each other.
+  const r = makeRng(11), rng = () => r.next(), lines: Point2[][] = [];
+  for (let k = 0; k < 30; k++) {
+    let x = rng() * 40 - 20, z = rng() * 40 - 20, a = rng() * Math.PI * 2;
+    const pts: Point2[] = [];
+    for (let i = 0; i < 6; i++) { pts.push({ x, z }); a += (rng() - 0.5) * 1.2; x += Math.cos(a) * 6; z += Math.sin(a) * 6; }
+    lines.push(channelPath(pts));
+  }
+  let found = 0;
+  for (let i = 0; i < lines.length; i++) for (let j = i + 1; j < lines.length; j++) {
+    const scan = junctionsByScan(lines[i], lines[j]), boxed = junctionPairs(lines[i], lines[j]);
+    assert.deepEqual(boxed, scan, `rills ${i} and ${j}`);
+    assert.equal(junctionPairs(lines[i], lines[j]), boxed, 'kept while both rills stand');
+    found += scan.length;
+  }
+  assert.ok(found > 20, `${found} junctions`);
+
+  // 25 rills 60 m long, 1.2 m apart (their boxes overlap), fed from the brook; a 26th dragged across them all.
+  const s = brookLand();
+  for (let k = 0; k < 25; k++) dig(s, [{ x: -1, z: -30 + k * 1.2 }, { x: 59, z: -30 + k * 1.2 }]);
+  const drag = [{ x: 30, z: -34 }, { x: 31, z: 0 }, { x: 33, z: 4 }];
+  previewChannelFlow(s, drag);
+  const t0 = performance.now(), runs = 5;
+  for (let k = 0; k < runs; k++) previewChannelFlow(s, drag);
+  const ms = (performance.now() - t0) / runs;
+  assert.ok(ms < 30, `a preview over 25 rills took ${ms.toFixed(1)} ms`);
 });

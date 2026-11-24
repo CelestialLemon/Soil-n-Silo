@@ -3,8 +3,9 @@
 import { CATALOG } from './catalog.ts';
 import type { Change } from './change.ts';
 import { channelRect, coreObb, RILL_HALF, settles, thingObb } from './earth.ts';
-import { channelPath } from './flow.ts';
-import { obbDistance, pathLength, type Point2 } from './geom.ts';
+import { checkCrossings } from './bridges.ts';
+import { channelPath, heightsWithRill } from './flow.ts';
+import { obbDistance, pathBounds, pathLength, type Point2 } from './geom.ts';
 import { cellIx, cellIz, COVER, VALLEY_HALF } from './grid.ts';
 import { err, ok, type Result } from './result.ts';
 import { settle } from './settle.ts';
@@ -33,8 +34,29 @@ export function canDig(s: GameState, path: readonly Point2[]): Result<void, stri
     for (const k of s.crags) if (Math.hypot(p.x - k.x, p.z - k.z) <= k.radius + RILL_HALF) return err('There is rock in the way.');
     for (const t of [...s.wildTrees, ...s.plantedTrees]) if (Math.hypot(p.x - t.x, p.z - t.z) <= TRUNK * t.scale + RILL_HALF) return err('A tree is in the way.');
   }
+  return keepsTracks(s, path);
+}
+
+/**
+ * Whether every track the rill would cross could still bridge it (and every other crossing it makes), on the land the
+ * cut would leave: laying the track after the rill would be refused otherwise, so digging the rill after it is too.
+ */
+function keepsTracks(s: GameState, path: readonly Point2[]): Result<void, string> {
+  const reach = pathBounds(path, RILL_HALF);
+  const crossed = s.tracks.filter((t) => {
+    const b = pathBounds(t.path, 0);
+    return b.minX <= reach.maxX && b.maxX >= reach.minX && b.minZ <= reach.maxZ && b.maxZ >= reach.minZ;
+  });
+  if (crossed.length === 0) return ok(undefined);
+  const channels = [...s.channels, { id: -1, points: [], path: [...path], flow: [] }], h = heightsWithRill(s, path);
+  for (const t of crossed) {
+    const r = checkCrossings(s, t.path, channels, h);
+    if (!r.ok) return err(`That would cut a track where no bridge could cross: ${lower(r.error)}`);
+  }
   return ok(undefined);
 }
+
+const lower = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
 
 /** Digs a rill along a stroke. */
 export function digChannel(s: GameState, points: readonly Point2[]): Result<Change, string> {

@@ -5,22 +5,36 @@ import type { Play } from './controller.ts';
 
 /** Whether a key goes to a text field (the page has none yet, but a key typed there is never a tool's). */
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || t.closest('input, textarea, select') !== null);
+/** Whether a key goes to a control of the page's own (a focused button's Space presses it, not the pause). */
+const onControl = (t: EventTarget | null) =>
+  t instanceof Element && t.closest('button, input, select, textarea, a[href], [tabindex], [contenteditable]') !== null;
 
 /** Listens on the canvas and the window; returns what stops it. Call it before the overlay is built. */
 export function bindInput(canvas: HTMLCanvasElement, play: Play): () => void {
+  // One pointer drives a gesture at a time: a second finger (or pen) pressed while one is down is ignored until it lifts.
+  let active: number | null = null;
+  const other = (e: PointerEvent) => active !== null && e.pointerId !== active;
   const onDown = (e: PointerEvent) => {
-    if (e.pointerType === 'mouse' && e.button > 2) return;
+    if (other(e) || (e.pointerType === 'mouse' && e.button > 2)) return;
+    active = e.pointerId;
     canvas.setPointerCapture(e.pointerId);
     play.pointerDown(e.button, e.clientX, e.clientY);
     e.preventDefault();
   };
-  const onMove = (e: PointerEvent) => play.pointerMove(e.clientX, e.clientY);
+  const onMove = (e: PointerEvent) => { if (!other(e)) play.pointerMove(e.clientX, e.clientY); };
   const onUp = (e: PointerEvent) => {
+    if (e.pointerId !== active) return;
+    active = null;
     play.pointerUp(e.button, e.clientX, e.clientY);
     if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
   };
-  const onCancel = () => play.pointerCancel();
-  const onLeave = () => play.pointerLeave();
+  // The gesture's pointer was cancelled, or its capture lost before it lifted: the gesture is dropped.
+  const onCancel = (e: PointerEvent) => {
+    if (e.pointerId !== active) return;
+    active = null;
+    play.pointerCancel();
+  };
+  const onLeave = (e: PointerEvent) => { if (!other(e)) play.pointerLeave(); };
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();
     // Lines and pages (some mice, some systems) as pixels; Shift turns a vertical wheel sideways on some systems.
@@ -30,23 +44,27 @@ export function bindInput(canvas: HTMLCanvasElement, play: Play): () => void {
   };
   const onMenu = (e: Event) => e.preventDefault();
 
+  // The keys the controller took on their way down: only their release is kept from the page.
+  const took = new Set<string>();
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || typing(e.target)) return;
+    if (e.key === ' ' && e.target !== canvas && onControl(e.target)) return;
     const key = e.key.toLowerCase();
-    const took = key === 'escape' ? play.escape() : play.keyDown(key, e.shiftKey, e.repeat);
-    if (took) e.preventDefault();
+    if (key === 'escape' ? play.escape() : play.keyDown(key, e.shiftKey, e.repeat)) { took.add(key); e.preventDefault(); }
   };
   const onKeyUp = (e: KeyboardEvent) => {
-    play.keyUp(e.key.toLowerCase());
-    // A space let go over a focused button would press it: the space is the pause.
-    if (e.key === ' ' && !typing(e.target)) e.preventDefault();
+    const key = e.key.toLowerCase();
+    play.keyUp(key);
+    // A space taken as the pause, let go over a focused button, would press it too.
+    if (took.delete(key)) e.preventDefault();
   };
-  const onBlur = () => play.releaseKeys();
+  const onBlur = () => { took.clear(); play.releaseKeys(); };
 
   canvas.addEventListener('pointerdown', onDown);
   canvas.addEventListener('pointermove', onMove);
   canvas.addEventListener('pointerup', onUp);
   canvas.addEventListener('pointercancel', onCancel);
+  canvas.addEventListener('lostpointercapture', onCancel);
   canvas.addEventListener('pointerleave', onLeave);
   canvas.addEventListener('wheel', onWheel, { passive: false });
   canvas.addEventListener('contextmenu', onMenu);
@@ -59,6 +77,7 @@ export function bindInput(canvas: HTMLCanvasElement, play: Play): () => void {
     canvas.removeEventListener('pointermove', onMove);
     canvas.removeEventListener('pointerup', onUp);
     canvas.removeEventListener('pointercancel', onCancel);
+    canvas.removeEventListener('lostpointercapture', onCancel);
     canvas.removeEventListener('pointerleave', onLeave);
     canvas.removeEventListener('wheel', onWheel);
     canvas.removeEventListener('contextmenu', onMenu);

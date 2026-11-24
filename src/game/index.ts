@@ -34,7 +34,8 @@ export { canPlace, moveThing, placeThing, removeThing, rotateThing, suggestWater
 export { eraseField, FIELD_MAX_SLOPE, fieldAllowed, type FieldEdit, paintField } from './fields.ts';
 export { canDig, digChannel, fillChannel } from './channels.ts';
 export {
-  CHANNEL_SPACING, channelPath, channelSummary, type ChannelPreview, FREEBOARD, FRICTION, MIN_WATER_DEPTH, previewChannelFlow,
+  CHANNEL_SPACING, channelPath, channelSummary, type ChannelPreview, FREEBOARD, FRICTION, JUNCTION, junctionPairs, type JunctionPair,
+  MIN_WATER_DEPTH, previewChannelFlow,
 } from './flow.ts';
 export { WET_REACH, wetness } from './wet.ts';
 export {

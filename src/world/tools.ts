@@ -8,15 +8,19 @@
 import type * as THREE from 'three';
 import { type BrushRenderer, type Line, type LinePoint, OVERLAY_LOOK, OVERLAY_NONE, type Overlay } from '../../brush3d/src/index.ts';
 import {
-  CATALOG, canPlace, canPlant, canTrack, type GameState, padTarget, type Point2, previewChannelFlow, type ThingKind, trackPath,
+  CATALOG, canPlace, canPlant, canTrack, type ChannelPreview, type GameState, padTarget, type Point2, previewChannelFlow, type ThingKind, trackPath,
   type TreeSpecies, VALLEY_HALF,
 } from '../game/index.ts';
 import type { Things } from './things.ts';
 
-/** What the player is about to do, for the world to draw. Where `fits` is left out, the world asks the game's rules. */
+/**
+ * What the player is about to do, for the world to draw. Where `fits` is left out, the world asks the game's rules; a
+ * rill's `preview`, where given, is the water the rules already worked out for these points (the world solves it itself
+ * otherwise, and again whenever the valley changes under it).
+ */
 export type PreviewSpec =
   | { kind: 'thing'; thingKind: ThingKind; x: number; z: number; yaw: number; fits?: boolean; ignore?: number }
-  | { kind: 'channel'; points: Point2[] }
+  | { kind: 'channel'; points: Point2[]; preview?: ChannelPreview }
   | { kind: 'field'; x: number; z: number; radius: number; erase?: boolean; fits?: boolean }
   | { kind: 'track'; points: Point2[]; fits?: boolean }
   | { kind: 'hedge'; points: Point2[]; fits?: boolean }
@@ -74,6 +78,8 @@ export class Tools {
 
   /** After an edit: what the tools show may have changed with the state (the rules' answers, the wet, the power). */
   refresh() {
+    // The valley changed: a rill's preview worked out before it is stale.
+    if (this.spec?.kind === 'channel' && this.spec.preview) this.spec = { ...this.spec, preview: undefined };
     this.drawPreview();
     this.drawPower();
     if (this.moisture) this.drawMoisture();
@@ -120,7 +126,7 @@ export class Tools {
       }
       case 'channel': {
         if (spec.points.length < 2) break;
-        const p = previewChannelFlow(s, spec.points);
+        const p = spec.preview ?? previewChannelFlow(s, spec.points);
         // The rill in runs: blue where water would flow, amber dashes where it would stand dry.
         let run: LinePoint[] = [], wet: boolean | null = null;
         const flush = () => {

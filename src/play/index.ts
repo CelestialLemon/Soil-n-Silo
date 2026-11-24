@@ -11,23 +11,40 @@ import { bindInput } from './input.ts';
 
 export { Play } from './controller.ts';
 
+/** A valley being played: the controller, and what stops it all. */
+export interface PlaySession {
+  play: Play;
+  /** Stops the input, takes the overlay down and frees the world (its renderer, its GPU memory). */
+  dispose(): void;
+}
+
 /** Builds the valley the address asks for and starts playing it. */
-export async function startPlay(canvas: HTMLCanvasElement, uiRoot: HTMLElement): Promise<Play> {
+export async function startPlay(canvas: HTMLCanvasElement, uiRoot: HTMLElement): Promise<PlaySession> {
   const loading = mountLoading(uiRoot);
+  const stops: (() => void)[] = [];
+  const dispose = () => { for (const stop of stops.splice(0).reverse()) stop(); };
   try {
     const options = readUrlOptions(window.location.search);
     const state = generateValley(options.seed, options.season);
     if (state.powerMode !== options.wiring) apply(state, { type: 'setPowerMode', mode: options.wiring });
     const world = await createWorld(canvas, state, options);
+    stops.push(() => world.dispose());
     const play = new Play(state, world);
     // The controller hears the keys first (Esc drops a stroke before the overlay closes a card): bound before the overlay.
-    bindInput(canvas, play);
-    play.attach(createUi(uiRoot, play));
+    stops.push(bindInput(canvas, play));
+    const ui = createUi(uiRoot, play);
+    stops.push(() => ui.dispose());
+    play.attach(ui);
     loading.done();
     // For the browser playtests on the dev server: the controller (its state and world) from the page's console.
-    if (import.meta.env.DEV) (window as unknown as { __play?: Play }).__play = play;
-    return play;
+    if (import.meta.env.DEV) {
+      const page = window as unknown as { __play?: Play };
+      page.__play = play;
+      stops.push(() => { if (page.__play === play) delete page.__play; });
+    }
+    return { play, dispose };
   } catch (e) {
+    dispose();
     loading.fail('The valley could not be painted here: this browser may lack WebGL 2.');
     throw e;
   }

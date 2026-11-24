@@ -100,25 +100,40 @@ export function recomposeEarth(s: GameState, rect: Rect): void {
   for (let iz = vz0; iz <= vz1; iz++) for (let ix = vx0; ix <= vx1; ix++) g.height[iz * W + ix] = g.baseHeight[iz * W + ix];
   for (let iz = r.z0; iz <= r.z1; iz++) for (let ix = r.x0; ix <= r.x1; ix++) g.worked[iz * g.nx + ix] = 0;
 
-  // 2. Building pads, in the order they were placed.
-  const pads = s.things.filter((t) => settles(CATALOG[t.kind])).sort((a, b) => a.id - b.id);
-  for (const t of pads) {
-    const ease = CATALOG[t.kind].padEase, core = coreObb(t);
-    const pr = obbRect(g, core, ease + 1);
-    if (!pr || !rectsOverlap(pr, { x0: vx0 - 1, z0: vz0 - 1, x1: vx1, z1: vz1 })) continue;
-    const weight = (x: number, z: number) => {
-      const sd = obbDistance(core, x, z);
-      return sd <= 0 ? 1 : sd >= ease ? 0 : 1 - smoothstep(0, ease, sd);
-    };
-    for (let iz = Math.max(vz0, pr.z0); iz <= Math.min(vz1, pr.z1 + 1); iz++) for (let ix = Math.max(vx0, pr.x0); ix <= Math.min(vx1, pr.x1 + 1); ix++) {
-      const w = weight(vertexX(g, ix), vertexZ(g, iz));
+  // 2. Building pads, the same whatever order they were placed in. A vertex inside a building's core stands at that
+  //    building's height and nothing else touches it; outside every core, the fringes easing into the slope blend
+  //    together, each pulling toward its own height by how near its core the vertex lies.
+  const pads = s.things.filter((t) => settles(CATALOG[t.kind])).sort((a, b) => a.id - b.id).flatMap((t) => {
+    const ease = CATALOG[t.kind].padEase, core = coreObb(t), pr = obbRect(g, core, ease + 1);
+    return pr && rectsOverlap(pr, { x0: vx0 - 1, z0: vz0 - 1, x1: vx1, z1: vz1 }) ? [{ t, ease, core, pr }] : [];
+  });
+  const weight = (p: (typeof pads)[number], x: number, z: number) => {
+    const sd = obbDistance(p.core, x, z);
+    return sd <= 0 ? 1 : sd >= p.ease ? 0 : 1 - smoothstep(0, p.ease, sd);
+  };
+  if (pads.length > 0) for (let iz = vz0; iz <= vz1; iz++) for (let ix = vx0; ix <= vx1; ix++) {
+    const x = vertexX(g, ix), z = vertexZ(g, iz);
+    let core: number | undefined, n = 0, only = 0, pull = 0, says = 0, pulled = 0;
+    for (const p of pads) {
+      if (ix < p.pr.x0 || ix > p.pr.x1 + 1 || iz < p.pr.z0 || iz > p.pr.z1 + 1) continue;
+      const w = weight(p, x, z);
       if (w <= 0) continue;
-      const i = iz * W + ix, h = g.height[i];
-      const target = lerp(h, t.padTargetY, w);
-      g.height[i] = isBedVertex(g, ix, iz) ? Math.min(h, target) : target;
+      if (w >= 1) { core = p.t.padTargetY; break; }
+      // Each fringe's say in the blended height grows without bound toward its own core, so the blend meets every
+      // core's height exactly at its edge.
+      const say = w / (1 - w);
+      n++; only = p.t.padTargetY; pull = Math.max(pull, w); says += say; pulled += say * p.t.padTargetY;
     }
+    if (core === undefined && n === 0) continue;
+    // One fringe alone eases to its own height (not a weighted mean of one, which needn't round back to it exactly).
+    const goal = core ?? (n === 1 ? only : pulled / says);
+    const i = iz * W + ix, h = g.height[i], to = lerp(h, goal, core === undefined ? pull : 1);
+    g.height[i] = isBedVertex(g, ix, iz) ? Math.min(h, to) : to;
+  }
+  for (const p of pads) {
+    const pr = p.pr;
     for (let iz = Math.max(r.z0, pr.z0); iz <= Math.min(r.z1, pr.z1); iz++) for (let ix = Math.max(r.x0, pr.x0); ix <= Math.min(r.x1, pr.x1); ix++) {
-      const w = Math.round(weight(cellX(g, ix), cellZ(g, iz)) * 255), i = iz * g.nx + ix;
+      const w = Math.round(weight(p, cellX(g, ix), cellZ(g, iz)) * 255), i = iz * g.nx + ix;
       if (w > g.worked[i]) g.worked[i] = w;
     }
   }
