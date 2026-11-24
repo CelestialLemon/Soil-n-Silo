@@ -23,7 +23,7 @@ import { powerFor } from '../power/graph.ts';
 /** How far the land falls per metre down the valley (and the brook with it). */
 export const VALLEY_FALL = 0.045;
 /** How far the far side rises per metre away from the brook. */
-export const SIDE_RISE = 0.04;
+export const SIDE_RISE = 0.045;
 /** How far the farming side's meadow terrace falls away below the brook's levee, m. */
 export const TERRACE_DIP = 0.7;
 /** How far the terrace runs out from the brook before the hills begin to rise, m. */
@@ -99,10 +99,13 @@ export function generateValley(seed: number, season: Season): GameState {
     // The hills round the valley, parting where the brook comes in and goes out.
     h += (9 * smoothstep(52, 78, r) + 0.12 * Math.max(0, r - 54)) * smoothstep(5, 26, dB);
     // Rolling ground: barely a ripple on the terrace, calm by the brook (so the far bank climbs plainly from it) and in
-    // the homestead's clearing.
+    // the homestead's clearing. On the far side its hollows only come in well away from the brook: where the brook
+    // bends, a cut straight across the far bank also runs down the valley, and a hollow there let it fall back below the
+    // brook (spring seed 72 once ran a rill 24.5 m across it).
     const calm = smoothstep(5, 16, dB) * smoothstep(CLEARING - 2, CLEARING + 10, dH);
     const roll = farm ? lerp(0.3, 1.4, smoothstep(TERRACE_WIDTH - 6, TERRACE_WIDTH + 8, dB)) : lerp(0.4, 1.4, smoothstep(10, 26, dB));
-    h += roll * fbm(nSeed, x / 24, z / 24, 4) * calm;
+    const bump = fbm(nSeed, x / 24, z / 24, 4);
+    h += roll * (farm || bump >= 0 ? bump : bump * smoothstep(14, 30, dB)) * calm;
     for (const k of knolls) h += k.height * Math.exp(-((x - k.x) ** 2 + (z - k.z) ** 2) / (k.radius * k.radius));
     return h;
   };

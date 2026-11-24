@@ -45,4 +45,4 @@ export {
   trackPath,
 } from './paths.ts';
 export { BRIDGE_WIDTH, checkCrossings, MAX_SPAN, recomputeBridges, trackBridges } from './bridges.ts';
-export { powerFor } from './power/graph.ts';
+export { type PowerCandidate, powerFor, previewPower } from './power/graph.ts';

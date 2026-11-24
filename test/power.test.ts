@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { apply, CATALOG, type GameState, must, type ThingKind, THING_KINDS } from '../src/game/index.ts';
+import { apply, CATALOG, type GameState, must, previewPower, type ThingKind, THING_KINDS } from '../src/game/index.ts';
 import { flatLand } from './helpers.ts';
 
 const put = (s: GameState, kind: ThingKind, x: number, z: number) => {
@@ -71,4 +71,24 @@ test('a lantern draws from the fields it stands in but never carries power on be
   assert.ok(apply(s, { type: 'remove', id: house }).ok);
   put(s, 'relay', -26, -30);
   assert.ok(s.power.powered.includes(relay) && s.power.powered.includes(mill));
+});
+
+test('moving a relay previews the network it would leave, not the one it leaves behind', () => {
+  // A canopy, then relay A 14 m on and relay B 14 m past it (each field 15 m): a chain, all powered.
+  const s = flatLand();
+  const solar = put(s, 'solar', -40, -30), a = put(s, 'relay', -26, -30), b = put(s, 'relay', -12, -30);
+  assert.deepEqual(s.power.powered, [solar, a, b]);
+  // A moved 14 m past B: B is out of the canopy's reach without A between them, and A only reaches B.
+  const { power, id } = previewPower(s, { kind: 'relay', x: 2, z: -30, ignore: a });
+  assert.equal(id, a);
+  const on = new Map(power.radii.map((f) => [f.id, f.powered]));
+  assert.equal(on.get(a), false, 'relay A, at its new spot, is dark');
+  assert.equal(on.get(b), false, 'relay B, which leaned on A\'s old spot, is dark');
+  assert.equal(on.get(solar), true);
+  assert.deepEqual(power.radii.find((f) => f.id === a), { id: a, x: 2, z: -30, radius: CATALOG.relay.powerRange, powered: false });
+  // Previewing changes nothing; a new relay in hand is the entry with id -1.
+  assert.deepEqual(s.power.powered, [solar, a, b]);
+  const fresh = previewPower(s, { kind: 'relay', x: 2, z: -30 });
+  assert.equal(fresh.id, -1);
+  assert.deepEqual(fresh.power.radii.filter((f) => f.id === -1).map((f) => f.powered), [true], 'placed past B, it joins the chain');
 });

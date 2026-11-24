@@ -157,7 +157,8 @@ test('in the generated valley, a rill led downstream from the brook flows and we
 });
 
 test('across seeds, a rill tapped from the upper or middle brook and led out over the terrace flows at least 20 m and waters its banks', () => {
-  for (const seed of SEEDS) {
+  // Seed 72's far bank, on a meander, once dipped below the brook and ran a rill 24.5 m across it.
+  for (const seed of [...SEEDS, 72]) {
     const s = generateValley(seed, 'spring');
     for (const offset of [-15, 0]) {
       const b = brookSpot(s, offset);

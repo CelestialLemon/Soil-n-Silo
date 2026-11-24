@@ -2,14 +2,15 @@
 // thing being placed (brush3d's preview: green where it fits, red where it doesn't), the rill being dragged with the water
 // the rules say it would carry (cool blue where it flows, warm amber dashes past the sill where it runs dry, a ring at the
 // sill), a field brush's circle, a track's, a hedge's or a tree's outline, the contour lines while digging, the
-// ground's moisture glow while painting fields, and the power as the game's state has it (state.power): each power
-// building's and relay's soft wireless field, a calm thin ring on the grass, only when the play layer asks for them (the
-// power view, or a power building or relay in hand or picked; power is wireless: no lines run anywhere).
+// ground's moisture glow while painting fields, and the power as the game's state has it (state.power), or would have
+// with the power building or relay in hand put down (previewPower): each power building's and relay's soft wireless
+// field, a calm thin ring on the grass, only when the play layer asks for them (the power view, or a power building or
+// relay in hand or picked; power is wireless: no lines run anywhere).
 import type * as THREE from 'three';
 import { type BrushRenderer, type Line, type LinePoint, OVERLAY_LOOK, OVERLAY_NONE, type Overlay } from '../../brush3d/src/index.ts';
 import {
-  CATALOG, canPlace, canPlant, canTrack, type ChannelPreview, type GameState, padTarget, type Point2, previewChannelFlow, type ThingKind, trackPath,
-  type TreeSpecies, VALLEY_HALF,
+  CATALOG, canPlace, canPlant, canTrack, type ChannelPreview, type GameState, padTarget, type Point2, type PowerRadius, previewChannelFlow,
+  previewPower, type ThingKind, trackPath, type TreeSpecies, VALLEY_HALF,
 } from '../game/index.ts';
 import type { Things } from './things.ts';
 
@@ -129,7 +130,8 @@ export class Tools {
         m.rotation.set(0, spec.yaw, 0);
         m.updateMatrixWorld();
         this.r.setPreview(m, fits ? 'fits' : 'blocked');
-        lines.push(...this.prospectiveField(spec.thingKind, spec.x, spec.z, spec.ignore));
+        const field = this.prospectiveField();
+        if (field) lines.push(fieldRing(field.x, field.z, field.radius, field.powered));
         break;
       }
       case 'channel': {
@@ -177,22 +179,36 @@ export class Tools {
   }
 
   /**
-   * The field a power building or relay being placed would project, at its spot: carrying power (blue) if a fed field
-   * already reaches it or it feeds one itself, waiting (sand) if not. A thing that only uses power makes no field.
+   * The fields as they would stand with the thing in hand put down where it is (a moved thing taken from its old spot), so
+   * every ring, the one in hand and those that lean on it, shows the network it would leave: null when no thing is in hand
+   * or it neither makes a field nor moves one. `id` is the one in hand's entry.
    */
-  private prospectiveField(kind: ThingKind, x: number, z: number, ignore?: number): Line[] {
-    const def = CATALOG[kind], role = def.powerRole;
-    if (role === 'none' || role === 'load' || def.powerRange <= 0) return [];
-    const fed = role !== 'relay' || this.state.power.radii.some((f) => f.id !== ignore && f.powered && Math.hypot(f.x - x, f.z - z) <= Math.max(f.radius, def.powerRange));
-    return [fieldRing(x, z, def.powerRange, fed)];
+  private prospectivePower(): { radii: PowerRadius[]; id: number } | null {
+    const spec = this.spec;
+    if (spec?.kind !== 'thing') return null;
+    const def = CATALOG[spec.thingKind];
+    if (def.powerRole === 'none' || def.powerRole === 'load' || def.powerRange <= 0) return null;
+    const { power, id } = previewPower(this.state, { kind: spec.thingKind, x: spec.x, z: spec.z, ignore: spec.ignore });
+    return { radii: power.radii, id };
   }
 
-  /** The power as the game has it: each field's ring, only while asked for (`setShowPower`). */
+  /** The field the power building or relay in hand would project at its spot: carrying power (blue) or waiting (sand). */
+  private prospectiveField(): PowerRadius | null {
+    const p = this.prospectivePower();
+    return p?.radii.find((f) => f.id === p.id) ?? null;
+  }
+
+  /**
+   * The power as the game has it: each field's ring, only while asked for (`setShowPower`). With a power building or
+   * relay in hand, as it would be once put down there (the one in hand's own ring is the tool's).
+   */
   private drawPower() {
     const lines: Line[] = [];
     if (this.showPower) {
+      const p = this.prospectivePower();
       const moving = this.spec?.kind === 'thing' ? this.spec.ignore : undefined;
-      for (const f of this.state.power.radii) if (f.id !== moving) lines.push(fieldRing(f.x, f.z, f.radius, f.powered));
+      const radii = p?.radii ?? this.state.power.radii, skip = p?.id ?? moving;
+      for (const f of radii) if (f.id !== skip) lines.push(fieldRing(f.x, f.z, f.radius, f.powered));
     }
     this.r.setLines(lines.length ? lines : null, 'power');
   }
