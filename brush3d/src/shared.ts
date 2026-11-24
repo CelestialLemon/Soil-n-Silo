@@ -13,6 +13,11 @@ export { CLOUD_SHAPE, cloudDriftSpeed, cloudShade, type CloudField, type CloudLa
 // The land's smooth reading of the rules' levels (land/surface.ts, Soil-n-Silo#202): the land brush3d paints has its shape,
 // and the game stands its things on the same fit (its src/world/ground.ts), so they sit on the hills as painted.
 export { SLACK, Surface, type Ground as SurfaceGround, type Relief } from './land/surface.ts';
+// The continuous terrain (setTerrain, land/heightfield.ts): its data and checks, and its height between the grid's points
+// and a line of sight's hit exactly as brush3d draws its triangles, so the game stands its things on the drawn ground.
+export {
+  checkTerrain, checkTerrainPatch, hitHeightfield, sampleHeightfield, terrainChunkCells, type TerrainMap, type TerrainPatch,
+} from './land/heightfield.ts';
 export { checkLand, LAND_COVER, LAND_GROUND, type Beyond, type LandCover, type LandGround, type LandMap, type LandPatch, type LandRect } from './land/map.ts';
 export { TILE } from './models/tile.ts';
 // How far a crag reaches past its size, and its triangles (kit/crag.ts), which the game plans its outcrops by (Soil-n-Silo#257).

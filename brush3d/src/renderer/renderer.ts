@@ -37,6 +37,8 @@ import { earthShares } from './wet';
 import type { WindSnapshot } from '../wind/sim';
 import { LAND_LOOK, PaintedLand, type LandArea, type LandLook } from '../land/paint';
 import type { LandMap, LandPatch, LandRect } from '../land/map';
+import { TerrainLand } from '../land/terrain';
+import type { TerrainMap, TerrainPatch } from '../land/heightfield';
 import { GroundTools, OVERLAY_LOOK, type Grid, type Overlay, type OverlayLook } from './overlay';
 import { HIGHLIGHT_LOOK, Marks, type HighlightLook, type Mark } from './marks';
 import { OnTop, PREVIEW_LOOK, type Line, type PreviewLook, type PreviewState } from './ontop';
@@ -909,8 +911,34 @@ export class BrushRenderer {
     const all = was ? { x0: Math.min(was.x0, now.x0), z0: Math.min(was.z0, now.z0), x1: Math.max(was.x1, now.x1), z1: Math.max(was.z1, now.z1) } : now;
     for (const f of this.landChanged) f(all);
   }
+
+  /**
+   * The land as continuous terrain (docs/API.md): the game's own heights at the corners of a grid of cells (1 m, say), two
+   * triangles a cell, with no levels, cliffs or beds worked out by the renderer (the heights hold them already), painted
+   * as setLand's land is, in chunks of about 16 m. Replaces the land setLand or setTerrain sent before; changes to it go to
+   * updateTerrain. landAt, landHit, landColourAt, bedAt, countryAt, landAhead and onLandChange answer for it as for setLand's.
+   */
+  setTerrain(map: TerrainMap, look: LandLook = LAND_LOOK) {
+    this.painted?.dispose();
+    this.painted = new TerrainLand(this, map, look);
+    this.painted.onSwap = (area) => { for (const f of this.landChanged) f(area); };
+    this.landsSet++;
+    const was = this.landArea, now = { x0: map.x0, z0: map.z0, x1: map.x0 + map.nx * map.cell, z1: map.z0 + map.nz * map.cell };
+    this.landArea = now;
+    const all = was ? { x0: Math.min(was.x0, now.x0), z0: Math.min(was.z0, now.z0), x1: Math.max(was.x1, now.x1), z1: Math.max(was.z1, now.z1) } : now;
+    for (const f of this.landChanged) f(all);
+  }
+
+  /**
+   * A change to the terrain setTerrain sent (an earthwork, a rill dug, a field worked): the new values over the cells in
+   * `rect` (TerrainPatch: the heights of their (width + 1) × (height + 1) corners, the rest per cell). landAt and landHit
+   * answer for it at once (landAhead); its chunks (and only those round it) are painted again over the next few frames and
+   * swapped in together, when onLandChange is told where. Returns how many cells changed (0 if the land is setLand's).
+   */
+  updateTerrain(rect: LandRect, patch: TerrainPatch): number { return this.painted instanceof TerrainLand ? this.painted.update(rect, patch) : 0; }
+
   private landArea: LandArea | null = null;
-  private painted: PaintedLand | null = null;
+  private painted: PaintedLand | TerrainLand | null = null;
   private landsSet = 0;
   /** Changes whenever the land as drawn does (a new land, an earthwork swapped in). */
   private get landRevision() { return `${this.landsSet} ${this.painted?.revision ?? 0}`; }
@@ -933,7 +961,7 @@ export class BrushRenderer {
    * its chunks painted and swapped in together once they're all painted. Earthworks given meanwhile wait their turn.
    * Returns how many tiles changed.
    */
-  updateLand(rect: LandRect, patch: LandPatch): number { return this.painted?.update(rect, patch) ?? 0; }
+  updateLand(rect: LandRect, patch: LandPatch): number { return this.painted instanceof PaintedLand ? this.painted.update(rect, patch) : 0; }
 
   /** The land's height (m) at a point of the world, as drawn (setLand's; 0 before there is one). */
   landAt(x: number, z: number): number { return this.painted?.heightAt(x, z) ?? 0; }

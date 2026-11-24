@@ -30,6 +30,7 @@ export type { DustSource } from './renderer/dust';
 // ---- The land (docs/LAND.md) ----
 export { LAND_COVER, LAND_GROUND, type Beyond, type LandCover, type LandGround, type LandMap, type LandPatch, type LandRect } from './land/map';
 export { LAND_LOOK, type LandArea, type LandLook } from './land/paint';
+// (The continuous terrain's data, its height and its hit, setTerrain's: in shared.ts, below.)
 export type { FlashSetting, Flicker, Strike } from './renderer/lightning';
 
 // ---- The wind (docs/WIND.md) and the clouds: the simulation and recipe the rules share, and the renderer's view ----
@@ -53,6 +54,10 @@ export {
   CROP_NAMES, CropPatch, growSpecies, SPECIES, speciesHeight, speciesTree, type CropName, type CropStage, type CropTile,
   type Species,
 } from './kit/plants';
+export {
+  cropCode, cropEdgeDistance, EDGE_HALO, OrganicCropField, type CropAdder, type CropMask, type OrganicCropOptions,
+} from './kit/organicCrop';
+export { addPlankBridge, addRailFence, type PlankBridgeOptions, type RailFenceOptions } from './kit/craft';
 export { addCanopy } from './kit/farWoods';
 export { loadModel, ModelSet, ModelParts } from './kit/model';
 

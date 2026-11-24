@@ -108,6 +108,18 @@ Where the renderer stands and what is left, so nothing noticed in review is lost
   tilted, its underside pushed into the slope so it never floats, with strata, a muddy foot and moss on its upward faces.
   The game lays them out per rock tile from its neighbours (the bold look, the developer's pick on Soil-n-Silo#278). The
   demo doesn't use it; its frames are unchanged.
+- **Continuous terrain, organic crops and the craft kit, for the game's v0.2** (Soil-n-Silo#304, #306, #307, #308, epic
+  Soil-n-Silo#298, 2026-11-24, awaiting review on the game's PR preview): the game's cozy homestead works in metres, not
+  4 m tiles, and these are what it draws with (docs/API.md):
+  - `setTerrain` / `updateTerrain` (`src/land/heightfield.ts`, `src/land/terrain.ts`): the game's own heights on a 1 m grid,
+    drawn as they are, in 16 m chunks repainted a few a frame after an earthwork; `sampleHeightfield` and `hitHeightfield`
+    in `shared.ts` give the game's rules the very height and pick the picture uses, so a thing stands on the ground as drawn.
+    A `rill` cover paints a narrow runnel's bed, and `setWater`'s `narrow` keeps a sloping rill's water inside its banks.
+  - `OrganicCropField` (`src/kit/organicCrop.ts`): fields painted from a mask of cells, hugging the hills, with ragged edges
+    and no seams between chunks; only the chunks near a change are painted again.
+  - `setGrid`'s `gridStrength` and `contourStrength`: the contour lines alone, as soft hints on the grass while a channel is dug.
+  - The craft kit (`src/kit/craft.ts`): `addPlankBridge` and `addRailFence`, as the farm demo's bridges and fences.
+  The demo's `?scene=terrain` shows them all. Frames of the other scenes are unchanged.
 - **Weather, epic #3** (planned 2026-10-30): season, weather and hour change the whole picture. The decisions are in #3; in
   short, the game owns the weather's state and logic and the renderer only draws it. The order:
   1. #6 performance: measure the frame and set the weather's budget (done 2026-10-30: the farm 17.5 ms on the laptop,

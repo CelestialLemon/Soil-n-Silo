@@ -29,6 +29,12 @@ export interface WaterMap {
    * whether this rose or fell when last it changed.
    */
   ice?: Float32Array;
+  /**
+   * Narrow water (rills a cell or two wide running down a slope): a dry cell beside the water continues the lowest of the
+   * water next to it rather than the highest, so a sloping runnel's water higher up doesn't spread its level over the banks
+   * further down it. Off (the highest) if left out: broad water, ponds and brooks.
+   */
+  narrow?: boolean;
 }
 
 /** How far the sheet dives under the land past the flat cell beyond the last wet one, metres a cell, and at most. */
@@ -111,7 +117,7 @@ export function layWater(map: WaterMap): Laid {
   /** The surface each cell continues, before its dive. */
   const source = new Float32Array(n).fill(-Infinity);
   // Breadth first from the wet cells (to all eight neighbours, so diagonal shores are as near as straight ones): each dry
-  // cell takes its surface, flow and mud from the highest of the cells it's reached from. It reaches every cell (the
+  // cell takes its surface, flow and mud from the highest of the cells it's reached from (narrow water's, the lowest). It reaches every cell (the
   // reflection's clip reads the nearest water's surface anywhere on dry land), so it's kept lean: a large map is laid out
   // each time the game sends it.
   let queue = new Int32Array(n), next = new Int32Array(n), count = 0;
@@ -124,6 +130,7 @@ export function layWater(map: WaterMap): Laid {
   }
   const wet = new Float32Array(count);
   for (let k = 0; k < count; k++) wet[k] = level[queue[k]];
+  const narrow = map.narrow === true;
   for (let d = 1; count && d < 255; d++) {
     let found = 0;
     for (let q = 0; q < count; q++) {
@@ -133,7 +140,7 @@ export function layWater(map: WaterMap): Laid {
         const j = i + dz * nx + dx, dj = dist[j];
         if (dj < d) continue;
         if (dj === 255) { dist[j] = d; next[found++] = j; }
-        if (si > source[j]) {
+        if (narrow ? source[j] === -Infinity || si < source[j] : si > source[j]) {
           source[j] = si;
           data[j * 4 + 1] = data[i * 4 + 1]; data[j * 4 + 2] = data[i * 4 + 2]; data[j * 4 + 3] = data[i * 4 + 3];
           ice[j] = ice[i];

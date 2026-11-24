@@ -28,6 +28,13 @@ export interface Grid {
   tile?: number; x0?: number; z0?: number;
   /** How high a level stands (m): a contour line at each. 0 for none. */
   level: number;
+  /**
+   * How dark the lines between tiles are drawn (0 none, 1 black): 0.35 by default. 0 with `contourStrength` over it shows
+   * the contours alone, for continuous terrain with no tiles to mark.
+   */
+  gridStrength?: number;
+  /** How dark the contour lines are drawn (0 none, 1 black): 0.45 by default. */
+  contourStrength?: number;
 }
 
 /**
@@ -158,6 +165,6 @@ export class GroundTools {
     if (!g) { u.uToolsGrid.value.x = 0; return; }
     u.uToolsGridRect.value.set(g.x0 ?? 0, g.z0 ?? 0, g.tile ?? 4, g.level);
     u.uToolsGridSize.value.set(g.width, g.height);
-    u.uToolsGrid.value.x = 1;
+    u.uToolsGrid.value.set(1, THREE.MathUtils.clamp(g.gridStrength ?? GRID, 0, 1), THREE.MathUtils.clamp(g.contourStrength ?? CONTOUR, 0, 1));
   }
 }
