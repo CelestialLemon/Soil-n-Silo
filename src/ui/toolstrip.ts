@@ -1,8 +1,11 @@
-// The bottom tool strip: Select and four groups (Homestead, Power, Land, Yard) whose tools open in a small tray above it,
-// and above that the readout pill saying what the tool in hand does, or what the drag under way is doing.
+// The bottom tool strip: the Supplies counter, Select and four groups (Homestead, Power, Land, Yard) whose tools open in a
+// small tray above it, and above that the readout pill saying what the tool in hand does, or what the drag under way is
+// doing. A building's tool wears its Supplies cost; it dims while the pool can't pay for it (a click says why) and wears a
+// check once a one-of-each building stands.
 import { CATALOG } from '../game/index.ts';
-import { button, el, setFlag, setHidden, setPressed, setText } from './dom.ts';
+import { button, el, setFlag, setHidden, setPressed, setText, setTitle } from './dom.ts';
 import { icon } from './icons.ts';
+import { createSuppliesPill, supplyWord } from './supplies.ts';
 import { GROUPS, type GroupId, keyLabel, placedKind, SELECT_TOOL, type ToolDef, toolDef, groupOf } from './tools.ts';
 import type { ToolId, UiCallbacks, UiSnapshot } from './types.ts';
 
@@ -13,7 +16,13 @@ export interface ToolStrip {
   choose(tool: ToolId): void;
 }
 
-interface ToolButton { def: ToolDef; node: HTMLButtonElement }
+interface ToolButton { def: ToolDef; node: HTMLButtonElement; title: string }
+
+/** What a tool's thing costs from the pool (0 for the free ones and every land-craft brush). */
+const costOfTool = (tool: ToolId): number => {
+  const kind = placedKind(tool);
+  return kind ? CATALOG[kind].cost : 0;
+};
 
 export function createToolStrip(cb: UiCallbacks, toast: (message: string) => void): ToolStrip {
   let last: UiSnapshot | null = null;
@@ -39,12 +48,15 @@ export function createToolStrip(cb: UiCallbacks, toast: (message: string) => voi
   const groupRows = new Map<GroupId, HTMLElement>();
 
   function toolButton(def: ToolDef): HTMLButtonElement {
-    const node = button('ui-tool', def.key ? `${def.label} (${keyLabel(def)})` : def.label, () => choose(def.id));
+    const cost = costOfTool(def.id);
+    const title = `${def.label}${cost > 0 ? ` · ${cost} ${supplyWord(cost)}` : placedKind(def.id) ? ' · free' : ''}${def.key ? ` (${keyLabel(def)})` : ''}`;
+    const node = button('ui-tool', title, () => choose(def.id));
     node.append(icon(def.icon, 'ui-icon ui-tool-icon'), el('span', 'ui-tool-label', def.label));
     if (def.key) node.append(el('kbd', 'ui-kbd', keyLabel(def)));
+    if (cost > 0) node.append(el('span', 'ui-tool-cost', String(cost)));
     const kind = placedKind(def.id);
     if (kind && CATALOG[kind].oneOfEach) node.append(icon('check', 'ui-icon ui-tool-check'));
-    buttons.push({ def, node });
+    buttons.push({ def, node, title });
     return node;
   }
 
@@ -59,12 +71,13 @@ export function createToolStrip(cb: UiCallbacks, toast: (message: string) => voi
     tray.append(row);
   }
 
-  // The strip: Select, then the groups.
+  // The strip: the Supplies counter, Select, then the groups.
   const strip = el('nav', 'ui-strip ui-float');
   strip.setAttribute('aria-label', 'Tools');
+  const supplies = createSuppliesPill();
   const selectBtn = toolButton(SELECT_TOOL);
   selectBtn.classList.add('ui-tool-select');
-  strip.append(selectBtn, el('span', 'ui-rule'));
+  strip.append(supplies.element, el('span', 'ui-rule'), selectBtn, el('span', 'ui-rule'));
   const tabs = new Map<GroupId, HTMLButtonElement>();
   for (const g of GROUPS) {
     const tab = button('ui-tab', g.label, () => { open = open === g.id ? null : g.id; paint(); });
@@ -85,6 +98,12 @@ export function createToolStrip(cb: UiCallbacks, toast: (message: string) => voi
       toast(`${CATALOG[kind].label} already stands · click it to move or turn it`);
       return;
     }
+    const cost = costOfTool(tool);
+    if (kind && tool !== s.activeTool && cost > s.stats.supplies.available) {
+      const free = s.stats.supplies.available;
+      toast(`${CATALOG[kind].label} needs ${cost} ${supplyWord(cost)} · ${free} free · remove something for a full refund`);
+      return;
+    }
     cb.onSelectTool(tool !== 'select' && tool === s.activeTool ? 'select' : tool);
   }
 
@@ -100,13 +119,18 @@ export function createToolStrip(cb: UiCallbacks, toast: (message: string) => voi
       if (tab.getAttribute('aria-expanded') !== expanded) tab.setAttribute('aria-expanded', expanded);
       setFlag(tab, 'has-active', id === activeGroup);
     }
-    for (const { def, node } of buttons) {
+    for (const { def, node, title } of buttons) {
       setPressed(node, def.id === s.activeTool);
       const kind = placedKind(def.id);
       const placed = kind !== null && CATALOG[kind].oneOfEach && (s.stats.thingCounts[kind] ?? 0) > 0;
+      const short = !placed && costOfTool(def.id) > s.stats.supplies.available;
       setFlag(node, 'is-placed', placed);
+      setFlag(node, 'is-short', short);
       setFlag(node, 'is-beckoning', kind === 'farmhouse' && !s.stats.hasFarmhouse);
+      const garage = kind === 'garage' && s.stats.hasGarage ? ` · ${s.stats.cartCount}/${s.stats.maxCarts} carts` : '';
+      setTitle(node, `${title}${garage}${placed ? ' · placed' : short ? ` · ${s.stats.supplies.available} free` : ''}`);
     }
+    supplies.render(s.stats.supplies, s.stats.seed);
     setFlag(tabs.get('homestead') ?? strip, 'is-beckoning', !s.stats.hasFarmhouse && open !== 'homestead');
 
     // The readout: the live one if there is one, else the tool's own hint.

@@ -183,10 +183,52 @@
   animation: ui-breathe 2.6s ease-in-out infinite;
 }
 
-.ui-brief-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4em; margin: 0; }
-.ui-stat { display: flex; flex-direction: column; gap: 0.1em; min-width: 0; }
-.ui-stat-value { margin: 0; font-size: 1.1em; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.ui-stat-label { font-size: 0.72em; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+/* The brief's three seals: a ring that fills, its picture (a check once sealed), its name and one live line. */
+.ui-seals { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5em; transition: opacity 300ms; }
+.ui-seals.is-quiet { opacity: 0.62; }
+.ui-seal { display: flex; align-items: flex-start; gap: 0.6em; min-width: 0; }
+.ui-seal-badge { position: relative; flex: none; width: 2.15em; height: 2.15em; display: grid; place-items: center; }
+.ui-seal-ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.ui-seal-track { fill: var(--wash); stroke: var(--hair); stroke-width: 2.2; }
+.ui-seal-fill {
+  fill: none;
+  stroke: var(--ink-2);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  transition: stroke-dasharray 600ms var(--glide), stroke 300ms;
+}
+.ui-seal.is-empty .ui-seal-fill { visibility: hidden; }
+.ui-seal-icon { position: relative; width: 1.05em; height: 1.05em; color: var(--ink-2); }
+.ui-seal.is-good .ui-seal-fill { stroke: var(--moss); }
+.ui-seal.is-low .ui-seal-fill { stroke: var(--amber); }
+.ui-seal.is-done .ui-seal-track { fill: var(--moss-soft); }
+.ui-seal.is-done .ui-seal-fill { stroke: var(--moss); }
+.ui-seal.is-done .ui-seal-icon { color: var(--moss); stroke-width: 2.4; }
+.ui-seal-text { display: flex; flex-direction: column; min-width: 0; padding-top: 0.05em; }
+.ui-seal-label { font-size: 0.7em; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.ui-seal-value { font-size: 0.92em; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.3; }
+.ui-seal.is-good .ui-seal-value { color: #2f5233; }
+.ui-seal.is-low .ui-seal-value { color: #8a5a14; }
+.ui-seal.is-done .ui-seal-value { color: #2f5233; font-weight: 500; }
+.ui-seal-whisper { font: italic 0.8em/1.3 var(--font-title); color: var(--ink-2); }
+.ui-seal.is-low .ui-seal-whisper { color: #8a5a14; }
+
+/* Folded, the seals as three small dots beside the name. */
+.ui-brief-minis { display: inline-flex; gap: 0.25em; padding: 0 0.15em; }
+.ui-brief-mini { width: 0.5em; height: 0.5em; border-radius: 50%; box-shadow: inset 0 0 0 1.2px var(--ink-3); }
+.ui-brief-mini.is-done { background: var(--moss); box-shadow: none; }
+
+/* All three sealed: the valley is Restored. */
+.ui-restored {
+  padding: 0.55em 0.75em 0.6em;
+  border-radius: 0.85em;
+  background: linear-gradient(135deg, rgba(244, 222, 160, 0.85), rgba(240, 206, 140, 0.6));
+  box-shadow: inset 0 0 0 1px rgba(194, 138, 44, 0.35);
+  animation: ui-bloom 600ms var(--glide) both;
+}
+.ui-restored-title { display: block; font: 600 1.08em/1.2 var(--font-title); color: #6b4510; }
+.ui-restored-text { margin: 0.15em 0 0; font-size: 0.84em; line-height: 1.35; color: #5e4a2a; }
+.ui-brief.is-restored { box-shadow: var(--float), 0 0 0 1px rgba(194, 138, 44, 0.3), 0 0 1.6em rgba(232, 196, 110, 0.35); }
 
 .ui-brief-foot { display: flex; align-items: center; gap: 0.35em; }
 .ui-brief-seed { margin-left: auto; font-size: 0.75em; color: var(--ink-3); font-variant-numeric: tabular-nums; }
@@ -220,7 +262,7 @@
 .ui-dial-sun { fill: var(--amber); stroke: var(--paper-solid); stroke-width: 1.4; transition: fill 400ms; }
 .ui-dial.is-night .ui-dial-sun { fill: #e4e8f2; stroke: var(--ink-3); stroke-width: 1; }
 
-.ui-time { display: flex; flex-direction: column; min-width: 4.4em; }
+.ui-time { display: flex; flex-direction: column; min-width: 6.6em; }
 .ui-clock { font-size: 1.2em; font-weight: 650; line-height: 1.1; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .ui-part { font-size: 0.7em; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
 
@@ -241,6 +283,26 @@
 .ui-camera-mode:hover { color: var(--ink); }
 .ui-camera-mode .ui-icon { width: 1.05em; height: 1.05em; }
 .ui-power-view.is-on { background: var(--water-soft); color: var(--ink); }
+
+/* The power pill under the sky strip: only while the power view is on, or in a blackout. */
+.ui-balance {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  column-gap: 0.5em;
+  max-width: 24em;
+  padding: 0.3em 0.85em 0.3em 0.7em;
+  border-radius: 1em;
+  font-size: 0.84em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+  pointer-events: none;
+  animation: ui-toast-in 220ms var(--glide) both;
+}
+.ui-balance-dot { flex: none; width: 0.5em; height: 0.5em; border-radius: 50%; background: var(--water); box-shadow: 0 0 0 0.2em var(--water-soft); }
+.ui-balance-why { grid-column: 2; text-align: right; font: italic 0.92em/1.3 var(--font-title); }
+.ui-balance.is-warn { background: rgba(248, 234, 206, 0.88); color: #7a4c10; }
+.ui-balance.is-warn .ui-balance-dot { background: var(--amber); box-shadow: 0 0 0 0.2em var(--amber-soft); animation: ui-breathe 2.6s ease-in-out infinite; }
 
 
 /* ---- Toasts (top middle) ---- */
@@ -279,7 +341,7 @@
 /* ---- The building card ---- */
 .ui-ring-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .ui-ring-layer.is-offscreen .ui-ring, .ui-ring-layer.is-offscreen .ui-ring-anchor { visibility: hidden; }
-.ui-ring { position: absolute; left: 0; top: 0; width: 17.5em; will-change: transform; }
+.ui-ring { position: absolute; left: 0; top: 0; width: 18.75em; will-change: transform; }
 .ui-ring-anchor {
   position: absolute;
   left: -0.7em;
@@ -307,6 +369,7 @@
 .ui-ring[data-category="power"] .ui-ring-title { color: #2f4a3a; }
 .ui-ring-close { width: 1.9em; height: 1.9em; margin: -0.2em -0.15em 0 0; }
 .ui-ring-status { margin: 0.2em 0 0; font-size: 0.93em; color: var(--ink-2); }
+.ui-ring-detail { margin: 0.15em 0 0; font-size: 0.84em; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .ui-ring-meta { display: flex; align-items: center; gap: 0.5em; margin: 0.45em 0 0; font-size: 0.76em; }
 .ui-ring-power {
   display: inline-flex;
@@ -320,7 +383,25 @@
 .ui-ring-power::before { content: ""; width: 0.5em; height: 0.5em; border-radius: 50%; background: currentColor; opacity: 0.7; }
 .ui-ring-power.is-on { background: var(--moss-soft); color: #2f5233; }
 .ui-ring-facing { color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.ui-ring-actions { display: grid; grid-template-columns: 1.25fr 1fr 1fr 1.25fr; gap: 0.25em; margin-top: 0.65em; }
+.ui-ring-carts { display: flex; align-items: center; gap: 0.3em; margin-top: 0.55em; padding: 0.3em 0.3em 0.3em 0.65em; border-radius: 0.8em; background: var(--wash); }
+.ui-ring-carts-count { flex: 1; white-space: nowrap; font-size: 0.84em; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ui-cart-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  padding: 0.3em 0.6em 0.3em 0.45em;
+  border-radius: 999px;
+  background: var(--paper-solid);
+  box-shadow: 0 1px 2px rgba(30, 36, 26, 0.12);
+  font-size: 0.78em;
+  white-space: nowrap;
+  color: var(--ink-2);
+  transition: background 140ms, color 140ms;
+}
+.ui-cart-btn .ui-icon { width: 1.1em; height: 1.1em; stroke-width: 2; }
+.ui-cart-btn:hover { color: var(--ink); background: #fffdf6; }
+.ui-cart-btn.is-short { opacity: 0.5; box-shadow: none; background: transparent; }
+.ui-ring-actions { display: grid; grid-template-columns: 1.15fr 0.85fr 0.85fr 1.5fr; gap: 0.25em; margin-top: 0.65em; }
 .ui-act {
   display: flex;
   flex-direction: column;
@@ -333,6 +414,7 @@
   color: var(--ink-2);
   transition: background 140ms, color 140ms;
 }
+.ui-act { white-space: nowrap; }
 .ui-act .ui-icon { width: 1.55em; height: 1.55em; }
 .ui-act:hover { background: var(--wash-2); color: var(--ink); }
 .ui-act-remove:hover { background: var(--clay-soft); color: #7c3a28; }
@@ -416,10 +498,66 @@
   stroke-width: 3;
 }
 .ui-tool.is-placed .ui-tool-check { display: block; }
+/* The Supplies a building costs: a small chit in the corner (none for the free ones), hidden once it stands. */
+.ui-tool-cost {
+  position: absolute;
+  top: 0.35em;
+  left: 0.35em;
+  min-width: 1.35em;
+  padding: 0.18em 0.3em;
+  border-radius: 999px;
+  background: var(--amber-soft);
+  color: #6b4510;
+  font: 700 0.6em/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.ui-tool.is-placed .ui-tool-cost { display: none; }
+.ui-tool.is-on .ui-tool-cost { background: rgba(244, 228, 195, 0.25); color: var(--paper-solid); }
+/* The pool can't pay for it now: dimmed, still clickable (a click says why). */
+.ui-tool.is-short:not(.is-on) .ui-tool-icon, .ui-tool.is-short:not(.is-on) .ui-tool-label { opacity: 0.4; }
+.ui-tool.is-short .ui-tool-cost { background: var(--clay-soft); color: #7c3a28; }
 .ui-tool.is-placed:not(.is-on) .ui-tool-icon, .ui-tool.is-placed:not(.is-on) .ui-tool-label { opacity: 0.55; }
 .ui-tool.is-beckoning:not(.is-on) { animation: ui-beckon 2.2s ease-in-out infinite; color: var(--ink); }
 
 .ui-strip { display: flex; align-items: center; gap: 0.15em; padding: 0.3em; border-radius: 999px; }
+
+/* The Supplies counter, docked at the strip's left: free / unlocked. */
+.ui-supplies {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.4em 0.8em 0.4em 0.65em;
+  border-radius: 999px;
+  background: var(--amber-soft);
+  color: #5e4318;
+  cursor: help;
+  white-space: nowrap;
+}
+.ui-supplies-icon { width: 1.25em; height: 1.25em; }
+.ui-supplies-figure { font-size: 0.95em; font-variant-numeric: tabular-nums; }
+.ui-supplies-free { font-weight: 700; font-size: 1.08em; }
+.ui-supplies-of { color: #8a6a35; }
+.ui-supplies.is-empty { background: var(--wash); color: var(--ink-2); }
+.ui-supplies.is-empty .ui-supplies-of { color: var(--ink-3); }
+.ui-supplies-gift {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  margin-bottom: 0.3em;
+  padding: 0.15em 0.5em;
+  border-radius: 999px;
+  background: var(--amber);
+  color: var(--paper-solid);
+  font-weight: 700;
+  font-size: 0.82em;
+  opacity: 0;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.ui-supplies.is-dropped { animation: ui-drop 2.6s var(--glide); }
+.ui-supplies.is-dropped .ui-supplies-gift { animation: ui-gift 2.6s var(--glide); }
 .ui-strip .ui-tool { flex-direction: row; gap: 0.45em; min-width: 0; padding: 0.45em 0.8em 0.45em 0.7em; border-radius: 999px; }
 .ui-strip .ui-tool-icon { width: 1.3em; height: 1.3em; }
 .ui-strip .ui-tool-label { font-size: 0.92em; }
@@ -448,6 +586,16 @@
 @keyframes ui-toast-in { from { opacity: 0; transform: translateY(0.4em); } to { opacity: 1; transform: none; } }
 @keyframes ui-nudge { 40% { transform: scale(1.04); } }
 @keyframes ui-breathe { 50% { opacity: 0.45; transform: scale(0.8); } }
+@keyframes ui-drop {
+  0% { box-shadow: 0 0 0 0 rgba(194, 138, 44, 0.6); }
+  15% { box-shadow: 0 0 0 0.35em rgba(194, 138, 44, 0.35); background: #f6d796; }
+  100% { box-shadow: 0 0 0 0 rgba(194, 138, 44, 0); }
+}
+@keyframes ui-gift {
+  0% { opacity: 0; transform: translate(-50%, 0.4em); }
+  12%, 75% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, -0.5em); }
+}
 @keyframes ui-ripple { from { opacity: 0.9; transform: scale(0.7); } to { opacity: 0; transform: scale(1.35); } }
 @keyframes ui-beckon {
   0%, 100% { box-shadow: 0 0 0 0 rgba(194, 138, 44, 0); background: transparent; }
@@ -468,6 +616,7 @@
   .ui-brief { width: 16em; }
   .ui-moments, .ui-sky > .ui-rule { display: none; }
   .ui-strip .ui-tool-label { display: none; }
+  .ui-supplies-of { display: none; }
 }
 
 /* ---- The loading card (loading.ts), while the valley is painted ---- */

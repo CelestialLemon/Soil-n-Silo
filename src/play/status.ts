@@ -1,21 +1,35 @@
-// What the overlay says about the valley, read off the game's state: the postcard's figures, a clicked thing's one plain
-// line ("Agrivoltaic · Shading wheat", "Needs a relay or power nearby") and the sky's weather in the strip's four words.
+// What the overlay says about the valley, read off the game's state: the postcard's figures (with the Supplies, the brief
+// and the power), a clicked thing's plain lines ("Grinding wheat into flour · 40%", "Stock: 4 Wheat") and its card's
+// extras (the Garage's carts, the refund), and the sky's weather in the strip's four words.
 import {
-  CATALOG, channelSummary, type GameState, polylineDistance, type Thing, type ThingKind, toWorld,
+  BATTERY_WH, CART_COST, CATALOG, channelSummary, countOf, describeInventory, describeRuntime, type GameState, type Good,
+  GOOD_LABELS, isNight, isWorkshop, MAX_CARTS, polylineDistance, runtimeOf, SILO_CAP, type Thing, type ThingKind, toWorld,
+  totalStored,
 } from '../game/index.ts';
-import type { ValleyStats, Weather } from '../ui/index.ts';
+import { type CartControls, suppliesView, type ValleyStats, type Weather } from '../ui/index.ts';
 import type { WeatherName } from '../world/index.ts';
 
-/** The postcard's figures. */
-export function valleyStats(s: GameState): ValleyStats {
+/**
+ * The postcard's figures. `starterTracks`: the tracks the valley came with (the Depot's stub), which, like the Depot, are
+ * not the player's work (so rolling a fresh valley over an untouched one asks nothing).
+ */
+export function valleyStats(s: GameState, starterTracks: ReadonlySet<number> = new Set()): ValleyStats {
   const thingCounts: Partial<Record<ThingKind, number>> = {};
   for (const t of s.things) thingCounts[t.kind] = (thingCounts[t.kind] ?? 0) + 1;
+  const placed = s.things.filter((t) => !CATALOG[t.kind].immovable).length;
+  const tracks = s.tracks.filter((t) => !starterTracks.has(t.id)).length;
+  const sim = s.sim;
   return {
     seed: s.seed, season: s.season, hasFarmhouse: (thingCounts.farmhouse ?? 0) > 0, thingCounts,
     fieldAreaM2: s.fields.reduce((sum, f) => sum + f.areaM2, 0),
     flowingRillM: s.channels.reduce((sum, c) => sum + channelSummary(c).wetLength, 0),
     bridgeCount: s.bridges.length,
-    landEditCount: s.things.length + s.fields.length + s.channels.length + s.tracks.length + s.hedges.length + s.plantedTrees.length,
+    landEditCount: placed + s.fields.length + s.channels.length + tracks + s.hedges.length + s.plantedTrees.length,
+    // Copies, so a snapshot the overlay keeps never changes under it as the homestead runs on.
+    supplies: suppliesView(sim.supplies),
+    brief: structuredClone(sim.brief),
+    cartCount: sim.carts.length, maxCarts: MAX_CARTS, hasGarage: (thingCounts.garage ?? 0) > 0,
+    powerSummary: { ...sim.powerSummary },
   };
 }
 
@@ -31,9 +45,6 @@ const TO_SKY: Record<Weather, WeatherName> = { clear: 'clear', breeze: 'scattere
 
 export const uiWeather = (w: WeatherName): Weather => FROM_SKY[w];
 export const skyWeather = (w: Weather): WeatherName => TO_SKY[w];
-
-/** Whether it's dark enough for lanterns and lit windows. */
-const isNight = (hour: number) => hour < 6.5 || hour > 19.5;
 
 /** The crop a thing stands over, if any (a solar canopy over a field: agrivoltaics). */
 function cropUnder(s: GameState, t: Thing): string | undefined {
@@ -66,9 +77,14 @@ export function thingStatus(s: GameState, t: Thing, hour: number): { line: strin
   const connected = role === 'none' ? undefined : role === 'load' ? powered : linked;
   const say = (line: string) => ({ line, connected });
   switch (t.kind) {
-    case 'farmhouse': return say(powered ? 'Home · Connected to power' : `Home · ${needs}`);
-    case 'mill': return say(powered ? 'Millstones turning · Connected to power' : needs);
-    case 'silo': case 'bakery': return say(powered ? 'Connected to power' : needs);
+    // The homestead's buildings say how they're doing as the homestead runs (workshops.ts).
+    // The Depot's order is its second line: its first says what it is.
+    case 'depot': return say(s.sim.brief.order.done ? 'Pantry Order filled · the settlement thanks you' : "The settlement's landing · carts bring the Pantry Order here");
+    case 'farmhouse': case 'silo': case 'mill': case 'bakery': case 'coop': case 'composter': case 'garage': {
+      const r = runtimeOf(s, t.id);
+      if (r) return say(describeRuntime(s, r));
+      return say(powered ? 'Connected to power' : needs);
+    }
     case 'solar': {
       const crop = cropUnder(s, t);
       if (crop) return say(`Agrivoltaic · Shading ${crop}`);
@@ -76,10 +92,68 @@ export function thingStatus(s: GameState, t: Thing, hour: number): { line: strin
     }
     case 'turbine': return say('Catching the wind');
     case 'waterwheel': return say('Water Wheel · Turning in the brook');
-    case 'battery': return say(linked ? "Storing the homestead's power" : needs);
+    case 'battery': {
+      const r = runtimeOf(s, t.id);
+      return say(linked && r ? `Charge ${Math.round(r.charge * 100)}%` : needs);
+    }
     case 'relay': return say(powered ? 'Passing power on' : 'Needs power within 15 m');
-    // A solar lantern charges itself, so it glows either way; the card's pip says whether it's on the homestead's power.
+    // A solar lantern charges itself from its own cap, so it glows after dusk power or none; the card's pip says whether
+    // it's on the homestead's power too.
     case 'lantern': return say(isNight(hour) ? 'Glowing along the way' : 'Charging in the sun · glows after dusk');
     case 'bench': case 'planter': case 'crates': return say(surroundings(s, t));
   }
+}
+
+/** "Bread 4/10 · Flour 6/6 · Beans 6/6": the Pantry Order as delivered so far. */
+function orderLine(s: GameState): string {
+  const o = s.sim.brief.order;
+  return (Object.entries(o.targets) as [Good, number][])
+    .map(([g, n]) => `${Math.min(n, countOf(o.delivered, g))}/${n} ${GOOD_LABELS[g].label}`).join(' · ');
+}
+
+/** A watt figure: "3.0 W". */
+const watts = (w: number) => `${w.toFixed(1)} W`;
+
+/**
+ * A clicked building's second line: its stock (a workshop's goods in and out, the Silo's fill, the Depot's order), its
+ * power (what a source makes, a battery's store and which way it's going), or what its carts are about (the Garage).
+ */
+export function thingDetail(s: GameState, t: Thing): string | undefined {
+  const r = runtimeOf(s, t.id);
+  if (!r) return undefined;
+  const net = s.sim.networks.find((n) => n.id === r.powerNetId);
+  if (isWorkshop(t.kind)) {
+    const parts: string[] = [];
+    if (totalStored(r.inputs) > 0) parts.push(`Stock: ${describeInventory(r.inputs)}`);
+    if (totalStored(r.outputs) > 0) parts.push(`Made: ${describeInventory(r.outputs)}`);
+    return parts.length > 0 ? parts.join(' · ') : 'Stock: nothing yet';
+  }
+  switch (t.kind) {
+    case 'silo': return `${totalStored(r.outputs)} / ${SILO_CAP} stored`;
+    case 'depot': return s.sim.brief.order.done ? undefined : `Order: ${orderLine(s)}`;
+    case 'garage': {
+      const cart = s.sim.carts.find((c) => c.state !== 'idle') ?? s.sim.carts[0];
+      return cart ? `Cart ${cart.id} · ${Math.round(cart.battery * 100)}% · ${cart.jobDesc}` : undefined;
+    }
+    case 'solar': case 'turbine': case 'waterwheel':
+      return `Making ${watts(r.watts)}${net ? ` · network ${watts(net.generationW)} made, ${watts(net.servedW)} used` : ''}`;
+    case 'battery': {
+      if (!net) return `${(r.charge * BATTERY_WH).toFixed(1)} / ${BATTERY_WH} Wh`;
+      const spare = net.generationW - net.servedW;
+      const way = r.charge >= 0.999 ? 'Full' : spare > 0.05 ? 'Charging' : spare < -0.05 ? 'Carrying the homestead' : 'Holding';
+      return `${net.batteryWh.toFixed(1)} / ${net.batteryCapWh.toFixed(0)} Wh · ${way}`;
+    }
+    case 'farmhouse': return net ? `Network ${watts(net.generationW)} made, ${watts(net.servedW)} used` : undefined;
+    default: return undefined;
+  }
+}
+
+/** The Garage card's cart row: buy another, or retire the newest (the Garage's own first one stays). */
+export function cartControls(s: GameState): CartControls {
+  const carts = s.sim.carts, count = carts.length;
+  const view: CartControls = {
+    count, max: MAX_CARTS, canAfford: s.sim.supplies.available >= CART_COST && count < MAX_CARTS, canRetire: count > 1,
+  };
+  if (count > 1) view.retireId = carts[count - 1].id;
+  return view;
 }

@@ -1,11 +1,13 @@
-// The HTML over the canvas (docs/DESIGN.md, "Minimal HUD"): the valley postcard top left, the sky strip (with the camera's
-// turns, its orbit or snapped setting and the power view's bolt) top right, the tool strip and its readout at the bottom, the building card beside a clicked thing, and soft
-// toasts. The valley is what you look at: the overlay lets every pointer event through except on its own floating pills.
+// The HTML over the canvas (docs/DESIGN.md, "Minimal HUD"): the valley postcard and its three seals top left, the sky
+// strip (the day and hour, the camera's turns, its orbit or snapped setting and the power view's bolt, with the power pill
+// under it while the power view is on or the lights are out) top right, the tool strip with its Supplies counter and its
+// readout at the bottom, the building card beside a clicked thing (the Garage's with its carts), and soft toasts. The valley
+// is what you look at: the overlay lets every pointer event through except on its own floating pills.
 //
 // The UI knows nothing of the world or the renderer. The loop hands it a `UiSnapshot` (every frame is fine: it only touches
-// what changed) and it answers through `UiCallbacks`. It also takes the tool keys (V, 1–9, F, B, X, C, T, H, G, ⇧C, ⇧X),
-// Esc (close the card, else put the tool down) and Delete (remove the selected thing), unless a key handler that ran first
-// called `preventDefault`.
+// what changed) and it answers through `UiCallbacks`. It also takes the tool keys (V; 1–7 the homestead, ⇧1–⇧5 the power;
+// F, B, X, C, T, H, G, ⇧C, ⇧X the land), Esc (close the card, else put the tool down) and Delete (remove the selected
+// thing, unless it's fixed), unless a key handler that ran first called `preventDefault`.
 import './style.css';
 import { createBrief } from './brief.ts';
 import { el } from './dom.ts';
@@ -13,13 +15,14 @@ import { createRing } from './ring.ts';
 import { createSkyStrip } from './skystrip.ts';
 import { createToasts } from './toast.ts';
 import { createToolStrip } from './toolstrip.ts';
-import { toolForKey } from './tools.ts';
+import { keyOf, toolForKey } from './tools.ts';
 import type { UiCallbacks, UiController, UiSnapshot } from './types.ts';
 
 export type {
-  LandTool, PlaceTool, SelectedThingView, Speed, ToolId, ToolReadout, UiCallbacks, UiController, UiSnapshot, ValleyStats, Weather,
-  YawMode,
+  CartControls, LandTool, PlaceTool, SelectedThingView, Speed, SuppliesView, ToolId, ToolReadout, UiCallbacks, UiController,
+  UiSnapshot, ValleyStats, Weather, YawMode,
 } from './types.ts';
+export { suppliesView } from './supplies.ts';
 export { SPEEDS, WEATHERS } from './types.ts';
 export { placedKind, placeTool, toolDef } from './tools.ts';
 export { valleyName } from './brief.ts';
@@ -38,10 +41,10 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks, options: UiO
   const strip = createToolStrip(callbacks, (m) => toasts.show(m, 'info'));
   const brief = createBrief(callbacks);
   const sky = createSkyStrip(callbacks);
-  const ring = createRing(root, callbacks);
+  const ring = createRing(root, callbacks, (m) => toasts.show(m, 'info'));
 
   const right = el('div', 'ui-corner-right');
-  right.append(sky.element);
+  right.append(sky.element, sky.balance);
   root.classList.add('ui-root');
   root.replaceChildren(brief.element, right, toasts.element, ring.element, strip.element);
 
@@ -58,12 +61,12 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks, options: UiO
       e.preventDefault();
       return;
     }
-    if ((key === 'delete' || key === 'backspace') && s.selected) {
+    if ((key === 'delete' || key === 'backspace') && s.selected && s.selected.immovable !== true) {
       callbacks.onRemoveSelected(s.selected.id);
       e.preventDefault();
       return;
     }
-    const def = toolForKey(key, e.shiftKey);
+    const def = toolForKey(keyOf(e), e.shiftKey);
     if (def) {
       strip.choose(def.id);
       e.preventDefault();

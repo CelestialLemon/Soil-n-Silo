@@ -1,24 +1,30 @@
 // The things the player places (src/game/catalog.ts): each drawn with its brush3d model (loaded once, awaited, before the
 // valley is shown), on its own tagged meshes so a pick names it and one comes and goes without the rest being built
 // again. They stand on the ground as drawn: a thing whose ground is being worked again (its settled pad) waits for brush3d
-// to swap the new land in and is built in that frame. Their moving parts follow the game: turbines turn with the wind at
-// their hub, water wheels with the water in their race, the mill while it's powered; the homestead's chimneys smoke and
-// its windows light after sunset, and the lanterns glow (brush3d lights what runs, at night).
+// to swap the new land in and is built in that frame. Their moving parts and lights follow the living homestead (each
+// building's runtime, state.sim.things): turbines turn with the wind at their hub, water wheels with the water in their
+// race, the mill's stone and the composter's drum only while they work (the mill's with power too), the bakery's oven
+// glows and smokes while it bakes with power, the garage's lamp while it has power, the battery's rings show its charge,
+// the farmhouse smokes and its windows light after sunset while it has power, the lanterns (self-charging) and the Depot's
+// beacon glow after dusk always (brush3d lights what runs, at night). What has no power sits quiet and dark.
 import * as THREE from 'three';
 import {
   blocksWind, type BrushRenderer, type LandArea, loadModel, MODELS, type ModelParts, ModelSet, type Obstacle,
 } from '../../brush3d/src/index.ts';
 import {
-  CATALOG, type Change, clamp, type GameState, isWet, must, type Thing, type ThingKind, THING_KINDS, thingObb, toWorld,
+  CATALOG, type Change, clamp, type GameState, isWet, must, runtimeOf, type Thing, type ThingKind, THING_KINDS, thingObb, toWorld,
 } from '../game/index.ts';
 import { dropAll, tagOf } from './util.ts';
 
 /** The models every placeable thing uses, loaded once (by model name). */
 export type ModelCache = ReadonlyMap<string, THREE.Object3D>;
 
-/** Loads every starter thing's model (each file once). */
+/** The Electric Cart's model (brush3d's truck: front towards +z, an open bed behind the cab). */
+export const CART_MODEL = 'truck';
+
+/** Loads every placeable thing's model and the cart's (each file once). */
 export async function loadModels(): Promise<ModelCache> {
-  const names = [...new Set(THING_KINDS.map((k) => CATALOG[k].model))];
+  const names = [...new Set([...THING_KINDS.map((k) => CATALOG[k].model), CART_MODEL])];
   const loaded = await Promise.all(names.map(async (name) => {
     const info = MODELS[name] as (typeof MODELS)[string] | undefined;
     if (!info) throw new Error(`brush3d has no model called ${name}`);
@@ -32,6 +38,8 @@ export const getModelForKind = (kind: ThingKind) => CATALOG[kind].model;
 
 /** How often (Hz) the moving parts are told the game's state: they ease between. */
 const PARTS_HZ = 4;
+/** A battery's charge (0..1) at which each of its four rings lights, bottom up. */
+const RINGS = [0.12, 0.37, 0.62, 0.87];
 
 interface Item { thing: Thing; meshes: THREE.Mesh[]; parts: ModelParts; shown: string }
 
@@ -48,6 +56,8 @@ export class Things {
   private idle = 0;
   private selected: number | null = null;
   private clock = 0;
+  /** The homestead moved on since the parts were last told. */
+  private stale = true;
   private readonly ghosts = new Map<ThingKind, THREE.BufferGeometry>();
   private readonly stopLand: () => void;
   /** Whether what blocks the wind changed since the world last asked. */
@@ -85,45 +95,61 @@ export class Things {
     if (change.powerChanged) for (const it of this.items.values()) it.shown = '';
   }
 
-  /** Each frame: builds what waited once its land is in, and every so often tells the moving parts how things are. */
-  frame(dt: number, hour: number, windAt: WindAt) {
+  /** Each frame: builds what waited once its land is in, and every so often (or when told the homestead moved on) tells the moving parts how things are. */
+  frame(dt: number, windAt: WindAt) {
     if (this.waiting.size) {
       if (this.r.landAhead) this.idle = 0;
       else if (++this.idle > 3) { for (const id of [...this.waiting]) this.buildId(id); this.idle = 0; }
     }
     this.clock += dt;
-    if (this.clock < 1 / PARTS_HZ) return;
-    this.clock = 0;
-    const powered = new Set(this.state.power.powered), day = hour > 6.5 && hour < 19.5, g = this.state.grid;
-    for (const it of this.items.values()) {
-      const t = it.thing;
-      let spin = 0, running = true, charge: number | undefined;
-      switch (t.kind) {
-        case 'turbine': {
-          const [u, v] = windAt(t.x, t.z, 14);
-          spin = clamp(Math.hypot(u, v) / 6, 0.12, 2.5);
-          break;
-        }
-        case 'waterwheel': {
-          const race = toWorld(t.x, t.z, t.yaw, 0, CATALOG.waterwheel.raceOffset);
-          const ix = Math.floor((race.x - g.x0) / g.cell), iz = Math.floor((race.z - g.z0) / g.cell);
-          const k = iz * g.nx + ix, wet = ix >= 0 && iz >= 0 && ix < g.nx && iz < g.nz && isWet(g.waterLevel[k]);
-          spin = wet ? clamp(0.6 + Math.hypot(g.flowX[k], g.flowZ[k]), 0.6, 1.6) : 0;
-          running = wet;
-          break;
-        }
-        case 'mill': spin = powered.has(t.id) ? 1 : 0; running = powered.has(t.id); break;
-        case 'solar': running = day; break;
-        case 'battery': charge = powered.has(t.id) ? 3 : 1; break;
-        default: break;
+    if (this.clock < 1 / PARTS_HZ && !this.stale) return;
+    this.clock = 0; this.stale = false;
+    for (const it of this.items.values()) this.showState(it, windAt);
+  }
+
+  /** The homestead moved on (a sim tick): the parts are told how things are on the next frame. */
+  markStale() { this.stale = true; }
+
+  /** Tells a thing's moving parts and lights how it is now (its runtime), only when that changed. */
+  private showState(it: Item, windAt: WindAt) {
+    const t = it.thing, rt = runtimeOf(this.state, t.id), g = this.state.grid;
+    const powered = rt?.powered ?? false, working = rt?.working ?? false;
+    let spin = 0, running = true, charge: number | undefined;
+    switch (t.kind) {
+      case 'turbine': {
+        // A rotor turns with the wind whatever the network does with its power.
+        const [u, v] = windAt(t.x, t.z, 14);
+        spin = clamp(Math.hypot(u, v) / 6, 0.12, 2.5);
+        break;
       }
-      // Told only when it changes (a turbine's pace in steps of a tenth).
-      const key = `${Math.round(spin * 10)} ${running ? 1 : 0} ${charge ?? '-'}`;
-      if (key === it.shown) continue;
-      it.shown = key;
-      it.parts.spin(spin);
-      it.parts.show(charge === undefined ? { running } : { running, charge });
+      case 'waterwheel': {
+        const race = toWorld(t.x, t.z, t.yaw, 0, CATALOG.waterwheel.raceOffset);
+        const ix = Math.floor((race.x - g.x0) / g.cell), iz = Math.floor((race.z - g.z0) / g.cell);
+        const k = iz * g.nx + ix, wet = ix >= 0 && iz >= 0 && ix < g.nx && iz < g.nz && isWet(g.waterLevel[k]);
+        spin = wet ? clamp(0.6 + Math.hypot(g.flowX[k], g.flowZ[k]), 0.6, 1.6) : 0;
+        running = wet;
+        break;
+      }
+      // Grinding needs wheat and power: waiting for either, the stone stands still and the flour stops.
+      case 'mill': running = working && powered; spin = running ? 1 : 0; break;
+      case 'bakery': running = working && powered; break;
+      // The drum turns by hand-crank and gravity: no power, only something to turn.
+      case 'composter': spin = working ? 1 : 0; running = working; break;
+      case 'battery': running = powered; charge = RINGS.filter((at) => (rt?.charge ?? 0) >= at).length; break;
+      case 'garage': case 'farmhouse': case 'coop': running = powered; break;
+      // A solar lantern charges from its own little cap by day: it glows after dusk (brush3d lights what runs, at night)
+      // power or none, even far out along a track beyond every power field.
+      case 'lantern': running = true; break;
+      // The settlement's landing keeps its beacon lit for the carts.
+      case 'depot': running = true; break;
+      default: break;
     }
+    // Told only when it changes (a turbine's pace in steps of a tenth).
+    const key = `${Math.round(spin * 10)} ${running ? 1 : 0} ${charge ?? '-'}`;
+    if (key === it.shown) return;
+    it.shown = key;
+    it.parts.spin(spin);
+    it.parts.show(charge === undefined ? { running } : { running, charge });
   }
 
   /** Highlights one thing (null: none). */
@@ -183,6 +209,8 @@ export class Things {
     const parts = set.add(model, matrix);
     const meshes = set.addTo(this.r, tagOf('thing', t.id));
     this.items.set(t.id, { thing: t, meshes, parts, shown: '' });
+    // Shown as the homestead has it from its first frame, not as the model rests.
+    this.stale = true;
     if (this.selected === t.id) for (const m of meshes) this.r.setMark(m, { highlight: true });
   }
 

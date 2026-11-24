@@ -1,9 +1,13 @@
-// The building card: a small card beside the thing the player clicked, with its name, one plain line on how it's doing and
-// Move / Turn / Remove. It follows the thing on screen as the camera moves (`updatePosition`, which only sets a transform),
-// stays inside the window and keeps clear of the tool strip.
-import { CATALOG } from '../game/index.ts';
-import { button, el, setFlag, setHidden, setText } from './dom.ts';
+// The building card: a small card beside the thing the player clicked, with its name, one plain line on how it's doing
+// (and, for some, a second: its stock, its charge, the order's progress) and Move / Turn / Remove, Remove saying the
+// Supplies it gives back. The Depot, fixed at the valley's edge, gets a read-only card. The Garage's card carries its cart
+// row: how many carts run, "+ Cart" and "Retire", so carts never need a menu of their own. The card follows the thing on
+// screen as the camera moves (`updatePosition`, which only sets a transform), stays inside the window and keeps clear of the
+// tool strip.
+import { CART_COST, CATALOG } from '../game/index.ts';
+import { button, el, setFlag, setHidden, setText, setTitle } from './dom.ts';
 import { icon } from './icons.ts';
+import { supplyWord } from './supplies.ts';
 import type { SelectedThingView, UiCallbacks } from './types.ts';
 
 export interface Ring {
@@ -19,10 +23,17 @@ const GAP = 30, EDGE = 12;
 /** The room kept free at the bottom for the tool strip, and at the top for the postcard and sky strip, px. */
 const BOTTOM = 112, TOP = 12;
 
-export function createRing(root: HTMLElement, cb: UiCallbacks): Ring {
+/** What changes the card's size: when it does, the card is measured again. */
+const shapeOf = (v: SelectedThingView): string => [
+  v.label, v.statusLine, v.detailLine ?? '', v.connected ?? '', v.immovable ?? false, v.refund ?? 0,
+  v.cartControls ? `${v.cartControls.canRetire}` : '',
+].join('|');
+
+export function createRing(root: HTMLElement, cb: UiCallbacks, toast: (message: string) => void): Ring {
   let current: SelectedThingView | null = null;
   let size = { w: 0, h: 0 };
   let shown = false;
+  let shape = '';
 
   const layer = el('div', 'ui-ring-layer');
   const anchor = el('div', 'ui-ring-anchor');
@@ -38,10 +49,29 @@ export function createRing(root: HTMLElement, cb: UiCallbacks): Ring {
   head.append(title, close);
 
   const status = el('p', 'ui-ring-status');
+  const detail = el('p', 'ui-ring-detail');
   const meta = el('p', 'ui-ring-meta');
   const power = el('span', 'ui-ring-power');
   const facing = el('span', 'ui-ring-facing');
   meta.append(power, facing);
+
+  // The Garage's carts.
+  const carts = el('div', 'ui-ring-carts');
+  const cartCount = el('span', 'ui-ring-carts-count');
+  const buy = button('ui-cart-btn', 'Buy an Electric Cart', () => {
+    const c = current?.cartControls;
+    if (!c) return;
+    if (c.count >= c.max) toast(`The Garage runs at most ${c.max} carts`);
+    else if (!c.canAfford) toast(`An Electric Cart needs ${CART_COST} ${supplyWord(CART_COST)} · remove something for a full refund`);
+    else cb.onBuyCart();
+  });
+  buy.append(icon('plus'), el('span', '', `Cart (${CART_COST})`));
+  const retire = button('ui-cart-btn', `Retire a cart (+${CART_COST} back)`, () => {
+    const c = current?.cartControls;
+    if (c?.canRetire && c.retireId !== undefined) cb.onRetireCart(c.retireId);
+  });
+  retire.append(icon('minus'), el('span', '', `Retire (+${CART_COST})`));
+  carts.append(cartCount, buy, retire);
 
   const actions = el('div', 'ui-ring-actions');
   const withId = (f: (id: number) => void) => () => { if (current) f(current.id); };
@@ -52,10 +82,11 @@ export function createRing(root: HTMLElement, cb: UiCallbacks): Ring {
   const right = button('ui-act ui-act-icon', 'Turn right 15°', withId((id) => cb.onRotateSelected(id, -TURN)));
   right.append(icon('rotateRight'), el('span', '', '15°'));
   const remove = button('ui-act ui-act-remove', 'Remove (Delete)', withId((id) => cb.onRemoveSelected(id)));
-  remove.append(icon('remove'), el('span', '', 'Remove'));
+  const removeText = el('span', '', 'Remove');
+  remove.append(icon('remove'), removeText);
   actions.append(move, left, right, remove);
 
-  inner.append(head, status, meta, actions);
+  inner.append(head, status, detail, meta, carts, actions);
   card.append(inner);
   layer.append(anchor, card);
   layer.hidden = true;
@@ -84,22 +115,45 @@ export function createRing(root: HTMLElement, cb: UiCallbacks): Ring {
 
     setText(title, selected.label);
     setText(status, selected.statusLine);
+    setText(detail, selected.detailLine ?? '');
+    setHidden(detail, !selected.detailLine);
     const powered = selected.connected;
     setHidden(power, powered === undefined);
     setText(power, powered ? 'Power connected' : 'Unconnected');
     setFlag(power, 'is-on', powered === true);
+    const fixed = selected.immovable === true;
+    setHidden(facing, fixed);
     setText(facing, `Facing ${Math.round(((selected.yawDeg % 360) + 360) % 360)}°`);
+    setHidden(meta, fixed && powered === undefined);
     const category = CATALOG[selected.kind].category;
     if (card.dataset.category !== category) card.dataset.category = category;
+    setFlag(card, 'is-fixed', fixed);
 
+    // Move, turns and Remove: none for the Depot.
+    setHidden(actions, fixed);
+    const refund = selected.refund ?? 0;
+    setText(removeText, refund > 0 ? `Remove (+${refund})` : 'Remove');
+    setTitle(remove, refund > 0 ? `Remove (Delete) · gives back ${refund} ${supplyWord(refund)}` : 'Remove (Delete)');
+
+    const c = selected.cartControls;
+    setHidden(carts, c === undefined);
+    if (c) {
+      setText(cartCount, `Carts ${c.count}/${c.max}`);
+      setFlag(buy, 'is-short', !c.canAfford || c.count >= c.max);
+      setHidden(retire, !c.canRetire || c.retireId === undefined);
+    }
+
+    const nextShape = shapeOf(selected);
     if (!shown || was?.id !== selected.id) {
       // A new card: measure it once, then let it bloom in.
       size = { w: card.offsetWidth, h: card.offsetHeight };
+      shape = nextShape;
       shown = true;
       inner.classList.remove('is-blooming');
       void inner.offsetWidth;
       inner.classList.add('is-blooming');
-    } else if (was.statusLine !== selected.statusLine || was.label !== selected.label || was.connected !== selected.connected) {
+    } else if (nextShape !== shape) {
+      shape = nextShape;
       size = { w: card.offsetWidth, h: card.offsetHeight };
     }
     updatePosition(selected.screenX, selected.screenY, selected.visible);

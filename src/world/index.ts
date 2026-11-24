@@ -7,9 +7,15 @@
 // The camera turns in a free orbit by default, or in snapped 90° views: the player's setting (setYawMode), remembered in
 // the browser, which a link's `?yaw=orbit|snap` overrides. The world draws the power as the state has it (state.power):
 // the soft wireless fields round power buildings and relays, no lines.
+//
+// The living homestead (Milestone 2): the play layer runs the game's simulation (stepSim) with the world's sky and wind
+// (getSimEnv: the hour, the live wind's speed, the weather's cloud cover), then hands the world the tick (syncSim): the
+// crops are drawn at the stage they've grown to, the Electric Carts drive, carry and roll their wheels, and each
+// building's moving parts and lights show how it is (working, powered, its battery's charge).
 import { type BrushRenderer as Renderer, BrushRenderer, QUALITY, type WeatherName } from '../../brush3d/src/index.ts';
-import { type Change, COVER, type GameState, polylineDistance } from '../game/index.ts';
+import { type Change, COVER, type GameState, polylineDistance, type SimEnv, type SimTickResult } from '../game/index.ts';
 import { CameraRig, START_ZOOM } from './camera.ts';
+import { Carts } from './carts.ts';
 import { Fields } from './fields.ts';
 import { Meadow } from './meadow.ts';
 import { storeYawMode, type WorldOptions, type YawMode, writeUrlParam } from './options.ts';
@@ -26,7 +32,8 @@ import { Wind } from './wind.ts';
 export {
   CAMERA_YAW_KEY, DEFAULT_OPTIONS, readUrlOptions, storedYawMode, storeYawMode, writeUrlParam, YAW_MODES, type WorldOptions, type YawMode,
 } from './options.ts';
-export { getModelForKind } from './things.ts';
+export { CART_MODEL, getModelForKind } from './things.ts';
+export { GROWTH_STEPS, growthStep } from './fields.ts';
 export type { PreviewSpec } from './tools.ts';
 export type { Speed } from './sky.ts';
 export type { WeatherName } from '../../brush3d/src/index.ts';
@@ -46,8 +53,20 @@ export interface PickTarget {
 
 /** The valley as drawn, for the play layer. */
 export interface World {
-  /** Redraws what an edit (the game's apply) touched. */
+  /** Redraws what an edit (the game's apply) touched: the carts too when it bought, retired or took them away. */
   sync(change: Change): void;
+  /**
+   * What the homestead's simulation needs from the world for a step (the game's stepSim): the hour on the world's clock,
+   * the live wind's speed (m/s, eased over a few seconds, at a turbine's hub over the valley) and how much of the sky the
+   * weather covers (0..1).
+   */
+  getSimEnv(): SimEnv;
+  /**
+   * Draws the homestead as a sim tick left it (call after stepSim): fields whose drawn growth step moved on are painted
+   * again, carts added and taken away (and their beds filled or emptied), and the buildings' parts and lights told how
+   * they are now. Left out, everything is checked.
+   */
+  syncSim(tick?: SimTickResult): void;
   /** Draws a different valley (a new seed, a loaded save) in place of this one. */
   resetValley(state: GameState): void;
   /** What the player is about to do (a ghost, a rill's flow, a brush), or null for nothing. */
@@ -103,7 +122,7 @@ export async function createWorld(canvas: HTMLCanvasElement, state: GameState, o
 }
 
 /** The scene's parts, built for one valley. */
-interface Scene { meadow: Meadow; wild: Wild; fields: Fields; bridges: Bridges; things: Things; tools: Tools; wind: Wind }
+interface Scene { meadow: Meadow; wild: Wild; fields: Fields; bridges: Bridges; things: Things; carts: Carts; tools: Tools; wind: Wind }
 
 class ValleyWorld implements World {
   private readonly r: Renderer;
@@ -155,7 +174,7 @@ class ValleyWorld implements World {
     const things = new Things(r, state, this.models);
     const wild = new Wild(r, state);
     const scene: Scene = {
-      things, wild, meadow: new Meadow(r, state), fields: new Fields(r, state), bridges: new Bridges(r, state),
+      things, wild, meadow: new Meadow(r, state), fields: new Fields(r, state), bridges: new Bridges(r, state), carts: new Carts(r, state, this.models),
       tools: new Tools(r, state, things), wind: new Wind(this.sky.weather, state.seed, [...things.obstacles(), ...wild.obstacles()]),
     };
     things.windChanged = false; wild.windChanged = false;
@@ -168,7 +187,8 @@ class ValleyWorld implements World {
 
   private teardown() {
     const s = this.scene;
-    s.tools.dispose(); s.meadow.dispose(); s.wild.dispose(); s.fields.dispose(); s.bridges.dispose(); s.things.dispose(); s.wind.dispose();
+    s.tools.dispose(); s.meadow.dispose(); s.wild.dispose(); s.fields.dispose(); s.bridges.dispose(); s.carts.dispose(); s.things.dispose();
+    s.wind.dispose();
   }
 
   private resize() {
@@ -188,7 +208,8 @@ class ValleyWorld implements World {
     this.sky.step(r, dt, s.wind.goal);
     this.rig.update(r, dt);
     s.meadow.drain();
-    s.things.frame(dt, this.sky.hour, (x, z, h) => s.wind.at(x, z, h));
+    s.things.frame(dt, (x, z, h) => s.wind.at(x, z, h));
+    s.carts.frame(dt);
     if (s.things.windChanged || s.wild.windChanged) {
       s.things.windChanged = false; s.wild.windChanged = false;
       s.wind.setObstacles([...s.things.obstacles(), ...s.wild.obstacles()]);
@@ -209,8 +230,24 @@ class ValleyWorld implements World {
     s.things.sync(change, landSent);
     s.wild.sync(change);
     if (change.bridges) s.bridges.build();
+    if (change.carts || change.things.length) s.carts.sync();
+    // A building placed, taken away or cut off from its power shows how it is at once, not at the next tick.
+    if (change.things.length || change.powerChanged) s.things.markStale();
     s.meadow.sync(change, land, landSent);
     s.tools.refresh();
+  }
+
+  getSimEnv(): SimEnv {
+    return { hour: this.getHour(), windSpeed: this.scene.wind.speed, cloudCover: this.sky.cloudCover };
+  }
+
+  syncSim(tick?: SimTickResult) {
+    const s = this.scene;
+    // The crops grew a stage, ripened or were harvested: only the fields whose drawn step moved on are painted again.
+    if (!tick || tick.fieldStagesChanged) s.fields.syncGrowth();
+    // Cheap (a handful of carts, each bed checked by its good and load): a cart loads and unloads standing still.
+    s.carts.sync();
+    s.things.markStale();
   }
 
   resetValley(state: GameState) {

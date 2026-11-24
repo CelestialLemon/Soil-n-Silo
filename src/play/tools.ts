@@ -22,7 +22,6 @@ export const STROKE_STEP: Record<StrokeTool, number> = {
 /** A turn of R, Shift+wheel or the ring: 15°. */
 export const TURN_STEP = Math.PI / 12;
 
-/** Whether a kind takes part in the power (its wires or radius are worth seeing while it's sited or selected). */
 /** A power building or relay: one that projects a wireless field (a thing that only uses power is not one). */
 export const isPowerKind = (k: ThingKind) => CATALOG[k].powerRange > 0;
 
@@ -34,18 +33,26 @@ export function placesPower(tool: ToolId): boolean {
 
 const m = (n: number) => `${Math.round(n)} m`;
 
-/** What a ghost at a spot says: why it can't stand there, or a word on where it would. */
+const supplies = (n: number) => `${n} ${n === 1 ? 'Supply' : 'Supplies'}`;
+
+/**
+ * What a ghost at a spot says: why it can't stand there (the pool short of its cost among the reasons), or a word on
+ * where it would, with what a paid building takes from the pool ("2 Supplies · 8 left").
+ */
 export function placeReadout(s: GameState, kind: ThingKind, x: number, z: number, yaw: number, ignore?: number): { fits: boolean; readout: ToolReadout | null } {
   const can = canPlace(s, kind, x, z, yaw, ignore);
   if (!can.ok) return { fits: false, readout: { text: can.error, tone: 'warn' } };
-  if (kind === 'waterwheel') return { fits: true, readout: { text: 'Its wheel turns in the brook · click to place', tone: 'wet' } };
+  // A move costs nothing: only a new building says its price.
+  const cost = ignore === undefined ? CATALOG[kind].cost : 0;
+  const price = cost > 0 ? ` · ${supplies(cost)} · ${s.sim.supplies.available - cost} left` : '';
+  if (kind === 'waterwheel') return { fits: true, readout: { text: `Its wheel turns in the brook${price} · click to place`, tone: 'wet' } };
   if (kind === 'solar') {
     const g = s.grid, ix = Math.floor((x - g.x0) / g.cell), iz = Math.floor((z - g.z0) / g.cell);
     const id = ix >= 0 && iz >= 0 && ix < g.nx && iz < g.nz ? g.fieldOf[iz * g.nx + ix] : 0;
     const field = id === 0 ? undefined : s.fields.find((f) => f.id === id);
-    if (field) return { fits: true, readout: { text: `Over the ${field.crop} · agrivoltaic shade` } };
+    if (field) return { fits: true, readout: { text: `Over the ${field.crop} · agrivoltaic shade${price}` } };
   }
-  return { fits: true, readout: null };
+  return { fits: true, readout: price ? { text: `${CATALOG[kind].label}${price} · click to place` } : null };
 }
 
 /**
