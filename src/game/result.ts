@@ -8,15 +8,6 @@ export type Result<T, E = string> = { ok: true; value: T } | { ok: false; error:
 export const ok = <T>(value: T): Result<T, never> => ({ ok: true, value });
 export const err = <E>(error: E): Result<never, E> => ({ ok: false, error });
 
-/** Parsed JSON, or why the text isn't JSON. */
-export function tryParseJson(text: string): Result<unknown> {
-  try {
-    return ok(JSON.parse(text));
-  } catch (e) {
-    return err(e instanceof Error ? e.message : String(e));
-  }
-}
-
 /** The value, which an invariant says is there: a missing one is a programmer's bug, so it throws. */
 export function must<T>(value: T | null | undefined, what: string): T {
   if (value === null || value === undefined) throw new Error(`Missing ${what}`);

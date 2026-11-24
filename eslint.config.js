@@ -1,4 +1,4 @@
-// ESLint for the game, its tests and tools: the recommended sets plus a few type-aware rules that catch real bugs here.
+// ESLint for the game, its tests and the renderer's tools: the recommended sets plus a few type-aware rules that catch real bugs here.
 // No formatting or line-length rules: the code's dense layout is deliberate. Every rule is an error: a hit gets fixed.
 //
 // typescript-eslint drives the TypeScript compiler through its JavaScript API, which TypeScript 7 (the compiler the build
@@ -45,7 +45,7 @@ export default tseslint.config(
     rules: { '@typescript-eslint/no-non-null-assertion': 'off' },
   },
   {
-    // The tests tamper with saves through `any` on purpose, and assert state with `!`; the renderer's tools drive the demo
+    // The tests may tamper with saves through `any` on purpose, and assert state with `!`; the renderer's tools drive the demo
     // in a browser through `any` (its hooks on `window`, what `page.evaluate` hands back) in the same way.
     files: ['test/**/*.ts', 'brush3d/tools/**/*.ts'],
     rules: {

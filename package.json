@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "A cozy farming and production game: soil, chickens and processing chains, painted by its own renderer, brush3d.",
+  "description": "A grid-free, build-and-watch solarpunk homestead game in a painted valley, drawn by its own renderer, brush3d.",
   "engines": {
     "node": ">=22.18"
   },
@@ -14,9 +14,6 @@
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json && node node_modules/typescript/bin/tsc -p test && node node_modules/typescript/bin/tsc -p brush3d/tools && node brush3d/tools/demo-imports.ts",
     "test": "node --test 'test/**/*.test.ts' 'brush3d/test/**/*.test.ts'",
     "lint": "eslint .",
-    "sim": "node tools/sim.ts",
-    "hitches": "node tools/hitches.ts",
-    "framerate": "node tools/framerate.ts",
     "render:shot": "node brush3d/tools/shot.ts",
     "render:video": "node brush3d/tools/video.ts",
     "render:motion": "node brush3d/tools/motion.ts",

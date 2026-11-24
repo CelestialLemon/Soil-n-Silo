@@ -5,10 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="data:,">
   <title>Soil n Silo</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #e9e4d6; color: #2f3a2c; font: 16px/1.5 system-ui, sans-serif; }
+    #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+    #ui { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; }
+    .shell-card { pointer-events: auto; max-width: 28rem; margin: 1rem; padding: 1.5rem 2rem; border-radius: 1rem; background: #f6f2e8; box-shadow: 0 0.5rem 2rem #2f3a2c22; }
+    .shell-card h1 { margin: 0 0 0.5rem; font-size: 1.5rem; }
+    .shell-card a { color: #4d6b3c; }
+  </style>
 </head>
 <body>
   <canvas id="view"></canvas>
-  <div id="loading" class="loading">Loading the farm…</div>
+  <div id="ui"></div>
   <script type="module" src="./src/main.ts"></script>
 </body>
 </html>
