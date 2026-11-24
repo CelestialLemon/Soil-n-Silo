@@ -147,3 +147,31 @@ test('many small changes add up: a chunk whose paint drifts too far is painted a
   assert.ok(worst <= 1 / 512, `drawn ${(worst * 512).toFixed(2)} shades off`);
   land.dispose();
 });
+
+test('a change undone before it\'s swapped in leaves no chunk painted for it on screen', () => {
+  const m = terrain(), adder = new Adder(), land = new TerrainLand(adder, m), row = m.nx + 1;
+  // The last chunk along x raised into a ridge: its dryness reaches (blurred over 12 m) into the middle chunk, too.
+  const rect = { x: 35, y: 0, width: 5, height: m.nz }, n = 6 * (m.nz + 1), raised = new Float32Array(n), back = new Float32Array(n);
+  for (let j = 0; j <= m.nz; j++) for (let i = 0; i <= 5; i++) {
+    back[j * 6 + i] = m.height[j * row + 35 + i];
+    raised[j * 6 + i] = back[j * 6 + i] + 3;
+  }
+  assert.ok(land.update(rect, { height: raised }) > 0);
+  // One chunk painted (the middle one, first in line) and waiting to be swapped in; then the ridge taken away again.
+  assert.ok(!land.step(0));
+  assert.ok(land.update(rect, { height: back }) > 0);
+  assert.ok(land.step(Infinity));
+  // What's drawn is the terrain as it was: no chunk painted for the ridge.
+  const fresh = new Adder();
+  new TerrainLand(fresh, m);
+  const drawn = colours(adder), want = colours(fresh);
+  assert.equal(drawn.size, want.size);
+  let worst = 0;
+  for (const [at, c] of want) {
+    const d = drawn.get(at);
+    assert.ok(d, `a vertex at ${at}`);
+    for (let k = 0; k < 3; k++) worst = Math.max(worst, Math.abs(d[k] - c[k]));
+  }
+  assert.ok(worst <= 1 / 512, `drawn ${(worst * 512).toFixed(2)} shades off`);
+  land.dispose();
+});

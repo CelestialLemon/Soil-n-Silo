@@ -174,9 +174,13 @@ export class TerrainLand {
     this.repaint();
     let painted: Window | null = null;
     // (Only by more than shows: the dryness blurs over DRY_BLUR, and a small cut moves it a hair over many metres. Against
-    // the paint on screen, not the last change's, so many small changes add up until their chunk is painted again.)
-    const drawn = this.drawnPaint;
-    for (let t = 0; t < NX * NZ; t++) for (let c = 0; c < 4; c++) if (Math.abs(this.paint[t * 4 + c] - drawn[t * 4 + c]) > PAINT_SHOWS) {
+    // the paint on screen, not the last change's, so many small changes add up until their chunk is painted again; and,
+    // in a chunk painted and waiting to be swapped in, against the paint it was painted with too, so a change undone
+    // before the swap doesn't swap in the paint it undid.)
+    const drawn = this.drawnPaint, built = this.builtPaint;
+    for (let t = 0; t < NX * NZ; t++) for (let c = 0; c < 4; c++) {
+      const v = this.paint[t * 4 + c];
+      if (Math.abs(v - drawn[t * 4 + c]) <= PAINT_SHOWS && Math.abs(v - built[t * 4 + c]) <= PAINT_SHOWS) continue;
       painted = grown(painted, t % NX, Math.floor(t / NX), t % NX + 1, Math.floor(t / NX) + 1);
       break;
     }

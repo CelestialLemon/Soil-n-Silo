@@ -13,7 +13,7 @@ export const BRIDGE_WIDTH = 2.2;
 /** How much higher one bank may stand than the other for a bridge to rest on both, m. */
 const MAX_BANK_STEP = 1.2;
 /** A bridge reaches this far onto each bank past the crossing, m. */
-const BEARING = 0.5;
+export const BEARING = 0.5;
 
 interface Crossing { from: number; to: number }
 

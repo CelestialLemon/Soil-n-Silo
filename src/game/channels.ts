@@ -2,8 +2,8 @@
 // water runs along it by gravity alone (flow.ts) and wets its banks (wet.ts). Filling one gives back the ground exactly.
 import { CATALOG } from './catalog.ts';
 import type { Change } from './change.ts';
-import { channelRect, coreObb, RILL_HALF, settles, thingObb } from './earth.ts';
-import { checkCrossings } from './bridges.ts';
+import { BEARING, checkCrossings } from './bridges.ts';
+import { CHANNEL_REACH, channelRect, coreObb, RILL_HALF, settles, thingObb } from './earth.ts';
 import { channelPath, heightsWithRill } from './flow.ts';
 import { obbDistance, pathBounds, pathLength, type Point2 } from './geom.ts';
 import { cellIx, cellIz, COVER, VALLEY_HALF } from './grid.ts';
@@ -38,11 +38,13 @@ export function canDig(s: GameState, path: readonly Point2[]): Result<void, stri
 }
 
 /**
- * Whether every track the rill would cross could still bridge it (and every other crossing it makes), on the land the
- * cut would leave: laying the track after the rill would be refused otherwise, so digging the rill after it is too.
+ * Whether every track the rill would cross or reshape could still bridge it (and every other crossing it makes), on the
+ * land the cut would leave: laying the track after the rill would be refused otherwise, so digging the rill after it is
+ * too. A rill needn't cross a track to touch its bridges: its cut lowers the ground CHANNEL_REACH out, and a bridge's
+ * bank heights are read up to BEARING past the track's samples, from the corners of the cell they fall in.
  */
 function keepsTracks(s: GameState, path: readonly Point2[]): Result<void, string> {
-  const reach = pathBounds(path, RILL_HALF);
+  const reach = pathBounds(path, CHANNEL_REACH + BEARING + Math.SQRT2 * s.grid.cell);
   const crossed = s.tracks.filter((t) => {
     const b = pathBounds(t.path, 0);
     return b.minX <= reach.maxX && b.maxX >= reach.minX && b.minZ <= reach.maxZ && b.maxZ >= reach.minZ;

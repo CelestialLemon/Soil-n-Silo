@@ -9,25 +9,36 @@ const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isConte
 const onControl = (t: EventTarget | null) =>
   t instanceof Element && t.closest('button, input, select, textarea, a[href], [tabindex], [contenteditable]') !== null;
 
+/** Each button a gesture may start with (`button`: main, middle, secondary) and its bit in a pointer's `buttons`. */
+const BUTTON_BIT: Readonly<Record<number, number>> = { 0: 1, 1: 4, 2: 2 };
+
 /** Listens on the canvas and the window; returns what stops it. Call it before the overlay is built. */
 export function bindInput(canvas: HTMLCanvasElement, play: Play): () => void {
   // One pointer drives a gesture at a time: a second finger (or pen) pressed while one is down is ignored until it lifts.
-  let active: number | null = null;
+  // A mouse is one pointer with several buttons: a second button pressed while one is down (a chord) only moves the
+  // pointer, and the pointer lifts only once every button is up, so the gesture follows the button that started it and
+  // ends as that one is let go (its bit gone from `buttons`), whichever button the pointer finally lifts with.
+  let active: number | null = null, activeButton = 0;
   const other = (e: PointerEvent) => active !== null && e.pointerId !== active;
+  const held = (e: PointerEvent) => (e.buttons & BUTTON_BIT[activeButton]) !== 0;
+  const finish = (e: PointerEvent) => {
+    active = null;
+    play.pointerUp(activeButton, e.clientX, e.clientY);
+    if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+  };
   const onDown = (e: PointerEvent) => {
-    if (other(e) || (e.pointerType === 'mouse' && e.button > 2)) return;
-    active = e.pointerId;
+    if (active !== null || !(e.button in BUTTON_BIT)) return;
+    active = e.pointerId; activeButton = e.button;
     canvas.setPointerCapture(e.pointerId);
     play.pointerDown(e.button, e.clientX, e.clientY);
     e.preventDefault();
   };
-  const onMove = (e: PointerEvent) => { if (!other(e)) play.pointerMove(e.clientX, e.clientY); };
-  const onUp = (e: PointerEvent) => {
-    if (e.pointerId !== active) return;
-    active = null;
-    play.pointerUp(e.button, e.clientX, e.clientY);
-    if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+  const onMove = (e: PointerEvent) => {
+    if (other(e)) return;
+    play.pointerMove(e.clientX, e.clientY);
+    if (e.pointerId === active && !held(e)) finish(e);
   };
+  const onUp = (e: PointerEvent) => { if (e.pointerId === active) finish(e); };
   // The gesture's pointer was cancelled, or its capture lost before it lifted: the gesture is dropped.
   const onCancel = (e: PointerEvent) => {
     if (e.pointerId !== active) return;
