@@ -20,12 +20,20 @@ The renderer lives in [`brush3d/`](../brush3d/README.md) (its own roadmap is [`b
 Each milestone ends in something genuinely playable in the browser on PR preview (`https://celestiallemon.github.io/Soil-n-Silo/pr-<number>/`) so look and game feel are judged firsthand before adding more content.
 
 ### Milestone 0 — Clean Slate
+**Status: done (2026-11-24, `6d3e1e0`).** v0.1 is tagged `archive/v0.1-grid-automation`; `src/` and `test/` start from a minimal skeleton.
+
 - Preserve v0.1 cleanly in git history (tag `archive/v0.1-grid-automation` before removing old files).
 - Replace the old 4 m tile-grid `src/` and `test/` with a clean, minimal skeleton (`src/game/`, `src/world/`, `src/ui/`, `test/`).
 - Keep `brush3d/`, its demo at `/brush3d/`, all `render:*` scripts, CI checks, and PR live previews working throughout.
 
 ### Milestone 1 — Vertical Slice 1: *The Living Valley* (Prove the Feel First)
 *Goal: open a single intimate valley in the browser and immediately feel the magic of `brush3d`'s farm demo—except you are shaping it.*
+
+**Status: implemented (2026-11-24), ready for PR-preview review (epic #298, issues #304–#309).** Every tool works in the browser and a
+headless GPU playtest of the First Preview Gate passes with no console errors, at ~60 fps on the built valley at 18 px/m. Game rules
+are in `src/game/` (pure TypeScript, tested in Node); the brush3d bridge is in `src/world/`; input and the tools in hand are in
+`src/play/`; the floating UI is in `src/ui/`. What stays open is the developer's judgement on the preview: the feel, and the two
+preview choices below.
 
 - **Continuous terrain & close camera:** One seeded ~120 m pocket valley with rolling hills, a curving brook and pond, crags, seasonal trees, meadow grass, wildflowers, and reeds—rendered at `brush3d`'s close zoom (**16–96 px/m**). Generalize `brush3d`'s continuous heightfield land API (drawing from `farm.ts`) so the game works in continuous metres instead of 4 m tiles.
 - **Free placement & soft settling:** Place, move, and freely rotate the **Farmhouse** and a starter set of buildings (Silo, Mill, Bakery, Solar Canopy, Wind Turbine, Water Wheel, Lantern, Bench) anywhere on gentle ground, with smooth natural pads beneath them.
@@ -76,3 +84,13 @@ Each milestone ends in something genuinely playable in the browser on PR preview
 - **Channel flow (decided 2026-11-24):** Gravity-only for v0.2—water obeys downhill/contour flow without thinning the brook's downstream flow when multiple channels tap it.
 - **Camera yaw (to judge on PR preview):** Compare four snapped 90° views vs. smooth free orbit around the valley.
 - **Power wiring (to judge on PR preview):** Compare slim free wooden pylons along paths/yards vs. local wireless radius around power buildings + relays once buildings stand together.
+- **Flipping the preview choices:** Both are buttons in the *Preview choices* card (top right) and URL options: `?yaw=snap|orbit`
+  and `?wiring=pylons|wireless`. They combine with `seed`, `season`, `hour`, `weather` and `quality`, e.g.
+  `?yaw=orbit&wiring=wireless&seed=77&season=winter&hour=golden&weather=soft-rain`. The option not picked is removed before merge.
+- **Weather in Vertical Slice 1 (decided 2026-11-24):** The game's four weathers draw with brush3d presets: Clear → `clear`,
+  Breeze → `scattered`, Overcast → `overcast`, Rain (shown as *Showers*) → `soft-rain`. Booting from any other brush3d preset
+  maps back to the nearest of the four. Continuous, unpredictable weather comes in Milestone 4.
+- **Controls (Vertical Slice 1):** WASD/arrows pan, the wheel zooms, a middle drag (or a left drag with no stroke tool) pans, a
+  right drag orbits in free orbit, a right click puts the tool down. Q/E turn the view (a 90° step when snapped, a hold when
+  orbiting). R and Shift+R (or Shift+wheel) turn the ghost or the selected building by 15°, and ↻ turns clockwise on screen.
+  `[` and `]` resize the field brush (2–5 m). Space pauses. Esc first drops a drag or a move under way, then puts the tool down.
