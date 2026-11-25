@@ -2,7 +2,7 @@
 // and the power), a clicked thing's plain lines ("Grinding wheat into flour · 40%", "Stock: 4 Wheat") and its card's
 // extras (the Garage's carts, the refund), and the sky's weather in the strip's four words.
 import {
-  BATTERY_WH, CART_COST, CATALOG, diagnoseIdleCarts, channelSummary, countOf, describeInventory, describeRuntime, type GameState, type Good,
+  BATTERY_WH, CART_COST, CATALOG, serviceSite, windShelter, treeShade, diagnoseIdleCarts, channelSummary, countOf, describeInventory, describeRuntime, type GameState, type Good,
   GOOD_LABELS, isNight, isWorkshop, MAX_CARTS, polylineDistance, runtimeOf, SILO_CAP, type Thing, type ThingKind, toWorld,
   totalStored,
 } from '../game/index.ts';
@@ -80,17 +80,28 @@ export function thingStatus(s: GameState, t: Thing, hour: number): { line: strin
     // The homestead's buildings say how they're doing as the homestead runs (workshops.ts).
     // The Depot's order is its second line: its first says what it is.
     case 'depot': return say(s.sim.brief.order.done ? 'Pantry Order filled · the settlement thanks you' : "The settlement's landing · carts bring the Pantry Order here");
-    case 'farmhouse': case 'silo': case 'mill': case 'bakery': case 'coop': case 'composter': case 'garage': {
+    case 'rain_tank': case 'sprinkler': case 'beehive': case 'farmhouse': case 'silo': case 'mill': case 'bakery': case 'coop': case 'composter': case 'garage': {
       const r = runtimeOf(s, t.id);
-      if (r) return say(describeRuntime(s, r));
+      if (r) {
+        let note = '';
+        if (t.kind === 'coop' && treeShade(s, t, 10)) note = ' · Shaded by trees';
+        if (t.kind === 'beehive') {
+          const flowers = serviceSite(s, t).fields.filter(f => f.crop === 'beans').length;
+          const forage = flowers ? `${flowers} flowering field${flowers === 1 ? '' : 's'}`
+            : serviceSite(s, t).meadow && s.season !== 'winter' ? 'Meadow flowers' : 'Plant beans nearby';
+          note = `${windShelter(s, t) > 0.1 ? ' · Sheltered' : ''} · ${forage}`;
+        }
+        return say(describeRuntime(s, r) + note);
+      }
       return say(powered ? 'Connected to power' : needs);
     }
     case 'solar': {
       const crop = cropUnder(s, t);
-      if (crop) return say(`Agrivoltaic · Shading ${crop}`);
-      return say(isNight(hour, s.season) ? 'Resting until sunrise' : 'Soaking up the sun');
+      const shade = treeShade(s, t) > 0 ? ' · Shaded by trees' : '';
+      if (crop) return say(`Agrivoltaic over ${crop}${shade}`);
+      return say(isNight(hour, s.season) ? 'Resting until sunrise' : `Soaking up the sun${shade}`);
     }
-    case 'turbine': return say('Catching the wind');
+    case 'turbine': return say(windShelter(s, t) > 0.1 ? 'Wind slowed by nearby shelter' : 'Catching the wind');
     case 'waterwheel': return say('Water Wheel · Turning in the brook');
     case 'battery': {
       const r = runtimeOf(s, t.id);

@@ -165,9 +165,9 @@ function fieldOf2(g: Grid, id: number, crop: Crop, cells: number[], was: Field |
   const f: Field = {
     id, crop, cellCount: cells.length, areaM2, avgMoisture: cells.length > 0 ? wet / cells.length : 0,
     bounds: bounds ?? { x0: 0, z0: 0, x1: -1, z1: -1 },
-    growth: kept ? kept.growth : SOWN_GROWTH, fertility, harvestReady: 0,
+    growth: kept ? kept.growth : SOWN_GROWTH, fertility, harvestReady: 0, pollinated: kept?.pollinated ?? false,
   };
-  if (kept && kept.harvestReady > 0) f.harvestReady = Math.min(kept.harvestReady, fieldYield(f));
+  if (kept && kept.harvestReady > 0) f.harvestReady = Math.min(kept.harvestReady, fieldYield(f, f.pollinated));
   return f;
 }
 

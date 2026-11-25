@@ -182,6 +182,7 @@ class ValleyWorld implements World {
     scene.tools.setContours(sw.contours); scene.tools.setMoisture(sw.moisture); scene.tools.setShowPower(sw.power);
     scene.tools.setPreview(sw.preview);
     things.setSelected(sw.selected);
+    scene.tools.setSelected(sw.selected);
     return scene;
   }
 
@@ -238,7 +239,7 @@ class ValleyWorld implements World {
   }
 
   getSimEnv(): SimEnv {
-    return { hour: this.getHour(), windSpeed: this.scene.wind.speed, cloudCover: this.sky.cloudCover };
+    return { hour: this.getHour(), weather: this.getWeather(), windSpeed: this.scene.wind.speed, cloudCover: this.sky.cloudCover };
   }
 
   syncSim(tick?: SimTickResult) {
@@ -263,7 +264,7 @@ class ValleyWorld implements World {
   // ---- Tools ----
 
   setPreview(spec: PreviewSpec | null) { this.switches.preview = spec; this.scene.tools.setPreview(spec); }
-  setSelectedThing(id: number | null) { this.switches.selected = id; this.scene.things.setSelected(id); }
+  setSelectedThing(id: number | null) { this.switches.selected = id; this.scene.things.setSelected(id); this.scene.tools.setSelected(id); }
   setContourHints(on: boolean) { this.switches.contours = on; this.scene.tools.setContours(on); }
   setMoistureOverlay(on: boolean) { this.switches.moisture = on; this.scene.tools.setMoisture(on); }
   setShowPowerPreview(on: boolean) { this.switches.power = on; this.scene.tools.setShowPower(on); }

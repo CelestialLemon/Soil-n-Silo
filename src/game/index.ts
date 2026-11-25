@@ -52,6 +52,7 @@ export { type PowerCandidate, powerFor, previewPower } from './power/graph.ts';
 export { type Networks, networksOf } from './power/radius.ts';
 
 // The living homestead (Milestone 2): time, Supplies, goods, crops, workshops, power, carts and the brief.
+export { flowerDrift, effectiveMoisture, erosionDrain, forageRate, serviceSite, hasServiceRadius, SERVICE_RADIUS, treeShade, windShelter } from './microclimate.ts';
 export { stepSim, MAX_SUBSTEP_SECONDS, type SimTickResult } from './sim.ts';
 export { type SimEvent, type SimEventType } from './events.ts';
 export { formatClock, isNight, SECONDS_PER_GAME_HOUR, seasonHours, sunFactor, sunHours } from './clock.ts';

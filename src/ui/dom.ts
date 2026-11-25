@@ -43,12 +43,3 @@ export function setPressed(node: HTMLElement, on: boolean): void {
   if (node.getAttribute('aria-pressed') !== v) node.setAttribute('aria-pressed', v);
   setFlag(node, 'is-on', on);
 }
-
-/** Remembers a small per-viewer preference (a collapsed panel); storage may be missing or blocked, which is fine. */
-export function remember(key: string, value: string): void {
-  try { localStorage.setItem(`soil-n-silo.ui.${key}`, value); } catch { /* private window or blocked storage */ }
-}
-
-export function recall(key: string): string | null {
-  try { return localStorage.getItem(`soil-n-silo.ui.${key}`); } catch { return null; }
-}

@@ -12,7 +12,7 @@ import type { PowerNetwork, PowerSummary } from './power/sim.ts';
 import { starterSupplies, type SuppliesState } from './supplies.ts';
 import type { ThingRuntime } from './workshops.ts';
 
-export const STATE_VERSION = 5;
+export const STATE_VERSION = 6;
 
 /** The valley's one season (brush3d's SEASONS). */
 export const SEASONS = ['spring', 'summer', 'autumn', 'winter'] as const;
@@ -46,6 +46,8 @@ export interface Field {
   fertility: number;
   /** Whole units of ripe harvest waiting at its edge for an Electric Cart; 0 while it grows. */
   harvestReady: number;
+  /** Bees visited during this crop cycle, including crops that ripen after dusk. */
+  pollinated: boolean;
 }
 
 /** The water along a rill's centreline at one sample. */

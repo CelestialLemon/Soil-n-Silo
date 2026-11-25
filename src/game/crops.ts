@@ -1,6 +1,7 @@
 // Living crops: each painted field grows with water, soil and light, ripens into a harvest waiting at its edge, and once
 // the carts have taken the last of it, is sown again. Wheat draws the soil down; beans fix nitrogen and build it back
 // up; a sack of compost lifts it at once.
+import { effectiveMoisture, erosionDrain, hotMidday, serviceSite } from './microclimate.ts';
 import { clamp, obbDistance } from './geom.ts';
 import { thingObb } from './earth.ts';
 import { cellX, cellZ, type Grid, type Soil, SOIL } from './grid.ts';
@@ -40,8 +41,9 @@ export function soilFertility(g: Grid, cells: readonly number[]): number {
 }
 
 /** Whole units a ripe field yields: more with area, a little more on rich soil (2 to 8). */
-export function fieldYield(f: Pick<Field, 'areaM2' | 'fertility'>): number {
-  return clamp(Math.round((f.areaM2 / 18) * (0.5 + 0.6 * f.fertility)), 2, 8);
+export function fieldYield(f: Pick<Field, 'areaM2' | 'fertility'>, pollinated = false): number {
+  const base = clamp(Math.round((f.areaM2 / 18) * (0.5 + 0.6 * f.fertility)), 2, 8);
+  return Math.round(base * (pollinated ? 1.25 : 1));
 }
 
 /**
@@ -69,15 +71,20 @@ export function growthRate(f: Pick<Field, 'avgMoisture' | 'fertility'>, sun: num
 export const cropStage = (f: Pick<Field, 'growth' | 'harvestReady'>) => (f.harvestReady > 0 ? 21 : Math.floor(clamp(f.growth, 0, 1) * 20));
 
 /** Grows every field by `dtH` game hours; returns the fields that ripened and whether any stage changed. */
-export function growCrops(s: GameState, dtH: number, sun: number): { ripened: Field[]; stagesChanged: boolean } {
+export function growCrops(s: GameState, dtH: number, sun: number, weather?: string): { ripened: Field[]; stagesChanged: boolean } {
   const ripened: Field[] = [];
   let stagesChanged = false;
   const cover = agrivoltaicCoverage(s);
   for (const f of s.fields) {
     if (f.harvestReady > 0) continue;
     const before = cropStage(f);
-    f.growth = Math.min(1, f.growth + growthRate(f, sun, cover.get(f.id) ?? 0) * dtH);
-    if (f.growth >= 1) { f.harvestReady = fieldYield(f); ripened.push(f); }
+    const coverage = cover.get(f.id) ?? 0;
+    const climate = weather === 'overcast' ? 1 - 0.1 * coverage : hotMidday(s, weather) ? 1 + 0.12 * coverage : 1;
+    const bees = s.things.some(t => t.kind === 'beehive' && s.sim.things.get(t.id)?.working && serviceSite(s, t).fields.includes(f));
+    if (bees && dtH > 0) f.pollinated = true;
+    const rate = growthRate({ fertility: f.fertility, avgMoisture: effectiveMoisture(s, f) }, sun, climate === 1 ? coverage : 0);
+    f.growth = Math.min(1, f.growth + rate * climate * (bees ? 1.05 : 1) * dtH);
+    if (f.growth >= 1) { f.harvestReady = fieldYield(f, f.pollinated); ripened.push(f); }
     if (cropStage(f) !== before) stagesChanged = true;
   }
   return { ripened, stagesChanged };
@@ -101,8 +108,9 @@ export function harvestField(s: GameState, f: Field, n: number): number {
   const took = Math.max(0, Math.min(n, f.harvestReady));
   f.harvestReady -= took;
   if (took > 0 && f.harvestReady === 0) {
-    workSoil(s, f, HARVEST_FERTILITY[f.crop]);
+    workSoil(s, f, HARVEST_FERTILITY[f.crop] - erosionDrain(s, f));
     f.growth = REPLANT_GROWTH;
+    f.pollinated = false;
   }
   return took;
 }

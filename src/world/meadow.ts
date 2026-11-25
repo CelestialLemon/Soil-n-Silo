@@ -10,7 +10,7 @@ import {
   rng, srgb,
 } from '../../brush3d/src/index.ts';
 import {
-  type Change, COVER, type GameState, hash3, isWet, obbBounds, pointInObb, type Rect, type Season, slopeAt,
+  flowerDrift, type Change, COVER, type GameState, hash3, isWet, obbBounds, pointInObb, type Rect, type Season, slopeAt,
   thingObb, type Tree, unionRect,
 } from '../game/index.ts';
 import { addMesh, dropMesh, rectOfArea } from './util.ts';
@@ -210,7 +210,7 @@ export class Meadow {
       }
       // Wildflowers in drifts of a colour, over the open meadow.
       if (fl.density > 0 && cover === COVER.grass && worked < 0.1 && this.flowerColours.length) {
-        const bloom = noise2(cx * 0.09 + 31, cz * 0.09 - 17 + (seed % 53));
+        const bloom = flowerDrift(seed, cx + g.cell / 2, cz + g.cell / 2);
         if (bloom > 0.15 && rand() < fl.density * 0.55 * Math.min(1, (bloom - 0.15) * 2.5)) {
           const pick = Math.abs(Math.floor((noise2(cx * 0.05 - 9, cz * 0.05 + 4) * 0.5 + 0.5) * this.flowerColours.length * 1.7)) % this.flowerColours.length;
           const col = this.flowerColours[pick] ?? C.lime;

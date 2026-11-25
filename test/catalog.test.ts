@@ -8,8 +8,8 @@ const models = JSON.parse(readFileSync(new URL('../brush3d/src/models/index.json
 
 test('every thing is drawn with one of brush3d\'s models', () => {
   assert.deepEqual([...THING_KINDS].sort(), [
-    'bakery', 'battery', 'bench', 'composter', 'coop', 'crates', 'depot', 'farmhouse', 'garage', 'lantern', 'mill', 'planter', 'relay',
-    'silo', 'solar', 'turbine', 'waterwheel',
+    'bakery', 'battery', 'beehive', 'bench', 'composter', 'coop', 'crates', 'depot', 'farmhouse', 'garage', 'lantern', 'mill', 'planter', 'rain_tank', 'relay',
+    'silo', 'solar', 'sprinkler', 'turbine', 'waterwheel',
   ]);
   for (const k of THING_KINDS) assert.ok(models[CATALOG[k].model], `${k}: model ${CATALOG[k].model}`);
 });
@@ -64,9 +64,9 @@ test('Supplies costs: land-craft, the home and props free; workshops 2, tech 1 t
   const cost = Object.fromEntries(THING_KINDS.map((k) => [k, CATALOG[k].cost]));
   assert.deepEqual(cost, {
     farmhouse: 0, silo: 2, mill: 2, bakery: 2, coop: 2, composter: 2, garage: 2, depot: 0, solar: 1, turbine: 3, waterwheel: 3,
-    battery: 1, relay: 0, bench: 0, lantern: 0, planter: 0, crates: 0,
+    rain_tank: 1, sprinkler: 1, beehive: 1, battery: 1, relay: 0, bench: 0, lantern: 0, planter: 0, crates: 0,
   });
   assert.deepEqual(THING_KINDS.filter((k) => CATALOG[k].immovable), ['depot']);
   assert.deepEqual(Object.fromEntries(THING_KINDS.filter((k) => CATALOG[k].powerDemand > 0).map((k) => [k, CATALOG[k].powerDemand])),
-    { farmhouse: 0.5, mill: 2, bakery: 2.5, coop: 0.5, garage: 1.5, lantern: 0.05 });
+    { farmhouse: 0.5, mill: 2, bakery: 2.5, coop: 0.5, garage: 1.5, lantern: 0.05, sprinkler: 1 });
 });

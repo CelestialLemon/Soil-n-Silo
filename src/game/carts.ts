@@ -21,7 +21,7 @@ import { CART_SPEED, dockOf, findPath, groundAt, navCellOf, navCenter, NAV_CELL,
 import { err, ok, type Result } from './result.ts';
 import type { Field, GameState, Thing } from './state.ts';
 import { CART_COST, canAfford, MAX_CARTS, receiveDrop, refund, spend } from './supplies.ts';
-import { INPUT_CAP, RECIPES, runtimeOf, siloRoom, type ThingRuntime, wantsInput } from './workshops.ts';
+import { INPUT_CAP, recipeOf, runtimeOf, siloRoom, type ThingRuntime, wantsInput } from './workshops.ts';
 
 /** Units a cart carries per trip. */
 export const CART_CAPACITY = 2;
@@ -273,7 +273,7 @@ function sources(s: GameState, good: Good, reach?: Reach): Source[] {
     if (avail > 0 && at && within(s, reach, at)) out.push({ end, avail, at, silo: false });
   }
   for (const t of s.things) {
-    if (t.kind !== 'silo' && !isWorkshop(t.kind)) continue;
+    if (t.kind !== 'silo' && t.kind !== 'beehive' && !isWorkshop(t.kind)) continue;
     const r = s.sim.things.get(t.id);
     if (!r || countOf(r.outputs, good) <= 0) continue;
     const end = thingEnd(t.id), avail = countOf(r.outputs, good) - claimed(s, end, good), at = dockOf(s, t, reach);
@@ -295,7 +295,7 @@ function thingWants(s: GameState, t: Thing, r: ThingRuntime, good: Good): number
   const end = thingEnd(t.id);
   if (t.kind === 'silo') return Math.max(0, Math.min(wantsInput(r, good) - incoming(s, end, [good]), siloRoom(r) - incoming(s, end)));
   if (!isWorkshop(t.kind)) return 0;
-  const group = RECIPES[t.kind].inputs.find((input) => input.options.includes(good));
+  const group = recipeOf(t.kind, r).inputs.find((input) => input.options.includes(good));
   if (!group) return 0;
   const room = INPUT_CAP - totalStored(r.inputs) - incoming(s, end);
   return Math.max(0, Math.min(room, wantsInput(r, good) - incoming(s, end, group.options)));
@@ -326,7 +326,7 @@ function wants(s: GameState, reach?: Reach): Want[] {
     if (!isWorkshop(t.kind)) continue;
     const r = s.sim.things.get(t.id), at = r && dockOf(s, t, reach);
     if (!r || !at || !within(s, reach, at)) continue;
-    for (const input of RECIPES[t.kind].inputs) {
+    for (const input of recipeOf(t.kind, r).inputs) {
       for (const [k, good] of input.options.entries()) {
         if (k > 0 && input.options.slice(0, k).some((p) => sources(s, p, reach).some((src) => src.end.id !== t.id || src.end.kind !== 'thing'))) break;
         const want = thingWants(s, t, r, good);
@@ -345,8 +345,8 @@ function wants(s: GameState, reach?: Reach): Want[] {
       if (want > 0) out.push({ end: thingEnd(silo.id), at: siloAt, good, want, priority: 3, fromFieldsOnly: true });
     }
     for (const t of s.things) {
-      const r = isWorkshop(t.kind) ? s.sim.things.get(t.id) : undefined;
-      if (!r || totalStored(r.outputs) < 4) continue;
+      const r = isWorkshop(t.kind) || t.kind === 'beehive' ? s.sim.things.get(t.id) : undefined;
+      if (!r || totalStored(r.outputs) < (t.kind === 'beehive' || r.priority === 'silo' ? 1 : 4)) continue;
       for (const good of Object.keys(r.outputs) as Good[]) {
         const want = room(good);
         if (want > 0) out.push({ end: thingEnd(silo.id), at: siloAt, good, want, priority: 5, fromThing: t.id });
@@ -383,8 +383,11 @@ function dispatch(s: GameState, cart: Cart): boolean {
       const count = Math.min(CART_CAPACITY, src.avail, w.want);
       if (count <= 0) continue;
       const job: CartJob = { from: src.end, to: w.end, good: w.good, count, priority: w.priority };
+      const source = src.end.kind === 'thing' && s.sim.things.get(src.end.id);
+      if (source && ((source.kind === 'mill' && w.good === 'bran') || (source.kind === 'coop' && w.good === 'manure'))
+        && source.priority === thingById(s, w.end.id)?.kind) job.priority = 1.8;
       // Within a priority, the shortest haul; a haul from the Silo only when nothing nearer the source has it.
-      jobs.push({ job, src: src.at, dst: w.at, score: w.priority * 1000 + dist(here, src.at) + dist(src.at, w.at) + (src.silo ? 40 : 0) });
+      jobs.push({ job, src: src.at, dst: w.at, score: job.priority * 1000 + dist(here, src.at) + dist(src.at, w.at) + (src.silo ? 40 : 0) });
     }
   }
   jobs.sort((a, b) => a.score - b.score);
@@ -483,7 +486,7 @@ function accepts(s: GameState, end: Endpoint, good: Good, n: number): number {
     return o.done ? 0 : Math.min(n, Math.max(0, (o.targets[good] ?? 0) - countOf(s.sim.delivered, good)));
   }
   if (t.kind === 'silo') return Math.min(n, siloRoom(r, good));
-  if (isWorkshop(t.kind) && RECIPES[t.kind].inputs.some((input) => input.options.includes(good))) return Math.min(n, Math.max(0, INPUT_CAP - totalStored(r.inputs)));
+  if (isWorkshop(t.kind) && recipeOf(t.kind, r).inputs.some((input) => input.options.includes(good))) return Math.min(n, Math.max(0, INPUT_CAP - totalStored(r.inputs)));
   return 0;
 }
 
@@ -660,7 +663,13 @@ export function diagnoseIdleCarts(s: GameState): string | null {
       for (const t of targets) if (dockOf(s, t, reach)) reachable.add(t);
     }
     if (!reachable.size) return `Ripe ${crop} can't be reached — connect the field and its destination with a track and plank bridge`;
-    if ([...reachable].every(t => t.kind === 'silo' && !siloRoom(s.sim.things.get(t.id)!, crop)))
+    const hasRoom = [...reachable].some(t => {
+      const r = s.sim.things.get(t.id);
+      return t.kind === 'depot' || (r && wantsInput(r, crop) > 0);
+    });
+    if (!hasRoom && [...reachable].every(t => t.kind !== 'silo'))
+      return `Workshops have enough ${crop} — build a Silo for the surplus`;
+    if (!hasRoom)
       return `Silo has no room for ${crop} — ${crop === 'wheat' ? 'build a Mill to use it' : 'wait for a haul'}`;
   }
   return null;

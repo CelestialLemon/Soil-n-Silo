@@ -2,6 +2,7 @@
 // batteries hold. Solar canopies follow the sun and the clouds, wind turbines the live gusts, water wheels the brook
 // (steady, day and night). Batteries soak up the surplus and carry the homestead through the night; when a network
 // can't meet its demand, it sheds its workshops first (they pause), and that is a blackout.
+import { treeShade, windShelter } from '../microclimate.ts';
 import { chargingAtGarage } from '../carts.ts';
 import { CATALOG } from '../catalog.ts';
 import { formatClock, isNight, sunFactor } from '../clock.ts';
@@ -18,6 +19,7 @@ export interface SimEnv {
   hour?: number;
   /** The live wind (brush3d's WindRecipe speed), m/s. */
   windSpeed: number;
+  weather?: string;
   /** 0..1: how overcast the sky is. */
   cloudCover: number;
 }
@@ -60,17 +62,10 @@ export interface PowerSummary {
 export function generationOf(s: GameState, t: Thing, hour: number, env: SimEnv): number {
   switch (t.kind) {
     case 'solar': return sunFactor(hour, s.season) * (1 - CLOUD_DIM * clamp(env.cloudCover, 0, 1)) * SOLAR_PEAK_W * (1 - treeShade(s, t));
-    case 'turbine': return (TURBINE_BASE_W + clamp(env.windSpeed / TURBINE_FULL_WIND, 0, 1) * TURBINE_SPAN_W) * ridge(s, t);
+    case 'turbine': return (TURBINE_BASE_W + clamp(env.windSpeed * (1 - windShelter(s, t)) / TURBINE_FULL_WIND, 0, 1) * TURBINE_SPAN_W) * ridge(s, t);
     case 'waterwheel': return WATERWHEEL_W;
     default: return 0;
   }
-}
-
-/** How much nearby trees shade a canopy: a fifth of its light for each trunk right beside it, at most half. */
-function treeShade(s: GameState, t: Thing): number {
-  let n = 0;
-  for (const tr of [...s.wildTrees, ...s.plantedTrees]) if (Math.hypot(tr.x - t.x, tr.z - t.z) <= 3.5 + 2 * tr.scale) n++;
-  return Math.min(0.5, 0.2 * n);
 }
 
 /** A turbine catches more wind standing high and open, less down in a hollow (against the homestead's ground). */
@@ -86,6 +81,7 @@ export function demandOf(s: GameState, t: Thing, r: ThingRuntime, hour: number):
   const def = CATALOG[t.kind];
   switch (t.kind) {
     case 'farmhouse': return isNight(hour, s.season) ? FARMHOUSE_NIGHT_W : FARMHOUSE_DAY_W;
+    case 'sprinkler': return def.powerDemand;
     case 'garage': return s.sim.carts.some((c) => chargingAtGarage(s, c)) ? GARAGE_CHARGE_W : GARAGE_IDLE_W;
     case 'lantern': return isNight(hour, s.season) ? def.powerDemand : 0;
     case 'mill': case 'bakery': case 'coop': return r.working ? def.powerDemand : 0;

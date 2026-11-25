@@ -11,7 +11,7 @@
 // the clock is stopped, an edit or a jump of the clock reads the power again at once (refreshPower), so the power view's
 // watts and the workshops' lights show it without waiting for the clock to run.
 import {
-  type Action, apply, diagnoseIdleCarts, CART_COST, CATALOG, CLOCK_JUMPED, type Change, generateValley, type GameState, heightAt, type Point2,
+  type Action, cellIx, cellIz, effectiveMoisture, erosionDrain, GOOD_LABELS, apply, diagnoseIdleCarts, CART_COST, CATALOG, CLOCK_JUMPED, type Change, generateValley, type GameState, heightAt, type Point2,
   refreshPower, resetSteadyOnClockJump, type Season, SETUP_CHANGED, type SimEvent, stepSim, suggestWaterWheelYaw, type ThingKind, TREE_SPECIES,
   wrapAngle,
 } from '../game/index.ts';
@@ -131,7 +131,7 @@ export class Play implements UiCallbacks {
   /**
    * What a tick tells, as toasts: a parcel, a seal, the valley Restored, a blackout (once an episode, until the power is
    * back), the Steady Homestead starting over (with why; it says the blackout too, so a blackout with it isn't said twice).
-   * A field ripening isn't: the field shows it.
+   * The first ripe field with a blocked haul gets a quiet hint.
    */
   private tell(events: readonly SimEvent[]) {
     const ui = this.ui, reset = events.some((e) => e.type === 'steadyReset');
@@ -218,6 +218,10 @@ export class Play implements UiCallbacks {
     if (def.immovable) view.immovable = true;
     const detail = thingDetail(this.state, t);
     if (detail !== undefined) view.detailLine = detail;
+    const r = this.state.sim.things.get(t.id);
+    if (t.kind === 'bakery' && r) view.preference = `Baking: ${r.recipe === 'bread' ? 'Bread' : 'Honey Cake'}`;
+    if ((t.kind === 'mill' || t.kind === 'coop') && r)
+      view.preference = `${t.kind === 'mill' ? 'Bran' : 'Manure'} → ${r.priority[0].toUpperCase() + r.priority.slice(1)}`;
     if (t.kind === 'garage') view.cartControls = cartControls(this.state);
     return view;
   }
@@ -341,6 +345,16 @@ export class Play implements UiCallbacks {
     if (tool === 'select') {
       const hit = this.world.pickAt(x, y);
       this.select(hit?.kind === 'thing' && hit.id !== undefined ? hit.id : null);
+      if (this.selected === null) {
+        const at = this.world.hitTerrainAt(x, y), g = this.state.grid;
+        const field = at && this.state.fields.find(f => f.id === g.fieldOf[cellIz(g, at.z) * g.nx + cellIx(g, at.x)]);
+        if (field) {
+          const notes = [GOOD_LABELS[field.crop].label, effectiveMoisture(this.state, field) >= 0.32 ? 'Well watered' : 'Dry soil'];
+          if (field.pollinated) notes.push('Pollinated');
+          if (erosionDrain(this.state, field) > 0.02) notes.push('Sloping soil · shelter with beans, trees or hedges');
+          this.ui?.showToast(notes.join(' · '));
+        }
+      }
       return;
     }
     if (kind) { this.placeAt(kind, x, y); return; }
@@ -662,6 +676,17 @@ export class Play implements UiCallbacks {
     const cost = CATALOG[t.kind].cost, back = cost + Math.max(0, carts - 1) * CART_COST;
     const gone = carts > 0 ? ` · its ${carts === 1 ? 'cart goes' : `${carts} carts go`} with it` : '';
     this.ui?.showToast(`${CATALOG[t.kind].label} taken down${back > 0 ? ` · +${back} ${back === 1 ? 'Supply' : 'Supplies'} back` : ''}${gone}`);
+  }
+
+  onCyclePreference(id: number) {
+    const r = this.state.sim.things.get(id);
+    if (!r) return;
+    if (r.kind === 'bakery') this.act({ type: 'setRecipe', id, recipe: r.recipe === 'bread' ? 'honey_cake' : 'bread' });
+    else {
+      const choices = r.kind === 'mill' ? ['auto', 'coop', 'composter'] as const : ['auto', 'composter', 'silo'] as const;
+      const next = choices[(choices.findIndex(p => p === r.priority) + 1) % choices.length];
+      this.act({ type: 'setByproductPriority', id, target: next });
+    }
   }
 
   onBuyCart() {

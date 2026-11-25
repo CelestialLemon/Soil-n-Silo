@@ -12,7 +12,7 @@ import { countOf, type Good, type Inventory } from './goods.ts';
 import type { GameState } from './state.ts';
 
 /** The Spring Valley's Pantry Order. */
-export const PANTRY_ORDER: Inventory = { bread: 10, flour: 6, beans: 6 };
+export const PANTRY_ORDER: Inventory = { bread: 10, flour: 6, beans: 6, honey: 4 };
 export const LIVING_LAND_M2 = 100, LIVING_LAND_FERTILITY = 0.75;
 /** Two full days and nights, game hours. */
 export const STEADY_HOURS = 48;

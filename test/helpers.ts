@@ -1,7 +1,7 @@
 // Hand-made lands for the rules' tests: a plane of any slope, with a straight brook (or a still pond) where a test wants
 // one, so each rule is tested on ground whose numbers are known.
 import {
-  blankState, cellX, cellZ, COVER, type GameState, generateValley, naturalize, type Point2, vertexX, vertexZ,
+  apply, type Crop, must, runtimeOf, type ThingKind, blankState, cellX, cellZ, COVER, type GameState, generateValley, naturalize, type Point2, vertexX, vertexZ,
 } from '../src/game/index.ts';
 
 export interface LandSpec {
@@ -102,4 +102,17 @@ export function same(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) if (!Object.is(a[i], b[i])) return false;
   return true;
+}
+
+/** Seed a simulation fixture directly, including its runtime, for tests of operation after placement. */
+export function building(s: GameState, kind: ThingKind, x: number, z: number) {
+  const t = { id: s.nextId++, kind, x, z, yaw: 0, padTargetY: 0 };
+  s.things.push(t);
+  return { t, r: must(runtimeOf(s, t.id), kind) };
+}
+
+export function fieldAt(s: GameState, crop: Crop, x: number, z: number, radius = 3) {
+  const result = apply(s, { type: 'paintField', crop, points: [{ x, z }], radius });
+  if (!result.ok) throw new Error(result.error);
+  return must(s.fields.find(f => f.crop === crop), crop);
 }
