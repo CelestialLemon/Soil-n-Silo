@@ -161,9 +161,9 @@ function relabel(s: GameState, crops: Uint8Array): FieldEdit {
 
 /**
  * A field over these cells. One that keeps an old field's id keeps how its crop was doing (its growth and any harvest
- * waiting, trimmed to what its new size yields) and the pollination of the cells that survive (`pollen`: the sum of their
- * old fields' share), spread over its new size; a new field, or one painted over with the other crop, is sown fresh. Its
- * fertility is always its cells' (grid.fertility), as farming left them.
+ * waiting, trimmed to what its new size yields); every same-crop fragment keeps the pollination of the cells that survive
+ * (`pollen`: the sum of their old fields' share), spread over its new size; a new field, or one painted over with the
+ * other crop, starts unpollinated and sown fresh. Its fertility is always its cells' (grid.fertility), as farming left them.
  */
 function fieldOf2(g: Grid, id: number, crop: Crop, cells: number[], was: Field | undefined, pollen: number): Field {
   let bounds: Rect | undefined, wet = 0;
@@ -174,7 +174,7 @@ function fieldOf2(g: Grid, id: number, crop: Crop, cells: number[], was: Field |
     id, crop, cellCount: cells.length, areaM2, avgMoisture: cells.length > 0 ? wet / cells.length : 0,
     bounds: bounds ?? { x0: 0, z0: 0, x1: -1, z1: -1 },
     growth: kept ? kept.growth : SOWN_GROWTH, fertility, harvestReady: 0,
-    pollinated: kept && cells.length > 0 ? clamp(pollen / cells.length, 0, 1) : 0,
+    pollinated: cells.length > 0 ? clamp(pollen / cells.length, 0, 1) : 0,
   };
   if (kept && kept.harvestReady > 0) f.harvestReady = Math.min(kept.harvestReady, fieldYield(f, f.pollinated));
   return f;

@@ -142,7 +142,7 @@ test('pollination stays with the cells the bees visited: expanding dilutes it, s
   assert.equal(big.harvestReady, fieldYield(big, n0 / big.cellCount));
   assert.ok(big.harvestReady < fieldYield(big, 1));
 
-  // Shrinking keeps the share the surviving cells had; splitting sows the smaller part fresh.
+  // Shrinking and splitting both keep the share the surviving cells had.
   const t = land({ height: () => 0 });
   assert.ok(apply(t, { type: 'paintField', crop: 'beans', points: [{ x: -20.5, z: 0.5 }, { x: 20.5, z: 0.5 }], radius: 2.6 }).ok);
   t.fields[0].pollinated = 0.5;
@@ -150,7 +150,7 @@ test('pollination stays with the cells the bees visited: expanding dilutes it, s
   assert.equal(t.fields.length, 2);
   const [larger, smaller] = [...t.fields].sort((a, b) => b.cellCount - a.cellCount);
   assert.equal(larger.pollinated, 0.5);
-  assert.equal(smaller.pollinated, 0);
+  assert.equal(smaller.pollinated, 0.5);
 
   // Joining the two again weighs each part's share by its cells; the gap's new cells are unpollinated.
   larger.pollinated = 1;
