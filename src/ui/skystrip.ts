@@ -1,23 +1,34 @@
 // The sky strip, top right: a small day dial (the sun's dot runs round it; drag it to set the hour), the clock, quick
-// jumps to dawn, noon, golden hour and dusk, the game speed, the weather, and the camera: its ⟲ ⟳ turns and, beside them,
-// a quiet toggle between a free orbit (the default) and snapped 90° views, the player's setting (remembered by the world),
-// and the power view's bolt (P), which shows every wireless power range (they're hidden otherwise, unless a power building
-// or relay is in hand or picked).
-import { button, el, setFlag, setPressed, setText, setTitle } from './dom.ts';
+// jumps to dawn, noon, golden hour and dusk (at the season's hours: a winter golden hour comes at three), the game speed,
+// the weather, and the camera: its ⟲ ⟳ turns and, beside them, a quiet toggle between a free orbit (the default) and
+// snapped 90° views, the player's setting (remembered by the world), and the power view's bolt (P), which shows every
+// wireless power range (they're hidden otherwise, unless a power building or relay is in hand or picked). The clock reads
+// the game day too ("Day 2 · 10:30").
+//
+// Under the strip, a quiet power pill: the valley's watts made and used and the batteries' charge, shown only while the
+// power view is on or the homestead is in a blackout (then in amber, pointing at the power view). Calm play never sees it.
+import { isNight, type PowerSummary, type Season, seasonHours } from '../game/index.ts';
+import { button, el, setFlag, setHidden, setPressed, setText, setTitle } from './dom.ts';
 import { icon, type IconName, setIcon } from './icons.ts';
 import { SPEEDS, type Speed, type UiCallbacks, type UiSnapshot, type Weather, WEATHERS, type YawMode } from './types.ts';
 
-export interface SkyStrip { element: HTMLElement; render(s: UiSnapshot): void }
+export interface SkyStrip {
+  element: HTMLElement;
+  /** The power pill, set under the strip. */
+  balance: HTMLElement;
+  render(s: UiSnapshot): void;
+}
 
 const SVG = 'http://www.w3.org/2000/svg';
 /** The dial's size and the sun's track radius, in its own units. */
 const D = 44, R = 15;
 
+/** The quick jumps; their hours follow the season (seasonHours). */
 const MOMENTS = [
-  { id: 'dawn', label: 'Dawn', hour: 6 },
-  { id: 'noon', label: 'Noon', hour: 12 },
-  { id: 'golden', label: 'Golden hour', hour: 17.5 },
-  { id: 'dusk', label: 'Dusk', hour: 19.75 },
+  { id: 'dawn', label: 'Dawn' },
+  { id: 'noon', label: 'Noon' },
+  { id: 'golden', label: 'Golden hour' },
+  { id: 'dusk', label: 'Dusk' },
 ] as const;
 
 const CAMERA: Record<YawMode, { label: string; icon: IconName; other: YawMode }> = {
@@ -64,9 +75,19 @@ function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string,
   return node;
 }
 
+const watts = (w: number) => `${w.toFixed(1)} W`;
+
+/** The pill's line: what the valley makes and uses, and the batteries' charge if it has any. */
+function balanceLine(p: PowerSummary): string {
+  const batt = p.totalCapWh > 0 ? ` · Batt ${Math.round((p.totalStoredWh / p.totalCapWh) * 100)}%` : '';
+  return `${watts(p.totalGenW)} gen · ${watts(p.totalDemandW)} use${batt}`;
+}
+
 export function createSkyStrip(cb: UiCallbacks): SkyStrip {
   let last: UiSnapshot | null = null;
   let shownMinute = -1;
+  let shownDay = -1;
+  let shownSeason: Season | null = null;
 
   const strip = el('section', 'ui-sky ui-float');
   strip.setAttribute('aria-label', 'Sky and time');
@@ -109,11 +130,12 @@ export function createSkyStrip(cb: UiCallbacks): SkyStrip {
   const moments = el('div', 'ui-moments');
   moments.setAttribute('role', 'group');
   moments.setAttribute('aria-label', 'Jump to');
-  for (const m of MOMENTS) {
-    const b = button(`ui-moment ui-moment-${m.id}`, `${m.label} (${clock(m.hour)})`, () => cb.onSetHour(m.hour));
+  const momentBtns = MOMENTS.map((m) => {
+    const b = button(`ui-moment ui-moment-${m.id}`, m.label, () => { if (last) cb.onSetHour(seasonHours(last.stats.season)[m.id]); });
     b.append(el('span', 'ui-moment-dot'));
     moments.append(b);
-  }
+    return b;
+  });
 
   // Speed.
   const speeds = el('div', 'ui-seg');
@@ -155,20 +177,37 @@ export function createSkyStrip(cb: UiCallbacks): SkyStrip {
 
   strip.append(dial, time, moments, el('span', 'ui-rule'), speeds, weather, el('span', 'ui-rule'), turns);
 
+  // The power pill.
+  const balance = el('div', 'ui-balance ui-float');
+  balance.setAttribute('role', 'status');
+  balance.setAttribute('aria-live', 'polite');
+  const balanceText = el('span', 'ui-balance-text');
+  const balanceWhy = el('span', 'ui-balance-why');
+  balance.append(el('span', 'ui-balance-dot'), balanceText, balanceWhy);
+  balance.hidden = true;
+
   function render(s: UiSnapshot): void {
     last = s;
+    const season = s.stats.season;
+    if (season !== shownSeason) {
+      shownSeason = season;
+      shownMinute = -1;
+      const hours = seasonHours(season);
+      MOMENTS.forEach((m, k) => setTitle(momentBtns[k], `${m.label} (${clock(hours[m.id])})`));
+    }
     const minute = Math.floor((((s.hour % 24) + 24) % 24) * 60);
-    if (minute !== shownMinute) {
+    if (minute !== shownMinute || s.day !== shownDay) {
       shownMinute = minute;
+      shownDay = s.day;
       const text = clock(s.hour);
-      setText(clockText, text);
+      setText(clockText, `Day ${s.day} · ${text}`);
       setText(partText, partOfDay(s.hour));
       dial.setAttribute('aria-valuenow', s.hour.toFixed(2));
       dial.setAttribute('aria-valuetext', text);
       const p = sunAt(s.hour);
       sun.setAttribute('cx', p.x.toFixed(2));
       sun.setAttribute('cy', p.y.toFixed(2));
-      setFlag(dial, 'is-night', minute < 6 * 60 || minute >= 19 * 60);
+      setFlag(dial, 'is-night', isNight(s.hour, season));
     }
     for (const [sp, b] of speedBtns) setPressed(b, sp === s.speed);
     const w = WEATHER[s.weather];
@@ -179,7 +218,17 @@ export function createSkyStrip(cb: UiCallbacks): SkyStrip {
     setIcon(cameraIcon, cam.icon);
     setTitle(cameraMode, `Camera: ${cam.label} (click for ${CAMERA[cam.other].label.toLowerCase()})`);
     setPressed(powerView, s.powerView);
+
+    const p = s.stats.powerSummary;
+    const blackout = p.anyBlackout;
+    setHidden(balance, !s.powerView && !blackout);
+    setFlag(balance, 'is-warn', blackout);
+    setText(balanceText, blackout && !s.powerView ? 'Blackout — check Power View (P)' : blackout ? `Blackout · ${balanceLine(p)}` : balanceLine(p));
+    const why = blackout && s.powerView ? p.lastBlackoutReason : '';
+    setText(balanceWhy, why);
+    setHidden(balanceWhy, why === '');
+    setTitle(balance, blackout ? p.lastBlackoutReason || 'Blackout: more load than the power can carry' : 'The valley\'s power: made, used, and stored in batteries');
   }
 
-  return { element: strip, render };
+  return { element: strip, balance, render };
 }

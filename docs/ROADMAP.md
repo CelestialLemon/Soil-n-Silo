@@ -29,7 +29,7 @@ Each milestone ends in something genuinely playable in the browser on PR preview
 ### Milestone 1 — Vertical Slice 1: *The Living Valley* (Prove the Feel First)
 *Goal: open a single intimate valley in the browser and immediately feel the magic of `brush3d`'s farm demo—except you are shaping it.*
 
-**Status: implemented (2026-11-24), ready for PR-preview review (epic #298, issues #304–#309).** Every tool works in the browser and a
+**Status: done (merged 2026-11-25, PR #310; epic #298, issues #304–#309).** Every tool works in the browser and a
 headless GPU playtest of the First Preview Gate passes with no console errors, at ~60 fps on the built valley at 18 px/m. Game rules
 are in `src/game/` (pure TypeScript, tested in Node); the brush3d bridge is in `src/world/`; input and the tools in hand are in
 `src/play/`; the floating UI is in `src/ui/`. After the first PR-preview playtest (2026-11-25) the two preview choices are
@@ -46,6 +46,15 @@ the brook across a meadow terrace (see *Decisions* below). What stays open is th
 
 ### Milestone 2 — Core Homestead Loop: *Supplies, Power & First Harvest*
 *Goal: a complete, playable 30-minute spring valley with real strategy and zero route spreadsheets.*
+
+**Status: implemented (2026-11-25), ready for review (epic #299).** The living homestead runs in `src/game/` (`stepSim`: the
+clock, Supplies, goods, crops, workshops, the power mix, the carts and the brief, all pure TypeScript; `test/playthrough.test.ts`
+plays the Spring Valley headless from an empty homestead to Restored in about four game-days). The world draws each tick
+(crops at their growth step, Electric Carts driving with their cargo in the bed, workshops' parts and lights, the battery's
+charge rings), and the play layer steps the sim every frame at the sky's pace (1×/2×/4×, paused at 0), with warm toasts for
+the parcels, the seals, a blackout (once an episode) and Restored. A headless GPU playtest of the full loop (build the yard
+inside the 12 starter Supplies, both drops, Coop, Bakery and Composter, the Pantry Order, all three seals) runs with no
+console errors at ~60 fps.
 
 - **Capped Supplies economy:** One shared capped **Supplies** pool (100% refundable) with starter parcel + 1–2 milestone drops; nature/land-craft and Farmhouse stay free.
 - **One-of-each workshops & first closed loop:** Wheat + Beans + Mill + Coop + Bakery + Composter + Silo + Garage + Depot. Soil fertility drains on harvest and recovers via Beans, Compost, or resting.
@@ -105,3 +114,15 @@ the brook across a meadow terrace (see *Decisions* below). What stays open is th
   right drag orbits in free orbit, a right click puts the tool down. Q/E turn the view (a 90° step when snapped, a hold when
   orbiting). R and Shift+R (or Shift+wheel) turn the ghost or the selected building by 15°, and ↻ turns clockwise on screen.
   `[` and `]` resize the field brush (2–5 m). Space pauses. Esc first drops a drag or a move under way, then puts the tool down.
+
+## Decisions for Milestone 2
+
+- **The clock (2026-11-25):** The world's sky owns the hour; the sim's hour follows it each frame and the day turns as it passes
+  midnight. The sky strip's Dawn, Noon, Golden and Dusk move both together and keep the day (a jump lives through no time).
+- **The Depot (2026-11-25):** Every valley comes with its Depot near the edge on the farming side and a short starter track out of
+  its ramp; it can't be moved, turned or removed (its card is read-only), and it and its stub don't count as the player's edits.
+- **Solar Lanterns (2026-11-25):** Each has its own little solar cap, so it glows after dusk whether or not it's inside a power
+  field; the workshops, Garage, Coop and Farmhouse light only while powered.
+- **Open for the developer:** Living Land seals as soon as 100 m² of fields stand on soil at 75% or better, and the valley's loam
+  starts at 85%, so it usually seals on the first afternoon; whether it should instead ask the soil to *hold* that for a while
+  (DESIGN.md: "reach and hold") is a balance call.

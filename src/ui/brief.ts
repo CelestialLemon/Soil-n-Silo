@@ -1,8 +1,11 @@
 // The valley postcard, top left: the valley's name (from its seed) and season, a first nudge until the Farmhouse stands,
-// then a tiny living summary (fields, flowing rills, bridges) with Home and New valley. It folds down to just its title.
-import { SEASONS, type Season } from '../game/index.ts';
+// and the Open Homestead Brief's three seals (docs/DESIGN.md, "Open Homestead Brief"), each a small ring filling as the
+// homestead meets it, with one live line: the Pantry Order's goods, the Living Land's fields and soil, the Steady
+// Homestead's blackout-free hours (and why it last started over). No timer. When all three fill, a warm "Valley Restored"
+// note. Home and New valley sit at its foot; it folds down to just its title.
+import { type BriefState, GOOD_LABELS, isGood, isWorkshop, SEAL_LABELS, type SealId, SEASONS, type Season, THING_KINDS } from '../game/index.ts';
 import { button, el, recall, remember, setFlag, setHidden, setPressed, setText, setTitle } from './dom.ts';
-import { icon } from './icons.ts';
+import { icon, type IconName, setIcon } from './icons.ts';
 import type { UiCallbacks, ValleyStats } from './types.ts';
 
 export interface Brief { element: HTMLElement; render(stats: ValleyStats): void }
@@ -21,6 +24,75 @@ export function valleyName(seed: number): string {
 const SEASON_LABEL: Record<Season, string> = { spring: 'Spring', summer: 'Summer', autumn: 'Autumn', winter: 'Winter' };
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en');
+
+/** What the Steady Homestead still waits for before its hours count. */
+function needs(s: ValleyStats): string {
+  const missing = [
+    ...(s.hasFarmhouse ? [] : ['a Farmhouse']),
+    ...(s.hasGarage ? [] : ['a Garage']),
+    ...(THING_KINDS.some((k) => isWorkshop(k) && (s.thingCounts[k] ?? 0) > 0) ? [] : ['a workshop']),
+  ];
+  return missing.length > 0 ? `Counts once ${missing.join(', ').replace(/, ([^,]*)$/, ' and $1')} stand` : '';
+}
+
+type SealTone = 'neutral' | 'good' | 'low';
+
+interface SealView {
+  element: HTMLElement;
+  /** Its fill (0..1), whether it's sealed, its live readout, a quiet whisper under it ('' for none) and its tone. */
+  paint(progress: number, done: boolean, readout: string, whisper: string, tone: SealTone): void;
+}
+
+const SVG = 'http://www.w3.org/2000/svg';
+
+/** One seal: a small ring that fills, its picture (a check once sealed), its name and a live line. */
+function createSeal(id: SealId, glyph: IconName): SealView {
+  const item = el('li', `ui-seal ui-seal-${id}`);
+  const ring = document.createElementNS(SVG, 'svg');
+  ring.setAttribute('viewBox', '0 0 24 24');
+  ring.setAttribute('class', 'ui-seal-ring');
+  ring.setAttribute('aria-hidden', 'true');
+  const track = document.createElementNS(SVG, 'circle');
+  const fill = document.createElementNS(SVG, 'circle');
+  for (const c of [track, fill]) {
+    c.setAttribute('cx', '12'); c.setAttribute('cy', '12'); c.setAttribute('r', '10');
+    c.setAttribute('pathLength', '100');
+  }
+  track.setAttribute('class', 'ui-seal-track');
+  fill.setAttribute('class', 'ui-seal-fill');
+  ring.append(track, fill);
+  const badge = el('span', 'ui-seal-badge');
+  const pic = icon(glyph, 'ui-icon ui-seal-icon');
+  badge.append(ring, pic);
+
+  const text = el('div', 'ui-seal-text');
+  const label = el('span', 'ui-seal-label', SEAL_LABELS[id].replace(/^The /, ''));
+  const value = el('span', 'ui-seal-value');
+  const whisperText = el('span', 'ui-seal-whisper');
+  text.append(label, value, whisperText);
+  item.append(badge, text);
+
+  let shown = '';
+  return {
+    element: item,
+    paint(progress, done, readout, whisper, tone) {
+      const p = Math.max(0, Math.min(1, done ? 1 : progress));
+      const key = `${p.toFixed(3)}|${done}|${readout}|${whisper}|${tone}`;
+      if (key === shown) return;
+      shown = key;
+      fill.style.strokeDasharray = `${(p * 100).toFixed(1)} 100`;
+      setFlag(item, 'is-empty', p <= 0);
+      setIcon(pic, done ? 'check' : glyph);
+      setFlag(item, 'is-done', done);
+      setFlag(item, 'is-good', tone === 'good');
+      setFlag(item, 'is-low', tone === 'low');
+      setText(value, readout);
+      setText(whisperText, whisper);
+      setHidden(whisperText, whisper === '');
+      item.title = `${SEAL_LABELS[id]}: ${done ? 'sealed' : `${Math.round(p * 100)}%`}`;
+    },
+  };
+}
 
 /** A fresh seed for a new valley. */
 const rollSeed = () => Math.floor(Math.random() * 0x7fffffff);
@@ -42,7 +114,11 @@ export function createBrief(cb: UiCallbacks): Brief {
     paint();
   });
   fold.append(icon('chevron'));
-  head.append(name, fold);
+  // Folded, the seals still show as three small dots beside the name.
+  const minis = el('span', 'ui-brief-minis');
+  const miniDots = [0, 1, 2].map(() => el('span', 'ui-brief-mini'));
+  minis.append(...miniDots);
+  head.append(name, minis, fold);
 
   const body = el('div', 'ui-brief-body');
 
@@ -61,17 +137,19 @@ export function createBrief(cb: UiCallbacks): Brief {
 
   const prompt = el('p', 'ui-brief-prompt', 'Place your Farmhouse on a sunny clearing.');
 
-  const summary = el('dl', 'ui-brief-stats');
-  const figure = (label: string) => {
-    const wrap = el('div', 'ui-stat');
-    const value = el('dd', 'ui-stat-value');
-    wrap.append(value, el('dt', 'ui-stat-label', label));
-    summary.append(wrap);
-    return value;
-  };
-  const fields = figure('fields');
-  const rills = figure('rills');
-  const bridges = figure('bridges');
+  const seals = el('ol', 'ui-seals');
+  seals.setAttribute('aria-label', 'The Homestead Brief');
+  const order = createSeal('order', 'bakery');
+  const land = createSeal('livingLand', 'land');
+  const steady = createSeal('steadyHomestead', 'power');
+  seals.append(order.element, land.element, steady.element);
+
+  const restored = el('div', 'ui-restored');
+  restored.setAttribute('role', 'status');
+  restored.append(
+    el('strong', 'ui-restored-title', 'Valley Restored'),
+    el('p', 'ui-restored-text', 'Your homestead holds in balance — linger as long as you like, or start a new valley.'),
+  );
 
   const foot = el('div', 'ui-brief-foot');
   const home = button('ui-chip', 'Look at the Farmhouse', () => cb.onCenterHomestead());
@@ -94,7 +172,7 @@ export function createBrief(cb: UiCallbacks): Brief {
   no.textContent = 'Keep';
   confirm.append(confirmText, yes, no);
 
-  body.append(seasons, prompt, summary, foot, confirm);
+  body.append(seasons, prompt, seals, restored, foot, confirm);
   card.append(head, body);
 
   function hasWork(s: ValleyStats): boolean {
@@ -120,14 +198,39 @@ export function createBrief(cb: UiCallbacks): Brief {
     setTitle(fold, folded ? 'Open the postcard' : 'Fold the postcard');
     for (const [season, b] of seasonBtns) setPressed(b, season === s.season);
     setHidden(prompt, s.hasFarmhouse);
-    setHidden(summary, !s.hasFarmhouse);
+    setFlag(seals, 'is-quiet', !s.hasFarmhouse);
     setHidden(home, !s.hasFarmhouse);
-    setText(fields, `${fmt(s.fieldAreaM2)} m²`);
-    setText(rills, `${fmt(s.flowingRillM)} m`);
-    setText(bridges, fmt(s.bridgeCount));
+    paintSeals(s, s.brief);
+    setHidden(minis, !folded);
+    const marks = [s.brief.order.done, s.brief.livingLand.done, s.brief.steadyHomestead.done];
+    miniDots.forEach((d, i) => setFlag(d, 'is-done', marks[i] === true));
+    setTitle(minis, `${marks.filter(Boolean).length} of 3 seals${s.brief.restored ? ' · Valley Restored' : ''}`);
+    setHidden(restored, !s.brief.restored);
+    setFlag(card, 'is-restored', s.brief.restored);
     setText(seedTag, `#${s.seed}`);
     setHidden(foot, pending !== null);
     setHidden(confirm, pending === null);
+  }
+
+  function paintSeals(s: ValleyStats, b: BriefState): void {
+    const o = b.order;
+    const goods = Object.entries(o.targets).flatMap(([g, n]) =>
+      isGood(g) && n !== undefined ? [`${GOOD_LABELS[g].label} ${Math.min(n, o.delivered[g] ?? 0)}/${n}`] : []);
+    order.paint(o.progress, o.done, goods.join(' · '), o.done ? 'Delivered · the settlement thanks you' : '', 'neutral');
+
+    const l = b.livingLand;
+    const soil = Math.round(l.avgFertility * 100);
+    const landTone = l.plantedM2 <= 0 ? 'neutral' : l.avgFertility >= l.targetFertility ? 'good' : 'low';
+    land.paint(l.progress, l.done,
+      l.plantedM2 > 0 ? `${fmt(l.plantedM2)} m² · ${soil}% soil` : 'No fields yet',
+      l.done ? '' : `Aim for ${fmt(l.targetM2)} m² of fields on ${Math.round(l.targetFertility * 100)}% soil`,
+      landTone);
+
+    const h = b.steadyHomestead;
+    const hours = `${Math.floor(h.hours)} / ${h.targetHours} h`;
+    const why = h.done ? '' : !h.running ? needs(s) : h.resetReason !== '' ? `Started over · ${h.resetReason}` : '';
+    steady.paint(h.progress, h.done, h.done ? 'Holding steady' : h.running ? hours : 'Not running yet', why,
+      !h.done && h.running && h.resetReason !== '' && h.hours < 1 ? 'low' : 'neutral');
   }
 
   function render(stats: ValleyStats): void {

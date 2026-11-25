@@ -31,6 +31,9 @@ export class Sky {
 
   setWeather(name: WeatherName) { this.weather = name; this.since = Infinity; }
 
+  /** How much of the sky the weather covers, 0..1 (what dims the solar canopies). */
+  get cloudCover() { return WEATHER_PRESETS[this.weather].cloud; }
+
   /** The weather's rain and snow (for the ground's wet and snow). */
   get fall() { const w: Weather = WEATHER_PRESETS[this.weather]; return { rain: w.rain ?? 0, snow: w.snow ?? 0 }; }
 

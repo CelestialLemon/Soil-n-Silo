@@ -25,9 +25,9 @@ test('the grid keeps the continuous-terrain contract', () => {
   assert.deepEqual([g.nx, g.nz, g.cell, g.x0, g.z0], [GRID_N, GRID_N, 1, -80, -80]);
   for (const a of [g.baseHeight, g.height, g.landHeight]) assert.equal(a.length, VERT_N * VERT_N);
   for (const a of [g.baseCover, g.cover, g.soil, g.worked, g.waterLevel, g.flowX, g.flowZ, g.moisture, g.fieldOf]) assert.equal(a.length, GRID_N * GRID_N);
-  // A fresh valley's live land is the natural one.
+  // A fresh valley's live land is the natural one, but for the Depot's short starter track.
   assert.ok(same(g.height, g.baseHeight));
-  assert.ok(same(g.cover, g.baseCover));
+  for (let i = 0; i < g.cover.length; i++) if (g.cover[i] !== g.baseCover[i]) assert.equal(g.cover[i], COVER.track, `cell ${i}`);
   assert.ok(same(g.waterLevel, g.baseWaterLevel));
   // heightAt reads the exact triangles: at a vertex it's the vertex.
   assert.equal(heightAt(g, -80 + 37, -80 + 91), g.height[91 * VERT_N + 37]);
@@ -152,5 +152,22 @@ test('beside the upper and middle brook a meadow terrace lies below its water; t
       const far = b.at(0, -12);
       assert.ok(heightAt(g, far.x, far.z) > b.level + 0.3, `seed ${seed}, brook ${b.i}: the far side rises`);
     }
+  }
+});
+
+test("the valley comes with its Depot: set near the edge, down the valley on the farming side, with a starter track", () => {
+  for (const seed of [...SEEDS, 72, 777]) {
+    const s = seed === 7 ? valley() : generateValley(seed, 'spring'), h = s.valley.homestead;
+    const depots = s.things.filter((t) => t.kind === 'depot');
+    assert.equal(depots.length, 1, `seed ${seed}: one Depot`);
+    const d = depots[0], r = Math.hypot(d.x, d.z);
+    assert.ok(r >= 30 && r <= 50, `seed ${seed}: the Depot ${r.toFixed(1)} m out`);
+    assert.ok(Math.hypot(d.x - h.x, d.z - h.z) >= CLEARING + 12, `seed ${seed}: clear of the homestead`);
+    assert.equal(s.tracks.length, 1, `seed ${seed}: a starter track`);
+    const t = s.tracks[0], start = t.path[0];
+    assert.ok(Math.hypot(start.x - d.x, start.z - d.z) < 9, `seed ${seed}: the track starts at the Depot's ramp`);
+    assert.equal(s.revision, 0, 'growing the valley is no edit');
+    // It stays.
+    assert.ok(!canPlace(s, 'depot', d.x + 20, d.z, 0).ok, 'one Depot');
   }
 });

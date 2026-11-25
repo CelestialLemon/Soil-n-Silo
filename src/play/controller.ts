@@ -3,16 +3,24 @@
 // previews and the overlay's snapshot. Every edit goes through the game's `apply`; the world redraws what its Change says.
 //
 // Heavy work (a rill's flow, a ghost's fit, a field's paint) runs at most once a frame: input only marks what's dirty.
+//
+// It also runs the living homestead (Milestone 2): each frame, while the clock runs, the game's `stepSim` moves it on by
+// the frame's game time with the world's sky and wind, the world draws the tick (crops, carts, buildings' parts), and what
+// the tick tells (a drop, a seal, a blackout) becomes a warm toast. The world's sky owns the clock; the sim's hour follows
+// it (and the day turns as it passes midnight), so the sky strip's Dawn, Noon, Golden and Dusk move both together. While
+// the clock is stopped, an edit or a jump of the clock reads the power again at once (refreshPower), so the power view's
+// watts and the workshops' lights show it without waiting for the clock to run.
 import {
-  type Action, apply, CATALOG, type Change, generateValley, type GameState, heightAt, type Point2, type Season,
-  suggestWaterWheelYaw, type ThingKind, TREE_SPECIES, wrapAngle,
+  type Action, apply, CART_COST, CATALOG, CLOCK_JUMPED, type Change, generateValley, type GameState, heightAt, type Point2,
+  refreshPower, resetSteadyOnClockJump, type Season, SETUP_CHANGED, type SimEvent, stepSim, suggestWaterWheelYaw, type ThingKind, TREE_SPECIES,
+  wrapAngle,
 } from '../game/index.ts';
 import {
   placedKind, type SelectedThingView, type Speed, toolDef, type ToolId, type ToolReadout, type UiCallbacks, type UiController,
   type UiSnapshot, type ValleyStats, type Weather, type YawMode,
 } from '../ui/index.ts';
 import { type PreviewSpec, type World, writeUrlParam } from '../world/index.ts';
-import { skyWeather, thingStatus, uiWeather, valleyStats } from './status.ts';
+import { cartControls, skyWeather, thingDetail, thingStatus, uiWeather, valleyStats } from './status.ts';
 import {
   BRUSH, channelReadout, extend, hedgeReadout, isFieldTool, isPowerKind, isStrokeTool, placeReadout, placesPower, STROKE_STEP,
   type StrokeTool, trackReadout, treeReadout, TURN_STEP,
@@ -26,6 +34,10 @@ const KEY_PAN = 560;
 const ORBIT_PER_PX = 0.008;
 /** The wheel's travel (px) for one 15° turn of a ghost with Shift held. */
 const WHEEL_TURN = 60;
+/** The longest frame the homestead is moved on by, real seconds (a stall doesn't leap the carts along). */
+const MAX_SIM_FRAME = 0.25;
+/** How often (Hz) the postcard's figures are read again while the homestead runs (they move slowly). */
+const STATS_HZ = 4;
 
 /** A pointer press under way. */
 interface Press {
@@ -66,6 +78,11 @@ export class Play implements UiCallbacks {
 
   private stats: ValleyStats;
   private statsDirty = true;
+  private statsClock = 0;
+  /** The tracks the valley came with (the Depot's stub): not the player's work. */
+  private starterTracks: ReadonlySet<number>;
+  /** A blackout was toasted: the next waits until the power has come back. */
+  private blackoutSaid = false;
   private shown = { contours: false, moisture: false, power: false };
   /** The power view (P): every wireless field shown, whatever is in hand. Off by default; not remembered. */
   private powerView = false;
@@ -74,7 +91,10 @@ export class Play implements UiCallbacks {
   constructor(state: GameState, world: World) {
     this.state = state;
     this.world = world;
-    this.stats = valleyStats(state);
+    this.starterTracks = new Set(state.tracks.map((t) => t.id));
+    // The sky's clock (the address's ?hour=) is the valley's: the homestead starts at its hour.
+    state.sim.hour = world.getHour();
+    this.stats = valleyStats(state, this.starterTracks);
     this.welcomed = state.things.some((t) => t.kind === 'farmhouse');
     world.onFrame((dt) => this.frame(dt));
   }
@@ -86,12 +106,51 @@ export class Play implements UiCallbacks {
 
   private frame(dt: number) {
     this.panByKeys(dt);
+    this.stepHomestead(dt);
     if (this.stroke?.dirty) this.flushStroke();
     const sig = this.cameraSignature();
     if (sig !== this.cameraSig) { this.cameraSig = sig; this.hoverDirty = true; }
     if (this.hoverDirty && !this.stroke) { this.hoverDirty = false; this.hover(); }
     this.syncSwitches();
     this.renderUi();
+  }
+
+  /** Moves the living homestead on by the frame's game time (the world's sky has already moved its clock on). */
+  private stepHomestead(dt: number) {
+    const speed = this.world.getSpeed();
+    if (speed <= 0) return;
+    const tick = stepSim(this.state, Math.min(dt, MAX_SIM_FRAME) * speed, this.world.getSimEnv());
+    this.world.syncSim(tick);
+    if (tick.events.length > 0) this.tell(tick.events);
+    else if (this.blackoutSaid && !this.state.sim.powerSummary.anyBlackout) this.blackoutSaid = false;
+    this.statsClock += dt;
+    if (this.statsClock >= 1 / STATS_HZ || tick.events.length > 0) { this.statsClock = 0; this.statsDirty = true; }
+  }
+
+  /**
+   * What a tick tells, as toasts: a parcel, a seal, the valley Restored, a blackout (once an episode, until the power is
+   * back), the Steady Homestead starting over (with why; it says the blackout too, so a blackout with it isn't said twice).
+   * A field ripening isn't: the field shows it.
+   */
+  private tell(events: readonly SimEvent[]) {
+    const ui = this.ui, reset = events.some((e) => e.type === 'steadyReset');
+    for (const e of events) {
+      switch (e.type) {
+        case 'drop':
+          ui?.showToast(e.message);
+          // The ghost in hand may be affordable now.
+          this.hoverDirty = true;
+          break;
+        case 'seal': case 'restored': ui?.showToast(e.message); break;
+        case 'steadyReset': ui?.showToast(e.message, 'warn'); this.blackoutSaid ||= this.state.sim.powerSummary.anyBlackout; break;
+        case 'blackout':
+          if (!this.blackoutSaid && !reset) ui?.showToast(e.message, 'warn');
+          this.blackoutSaid = true;
+          break;
+        case 'ripe': break;
+      }
+    }
+    if (!this.state.sim.powerSummary.anyBlackout) this.blackoutSaid = false;
   }
 
   /** Changes when the view moves, so what's under a still pointer is looked at again. */
@@ -114,17 +173,17 @@ export class Play implements UiCallbacks {
   private renderUi() {
     const ui = this.ui;
     if (!ui) return;
-    if (this.statsDirty) { this.stats = valleyStats(this.state); this.statsDirty = false; }
+    if (this.statsDirty) { this.stats = valleyStats(this.state, this.starterTracks); this.statsDirty = false; }
     const hour = this.world.getHour(), selected = this.selectedView(hour);
     const snapshot: UiSnapshot = {
-      activeTool: this.tool, yawMode: this.world.getYawMode(), powerView: this.powerView, hour,
+      activeTool: this.tool, yawMode: this.world.getYawMode(), powerView: this.powerView, hour, day: this.state.sim.day,
       speed: this.world.getSpeed(), weather: uiWeather(this.world.getWeather()), stats: this.stats, selected,
       readout: this.currentReadout(),
     };
     if (placedKind(this.tool)) snapshot.placingRotationDeg = compassDeg(this.placeYaw);
     const key = [
-      snapshot.activeTool, snapshot.yawMode, snapshot.powerView, Math.floor(hour * 60), snapshot.speed, snapshot.weather,
-      JSON.stringify(this.stats), selected ? `${selected.id} ${selected.statusLine} ${selected.connected} ${selected.yawDeg}` : '-',
+      snapshot.activeTool, snapshot.yawMode, snapshot.powerView, snapshot.day, Math.floor(hour * 60), snapshot.speed, snapshot.weather,
+      JSON.stringify(this.stats), selected ? JSON.stringify({ ...selected, screenX: 0, screenY: 0, visible: 0 }) : '-',
       snapshot.readout ? `${snapshot.readout.text} ${snapshot.readout.tone}` : '-', snapshot.placingRotationDeg,
     ].join('|');
     if (key !== this.uiKey) { this.uiKey = key; ui.render(snapshot); }
@@ -148,9 +207,13 @@ export class Play implements UiCallbacks {
     const p = this.world.toScreen(t.x, heightAt(this.state.grid, t.x, t.z) + def.top * 0.55, t.z);
     const view: SelectedThingView = {
       id: t.id, kind: t.kind, label: def.label, statusLine: status.line, screenX: p.x, screenY: p.y, visible: p.visible,
-      yawDeg: compassDeg(t.yaw),
+      yawDeg: compassDeg(t.yaw), refund: def.cost,
     };
     if (status.connected !== undefined) view.connected = status.connected;
+    if (def.immovable) view.immovable = true;
+    const detail = thingDetail(this.state, t);
+    if (detail !== undefined) view.detailLine = detail;
+    if (t.kind === 'garage') view.cartControls = cartControls(this.state);
     return view;
   }
 
@@ -180,10 +243,21 @@ export class Play implements UiCallbacks {
   private act(a: Action, quiet = false): Change | null {
     const r = apply(this.state, a);
     if (!r.ok) { if (!quiet) this.ui?.showToast(r.error, 'warn'); return null; }
+    if (r.value.steadyReset) this.ui?.showToast(SETUP_CHANGED, 'warn');
     this.world.sync(r.value);
     this.statsDirty = true;
     this.hoverDirty = true;
+    this.refreshIfPaused();
     return r.value;
+  }
+
+  /** While the clock is stopped, reads the power again as the homestead now stands, and draws it (no time passes). */
+  private refreshIfPaused() {
+    if (this.world.getSpeed() > 0) return;
+    const state = this.state, fresh = refreshPower(state, this.world.getSimEnv());
+    this.world.syncSim({ fieldStagesChanged: false, events: [], cartsMoved: false });
+    if (fresh.length > 0) this.tell(fresh.map((n): SimEvent => ({ type: 'blackout', message: state.sim.powerSummary.lastBlackoutReason, id: n.id })));
+    this.statsDirty = true;
   }
 
   // ---- The pointer (input.ts) ----
@@ -504,7 +578,7 @@ export class Play implements UiCallbacks {
         const dir = shift ? 1 : -1;
         if (this.moving || placedKind(this.tool)) { this.turnGhost(dir); return true; }
         const t = this.selected === null ? undefined : this.state.things.find((v) => v.id === this.selected);
-        if (t && !repeat) this.act({ type: 'rotate', id: t.id, yaw: t.yaw + dir * TURN_STEP });
+        if (t && !repeat && !CATALOG[t.kind].immovable) this.act({ type: 'rotate', id: t.id, yaw: t.yaw + dir * TURN_STEP });
         return t !== undefined;
       }
       case ' ':
@@ -555,8 +629,14 @@ export class Play implements UiCallbacks {
     this.hoverDirty = true;
   }
 
-  onMoveSelected(id: number) {
+  /** The thing `id`, if it stands and may be moved, turned or taken away (the Depot may not). */
+  private movable(id: number) {
     const t = this.state.things.find((v) => v.id === id);
+    return t && !CATALOG[t.kind].immovable ? t : undefined;
+  }
+
+  onMoveSelected(id: number) {
+    const t = this.movable(id);
     if (!t) return;
     this.moving = { id, kind: t.kind, yaw: t.yaw };
     this.readout = null;
@@ -564,15 +644,27 @@ export class Play implements UiCallbacks {
   }
 
   onRotateSelected(id: number, deltaRad: number) {
-    const t = this.state.things.find((v) => v.id === id);
+    const t = this.movable(id);
     if (t) this.act({ type: 'rotate', id, yaw: t.yaw + deltaRad });
   }
 
   onRemoveSelected(id: number) {
-    const t = this.state.things.find((v) => v.id === id);
-    if (!t || !this.act({ type: 'remove', id })) return;
+    const t = this.movable(id);
+    if (!t) return;
+    const carts = t.kind === 'garage' ? this.state.sim.carts.length : 0;
+    if (!this.act({ type: 'remove', id })) return;
     this.select(null);
-    this.ui?.showToast(`${CATALOG[t.kind].label} taken down · its ground is meadow again`);
+    const cost = CATALOG[t.kind].cost, back = cost + Math.max(0, carts - 1) * CART_COST;
+    const gone = carts > 0 ? ` · its ${carts === 1 ? 'cart goes' : `${carts} carts go`} with it` : '';
+    this.ui?.showToast(`${CATALOG[t.kind].label} taken down${back > 0 ? ` · +${back} ${back === 1 ? 'Supply' : 'Supplies'} back` : ''}${gone}`);
+  }
+
+  onBuyCart() {
+    if (this.act({ type: 'buyCart' })) this.ui?.showToast('New Electric Cart ready at the Garage');
+  }
+
+  onRetireCart(id: number) {
+    if (this.act({ type: 'retireCart', id })) this.ui?.showToast(`Electric Cart retired · +${CART_COST} ${CART_COST === 1 ? 'Supply' : 'Supplies'} refunded`);
   }
 
   onDeselect() { this.select(null); }
@@ -584,7 +676,16 @@ export class Play implements UiCallbacks {
 
   onStepYaw(dir: -1 | 1) { this.world.stepYaw(dir); }
   onTogglePowerView() { this.powerView = !this.powerView; }
-  onSetHour(hour: number) { this.world.setHour(hour); }
+  /**
+   * A jump on the sky strip moves the homestead's hour with the sky's (the day stays: no time is lived through), so an
+   * unfinished Steady Homestead starts over: its hours must be lived.
+   */
+  onSetHour(hour: number) {
+    this.world.setHour(hour);
+    this.state.sim.hour = this.world.getHour();
+    if (resetSteadyOnClockJump(this.state)) { this.ui?.showToast(CLOCK_JUMPED); this.statsDirty = true; }
+    this.refreshIfPaused();
+  }
 
   onSetSpeed(speed: Speed) {
     if (speed !== 0) this.lastSpeed = speed;
@@ -597,6 +698,10 @@ export class Play implements UiCallbacks {
     const next = generateValley(seed >>> 0, season);
     this.onSelectTool('select');
     this.state = next;
+    // A fresh homestead: its own Supplies, brief, Depot and stub, on day 1 at the sky's hour.
+    next.sim.hour = this.world.getHour();
+    this.starterTracks = new Set(next.tracks.map((t) => t.id));
+    this.blackoutSaid = false;
     this.world.resetValley(next);
     writeUrlParam('seed', String(next.seed));
     writeUrlParam('season', season);

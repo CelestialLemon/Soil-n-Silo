@@ -5,7 +5,13 @@
 import type { GameState, PowerRadius, PowerState, Thing } from '../state.ts';
 import { feeds, rangeOf, roleOf, Sets } from './nodes.ts';
 
-export function radiusNetwork(s: GameState): PowerState {
+/**
+ * The wireless networks: the emitters (sources, stores, relays, by id) and each one's network (`netOf[i]`, the index of
+ * its set's root emitter), and the loads (by id) with the networks whose fields each stands in.
+ */
+export interface Networks { emitters: Thing[]; netOf: number[]; loads: Thing[]; loadNets: Set<number>[] }
+
+export function networksOf(s: Pick<GameState, 'things'>): Networks {
   const emitters = s.things.filter((t) => { const r = roleOf(t); return (feeds(r) || r === 'relay') && rangeOf(t) > 0; }).sort((a, b) => a.id - b.id);
   const loads = s.things.filter((t) => roleOf(t) === 'load').sort((a, b) => a.id - b.id);
   // The networks: emitters (sources, stores, relays) alone, joined where their fields reach each other.
@@ -14,21 +20,26 @@ export function radiusNetwork(s: GameState): PowerState {
     const a = emitters[i], b = emitters[j];
     if (Math.hypot(a.x - b.x, a.z - b.z) <= Math.max(rangeOf(a), rangeOf(b))) sets.join(i, j);
   }
+  const netOf = emitters.map((_e, i) => sets.find(i));
+  // Each load sits in the fields of zero or more networks; it draws from them without joining them.
+  const loadNets = loads.map((l) => new Set(emitters.flatMap((e, i) => (Math.hypot(l.x - e.x, l.z - e.z) <= rangeOf(e) ? [netOf[i]] : []))));
+  return { emitters, netOf, loads, loadNets };
+}
+
+export function radiusNetwork(s: GameState): PowerState {
+  const { emitters, netOf, loads, loadNets } = networksOf(s);
   const members = new Map<number, number>(), fed = new Set<number>();
   emitters.forEach((e, i) => {
-    const r = sets.find(i);
+    const r = netOf[i];
     members.set(r, (members.get(r) ?? 0) + 1);
     if (feeds(roleOf(e))) fed.add(r);
   });
-  // Each load sits in the fields of zero or more networks; it draws from them without joining them.
-  const inFields = (l: Thing) => new Set(emitters.flatMap((e, i) => (Math.hypot(l.x - e.x, l.z - e.z) <= rangeOf(e) ? [sets.find(i)] : [])));
-  const loadNets = loads.map(inFields);
   for (const nets of loadNets) for (const r of nets) members.set(r, (members.get(r) ?? 0) + 1);
 
-  const radii: PowerRadius[] = emitters.map((e, i) => ({ id: e.id, x: e.x, z: e.z, radius: rangeOf(e), powered: fed.has(sets.find(i)) }));
+  const radii: PowerRadius[] = emitters.map((e, i) => ({ id: e.id, x: e.x, z: e.z, radius: rangeOf(e), powered: fed.has(netOf[i]) }));
   const connected: number[] = [], powered: number[] = [];
   emitters.forEach((e, i) => {
-    const r = sets.find(i);
+    const r = netOf[i];
     if ((members.get(r) ?? 0) >= 2) connected.push(e.id);
     if (fed.has(r)) powered.push(e.id);
   });

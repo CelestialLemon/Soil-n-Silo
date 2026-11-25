@@ -5,6 +5,7 @@ import type { Change } from './change.ts';
 import { obbDistance, type Point2, polylineDistance, resample } from './geom.ts';
 import { addCell, BUILD_HALF, cellX, cellZ, COVER, type Grid, type Rect, slopeAt, unionRect } from './grid.ts';
 import { recomposeCover, thingObb } from './earth.ts';
+import { fieldYield, soilFertility, SOWN_GROWTH } from './crops.ts';
 import { err, ok, type Result } from './result.ts';
 import { CROPS, type Crop, type Field, type GameState } from './state.ts';
 
@@ -144,20 +145,30 @@ function relabel(s: GameState, crops: Uint8Array): FieldEdit {
   }
   const before = new Map(s.fields.map((f) => [f.id, f]));
   g.fieldOf.set(fieldOf);
-  s.fields = comps.map((c, k) => fieldOf2(g, idOf[k], CROPS[c.crop - 1], c.cells)).sort((a, b) => a.id - b.id);
+  s.fields = comps.map((c, k) => fieldOf2(g, idOf[k], CROPS[c.crop - 1], c.cells, before.get(idOf[k]))).sort((a, b) => a.id - b.id);
   if (dirty) recomposeCover(s, dirty);
   const changed = s.fields.filter((f) => { const b = before.get(f.id); return !b || b.cellCount !== f.cellCount || b.crop !== f.crop; }).map((f) => f.id);
   for (const id of before.keys()) if (!s.fields.some((f) => f.id === id)) changed.push(id);
   return { fieldRect: dirty, coverRect: dirty, fieldIds: changed.sort((a, b) => a - b) };
 }
 
-function fieldOf2(g: Grid, id: number, crop: Crop, cells: number[]): Field {
+/**
+ * A field over these cells. One that keeps an old field's id keeps how its crop was doing (its growth and any harvest
+ * waiting, trimmed to what its new size yields); a new field, or one painted over with the other crop, is sown fresh. Its
+ * fertility is always its cells' (grid.fertility), as farming left them.
+ */
+function fieldOf2(g: Grid, id: number, crop: Crop, cells: number[], was: Field | undefined): Field {
   let bounds: Rect | undefined, wet = 0;
   for (const i of cells) { const ix = i % g.nx; bounds = addCell(bounds, ix, (i - ix) / g.nx); wet += g.moisture[i]; }
-  return {
-    id, crop, cellCount: cells.length, areaM2: cells.length * g.cell * g.cell, avgMoisture: cells.length > 0 ? wet / cells.length : 0,
+  const areaM2 = cells.length * g.cell * g.cell, kept = was?.crop === crop ? was : undefined;
+  const fertility = soilFertility(g, cells);
+  const f: Field = {
+    id, crop, cellCount: cells.length, areaM2, avgMoisture: cells.length > 0 ? wet / cells.length : 0,
     bounds: bounds ?? { x0: 0, z0: 0, x1: -1, z1: -1 },
+    growth: kept ? kept.growth : SOWN_GROWTH, fertility, harvestReady: 0,
   };
+  if (kept && kept.harvestReady > 0) f.harvestReady = Math.min(kept.harvestReady, fieldYield(f));
+  return f;
 }
 
 /** Recomputes each field's mean moisture (after the water changes). */

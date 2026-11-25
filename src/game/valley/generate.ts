@@ -13,8 +13,12 @@
 // The brook's surface never rises downstream; its bed and the pond's are carved into the valley with shelving banks a
 // little above the water, so the banks hold it.
 import { fbm, noise2 } from '../noise.ts';
-import { catmullRom, clamp, lerp, PathIndex, type Point2, smoothstep } from '../geom.ts';
-import { cellHeightAt, cellX, cellZ, COVER, type Grid, isWet, SOIL, VALLEY_HALF, vertexX, vertexZ } from '../grid.ts';
+import { CATALOG } from '../catalog.ts';
+import { naturalFertility } from '../crops.ts';
+import { catmullRom, clamp, lerp, PathIndex, type Point2, smoothstep, toWorld } from '../geom.ts';
+import { baseHeightAt, cellHeightAt, cellX, cellZ, COVER, type Grid, isWet, SOIL, VALLEY_HALF, vertexX, vertexZ } from '../grid.ts';
+import { addTrack, canTrack, trackPath } from '../paths.ts';
+import { canPlace, placeThing } from '../place.ts';
 import { makeRng, subSeed } from '../rng.ts';
 import { blankState, type Crag, type GameState, type Season, type Tree, type TreeSpecies } from '../state.ts';
 import { wetness } from '../wet.ts';
@@ -146,7 +150,53 @@ export function generateValley(seed: number, season: Season): GameState {
   grow(s, rng, brook, home, knolls, season);
   naturalize(s);
   s.valley = { homestead: home, brook: course, brookLevel: level, pond: { x: pondAt.x, z: pondAt.z, radius: pondR, level: pondLevel } };
+  settleDepot(s, course, (x) => uOf(x), side, home);
+  // Growing the valley isn't an edit: the Depot and its stub are part of the valley the player is handed.
+  s.revision = 0;
   return s;
+}
+
+/**
+ * Sets the Depot, the settlement's landing, near the valley's edge: on gentle open ground down the valley on the farming
+ * side (about 35–42 m out from the middle), facing the homestead, with a short starter track out of its ramp so the
+ * player sees at once where it sits and where to tie their own track in. It stands on the ground as it is (no pad).
+ */
+function settleDepot(s: GameState, course: readonly Point2[], uOf: (x: number) => number, side: 1 | -1, home: Point2) {
+  const def = CATALOG.depot, front = def.hi[1];
+  const g = s.grid;
+  interface Spot { x: number; z: number; yaw: number; stub: Point2[]; score: number }
+  const spots: Spot[] = [];
+  const consider = (p: Point2, prefer: number) => {
+    if (Math.abs(p.x) > 47 || Math.abs(p.z) > 47 || Math.hypot(p.x - home.x, p.z - home.z) < CLEARING + 12) return;
+    const yaw = Math.atan2(home.x - p.x, home.z - p.z);
+    // How level the ground under it lies: the spread of its corners' and middle's heights.
+    const hs = [[0, 0], [-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => { const q = toWorld(p.x, p.z, yaw, a * def.halfW, b * def.halfD); return baseHeightAt(g, q.x, q.z); });
+    const spread = Math.max(...hs) - Math.min(...hs);
+    const r = Math.hypot(p.x, p.z);
+    const stub = [front + 1, front + 5, front + 9].map((k) => toWorld(p.x, p.z, yaw, 0, k));
+    spots.push({ x: p.x, z: p.z, yaw, stub, score: Math.abs(r - 38.5) + 8 * spread + prefer });
+  };
+  for (let u = 18; u <= 48; u += 3) {
+    const i = nearestIndex(course, (p) => uOf(p.x), u);
+    for (let d = 12; d <= 32; d += 2.5) consider(offsetFrom(course, i, side * d), Math.abs(d - 18) * 0.3);
+  }
+  // Anywhere else in the valley, if the downstream terrace has no room.
+  for (let u = -48; u <= 48; u += 4) {
+    const i = nearestIndex(course, (p) => uOf(p.x), u);
+    for (let d = 10; d <= 40; d += 3) for (const sd of [1, -1]) consider(offsetFrom(course, i, sd * d), 100);
+  }
+  spots.sort((a, b) => a.score - b.score);
+  for (const spot of spots) {
+    if (!canPlace(s, 'depot', spot.x, spot.z, spot.yaw).ok) continue;
+    // Would the starter track lie clear beside it?
+    s.things.push({ id: -1, kind: 'depot', x: spot.x, z: spot.z, yaw: spot.yaw, padTargetY: 0 });
+    const fits = canTrack(s, trackPath(spot.stub)).ok;
+    s.things.pop();
+    if (!fits) continue;
+    if (!placeThing(s, 'depot', spot.x, spot.z, spot.yaw).ok || !addTrack(s, spot.stub).ok) throw new Error('The Depot was refused where it fitted');
+    return;
+  }
+  throw new Error(`No room for the Depot in valley ${s.seed}`);
 }
 
 /** The nearest spot on the brook's centreline: its distance, segment and place along it. */
@@ -363,5 +413,6 @@ export function naturalize(s: GameState): void {
   g.flowX.set(g.baseFlowX);
   g.flowZ.set(g.baseFlowZ);
   g.moisture.set(wetness(g));
+  for (let i = 0; i < g.fertility.length; i++) g.fertility[i] = naturalFertility(g, i);
   s.power = powerFor(s);
 }

@@ -1,6 +1,6 @@
 // The UI's contract with the rest of the game: what it shows (a `UiSnapshot` the loop hands it) and what it asks for
 // (`UiCallbacks`). The UI never reaches into the world or the renderer; it only reads the snapshot and calls back.
-import type { Season, ThingKind } from '../game/index.ts';
+import type { BriefState, PowerSummary, Season, ThingKind } from '../game/index.ts';
 
 /** Placing one of the catalog's things (src/game/catalog.ts). */
 export type PlaceTool = `place:${ThingKind}`;
@@ -35,6 +35,40 @@ export interface SelectedThingView {
   connected?: boolean;
   /** Which way it faces, degrees clockwise on the screen's compass (the game's yaw, negated). */
   yawDeg: number;
+  /** Fixed in the valley (the Depot): the card is read-only, with no Move, turns or Remove. */
+  immovable?: boolean;
+  /** The Supplies Remove gives back, in full (its catalog cost): the button reads "Remove (+2)". 0 or left out: "Remove". */
+  refund?: number;
+  /** An optional second line under the status, e.g. "Stock: 4 Wheat, 2 Flour" or "Battery 72% · Charging". */
+  detailLine?: string;
+  /** The Garage's cart row: add or retire an Electric Cart right on its card. Left out for everything else. */
+  cartControls?: CartControls;
+}
+
+/** The Garage card's cart row. */
+export interface CartControls {
+  /** Carts the homestead runs now, and the most it may. */
+  count: number; max: number;
+  /** The pool can pay for one more (`CART_COST`). */
+  canAfford: boolean;
+  /** There's a cart to retire (the Garage's own first one stays). */
+  canRetire: boolean;
+  /** The cart "Retire" sends back (with `canRetire`). */
+  retireId?: number;
+}
+
+/** The Supplies counter on the tool strip (`suppliesView` builds it from the game's `SuppliesState`). */
+export interface SuppliesView {
+  /** Free to spend now: `unlocked - spent`. */
+  available: number;
+  /** Tied up in placed buildings and extra carts (all refundable). */
+  spent: number;
+  /** What the valley has given so far (the starter parcel and the drops received). */
+  unlocked: number;
+  /** The valley's hard ceiling. */
+  cap: number;
+  /** The next milestone drop, e.g. "+4 · First harvest stored in the Silo or a workshop"; null once every drop has come. */
+  nextDropHint: string | null;
 }
 
 /** A live line about the tool in hand, e.g. "Flowing 18 m · stops dry at uphill sill". */
@@ -46,6 +80,14 @@ export interface ValleyStats {
   fieldAreaM2: number; flowingRillM: number; bridgeCount: number;
   /** Everything the player has made: things, fields, rills (wet or dry), tracks, hedgerows and planted trees. */
   landEditCount: number;
+  /** The one capped Supplies pool. */
+  supplies: SuppliesView;
+  /** The Open Homestead Brief: its three seals and whether the valley is Restored. */
+  brief: BriefState;
+  /** The Electric Carts running, the most a homestead may run, and whether a Garage stands. */
+  cartCount: number; maxCarts: number; hasGarage: boolean;
+  /** The whole valley's power balance (the sky strip's power pill). */
+  powerSummary: PowerSummary;
 }
 
 /** Everything the UI shows, handed to `render` whenever it changes (every frame is fine: unchanged parts cost nothing). */
@@ -56,6 +98,8 @@ export interface UiSnapshot {
   powerView: boolean;
   /** Time of day, 0 to 24. */
   hour: number;
+  /** The game day, from 1. */
+  day: number;
   speed: Speed;
   weather: Weather;
   stats: ValleyStats;
@@ -76,6 +120,10 @@ export interface UiCallbacks {
   onRotateSelected(id: number, deltaRad: number): void;
   onRemoveSelected(id: number): void;
   onDeselect(): void;
+  /** Buys an Electric Cart at the Garage (its card's "+ Cart"). */
+  onBuyCart(): void;
+  /** Retires the cart `id` for a full refund (the Garage card's "Retire"). */
+  onRetireCart(id: number): void;
   /** The player's camera setting: a free orbit or snapped 90° views. */
   onSetYawMode(mode: YawMode): void;
   /** Turn the camera: −1 the ⟲ button, +1 the ⟳ one. */

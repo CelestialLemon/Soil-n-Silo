@@ -1,5 +1,7 @@
 // Free placement: buildings and props go anywhere on clear, gentle ground at any rotation. Buildings settle a soft pad
 // into the slope (earth.ts); the water wheel stands on a brook's bank with its wheel in the flowing water.
+import { resetSteadyOnSetupChange } from './brief.ts';
+import { addStarterCart, ejectCartsFromGarage, retireAllCarts } from './carts.ts';
 import { CATALOG, isThingKind, RACE_START, type ThingKind } from './catalog.ts';
 import type { Change } from './change.ts';
 import { CHANNEL_REACH, coreObb, padTarget, RILL_HALF, thingObb, thingRect, TRACK_HALF } from './earth.ts';
@@ -8,6 +10,8 @@ import { BUILD_HALF, cellIx, cellIz, COVER, isWet, sampleHeight, unionRect } fro
 import { err, ok, type Result } from './result.ts';
 import { settle } from './settle.ts';
 import { type GameState, type Thing, takeId } from './state.ts';
+import { canAfford, refund, spend } from './supplies.ts';
+import { runtimeOf } from './workshops.ts';
 
 /** How much room things keep between them, m. */
 const GAP = 0.3;
@@ -31,6 +35,11 @@ export function canPlace(s: GameState, kind: ThingKind, x: number, z: number, ya
   if (![x, z, yaw].every(Number.isFinite)) return err('That spot is off the map.');
   const def = CATALOG[kind], g = s.grid, others = s.things.filter((t) => t.id !== ignore);
   if (def.oneOfEach && others.some((t) => t.kind === kind)) return err(`There's already a ${def.label}: the homestead has one of each.`);
+  // A new thing must be paid for; moving one costs nothing.
+  if (ignore === undefined) {
+    const pay = canAfford(s.sim.supplies, def.cost, `A ${def.label}`);
+    if (!pay.ok) return pay;
+  }
   const at = { kind, x, z, yaw }, full = thingObb(at), core = coreObb(at);
   if (obbCorners(full).some((p) => Math.abs(p.x) > BUILD_HALF || Math.abs(p.z) > BUILD_HALF)) return err("That's too close to the valley's edge.");
 
@@ -116,20 +125,30 @@ export function placeThing(s: GameState, kind: ThingKind, x: number, z: number, 
   const id = takeId(s), t: Thing = { id, kind, x, z, yaw: wrapAngle(yaw), padTargetY: 0 };
   t.padTargetY = padTarget(s.grid, t);
   s.things.push(t);
-  return ok(settle(s, { earth: thingRect(s.grid, t), things: [id], created: id }));
+  spend(s.sim.supplies, CATALOG[kind].cost);
+  runtimeOf(s, id);
+  const change = settle(s, { earth: thingRect(s.grid, t), things: [id], created: id });
+  change.supplies = CATALOG[kind].cost > 0;
+  // The Garage comes with its own Electric Cart.
+  if (kind === 'garage' && addStarterCart(s)) change.carts = true;
+  return ok(change);
 }
 
 /** Moves (and optionally turns) a thing. */
 export function moveThing(s: GameState, id: number, x: number, z: number, yaw?: number): Result<Change, string> {
   const t = s.things.find((v) => v.id === id);
   if (!t) return err('There is nothing there to move.');
+  if (CATALOG[t.kind].immovable) return err(`The ${CATALOG[t.kind].label} is the valley's link to the settlement: it stays where it is.`);
   const turn = yaw ?? t.yaw;
   const can = canPlace(s, t.kind, x, z, turn, id);
   if (!can.ok) return can;
   const before = thingRect(s.grid, t);
   t.x = x; t.z = z; t.yaw = wrapAngle(turn);
   t.padTargetY = padTarget(s.grid, t);
-  return ok(settle(s, { earth: unionRect(before, thingRect(s.grid, t)), things: [id] }));
+  const change = settle(s, { earth: unionRect(before, thingRect(s.grid, t)), things: [id] });
+  // A Garage moved onto its own parked carts sets them out before its new door.
+  if (t.kind === 'garage' && ejectCartsFromGarage(s)) change.carts = true;
+  return ok(change);
 }
 
 /** Turns a thing where it stands. */
@@ -143,6 +162,16 @@ export function rotateThing(s: GameState, id: number, yaw: number): Result<Chang
 export function removeThing(s: GameState, id: number): Result<Change, string> {
   const k = s.things.findIndex((v) => v.id === id);
   if (k < 0) return err('There is nothing there to remove.');
+  if (CATALOG[s.things[k].kind].immovable) return err(`The ${CATALOG[s.things[k].kind].label} is the valley's link to the settlement: it stays.`);
   const [t] = s.things.splice(k, 1);
-  return ok(settle(s, { earth: thingRect(s.grid, t), things: [id] }));
+  // Everything is refundable: its whole cost comes back, and its goods, recipe and power go with it.
+  refund(s.sim.supplies, CATALOG[t.kind].cost);
+  s.sim.things.delete(id);
+  const change = settle(s, { earth: thingRect(s.grid, t), things: [id] });
+  change.supplies = CATALOG[t.kind].cost > 0;
+  // Its carts go with the Garage (the extra ones refunded too).
+  if (t.kind === 'garage') { change.supplies ||= s.sim.carts.length > 1; change.carts = s.sim.carts.length > 0; retireAllCarts(s); }
+  // Taking down what makes the homestead run starts Steady Homestead over now, paused or not.
+  if (resetSteadyOnSetupChange(s)) change.steadyReset = true;
+  return ok(change);
 }

@@ -107,26 +107,29 @@ test('a pad never fills a brook bed', () => {
 
 test('place → move → rotate → remove gives back the valley exactly, with old ∪ new dirty rects', () => {
   const s = freshValley(), g = s.grid, h = s.valley.homestead;
+  // The valley comes with its Depot and the Depot's starter track; the rest of its covers are nature's.
+  const cover = Uint8Array.from(g.cover), depots = s.things.length;
   const placed = apply(s, { type: 'place', kind: 'farmhouse', x: h.x, z: h.z, yaw: 0.3 });
   assert.ok(placed.ok);
   const id = must(placed.value.created, 'its id');
+  const house = () => must(s.things.find((t) => t.id === id), 'the farmhouse');
   assert.ok(!same(g.height, g.baseHeight), 'the pad changed the land');
-  const before = thingRect(g, must(s.things[0], 'it'));
+  const before = thingRect(g, house());
   const rev = s.revision;
   const moved = apply(s, { type: 'move', id, x: h.x + 3, z: h.z - 2, yaw: 1.2 });
   assert.ok(moved.ok, moved.ok ? '' : moved.error);
   assert.ok(s.revision > rev);
-  const after = must(thingRect(g, s.things[0]), 'the new rect');
+  const after = must(thingRect(g, house()), 'the new rect');
   const dirty = must(moved.value.height, 'a height rect');
   assert.ok(contains(dirty, must(before, 'the old rect')) && contains(dirty, after), 'the dirty rect holds where it was and is');
   assert.ok(apply(s, { type: 'rotate', id, yaw: -0.5 }).ok);
-  assert.ok(Math.abs(s.things[0].yaw + 0.5) < 1e-12);
+  assert.ok(Math.abs(house().yaw + 0.5) < 1e-12);
   const gone = apply(s, { type: 'remove', id });
   assert.ok(gone.ok);
-  assert.equal(s.things.length, 0);
+  assert.equal(s.things.length, depots);
   assert.ok(same(g.height, g.baseHeight), 'heights back exactly');
   assert.ok(same(g.landHeight, g.baseHeight));
-  assert.ok(same(g.cover, g.baseCover), 'covers back exactly');
+  assert.ok(same(g.cover, cover), 'covers back exactly');
   assert.ok(g.worked.every((v) => v === 0));
   // Rejected edits change nothing.
   const rev2 = s.revision;
