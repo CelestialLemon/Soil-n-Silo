@@ -59,6 +59,11 @@ export interface Grid {
   readonly flowZ: Float32Array;
   /** 0..1: the wet-bank wash around natural water and flowing rills. */
   readonly moisture: Float32Array;
+  /**
+   * How deep flood water stands on a cell that is usually dry, m (0: none). The flood's surface is in `waterLevel` with
+   * the rest of the live water; `baseWaterLevel` never floods (flood.ts).
+   */
+  readonly flood: Float32Array;
   /** 0 = no field, else the painted field's id. */
   readonly fieldOf: Uint16Array;
   /**
@@ -78,7 +83,7 @@ export function createGrid(): Grid {
     baseCover: new Uint8Array(cells), cover: new Uint8Array(cells), soil: new Uint8Array(cells), worked: new Uint8Array(cells),
     baseWaterLevel: dry(), baseFlowX: new Float32Array(cells), baseFlowZ: new Float32Array(cells),
     waterLevel: dry(), flowX: new Float32Array(cells), flowZ: new Float32Array(cells),
-    moisture: new Float32Array(cells), fieldOf: new Uint16Array(cells), fertility: new Float32Array(cells),
+    moisture: new Float32Array(cells), flood: new Float32Array(cells), fieldOf: new Uint16Array(cells), fertility: new Float32Array(cells),
   };
 }
 

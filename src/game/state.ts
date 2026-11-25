@@ -11,8 +11,10 @@ import { createGrid, type Grid, type Rect } from './grid.ts';
 import type { PowerNetwork, PowerSummary } from './power/sim.ts';
 import { starterSupplies, type SuppliesState } from './supplies.ts';
 import type { ThingRuntime } from './workshops.ts';
+import { type ClimateCharacter, initialWeather, type WeatherKey, type WeatherSpell, type WeatherState } from './weather.ts';
+import { subSeed } from './rng.ts';
 
-export const STATE_VERSION = 7;
+export const STATE_VERSION = 8;
 
 /** The valley's one season (brush3d's SEASONS). */
 export const SEASONS = ['spring', 'summer', 'autumn', 'winter'] as const;
@@ -48,6 +50,10 @@ export interface Field {
   harvestReady: number;
   /** Largest fraction of this crop covered by active bees during its growing cycle, retained after dusk. */
   pollinated: number;
+  /** Frost has it (its air at or below freezing, or snow lying deep): beans pause and slip back, wheat pauses below -2°C. */
+  frosted: boolean;
+  /** Flood water stands over it: it pauses until the water goes down (never lost). */
+  flooded: boolean;
 }
 
 /** The water along a rill's centreline at one sample. */
@@ -107,21 +113,34 @@ export interface SimState {
   brief: BriefState;
   /** Game hours since resting ground last drifted back toward its soil's fertility (crops.ts restSoil, once an hour). */
   soilHours: number;
+  /** The living weather now, and what it has left behind (weather.ts). */
+  weather: WeatherState;
+  /** One spell held in place of the timeline (a `?weather=` lock or a test's); null in normal play. */
+  weatherOverride: WeatherSpell | null;
+  /** The flood surge the water layer was last drawn with, m (flood.ts): it's redrawn when the surge moves 2 cm. */
+  floodApplied: number;
+  /** Bumped each time the flood water is redrawn, so the carts' map knows the ground changed under them. */
+  floodKey: number;
 }
 
-/** A fresh homestead: morning of day 1, the starter Supplies parcel, nothing running yet. */
-export function blankSim(season: Season = 'spring'): SimState {
+/** A fresh homestead: morning of day 1, the starter Supplies parcel, nothing running yet, the weather's first morning. */
+export function blankSim(season: Season = 'spring', key: WeatherKey = { season, climate: 'mild', weatherSeed: 0 }): SimState {
   return {
     day: 1, hour: 8, supplies: starterSupplies(), things: new Map(), carts: [], nextCartId: 1, delivered: {}, networks: [],
     powerSummary: { totalGenW: 0, totalDemandW: 0, totalStoredWh: 0, totalCapWh: 0, anyBlackout: false, lastBlackoutReason: '' },
-    brief: blankBrief(season), soilHours: 0,
+    brief: blankBrief(season), soilHours: 0, weather: initialWeather(key), weatherOverride: null, floodApplied: 0, floodKey: 0,
   };
 }
 
 export interface GameState {
   version: typeof STATE_VERSION;
+  /** The terrain's seed: the same seed grows the same valley. */
   seed: number;
   season: Season;
+  /** The weather's own seed, rolled fresh each play (weather.ts rollWeatherSeed), so the weather never repeats a run. */
+  weatherSeed: number;
+  /** The valley's character: the season's twist ("A wet spring"). */
+  climate: ClimateCharacter;
   /** Bumped on every edit to the land, so the picture can tell which land it shows. */
   revision: number;
   grid: Grid;
@@ -140,13 +159,20 @@ export interface GameState {
   nextId: number;
 }
 
+/** How a valley's weather is set: its own seed (left out, one from the terrain's, so tests stay repeatable) and character. */
+export interface WeatherOptions { weatherSeed?: number; climate?: ClimateCharacter }
+
+/** The weather seed a valley uses when none is given: one from its terrain seed (the game itself rolls a fresh one). */
+export const defaultWeatherSeed = (seed: number) => subSeed(seed, 99);
+
 /** A blank state: flat grass at height 0, no water, no things. The valley generator (and the tests) fill it in. */
-export function blankState(seed: number, season: Season): GameState {
+export function blankState(seed: number, season: Season, opts: WeatherOptions = {}): GameState {
+  const weatherSeed = (opts.weatherSeed ?? defaultWeatherSeed(seed)) >>> 0, climate = opts.climate ?? 'mild';
   return {
-    version: STATE_VERSION, seed, season, revision: 0, grid: createGrid(),
+    version: STATE_VERSION, seed, season, weatherSeed, climate, revision: 0, grid: createGrid(),
     valley: { homestead: { x: 0, z: 0 }, brook: [], brookLevel: [], pond: { x: 0, z: 0, radius: 0, level: 0 } },
     crags: [], wildTrees: [], things: [], fields: [], channels: [], tracks: [], bridges: [], hedges: [], plantedTrees: [],
-    power: { radii: [], connected: [], powered: [] }, sim: blankSim(season), nextId: 1,
+    power: { radii: [], connected: [], powered: [] }, sim: blankSim(season, { season, climate, weatherSeed }), nextId: 1,
   };
 }
 

@@ -80,7 +80,8 @@ export function thingStatus(s: GameState, t: Thing, hour: number): { line: strin
     // The homestead's buildings say how they're doing as the homestead runs (workshops.ts).
     // The Depot's order is its second line: its first says what it is.
     case 'depot': return say(s.sim.brief.order.done ? 'Pantry Order filled · the settlement thanks you' : "The settlement's landing · carts bring the Pantry Order here");
-    case 'rain_tank': case 'sprinkler': case 'beehive': case 'farmhouse': case 'silo': case 'mill': case 'bakery': case 'coop': case 'composter': case 'garage': {
+    case 'rain_tank': case 'sprinkler': case 'beehive': case 'farmhouse': case 'silo': case 'mill': case 'bakery': case 'coop': case 'composter': case 'garage':
+    case 'weather_station': case 'greenhouse': {
       const r = runtimeOf(s, t.id);
       if (r) {
         let note = '';

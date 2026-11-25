@@ -8,8 +8,8 @@ const models = JSON.parse(readFileSync(new URL('../brush3d/src/models/index.json
 
 test('every thing is drawn with one of brush3d\'s models', () => {
   assert.deepEqual([...THING_KINDS].sort(), [
-    'bakery', 'battery', 'beehive', 'bench', 'composter', 'coop', 'crates', 'depot', 'farmhouse', 'garage', 'lantern', 'mill', 'planter', 'rain_tank', 'relay',
-    'silo', 'solar', 'sprinkler', 'turbine', 'waterwheel',
+    'bakery', 'battery', 'beehive', 'bench', 'composter', 'coop', 'crates', 'depot', 'farmhouse', 'garage', 'greenhouse', 'lantern', 'mill', 'planter',
+    'rain_tank', 'relay', 'silo', 'solar', 'sprinkler', 'turbine', 'waterwheel', 'weather_station',
   ]);
   for (const k of THING_KINDS) assert.ok(models[CATALOG[k].model], `${k}: model ${CATALOG[k].model}`);
 });
@@ -40,15 +40,15 @@ test("the water wheel's house is its core; its race runs out in front of it", ()
 
 test('the roster: one of each homestead building, repeatable power, free props', () => {
   const oneOfEach = THING_KINDS.filter((k) => CATALOG[k].oneOfEach).sort();
-  assert.deepEqual(oneOfEach, ['bakery', 'composter', 'coop', 'depot', 'farmhouse', 'garage', 'mill', 'silo']);
+  assert.deepEqual(oneOfEach, ['bakery', 'composter', 'coop', 'depot', 'farmhouse', 'garage', 'greenhouse', 'mill', 'silo', 'weather_station']);
   assert.deepEqual(THING_KINDS.filter((k) => CATALOG[k].allowOnField), ['solar']);
   for (const k of ['solar', 'turbine', 'waterwheel'] as const) assert.equal(CATALOG[k].powerRole, 'source');
   assert.equal(CATALOG.battery.powerRole, 'store');
   assert.equal(CATALOG.relay.powerRole, 'relay');
   assert.equal(CATALOG.relay.category, 'power');
-  for (const k of ['farmhouse', 'silo', 'mill', 'bakery', 'coop', 'garage', 'lantern'] as const) assert.equal(CATALOG[k].powerRole, 'load');
-  // Pure biology and the settlement's landing need no power.
-  for (const k of ['composter', 'depot'] as const) assert.equal(CATALOG[k].powerRole, 'none');
+  for (const k of ['farmhouse', 'silo', 'mill', 'bakery', 'coop', 'garage', 'lantern', 'greenhouse'] as const) assert.equal(CATALOG[k].powerRole, 'load');
+  // Pure biology, the settlement's landing and the weather's instruments need no power.
+  for (const k of ['composter', 'depot', 'weather_station'] as const) assert.equal(CATALOG[k].powerRole, 'none');
   for (const k of ['bench', 'planter', 'crates'] as const) { assert.equal(CATALOG[k].category, 'prop'); assert.equal(CATALOG[k].powerRole, 'none'); }
   for (const k of THING_KINDS) {
     const d = CATALOG[k];
@@ -64,9 +64,19 @@ test('Supplies costs: land-craft, the home and props free; workshops 2, tech 1 t
   const cost = Object.fromEntries(THING_KINDS.map((k) => [k, CATALOG[k].cost]));
   assert.deepEqual(cost, {
     farmhouse: 0, silo: 2, mill: 2, bakery: 2, coop: 2, composter: 2, garage: 2, depot: 0, solar: 1, turbine: 3, waterwheel: 3,
-    rain_tank: 1, sprinkler: 1, beehive: 1, battery: 1, relay: 0, bench: 0, lantern: 0, planter: 0, crates: 0,
+    rain_tank: 1, sprinkler: 1, beehive: 1, battery: 1, relay: 0, bench: 0, lantern: 0, planter: 0, crates: 0, weather_station: 1, greenhouse: 3,
   });
   assert.deepEqual(THING_KINDS.filter((k) => CATALOG[k].immovable), ['depot']);
   assert.deepEqual(Object.fromEntries(THING_KINDS.filter((k) => CATALOG[k].powerDemand > 0).map((k) => [k, CATALOG[k].powerDemand])),
-    { farmhouse: 0.5, mill: 2, bakery: 2.5, coop: 0.5, garage: 1.5, lantern: 0.05, sprinkler: 1 });
+    { farmhouse: 0.5, mill: 2, bakery: 2.5, coop: 0.5, garage: 1.5, greenhouse: 2, lantern: 0.05, sprinkler: 1 });
+});
+
+test('the Milestone 4 buildings: the Weather Station and the Heated Greenhouse, one of each, on their models\' real bounds', () => {
+  const ws = CATALOG.weather_station, gh = CATALOG.greenhouse;
+  assert.deepEqual([ws.label, ws.model, ws.category, ws.oneOfEach, ws.cost, ws.powerRole, ws.powerDemand, ws.padEase, ws.maxSlope],
+    ['Weather Station', 'weather_station', 'homestead', true, 1, 'none', 0, 2.5, 0.18]);
+  assert.deepEqual([ws.lo, ws.hi, ws.top], [[-1.54, -1.85], [1.91, 1.52], 4.67]);
+  assert.deepEqual([gh.label, gh.model, gh.category, gh.oneOfEach, gh.cost, gh.powerRole, gh.powerDemand, gh.padEase, gh.maxSlope],
+    ['Heated Greenhouse', 'greenhouse', 'homestead', true, 3, 'load', 2, 3, 0.14]);
+  assert.deepEqual([gh.lo, gh.hi, gh.top], [[-5.5, -5.65], [5.64, 5.96], 5.26]);
 });

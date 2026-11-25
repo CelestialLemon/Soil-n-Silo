@@ -2,7 +2,7 @@
 // Logistics"). An idle cart looks for the most useful job it can reach, in this order:
 //   1. the Pantry Order: bread, flour and beans to the Depot while the settlement still wants them;
 //   2. starved workshops: wheat to the Mill, flour and eggs to the Bakery, bran (or wheat) to the Coop, manure (or bran)
-//      to the Composter, from the fields, the workshops that make them or the Silo;
+//      to the Composter, from the fields, the Heated Greenhouse, the workshops that make them or the Silo;
 //   3. ripe fields, harvested into the Silo;
 //   4. compost to the field whose soil is poorest;
 //   5. workshops' filling output buffers, cleared into the Silo.
@@ -16,6 +16,7 @@ import { compostField, harvestField } from './crops.ts';
 import type { SimEvent } from './events.ts';
 import { coreObb } from './earth.ts';
 import { obbDistance, type Point2, toWorld } from './geom.ts';
+import { windShelter } from './microclimate.ts';
 import { addGood, countOf, GOOD_LABELS, type Good, takeGood, totalStored } from './goods.ts';
 import { CART_SPEED, dockOf, findPath, groundAt, navCellOf, navCenter, NAV_CELL, navComponent, navFor, passable, reachOf } from './nav.ts';
 import { err, ok, type Result } from './result.ts';
@@ -273,7 +274,7 @@ function sources(s: GameState, good: Good, reach?: Reach): Source[] {
     if (avail > 0 && at && within(s, reach, at)) out.push({ end, avail, at, silo: false });
   }
   for (const t of s.things) {
-    if (t.kind !== 'silo' && t.kind !== 'beehive' && !isWorkshop(t.kind)) continue;
+    if (t.kind !== 'silo' && t.kind !== 'beehive' && t.kind !== 'greenhouse' && !isWorkshop(t.kind)) continue;
     // Manure deliberately sent to storage stays there while the Coop keeps that setting.
     if (t.kind === 'silo' && good === 'manure' &&
         s.things.some(v => v.kind === 'coop' && s.sim.things.get(v.id)?.priority === 'silo')) continue;
@@ -354,7 +355,7 @@ function wants(s: GameState, reach?: Reach): Want[] {
       if (want > 0) out.push({ end: thingEnd(silo.id), at: siloAt, good, want, priority: 3, fromFieldsOnly: true });
     }
     for (const t of s.things) {
-      const r = isWorkshop(t.kind) || t.kind === 'beehive' ? s.sim.things.get(t.id) : undefined;
+      const r = isWorkshop(t.kind) || t.kind === 'beehive' || t.kind === 'greenhouse' ? s.sim.things.get(t.id) : undefined;
       if (!r) continue;
       for (const good of Object.keys(r.outputs) as Good[]) {
         const flush = good === 'honey' || good === 'honey_cake' || (good === 'manure' && r.priority === 'silo');
@@ -636,18 +637,30 @@ export function stepCarts(s: GameState, dtSec: number, hour: number, events: Sim
   return { moved, stagesChanged };
 }
 
+/** A gale this strong slows a cart out in the open; below this the cold drains its battery faster. */
+export const GALE_WIND = 12, COLD_C = 0;
+/** What the weather does to a cart now: a gale slows it in the open, winter cold drains it, soaked ground bogs it off-track. */
+export function weatherDrag(s: GameState, at: Point2, onTrack: boolean): { speed: number; drain: number } {
+  const w = s.sim.weather;
+  let speed = 1, drain = 1;
+  if (w.windSpeed >= GALE_WIND && windShelter(s, at) < 0.3) speed *= 0.88;
+  if (w.tempC < COLD_C) drain *= 1.15;
+  if (!onTrack && w.groundWet > 0.7) { speed *= 0.85; drain *= 1.15; }
+  return { speed, drain };
+}
+
 /** Drives a cart along its path for `dtSec`; returns whether it moved. */
 function drive(s: GameState, cart: Cart, dtSec: number): boolean {
   let left = dtSec, movedAny = false;
   while (left > 1e-9 && cart.pathIdx < cart.path.length) {
     const to = cart.path[cart.pathIdx], dx = to.x - cart.x, dz = to.z - cart.z, d = Math.hypot(dx, dz);
     if (d < 1e-6) { cart.pathIdx++; continue; }
-    const ground = groundAt(s, cart.x, cart.z);
-    const v = CART_SPEED * ground.speed * (cart.battery > 0 ? 1 : LIMP);
+    const ground = groundAt(s, cart.x, cart.z), weather = weatherDrag(s, cart, ground.onTrack);
+    const v = CART_SPEED * ground.speed * weather.speed * (cart.battery > 0 ? 1 : LIMP);
     const step = Math.min(d, v * left);
     cart.x += (dx / d) * step; cart.z += (dz / d) * step;
     cart.yaw = Math.atan2(dx, dz);
-    cart.battery = Math.max(0, cart.battery - DRAIN_PER_M * ground.drain * step);
+    cart.battery = Math.max(0, cart.battery - DRAIN_PER_M * ground.drain * weather.drain * step);
     cart.speed = v;
     left -= step / v;
     movedAny = true;

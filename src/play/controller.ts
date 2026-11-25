@@ -269,7 +269,7 @@ export class Play implements UiCallbacks {
   private refreshIfPaused() {
     if (this.world.getSpeed() > 0) return;
     const state = this.state, fresh = refreshPower(state, this.world.getSimEnv());
-    this.world.syncSim({ fieldStagesChanged: false, events: [], cartsMoved: false });
+    this.world.syncSim({ fieldStagesChanged: false, events: [], cartsMoved: false, waterChanged: false, groundChanged: false });
     if (fresh.length > 0) this.tell(fresh.map((n): SimEvent => ({ type: 'blackout', message: state.sim.powerSummary.lastBlackoutReason, id: n.id })));
     this.statsDirty = true;
   }

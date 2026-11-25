@@ -175,6 +175,7 @@ function fieldOf2(g: Grid, id: number, crop: Crop, cells: number[], was: Field |
     bounds: bounds ?? { x0: 0, z0: 0, x1: -1, z1: -1 },
     growth: kept ? kept.growth : SOWN_GROWTH, fertility, harvestReady: 0,
     pollinated: cells.length > 0 ? clamp(pollen / cells.length, 0, 1) : 0,
+    frosted: kept?.frosted ?? false, flooded: kept?.flooded ?? false,
   };
   if (kept && kept.harvestReady > 0) f.harvestReady = Math.min(kept.harvestReady, fieldYield(f, f.pollinated));
   return f;

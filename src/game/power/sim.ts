@@ -9,7 +9,7 @@ import { formatClock, isNight, sunFactor } from '../clock.ts';
 import { clamp } from '../geom.ts';
 import { must } from '../result.ts';
 import type { GameState, Thing } from '../state.ts';
-import { describeRuntime, syncRuntime, type ThingRuntime } from '../workshops.ts';
+import { describeRuntime, GREENHOUSE_COLD_C, GREENHOUSE_COLD_W, GREENHOUSE_MILD_W, syncRuntime, type ThingRuntime } from '../workshops.ts';
 import { feeds, roleOf } from './nodes.ts';
 import { networksOf } from './radius.ts';
 
@@ -19,9 +19,18 @@ export interface SimEnv {
   hour?: number;
   /** The live wind (brush3d's WindRecipe speed), m/s. */
   windSpeed: number;
+  /**
+   * The weather for this step, as a spell (weather.ts; 'rain' reads as 'soft-rain'). Left out, the homestead lives in its
+   * own continuous weather (`state.sim.weather`); given, it's held for the step (a test's, or a locked weather).
+   */
   weather?: string;
   /** 0..1: how overcast the sky is. */
   cloudCover: number;
+  /**
+   * Read the wind and the clouds from the living weather too (`state.sim.weather`), each sub-step, instead of from
+   * `windSpeed` and `cloudCover` (liveEnv: a headless run of the whole weather, or a world drawing what the weather says).
+   */
+  useLiveWeather?: boolean;
 }
 
 export const SOLAR_PEAK_W = 3;
@@ -91,12 +100,16 @@ export function demandOf(s: GameState, t: Thing, r: ThingRuntime, hour: number, 
     case 'garage': return s.sim.carts.some((c) => chargingAtGarage(s, c)) ? GARAGE_CHARGE_W : GARAGE_IDLE_W;
     case 'lantern': return isNight(hour, s.season) ? def.powerDemand : 0;
     case 'mill': case 'bakery': case 'coop': return r.working ? def.powerDemand : 0;
+    case 'greenhouse': return r.working ? (s.sim.weather.tempC < GREENHOUSE_COLD_C ? GREENHOUSE_COLD_W : GREENHOUSE_MILD_W) : 0;
     default: return 0;
   }
 }
 
-/** Who goes without first when a network runs short: workshops pause before the hens, the garage and the home go dark. */
-const SHED_ORDER: Partial<Record<Thing['kind'], number>> = { farmhouse: 0, garage: 1, coop: 2, lantern: 3, mill: 4, bakery: 5, sprinkler: 6 };
+/**
+ * Who goes without first when a network runs short: workshops pause before the Greenhouse's heating, the hens, the garage
+ * and the home go dark.
+ */
+const SHED_ORDER: Partial<Record<Thing['kind'], number>> = { farmhouse: 0, garage: 1, coop: 2, lantern: 3, greenhouse: 3, mill: 4, bakery: 5, sprinkler: 6 };
 
 /**
  * Runs the power for `dtH` game hours at `hour`; returns the networks that fell into a blackout on this step. With `dtH`
@@ -130,7 +143,7 @@ export function stepPower(s: GameState, dtH: number, hour: number, env: SimEnv):
     const r = rt.get(l.id);
     if (!r) return;
     const nets = [...loadNets[k]].map((i) => nets_(emitters[i].id)).sort((a, b) => a.id - b.id);
-    asks.push({ t: l, r, nets, w: demandOf(s, l, r, hour, env.weather) });
+    asks.push({ t: l, r, nets, w: demandOf(s, l, r, hour, env.weather ?? s.sim.weather.spell) });
   });
   asks.sort((a, b) => (SHED_ORDER[a.t.kind] ?? 9) - (SHED_ORDER[b.t.kind] ?? 9) || a.t.id - b.t.id);
 
