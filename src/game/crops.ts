@@ -25,12 +25,17 @@ export const HARVEST_FERTILITY: { readonly [C in Crop]: number } = { wheat: -0.1
 /** What one sack of compost adds to a field's fertility. */
 export const COMPOST_BOOST = 0.28;
 export const MIN_FERTILITY = 0.15;
+/** How fast resting ground (no field on it) drifts back to its soil's fertility, per game day. */
+export const REST_PER_DAY = 0.02;
 
-/** The soil's mean fertility over a field's cells. */
+/** A cell's natural fertility: its soil's, before any farming. */
+export const naturalFertility = (g: Grid, i: number): number => FERTILITY_BY_CODE[g.soil[i]] ?? SOIL_FERTILITY.loam;
+
+/** The soil's mean fertility over a field's cells, as farming has left it (grid.fertility). */
 export function soilFertility(g: Grid, cells: readonly number[]): number {
   if (cells.length === 0) return SOIL_FERTILITY.loam;
   let sum = 0;
-  for (const i of cells) sum += FERTILITY_BY_CODE[g.soil[i]] ?? SOIL_FERTILITY.loam;
+  for (const i of cells) sum += g.fertility[i];
   return sum / cells.length;
 }
 
@@ -78,20 +83,44 @@ export function growCrops(s: GameState, dtH: number, sun: number): { ripened: Fi
   return { ripened, stagesChanged };
 }
 
+/** Moves the soil's fertility on every cell of a field by `delta`, and the field's own (their mean) with it. */
+function workSoil(s: GameState, f: Field, delta: number): void {
+  const g = s.grid;
+  let sum = 0, n = 0;
+  for (let iz = f.bounds.z0; iz <= f.bounds.z1; iz++) for (let ix = f.bounds.x0; ix <= f.bounds.x1; ix++) {
+    const i = iz * g.nx + ix;
+    if (g.fieldOf[i] !== f.id) continue;
+    g.fertility[i] = clamp(g.fertility[i] + delta, MIN_FERTILITY, 1);
+    sum += g.fertility[i]; n++;
+  }
+  if (n > 0) f.fertility = sum / n;
+}
+
 /** Takes up to `n` ripe units from a field; when the last is gone, the soil changes with the harvest and it's sown again. */
-export function harvestField(f: Field, n: number): number {
+export function harvestField(s: GameState, f: Field, n: number): number {
   const took = Math.max(0, Math.min(n, f.harvestReady));
   f.harvestReady -= took;
   if (took > 0 && f.harvestReady === 0) {
-    f.fertility = clamp(f.fertility + HARVEST_FERTILITY[f.crop], MIN_FERTILITY, 1);
+    workSoil(s, f, HARVEST_FERTILITY[f.crop]);
     f.growth = REPLANT_GROWTH;
   }
   return took;
 }
 
 /** Works a sack of compost into a field. */
-export function compostField(f: Field): void {
-  f.fertility = clamp(f.fertility + COMPOST_BOOST, MIN_FERTILITY, 1);
+export function compostField(s: GameState, f: Field): void {
+  workSoil(s, f, COMPOST_BOOST);
+}
+
+/** Lets resting ground (no field on it) drift `hours` game hours back toward its soil's own fertility. */
+export function restSoil(s: GameState, hours: number): void {
+  const g = s.grid, step = (REST_PER_DAY * hours) / 24;
+  if (!(step > 0)) return;
+  for (let i = 0; i < g.fertility.length; i++) {
+    if (g.fieldOf[i] !== 0) continue;
+    const v = g.fertility[i], to = naturalFertility(g, i);
+    if (v !== to) g.fertility[i] = v < to ? Math.min(to, v + step) : Math.max(to, v - step);
+  }
 }
 
 // Each field's share under solar canopies, worked out again only when the land or the things on it change.

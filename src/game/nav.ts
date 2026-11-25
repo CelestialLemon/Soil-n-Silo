@@ -37,6 +37,8 @@ export interface Nav {
   track: Uint8Array;
   /** Cell paths found, by "from:to" (null: no way). */
   paths: Map<string, number[] | null>;
+  /** Per cell: which connected patch of drivable ground it belongs to (-1: impassable); worked out when first asked. */
+  comp?: Int32Array;
 }
 
 const navCache = new WeakMap<GameState, Nav>();
@@ -228,15 +230,49 @@ export function findCells(nav: Nav, from: number, to: number): number[] | null {
   return out;
 }
 
+/**
+ * Calls `fn` with every nav cell a straight segment crosses, in order, exactly (a grid walk, not samples); a segment
+ * through a cell's corner counts both cells beside the corner too, as a diagonal step can't cut one. A cell off the grid is
+ * -1. Stops early when `fn` returns true.
+ */
+function forSegmentCells(a: Point2, b: Point2, fn: (i: number) => boolean | void): void {
+  const ax = (a.x - NAV_X0) / NAV_CELL, az = (a.z - NAV_Z0) / NAV_CELL, bx = (b.x - NAV_X0) / NAV_CELL, bz = (b.z - NAV_Z0) / NAV_CELL;
+  const at = (cx: number, cz: number) => (cx < 0 || cz < 0 || cx >= NAV_N || cz >= NAV_N ? -1 : navIndex(cx, cz));
+  let cx = Math.floor(ax), cz = Math.floor(az);
+  const ex = Math.floor(bx), ez = Math.floor(bz), dx = bx - ax, dz = bz - az;
+  const sx = Math.sign(dx), sz = Math.sign(dz);
+  const tdx = sx !== 0 ? 1 / Math.abs(dx) : Infinity, tdz = sz !== 0 ? 1 / Math.abs(dz) : Infinity;
+  let tx = sx > 0 ? (cx + 1 - ax) * tdx : sx < 0 ? (ax - cx) * tdx : Infinity;
+  let tz = sz > 0 ? (cz + 1 - az) * tdz : sz < 0 ? (az - cz) * tdz : Infinity;
+  if (fn(at(cx, cz))) return;
+  for (let guard = 0; (cx !== ex || cz !== ez) && guard < 4 * NAV_N; guard++) {
+    const t = Math.min(tx, tz);
+    if (t > 1) break;
+    if (Math.abs(tx - tz) < 1e-9) {
+      // Through a corner: both cells beside it, then the one across.
+      if (fn(at(cx + sx, cz)) || fn(at(cx, cz + sz))) return;
+      cx += sx; cz += sz; tx += tdx; tz += tdz;
+    } else if (tx < tz) { cx += sx; tx += tdx; }
+    else { cz += sz; tz += tdz; }
+    if (fn(at(cx, cz))) return;
+  }
+}
+
 /** The cost of a straight line between two points, by the costliest cell it crosses (Infinity if any is impassable). */
 function lineCost(nav: Nav, a: Point2, b: Point2): number {
-  const len = Math.hypot(b.x - a.x, b.z - a.z), steps = Math.max(1, Math.ceil(len / 0.5));
   let worst = 0;
-  for (let k = 0; k <= steps; k++) {
-    const t = k / steps, i = navCellOf(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t);
-    worst = Math.max(worst, nav.cost[i]);
-  }
+  forSegmentCells(a, b, (i) => {
+    worst = Math.max(worst, i < 0 ? Infinity : nav.cost[i]);
+    return worst === Infinity;
+  });
   return worst;
+}
+
+/** Whether a straight run between two points crosses only drivable cells (`own`: a cell it may cross anyway). */
+function runClear(nav: Nav, a: Point2, b: Point2, own = -1): boolean {
+  let clear = true;
+  forSegmentCells(a, b, (i) => { if (i !== own && (i < 0 || !passable(nav, i))) clear = false; return !clear; });
+  return clear;
 }
 
 /** Pulls a cell path straight wherever a straight line crosses nothing costlier than the cells it skips. */
@@ -258,21 +294,68 @@ function smooth(nav: Nav, cells: readonly number[]): Point2[] {
   return out;
 }
 
-/** A drivable path of waypoints from one point to another, or null if no cart can get there. */
+/** The start cell a path from a point is found from: its own if drivable, else the nearest drivable one. */
+function startCell(nav: Nav, p: Point2): number {
+  const own = navCellOf(p.x, p.z);
+  return passable(nav, own) ? own : nearestPassable(nav, p.x, p.z, 2) ?? own;
+}
+
+/**
+ * A drivable path of waypoints from one point to another, or null if no cart can get there. It starts at the exact point
+ * and ends at the exact spot when that's on drivable ground beside the last cell; a run to or from either is kept only
+ * where it crosses no wall, else the path goes by the nearest cell's centre (so it never clips a corner of the water).
+ */
 export function findPath(s: GameState, from: Point2, to: Point2): Point2[] | null {
   const nav = navFor(s);
-  const a = passable(nav, navCellOf(from.x, from.z)) ? navCellOf(from.x, from.z) : nearestPassable(nav, from.x, from.z, 2) ?? navCellOf(from.x, from.z);
-  const b = nearestPassable(nav, to.x, to.z, 3);
+  const a = startCell(nav, from), b = nearestPassable(nav, to.x, to.z, 3);
   if (b === undefined) return null;
   const cells = findCells(nav, a, b);
   if (!cells) return null;
-  const pts = smooth(nav, cells);
-  pts[0] = { x: from.x, z: from.z };
-  if (pts.length === 1) pts.push(navCenter(b));
-  const end = pts[pts.length - 1];
-  // Finish at the exact spot if it's on drivable ground next to the last cell.
-  if (passable(nav, navCellOf(to.x, to.z)) && Math.hypot(end.x - to.x, end.z - to.z) <= NAV_CELL * 1.5) pts[pts.length - 1] = { x: to.x, z: to.z };
+  const centres = smooth(nav, cells);
+  if (centres.length === 1) centres.push(navCenter(b));
+  const start = { x: from.x, z: from.z }, own = navCellOf(from.x, from.z);
+  const pts = runClear(nav, start, centres[1], own) ? [start, ...centres.slice(1)] : [start, ...centres];
+  // Finish at the exact spot if it's on drivable ground next to the last cell, and the run to it is clear.
+  const end = pts[pts.length - 1], spot = { x: to.x, z: to.z };
+  if (passable(nav, navCellOf(to.x, to.z)) && Math.hypot(end.x - to.x, end.z - to.z) <= NAV_CELL * 1.5) {
+    const prev = pts[pts.length - 2];
+    if (runClear(nav, prev, spot, pts.length === 2 ? own : -1)) pts[pts.length - 1] = spot;
+    else if (runClear(nav, end, spot)) pts.push(spot);
+  }
   return pts;
+}
+
+/** Which connected patch of drivable ground each nav cell is on (-1: impassable): 4-neighbours, as A* steps (a diagonal
+ * step never cuts a corner, so it joins only cells already joined round it). */
+function components(nav: Nav): Int32Array {
+  if (nav.comp) return nav.comp;
+  const n = NAV_N * NAV_N, comp = new Int32Array(n).fill(-1), stack: number[] = [];
+  let next = 0;
+  for (let start = 0; start < n; start++) {
+    if (comp[start] >= 0 || !passable(nav, start)) continue;
+    comp[start] = next;
+    stack.push(start);
+    while (stack.length > 0) {
+      const i = stack.pop() ?? 0, x = i % NAV_N, z = (i - x) / NAV_N;
+      for (const j of [x > 0 ? i - 1 : -1, x < NAV_N - 1 ? i + 1 : -1, z > 0 ? i - NAV_N : -1, z < NAV_N - 1 ? i + NAV_N : -1]) {
+        if (j >= 0 && comp[j] < 0 && passable(nav, j)) { comp[j] = next; stack.push(j); }
+      }
+    }
+    next++;
+  }
+  nav.comp = comp;
+  return comp;
+}
+
+/**
+ * Which patch of drivable ground a point is on, as `findPath` reads it (a start: its own cell or the nearest within 2; a
+ * goal: the nearest within 3), or -1 if none. Two points a cart can drive between share one; O(1) once the land's patches
+ * are worked out (once per nav grid).
+ */
+export function reachOf(s: GameState, p: Point2, as: 'start' | 'goal'): number {
+  const nav = navFor(s), comp = components(nav);
+  const i = as === 'start' ? startCell(nav, p) : nearestPassable(nav, p.x, p.z, 3);
+  return i === undefined ? -1 : comp[i];
 }
 
 /** The ground under a point, for a moving cart: its speed and drain factors (open meadow if off the grid). */

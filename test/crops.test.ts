@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   apply, COMPOST_BOOST, compostField, cropStage, type Field, fieldYield, type GameState, growCrops, growthRate, HARVEST_FERTILITY,
-  harvestField, must, REPLANT_GROWTH, SOIL_FERTILITY, SOWN_GROWTH, stepSim, sunFactor,
+  harvestField, must, REPLANT_GROWTH, REST_PER_DAY, restSoil, SOIL_FERTILITY, SOWN_GROWTH, stepSim, sunFactor,
 } from '../src/game/index.ts';
 import { flatLand } from './helpers.ts';
 
@@ -12,6 +12,9 @@ function field(s: GameState, crop: 'wheat' | 'beans', x0: number, z: number, x1:
   assert.ok(r.ok, r.ok ? '' : r.error);
   return must(s.fields.find((f) => f.crop === crop && Math.abs((f.bounds.z0 + f.bounds.z1) / 2 + s.grid.z0 - z) < 4), 'the field');
 }
+
+/** The grid cells a field covers. */
+const fieldCells = (s: GameState, id: number) => [...s.grid.fieldOf.keys()].filter((i) => s.grid.fieldOf[i] === id);
 
 /** A field's current record (painting rebuilds the records). */
 const now = (s: GameState, f: Field) => must(s.fields.find((v) => v.id === f.id), 'the field');
@@ -41,7 +44,7 @@ test('water speeds a crop: a field on the brook\'s bank ripens in about half a d
   assert.ok(growthRate(wet, 1) > 2 * growthRate(dry, 1));
   // Ripening through a day's light.
   let h = 0, hour = 8;
-  while (wet.harvestReady === 0 && h < 48) { growCrops(s, 0.05, sunFactor(hour)); h += 0.05; hour = (hour + 0.05) % 24; }
+  while (wet.harvestReady === 0 && h < 48) { growCrops(s, 0.05, sunFactor(hour, s.season)); h += 0.05; hour = (hour + 0.05) % 24; }
   assert.ok(h >= 9 && h <= 16, `the watered field ripened in ${h.toFixed(1)} h`);
   assert.equal(wet.harvestReady, fieldYield(wet));
   assert.ok(dry.harvestReady === 0 && dry.growth < 0.7, `the dry field is at ${dry.growth.toFixed(2)}`);
@@ -65,21 +68,21 @@ test('harvesting takes the ripe units; the last one replants it, wheat tiring th
   const wf = wheat.fertility, bf = beans.fertility;
   const n = wheat.harvestReady;
   assert.ok(n >= 2 && n <= 8);
-  assert.equal(harvestField(wheat, 2), 2);
+  assert.equal(harvestField(s, wheat, 2), 2);
   if (n > 2) {
     assert.equal(wheat.fertility, wf, 'not until the last unit');
-    harvestField(wheat, n);
+    harvestField(s, wheat, n);
   }
   assert.equal(wheat.harvestReady, 0);
   assert.equal(wheat.growth, REPLANT_GROWTH);
-  assert.ok(Math.abs(wheat.fertility - (wf + HARVEST_FERTILITY.wheat)) < 1e-9, 'wheat drains the soil');
-  harvestField(beans, 99);
-  assert.ok(Math.abs(beans.fertility - Math.min(1, bf + HARVEST_FERTILITY.beans)) < 1e-9, 'beans restore it');
-  assert.equal(harvestField(beans, 2), 0, 'nothing ripe to take');
+  assert.ok(Math.abs(wheat.fertility - (wf + HARVEST_FERTILITY.wheat)) < 1e-6, 'wheat drains the soil');
+  harvestField(s, beans, 99);
+  assert.ok(Math.abs(beans.fertility - Math.min(1, bf + HARVEST_FERTILITY.beans)) < 1e-6, 'beans restore it');
+  assert.equal(harvestField(s, beans, 2), 0, 'nothing ripe to take');
   // Compost lifts tired soil back.
   const tired = wheat.fertility;
-  compostField(wheat);
-  assert.ok(Math.abs(wheat.fertility - Math.min(1, tired + COMPOST_BOOST)) < 1e-9);
+  compostField(s, wheat);
+  assert.ok(Math.abs(wheat.fertility - Math.min(1, tired + COMPOST_BOOST)) < 1e-6);
 });
 
 test('a bigger field on richer soil yields more, within 2 to 8', () => {
@@ -102,12 +105,51 @@ test('stepSim grows the crops and says when a field ripens', () => {
 });
 
 test('repainting a field keeps its crop\'s growth and soil; a new crop starts over', () => {
-  const s = flatLand(), f = field(s, 'wheat', -20, -30, 0);
-  f.growth = 0.6; f.fertility = 0.5;
+  const s = flatLand(), f = field(s, 'wheat', -20, -30, 0), g = s.grid;
+  f.growth = 0.6;
+  const cells = fieldCells(s, f.id);
+  for (const i of cells) g.fertility[i] = 0.5;
   assert.ok(apply(s, { type: 'paintField', crop: 'wheat', points: [{ x: 0, z: -30 }, { x: 6, z: -30 }], radius: 2.3 }).ok);
   const same = must(s.fields.find((v) => v.id === f.id), 'the same field');
   assert.equal(same.growth, 0.6);
-  assert.equal(same.fertility, 0.5);
+  for (const i of cells) assert.ok(Math.abs(g.fertility[i] - 0.5) < 1e-6, 'its tired soil stays tired');
+  const mean = fieldCells(s, f.id).reduce((v, i) => v + g.fertility[i], 0) / same.cellCount;
+  assert.ok(Math.abs(same.fertility - mean) < 1e-6 && same.fertility < SOIL_FERTILITY.loam, `its fertility is its cells' mean (${same.fertility})`);
   const other = field(s, 'beans', -20, -45, 0);
   assert.equal(other.growth, SOWN_GROWTH);
+});
+
+test('erasing tired wheat and painting it again finds the same tired soil; resting ground slowly recovers', () => {
+  const s = flatLand(), g = s.grid;
+  const stroke = [{ x: -20, z: -30 }, { x: -10, z: -30 }, { x: 0, z: -30 }];
+  assert.ok(apply(s, { type: 'paintField', crop: 'wheat', points: stroke, radius: 2.3 }).ok);
+  let f = s.fields[0];
+  const fresh = f.fertility;
+  assert.ok(Math.abs(fresh - SOIL_FERTILITY.loam) < 1e-6, `sown on the loam's own ${fresh}`);
+  for (let k = 0; k < 3; k++) { f.harvestReady = 4; harvestField(s, f, 4); }
+  const tired = f.fertility;
+  assert.ok(Math.abs(tired - (fresh + 3 * HARVEST_FERTILITY.wheat)) < 1e-5, `three harvests drew it down to ${tired}`);
+  // Clear it, and paint wheat on the same cells again at once.
+  assert.ok(apply(s, { type: 'eraseField', points: stroke, radius: 4 }).ok);
+  assert.equal(s.fields.length, 0);
+  assert.ok(apply(s, { type: 'paintField', crop: 'wheat', points: stroke, radius: 2.3 }).ok);
+  f = s.fields[0];
+  assert.ok(Math.abs(f.fertility - tired) < 1e-6, `still tired (${f.fertility.toFixed(2)}), not back to ${fresh}`);
+  // Left resting a whole game day, the bare ground creeps back toward its soil's own.
+  assert.ok(apply(s, { type: 'eraseField', points: stroke, radius: 4 }).ok);
+  const cell = s.grid.nx * Math.floor((-30 - g.z0) / g.cell) + Math.floor((-10 - g.x0) / g.cell);
+  const before = g.fertility[cell];
+  restSoil(s, 24);
+  assert.ok(Math.abs(g.fertility[cell] - (before + REST_PER_DAY)) < 1e-5, `${before} → ${g.fertility[cell]}`);
+  restSoil(s, 24 * 100);
+  assert.ok(Math.abs(g.fertility[cell] - SOIL_FERTILITY.loam) < 1e-6, 'and never past it');
+});
+
+test('compost delivered lifts every cell of the field', () => {
+  const s = flatLand(), f = field(s, 'wheat', -20, -30, 0), g = s.grid;
+  for (const i of fieldCells(s, f.id)) g.fertility[i] = 0.3;
+  f.harvestReady = 2; harvestField(s, f, 2);
+  compostField(s, f);
+  for (const i of fieldCells(s, f.id)) assert.ok(Math.abs(g.fertility[i] - (0.3 + HARVEST_FERTILITY.wheat + COMPOST_BOOST)) < 1e-6);
+  assert.ok(Math.abs(f.fertility - (0.3 + HARVEST_FERTILITY.wheat + COMPOST_BOOST)) < 1e-6);
 });

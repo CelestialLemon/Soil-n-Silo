@@ -49,12 +49,20 @@ export const RECIPES: { readonly [K in WorkshopKind]: Recipe } = {
 
 /** How many goods a workshop holds waiting, and made, in all. */
 export const INPUT_CAP = 8, OUTPUT_CAP = 8;
-/** How many goods the Silo stores, mixed. */
-export const SILO_CAP = 60;
+/** How many goods the Silo stores, mixed; and of any one good, so a glut of one never fills it against the rest. */
+export const SILO_CAP = 60, SILO_GOOD_CAP = 14;
 
+/** Room the Silo has now: for `good` (its share, within what's left), or for anything. */
+export function siloRoom(r: ThingRuntime, good?: Good): number {
+  const left = Math.max(0, SILO_CAP - totalStored(r.outputs));
+  return good === undefined ? left : Math.max(0, Math.min(left, SILO_GOOD_CAP - countOf(r.outputs, good)));
+}
+
+/** A new building's runtime. A Battery is built empty: only what the homestead makes ever fills it (so taking one down
+ * and building it again can't make energy). */
 const blank = (id: number, kind: ThingKind): ThingRuntime => ({
   id, kind, inputs: {}, outputs: {}, progress: 0, working: false, powered: false, powerNetId: -1,
-  charge: kind === 'battery' ? 0.5 : 0, siloFill: 0, watts: 0, made: 0, status: '',
+  charge: 0, siloFill: 0, watts: 0, made: 0, status: '',
 });
 
 /** Makes sure every placed thing has its runtime, and no runtime outlives its thing. */
@@ -117,7 +125,7 @@ export function advanceRecipes(s: GameState, dtH: number): ThingRuntime[] {
 
 /** How many of `good` a building would take now (a workshop's inputs it keeps, the Silo's room), before carts en route. */
 export function wantsInput(r: ThingRuntime, good: Good): number {
-  if (r.kind === 'silo') return capacity(r.outputs, SILO_CAP);
+  if (r.kind === 'silo') return siloRoom(r, good);
   if (!isWorkshop(r.kind)) return 0;
   const recipe = RECIPES[r.kind];
   const room = capacity(r.inputs, INPUT_CAP);
@@ -160,7 +168,7 @@ export function describeRuntime(s: GameState, r: ThingRuntime): string {
     case 'battery': return `Charge ${Math.round(r.charge * 100)}%`;
     case 'relay': return r.powered ? 'Passing power on' : 'Needs power within 15 m';
     // Its own solar cap lights it after dusk, on the homestead's power or not.
-    case 'lantern': return isNight(s.sim.hour) ? 'Glowing along the way' : 'Glows after dusk';
+    case 'lantern': return isNight(s.sim.hour, s.season) ? 'Glowing along the way' : 'Glows after dusk';
     case 'bench': case 'planter': case 'crates': return def.label;
   }
 }

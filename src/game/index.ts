@@ -54,7 +54,7 @@ export { type Networks, networksOf } from './power/radius.ts';
 // The living homestead (Milestone 2): time, Supplies, goods, crops, workshops, power, carts and the brief.
 export { stepSim, MAX_SUBSTEP_SECONDS, type SimTickResult } from './sim.ts';
 export { type SimEvent, type SimEventType } from './events.ts';
-export { formatClock, isNight, SECONDS_PER_GAME_HOUR, SUNRISE, SUNSET, sunFactor } from './clock.ts';
+export { formatClock, isNight, SECONDS_PER_GAME_HOUR, sunFactor, sunHours } from './clock.ts';
 export {
   canAfford, CART_COST, costOf, DROP_AMOUNT, type DropId, MAX_CARTS, type MilestoneDrop, receiveDrop, refund, sandboxSupplies, spend,
   STARTER_SUPPLIES, starterSupplies, SUPPLY_CAP, type SuppliesState,
@@ -65,27 +65,28 @@ export {
 } from './goods.ts';
 export {
   agrivoltaicCoverage, COMPOST_BOOST, compostField, cropStage, fertilityFactor, fieldYield, growCrops, growthRate, GROWTH_RATE,
-  HARVEST_FERTILITY, harvestField, lightFactor, MIN_FERTILITY, moistureFactor, REPLANT_GROWTH, SOIL_FERTILITY, soilFertility,
-  SOWN_GROWTH, WATERED, wateredness,
+  HARVEST_FERTILITY, harvestField, lightFactor, MIN_FERTILITY, moistureFactor, naturalFertility, REPLANT_GROWTH, REST_PER_DAY,
+  restSoil, SOIL_FERTILITY, soilFertility, SOWN_GROWTH, WATERED, wateredness,
 } from './crops.ts';
 export {
   advanceRecipes, describeRuntime, INPUT_CAP, OUTPUT_CAP, type Recipe, type RecipeInput, RECIPES, runtimeOf, SILO_CAP,
-  startRecipes, syncRuntime, type ThingRuntime, wantsInput,
+  SILO_GOOD_CAP, siloRoom, startRecipes, syncRuntime, type ThingRuntime, wantsInput,
 } from './workshops.ts';
 export {
-  BATTERY_RATE_W, BATTERY_START, BATTERY_WH, CLOUD_DIM, demandOf, FARMHOUSE_DAY_W, FARMHOUSE_NIGHT_W, GARAGE_CHARGE_W,
-  GARAGE_IDLE_W, generationOf, type PowerNetwork, type PowerSummary, type SimEnv, SOLAR_PEAK_W, stepPower, TURBINE_BASE_W,
+  BATTERY_RATE_W, BATTERY_WH, CLOUD_DIM, demandOf, FARMHOUSE_DAY_W, FARMHOUSE_NIGHT_W, GARAGE_CHARGE_W,
+  GARAGE_IDLE_W, generationOf, type PowerNetwork, type PowerSummary, refreshPower, type SimEnv, SOLAR_PEAK_W, stepPower, TURBINE_BASE_W,
   TURBINE_FULL_WIND, TURBINE_SPAN_W, WATERWHEEL_W,
 } from './power/sim.ts';
 export {
-  CART_SPEED, dockOf, findPath, GROUND, groundAt, MUDDY, type Nav, NAV_CELL, NAV_N, navCellOf, navCenter, navFor, passable, STEEP,
+  CART_SPEED, dockOf, findPath, GROUND, groundAt, MUDDY, type Nav, NAV_CELL, NAV_N, navCellOf, navCenter, navFor, passable, reachOf,
+  STEEP,
 } from './nav.ts';
 export {
-  addStarterCart, buyCart, type Cart, CART_CAPACITY, CART_LOW, CART_READY, type CartJob, type CartState, CHARGE_PER_HOUR,
-  DRAIN_PER_M, DWELL_HOURS, type Endpoint, endpointLabel, fieldEdge, pathLeft, retireAllCarts, retireCart, stepCarts,
+  addStarterCart, atGarage, buyCart, type Cart, CART_CAPACITY, CART_LOW, CART_READY, type CartJob, type CartState, CHARGE_PER_HOUR,
+  chargingAtGarage, DOCK_RADIUS, DRAIN_PER_M, DWELL_HOURS, type Endpoint, endpointLabel, fieldEdge, pathLeft, retireAllCarts, retireCart, stepCarts,
   TRICKLE_PER_HOUR,
 } from './carts.ts';
 export {
-  blankBrief, type BriefState, LIVING_LAND_FERTILITY, LIVING_LAND_M2, type LivingLandSeal, PANTRY_ORDER, type PantryOrderSeal,
-  type Seal, type SealId, SEAL_LABELS, STEADY_HOURS, type SteadyHomesteadSeal, stepBrief,
+  blankBrief, type BriefState, CLOCK_JUMPED, LIVING_LAND_FERTILITY, LIVING_LAND_M2, type LivingLandSeal, PANTRY_ORDER, type PantryOrderSeal,
+  resetSteadyOnClockJump, type Seal, type SealId, SEAL_LABELS, SETUP_CHANGED, STEADY_HOURS, type SteadyHomesteadSeal, stepBrief,
 } from './brief.ts';

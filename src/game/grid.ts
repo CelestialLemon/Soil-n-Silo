@@ -61,6 +61,12 @@ export interface Grid {
   readonly moisture: Float32Array;
   /** 0 = no field, else the painted field's id. */
   readonly fieldOf: Uint16Array;
+  /**
+   * 0..1: the soil's fertility on each cell, as farming has left it (crops.ts): it starts at its soil's, wheat draws it
+   * down, beans and compost build it up, and resting ground drifts slowly back to its soil's. A field's fertility is its
+   * cells' mean, so clearing a tired field and painting it again finds the same tired soil.
+   */
+  readonly fertility: Float32Array;
 }
 
 export function createGrid(): Grid {
@@ -72,7 +78,7 @@ export function createGrid(): Grid {
     baseCover: new Uint8Array(cells), cover: new Uint8Array(cells), soil: new Uint8Array(cells), worked: new Uint8Array(cells),
     baseWaterLevel: dry(), baseFlowX: new Float32Array(cells), baseFlowZ: new Float32Array(cells),
     waterLevel: dry(), flowX: new Float32Array(cells), flowZ: new Float32Array(cells),
-    moisture: new Float32Array(cells), fieldOf: new Uint16Array(cells),
+    moisture: new Float32Array(cells), fieldOf: new Uint16Array(cells), fertility: new Float32Array(cells),
   };
 }
 

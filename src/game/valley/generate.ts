@@ -14,6 +14,7 @@
 // little above the water, so the banks hold it.
 import { fbm, noise2 } from '../noise.ts';
 import { CATALOG } from '../catalog.ts';
+import { naturalFertility } from '../crops.ts';
 import { catmullRom, clamp, lerp, PathIndex, type Point2, smoothstep, toWorld } from '../geom.ts';
 import { baseHeightAt, cellHeightAt, cellX, cellZ, COVER, type Grid, isWet, SOIL, VALLEY_HALF, vertexX, vertexZ } from '../grid.ts';
 import { addTrack, canTrack, trackPath } from '../paths.ts';
@@ -412,5 +413,6 @@ export function naturalize(s: GameState): void {
   g.flowX.set(g.baseFlowX);
   g.flowZ.set(g.baseFlowZ);
   g.moisture.set(wetness(g));
+  for (let i = 0; i < g.fertility.length; i++) g.fertility[i] = naturalFertility(g, i);
   s.power = powerFor(s);
 }

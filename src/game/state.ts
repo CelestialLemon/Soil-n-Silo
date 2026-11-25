@@ -12,7 +12,7 @@ import type { PowerNetwork, PowerSummary } from './power/sim.ts';
 import { starterSupplies, type SuppliesState } from './supplies.ts';
 import type { ThingRuntime } from './workshops.ts';
 
-export const STATE_VERSION = 4;
+export const STATE_VERSION = 5;
 
 /** The valley's one season (brush3d's SEASONS). */
 export const SEASONS = ['spring', 'summer', 'autumn', 'winter'] as const;
@@ -103,6 +103,8 @@ export interface SimState {
   networks: PowerNetwork[];
   powerSummary: PowerSummary;
   brief: BriefState;
+  /** Game hours since resting ground last drifted back toward its soil's fertility (crops.ts restSoil, once an hour). */
+  soilHours: number;
 }
 
 /** A fresh homestead: morning of day 1, the starter Supplies parcel, nothing running yet. */
@@ -110,7 +112,7 @@ export function blankSim(): SimState {
   return {
     day: 1, hour: 8, supplies: starterSupplies(), things: new Map(), carts: [], nextCartId: 1, delivered: {}, networks: [],
     powerSummary: { totalGenW: 0, totalDemandW: 0, totalStoredWh: 0, totalCapWh: 0, anyBlackout: false, lastBlackoutReason: '' },
-    brief: blankBrief(),
+    brief: blankBrief(), soilHours: 0,
   };
 }
 

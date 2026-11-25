@@ -88,7 +88,7 @@ export function thingStatus(s: GameState, t: Thing, hour: number): { line: strin
     case 'solar': {
       const crop = cropUnder(s, t);
       if (crop) return say(`Agrivoltaic · Shading ${crop}`);
-      return say(isNight(hour) ? 'Resting until sunrise' : 'Soaking up the sun');
+      return say(isNight(hour, s.season) ? 'Resting until sunrise' : 'Soaking up the sun');
     }
     case 'turbine': return say('Catching the wind');
     case 'waterwheel': return say('Water Wheel · Turning in the brook');
@@ -99,7 +99,7 @@ export function thingStatus(s: GameState, t: Thing, hour: number): { line: strin
     case 'relay': return say(powered ? 'Passing power on' : 'Needs power within 15 m');
     // A solar lantern charges itself from its own cap, so it glows after dusk power or none; the card's pip says whether
     // it's on the homestead's power too.
-    case 'lantern': return say(isNight(hour) ? 'Glowing along the way' : 'Charging in the sun · glows after dusk');
+    case 'lantern': return say(isNight(hour, s.season) ? 'Glowing along the way' : 'Charging in the sun · glows after dusk');
     case 'bench': case 'planter': case 'crates': return say(surroundings(s, t));
   }
 }

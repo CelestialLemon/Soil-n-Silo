@@ -28,7 +28,7 @@ plain code with no drawing in them, so the game's rules and tests can use them w
 
 Everything the game uses comes from one file, `src/index.ts` (in the game's repo, since the move, #200:
 `brush3d/src/index.ts`). The demo is just another user of it: it imports nothing else. One part of it also stands on
-its own: `src/shared.ts`, the wind simulation, the cloud recipe, the land's data and smooth fit, the continuous terrain's data and its height (below) and how far a crag, a grass tuft, a wildflower and a clump of reeds reach, which loads in Node with no bundler, for the
+its own: `src/shared.ts`, the wind simulation, the cloud recipe, the land's data and smooth fit, the continuous terrain's data and its height (below), how far a crag, a grass tuft, a wildflower and a clump of reeds reach, and the seasons' sunrise and sunset (`SEASON_SUN`, which the game's solar canopies, crops and lamps keep to), which loads in Node with no bundler, for the
 rules' tests and bots (the rest needs Vite, for the models and the wind's worker). Anything not exported there is
 the renderer's own business and can change without notice: its shaders, materials, passes, uniforms and maps.
 
@@ -655,7 +655,7 @@ The game's pixel3d calls, gone since the swap, and what replaced each:
 | Folder | What | Whose |
 |---|---|---|
 | `src/index.ts` | The API: everything above that exists | the game's door in |
-| `src/shared.ts` | The wind simulation, its gusts (`WindRecipe`), the cloud recipe, the land's data and smooth fit, the continuous terrain's data, checks, height and hit (`TerrainMap`, `TerrainPatch`, `checkTerrain`, `checkTerrainPatch`, `sampleHeightfield`, `hitHeightfield`, `terrainChunkCells`), how far a crag, a grass tuft, a wildflower and a clump of reeds reach (`CRAG_BOUND`, `CRAG_TRIANGLES`, `TUFT_REACH`, `TUFT_HEIGHT`, `FLOWER_REACH`, `REED_REACH`, `REED_WIDTH`, `REED_HEIGHT`) and `TILE`, loadable in Node on their own (the index exports them too) | shared with the rules |
+| `src/shared.ts` | The wind simulation, its gusts (`WindRecipe`), the cloud recipe, the land's data and smooth fit, the continuous terrain's data, checks, height and hit (`TerrainMap`, `TerrainPatch`, `checkTerrain`, `checkTerrainPatch`, `sampleHeightfield`, `hitHeightfield`, `terrainChunkCells`), how far a crag, a grass tuft, a wildflower and a clump of reeds reach (`CRAG_BOUND`, `CRAG_TRIANGLES`, `TUFT_REACH`, `TUFT_HEIGHT`, `FLOWER_REACH`, `REED_REACH`, `REED_WIDTH`, `REED_HEIGHT`), the seasons' sunrise and sunset (`SEASON_SUN`) and `TILE`, loadable in Node on their own (the index exports them too) | shared with the rules |
 | `src/renderer/` | The renderer: its passes, materials, shaders and looks | the renderer's own |
 | `src/land/` | The land painted from the game's map: what the game sends (`map.ts`), the smooth fit (`surface.ts`), the painting and earthworks (`paint.ts`); the continuous terrain's data and height (`heightfield.ts`) and its painting (`terrain.ts`) | the renderer's own (`map.ts`, `surface.ts` and `heightfield.ts` shared with the rules) |
 | `src/wind/` | The wind simulation (no drawing; a worker host) | shared with the rules |

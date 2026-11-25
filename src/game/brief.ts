@@ -3,7 +3,8 @@
 //   1. The Pantry Order: deliver the settlement's goods to the Depot.
 //   2. Living Land: keep a good spread of fields on healthy soil.
 //   3. Steady Homestead: once the homestead runs (a Farmhouse, a Garage and a workshop), keep it powered without a
-//      blackout through two full days and nights. A blackout resets it, and says why.
+//      blackout through two full days and nights, lived through. A blackout resets it, and says why; so does taking
+//      down what makes it run, or jumping the clock (the hours must be lived, not skipped).
 // When all three fill, the valley is Restored.
 import { CATALOG, isWorkshop } from './catalog.ts';
 import type { SimEvent } from './events.ts';
@@ -15,6 +16,9 @@ export const PANTRY_ORDER: Inventory = { bread: 10, flour: 6, beans: 6 };
 export const LIVING_LAND_M2 = 100, LIVING_LAND_FERTILITY = 0.75;
 /** Two full days and nights, game hours. */
 export const STEADY_HOURS = 48;
+/** Why Steady Homestead starts over when what makes the homestead run comes down, or the clock jumps. */
+export const SETUP_CHANGED = 'Homestead setup changed — Steady Homestead reset';
+export const CLOCK_JUMPED = 'Time jumped — Steady Homestead timer reset';
 
 export interface Seal { progress: number; done: boolean }
 export interface PantryOrderSeal extends Seal {
@@ -78,6 +82,12 @@ export function stepBrief(s: GameState, dtH: number, events: SimEvent[]): void {
   if (!h.done) {
     const kinds = new Set(s.things.map((t) => t.kind));
     h.running = kinds.has('farmhouse') && kinds.has('garage') && [...kinds].some(isWorkshop);
+    if (!h.running && h.hours > 0) {
+      // The Farmhouse, the Garage or the last workshop came down mid-run: the hours so far don't count.
+      h.hours = 0;
+      h.resetReason = SETUP_CHANGED;
+      events.push({ type: 'steadyReset', message: SETUP_CHANGED });
+    }
     if (h.running && dtH > 0) {
       const dark = s.things.find((t) => CATALOG[t.kind].category === 'homestead' && CATALOG[t.kind].powerRole === 'load' && s.sim.things.get(t.id)?.powered !== true);
       const why = s.sim.powerSummary.anyBlackout ? s.sim.powerSummary.lastBlackoutReason
@@ -98,4 +108,17 @@ export function stepBrief(s: GameState, dtH: number, events: SimEvent[]): void {
     b.restored = true;
     events.push({ type: 'restored', message: 'Valley Restored! Your homestead holds in balance.' });
   }
+}
+
+/**
+ * The clock jumped (Dawn, Noon, Golden or Dusk on the sky strip): an unfinished Steady Homestead starts over, as the hours
+ * it skipped weren't lived through. A filled seal stays filled. Returns whether it started over.
+ */
+export function resetSteadyOnClockJump(s: GameState): boolean {
+  const h = s.sim.brief.steadyHomestead;
+  if (h.done || h.hours <= 0) return false;
+  h.hours = 0;
+  h.progress = 0;
+  h.resetReason = CLOCK_JUMPED;
+  return true;
 }

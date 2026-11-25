@@ -7,10 +7,13 @@
 // It also runs the living homestead (Milestone 2): each frame, while the clock runs, the game's `stepSim` moves it on by
 // the frame's game time with the world's sky and wind, the world draws the tick (crops, carts, buildings' parts), and what
 // the tick tells (a drop, a seal, a blackout) becomes a warm toast. The world's sky owns the clock; the sim's hour follows
-// it (and the day turns as it passes midnight), so the sky strip's Dawn, Noon, Golden and Dusk move both together.
+// it (and the day turns as it passes midnight), so the sky strip's Dawn, Noon, Golden and Dusk move both together. While
+// the clock is stopped, an edit or a jump of the clock reads the power again at once (refreshPower), so the power view's
+// watts and the workshops' lights show it without waiting for the clock to run.
 import {
-  type Action, apply, CART_COST, CATALOG, type Change, generateValley, type GameState, heightAt, type Point2, type Season, type SimEvent,
-  stepSim, suggestWaterWheelYaw, type ThingKind, TREE_SPECIES, wrapAngle,
+  type Action, apply, CART_COST, CATALOG, CLOCK_JUMPED, type Change, generateValley, type GameState, heightAt, type Point2,
+  refreshPower, resetSteadyOnClockJump, type Season, type SimEvent, stepSim, suggestWaterWheelYaw, type ThingKind, TREE_SPECIES,
+  wrapAngle,
 } from '../game/index.ts';
 import {
   placedKind, type SelectedThingView, type Speed, toolDef, type ToolId, type ToolReadout, type UiCallbacks, type UiController,
@@ -243,7 +246,17 @@ export class Play implements UiCallbacks {
     this.world.sync(r.value);
     this.statsDirty = true;
     this.hoverDirty = true;
+    this.refreshIfPaused();
     return r.value;
+  }
+
+  /** While the clock is stopped, reads the power again as the homestead now stands, and draws it (no time passes). */
+  private refreshIfPaused() {
+    if (this.world.getSpeed() > 0) return;
+    const state = this.state, fresh = refreshPower(state, this.world.getSimEnv());
+    this.world.syncSim({ fieldStagesChanged: false, events: [], cartsMoved: false });
+    if (fresh.length > 0) this.tell(fresh.map((n): SimEvent => ({ type: 'blackout', message: state.sim.powerSummary.lastBlackoutReason, id: n.id })));
+    this.statsDirty = true;
   }
 
   // ---- The pointer (input.ts) ----
@@ -662,10 +675,15 @@ export class Play implements UiCallbacks {
 
   onStepYaw(dir: -1 | 1) { this.world.stepYaw(dir); }
   onTogglePowerView() { this.powerView = !this.powerView; }
-  /** A jump on the sky strip moves the homestead's hour with the sky's (the day stays: no time is lived through). */
+  /**
+   * A jump on the sky strip moves the homestead's hour with the sky's (the day stays: no time is lived through), so an
+   * unfinished Steady Homestead starts over: its hours must be lived.
+   */
   onSetHour(hour: number) {
     this.world.setHour(hour);
     this.state.sim.hour = this.world.getHour();
+    if (resetSteadyOnClockJump(this.state)) { this.ui?.showToast(CLOCK_JUMPED); this.statsDirty = true; }
+    this.refreshIfPaused();
   }
 
   onSetSpeed(speed: Speed) {

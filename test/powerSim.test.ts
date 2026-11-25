@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  apply, BATTERY_WH, CLOUD_DIM, FARMHOUSE_NIGHT_W, type GameState, generationOf, must, networksOf, sandboxSupplies, SOLAR_PEAK_W,
-  stepPower, stepSim, type ThingKind, TURBINE_BASE_W, TURBINE_SPAN_W, WATERWHEEL_W,
+  apply, BATTERY_WH, CLOUD_DIM, FARMHOUSE_DAY_W, FARMHOUSE_NIGHT_W, type GameState, generationOf, isNight, must, networksOf,
+  refreshPower, sandboxSupplies, SOLAR_PEAK_W, stepPower, stepSim, sunFactor, type ThingKind, TURBINE_BASE_W, TURBINE_SPAN_W,
+  WATERWHEEL_W,
 } from '../src/game/index.ts';
 import { flatLand } from './helpers.ts';
 
@@ -84,12 +85,13 @@ test('without a store, nightfall is a blackout, and it says why and how to fix i
   const s = sandbox();
   put(s, 'solar', -40, -24);
   const house = put(s, 'farmhouse', -28, -30);
-  s.sim.hour = 18;
+  // A summer valley: the sun sets at nine.
+  s.sim.hour = 19;
   const events = [];
   for (let k = 0; k < 30 * 4; k++) events.push(...stepSim(s, 1, calm).events);
   const blackout = events.filter((e) => e.type === 'blackout');
   assert.equal(blackout.length, 1, 'one blackout, when it starts');
-  assert.match(blackout[0].message, /Blackout on Day 1 at 1\d:\d\d: the Farmhouse went without power\. To carry it, add a Battery or a Water Wheel\./);
+  assert.match(blackout[0].message, /Blackout on Day 1 at 2[01]:\d\d: the Farmhouse went without power\. To carry it, add a Battery or a Water Wheel\./);
   assert.ok(!rt(s, house).powered);
   assert.ok(s.sim.powerSummary.anyBlackout);
   assert.equal(s.sim.powerSummary.lastBlackoutReason, blackout[0].message);
@@ -146,4 +148,81 @@ test('a load beyond every field has no power and belongs to no network', () => {
   assert.ok(!rt(s, mill).powered);
   assert.equal(rt(s, mill).powerNetId, -1);
   assert.match(stepSim(s, 1, calm) && rt(s, mill).status, /Needs a relay or power nearby/);
+});
+
+test('the sun keeps the season\'s hours: a winter canopy is dark by five while a summer one still shines', () => {
+  const s = sandbox(), solar = thing(s, put(s, 'solar', -40, -30));
+  s.season = 'summer';
+  const summer = generationOf(s, solar, 17, calm);
+  assert.ok(summer > 0.5, `summer at five: ${summer} W`);
+  assert.ok(!isNight(17, 'summer') && isNight(17, 'winter'));
+  s.season = 'winter';
+  assert.equal(generationOf(s, solar, 17, calm), 0, 'winter at five: the sun set at four');
+  assert.equal(generationOf(s, solar, 7.5, calm), 0, 'nor risen yet at half past seven');
+  assert.ok(generationOf(s, solar, 12, calm) > 0.95 * SOLAR_PEAK_W, 'strongest at midday');
+  assert.equal(sunFactor(16, 'winter'), 0);
+  assert.ok(sunFactor(16, 'spring') > 0 && sunFactor(19.5, 'summer') > 0 && sunFactor(19.5, 'spring') === 0);
+  // The home lights its lamps at the season's dusk.
+  put(s, 'farmhouse', -28, -30);
+  stepPower(s, 0.01, 16.5, calm);
+  assert.equal(s.sim.networks[0].demandW, FARMHOUSE_NIGHT_W);
+  s.season = 'summer';
+  stepPower(s, 0.01, 16.5, calm);
+  assert.equal(s.sim.networks[0].demandW, FARMHOUSE_DAY_W);
+});
+
+test('a Battery is built empty, so taking one down and building it again makes no energy', () => {
+  const s = sandbox();
+  const house = put(s, 'farmhouse', -28, -36);
+  let battery = put(s, 'battery', -40, -36);
+  assert.equal(rt(s, battery).charge, 0, 'a new Battery holds nothing');
+  stepPower(s, 0.01, 22, calm);
+  assert.ok(!rt(s, house).powered, 'an empty Battery carries nothing');
+  assert.equal(s.sim.powerSummary.totalStoredWh, 0);
+  // Charged full, then taken down (refunded) and built again: it comes back empty.
+  rt(s, battery).charge = 1;
+  stepPower(s, 0.01, 22, calm);
+  assert.ok(rt(s, house).powered, 'a full Battery lights the home');
+  assert.ok(apply(s, { type: 'remove', id: battery }).ok);
+  battery = put(s, 'battery', -40, -36);
+  assert.equal(rt(s, battery).charge, 0);
+  stepPower(s, 0.01, 22, calm);
+  assert.ok(!rt(s, house).powered, 'no free energy from rebuilding it');
+  assert.equal(s.sim.powerSummary.totalStoredWh, 0);
+  // Moving a Battery keeps its charge.
+  rt(s, battery).charge = 0.7;
+  assert.ok(apply(s, { type: 'move', id: battery, x: -40, z: -42 }).ok);
+  assert.equal(rt(s, battery).charge, 0.7);
+});
+
+test('refreshPower reads the power as it stands with no time passing: no charge drawn, no recipe or clock moved', () => {
+  const s = sandbox();
+  s.sim.hour = 22;
+  const battery = put(s, 'battery', -40, -36), house = put(s, 'farmhouse', -28, -36), mill = put(s, 'mill', -40, -24);
+  put(s, 'solar', -28, -24);
+  rt(s, battery).charge = 0.5;
+  busy(s, mill);
+  rt(s, mill).progress = 0.3;
+  const env = { ...calm, hour: 22 };
+  // Before any step, the power hasn't been read: nothing shows as powered.
+  assert.ok(!rt(s, house).powered && !rt(s, mill).powered);
+  const fresh = refreshPower(s, env);
+  assert.equal(fresh.length, 0);
+  assert.ok(rt(s, house).powered && rt(s, mill).powered, 'lit at once');
+  assert.ok(s.sim.powerSummary.totalDemandW > 0);
+  assert.equal(rt(s, battery).charge, 0.5, 'no charge drawn');
+  assert.equal(rt(s, mill).progress, 0.3, 'the recipe stays put');
+  assert.equal(s.sim.hour, 22);
+  assert.match(rt(s, mill).status, /Grinding wheat/);
+  // Take the Battery away while paused: the dark shows at once, as a fresh blackout.
+  assert.ok(apply(s, { type: 'remove', id: battery }).ok);
+  const dark = refreshPower(s, env);
+  assert.equal(dark.length, 1);
+  assert.ok(!rt(s, house).powered && !rt(s, mill).powered);
+  assert.ok(s.sim.powerSummary.anyBlackout);
+  // An empty battery gives nothing, even with no time passing.
+  const empty = put(s, 'battery', -40, -36);
+  assert.equal(rt(s, empty).charge, 0);
+  refreshPower(s, env);
+  assert.ok(!rt(s, house).powered);
 });

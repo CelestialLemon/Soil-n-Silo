@@ -1,6 +1,6 @@
 // What the game's rules share with the picture, so the two can't disagree (docs/API.md): the wind simulation (the wind the
 // turbines feel is the wind in the grass: the rules step its gusts, WindRecipe, and the picture the air under them), the
-// cloud recipe (a cloud's shadow on a solar panel) and how big a tile is in their metres. Plain code, with no
+// cloud recipe (a cloud's shadow on a solar panel), the seasons' sunrise and sunset, and how big a tile is in their metres. Plain code, with no
 // drawing and no bundler in it, so the rules' tests and bots import this file straight into Node; src/index.ts exports
 // it all too. Keep it so: its imports carry their `.ts` and reach nothing that needs three.js or Vite
 // (`npm run typecheck` loads it in Node to check).
@@ -20,6 +20,9 @@ export {
 } from './land/heightfield.ts';
 export { checkLand, LAND_COVER, LAND_GROUND, type Beyond, type LandCover, type LandGround, type LandMap, type LandPatch, type LandRect } from './land/map.ts';
 export { TILE } from './models/tile.ts';
+// When the sun rises and sets in each season (renderer/season.ts), which the game's solar canopies, crops and lamps keep to,
+// so the light drawn and the power made follow one sun.
+export { SEASON_SUN } from './renderer/season.ts';
 // How far a crag reaches past its size, and its triangles (kit/crag.ts), which the game plans its outcrops by (Soil-n-Silo#257).
 export { CRAG_BOUND, CRAG_TRIANGLES } from './kit/crag.ts';
 // How far a grass tuft's blades reach (kit/tuft.ts), which the game keeps its grass's margins by (Soil-n-Silo#256).

@@ -153,15 +153,15 @@ function relabel(s: GameState, crops: Uint8Array): FieldEdit {
 }
 
 /**
- * A field over these cells. One that keeps an old field's id keeps how its crop was doing (its growth, its soil and any
- * harvest waiting, trimmed to what its new size yields); a new field, or one painted over with the other crop, is sown
- * fresh, its fertility the soil's under it.
+ * A field over these cells. One that keeps an old field's id keeps how its crop was doing (its growth and any harvest
+ * waiting, trimmed to what its new size yields); a new field, or one painted over with the other crop, is sown fresh. Its
+ * fertility is always its cells' (grid.fertility), as farming left them.
  */
 function fieldOf2(g: Grid, id: number, crop: Crop, cells: number[], was: Field | undefined): Field {
   let bounds: Rect | undefined, wet = 0;
   for (const i of cells) { const ix = i % g.nx; bounds = addCell(bounds, ix, (i - ix) / g.nx); wet += g.moisture[i]; }
   const areaM2 = cells.length * g.cell * g.cell, kept = was?.crop === crop ? was : undefined;
-  const fertility = was ? was.fertility : soilFertility(g, cells);
+  const fertility = soilFertility(g, cells);
   const f: Field = {
     id, crop, cellCount: cells.length, areaM2, avgMoisture: cells.length > 0 ? wet / cells.length : 0,
     bounds: bounds ?? { x0: 0, z0: 0, x1: -1, z1: -1 },

@@ -2,12 +2,13 @@
 // batteries hold. Solar canopies follow the sun and the clouds, wind turbines the live gusts, water wheels the brook
 // (steady, day and night). Batteries soak up the surplus and carry the homestead through the night; when a network
 // can't meet its demand, it sheds its workshops first (they pause), and that is a blackout.
+import { chargingAtGarage } from '../carts.ts';
 import { CATALOG } from '../catalog.ts';
 import { formatClock, isNight, sunFactor } from '../clock.ts';
 import { clamp } from '../geom.ts';
 import { must } from '../result.ts';
 import type { GameState, Thing } from '../state.ts';
-import type { ThingRuntime } from '../workshops.ts';
+import { describeRuntime, syncRuntime, type ThingRuntime } from '../workshops.ts';
 import { feeds, roleOf } from './nodes.ts';
 import { networksOf } from './radius.ts';
 
@@ -26,7 +27,8 @@ export const SOLAR_PEAK_W = 3;
 export const CLOUD_DIM = 0.55;
 export const TURBINE_BASE_W = 0.5, TURBINE_SPAN_W = 4, TURBINE_FULL_WIND = 12;
 export const WATERWHEEL_W = 3.2;
-export const BATTERY_WH = 18, BATTERY_RATE_W = 6, BATTERY_START = 0.5;
+/** A Battery's store and the most it gives or takes. A new one is built empty (workshops.ts). */
+export const BATTERY_WH = 18, BATTERY_RATE_W = 6;
 /** The Garage's draw while it charges a cart, and idle. */
 export const GARAGE_CHARGE_W = 1.5, GARAGE_IDLE_W = 0.2;
 /** The Farmhouse's draw at night (lamps lit) and by day. */
@@ -57,7 +59,7 @@ export interface PowerSummary {
 /** A producer's watts now. */
 export function generationOf(s: GameState, t: Thing, hour: number, env: SimEnv): number {
   switch (t.kind) {
-    case 'solar': return sunFactor(hour) * (1 - CLOUD_DIM * clamp(env.cloudCover, 0, 1)) * SOLAR_PEAK_W * (1 - treeShade(s, t));
+    case 'solar': return sunFactor(hour, s.season) * (1 - CLOUD_DIM * clamp(env.cloudCover, 0, 1)) * SOLAR_PEAK_W * (1 - treeShade(s, t));
     case 'turbine': return (TURBINE_BASE_W + clamp(env.windSpeed / TURBINE_FULL_WIND, 0, 1) * TURBINE_SPAN_W) * ridge(s, t);
     case 'waterwheel': return WATERWHEEL_W;
     default: return 0;
@@ -78,13 +80,14 @@ function ridge(s: GameState, t: Thing): number {
   return 1 + clamp((t.padTargetY - base) / 8, -0.15, 0.25);
 }
 
-/** A load's watts now: workshops while they work, the farmhouse's lamps at night, the garage while it charges a cart. */
+/** A load's watts now: workshops while they work, the farmhouse's lamps at night, the garage while it charges a cart
+ * parked at it (not one left at its old site after it moved). */
 export function demandOf(s: GameState, t: Thing, r: ThingRuntime, hour: number): number {
   const def = CATALOG[t.kind];
   switch (t.kind) {
-    case 'farmhouse': return isNight(hour) ? FARMHOUSE_NIGHT_W : FARMHOUSE_DAY_W;
-    case 'garage': return s.sim.carts.some((c) => c.state === 'charging' && c.battery < 1) ? GARAGE_CHARGE_W : GARAGE_IDLE_W;
-    case 'lantern': return isNight(hour) ? def.powerDemand : 0;
+    case 'farmhouse': return isNight(hour, s.season) ? FARMHOUSE_NIGHT_W : FARMHOUSE_DAY_W;
+    case 'garage': return s.sim.carts.some((c) => chargingAtGarage(s, c)) ? GARAGE_CHARGE_W : GARAGE_IDLE_W;
+    case 'lantern': return isNight(hour, s.season) ? def.powerDemand : 0;
     case 'mill': case 'bakery': case 'coop': return r.working ? def.powerDemand : 0;
     default: return 0;
   }
@@ -93,7 +96,10 @@ export function demandOf(s: GameState, t: Thing, r: ThingRuntime, hour: number):
 /** Who goes without first when a network runs short: workshops pause before the hens, the garage and the home go dark. */
 const SHED_ORDER: Partial<Record<Thing['kind'], number>> = { farmhouse: 0, garage: 1, coop: 2, lantern: 3, mill: 4, bakery: 5 };
 
-/** Runs the power for `dtH` game hours at `hour`; returns the networks that fell into a blackout on this step. */
+/**
+ * Runs the power for `dtH` game hours at `hour`; returns the networks that fell into a blackout on this step. With `dtH`
+ * 0 it only reads the power as it stands (refreshPower): a battery with any charge can give its rate, and none is drawn.
+ */
 export function stepPower(s: GameState, dtH: number, hour: number, env: SimEnv): PowerNetwork[] {
   const rt = s.sim.things, { emitters, netOf, loads, loadNets } = networksOf(s);
   const was = new Map(s.sim.networks.map((n) => [n.id, n.blackout]));
@@ -127,7 +133,11 @@ export function stepPower(s: GameState, dtH: number, hour: number, env: SimEnv):
   asks.sort((a, b) => (SHED_ORDER[a.t.kind] ?? 9) - (SHED_ORDER[b.t.kind] ?? 9) || a.t.id - b.t.id);
 
   // Serve the loads in order while the networks' producers and batteries can.
-  const left = new Map([...nets.values()].map((n) => [n.id, n.generationW + Math.min(n.batteries.length * BATTERY_RATE_W, dtH > 0 ? n.batteryWh / dtH : Infinity)]));
+  const canGive = (n: { batteries: ThingRuntime[]; batteryWh: number }) => {
+    const rate = n.batteries.length * BATTERY_RATE_W;
+    return dtH > 0 ? Math.min(rate, n.batteryWh / dtH) : n.batteryWh > 1e-9 ? rate : 0;
+  };
+  const left = new Map([...nets.values()].map((n) => [n.id, n.generationW + canGive(n)]));
   const short: Thing[] = [];
   for (const a of asks) {
     const fed = a.nets.filter((n) => n.fed);
@@ -180,5 +190,18 @@ export function stepPower(s: GameState, dtH: number, hour: number, env: SimEnv):
     const fix = hasStore ? 'add a Water Wheel or another Battery' : 'add a Battery or a Water Wheel';
     sum.lastBlackoutReason = `Blackout on ${formatClock(s.sim.day, hour)}: the ${names} went without power. To carry it, ${fix}.`;
   }
+  return fresh;
+}
+
+/**
+ * Reads the power again as the homestead stands now, with no time passing: what each network makes and asks for, what's
+ * powered, any blackout and the totals, and each building's card. Batteries keep their charge, and recipes, carts, the
+ * clock and the brief stay put. For an edit or a jump of the clock while the game is paused, so the power view and the
+ * workshops' lights show it at once. Returns the networks it found newly in a blackout.
+ */
+export function refreshPower(s: GameState, env: SimEnv): PowerNetwork[] {
+  syncRuntime(s);
+  const fresh = stepPower(s, 0, env.hour ?? s.sim.hour, env);
+  for (const r of s.sim.things.values()) r.status = describeRuntime(s, r);
   return fresh;
 }
