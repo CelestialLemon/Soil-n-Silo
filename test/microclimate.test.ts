@@ -34,13 +34,17 @@ test('shade reduces solar generation and turbine wind, and keeps hens comfortabl
 test('canopy coverage helps at summer noon and shades the field on an overcast day', () => {
   const s = land({ height: () => 0 }), f = fieldAt(s, 'wheat', 0, 0, 1.8);
   s.sim.hour = 12;
-  const growth = (weather: string) => {
+  const growth = (cloud: number) => {
     f.growth = 0;
-    growCrops(s, 1, 1, weather);
+    growCrops(s, 1, 1, 'scattered', cloud);
     return f.growth;
   };
-  const open = growth('clear');
+  const open = growth(0);
   building(s, 'solar', 0, 0);
-  assert.ok(growth('clear') >= open * 1.1);
-  assert.ok(growth('overcast') <= open * 0.91);
+  assert.ok(growth(0) >= open * 1.1);
+  s.sim.hour = 10.99;
+  const morning = growth(0);
+  assert.ok(growth(0.65) <= morning * 0.91);
+  s.sim.hour = 11;
+  assert.ok(growth(0) >= morning);
 });

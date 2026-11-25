@@ -86,7 +86,7 @@ export function createRing(root: HTMLElement, cb: UiCallbacks, toast: (message: 
   remove.append(icon('remove'), removeText);
   actions.append(move, left, right, remove);
 
-  const preference = button('ui-cart-btn', 'Cycle production preference', withId(id => cb.onCyclePreference(id)));
+  const preference = button('ui-cart-btn ui-ring-pref', 'Cycle production preference', withId(id => cb.onCyclePreference(id)));
   inner.append(head, status, detail, meta, preference, carts, actions);
   card.append(inner);
   layer.append(anchor, card);

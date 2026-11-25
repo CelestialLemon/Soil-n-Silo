@@ -50,7 +50,7 @@ export function stepSim(s: GameState, dtSeconds: number, env: SimEnv): SimTickRe
     for (const n of stepPower(s, dtH, mid, env)) out.events.push({ type: 'blackout', message: s.sim.powerSummary.lastBlackoutReason, id: n.id });
     advanceRecipes(s, dtH, env.weather);
     stepEcology(s, dtH, env);
-    const crops = growCrops(s, dtH, sunFactor(mid, s.season) * (1 - 0.35 * Math.min(1, Math.max(0, env.cloudCover))), env.weather);
+    const crops = growCrops(s, dtH, sunFactor(mid, s.season) * (1 - 0.35 * Math.min(1, Math.max(0, env.cloudCover))), env.weather, env.cloudCover);
     if (crops.stagesChanged) out.fieldStagesChanged = true;
     for (const f of crops.ripened) out.events.push({ type: 'ripe', message: `The ${GOOD_LABELS[f.crop].label} field is ripe: ${f.harvestReady} to bring in.`, id: f.id });
     const carts = stepCarts(s, dtSec, mid, out.events);

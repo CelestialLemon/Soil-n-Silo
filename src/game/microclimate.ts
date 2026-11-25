@@ -52,45 +52,74 @@ export function erosionDrain(s: GameState, f: Field): number {
 
 export const flowerDrift = (seed: number, x: number, z: number) => noise2(seed, x * 0.09 + 31, z * 0.09 - 17);
 
-interface Site { fields: Field[]; meadow: boolean }
-const sites = new WeakMap<Thing, { revision: number; site: Site }>();
+interface Site { fields: Field[]; cells: Map<number, number[]>; meadow: boolean }
+const sites = new WeakMap<Thing, { key: string; site: Site }>();
 export function serviceSite(s: GameState, t: Thing): Site {
   const hit = sites.get(t);
-  if (hit?.revision === s.revision) return hit.site;
-  if (!hasServiceRadius(t.kind)) return { fields: [], meadow: false };
+  const key = `${s.revision}:${t.x},${t.z}`;
+  if (hit?.key === key) return hit.site;
+  if (!hasServiceRadius(t.kind)) return { fields: [], cells: new Map(), meadow: false };
   const radius = SERVICE_RADIUS[t.kind];
   const g = s.grid, rect = rectOfWorld(g, t.x - radius, t.z - radius, t.x + radius, t.z + radius);
-  const ids = new Set<number>();
+  const cells = new Map<number, number[]>();
   let meadow = false;
   if (rect) for (let z = rect.z0; z <= rect.z1; z++) for (let x: number = rect.x0; x <= rect.x1; x++) {
     const p = { x: cellX(g, x), z: cellZ(g, z) }, i = z * g.nx + x;
     if (distance(t, p) > radius) continue;
-    if (g.fieldOf[i]) ids.add(g.fieldOf[i]);
-    else if (g.cover[i] === COVER.grass && g.worked[i] < 25 && flowerDrift(s.seed, p.x, p.z) > 0.15) meadow = true;
+    if (g.fieldOf[i]) {
+      const id = g.fieldOf[i];
+      if (!cells.has(id)) cells.set(id, []);
+      cells.get(id)?.push(i);
+    } else if (g.cover[i] === COVER.grass && g.worked[i] < 25 && flowerDrift(s.seed, p.x, p.z) > 0.15) meadow = true;
   }
-  const site = { fields: s.fields.filter(f => ids.has(f.id)), meadow };
-  sites.set(t, { revision: s.revision, site });
+  const site = { fields: s.fields.filter(f => cells.has(f.id)), cells, meadow };
+  sites.set(t, { key, site });
   return site;
 }
 
 export function forageRate(s: GameState, t: Thing, env: SimEnv): number {
-  if (isNight(s.sim.hour, s.season) || ['rain', 'soft-rain', 'storm'].includes(env.weather ?? '')) return 0;
-  const site = serviceSite(s, t), flowers = site.fields.filter(f => f.crop === 'beans').length;
-  if (!flowers && (!site.meadow || s.season === 'winter')) return 0;
+  if (s.season === 'winter' || isNight(s.sim.hour, s.season) || ['rain', 'soft-rain', 'storm', 'snow', 'blizzard'].includes(env.weather ?? '')) return 0;
+  const site = serviceSite(s, t);
+  const flowers = floweringArea(s, t);
+  if (!flowers && !site.meadow) return 0;
   const wind = env.windSpeed * (1 - windShelter(s, t));
-  return (1 + Math.min(3, flowers) * 0.2) * clamp(1 - (wind - 9) / 5, 0, 1);
+  return (1 + Math.min(3, flowers / 20) * 0.2) * clamp(1 - (wind - 9) / 5, 0, 1);
 }
 
-export function effectiveMoisture(s: GameState, f: Field): number {
-  let moisture = f.avgMoisture;
+export function floweringArea(s: GameState, t: Thing): number {
+  const site = serviceSite(s, t);
+  return site.fields.reduce((area, f) => area + (f.crop === 'beans' && f.growth >= 0.45
+    ? (site.cells.get(f.id)?.length ?? 0) * s.grid.cell ** 2 : 0), 0);
+}
+
+export function pollinationCoverage(s: GameState, f: Field): number {
+  const covered = new Set<number>();
+  for (const t of s.things) if (t.kind === 'beehive' && s.sim.things.get(t.id)?.working)
+    for (const cell of serviceSite(s, t).cells.get(f.id) ?? []) covered.add(cell);
+  return covered.size / f.cellCount;
+}
+
+// Each cell takes the strongest water source. Tanks serving the same cell share its cost.
+export function effectiveMoisture(s: GameState, f: Field, drain?: Map<number, number>): number {
+  const watered = new Map<number, number[]>();
   for (const t of s.things) {
-    if (t.kind !== 'rain_tank' && t.kind !== 'sprinkler') continue;
-    if (!serviceSite(s, t).fields.includes(f)) continue;
     const r = s.sim.things.get(t.id);
-    if (t.kind === 'sprinkler' && r?.powered) moisture = Math.max(moisture, 0.75);
-    if (t.kind === 'rain_tank' && r && r.water > 0) moisture = Math.max(moisture, 0.32);
+    const sprinkler = t.kind === 'sprinkler' && (r?.watts ?? 0) > 0;
+    if (!sprinkler && !(t.kind === 'rain_tank' && r && r.water > 0)) continue;
+    for (const cell of serviceSite(s, t).cells.get(f.id) ?? []) {
+      const tanks = watered.get(cell);
+      if (sprinkler) watered.set(cell, []);
+      else if (!tanks) watered.set(cell, [t.id]);
+      else if (tanks.length) tanks.push(t.id);
+    }
   }
-  return moisture;
+  let lift = 0;
+  for (const tanks of watered.values()) {
+    lift += Math.max(0, (tanks.length ? 0.32 : 0.75) - f.avgMoisture);
+    if (drain && !f.harvestReady && f.avgMoisture < 0.32)
+      for (const id of tanks) drain.set(id, (drain.get(id) ?? 0) + s.grid.cell ** 2 / tanks.length);
+  }
+  return f.avgMoisture + lift / f.cellCount;
 }
 
 export const hotMidday = (s: GameState, weather?: string) => (s.season === 'summer' || weather === 'heat-wave') && s.sim.hour >= 11 && s.sim.hour < 16;

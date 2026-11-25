@@ -40,9 +40,11 @@ export interface BriefState { order: PantryOrderSeal; livingLand: LivingLandSeal
 export type SealId = 'order' | 'livingLand' | 'steadyHomestead';
 export const SEAL_LABELS: { readonly [K in SealId]: string } = { order: 'The Pantry Order', livingLand: 'Living Land', steadyHomestead: 'Steady Homestead' };
 
-export function blankBrief(): BriefState {
+export function blankBrief(season: GameState['season'] = 'spring'): BriefState {
+  const targets = { ...PANTRY_ORDER };
+  if (season === 'winter') delete targets.honey;
   return {
-    order: { targets: { ...PANTRY_ORDER }, delivered: {}, progress: 0, done: false },
+    order: { targets, delivered: {}, progress: 0, done: false },
     livingLand: { plantedM2: 0, avgFertility: 0, targetM2: LIVING_LAND_M2, targetFertility: LIVING_LAND_FERTILITY, progress: 0, done: false },
     steadyHomestead: { hours: 0, targetHours: STEADY_HOURS, running: false, resetReason: '', progress: 0, done: false },
     restored: false,

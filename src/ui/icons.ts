@@ -12,6 +12,12 @@ const PATHS = {
   bakery: 'M3.5 14a8.5 5.5 0 0 1 17 0v5h-17zM8 11.2l1.2 2.4M12 10.2v2.8M16 11.2l-1.2 2.4',
   // A hen house on stilts with an arched pop-hole and its ramp.
   coop: 'M3.5 10.5L12 4.5l8.5 6M6 9v7h12V9M10.5 16v-2.4a1.5 1.5 0 0 1 3 0V16M7.5 16v4.5M16.5 16v4.5M10.5 16l-3.5 4.5',
+  // A tiered skep on its stand with a small entrance.
+  beehive: 'M4 20h16M5 17h14l-1-4H6zM6 13l1-4h10l1 4M8 9l1-4h6l1 4M11 17v-2h2v2',
+  // A lidded barrel with a water line and a spout.
+  rain_tank: 'M5 6c0-3 14-3 14 0s-14 3-14 0zm0 0v12c0 3 14 3 14 0V6M6 13h12M18 16h3v3',
+  // A riser with a spray head throwing droplets.
+  sprinkler: 'M7 21h10M12 21v-9M8 12h8M4 9l-2-1m4-2L4 4m5 1L8 2m8 3 1-3m1 4 2-2m0 5 2-1',
   // A slatted bin with a sprout coming up out of it.
   composter: 'M4 10h16M5.2 10l1.1 10.5h11.4L18.8 10M9.6 10l-.3 10.5M14.4 10l.3 10.5M12 10V6.8M12 7.2c-1.8 0-3-1-3-2.8 1.8 0 3 1 3 2.8zM12 7.2c1.8 0 3-1 3-2.8-1.8 0-3 1-3 2.8z',
   // A low shed with a slatted roll-up door.

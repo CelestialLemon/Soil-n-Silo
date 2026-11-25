@@ -1,5 +1,7 @@
 // Every edit the player makes, as data, through one door: `apply` checks it against the rules, changes the state if it's
 // allowed, and says what changed (or, unchanged, why not).
+import { runtimeOf } from './workshops.ts';
+import { addGood, countOf, takeGood } from './goods.ts';
 import { buyCart, retireCart } from './carts.ts';
 import type { ThingKind } from './catalog.ts';
 import { emptyChange, type Change } from './change.ts';
@@ -53,13 +55,14 @@ export function apply(s: GameState, a: Action): Result<Change, string> {
     case 'plantTree': return plantTree(s, a.x, a.z, a.species);
     case 'removeTree': return removeTree(s, a.id);
     case 'setRecipe': {
-      const r = s.sim.things.get(a.id);
+      const r = runtimeOf(s, a.id);
       if (r?.kind !== 'bakery') return err('Choose a Bakery to change its recipe');
       r.recipe = a.recipe;
+      if (a.recipe === 'bread') addGood(r.outputs, 'honey', takeGood(r.inputs, 'honey', countOf(r.inputs, 'honey')));
       return ok(emptyChange(s.revision));
     }
     case 'setByproductPriority': {
-      const r = s.sim.things.get(a.id);
+      const r = runtimeOf(s, a.id);
       if (!r || (r.kind !== 'mill' && r.kind !== 'coop')) return err('Choose a Mill or Coop');
       if ((a.target === 'silo' && r.kind !== 'coop') || (a.target === 'coop' && r.kind !== 'mill')) return err('Choose a destination for this byproduct');
       r.priority = a.target;

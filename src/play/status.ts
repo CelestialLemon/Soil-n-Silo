@@ -2,7 +2,7 @@
 // and the power), a clicked thing's plain lines ("Grinding wheat into flour · 40%", "Stock: 4 Wheat") and its card's
 // extras (the Garage's carts, the refund), and the sky's weather in the strip's four words.
 import {
-  BATTERY_WH, CART_COST, CATALOG, serviceSite, windShelter, treeShade, diagnoseIdleCarts, channelSummary, countOf, describeInventory, describeRuntime, type GameState, type Good,
+  BATTERY_WH, CART_COST, CATALOG, floweringArea, serviceSite, windShelter, treeShade, channelSummary, countOf, describeInventory, describeRuntime, type GameState, type Good,
   GOOD_LABELS, isNight, isWorkshop, MAX_CARTS, polylineDistance, runtimeOf, SILO_CAP, type Thing, type ThingKind, toWorld,
   totalStored,
 } from '../game/index.ts';
@@ -86,9 +86,9 @@ export function thingStatus(s: GameState, t: Thing, hour: number): { line: strin
         let note = '';
         if (t.kind === 'coop' && treeShade(s, t, 10)) note = ' · Shaded by trees';
         if (t.kind === 'beehive') {
-          const flowers = serviceSite(s, t).fields.filter(f => f.crop === 'beans').length;
-          const forage = flowers ? `${flowers} flowering field${flowers === 1 ? '' : 's'}`
-            : serviceSite(s, t).meadow && s.season !== 'winter' ? 'Meadow flowers' : 'Plant beans nearby';
+          const flowers = floweringArea(s, t);
+          const forage = s.season === 'winter' ? 'Resting until spring' : flowers ? `${flowers} m² of flowering beans`
+            : serviceSite(s, t).meadow ? 'Meadow flowers' : 'Plant beans nearby';
           note = `${windShelter(s, t) > 0.1 ? ' · Sheltered' : ''} · ${forage}`;
         }
         return say(describeRuntime(s, r) + note);
@@ -129,7 +129,7 @@ const watts = (w: number) => `${w.toFixed(1)} W`;
  * A clicked building's second line: its stock (a workshop's goods in and out, the Silo's fill, the Depot's order), its
  * power (what a source makes, a battery's store and which way it's going), or what its carts are about (the Garage).
  */
-export function thingDetail(s: GameState, t: Thing): string | undefined {
+export function thingDetail(s: GameState, t: Thing, diagnosis: string | null = null): string | undefined {
   const r = runtimeOf(s, t.id);
   if (!r) return undefined;
   const net = s.sim.networks.find((n) => n.id === r.powerNetId);
@@ -143,7 +143,6 @@ export function thingDetail(s: GameState, t: Thing): string | undefined {
     case 'silo': return `${totalStored(r.outputs)} / ${SILO_CAP} stored`;
     case 'depot': return s.sim.brief.order.done ? undefined : `Order: ${orderLine(s)}`;
     case 'garage': {
-      const diagnosis = diagnoseIdleCarts(s);
       if (diagnosis) return diagnosis;
       const cart = s.sim.carts.find((c) => c.state !== 'idle') ?? s.sim.carts[0];
       return cart ? `Cart ${cart.id} · ${Math.round(cart.battery * 100)}% · ${cart.jobDesc}` : undefined;

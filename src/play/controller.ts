@@ -77,6 +77,7 @@ export class Play implements UiCallbacks {
   private welcomed = false;
 
   private stats: ValleyStats;
+  private harvestDiagnosis: string | null = null;
   private statsDirty = true;
   private statsClock = 0;
   /** The tracks the valley came with (the Depot's stub): not the player's work. */
@@ -148,11 +149,6 @@ export class Play implements UiCallbacks {
           if (!this.blackoutSaid && !reset) ui?.showToast(e.message, 'warn');
           this.blackoutSaid = true;
           break;
-        case 'ripe': {
-          const hint = !this.harvestHintSaid && diagnoseIdleCarts(this.state);
-          if (hint) { ui?.showToast(hint); this.harvestHintSaid = true; }
-          break;
-        }
       }
     }
     if (!this.state.sim.powerSummary.anyBlackout) this.blackoutSaid = false;
@@ -178,7 +174,15 @@ export class Play implements UiCallbacks {
   private renderUi() {
     const ui = this.ui;
     if (!ui) return;
-    if (this.statsDirty) { this.stats = valleyStats(this.state, this.starterTracks); this.statsDirty = false; }
+    if (this.statsDirty) {
+      this.stats = valleyStats(this.state, this.starterTracks);
+      this.harvestDiagnosis = diagnoseIdleCarts(this.state);
+      if (this.harvestDiagnosis && !this.harvestHintSaid) {
+        this.ui?.showToast(this.harvestDiagnosis);
+        this.harvestHintSaid = true;
+      }
+      this.statsDirty = false;
+    }
     const hour = this.world.getHour(), selected = this.selectedView(hour);
     const snapshot: UiSnapshot = {
       activeTool: this.tool, yawMode: this.world.getYawMode(), powerView: this.powerView, hour, day: this.state.sim.day,
@@ -216,11 +220,12 @@ export class Play implements UiCallbacks {
     };
     if (status.connected !== undefined) view.connected = status.connected;
     if (def.immovable) view.immovable = true;
-    const detail = thingDetail(this.state, t);
+    const detail = thingDetail(this.state, t, this.harvestDiagnosis);
     if (detail !== undefined) view.detailLine = detail;
     const r = this.state.sim.things.get(t.id);
-    if (t.kind === 'bakery' && r) view.preference = `Baking: ${r.recipe === 'bread' ? 'Bread' : 'Honey Cake'}`;
-    if ((t.kind === 'mill' || t.kind === 'coop') && r)
+    if (t.kind === 'bakery' && r) view.preference = `Recipe: ${r.recipe === 'bread' ? 'Bread' : 'Honey Cake'}`;
+    if ((t.kind === 'mill' || t.kind === 'coop') && r && this.state.things.some(v => v.kind === 'composter')
+      && this.state.things.some(v => v.kind === (t.kind === 'mill' ? 'coop' : 'silo')))
       view.preference = `${t.kind === 'mill' ? 'Bran' : 'Manure'} → ${r.priority[0].toUpperCase() + r.priority.slice(1)}`;
     if (t.kind === 'garage') view.cartControls = cartControls(this.state);
     return view;

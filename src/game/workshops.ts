@@ -5,7 +5,7 @@
 // Each building's live side (its goods, recipe, power and the one plain line its floating card shows) is a ThingRuntime,
 // kept by id in `state.sim.things` beside the placed Thing; it comes and goes with the building.
 import { CATALOG, isWorkshop, type ThingKind, type WorkshopKind } from './catalog.ts';
-import { forageRate, hotMidday, serviceSite, treeShade } from './microclimate.ts';
+import { forageRate, hotMidday, effectiveMoisture, treeShade } from './microclimate.ts';
 import type { SimEnv } from './power/sim.ts';
 import { isNight } from './clock.ts';
 import { addGood, capacity, countOf, describeInventory, GOOD_LABELS, type Good, type Inventory, takeGood, totalStored } from './goods.ts';
@@ -64,6 +64,8 @@ export function recipeOf(kind: WorkshopKind, r: ThingRuntime, current = false): 
 }
 
 export function stepEcology(s: GameState, dtH: number, env: SimEnv): void {
+  const drain = new Map<number, number>();
+  for (const f of s.fields) if (!f.harvestReady && f.avgMoisture < 0.32) effectiveMoisture(s, f, drain);
   for (const t of s.things) {
     if (t.kind !== 'beehive' && t.kind !== 'rain_tank') continue;
     const r = s.sim.things.get(t.id);
@@ -71,9 +73,8 @@ export function stepEcology(s: GameState, dtH: number, env: SimEnv): void {
     if (t.kind === 'rain_tank') {
       const rain = ['rain', 'soft-rain', 'storm'].includes(env.weather ?? '');
       const refill = rain ? 0.18 : env.weather === 'overcast' ? 0.05 : s.sim.hour >= 5 && s.sim.hour < 8 ? 0.02 : 0;
-      const irrigating = serviceSite(s, t).fields.some(f => f.avgMoisture < 0.32 && !s.things.some(v =>
-        v.kind === 'sprinkler' && s.sim.things.get(v.id)?.powered && serviceSite(s, v).fields.includes(f)));
-      r.water = Math.max(0, Math.min(1, r.water + dtH * (refill - (irrigating ? 0.025 : 0))));
+      // A 25 m² bed consumes 2.5% of a reserve per game hour.
+      r.water = Math.max(0, Math.min(1, r.water + dtH * (refill - 0.001 * (drain.get(t.id) ?? 0))));
     } else {
       const rate = forageRate(s, t, env);
       r.working = rate > 0;
@@ -102,7 +103,7 @@ export function siloRoom(r: ThingRuntime, good?: Good): number {
  * and building it again can't make energy). */
 const blank = (id: number, kind: ThingKind): ThingRuntime => ({
   id, kind, inputs: {}, outputs: {}, progress: 0, working: false, powered: false, powerNetId: -1,
-  water: kind === 'rain_tank' ? 0.6 : 0, recipe: 'bread', batch: 'bread', priority: 'auto',
+  water: 0, recipe: 'bread', batch: 'bread', priority: 'auto',
   charge: 0, siloFill: 0, watts: 0, made: 0, status: '',
 });
 
@@ -197,7 +198,7 @@ export function describeRuntime(s: GameState, r: ThingRuntime): string {
   }
   switch (r.kind) {
     case 'rain_tank': return `Rainwater · ${Math.round(r.water * 100)}% full`;
-    case 'sprinkler': return r.powered ? 'Watering nearby fields · 1 W' : dark;
+    case 'sprinkler': return r.watts > 0 ? 'Watering nearby fields · 1 W' : r.powered ? 'Waiting for dry crops' : dark;
     case 'beehive': return `${r.working ? 'Bees foraging' : 'Bees resting'} · ${countOf(r.outputs, 'honey')} Honey`;
     case 'silo': return totalStored(r.outputs) > 0 ? `Storing ${totalStored(r.outputs)} / ${SILO_CAP} · ${describeInventory(r.outputs)}` : `Empty · stores up to ${SILO_CAP} goods`;
     case 'depot': {
