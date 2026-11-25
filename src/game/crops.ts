@@ -94,6 +94,17 @@ export function fieldMoisture(s: GameState, f: Field, weather?: string, coverage
 const frostedNow = (s: GameState, f: Field) => f.harvestReady === 0 && (fieldTempC(s, f, s.sim.weather.tempC) <= 0 || s.sim.weather.snowDepth >= SNOW_BURIES);
 
 /**
+ * Whether frost or snow actually stalls this growing field: beans stall at 0°C, hardy wheat grows down to WHEAT_HARDY_C
+ * (-2°C), and deep snow buries both. Used by both `growCrops` and Steady Homestead so they never disagree.
+ */
+export function fieldFrostStalled(s: GameState, f: Field): boolean {
+  if (f.harvestReady > 0) return false;
+  if (s.sim.weather.snowDepth >= SNOW_BURIES) return true;
+  const air = fieldTempC(s, f, s.sim.weather.tempC);
+  return f.crop === 'beans' ? air <= 0 : air < WHEAT_HARDY_C;
+}
+
+/**
  * Reads every field's frost and flood afresh from the weather and the water as they stand, growing nothing: after the clock
  * jumps or the weather lock changes while the clock is stopped, so a field's card never shows the last running tick's.
  */
@@ -111,14 +122,13 @@ export function refreshFieldWeather(s: GameState): void {
 export function growCrops(s: GameState, dtH: number, sun: number, weather?: string, cloudCover = 0): { ripened: Field[]; stagesChanged: boolean } {
   const ripened: Field[] = [];
   let stagesChanged = false;
-  const cover = agrivoltaicCoverage(s), w = s.sim.weather;
+  const cover = agrivoltaicCoverage(s);
   for (const f of s.fields) {
     if (f.harvestReady > 0) { f.frosted = false; continue; }
     const before = cropStage(f);
     f.frosted = frostedNow(s, f);
-    const air = fieldTempC(s, f, w.tempC), buried = w.snowDepth >= SNOW_BURIES;
     if (f.flooded) continue;
-    if (f.frosted && (f.crop === 'beans' || buried || air < WHEAT_HARDY_C)) {
+    if (fieldFrostStalled(s, f)) {
       if (f.crop === 'beans' && dtH > 0) f.growth = Math.max(Math.min(f.growth, REPLANT_GROWTH), f.growth - FROST_SETBACK * dtH);
       if (cropStage(f) !== before) stagesChanged = true;
       continue;

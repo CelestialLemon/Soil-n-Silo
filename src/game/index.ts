@@ -80,7 +80,7 @@ export {
   isGood, takeGood, totalStored,
 } from './goods.ts';
 export {
-  agrivoltaicCoverage, COMPOST_BOOST, compostField, cropStage, fertilityFactor, fieldMoisture, fieldYield, FROST_SETBACK, growCrops, HEAT_C,
+  agrivoltaicCoverage, COMPOST_BOOST, compostField, cropStage, fertilityFactor, fieldFrostStalled, fieldMoisture, fieldYield, FROST_SETBACK, growCrops, HEAT_C,
   HEAT_EVAPORATION, SNOW_BURIES, WHEAT_HARDY_C, growthRate, GROWTH_RATE,
   HARVEST_FERTILITY, harvestField, lightFactor, MIN_FERTILITY, moistureFactor, naturalFertility, refreshFieldWeather, REPLANT_GROWTH, REST_PER_DAY,
   restSoil, SOIL_FERTILITY, soilFertility, SOWN_GROWTH, WATERED, wateredness,

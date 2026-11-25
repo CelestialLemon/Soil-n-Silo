@@ -176,16 +176,21 @@ export function overlayFlood(s: GameState, surge: number, level: Float32Array, d
       const jx = ix + dx, jz = iz + dz;
       if (jx < 0 || jz < 0 || jx >= nx || jz >= nz) continue;
       const j = jz * nx + jx;
-      if (isWet(g.baseWaterLevel[j]) || off[j] > reach) continue;
+      if (off[j] > reach) continue;
       const top = Math.fround(surf[i] - FLOOD_FALL * (dx && dz ? Math.SQRT2 : 1) * g.cell - Math.max(0, rel[j] - rel[i]));
-      if (top - cellGround(g, jx, jz) <= FLOOD_MIN || top <= surf[j]) continue;
+      const dry = !isWet(g.baseWaterLevel[j]);
+      if ((dry && top - cellGround(g, jx, jz) <= FLOOD_MIN) || top <= surf[j]) continue;
       surf[j] = top;
       push(j);
     }
   }
   for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < nx; ix++) {
     const i = iz * nx + ix;
-    if (!Number.isFinite(surf[i]) || isWet(g.baseWaterLevel[i])) continue;
+    if (!Number.isFinite(surf[i])) continue;
+    if (isWet(g.baseWaterLevel[i])) {
+      if (level[i] < surf[i]) level[i] = surf[i];
+      continue;
+    }
     const dp = surf[i] - cellGround(g, ix, iz);
     if (dp <= FLOOD_MIN) continue;
     depth[i] = dp;

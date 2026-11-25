@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   apply, CLOCK_JUMPED, FLOODED_FIELDS, FROSTED_FIELDS, type GameState, GREENHOUSE_FULL, homesteadRuns, must, OUTPUT_CAP, refreshFlood,
-  resetSteadyOnClockJump, runtimeOf, sandboxSupplies, SETUP_CHANGED, type SimEvent, stepSim, STEADY_HOURS, type ThingKind,
+  resetSteadyOnClockJump, runtimeOf, sandboxSupplies, SETUP_CHANGED, type SimEvent, stallReason, stepSim, STEADY_HOURS, type ThingKind,
 } from '../src/game/index.ts';
 import { fieldAt, flatLand } from './helpers.ts';
 
@@ -206,4 +206,26 @@ test('laying a track over the only field starts Steady Homestead over at once, s
   fieldAt(s, 'beans', -20, 6, 3);
   run(s, 0.5);
   assert.ok(h.running && h.hours > 0.4 && h.hours < 0.6, `counts from zero (${h.hours.toFixed(2)})`);
+});
+
+test('Steady Homestead matches crop frost rules: hardy wheat counts in light frost, and a ripe field cannot mask a frosted one', () => {
+  const { s } = buildings();
+  const h = s.sim.brief.steadyHomestead;
+  const wheat = fieldAt(s, 'wheat', -20, -6, 3);
+  wheat.growth = 0.3;
+  // Mild freezing air (-0.5°C, no snow): wheat is frosted visually but still grows down to -2°C, so Steady Homestead counts.
+  s.sim.weatherOverride = 'frost';
+  s.sim.hour = 3;
+  s.sim.weather.tempC = -0.5;
+  s.sim.weather.snowDepth = 0;
+  assert.equal(stallReason(s, false), '');
+  // Now add a ripe wheat field and a frost-stalled bean field: painting rebuilds s.fields, so mark all wheat fields ripe after.
+  fieldAt(s, 'wheat', 20, -6, 3);
+  fieldAt(s, 'beans', -20, 10, 3);
+  for (const f of s.fields) {
+    if (f.crop === 'wheat') f.harvestReady = 3;
+    else f.growth = 0.3;
+  }
+  assert.equal(stallReason(s, false), FROSTED_FIELDS);
+  assert.ok(h.hours === 0);
 });

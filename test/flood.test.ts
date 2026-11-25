@@ -188,8 +188,8 @@ test('a higher flood reaches a cell past a lower bank nearer to it', () => {
     assert.ok(Math.abs(level[i] - want) < 0.005, `x = ${x}: the higher surface ${want} m, not the nearer lower one (${level[i].toFixed(3)})`);
     assert.ok(depth[i] > FLOOD_MIN);
   }
-  // Beyond the low brook only its own (lower) water spreads: the high flood never crosses it.
-  assert.ok(Math.abs(level[cellOf(s, -4.5, 0.5)] - -0.03) < 0.005);
+  // Beyond the low brook, the higher flood wave crosses cleanly over it (thinned 3 cm/m, ~-0.01 m vs the low brook's -0.03 m).
+  assert.ok(level[cellOf(s, -4.5, 0.5)] > -0.02, `high flood crosses cleanly (${level[cellOf(s, -4.5, 0.5)].toFixed(3)} m)`);
 });
 
 test('a higher water source never lowers or dries the flood a lower one already reached', () => {
@@ -216,6 +216,26 @@ test('a higher water source never lowers or dries the flood a lower one already 
   }
   assert.ok(wet > 10, `the low brook floods the branch (${wet} cells)`);
   assert.ok(b.depth[cellOf(both, -2.5, 5.5)] > 0, 'up the branch, past the high pond\'s long run');
+});
+
+test('adding a lower natural water cell along a higher flood\'s path never dries downstream cells', () => {
+  // High perched pond on the west (x in [-6,-4], surface 0.8) flooding east across flat ground at 0 toward x = 2.
+  // In the second map, a lower natural water cell sits right in its path at x = -2 (surface 0.1): the higher flood
+  // passes cleanly across it rather than stopping at the lower water cell and drying x = 2.
+  const make = (midWater: boolean) => land({
+    height: () => 0,
+    water: (x, z) => (Math.abs(z) > 1 ? undefined : x >= -6 && x <= -4 ? 0.8 : midWater && x >= -2 && x <= -1 ? 0.1 : undefined),
+    depth: 0.5,
+  });
+  const flood = (s: GameState) => {
+    const level = Float32Array.from(s.grid.baseWaterLevel), depth = new Float32Array(s.grid.nx * s.grid.nz);
+    overlayFlood(s, 0.3, level, depth);
+    return { level, depth };
+  };
+  const plain = make(false), withMid = make(true), a = flood(plain), b = flood(withMid);
+  const downstream = cellOf(plain, 1.5, 0.5);
+  assert.ok(a.depth[downstream] > 0.3, `downstream wet without mid water (${a.depth[downstream].toFixed(3)} m)`);
+  assert.ok(b.depth[downstream] >= a.depth[downstream] - 1e-6, `downstream stays wet with mid water (${b.depth[downstream].toFixed(3)} m)`);
 });
 
 test('a U-shaped rill from the brook back to it is no swale even when a dry sill stops its water halfway', () => {

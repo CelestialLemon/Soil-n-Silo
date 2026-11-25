@@ -13,7 +13,7 @@ import { CATALOG, isWorkshop } from './catalog.ts';
 import type { SimEvent } from './events.ts';
 import { countOf, type Good, type Inventory } from './goods.ts';
 import type { GameState, Season } from './state.ts';
-import { fieldMoisture } from './crops.ts';
+import { fieldFrostStalled, fieldMoisture } from './crops.ts';
 import { greenhouseWarm } from './microclimate.ts';
 
 /**
@@ -144,20 +144,24 @@ export function stepBrief(s: GameState, dtH: number, events: SimEvent[]): void {
  * dry fields stall it (Steady Homestead pauses after DRY_GRACE_HOURS of it, and goes on once they're watered).
  */
 export function fieldsParched(s: GameState): boolean {
-  const growing = s.fields.filter((f) => f.harvestReady === 0 && !f.frosted && !f.flooded);
+  const growing = s.fields.filter((f) => f.harvestReady === 0 && !fieldFrostStalled(s, f) && !f.flooded);
   return growing.length > 0 && growing.every((f) => fieldMoisture(s, f, s.sim.weather.spell) < PARCHED);
 }
 
 /**
  * Why nothing grows on the homestead now (empty while something does): the hours only count while a crop is growing, in an
  * open field or under warm glass. With a warm Heated Greenhouse growing, nothing stalls it. Otherwise it stalls when every
- * field stands frosted or flooded, when the growing ones have stood parched past the grace hours (`dryStalled`), or, with no
- * field at all, when the Greenhouse is full and waits for a cart.
+ * growing field stands frost-stalled (same rule as `growCrops`: hardy wheat keeps growing down to -2°C) or flooded, when the
+ * growing ones have stood parched past the grace hours (`dryStalled`), or, with no field at all, when the Greenhouse is
+ * full and waits for a cart.
  */
 export function stallReason(s: GameState, dryStalled: boolean): string {
   if (s.things.some((t) => t.kind === 'greenhouse' && greenhouseWarm(s.sim.things.get(t.id)))) return '';
   if (s.fields.length === 0) return s.things.some((t) => t.kind === 'greenhouse') ? GREENHOUSE_FULL : '';
-  if (s.fields.every((f) => f.frosted || f.flooded)) return s.fields.some((f) => f.flooded) ? FLOODED_FIELDS : FROSTED_FIELDS;
+  const growing = s.fields.filter((f) => f.harvestReady === 0);
+  if (growing.length > 0 && growing.every((f) => f.flooded || fieldFrostStalled(s, f))) {
+    return growing.some((f) => f.flooded) ? FLOODED_FIELDS : FROSTED_FIELDS;
+  }
   return dryStalled ? DRY_FIELDS : '';
 }
 
