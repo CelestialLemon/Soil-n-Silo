@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { apply, cellX, cellZ, COVER, type Field, type GameState, must, placeThing, thingObb, obbDistance } from '../src/game/index.ts';
-import { flatLand } from './helpers.ts';
+import { apply, cellX, cellZ, COVER, type Field, fieldYield, type GameState, growCrops, must, placeThing, thingObb, obbDistance } from '../src/game/index.ts';
+import { flatLand, land } from './helpers.ts';
 
 /** The cells of a field, checked against its record. */
 function cellsOf(s: GameState, f: Field): number[] {
@@ -123,4 +123,42 @@ test('painting the other crop over all of a field draws it again, though it keep
   assert.deepEqual(cellsOf(s, beans), cells, 'the very same cells');
   assert.deepEqual(r.value.fields, wheat.bounds, 'it says the whole field is to be drawn again');
   assert.ok(r.value.revision > rev, 'and the valley has moved on');
+});
+
+test('pollination stays with the cells the bees visited: expanding dilutes it, shrinking keeps it, merging weighs it', () => {
+  const s = land({ height: () => 0 });
+  assert.ok(apply(s, { type: 'paintField', crop: 'wheat', points: [{ x: 0, z: 0 }], radius: 2 }).ok);
+  const small = s.fields[0], n0 = small.cellCount;
+  assert.equal(n0, 12);
+  small.pollinated = 1;
+  small.growth = 0.5;
+  // Expanding onto newly sown cells spreads only the old plot's share (it doesn't stay fully pollinated).
+  assert.ok(apply(s, { type: 'paintField', crop: 'wheat', points: [{ x: 0, z: 0 }, { x: 30, z: 0 }], radius: 3 }).ok);
+  const big = must(s.fields.find((f) => f.id === small.id), 'expanded field');
+  assert.equal(big.cellCount, 212);
+  assert.equal(big.pollinated, n0 / big.cellCount);
+  big.growth = 0.9999;
+  growCrops(s, 1, 1);
+  assert.equal(big.harvestReady, fieldYield(big, n0 / big.cellCount));
+  assert.ok(big.harvestReady < fieldYield(big, 1));
+
+  // Shrinking keeps the share the surviving cells had; splitting sows the smaller part fresh.
+  const t = land({ height: () => 0 });
+  assert.ok(apply(t, { type: 'paintField', crop: 'beans', points: [{ x: -20.5, z: 0.5 }, { x: 20.5, z: 0.5 }], radius: 2.6 }).ok);
+  t.fields[0].pollinated = 0.5;
+  assert.ok(apply(t, { type: 'eraseField', points: [{ x: 8.5, z: -5 }, { x: 8.5, z: 5 }], radius: 1.6 }).ok);
+  assert.equal(t.fields.length, 2);
+  const [larger, smaller] = [...t.fields].sort((a, b) => b.cellCount - a.cellCount);
+  assert.equal(larger.pollinated, 0.5);
+  assert.equal(smaller.pollinated, 0);
+
+  // Joining the two again weighs each part's share by its cells; the gap's new cells are unpollinated.
+  larger.pollinated = 1;
+  smaller.pollinated = 0.5;
+  const [a, b] = [larger.cellCount, smaller.cellCount];
+  assert.ok(apply(t, { type: 'paintField', crop: 'beans', points: [{ x: 6.5, z: 0.5 }, { x: 10.5, z: 0.5 }], radius: 2.6 }).ok);
+  assert.equal(t.fields.length, 1);
+  const joined = t.fields[0];
+  assert.ok(joined.cellCount > a + b);
+  assert.ok(Math.abs(joined.pollinated - (a + 0.5 * b) / joined.cellCount) < 1e-12);
 });

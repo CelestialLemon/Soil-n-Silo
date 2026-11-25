@@ -1,7 +1,7 @@
 // Every edit the player makes, as data, through one door: `apply` checks it against the rules, changes the state if it's
 // allowed, and says what changed (or, unchanged, why not).
-import { INPUT_CAP, runtimeOf } from './workshops.ts';
-import { addGood, capacity, countOf, takeGood } from './goods.ts';
+import { INPUT_CAP, runtimeOf, setOutHoney } from './workshops.ts';
+import { addGood, capacity, takeGood } from './goods.ts';
 import { buyCart, retireCart } from './carts.ts';
 import type { ThingKind } from './catalog.ts';
 import { emptyChange, type Change } from './change.ts';
@@ -58,7 +58,8 @@ export function apply(s: GameState, a: Action): Result<Change, string> {
       const r = runtimeOf(s, a.id);
       if (r?.kind !== 'bakery') return err('Choose a Bakery to change its recipe');
       r.recipe = a.recipe;
-      if (a.recipe === 'bread') addGood(r.outputs, 'honey', takeGood(r.inputs, 'honey', countOf(r.inputs, 'honey')));
+      // Honey the bread doesn't use goes out for the carts as the outputs have room (the rest follows as they empty).
+      if (a.recipe === 'bread') setOutHoney(r);
       else addGood(r.inputs, 'honey', takeGood(r.outputs, 'honey', capacity(r.inputs, INPUT_CAP)));
       return ok(emptyChange(s.revision));
     }

@@ -65,7 +65,7 @@ export function recipeOf(kind: WorkshopKind, r: ThingRuntime, current = false): 
 
 export function stepEcology(s: GameState, dtH: number, env: SimEnv): void {
   const drain = new Map<number, number>();
-  for (const f of s.fields) if (!f.harvestReady && f.avgMoisture < 0.32) effectiveMoisture(s, f, drain, env.weather);
+  for (const f of s.fields) if (!f.harvestReady) effectiveMoisture(s, f, drain, env.weather);
   for (const t of s.things) {
     if (t.kind !== 'beehive' && t.kind !== 'rain_tank') continue;
     const r = s.sim.things.get(t.id);
@@ -131,9 +131,22 @@ const pick = (inv: Inventory, input: RecipeInput) => input.options.find((g) => c
 /** Whether a workshop has room for a recipe's outputs. */
 const roomFor = (r: ThingRuntime, recipe: Recipe) => totalStored(r.outputs) + totalStored(recipe.outputs) <= OUTPUT_CAP;
 
+/** Room left in a workshop's outputs, keeping space for what the batch under way will make. */
+export function outputRoom(r: ThingRuntime): number {
+  const reserved = r.working && isWorkshop(r.kind) ? totalStored(recipeOf(r.kind, r, true).outputs) : 0;
+  return Math.max(0, OUTPUT_CAP - totalStored(r.outputs) - reserved);
+}
+
+/** A Bakery baking bread sets out the Honey it no longer uses for the carts to take away, as its outputs have room. */
+export function setOutHoney(r: ThingRuntime): void {
+  if (r.kind !== 'bakery' || r.recipe !== 'bread') return;
+  addGood(r.outputs, 'honey', takeGood(r.inputs, 'honey', outputRoom(r)));
+}
+
 /** Starts a recipe in every idle workshop that has its inputs and room for what it makes. */
 export function startRecipes(s: GameState): void {
   for (const r of s.sim.things.values()) {
+    setOutHoney(r);
     if (!isWorkshop(r.kind) || r.working) continue;
     const recipe = recipeOf(r.kind, r);
     const picks = recipe.inputs.map((input) => pick(r.inputs, input));

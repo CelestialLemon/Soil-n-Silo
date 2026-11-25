@@ -21,7 +21,7 @@ import { CART_SPEED, dockOf, findPath, groundAt, navCellOf, navCenter, NAV_CELL,
 import { err, ok, type Result } from './result.ts';
 import type { Field, GameState, Thing } from './state.ts';
 import { CART_COST, canAfford, MAX_CARTS, receiveDrop, refund, spend } from './supplies.ts';
-import { INPUT_CAP, recipeOf, runtimeOf, siloRoom, type ThingRuntime, wantsInput } from './workshops.ts';
+import { INPUT_CAP, outputRoom, recipeOf, runtimeOf, siloRoom, type ThingRuntime, wantsInput } from './workshops.ts';
 
 /** Units a cart carries per trip. */
 export const CART_CAPACITY = 2;
@@ -496,7 +496,7 @@ function accepts(s: GameState, end: Endpoint, good: Good, n: number): number {
   }
   const t = thingById(s, end.id), r = t && runtimeOf(s, end.id);
   if (!t || !r) return 0;
-  if (t.kind === 'bakery' && good === 'honey' && r.recipe === 'bread') return n;
+  if (t.kind === 'bakery' && good === 'honey' && r.recipe === 'bread') return Math.min(n, outputRoom(r));
   if (t.kind === 'depot') {
     if (good === 'honey_cake') return n;
     const o = s.sim.brief.order;

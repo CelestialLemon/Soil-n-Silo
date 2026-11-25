@@ -100,8 +100,9 @@ export function pollinationCoverage(s: GameState, f: Field): number {
   return covered.size / f.cellCount;
 }
 
-// Each cell takes the strongest water source. Tanks serving the same cell share its cost. Rain waters every field at a
-// sprinkler's level, so idle sprinklers and tanks neither dry crops out nor drain.
+// Each cell takes the strongest water source, which lifts it to that source's level from its own natural moisture (a wet
+// bank needs no lift). Tanks serving the same dry cell share its cost; a cell already moist enough costs them nothing. Rain
+// waters every field at a sprinkler's level, so idle sprinklers and tanks neither dry crops out nor drain.
 export function effectiveMoisture(s: GameState, f: Field, drain?: Map<number, number>, weather?: string): number {
   if (isRaining(weather)) return Math.max(f.avgMoisture, 0.75);
   const watered = new Map<number, number[]>();
@@ -117,9 +118,10 @@ export function effectiveMoisture(s: GameState, f: Field, drain?: Map<number, nu
     }
   }
   let lift = 0;
-  for (const tanks of watered.values()) {
-    lift += Math.max(0, (tanks.length ? 0.32 : 0.75) - f.avgMoisture);
-    if (drain && !f.harvestReady && f.avgMoisture < 0.32)
+  for (const [cell, tanks] of watered) {
+    const base = s.grid.moisture[cell];
+    lift += Math.max(0, (tanks.length ? 0.32 : 0.75) - base);
+    if (drain && !f.harvestReady && base < 0.32)
       for (const id of tanks) drain.set(id, (drain.get(id) ?? 0) + s.grid.cell ** 2 / tanks.length);
   }
   return f.avgMoisture + lift / f.cellCount;

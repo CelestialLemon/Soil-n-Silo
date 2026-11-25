@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { advanceRecipes, apply, blankState, COVER, fieldYield, forageRate, growCrops, startRecipes, stepCarts } from '../src/game/index.ts';
-import { stepEcology } from '../src/game/workshops.ts';
+import { advanceRecipes, apply, blankState, COVER, fieldYield, forageRate, growCrops, OUTPUT_CAP, startRecipes, stepCarts, totalStored } from '../src/game/index.ts';
+import { outputRoom, stepEcology } from '../src/game/workshops.ts';
 import { building, fieldAt, flatLand, land, ribbon } from './helpers.ts';
 
 test('bees forage by day near beans, shelter from wind, and pollinate through to harvest', () => {
@@ -52,6 +52,53 @@ test('toggling the Bakery recipe moves waiting honey between its outputs and inp
   r.outputs = { honey: 3 };
   assert.ok(apply(s, { type: 'setRecipe', id: t.id, recipe: 'honey_cake' }).ok);
   assert.deepEqual([r.inputs, r.outputs], [{ flour: 7, honey: 1 }, { honey: 2 }]);
+});
+
+test('switching to Bread with a Honey Cake batch under way never fills the Bakery past its output cap', () => {
+  const s = flatLand(), { t, r } = building(s, 'bakery', 0, -20);
+  const recipe = (v: 'bread' | 'honey_cake') => assert.ok(apply(s, { type: 'setRecipe', id: t.id, recipe: v }).ok);
+  r.outputs = { bread: 6 };
+  r.inputs = { flour: 1, eggs: 1, honey: 3 };
+  r.powered = true;
+  recipe('honey_cake');
+  startRecipes(s);
+  assert.equal(r.working, true);
+  // The paid batch will make 2: no room is left for the waiting Honey, so it waits in the inputs.
+  recipe('bread');
+  assert.equal(outputRoom(r), 0);
+  assert.deepEqual([r.inputs, r.outputs], [{ honey: 2 }, { bread: 6 }]);
+  advanceRecipes(s, 2.3);
+  assert.deepEqual(r.outputs, { bread: 6, honey_cake: 2 });
+  startRecipes(s);
+  assert.equal(totalStored(r.outputs), OUTPUT_CAP);
+  assert.deepEqual(r.inputs, { honey: 2 });
+  // As the carts empty the outputs, the unused Honey goes out after them.
+  r.outputs = { honey_cake: 2 };
+  startRecipes(s);
+  assert.deepEqual([r.inputs, r.outputs], [{}, { honey_cake: 2, honey: 2 }]);
+  // And back: Honey Cake takes it in again.
+  recipe('honey_cake');
+  assert.deepEqual([r.inputs, r.outputs], [{ honey: 2 }, { honey_cake: 2 }]);
+});
+
+test('Honey in transit to a full Bread Bakery stays on the cart and goes on to the Silo', () => {
+  const s = flatLand();
+  assert.ok(apply(s, { type: 'place', kind: 'garage', x: -10, z: -30, yaw: 0 }).ok);
+  const bakery = building(s, 'bakery', 8, -28), silo = building(s, 'silo', -25, -28);
+  silo.r.outputs.honey = 2;
+  const recipe = (v: 'bread' | 'honey_cake') => assert.ok(apply(s, { type: 'setRecipe', recipe: v, id: bakery.t.id }).ok);
+  recipe('honey_cake');
+  for (let i = 0; i < 600 && s.sim.carts[0].cargo?.count !== 2; i++) stepCarts(s, 1, 12, []);
+  assert.equal(s.sim.carts[0].cargo?.good, 'honey');
+  // A Honey Cake batch under way (2 to come) beside 6 Bread: the Bakery has no room for the Honey once it bakes Bread.
+  Object.assign(bakery.r, { outputs: { bread: 6 }, working: true, batch: 'honey_cake', progress: 0.5 });
+  recipe('bread');
+  for (let i = 0; i < 600 && silo.r.outputs.honey !== 2; i++) {
+    stepCarts(s, 1, 12, []);
+    assert.ok(totalStored(bakery.r.outputs) + 2 <= OUTPUT_CAP, `${JSON.stringify(bakery.r.outputs)} with a batch under way`);
+  }
+  assert.equal(silo.r.outputs.honey, 2);
+  assert.equal(bakery.r.outputs.honey, undefined);
 });
 
 for (const target of ['coop', 'composter'] as const) test(`Mill preference dispatches bran to the ${target}`, () => {

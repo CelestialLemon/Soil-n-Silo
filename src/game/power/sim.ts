@@ -75,14 +75,19 @@ function ridge(s: GameState, t: Thing): number {
   return 1 + clamp((t.padTargetY - base) / 8, -0.15, 0.25);
 }
 
+/** A Sprinkler runs while any growing crop it reaches stands on a dry cell (a wet bank elsewhere in the field doesn't count). */
+function sprinklerNeeded(s: GameState, t: Thing): boolean {
+  const site = serviceSite(s, t);
+  return site.fields.some((f) => !f.harvestReady && (site.cells.get(f.id) ?? []).some((cell) => s.grid.moisture[cell] < 0.45));
+}
+
 /** A load's watts now: workshops while they work, the farmhouse's lamps at night, the garage while it charges a cart
  * parked at it (not one left at its old site after it moved). */
 export function demandOf(s: GameState, t: Thing, r: ThingRuntime, hour: number, weather?: string): number {
   const def = CATALOG[t.kind];
   switch (t.kind) {
     case 'farmhouse': return isNight(hour, s.season) ? FARMHOUSE_NIGHT_W : FARMHOUSE_DAY_W;
-    case 'sprinkler': return !isRaining(weather) &&
-      serviceSite(s, t).fields.some(f => !f.harvestReady && f.avgMoisture < 0.45) ? def.powerDemand : 0;
+    case 'sprinkler': return !isRaining(weather) && sprinklerNeeded(s, t) ? def.powerDemand : 0;
     case 'garage': return s.sim.carts.some((c) => chargingAtGarage(s, c)) ? GARAGE_CHARGE_W : GARAGE_IDLE_W;
     case 'lantern': return isNight(hour, s.season) ? def.powerDemand : 0;
     case 'mill': case 'bakery': case 'coop': return r.working ? def.powerDemand : 0;

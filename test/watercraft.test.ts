@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { apply, effectiveMoisture, runtimeOf, serviceSite, stepSim } from '../src/game/index.ts';
+import { apply, cellX, effectiveMoisture, must, runtimeOf, serviceSite, stepSim } from '../src/game/index.ts';
 import { building, fieldAt, land, ribbon } from './helpers.ts';
 
 test('tank reserves irrigate dry fields, drain, refill in rain, and stay bounded', () => {
@@ -70,12 +70,13 @@ test('devices irrigate just their share of a ribbon and tanks split the covered 
   assert.equal(effectiveMoisture(s, f), 0.75 / f.cellCount);
   stepSim(s, 1, { windSpeed: 10, cloudCover: 1, weather: 'rain' });
   assert.equal(sprinkler.r.watts, 0);
-  f.avgMoisture = 0.6;
+  const wet = (m: number) => { for (let i = 0; i < s.grid.fieldOf.length; i++) if (s.grid.fieldOf[i] === f.id) s.grid.moisture[i] = m; };
+  wet(0.6);
   const wetReserve = a.r.water;
   stepSim(s, 1, { windSpeed: 10, cloudCover: 0 });
   assert.equal(a.r.water, wetReserve);
   assert.equal(sprinkler.r.watts, 0);
-  f.avgMoisture = 0;
+  wet(0);
   f.harvestReady = 4;
   const reserve = a.r.water;
   stepSim(s, 1, { windSpeed: 10, cloudCover: 0 });
@@ -98,4 +99,49 @@ test('rain waters a dry terrace while its sprinkler idles and its tank refills w
     assert.equal(effectiveMoisture(s, field, undefined, weather), 0.75);
     assert.ok(Math.abs(tank.r.water - (0.5 + 0.1 * 0.18)) < 1e-9);
   }
+});
+
+test('irrigation lifts each covered cell from its own moisture: a wet bank neither drains a tank nor keeps a sprinkler off', () => {
+  const s = land({ height: () => 12 }), g = s.grid;
+  assert.ok(apply(s, { type: 'paintField', crop: 'wheat', points: [{ x: -16, z: 0 }, { x: 16, z: 0 }], radius: 3 }).ok);
+  const f = s.fields[0];
+  const cells: number[] = [];
+  for (let i = 0; i < g.fieldOf.length; i++) if (g.fieldOf[i] === f.id) cells.push(i);
+  const wetWestOf = (x: number) => {
+    let wet = 0;
+    for (const i of cells) { g.moisture[i] = cellX(g, i % g.nx) < x ? 1 : 0; wet += g.moisture[i]; }
+    f.avgMoisture = wet / f.cellCount;
+  };
+  const env = { windSpeed: 12, cloudCover: 0 };
+  s.sim.hour = 12;
+
+  // A wet bank at the west tip of an otherwise dry field: a tank reaching only the bank neither lifts nor drains.
+  wetWestOf(-10);
+  assert.ok(f.avgMoisture < 0.32);
+  const tank = building(s, 'rain_tank', -26, 0);
+  tank.r.water = 1;
+  const reach = must(serviceSite(s, tank.t).cells.get(f.id), 'tank reach');
+  assert.ok(reach.length > 0 && reach.every((i) => g.moisture[i] === 1));
+  assert.equal(effectiveMoisture(s, f), f.avgMoisture);
+  stepSim(s, 30, env);
+  assert.equal(tank.r.water, 1);
+
+  // The west half wet, the east half dry (the field's mean above the sprinkler's threshold): a sprinkler reaching only
+  // the dry east end runs, and lifts just those cells.
+  wetWestOf(0);
+  assert.ok(f.avgMoisture >= 0.45);
+  const east = cells.filter((i) => g.moisture[i] === 0);
+  const sprinkler = building(s, 'sprinkler', 26, 0);
+  building(s, 'turbine', 30, 4);
+  const spray = must(serviceSite(s, sprinkler.t).cells.get(f.id), 'sprinkler reach');
+  assert.ok(spray.length > 0 && spray.every((i) => g.moisture[i] === 0));
+  stepSim(s, 1, env);
+  assert.equal(sprinkler.r.watts, 1);
+  assert.ok(Math.abs(effectiveMoisture(s, f) - (f.avgMoisture + 0.75 * spray.length / f.cellCount)) < 1e-9);
+  assert.ok(east.length > spray.length);
+
+  // Once the cells it reaches are wet, it idles even though the rest of the field is dry.
+  for (const i of spray) g.moisture[i] = 0.5;
+  stepSim(s, 1, env);
+  assert.equal(sprinkler.r.watts, 0);
 });
