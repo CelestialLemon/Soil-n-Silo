@@ -24,6 +24,8 @@ export interface Change {
   supplies?: boolean;
   /** The carts changed (one bought, retired, or all gone with the Garage). */
   carts?: boolean;
+  /** An unfinished Steady Homestead started over: the edit took down what makes the homestead run. */
+  steadyReset?: boolean;
   /** The id of what the edit made, if it made something. */
   created?: number;
 }

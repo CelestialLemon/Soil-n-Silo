@@ -80,14 +80,7 @@ export function stepBrief(s: GameState, dtH: number, events: SimEvent[]): void {
   // 3. Steady Homestead.
   const h = b.steadyHomestead;
   if (!h.done) {
-    const kinds = new Set(s.things.map((t) => t.kind));
-    h.running = kinds.has('farmhouse') && kinds.has('garage') && [...kinds].some(isWorkshop);
-    if (!h.running && h.hours > 0) {
-      // The Farmhouse, the Garage or the last workshop came down mid-run: the hours so far don't count.
-      h.hours = 0;
-      h.resetReason = SETUP_CHANGED;
-      events.push({ type: 'steadyReset', message: SETUP_CHANGED });
-    }
+    if (resetSteadyOnSetupChange(s)) events.push({ type: 'steadyReset', message: SETUP_CHANGED });
     if (h.running && dtH > 0) {
       const dark = s.things.find((t) => CATALOG[t.kind].category === 'homestead' && CATALOG[t.kind].powerRole === 'load' && s.sim.things.get(t.id)?.powered !== true);
       const why = s.sim.powerSummary.anyBlackout ? s.sim.powerSummary.lastBlackoutReason
@@ -108,6 +101,28 @@ export function stepBrief(s: GameState, dtH: number, events: SimEvent[]): void {
     b.restored = true;
     events.push({ type: 'restored', message: 'Valley Restored! Your homestead holds in balance.' });
   }
+}
+
+/** Whether the homestead runs: a Farmhouse, a Garage and a craft workshop stand. */
+export function homesteadRuns(s: GameState): boolean {
+  const kinds = new Set(s.things.map((t) => t.kind));
+  return kinds.has('farmhouse') && kinds.has('garage') && [...kinds].some(isWorkshop);
+}
+
+/**
+ * Notes whether the homestead runs; if the Farmhouse, the Garage or the last workshop came down mid-run, an unfinished
+ * Steady Homestead starts over (the hours so far don't count). Called the moment a building comes down, not only on the
+ * next tick, so taking one down and building it again while paused can't keep the hours. Returns whether it started over.
+ */
+export function resetSteadyOnSetupChange(s: GameState): boolean {
+  const h = s.sim.brief.steadyHomestead;
+  if (h.done) return false;
+  h.running = homesteadRuns(s);
+  if (h.running || h.hours <= 0) return false;
+  h.hours = 0;
+  h.progress = 0;
+  h.resetReason = SETUP_CHANGED;
+  return true;
 }
 
 /**

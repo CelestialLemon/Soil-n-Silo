@@ -1,12 +1,13 @@
 // The sky strip, top right: a small day dial (the sun's dot runs round it; drag it to set the hour), the clock, quick
-// jumps to dawn, noon, golden hour and dusk, the game speed, the weather, and the camera: its ⟲ ⟳ turns and, beside them,
-// a quiet toggle between a free orbit (the default) and snapped 90° views, the player's setting (remembered by the world),
-// and the power view's bolt (P), which shows every wireless power range (they're hidden otherwise, unless a power building
-// or relay is in hand or picked). The clock reads the game day too ("Day 2 · 10:30").
+// jumps to dawn, noon, golden hour and dusk (at the season's hours: a winter golden hour comes at three), the game speed,
+// the weather, and the camera: its ⟲ ⟳ turns and, beside them, a quiet toggle between a free orbit (the default) and
+// snapped 90° views, the player's setting (remembered by the world), and the power view's bolt (P), which shows every
+// wireless power range (they're hidden otherwise, unless a power building or relay is in hand or picked). The clock reads
+// the game day too ("Day 2 · 10:30").
 //
 // Under the strip, a quiet power pill: the valley's watts made and used and the batteries' charge, shown only while the
 // power view is on or the homestead is in a blackout (then in amber, pointing at the power view). Calm play never sees it.
-import type { PowerSummary } from '../game/index.ts';
+import { isNight, type PowerSummary, type Season, seasonHours } from '../game/index.ts';
 import { button, el, setFlag, setHidden, setPressed, setText, setTitle } from './dom.ts';
 import { icon, type IconName, setIcon } from './icons.ts';
 import { SPEEDS, type Speed, type UiCallbacks, type UiSnapshot, type Weather, WEATHERS, type YawMode } from './types.ts';
@@ -22,11 +23,12 @@ const SVG = 'http://www.w3.org/2000/svg';
 /** The dial's size and the sun's track radius, in its own units. */
 const D = 44, R = 15;
 
+/** The quick jumps; their hours follow the season (seasonHours). */
 const MOMENTS = [
-  { id: 'dawn', label: 'Dawn', hour: 6 },
-  { id: 'noon', label: 'Noon', hour: 12 },
-  { id: 'golden', label: 'Golden hour', hour: 17.5 },
-  { id: 'dusk', label: 'Dusk', hour: 19.75 },
+  { id: 'dawn', label: 'Dawn' },
+  { id: 'noon', label: 'Noon' },
+  { id: 'golden', label: 'Golden hour' },
+  { id: 'dusk', label: 'Dusk' },
 ] as const;
 
 const CAMERA: Record<YawMode, { label: string; icon: IconName; other: YawMode }> = {
@@ -85,6 +87,7 @@ export function createSkyStrip(cb: UiCallbacks): SkyStrip {
   let last: UiSnapshot | null = null;
   let shownMinute = -1;
   let shownDay = -1;
+  let shownSeason: Season | null = null;
 
   const strip = el('section', 'ui-sky ui-float');
   strip.setAttribute('aria-label', 'Sky and time');
@@ -127,11 +130,12 @@ export function createSkyStrip(cb: UiCallbacks): SkyStrip {
   const moments = el('div', 'ui-moments');
   moments.setAttribute('role', 'group');
   moments.setAttribute('aria-label', 'Jump to');
-  for (const m of MOMENTS) {
-    const b = button(`ui-moment ui-moment-${m.id}`, `${m.label} (${clock(m.hour)})`, () => cb.onSetHour(m.hour));
+  const momentBtns = MOMENTS.map((m) => {
+    const b = button(`ui-moment ui-moment-${m.id}`, m.label, () => { if (last) cb.onSetHour(seasonHours(last.stats.season)[m.id]); });
     b.append(el('span', 'ui-moment-dot'));
     moments.append(b);
-  }
+    return b;
+  });
 
   // Speed.
   const speeds = el('div', 'ui-seg');
@@ -184,6 +188,13 @@ export function createSkyStrip(cb: UiCallbacks): SkyStrip {
 
   function render(s: UiSnapshot): void {
     last = s;
+    const season = s.stats.season;
+    if (season !== shownSeason) {
+      shownSeason = season;
+      shownMinute = -1;
+      const hours = seasonHours(season);
+      MOMENTS.forEach((m, k) => setTitle(momentBtns[k], `${m.label} (${clock(hours[m.id])})`));
+    }
     const minute = Math.floor((((s.hour % 24) + 24) % 24) * 60);
     if (minute !== shownMinute || s.day !== shownDay) {
       shownMinute = minute;
@@ -196,7 +207,7 @@ export function createSkyStrip(cb: UiCallbacks): SkyStrip {
       const p = sunAt(s.hour);
       sun.setAttribute('cx', p.x.toFixed(2));
       sun.setAttribute('cy', p.y.toFixed(2));
-      setFlag(dial, 'is-night', minute < 6 * 60 || minute >= 19 * 60);
+      setFlag(dial, 'is-night', isNight(s.hour, season));
     }
     for (const [sp, b] of speedBtns) setPressed(b, sp === s.speed);
     const w = WEATHER[s.weather];

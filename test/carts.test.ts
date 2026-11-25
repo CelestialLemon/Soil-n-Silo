@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  apply, atGarage, type Cart, CART_LOW, CART_READY, countOf, demandOf, findPath, GARAGE_CHARGE_W, GARAGE_IDLE_W, GROUND, groundAt,
-  type GameState, must, navCellOf, navFor, passable, type Point2, reachOf, sandboxSupplies, SILO_CAP, SILO_GOOD_CAP,
+  apply, atGarage, type Cart, CART_LOW, CART_READY, countOf, demandOf, dockOf, DOCK_RADIUS, findPath, GARAGE_CHARGE_W, GARAGE_IDLE_W, GROUND, groundAt,
+  type GameState, fieldEdge, must, navCellOf, navFor, passable, type Point2, reachOf, sandboxSupplies, SILO_CAP, SILO_GOOD_CAP,
   type SimEvent, stepSim, type ThingKind, totalStored, wantsInput,
 } from '../src/game/index.ts';
 import { flatLand, land } from './helpers.ts';
@@ -301,4 +301,105 @@ test('a glut of one crop never fills the Silo: past its share it waits in the fi
   store.outputs = { beans: SILO_GOOD_CAP, wheat: SILO_GOOD_CAP, flour: SILO_GOOD_CAP, bran: SILO_GOOD_CAP };
   assert.equal(wantsInput(store, 'wheat'), 0);
   assert.equal(wantsInput(store, 'eggs'), SILO_CAP - 4 * SILO_GOOD_CAP);
+});
+
+/** Every nav cell a path's legs run through (sampled finely), but its first point's own. */
+function cellsOnPath(path: Point2[]): Set<number> {
+  const out = new Set<number>(), own = navCellOf(path[0].x, path[0].z);
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1], b = path[i];
+    for (let k = 0; k <= 2000; k++) {
+      const t = k / 2000, c = navCellOf(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t);
+      if (c !== own) out.add(c);
+    }
+  }
+  return out;
+}
+
+test('a cart left in a wide brook when its bridge comes up climbs out on the near bank, never across the water', () => {
+  // An 8 m brook (four nav cells, z in [-4, 4)), the full width of the land.
+  const s = land({ height: () => 0, water: (_x, z) => (Math.abs(z) < 4 ? -0.2 : undefined), depth: 0.7 });
+  s.sim.supplies = sandboxSupplies();
+  s.sim.hour = 9;
+  put(s, 'garage', -10, -28, Math.PI);
+  assert.ok(apply(s, { type: 'addTrack', points: [{ x: -20, z: -14 }, { x: -20, z: 0 }, { x: -20, z: 14 }] }).ok);
+  assert.equal(s.bridges.length, 1);
+  for (const z of [-3, -1, 1, 3]) assert.ok(passable(navFor(s), navCellOf(-20, z)), 'the bridge carries it');
+  // The bridge comes up under two carts: one a cell from the south bank, one two cells in.
+  assert.ok(apply(s, { type: 'removeTrack', id: s.tracks[0].id }).ok);
+  const nav = navFor(s);
+  for (const z of [-3, -1, 1, 3]) assert.ok(!passable(nav, navCellOf(-20, z)), 'water again');
+  const home = { x: -10, z: -36 };
+  // Two cells in: every way out crosses another cell of the brook, so there's none.
+  assert.equal(findPath(s, { x: -20, z: -1 }, home), null, 'stranded, not cutting across the water');
+  assert.equal(reachOf(s, { x: -20, z: -1 }, 'start'), -1);
+  // A cell from the bank: it steps straight out onto the south bank, over no other water.
+  const out = must(findPath(s, { x: -20, z: -3 }, home), 'a way out');
+  for (const c of cellsOnPath(out)) assert.ok(passable(nav, c), `crosses blocked cell ${c} on ${JSON.stringify(out)}`);
+  // Driven by the sim, the stranded cart never moves through the brook either.
+  const cart = s.sim.carts[0];
+  cart.x = -20; cart.z = -1; cart.state = 'idle'; cart.path = []; cart.job = null;
+  const start = navCellOf(cart.x, cart.z);
+  for (let k = 0; k < 60; k++) {
+    stepSim(s, 1, breezy);
+    const c = navCellOf(cart.x, cart.z);
+    assert.ok(c === start || passable(navFor(s), c), `in the water at (${cart.x.toFixed(2)}, ${cart.z.toFixed(2)})`);
+  }
+  assert.match(cart.jobDesc, /no way back to the Garage/);
+});
+
+test('a short Garage move onto its parked cart sets the cart out before the new door, where it charges', () => {
+  const s = sandbox();
+  const garage = put(s, 'garage', -10, -28, Math.PI);
+  const cart = s.sim.carts[0], g = () => must(s.things.find((t) => t.id === garage), 'the garage');
+  cart.battery = 0.3;
+  cart.state = 'charging';
+  run(s, 0.3);
+  assert.ok(atGarage(s, cart) && cart.battery > 0.3, 'parked and charging');
+  const old = { x: cart.x, z: cart.z };
+  // A 3.5 m move toward its door: its new walls stand where the cart is parked.
+  const r = apply(s, { type: 'move', id: garage, x: -10, z: -31.5 });
+  assert.ok(r.ok && r.value.carts, 'the move moves the cart');
+  assert.ok(!passable(navFor(s), navCellOf(old.x, old.z)), 'the old parking spot is inside the Garage now');
+  // Inside the walls, by the dock, isn't at the Garage.
+  const dock = must(dockOf(s, g()), 'its dock');
+  assert.ok(Math.hypot(dock.x - old.x, dock.z - old.z) <= DOCK_RADIUS && !atGarage(s, old));
+  assert.ok(passable(navFor(s), navCellOf(cart.x, cart.z)), `set out on open ground (${cart.x.toFixed(1)}, ${cart.z.toFixed(1)})`);
+  assert.ok(atGarage(s, cart));
+  const there = cart.battery;
+  for (let k = 0; k < 15; k++) {
+    stepSim(s, 1, breezy);
+    assert.ok(passable(navFor(s), navCellOf(cart.x, cart.z)), 'never inside a wall');
+  }
+  assert.equal(cart.state, 'charging');
+  assert.ok(cart.battery > there, 'charging before the new door');
+  assert.equal(demandOf(s, g(), rt(s, garage), 12), GARAGE_CHARGE_W);
+});
+
+test('a field split by an unbridged barrier is loaded from the side a cart can reach, even with a track on the other', () => {
+  // A 1 m line of water the width of the land (z in [0, 1)), but for a 1 m gap at x in [0, 1): a field grows through the
+  // gap as one patch, but carts (on a 2 m grid) can't cross anywhere.
+  const s = land({
+    height: () => 0,
+    water: (x, z) => (z >= 0 && z < 1 && !(x >= 0 && x < 1) ? -0.02 : undefined),
+    depth: 0.05,
+  });
+  s.sim.supplies = sandboxSupplies();
+  s.sim.hour = 9;
+  put(s, 'garage', -10, -28, Math.PI);
+  const silo = put(s, 'silo', 6, -24);
+  assert.ok(apply(s, { type: 'paintField', crop: 'wheat', points: [{ x: 0.5, z: 0.5 }], radius: 4 }).ok);
+  assert.equal(s.fields.length, 1, 'one field, through the gap');
+  const field = s.fields[0];
+  field.harvestReady = 4;
+  // A track on the far side.
+  assert.ok(apply(s, { type: 'addTrack', points: [{ x: -30, z: 10 }, { x: 0, z: 10 }, { x: 30, z: 10 }] }).ok);
+  const cart = s.sim.carts[0], near = reachOf(s, cart, 'start');
+  assert.notEqual(near, reachOf(s, { x: 0, z: 10 }, 'goal'), 'the water parts the two sides');
+  const far = must(fieldEdge(s, field), 'its loading spot by the track');
+  assert.ok(far.z > 0, 'nearest the track: the far side');
+  const here = must(fieldEdge(s, field, near), 'a loading spot on the cart\'s side');
+  assert.ok(here.z < 0 && reachOf(s, here, 'goal') === near);
+  run(s, 2, () => countOf(rt(s, silo).outputs, 'wheat') > 0);
+  assert.ok(countOf(rt(s, silo).outputs, 'wheat') > 0, `harvested from the near side: ${cart.jobDesc}`);
 });

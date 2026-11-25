@@ -54,7 +54,7 @@ export { type Networks, networksOf } from './power/radius.ts';
 // The living homestead (Milestone 2): time, Supplies, goods, crops, workshops, power, carts and the brief.
 export { stepSim, MAX_SUBSTEP_SECONDS, type SimTickResult } from './sim.ts';
 export { type SimEvent, type SimEventType } from './events.ts';
-export { formatClock, isNight, SECONDS_PER_GAME_HOUR, sunFactor, sunHours } from './clock.ts';
+export { formatClock, isNight, SECONDS_PER_GAME_HOUR, seasonHours, sunFactor, sunHours } from './clock.ts';
 export {
   canAfford, CART_COST, costOf, DROP_AMOUNT, type DropId, MAX_CARTS, type MilestoneDrop, receiveDrop, refund, sandboxSupplies, spend,
   STARTER_SUPPLIES, starterSupplies, SUPPLY_CAP, type SuppliesState,
@@ -88,5 +88,5 @@ export {
 } from './carts.ts';
 export {
   blankBrief, type BriefState, CLOCK_JUMPED, LIVING_LAND_FERTILITY, LIVING_LAND_M2, type LivingLandSeal, PANTRY_ORDER, type PantryOrderSeal,
-  resetSteadyOnClockJump, type Seal, type SealId, SEAL_LABELS, SETUP_CHANGED, STEADY_HOURS, type SteadyHomesteadSeal, stepBrief,
+  resetSteadyOnClockJump, resetSteadyOnSetupChange, type Seal, type SealId, SEAL_LABELS, SETUP_CHANGED, STEADY_HOURS, type SteadyHomesteadSeal, stepBrief,
 } from './brief.ts';

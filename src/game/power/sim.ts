@@ -161,9 +161,10 @@ export function stepPower(s: GameState, dtH: number, hour: number, env: SimEnv):
   // Emitters are powered when their network is fed.
   for (const n of nets.values()) for (const id of n.emitters) { const r = rt.get(id); if (r) r.powered = n.fed; }
 
-  // The batteries take the surplus or cover the shortfall, sharing one level across the network.
+  // The batteries take the surplus or cover the shortfall, sharing one level across the network. With no time passing
+  // (refreshPower) they keep their own charge: an empty Battery set beside a full one while paused takes none of it.
   for (const n of nets.values()) {
-    if (n.batteries.length === 0) continue;
+    if (n.batteries.length === 0 || dtH <= 0) continue;
     const rate = n.batteries.length * BATTERY_RATE_W, net = n.generationW - n.servedW;
     const delta = net >= 0 ? Math.min(net, rate) * dtH : -Math.min(-net, rate) * dtH;
     n.batteryWh = clamp(n.batteryWh + delta, 0, n.batteryCapWh);

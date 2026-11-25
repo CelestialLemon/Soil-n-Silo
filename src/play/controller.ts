@@ -12,7 +12,7 @@
 // watts and the workshops' lights show it without waiting for the clock to run.
 import {
   type Action, apply, CART_COST, CATALOG, CLOCK_JUMPED, type Change, generateValley, type GameState, heightAt, type Point2,
-  refreshPower, resetSteadyOnClockJump, type Season, type SimEvent, stepSim, suggestWaterWheelYaw, type ThingKind, TREE_SPECIES,
+  refreshPower, resetSteadyOnClockJump, type Season, SETUP_CHANGED, type SimEvent, stepSim, suggestWaterWheelYaw, type ThingKind, TREE_SPECIES,
   wrapAngle,
 } from '../game/index.ts';
 import {
@@ -243,6 +243,7 @@ export class Play implements UiCallbacks {
   private act(a: Action, quiet = false): Change | null {
     const r = apply(this.state, a);
     if (!r.ok) { if (!quiet) this.ui?.showToast(r.error, 'warn'); return null; }
+    if (r.value.steadyReset) this.ui?.showToast(SETUP_CHANGED, 'warn');
     this.world.sync(r.value);
     this.statsDirty = true;
     this.hoverDirty = true;

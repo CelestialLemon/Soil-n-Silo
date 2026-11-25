@@ -35,6 +35,8 @@ export interface Nav {
   cost: Float32Array; speed: Float32Array; drain: Float32Array;
   /** Per cell: 1 on a track or bridge. */
   track: Uint8Array;
+  /** Per cell: 1 on unbridged water or a rill. */
+  water: Uint8Array;
   /** Cell paths found, by "from:to" (null: no way). */
   paths: Map<string, number[] | null>;
   /** Per cell: which connected patch of drivable ground it belongs to (-1: impassable); worked out when first asked. */
@@ -105,7 +107,7 @@ function buildNav(s: GameState, key: string): Nav {
     speed[i] = ground.speed * (steep ? STEEP_SPEED : 1);
     drain[i] = ground.drain + (steep ? STEEP_DRAIN : 0);
   }
-  return { key, cost, speed, drain, track, paths: new Map() };
+  return { key, cost, speed, drain, track, water, paths: new Map() };
 }
 
 /** The fine land cells (1 m) under a nav cell. */
@@ -294,10 +296,33 @@ function smooth(nav: Nav, cells: readonly number[]): Point2[] {
   return out;
 }
 
-/** The start cell a path from a point is found from: its own if drivable, else the nearest drivable one. */
-function startCell(nav: Nav, p: Point2): number {
+/**
+ * The start cell a path from a point is found from: its own if drivable, else the nearest drivable one within 2 cells that
+ * it can step to straight without crossing any other water (a cart left in the brook when its bridge came up climbs out on
+ * the near bank, never across the rest of the brook); undefined if there's none (it's stranded until a bridge spans it).
+ * Its own cell may be walled by a building set down on it: it steps out over that.
+ */
+function startCell(nav: Nav, p: Point2): number | undefined {
   const own = navCellOf(p.x, p.z);
-  return passable(nav, own) ? own : nearestPassable(nav, p.x, p.z, 2) ?? own;
+  if (passable(nav, own)) return own;
+  const cx = navCx(p.x), cz = navCz(p.z), reach = 2;
+  let best: number | undefined, bestD = Infinity;
+  for (let dz = -reach; dz <= reach; dz++) for (let dx = -reach; dx <= reach; dx++) {
+    const ax = cx + dx, az = cz + dz;
+    if (ax < 0 || az < 0 || ax >= NAV_N || az >= NAV_N) continue;
+    const i = navIndex(ax, az);
+    if (!passable(nav, i)) continue;
+    const c = navCenter(i), d = Math.hypot(c.x - p.x, c.z - p.z);
+    if (d < bestD && stepDry(nav, p, c, own)) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+/** Whether a straight step between two points crosses no water but its own cell's (nor leaves the grid). */
+function stepDry(nav: Nav, a: Point2, b: Point2, own: number): boolean {
+  let dry = true;
+  forSegmentCells(a, b, (i) => { if (i !== own && (i < 0 || nav.water[i] === 1)) dry = false; return !dry; });
+  return dry;
 }
 
 /**
@@ -308,12 +333,14 @@ function startCell(nav: Nav, p: Point2): number {
 export function findPath(s: GameState, from: Point2, to: Point2): Point2[] | null {
   const nav = navFor(s);
   const a = startCell(nav, from), b = nearestPassable(nav, to.x, to.z, 3);
-  if (b === undefined) return null;
+  if (a === undefined || b === undefined) return null;
   const cells = findCells(nav, a, b);
   if (!cells) return null;
   const centres = smooth(nav, cells);
   if (centres.length === 1) centres.push(navCenter(b));
   const start = { x: from.x, z: from.z }, own = navCellOf(from.x, from.z);
+  // Straight to the second waypoint if that's clear; else by the start cell's centre (a cart off the drivable ground
+  // steps out to it first, over no other water).
   const pts = runClear(nav, start, centres[1], own) ? [start, ...centres.slice(1)] : [start, ...centres];
   // Finish at the exact spot if it's on drivable ground next to the last cell, and the run to it is clear.
   const end = pts[pts.length - 1], spot = { x: to.x, z: to.z };
@@ -348,14 +375,19 @@ function components(nav: Nav): Int32Array {
 }
 
 /**
- * Which patch of drivable ground a point is on, as `findPath` reads it (a start: its own cell or the nearest within 2; a
- * goal: the nearest within 3), or -1 if none. Two points a cart can drive between share one; O(1) once the land's patches
+ * Which patch of drivable ground a point is on, as `findPath` reads it (a start: its own cell or the nearest it can step to
+ * within 2; a goal: the nearest within 3), or -1 if none. Two points a cart can drive between share one; O(1) once the land's patches
  * are worked out (once per nav grid).
  */
 export function reachOf(s: GameState, p: Point2, as: 'start' | 'goal'): number {
   const nav = navFor(s), comp = components(nav);
   const i = as === 'start' ? startCell(nav, p) : nearestPassable(nav, p.x, p.z, 3);
   return i === undefined ? -1 : comp[i];
+}
+
+/** Which patch of drivable ground nav cell `i` is on (-1: impassable), on the nav grid as it stands. */
+export function navComponent(s: GameState, i: number): number {
+  return components(navFor(s))[i];
 }
 
 /** The ground under a point, for a moving cart: its speed and drain factors (open meadow if off the grid). */

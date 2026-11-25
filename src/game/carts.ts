@@ -14,9 +14,10 @@ import { type Change, emptyChange } from './change.ts';
 import { sunFactor } from './clock.ts';
 import { compostField, harvestField } from './crops.ts';
 import type { SimEvent } from './events.ts';
-import { type Point2, toWorld } from './geom.ts';
+import { coreObb } from './earth.ts';
+import { obbDistance, type Point2, toWorld } from './geom.ts';
 import { addGood, countOf, GOOD_LABELS, type Good, takeGood, totalStored } from './goods.ts';
-import { CART_SPEED, dockOf, findPath, groundAt, navCellOf, navCenter, navFor, passable, reachOf } from './nav.ts';
+import { CART_SPEED, dockOf, findPath, groundAt, navCellOf, navCenter, NAV_CELL, navComponent, navFor, passable, reachOf } from './nav.ts';
 import { err, ok, type Result } from './result.ts';
 import type { Field, GameState, Thing } from './state.ts';
 import { CART_COST, canAfford, MAX_CARTS, receiveDrop, refund, spend } from './supplies.ts';
@@ -88,23 +89,29 @@ export function endpointLabel(s: GameState, e: Endpoint): string {
 
 // --- Where carts stop ---------------------------------------------------------------------------------------------------
 
-const edgeCache = new WeakMap<GameState, { key: string; at: Map<number, Point2 | null> }>();
+const edgeCache = new WeakMap<GameState, { key: string; at: Map<string, Point2 | null> }>();
 
-/** Where carts load at a field: its drivable cell nearest a track (or, with no tracks, nearest the Garage). */
-export function fieldEdge(s: GameState, f: Field): Point2 | null {
+/**
+ * Where carts load at a field: its drivable cell nearest a track (or, with no tracks, nearest the Garage). Given a patch of
+ * drivable ground (`reach`, nav.ts reachOf), the best such cell on that patch, by the tracks on it: a field split by an
+ * unbridged brook or a hedge is loaded from the side a cart can reach, not only from the side nearest a track. Null if no
+ * cell of it is drivable (on that patch).
+ */
+export function fieldEdge(s: GameState, f: Field, reach?: number): Point2 | null {
   const nav = navFor(s);
   let cache = edgeCache.get(s);
   if (!cache || cache.key !== nav.key) { cache = { key: nav.key, at: new Map() }; edgeCache.set(s, cache); }
-  const hit = cache.at.get(f.id);
+  const key = `${f.id}:${reach ?? '*'}`, hit = cache.at.get(key);
   if (hit !== undefined) return hit;
+  const on = (i: number) => passable(nav, i) && (reach === undefined || navComponent(s, i) === reach);
   const g = s.grid, cells = new Set<number>();
   for (let iz = f.bounds.z0; iz <= f.bounds.z1; iz++) for (let ix = f.bounds.x0; ix <= f.bounds.x1; ix++) {
     if (g.fieldOf[iz * g.nx + ix] !== f.id) continue;
     const i = navCellOf(g.x0 + (ix + 0.5) * g.cell, g.z0 + (iz + 0.5) * g.cell);
-    if (passable(nav, i)) cells.add(i);
+    if (on(i)) cells.add(i);
   }
   const tracks: Point2[] = [];
-  for (let i = 0; i < nav.track.length; i++) if (nav.track[i] === 1 && passable(nav, i)) tracks.push(navCenter(i));
+  for (let i = 0; i < nav.track.length; i++) if (nav.track[i] === 1 && on(i)) tracks.push(navCenter(i));
   const home = garageOf(s);
   let best: Point2 | null = null, bestD = Infinity;
   for (const i of cells) {
@@ -114,13 +121,13 @@ export function fieldEdge(s: GameState, f: Field): Point2 | null {
     else d = home ? Math.hypot(home.x - c.x, home.z - c.z) : 0;
     if (d < bestD) { bestD = d; best = c; }
   }
-  cache.at.set(f.id, best);
+  cache.at.set(key, best);
   return best;
 }
 
-/** Where a cart stops for an endpoint, or null if it's gone or no cart can stand by it. */
-function placeOf(s: GameState, e: Endpoint): Point2 | null {
-  if (e.kind === 'field') { const f = fieldById(s, e.id); return f ? fieldEdge(s, f) : null; }
+/** Where a cart stops for an endpoint (a field: on the cart's patch of ground), or null if it's gone or no cart can stand by it. */
+function placeOf(s: GameState, e: Endpoint, reach?: Reach): Point2 | null {
+  if (e.kind === 'field') { const f = fieldById(s, e.id); return f ? fieldEdge(s, f, reach) : null; }
   const t = thingById(s, e.id);
   return t ? dockOf(s, t) : null;
 }
@@ -137,10 +144,32 @@ function parking(s: GameState, cart: Cart): Point2 | null {
   return passable(nav, navCellOf(p.x, p.z)) ? p : dock;
 }
 
-/** Whether a cart stands at the Garage as it is now (a cart parked at its old site, after it moved, isn't). */
+/**
+ * Whether a cart stands at the Garage as it is now: by its dock, on drivable ground (a cart parked at its old site, after
+ * it moved, isn't; nor is one the Garage was moved onto, inside its walls).
+ */
 export function atGarage(s: GameState, cart: Pick<Cart, 'x' | 'z'>): boolean {
   const garage = garageOf(s), dock = garage && dockOf(s, garage);
-  return dock ? dist(dock, cart) <= DOCK_RADIUS : false;
+  return dock ? dist(dock, cart) <= DOCK_RADIUS && passable(navFor(s), navCellOf(cart.x, cart.z)) : false;
+}
+
+/**
+ * Sets every cart the Garage now stands on (it was moved onto them) out on its parking spot before the new door, where it
+ * charges or waits as before (a driving cart finds its way on from there). Returns whether any moved.
+ */
+export function ejectCartsFromGarage(s: GameState): boolean {
+  const garage = garageOf(s);
+  if (!garage) return false;
+  const nav = navFor(s), core = coreObb(garage);
+  let moved = false;
+  for (const cart of s.sim.carts) {
+    if (passable(nav, navCellOf(cart.x, cart.z)) || obbDistance(core, cart.x, cart.z) > NAV_CELL) continue;
+    const spot = parking(s, cart);
+    if (!spot) continue;
+    cart.x = spot.x; cart.z = spot.z; cart.yaw = garage.yaw + Math.PI;
+    moved = true;
+  }
+  return moved;
 }
 
 /** Whether a cart is charging at the Garage now (what the Garage draws its charging power for). */
@@ -240,7 +269,7 @@ function sources(s: GameState, good: Good, reach?: Reach): Source[] {
   const out: Source[] = [];
   for (const f of s.fields) {
     if (f.crop !== good || f.harvestReady <= 0) continue;
-    const end = fieldEnd(f.id), avail = f.harvestReady - claimed(s, end, good), at = fieldEdge(s, f);
+    const end = fieldEnd(f.id), avail = f.harvestReady - claimed(s, end, good), at = fieldEdge(s, f, reach);
     if (avail > 0 && at && within(s, reach, at)) out.push({ end, avail, at, silo: false });
   }
   for (const t of s.things) {
@@ -327,7 +356,7 @@ function wants(s: GameState, reach?: Reach): Want[] {
   // 4. Compost to the poorest soil.
   for (const f of [...s.fields].sort((a, b) => a.fertility - b.fertility)) {
     if (f.fertility >= 0.8 || incoming(s, fieldEnd(f.id), ['compost']) > 0) continue;
-    const at = fieldEdge(s, f);
+    const at = fieldEdge(s, f, reach);
     if (at && within(s, reach, at)) out.push({ end: fieldEnd(f.id), at, good: 'compost', want: 1, priority: 4 + f.fertility * 0.1 });
   }
   return out;
@@ -433,7 +462,7 @@ function pickUp(s: GameState, cart: Cart): boolean {
   if (took === 0) { cart.job = null; cart.state = 'idle'; cart.jobDesc = 'Looking for work'; return false; }
   cart.cargo = { good: job.good, count: took };
   job.count = took;
-  const dst = placeOf(s, job.to), path = dst && findPath(s, cart, dst);
+  const dst = placeOf(s, job.to, cartReach(s, cart)), path = dst && findPath(s, cart, dst);
   if (path) {
     setLeg(s, cart, 'toDropoff', path, job.to);
     cart.jobDesc = `Taking ${took} ${GOOD_LABELS[job.good].label} to the ${endpointLabel(s, job.to)}`;
@@ -512,7 +541,7 @@ function jobStands(s: GameState, cart: Cart): boolean {
 function legTarget(s: GameState, cart: Cart): Point2 | null {
   if (cart.state === 'returning') return parking(s, cart);
   if (!cart.job) return null;
-  return placeOf(s, cart.state === 'toPickup' ? cart.job.from : cart.job.to);
+  return placeOf(s, cart.state === 'toPickup' ? cart.job.from : cart.job.to, cartReach(s, cart));
 }
 
 /** Runs every cart for `dtSec` game-seconds (at 1×, 30 to a game hour). */

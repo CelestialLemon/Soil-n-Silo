@@ -1,6 +1,7 @@
 // Free placement: buildings and props go anywhere on clear, gentle ground at any rotation. Buildings settle a soft pad
 // into the slope (earth.ts); the water wheel stands on a brook's bank with its wheel in the flowing water.
-import { addStarterCart, retireAllCarts } from './carts.ts';
+import { resetSteadyOnSetupChange } from './brief.ts';
+import { addStarterCart, ejectCartsFromGarage, retireAllCarts } from './carts.ts';
 import { CATALOG, isThingKind, RACE_START, type ThingKind } from './catalog.ts';
 import type { Change } from './change.ts';
 import { CHANNEL_REACH, coreObb, padTarget, RILL_HALF, thingObb, thingRect, TRACK_HALF } from './earth.ts';
@@ -144,7 +145,10 @@ export function moveThing(s: GameState, id: number, x: number, z: number, yaw?: 
   const before = thingRect(s.grid, t);
   t.x = x; t.z = z; t.yaw = wrapAngle(turn);
   t.padTargetY = padTarget(s.grid, t);
-  return ok(settle(s, { earth: unionRect(before, thingRect(s.grid, t)), things: [id] }));
+  const change = settle(s, { earth: unionRect(before, thingRect(s.grid, t)), things: [id] });
+  // A Garage moved onto its own parked carts sets them out before its new door.
+  if (t.kind === 'garage' && ejectCartsFromGarage(s)) change.carts = true;
+  return ok(change);
 }
 
 /** Turns a thing where it stands. */
@@ -167,5 +171,7 @@ export function removeThing(s: GameState, id: number): Result<Change, string> {
   change.supplies = CATALOG[t.kind].cost > 0;
   // Its carts go with the Garage (the extra ones refunded too).
   if (t.kind === 'garage') { change.supplies ||= s.sim.carts.length > 1; change.carts = s.sim.carts.length > 0; retireAllCarts(s); }
+  // Taking down what makes the homestead run starts Steady Homestead over now, paused or not.
+  if (resetSteadyOnSetupChange(s)) change.steadyReset = true;
   return ok(change);
 }

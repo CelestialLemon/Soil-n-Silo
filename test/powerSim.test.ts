@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   apply, BATTERY_WH, CLOUD_DIM, FARMHOUSE_DAY_W, FARMHOUSE_NIGHT_W, type GameState, generationOf, isNight, must, networksOf,
-  refreshPower, sandboxSupplies, SOLAR_PEAK_W, stepPower, stepSim, sunFactor, type ThingKind, TURBINE_BASE_W, TURBINE_SPAN_W,
+  refreshPower, sandboxSupplies, seasonHours, SOLAR_PEAK_W, stepPower, stepSim, sunFactor, type ThingKind, TURBINE_BASE_W, TURBINE_SPAN_W,
   WATERWHEEL_W,
 } from '../src/game/index.ts';
 import { flatLand } from './helpers.ts';
@@ -225,4 +225,37 @@ test('refreshPower reads the power as it stands with no time passing: no charge 
   assert.equal(rt(s, empty).charge, 0);
   refreshPower(s, env);
   assert.ok(!rt(s, house).powered);
+});
+
+test('refreshPower never moves charge between batteries: an empty one set by a charged one while paused stays empty', () => {
+  const s = sandbox();
+  s.sim.hour = 12;
+  const full = put(s, 'battery', -40, -36);
+  put(s, 'solar', -28, -36);
+  rt(s, full).charge = 0.8;
+  const env = { ...calm, hour: 12 };
+  refreshPower(s, env);
+  // Paused: an empty Battery built beside it, on the same network.
+  const empty = put(s, 'battery', -40, -46);
+  refreshPower(s, env);
+  assert.equal(s.sim.networks.length, 1, 'one network');
+  assert.equal(rt(s, full).charge, 0.8, 'the charged one keeps its charge');
+  assert.equal(rt(s, empty).charge, 0, 'the new one stays empty');
+  assert.ok(Math.abs(s.sim.powerSummary.totalStoredWh - 0.8 * BATTERY_WH) < 1e-9);
+  // Moved while paused, the same.
+  assert.ok(apply(s, { type: 'move', id: empty, x: -50, z: -46 }).ok);
+  refreshPower(s, env);
+  assert.equal(rt(s, full).charge, 0.8);
+  assert.equal(rt(s, empty).charge, 0);
+});
+
+test('the day\'s moments keep the season\'s hours: a winter golden hour comes before its four o\'clock sunset', () => {
+  assert.deepEqual(seasonHours('spring'), { dawn: 6, noon: 12.5, golden: 17.5, dusk: 19.75 });
+  const w = seasonHours('winter');
+  assert.deepEqual(w, { dawn: 8, noon: 12, golden: 15, dusk: 16.75 });
+  assert.ok(sunFactor(w.golden, 'winter') > 0 && sunFactor(w.dawn, 'winter') === 0 && isNight(w.dusk, 'winter'));
+  for (const season of ['spring', 'summer', 'autumn', 'winter'] as const) {
+    const h = seasonHours(season);
+    assert.ok(sunFactor(h.noon, season) > 0.99 && sunFactor(h.golden, season) > 0 && isNight(h.dusk, season), season);
+  }
 });

@@ -37,13 +37,14 @@ function homestead() {
 
 test('taking down the Garage mid-run starts an unfinished Steady Homestead over, and says why', () => {
   const { s, h, garage } = homestead();
-  assert.ok(apply(s, { type: 'remove', id: garage }).ok);
+  const r = apply(s, { type: 'remove', id: garage });
+  assert.ok(r.ok && r.value.steadyReset, 'the edit says so');
   const events = run(s, 0.1);
   assert.equal(h.hours, 0);
   assert.equal(h.progress, 0);
   assert.ok(!h.running);
   assert.equal(h.resetReason, SETUP_CHANGED);
-  assert.deepEqual(events.filter((e) => e.type === 'steadyReset').map((e) => e.message), [SETUP_CHANGED], 'said once');
+  assert.deepEqual(events.filter((e) => e.type === 'steadyReset'), [], 'said once, by the edit, not again by the tick');
   // Built again, it counts from zero.
   put(s, 'garage', 6, -16, Math.PI);
   run(s, 1);
@@ -64,4 +65,30 @@ test('jumping the clock starts an unfinished Steady Homestead over; a filled sea
   assert.ok(apply(s, { type: 'remove', id: must(s.things.find((t) => t.kind === 'garage'), 'the garage').id }).ok);
   run(s, 0.1);
   assert.ok(h.done && h.hours === STEADY_HOURS && h.progress === 1);
+});
+
+test('taking down and building again while paused still starts an unfinished Steady Homestead over', () => {
+  const { s, h, garage } = homestead();
+  const before = h.hours;
+  // Paused: no tick runs between the teardown and the rebuild.
+  const r = apply(s, { type: 'remove', id: garage });
+  assert.ok(r.ok && r.value.steadyReset);
+  assert.equal(h.hours, 0);
+  assert.equal(h.progress, 0);
+  assert.equal(h.resetReason, SETUP_CHANGED);
+  put(s, 'garage', 6, -16, Math.PI);
+  run(s, 0.5);
+  assert.ok(h.running);
+  assert.ok(h.hours > 0.4 && h.hours < 0.6, `counts from zero (${h.hours.toFixed(2)}), not on from ${before.toFixed(2)}`);
+  // The last workshop too; a building that doesn't make it run (a Silo) doesn't.
+  const silo = put(s, 'silo', 22, -32);
+  const kept = h.hours;
+  const quiet = apply(s, { type: 'remove', id: silo });
+  assert.ok(quiet.ok && !quiet.value.steadyReset);
+  assert.equal(h.hours, kept);
+  const mill = must(s.things.find((t) => t.kind === 'mill'), 'the mill');
+  const gone = apply(s, { type: 'remove', id: mill.id });
+  assert.ok(gone.ok && gone.value.steadyReset);
+  put(s, 'mill', -10, -32, Math.PI);
+  assert.equal(h.hours, 0);
 });
