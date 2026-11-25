@@ -82,3 +82,20 @@ test('devices irrigate just their share of a ribbon and tanks split the covered 
   assert.equal(a.r.water, reserve);
   assert.equal(sprinkler.r.watts, 0);
 });
+
+test('rain waters a dry terrace while its sprinkler idles and its tank refills without draining', () => {
+  const s = land({ height: () => 12 }), field = fieldAt(s, 'wheat', 0, 0);
+  const sprinkler = building(s, 'sprinkler', 6, 0), tank = building(s, 'rain_tank', -4, 0);
+  building(s, 'turbine', 12, 0);
+  s.sim.hour = 12;
+  stepSim(s, 1, { windSpeed: 12, cloudCover: 0 });
+  assert.equal(sprinkler.r.watts, 1);
+  for (const weather of ['soft-rain', 'rain', 'storm']) {
+    tank.r.water = 0.5;
+    stepSim(s, 3, { windSpeed: 12, cloudCover: 1, weather });
+    assert.equal(sprinkler.r.watts, 0);
+    assert.equal(field.avgMoisture, 0);
+    assert.equal(effectiveMoisture(s, field, undefined, weather), 0.75);
+    assert.ok(Math.abs(tank.r.water - (0.5 + 0.1 * 0.18)) < 1e-9);
+  }
+});

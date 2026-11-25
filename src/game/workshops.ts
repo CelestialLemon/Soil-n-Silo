@@ -5,7 +5,7 @@
 // Each building's live side (its goods, recipe, power and the one plain line its floating card shows) is a ThingRuntime,
 // kept by id in `state.sim.things` beside the placed Thing; it comes and goes with the building.
 import { CATALOG, isWorkshop, type ThingKind, type WorkshopKind } from './catalog.ts';
-import { forageRate, hotMidday, effectiveMoisture, treeShade } from './microclimate.ts';
+import { forageRate, hotMidday, effectiveMoisture, isRaining, treeShade } from './microclimate.ts';
 import type { SimEnv } from './power/sim.ts';
 import { isNight } from './clock.ts';
 import { addGood, capacity, countOf, describeInventory, GOOD_LABELS, type Good, type Inventory, takeGood, totalStored } from './goods.ts';
@@ -65,14 +65,13 @@ export function recipeOf(kind: WorkshopKind, r: ThingRuntime, current = false): 
 
 export function stepEcology(s: GameState, dtH: number, env: SimEnv): void {
   const drain = new Map<number, number>();
-  for (const f of s.fields) if (!f.harvestReady && f.avgMoisture < 0.32) effectiveMoisture(s, f, drain);
+  for (const f of s.fields) if (!f.harvestReady && f.avgMoisture < 0.32) effectiveMoisture(s, f, drain, env.weather);
   for (const t of s.things) {
     if (t.kind !== 'beehive' && t.kind !== 'rain_tank') continue;
     const r = s.sim.things.get(t.id);
     if (!r) continue;
     if (t.kind === 'rain_tank') {
-      const rain = ['rain', 'soft-rain', 'storm'].includes(env.weather ?? '');
-      const refill = rain ? 0.18 : env.weather === 'overcast' ? 0.05 : s.sim.hour >= 5 && s.sim.hour < 8 ? 0.02 : 0;
+      const refill = isRaining(env.weather) ? 0.18 : env.weather === 'overcast' ? 0.05 : s.sim.hour >= 5 && s.sim.hour < 8 ? 0.02 : 0;
       // A 25 m² bed consumes 2.5% of a reserve per game hour.
       r.water = Math.max(0, Math.min(1, r.water + dtH * (refill - 0.001 * (drain.get(t.id) ?? 0))));
     } else {

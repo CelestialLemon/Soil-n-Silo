@@ -2,7 +2,7 @@
 // batteries hold. Solar canopies follow the sun and the clouds, wind turbines the live gusts, water wheels the brook
 // (steady, day and night). Batteries soak up the surplus and carry the homestead through the night; when a network
 // can't meet its demand, it sheds its workshops first (they pause), and that is a blackout.
-import { serviceSite, treeShade, windShelter } from '../microclimate.ts';
+import { isRaining, serviceSite, treeShade, windShelter } from '../microclimate.ts';
 import { chargingAtGarage } from '../carts.ts';
 import { CATALOG } from '../catalog.ts';
 import { formatClock, isNight, sunFactor } from '../clock.ts';
@@ -81,7 +81,7 @@ export function demandOf(s: GameState, t: Thing, r: ThingRuntime, hour: number, 
   const def = CATALOG[t.kind];
   switch (t.kind) {
     case 'farmhouse': return isNight(hour, s.season) ? FARMHOUSE_NIGHT_W : FARMHOUSE_DAY_W;
-    case 'sprinkler': return !['rain', 'soft-rain', 'storm'].includes(weather ?? '') &&
+    case 'sprinkler': return !isRaining(weather) &&
       serviceSite(s, t).fields.some(f => !f.harvestReady && f.avgMoisture < 0.45) ? def.powerDemand : 0;
     case 'garage': return s.sim.carts.some((c) => chargingAtGarage(s, c)) ? GARAGE_CHARGE_W : GARAGE_IDLE_W;
     case 'lantern': return isNight(hour, s.season) ? def.powerDemand : 0;

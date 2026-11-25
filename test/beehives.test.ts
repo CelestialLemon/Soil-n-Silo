@@ -41,6 +41,19 @@ test('switching Bakery recipes preserves the paid batch and bills honey for the 
   assert.equal(r.outputs.honey_cake, 2);
 });
 
+test('toggling the Bakery recipe moves waiting honey between its outputs and inputs', () => {
+  const s = flatLand(), { t, r } = building(s, 'bakery', 0, -20);
+  r.inputs = { flour: 1, honey: 2 };
+  assert.ok(apply(s, { type: 'setRecipe', id: t.id, recipe: 'bread' }).ok);
+  assert.deepEqual([r.inputs, r.outputs], [{ flour: 1 }, { honey: 2 }]);
+  assert.ok(apply(s, { type: 'setRecipe', id: t.id, recipe: 'honey_cake' }).ok);
+  assert.deepEqual([r.inputs, r.outputs], [{ flour: 1, honey: 2 }, {}]);
+  r.inputs = { flour: 7 };
+  r.outputs = { honey: 3 };
+  assert.ok(apply(s, { type: 'setRecipe', id: t.id, recipe: 'honey_cake' }).ok);
+  assert.deepEqual([r.inputs, r.outputs], [{ flour: 7, honey: 1 }, { honey: 2 }]);
+});
+
 for (const target of ['coop', 'composter'] as const) test(`Mill preference dispatches bran to the ${target}`, () => {
   const s = flatLand();
   assert.ok(apply(s, { type: 'place', kind: 'garage', x: -10, z: -30, yaw: 0 }).ok);

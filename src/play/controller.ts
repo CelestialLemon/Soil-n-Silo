@@ -354,7 +354,7 @@ export class Play implements UiCallbacks {
         const at = this.world.hitTerrainAt(x, y), g = this.state.grid;
         const field = at && this.state.fields.find(f => f.id === g.fieldOf[cellIz(g, at.z) * g.nx + cellIx(g, at.x)]);
         if (field) {
-          const notes = [GOOD_LABELS[field.crop].label, effectiveMoisture(this.state, field) >= 0.32 ? 'Well watered' : 'Dry soil'];
+          const notes = [GOOD_LABELS[field.crop].label, effectiveMoisture(this.state, field, undefined, this.world.getWeather()) >= 0.32 ? 'Well watered' : 'Dry soil'];
           if (field.pollinated) notes.push('Pollinated');
           if (erosionDrain(this.state, field) > 0.02) notes.push('Sloping soil · shelter with beans, trees or hedges');
           this.ui?.showToast(notes.join(' · '));

@@ -10,6 +10,7 @@ import type { Field, GameState, Thing } from './state.ts';
 export const SERVICE_RADIUS = { beehive: 14, rain_tank: 10, sprinkler: 11 } as const;
 export const hasServiceRadius = (kind: ThingKind): kind is keyof typeof SERVICE_RADIUS => Object.hasOwn(SERVICE_RADIUS, kind);
 const distance = (a: Point2, b: Point2) => Math.hypot(a.x - b.x, a.z - b.z);
+export const isRaining = (weather?: string) => weather === 'rain' || weather === 'soft-rain' || weather === 'storm';
 export function treeShade(s: GameState, p: Point2, radius?: number): number {
   let shade = 0;
   for (const trees of [s.wildTrees, s.plantedTrees]) for (const t of trees)
@@ -78,7 +79,7 @@ export function serviceSite(s: GameState, t: Thing): Site {
 }
 
 export function forageRate(s: GameState, t: Thing, env: SimEnv): number {
-  if (s.season === 'winter' || isNight(s.sim.hour, s.season) || ['rain', 'soft-rain', 'storm', 'snow', 'blizzard'].includes(env.weather ?? '')) return 0;
+  if (s.season === 'winter' || isNight(s.sim.hour, s.season) || isRaining(env.weather) || env.weather === 'snow' || env.weather === 'blizzard') return 0;
   const site = serviceSite(s, t);
   const flowers = floweringArea(s, t);
   if (!flowers && !site.meadow) return 0;
@@ -99,8 +100,10 @@ export function pollinationCoverage(s: GameState, f: Field): number {
   return covered.size / f.cellCount;
 }
 
-// Each cell takes the strongest water source. Tanks serving the same cell share its cost.
-export function effectiveMoisture(s: GameState, f: Field, drain?: Map<number, number>): number {
+// Each cell takes the strongest water source. Tanks serving the same cell share its cost. Rain waters every field at a
+// sprinkler's level, so idle sprinklers and tanks neither dry crops out nor drain.
+export function effectiveMoisture(s: GameState, f: Field, drain?: Map<number, number>, weather?: string): number {
+  if (isRaining(weather)) return Math.max(f.avgMoisture, 0.75);
   const watered = new Map<number, number[]>();
   for (const t of s.things) {
     const r = s.sim.things.get(t.id);

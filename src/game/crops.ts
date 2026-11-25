@@ -82,7 +82,7 @@ export function growCrops(s: GameState, dtH: number, sun: number, weather?: stri
     const climate = cloudCover >= 0.65 ? 1 - 0.1 * coverage : hotMidday(s, weather) ? 1 + 0.12 * coverage : 1;
     const bees = pollinationCoverage(s, f);
     if (dtH > 0) f.pollinated = Math.max(f.pollinated, bees);
-    const rate = growthRate({ fertility: f.fertility, avgMoisture: effectiveMoisture(s, f) }, sun, coverage);
+    const rate = growthRate({ fertility: f.fertility, avgMoisture: effectiveMoisture(s, f, undefined, weather) }, sun, coverage);
     f.growth = Math.min(1, f.growth + rate * climate * (1 + 0.05 * bees) * dtH);
     if (f.growth >= 1) { f.harvestReady = fieldYield(f, f.pollinated); ripened.push(f); }
     if (cropStage(f) !== before) stagesChanged = true;
