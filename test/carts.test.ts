@@ -403,3 +403,24 @@ test('a field split by an unbridged barrier is loaded from the side a cart can r
   run(s, 2, () => countOf(rt(s, silo).outputs, 'wheat') > 0);
   assert.ok(countOf(rt(s, silo).outputs, 'wheat') > 0, `harvested from the near side: ${cart.jobDesc}`);
 });
+
+test('a building facing a narrow unbridged brook is loaded from a side on its own bank, never across the water', () => {
+  // A 1 m line of water the width of the land (z in [3, 4)), just before the Silo's door.
+  const s = land({ height: () => 0, water: (_x, z) => (z >= 3 && z < 4 ? -0.02 : undefined), depth: 0.05 });
+  s.sim.supplies = sandboxSupplies();
+  s.sim.hour = 9;
+  put(s, 'garage', -10, -28, Math.PI);
+  const silo = put(s, 'silo', 0, -0.8);
+  const wheat = ripeField(s, 'wheat', -30, -20, 4);
+  const cart = s.sim.carts[0], near = reachOf(s, cart, 'start');
+  assert.notEqual(near, reachOf(s, { x: 0, z: 6 }, 'goal'), 'the water parts the two banks');
+  // Its door faces the water: it docks on its own bank, not on the far one.
+  const t = must(s.things.find((v) => v.id === silo), 'the silo');
+  const dock = must(dockOf(s, t), 'its dock');
+  assert.ok(dock.z < 3 && reachOf(s, dock, 'goal') === near, `docks on its own bank: (${dock.x.toFixed(2)}, ${dock.z.toFixed(2)})`);
+  assert.deepEqual(dockOf(s, t, near), dock);
+  assert.equal(dockOf(s, t, reachOf(s, { x: 0, z: 6 }, 'goal')), null, 'no side of it on the far bank');
+  run(s, 2, () => countOf(rt(s, silo).outputs, 'wheat') > 0);
+  assert.ok(countOf(rt(s, silo).outputs, 'wheat') > 0, `harvested to the Silo: ${cart.jobDesc}`);
+  assert.ok(must(s.fields.find((f) => f.id === wheat), 'the field').harvestReady < 4);
+});

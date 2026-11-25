@@ -131,15 +131,15 @@ function forBox(o: Obb, margin: number, fn: (i: number) => void) {
 
 export const passable = (nav: Nav, i: number) => Number.isFinite(nav.cost[i]);
 
-/** The passable cell nearest a point, within `reach` cells (the point's own first). */
-export function nearestPassable(nav: Nav, x: number, z: number, reach = 4): number | undefined {
+/** The passable cell nearest a point, within `reach` cells (the point's own first); `ok`: only cells it allows. */
+export function nearestPassable(nav: Nav, x: number, z: number, reach = 4, ok?: (i: number) => boolean): number | undefined {
   const cx = navCx(x), cz = navCz(z);
   let best: number | undefined, bestD = Infinity;
   for (let dz = -reach; dz <= reach; dz++) for (let dx = -reach; dx <= reach; dx++) {
     const ax = cx + dx, az = cz + dz;
     if (ax < 0 || az < 0 || ax >= NAV_N || az >= NAV_N) continue;
     const i = navIndex(ax, az);
-    if (!passable(nav, i)) continue;
+    if (!passable(nav, i) || (ok && !ok(i))) continue;
     const c = navCenter(i), d = Math.hypot(c.x - x, c.z - z);
     if (d < bestD) { bestD = d; best = i; }
   }
@@ -397,18 +397,34 @@ export function groundAt(s: GameState, x: number, z: number): { speed: number; d
   return { speed: nav.speed[i], drain: nav.drain[i], onTrack: nav.track[i] === 1 };
 }
 
-/** Where carts stop at a building: before its door (its front), or another side if that's blocked; null if none is free. */
-export function dockOf(s: GameState, t: { kind: keyof typeof CATALOG; x: number; z: number; yaw: number }): Point2 | null {
+/**
+ * Where carts stop at a building: before its door (its front), or another side if that's blocked; null if none is free.
+ * A stop across water from the building (its door faces a narrow unbridged brook, the stop on the far bank) counts only if
+ * no side has a stop on its own bank, so carts load where they can drive up to it, never over the water. Given a patch of
+ * drivable ground (`reach`, reachOf), only a stop on that patch: a cart weighs every side it can reach, not just the first.
+ */
+export function dockOf(s: GameState, t: { kind: keyof typeof CATALOG; x: number; z: number; yaw: number }, reach?: number): Point2 | null {
   const nav = navFor(s), d = CATALOG[t.kind], out = 1.8;
   const local = (lx: number, lz: number) => toWorld(t.x, t.z, t.yaw, lx, lz);
   // A water wheel's front is in the brook: its door is round the back.
   const sides: Point2[] = d.onBank
     ? [local(d.offX, d.lo[1] - out), local(d.lo[0] - out, d.core.offZ), local(d.hi[0] + out, d.core.offZ)]
     : [local(d.offX, d.hi[1] + out), local(d.hi[0] + out, d.offZ), local(d.lo[0] - out, d.offZ), local(d.offX, d.lo[1] - out)];
-  for (const p of sides) if (passable(nav, navCellOf(p.x, p.z))) return p;
-  for (const p of sides) {
-    const i = nearestPassable(nav, p.x, p.z, 2);
-    if (i !== undefined) return navCenter(i);
-  }
-  return null;
+  const centre = local(d.core.offX, d.core.offZ), own = navCellOf(centre.x, centre.z), comp = components(nav);
+  // The first free stop (a side's own spot, else the drivable cell nearest one) that `ok` allows.
+  const find = (ok: (p: Point2, i: number) => boolean): Point2 | null => {
+    for (const p of sides) {
+      const i = navCellOf(p.x, p.z);
+      if (passable(nav, i) && ok(p, i)) return p;
+    }
+    for (const p of sides) {
+      const i = nearestPassable(nav, p.x, p.z, 2, (j) => ok(navCenter(j), j));
+      if (i !== undefined) return navCenter(i);
+    }
+    return null;
+  };
+  const dry = (p: Point2) => stepDry(nav, centre, p, own), onPatch = (i: number) => reach === undefined || comp[i] === reach;
+  const bank = find((p, i) => dry(p) && onPatch(i));
+  if (bank || (reach !== undefined && find(dry))) return bank;
+  return find((_p, i) => onPatch(i));
 }
