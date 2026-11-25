@@ -6,7 +6,9 @@
 // race, the mill's stone and the composter's drum only while they work (the mill's with power too), the bakery's oven
 // glows and smokes while it bakes with power, the garage's lamp while it has power, the battery's rings show its charge,
 // the farmhouse smokes and its windows light after sunset while it has power, the lanterns (self-charging) and the Depot's
-// beacon glow after dusk always (brush3d lights what runs, at night). What has no power sits quiet and dark.
+// beacon glow after dusk always (brush3d lights what runs, at night). The Weather Station's anemometer cups spin with the
+// wind at its mast, and the Heated Greenhouse's lanterns glow warm at night while it's heated and powered. What has no
+// power sits quiet and dark.
 import * as THREE from 'three';
 import {
   blocksWind, type BrushRenderer, type LandArea, loadModel, MODELS, type ModelParts, ModelSet, type Obstacle,
@@ -122,6 +124,15 @@ export class Things {
         spin = clamp(Math.hypot(u, v) / 6, 0.12, 2.5);
         break;
       }
+      case 'weather_station': {
+        // The cups spin with the wind at the mast's head, whatever the network does.
+        const [u, v] = windAt(t.x, t.z, 4);
+        spin = clamp(Math.hypot(u, v) / 4, 0.1, 3);
+        running = true;
+        break;
+      }
+      // Heated and powered, its warm lanterns glow after dusk; in a blackout the glass goes dark.
+      case 'greenhouse': running = working && powered; break;
       case 'waterwheel': {
         const race = toWorld(t.x, t.z, t.yaw, 0, CATALOG.waterwheel.raceOffset);
         const ix = Math.floor((race.x - g.x0) / g.cell), iz = Math.floor((race.z - g.z0) / g.cell);

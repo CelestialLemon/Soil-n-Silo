@@ -164,6 +164,9 @@
 .ui-season-autumn.is-on { background: var(--clay-soft); }
 .ui-season-winter.is-on { background: var(--water-soft); }
 
+/* The valley's climate character this season, one quiet line under the season pills. */
+.ui-brief-climate { margin: -0.3em 0 0 0.15em; font: italic 500 0.86em/1.3 var(--font-title); color: var(--ink-2); }
+
 .ui-brief-prompt {
   margin: 0;
   padding-left: 0.95em;
@@ -277,6 +280,21 @@
 .ui-moment-dusk .ui-moment-dot { background: #8a77a8; }
 
 .ui-weather { min-width: 7.2em; }
+/* Living weather: a quiet readout, a button only while `?weather=` locks it. */
+.ui-weather { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ui-weather.is-live { cursor: default; background: transparent; padding-inline: 0.35em; }
+.ui-weather.is-live:hover { background: transparent; }
+.ui-weather.is-locked { box-shadow: inset 0 0 0 1px var(--amber); }
+.ui-weather.is-cold .ui-icon { color: var(--water); }
+.ui-weather.is-heat .ui-icon { color: var(--amber); }
+.ui-weather.is-wild .ui-icon { color: var(--clay); }
+/* The Weather Station's days ahead: tiny sky icons in a soft pill. */
+.ui-forecast { display: inline-flex; align-items: center; gap: 0.05em; padding: 0.2em 0.3em; border-radius: 999px; background: var(--wash); }
+.ui-forecast-day { display: grid; place-items: center; width: 1.3em; height: 1.3em; border-radius: 50%; color: var(--ink-3); cursor: default; }
+.ui-forecast-icon { width: 15px; height: 15px; }
+.ui-forecast-day.is-cold { color: var(--water); background: rgba(212, 230, 238, 0.7); }
+.ui-forecast-day.is-heat { color: #a8741f; background: rgba(244, 228, 195, 0.7); }
+.ui-forecast-day.is-wild { color: var(--clay); background: rgba(242, 219, 210, 0.7); }
 .ui-turns { display: flex; align-items: center; }
 /* The camera's orbit/snapped setting: a small soft pill, quieter than the turns beside it. */
 .ui-camera-mode { width: 1.85em; height: 1.85em; margin-left: 0.2em; color: var(--ink-3); background: var(--wash); }
@@ -634,5 +652,5 @@
 .ui-loading-text { margin: 0; color: var(--ink-2); }
 .ui-loading.is-failed .ui-loading-text { color: var(--clay); }
 
-.ui-ring-pref { margin-block: 0.4rem; }
+.ui-ring-pref { margin-block: 0.4rem; max-width: 100%; overflow: hidden; justify-self: start; }
 .ui-ring-pref::after { content: '↻'; margin-inline-start: 0.5em; opacity: 0.7; }

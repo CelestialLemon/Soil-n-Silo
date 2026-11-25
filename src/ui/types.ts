@@ -1,6 +1,6 @@
 // The UI's contract with the rest of the game: what it shows (a `UiSnapshot` the loop hands it) and what it asks for
 // (`UiCallbacks`). The UI never reaches into the world or the renderer; it only reads the snapshot and calls back.
-import type { BriefState, PowerSummary, Season, ThingKind } from '../game/index.ts';
+import type { BriefState, DayForecast, ForecastIcon, PowerSummary, Season, ThingKind, WeatherSpell } from '../game/index.ts';
 
 /** Placing one of the catalog's things (src/game/catalog.ts). */
 export type PlaceTool = `place:${ThingKind}`;
@@ -89,6 +89,22 @@ export interface ValleyStats {
   cartCount: number; maxCarts: number; hasGarage: boolean;
   /** The whole valley's power balance (the sky strip's power pill). */
   powerSummary: PowerSummary;
+  /** The valley's climate character this season, in plain words, e.g. "A wet spring" (under the season pills). */
+  climateLabel?: string;
+}
+
+/** The weather now, as the sky strip reads it out: "Showers · 11°C". */
+export interface LiveWeatherView {
+  spell: WeatherSpell;
+  /** Its plain name, e.g. "Showers". */
+  label: string;
+  /** The air's temperature, °C (shown rounded). */
+  tempC: number;
+  icon: ForecastIcon;
+  /** Held by `?weather=`: the readout becomes a button that lets living weather back in (`onClearWeatherLock`). */
+  locked?: boolean;
+  /** A plain-English tooltip, e.g. the wind and any frost or flood note. */
+  detail?: string;
 }
 
 /** Everything the UI shows, handed to `render` whenever it changes (every frame is fine: unchanged parts cost nothing). */
@@ -102,7 +118,12 @@ export interface UiSnapshot {
   /** The game day, from 1. */
   day: number;
   speed: Speed;
+  /** The old four-sky weather; the sky strip falls back to it while `liveWeather` is left out. */
   weather: Weather;
+  /** The living weather now; when given, the sky strip shows it instead of `weather`'s chip. */
+  liveWeather?: LiveWeatherView;
+  /** The Weather Station's days ahead (2–3); left out or empty while no Weather Station stands. */
+  forecast?: readonly DayForecast[];
   stats: ValleyStats;
   selected: SelectedThingView | null;
   /** The tool's live readout; null shows the tool's own hint (or nothing, for `select`). */
@@ -135,6 +156,8 @@ export interface UiCallbacks {
   onSetHour(hour: number): void;
   onSetSpeed(speed: Speed): void;
   onSetWeather(weather: Weather): void;
+  /** Lets living weather back in after `?weather=` held it (the locked weather readout's click). */
+  onClearWeatherLock?: () => void;
   onNewValley(seed: number, season: Season): void;
   onCenterHomestead(): void;
 }

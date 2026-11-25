@@ -12,25 +12,33 @@
 // (getSimEnv: the hour, the live wind's speed, the weather's cloud cover), then hands the world the tick (syncSim): the
 // crops are drawn at the stage they've grown to, the Electric Carts drive, carry and roll their wheels, and each
 // building's moving parts and lights show how it is (working, powered, its battery's charge).
+//
+// The living weather (Milestone 4): the world draws the game's continuous weather (state.sim.weather) as the simulation
+// moves it on: the sky's cloud, rain, snow, storm, heat and haze, the wind's strength, the storm's lightning, the brook
+// running high and brown and the floodwater over the low ground, the water icing over, the ground wet, muddy, snowed on
+// and rimed (deepest in the frost hollows), and the season's light with the valley's climate character. A locked weather
+// (`?weather=`, setWeather, setWeatherOverride) is the game's weatherOverride: it holds one spell until cleared.
 import { type BrushRenderer as Renderer, BrushRenderer, QUALITY, type WeatherName } from '../../brush3d/src/index.ts';
-import { type Change, COVER, type GameState, polylineDistance, type SimEnv, type SimTickResult } from '../game/index.ts';
+import {
+  type Change, COVER, type GameState, polylineDistance, type SimEnv, type SimTickResult, stepWeather, toSpell, type WeatherSpell,
+} from '../game/index.ts';
 import { CameraRig, START_ZOOM } from './camera.ts';
 import { Carts } from './carts.ts';
 import { Fields } from './fields.ts';
 import { Meadow } from './meadow.ts';
-import { storeYawMode, type WorldOptions, type YawMode, writeUrlParam } from './options.ts';
+import { clearUrlParam, storeYawMode, type WorldOptions, type YawMode, writeUrlParam } from './options.ts';
 import { Bridges } from './paths.ts';
 import { Sky, type Speed } from './sky.ts';
 import { terrainMap, syncTerrain } from './terrain.ts';
 import { loadModels, type ModelCache, Things } from './things.ts';
 import { type PreviewSpec, Tools } from './tools.ts';
 import { readTag } from './util.ts';
-import { sendGround, sendWater } from './water.ts';
+import { groundKey, sendGround, sendWater, waterKey } from './water.ts';
 import { Wild } from './wild.ts';
 import { Wind } from './wind.ts';
 
 export {
-  CAMERA_YAW_KEY, DEFAULT_OPTIONS, readUrlOptions, storedYawMode, storeYawMode, writeUrlParam, YAW_MODES, type WorldOptions, type YawMode,
+  CAMERA_YAW_KEY, clearUrlParam, DEFAULT_OPTIONS, readUrlOptions, storedYawMode, storeYawMode, writeUrlParam, YAW_MODES, type WorldOptions, type YawMode,
 } from './options.ts';
 export { CART_MODEL, getModelForKind } from './things.ts';
 export { GROWTH_STEPS, growthStep } from './fields.ts';
@@ -51,20 +59,27 @@ export interface PickTarget {
   x: number; y: number; z: number;
 }
 
+/** The nearest of brush3d's weather presets to each of the game's spells (a gale's sky is a scattered one, a frost's clear). */
+const SPELL_SKY: { readonly [W in WeatherSpell]: WeatherName } = {
+  clear: 'clear', scattered: 'scattered', overcast: 'overcast', fog: 'fog', 'soft-rain': 'soft-rain', storm: 'storm',
+  'heat-wave': 'heat-wave', gale: 'scattered', frost: 'clear', snow: 'snow', blizzard: 'blizzard',
+};
+
 /** The valley as drawn, for the play layer. */
 export interface World {
   /** Redraws what an edit (the game's apply) touched: the carts too when it bought, retired or took them away. */
   sync(change: Change): void;
   /**
    * What the homestead's simulation needs from the world for a step (the game's stepSim): the hour on the world's clock,
-   * the live wind's speed (m/s, eased over a few seconds, at a turbine's hub over the valley) and how much of the sky the
-   * weather covers (0..1).
+   * the live wind's speed (m/s, eased over a few seconds, at a turbine's hub over the valley), how much of the sky the
+   * living weather covers (0..1), and the locked weather's spell if one is set (left out, the weather runs on its own).
    */
   getSimEnv(): SimEnv;
   /**
    * Draws the homestead as a sim tick left it (call after stepSim): fields whose drawn growth step moved on are painted
-   * again, carts added and taken away (and their beds filled or emptied), and the buildings' parts and lights told how
-   * they are now. Left out, everything is checked.
+   * again, carts added and taken away (and their beds filled or emptied), the buildings' parts and lights told how they
+   * are now, the flood's water and the wet banks redrawn when they moved, and the weather's sky, wind, ice, snow and frost
+   * when it has. Left out, everything is checked.
    */
   syncSim(tick?: SimTickResult): void;
   /** Draws a different valley (a new seed, a loaded save) in place of this one. */
@@ -105,8 +120,14 @@ export interface World {
   getHour(): number;
   setSpeed(speed: Speed): void;
   getSpeed(): Speed;
+  /** Locks the weather to the nearest spell to a brush3d preset (and names it in the URL). */
   setWeather(weather: WeatherName): void;
+  /** The nearest brush3d preset to the weather now (a gale reads as scattered, a frost as clear). */
   getWeather(): WeatherName;
+  /** Locks the weather to a spell, or (null) lets the living weather run again; the URL's `?weather=` follows. */
+  setWeatherOverride(spell: WeatherSpell | null): void;
+  /** The locked spell, or null while the living weather runs. */
+  getWeatherOverride(): WeatherSpell | null;
   getZoom(): number;
   getHeading(): number;
   getYawMode(): YawMode;
@@ -140,6 +161,8 @@ class ValleyWorld implements World {
   private disposed = false;
   /** The tools' switches, kept across a new valley. */
   private switches = { preview: null as PreviewSpec | null, selected: null as number | null, contours: false, moisture: false, power: false };
+  /** What of the weather the water and the ground maps last showed (water.ts waterKey, groundKey). */
+  private shown = { water: '', ground: '' };
 
   constructor(canvas: HTMLCanvasElement, state: GameState, options: WorldOptions, models: ModelCache) {
     this.canvas = canvas; this.state = state; this.models = models;
@@ -151,12 +174,13 @@ class ValleyWorld implements World {
     this.resize();
     this.resizer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.resize());
     this.resizer?.observe(canvas);
-    this.sky = new Sky(options.hour, options.weather, state.seed);
+    if (options.weather) this.lockWeather(state, toSpell(options.weather));
+    this.sky = new Sky(options.hour, state.seed);
     this.rig = new CameraRig(state.valley.homestead.x, state.valley.homestead.z, options.yaw);
     this.scene = this.build(state);
     this.rig.settle(r);
     this.rig.place(r);
-    this.sky.send(r, true);
+    this.sky.send(r, state.sim.weather, true);
     this.raf = requestAnimationFrame(this.frame);
   }
 
@@ -165,17 +189,17 @@ class ValleyWorld implements World {
   /** Builds a valley: the season's light first (what grows takes it), then the land, the water, and what stands on it. */
   private build(state: GameState): Scene {
     const r = this.r;
-    Sky.season(r, state.season);
+    Sky.season(r, state.season, state.climate);
     r.setTerrain(terrainMap(state));
     // The brushes' fields, baked once the ground is in: the ground's 2048², the grass's and crops' 1024² (the demo's pick).
     r.setFields('ground', 2048); r.setFields('crop', 1024); r.setFields('grass', 1024);
-    sendWater(r, state, true);
-    sendGround(r, state, this.sky.fall, true);
+    this.sendWater(true);
+    this.sendGround(true);
     const things = new Things(r, state, this.models);
     const wild = new Wild(r, state);
     const scene: Scene = {
       things, wild, meadow: new Meadow(r, state), fields: new Fields(r, state), bridges: new Bridges(r, state), carts: new Carts(r, state, this.models),
-      tools: new Tools(r, state, things), wind: new Wind(this.sky.weather, state.seed, [...things.obstacles(), ...wild.obstacles()]),
+      tools: new Tools(r, state, things), wind: new Wind(state.sim.weather.windSpeed, state.seed, [...things.obstacles(), ...wild.obstacles()]),
     };
     things.windChanged = false; wild.windChanged = false;
     const sw = this.switches;
@@ -184,6 +208,24 @@ class ValleyWorld implements World {
     things.setSelected(sw.selected);
     scene.tools.setSelected(sw.selected);
     return scene;
+  }
+
+  /** Sends the water map (state.grid's, as this.state has it), noting what of the weather it shows. */
+  private sendWater(immediate = false) {
+    sendWater(this.r, this.state, immediate);
+    this.shown.water = waterKey(this.state);
+  }
+
+  /** Sends the ground map, noting what of the weather it shows. */
+  private sendGround(immediate = false) {
+    sendGround(this.r, this.state, immediate);
+    this.shown.ground = groundKey(this.state);
+  }
+
+  /** Redraws the water and the ground if the weather has moved what they show a step since they were sent. */
+  private followWeather() {
+    if (waterKey(this.state) !== this.shown.water) this.sendWater();
+    if (groundKey(this.state) !== this.shown.ground) this.sendGround();
   }
 
   private teardown() {
@@ -205,8 +247,10 @@ class ValleyWorld implements World {
     this.last = now;
     this.time += dt;
     const r = this.r, s = this.scene;
+    const weather = this.state.sim.weather;
+    s.wind.setSpeed(weather.windSpeed);
     s.wind.step(r, dt);
-    this.sky.step(r, dt, s.wind.goal);
+    this.sky.step(r, dt, s.wind.goal, weather, r.view.target);
     this.rig.update(r, dt);
     s.meadow.drain();
     s.things.frame(dt, (x, z, h) => s.wind.at(x, z, h));
@@ -225,8 +269,8 @@ class ValleyWorld implements World {
   sync(change: Change) {
     const r = this.r, s = this.scene, state = this.state;
     const land = syncTerrain(r, state, change), landSent = land !== undefined && r.landAhead;
-    if (change.water) sendWater(r, state);
-    if (change.water || change.wet || change.cover) sendGround(r, state, this.sky.fall);
+    if (change.water) this.sendWater();
+    if (change.water || change.wet || change.cover) this.sendGround();
     s.fields.sync(change);
     s.things.sync(change, landSent);
     s.wild.sync(change);
@@ -239,11 +283,19 @@ class ValleyWorld implements World {
   }
 
   getSimEnv(): SimEnv {
-    return { hour: this.getHour(), weather: this.getWeather(), windSpeed: this.scene.wind.speed, cloudCover: this.sky.cloudCover };
+    const override = this.state.sim.weatherOverride;
+    return {
+      hour: this.getHour(), windSpeed: this.scene.wind.speed, cloudCover: this.state.sim.weather.cloudCover, ...(override ? { weather: override } : {}),
+    };
   }
 
   syncSim(tick?: SimTickResult) {
     const s = this.scene;
+    // The flood rose or fell, and the banks it wets with it; the weather's ice, wet, snow and frost moved on a step.
+    if (!tick || tick.waterChanged) this.sendWater();
+    if (!tick || tick.groundChanged) this.sendGround();
+    this.followWeather();
+    s.wind.setSpeed(this.state.sim.weather.windSpeed);
     // The crops grew a stage, ripened or were harvested: only the fields whose drawn step moved on are painted again.
     if (!tick || tick.fieldStagesChanged) s.fields.syncGrowth();
     // Cheap (a handful of carts, each bed checked by its good and load): a cart loads and unloads standing still.
@@ -258,7 +310,7 @@ class ValleyWorld implements World {
     this.r.restartWind();
     this.rig.focusOn(state.valley.homestead.x, state.valley.homestead.z, START_ZOOM);
     this.rig.settle(this.r);
-    this.sky.send(this.r, true);
+    this.sky.send(this.r, state.sim.weather, true);
   }
 
   // ---- Tools ----
@@ -349,13 +401,31 @@ class ValleyWorld implements World {
   getSpeed() { return this.sky.speed; }
 
   setWeather(weather: WeatherName) {
-    this.sky.setWeather(weather);
-    this.scene.wind.setWeather(weather);
-    sendGround(this.r, this.state, this.sky.fall);
+    this.setWeatherOverride(toSpell(weather));
     writeUrlParam('weather', weather);
   }
 
-  getWeather() { return this.sky.weather; }
+  getWeather(): WeatherName { return SPELL_SKY[this.state.sim.weather.spell]; }
+
+  setWeatherOverride(spell: WeatherSpell | null) {
+    this.lockWeather(this.state, spell);
+    if (spell) writeUrlParam('weather', spell); else clearUrlParam('weather');
+    // Shown at once, even paused: the sky eases to it, the wind takes it, the water and the ground follow.
+    this.sky.markDue();
+    this.scene.wind.setSpeed(this.state.sim.weather.windSpeed);
+    this.followWeather();
+  }
+
+  getWeatherOverride() { return this.state.sim.weatherOverride; }
+
+  /**
+   * Locks (or unlocks) a valley's weather and reads its sky again at once (a step of no time: nothing builds up), so the
+   * picture needn't wait for the next sim step.
+   */
+  private lockWeather(state: GameState, spell: WeatherSpell | null) {
+    state.sim.weatherOverride = spell;
+    stepWeather(state, 0, state.sim.day, state.sim.hour);
+  }
   getZoom() { return this.rig.zoom; }
   getHeading() { return this.rig.heading; }
   getYawMode() { return this.rig.mode; }
