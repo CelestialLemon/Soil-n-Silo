@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   apply, canPlace, type Change, countOf, formatClock, type GameState, generateValley, must, networksOf, PANTRY_ORDER,
-  type Point2, previewChannelFlow, type Result, type SimEvent, stepSim, suggestWaterWheelYaw, SUPPLY_CAP, type ThingKind,
+  type Point2, previewChannelFlow, type Result, type SimEvent, serviceSite, stepSim, suggestWaterWheelYaw, SUPPLY_CAP, type ThingKind,
 } from '../src/game/index.ts';
 import { brookSpot } from './helpers.ts';
 
@@ -58,7 +58,7 @@ function joinMain(s: GameState, wheel: number, id: number) {
   assert.fail(`could not bring thing ${id} into the network`);
 }
 
-test('the Spring Valley plays through to Restored in a few game-days, with no blackout once powered', (t) => {
+for (const cartCount of [1, 2]) test(`the Spring Valley plays through to Restored with ${cartCount} cart(s) and no blackout once powered`, (t) => {
   const s = generateValley(1042, 'spring'), sup = s.sim.supplies, h = s.valley.homestead;
   assert.ok(s.things.some((v) => v.kind === 'depot'), 'the Depot stands from the start');
   done(apply(s, { type: 'place', kind: 'farmhouse', x: h.x, z: h.z, yaw: 0 }), 'the farmhouse');
@@ -108,9 +108,11 @@ test('the Spring Valley plays through to Restored in a few game-days, with no bl
   assert.equal(sup.available, 1, 'eleven of the twelve starter Supplies spent');
   assert.equal(s.sim.carts.length, 1, 'the Garage\'s own cart');
 
+  build(s, 'beehive', { x: 2, z: -32 });
   // Then it runs: build what the drops pay for as they come.
   const env = { windSpeed: 4, cloudCover: 0.2 }, events: SimEvent[] = [], when = new Map<string, string>();
   const plan: [ThingKind, Point2][] = [['coop', { x: 22, z: -44 }], ['bakery', { x: -20, z: -40 }], ['composter', { x: -26, z: -30 }]];
+  plan.push(['rain_tank', wheatPts[0]]);
   const ids = new Map<ThingKind, number>();
   const started = performance.now();
   let hours = 0;
@@ -121,12 +123,12 @@ test('the Spring Valley plays through to Restored in a few game-days, with no bl
       if (!when.has(key)) when.set(key, formatClock(s.sim.day, s.sim.hour));
     }
     hours++;
-    while (plan.length > 0 && sup.available >= 2) {
+    while (plan.length > 0 && sup.available >= (plan[0][0] === 'rain_tank' ? 1 : 2)) {
       const [kind, at] = must(plan.shift(), 'the next building'), id = build(s, kind, at);
       ids.set(kind, id);
-      if (kind !== 'composter') joinMain(s, wheel, id);
+      if (kind !== 'composter' && kind !== 'rain_tank') joinMain(s, wheel, id);
     }
-    if (plan.length === 0 && sup.available >= 1 && s.sim.carts.length < 2) done(apply(s, { type: 'buyCart' }), 'a second cart');
+    if (plan.length === 0 && sup.available >= 1 && s.sim.carts.length < cartCount) done(apply(s, { type: 'buyCart' }), 'a second cart');
   }
   const ms = performance.now() - started;
   t.diagnostic(`Restored on ${when.get('restored') ?? 'never'}: within ${hours} game hours (${(hours / 24).toFixed(2)} game-days), simulated in ${Math.round(ms)} ms`);
@@ -140,8 +142,13 @@ test('the Spring Valley plays through to Restored in a few game-days, with no bl
   assert.equal(sup.unlocked, SUPPLY_CAP);
   assert.ok(sup.drops.every((d) => d.received));
   assert.equal(plan.length, 0, 'the Coop, Bakery and Composter all built');
-  assert.equal(s.sim.carts.length, 2, 'and a second cart bought');
+  assert.equal(s.sim.carts.length, cartCount);
+  assert.equal(sup.spent, 18 + cartCount);
   assert.ok(sup.available >= 0 && sup.spent + sup.available === sup.unlocked);
+
+  const tank = must(s.things.find(v => v.kind === 'rain_tank'), 'the Rain Tank');
+  assert.ok(serviceSite(s, tank).fields.length > 0, 'the tank serves a planted bank');
+  assert.ok(s.sim.delivered.honey === 4, 'the hive supplied the settlement order');
 
   // The carts brought the harvests in, and every workshop made its goods.
   const made = (id: number) => must(s.sim.things.get(id), 'a runtime').made;
@@ -151,6 +158,7 @@ test('the Spring Valley plays through to Restored in a few game-days, with no bl
   assert.ok(s.fields.every((f) => f.growth < 1 || f.harvestReady > 0), 'fields replanted after harvest');
   assert.ok(Object.keys(must(s.sim.things.get(silo), 'the silo').outputs).length > 0, 'the Silo holds the surplus');
 
+  t.diagnostic(`Supplies spent: ${sup.spent}/${sup.cap}`);
   // The Pantry Order, in full.
   for (const [g, want] of Object.entries(PANTRY_ORDER)) assert.ok(countOf(s.sim.delivered, g as keyof typeof PANTRY_ORDER) >= (want ?? 0), `${g} delivered`);
   assert.ok(s.sim.brief.order.done);

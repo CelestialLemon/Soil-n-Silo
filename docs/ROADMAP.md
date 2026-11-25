@@ -65,6 +65,13 @@ console errors at ~60 fps.
 ### Milestone 3 — Microclimates, Ecology & Helper Drones
 *Goal: deepen "working with nature" so clever land-craft visibly outperforms brute-force tech.*
 
+**Core implemented (#300).** Spring Valley asks for 10 Bread, 6 Flour, 6 Beans and 4 Honey. The one-cart playthrough restores seed 1042 with a gravity channel, Rain Tank and Beehive for 19 of 20 Supplies. The second cart uses the last Supply.
+
+- Rain Tanks buffer fields within 10 m, powered Sprinklers water within 11 m, and Beehives serve a 14 m radius. Each costs 1 Supply. A Sprinkler draws 1 W.
+- A field qualifies when a planted cell falls inside the radius. Bee visits last until harvest. The 25% yield bonus rounds to whole cargo units.
+- Mill and Coop cards cycle the preferred byproduct destination. Bakery cards choose Bread or Honey Cake for the next batch. The current paid batch finishes first.
+- The separate Water Pump remains planned. The Helper Drone model awaits the developer’s art choice.
+
 - **Microclimates & shelter:** Slope erosion guarded by hedgerows/trees/beans; trees shading the Coop in heat (and casting real shade on Solar Canopies); windbreaks sheltering turbines and hives; agrivoltaic shade cooling heat-sensitive crops.
 - **Water craft expanded:** Rain Tanks (buffering dry spells), Water Pumps (lifting water uphill for power + Supply cost, contrasting with free gravity channels), and Sprinklers.
 - **Beehives & pollination:** Bees forage nearby flowering crops when calm and warm, boosting yield and producing Honey.
