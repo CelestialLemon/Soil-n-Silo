@@ -4,7 +4,6 @@ import { INPUT_CAP, runtimeOf, setOutHoney } from './workshops.ts';
 import { addGood, capacity, takeGood } from './goods.ts';
 import { buyCart, retireCart } from './carts.ts';
 import type { ThingKind } from './catalog.ts';
-import { resetSteadyOnSetupChange } from './brief.ts';
 import { emptyChange, type Change } from './change.ts';
 import { digChannel, fillChannel } from './channels.ts';
 import { eraseField, type FieldEdit, paintField } from './fields.ts';
@@ -47,12 +46,8 @@ export function apply(s: GameState, a: Action): Result<Change, string> {
     case 'rotate': return rotateThing(s, a.id, a.yaw);
     case 'remove': return removeThing(s, a.id);
     case 'paintField': return fieldChange(s, paintField(s, a.crop, a.points, a.radius));
-    case 'eraseField': {
-      // Erasing the last field stops the homestead running: an unfinished Steady Homestead starts over now, paused or not.
-      const r = fieldChange(s, eraseField(s, a.points, a.radius));
-      if (r.ok && resetSteadyOnSetupChange(s)) r.value.steadyReset = true;
-      return r;
-    }
+    // Erasing the last field starts an unfinished Steady Homestead over (settle).
+    case 'eraseField': return fieldChange(s, eraseField(s, a.points, a.radius));
     case 'digChannel': return digChannel(s, a.points);
     case 'fillChannel': return fillChannel(s, a.id);
     case 'addTrack': return addTrack(s, a.points);

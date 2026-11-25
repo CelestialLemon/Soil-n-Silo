@@ -8,6 +8,7 @@ import type { SimEnv } from './power/sim.ts';
 import type { ThingKind } from './catalog.ts';
 import type { Field, GameState, Thing } from './state.ts';
 import type { ThingRuntime } from './workshops.ts';
+import { toSpell } from './weather.ts';
 
 export const SERVICE_RADIUS = { beehive: 14, rain_tank: 10, sprinkler: 11 } as const;
 export const hasServiceRadius = (kind: ThingKind): kind is keyof typeof SERVICE_RADIUS => Object.hasOwn(SERVICE_RADIUS, kind);
@@ -22,12 +23,17 @@ export const LIQUID_RAIN = 0.1;
  * test's or a caller's synthetic one, the weather not stepped to it) is read by its name.
  */
 export function isLiquidRain(s: GameState, weather?: string): boolean {
-  if (weather !== undefined && weather !== s.sim.weather.spell) return isRaining(weather);
+  if (!isLivingSpell(s, weather)) return isRaining(weather);
   return s.sim.weather.rain >= LIQUID_RAIN;
 }
 /** Whether snow is falling now (by the living weather's snow, or a snowy spell's name). */
 export const isSnowing = (s: GameState, weather?: string) =>
-  weather === 'snow' || weather === 'blizzard' || ((weather === undefined || weather === s.sim.weather.spell) && s.sim.weather.snow >= LIQUID_RAIN);
+  weather === 'snow' || weather === 'blizzard' || (isLivingSpell(s, weather) && s.sim.weather.snow >= LIQUID_RAIN);
+/**
+ * Whether `weather` names the living weather's spell (or is left out): an alias counts by the spell it stands for, so a
+ * forced 'rain' that the weather stepped to its 'soft-rain' (falling as snow in the cold) is read by its rain and snow.
+ */
+const isLivingSpell = (s: GameState, weather?: string) => weather === undefined || toSpell(weather) === s.sim.weather.spell;
 export function treeShade(s: GameState, p: Point2, radius?: number): number {
   let shade = 0;
   for (const trees of [s.wildTrees, s.plantedTrees]) for (const t of trees)

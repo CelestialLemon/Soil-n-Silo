@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  apply, CLOCK_JUMPED, FLOODED_FIELDS, type GameState, homesteadRuns, must, refreshFlood, resetSteadyOnClockJump, sandboxSupplies,
-  SETUP_CHANGED, type SimEvent, stepSim, STEADY_HOURS, type ThingKind,
+  apply, CLOCK_JUMPED, FLOODED_FIELDS, FROSTED_FIELDS, type GameState, GREENHOUSE_FULL, homesteadRuns, must, OUTPUT_CAP, refreshFlood,
+  resetSteadyOnClockJump, runtimeOf, sandboxSupplies, SETUP_CHANGED, type SimEvent, stepSim, STEADY_HOURS, type ThingKind,
 } from '../src/game/index.ts';
 import { fieldAt, flatLand } from './helpers.ts';
 
@@ -152,4 +152,58 @@ test('Steady Homestead pauses while every field stands flooded, and goes on once
   run(s, 1);
   assert.ok(!h.paused && reason() === '');
   assert.ok(h.hours > held + 0.9, 'counting again');
+});
+
+test('a full Heated Greenhouse with no field grows nothing: Steady Homestead pauses until a cart hauls its crop out', () => {
+  const { s } = buildings();
+  const h = s.sim.brief.steadyHomestead, gh = must(runtimeOf(s, put(s, 'greenhouse', 8, -36)), 'the greenhouse');
+  // No cart to haul it out: it stands full.
+  s.sim.carts = [];
+  gh.outputs = { wheat: OUTPUT_CAP };
+  run(s, 2);
+  const reason = (): string => h.pauseReason;
+  assert.ok(h.running && h.paused);
+  assert.equal(reason(), GREENHOUSE_FULL);
+  assert.equal(h.hours, 0, 'no hours while nothing grows');
+  gh.outputs = {};
+  run(s, 1);
+  assert.ok(!h.paused && reason() === '');
+  assert.ok(h.hours > 0.9, `counting once it grows again (${h.hours.toFixed(2)})`);
+});
+
+test('a lone bean field stalled by frost pauses Steady Homestead until it thaws, or a Heated Greenhouse grows on', () => {
+  const { s, h } = homestead();
+  const beans = must(s.fields[0], 'the beans');
+  s.season = 'winter';
+  s.climate = 'hard';
+  s.sim.weatherOverride = 'blizzard';
+  run(s, 0.5);
+  assert.ok(beans.frosted, 'the beans stand frosted');
+  const held = h.hours, reason = (): string => h.pauseReason;
+  run(s, 2);
+  assert.ok(h.paused);
+  assert.equal(reason(), FROSTED_FIELDS);
+  assert.equal(h.hours, held, 'no hours while nothing grows');
+  // A warm Heated Greenhouse grows on under its glass: the hours count again.
+  put(s, 'greenhouse', 8, -36);
+  run(s, 1);
+  assert.ok(!h.paused && reason() === '');
+  assert.ok(h.hours > held + 0.9, `counting under glass (${h.hours.toFixed(2)})`);
+});
+
+test('laying a track over the only field starts Steady Homestead over at once, so replanting before a tick keeps nothing', () => {
+  const { s } = buildings();
+  const h = s.sim.brief.steadyHomestead;
+  fieldAt(s, 'beans', -20, -6, 1);
+  run(s, 3);
+  assert.ok(h.running && h.hours > 2.5, `the hours count (${h.hours.toFixed(2)})`);
+  const r = apply(s, { type: 'addTrack', points: [{ x: -26, z: -6 }, { x: -20, z: -6 }, { x: -14, z: -6 }] });
+  assert.ok(r.ok && r.value.steadyReset, 'the edit says so');
+  assert.equal(s.fields.length, 0, 'the track took the field');
+  assert.equal(h.hours, 0);
+  assert.equal(h.resetReason, SETUP_CHANGED);
+  // Replanted before the next tick: it counts from zero.
+  fieldAt(s, 'beans', -20, 6, 3);
+  run(s, 0.5);
+  assert.ok(h.running && h.hours > 0.4 && h.hours < 0.6, `counts from zero (${h.hours.toFixed(2)})`);
 });

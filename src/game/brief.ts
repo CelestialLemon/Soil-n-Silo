@@ -6,8 +6,8 @@
 //      a Heated Greenhouse), keep it powered without a blackout through two full days and nights of living weather, lived
 //      through. A blackout or an unpowered homestead building resets it, and says why; so does taking down what makes it
 //      run (erasing the last field too), or jumping the clock (the hours must be lived, not skipped). Fields left parched
-//      for hours on end pause it (no reset) until they're watered again, and so does every field standing flooded while
-//      no warm Greenhouse grows on.
+//      for hours on end pause it (no reset) until they're watered again, and so does every field standing frosted or
+//      flooded, or a full Greenhouse with no field: unless a warm Greenhouse grows on, the hours count only while crops grow.
 // When all three fill, the valley is Restored.
 import { CATALOG, isWorkshop } from './catalog.ts';
 import type { SimEvent } from './events.ts';
@@ -34,6 +34,8 @@ export const PARCHED = 0.25;
 export const DRY_GRACE_HOURS = 6;
 export const DRY_FIELDS = 'Fields are dry — dig a rill, add a Rain Tank or power a Sprinkler';
 export const FLOODED_FIELDS = 'Fields are flooded — wait for water to recede or dig an overflow swale';
+export const FROSTED_FIELDS = 'Fields are frosted — wait for the thaw or build a Heated Greenhouse';
+export const GREENHOUSE_FULL = 'Heated Greenhouse is full — haul crops out to keep growing';
 export const LIVING_LAND_M2 = 100, LIVING_LAND_FERTILITY = 0.75;
 /** Two full days and nights, game hours. */
 export const STEADY_HOURS = 48;
@@ -121,7 +123,7 @@ export function stepBrief(s: GameState, dtH: number, events: SimEvent[]): void {
         h.paused = false; h.pauseReason = '';
       } else {
         h.dryHours = fieldsParched(s) ? h.dryHours + dtH : 0;
-        const pause = fieldsFlooded(s) ? FLOODED_FIELDS : h.dryHours > DRY_GRACE_HOURS ? DRY_FIELDS : '';
+        const pause = stallReason(s, h.dryHours > DRY_GRACE_HOURS);
         h.paused = pause !== '';
         h.pauseReason = pause;
         if (!h.paused) h.hours += dtH;
@@ -147,12 +149,16 @@ export function fieldsParched(s: GameState): boolean {
 }
 
 /**
- * Whether the homestead's crops all stand under flood water: it has painted fields, every one is flooded, and no warm Heated
- * Greenhouse grows on under its glass. The flood stalls it (Steady Homestead pauses until the water recedes).
+ * Why nothing grows on the homestead now (empty while something does): the hours only count while a crop is growing, in an
+ * open field or under warm glass. With a warm Heated Greenhouse growing, nothing stalls it. Otherwise it stalls when every
+ * field stands frosted or flooded, when the growing ones have stood parched past the grace hours (`dryStalled`), or, with no
+ * field at all, when the Greenhouse is full and waits for a cart.
  */
-export function fieldsFlooded(s: GameState): boolean {
-  if (s.fields.length === 0 || !s.fields.every((f) => f.flooded)) return false;
-  return !s.things.some((t) => t.kind === 'greenhouse' && greenhouseWarm(s.sim.things.get(t.id)));
+export function stallReason(s: GameState, dryStalled: boolean): string {
+  if (s.things.some((t) => t.kind === 'greenhouse' && greenhouseWarm(s.sim.things.get(t.id)))) return '';
+  if (s.fields.length === 0) return s.things.some((t) => t.kind === 'greenhouse') ? GREENHOUSE_FULL : '';
+  if (s.fields.every((f) => f.frosted || f.flooded)) return s.fields.some((f) => f.flooded) ? FLOODED_FIELDS : FROSTED_FIELDS;
+  return dryStalled ? DRY_FIELDS : '';
 }
 
 /**

@@ -104,7 +104,7 @@ export {
   TRICKLE_PER_HOUR,
 } from './carts.ts';
 export {
-  blankBrief, type BriefState, CLOCK_JUMPED, DRY_FIELDS, DRY_GRACE_HOURS, FLOODED_FIELDS, fieldsFlooded, fieldsParched, homesteadRuns, LIVING_LAND_FERTILITY, LIVING_LAND_M2, type LivingLandSeal,
+  blankBrief, type BriefState, CLOCK_JUMPED, DRY_FIELDS, DRY_GRACE_HOURS, FLOODED_FIELDS, fieldsParched, FROSTED_FIELDS, GREENHOUSE_FULL, homesteadRuns, LIVING_LAND_FERTILITY, LIVING_LAND_M2, type LivingLandSeal,
   PANTRY_ORDER, PANTRY_ORDERS, type PantryOrderSeal, PARCHED,
-  resetSteadyOnClockJump, resetSteadyOnSetupChange, type Seal, type SealId, SEAL_LABELS, SETUP_CHANGED, STEADY_HOURS, type SteadyHomesteadSeal, stepBrief,
+  resetSteadyOnClockJump, resetSteadyOnSetupChange, type Seal, type SealId, SEAL_LABELS, SETUP_CHANGED, STEADY_HOURS, stallReason, type SteadyHomesteadSeal, stepBrief,
 } from './brief.ts';

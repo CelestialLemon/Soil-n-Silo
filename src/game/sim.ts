@@ -74,8 +74,9 @@ export function stepSim(s: GameState, dtSeconds: number, env: SimEnv): SimTickRe
     const was = sim.weather.spell, flooded = sim.floodApplied > 0;
     const w = stepWeather(s, dtH, sim.day, sim.hour, forced);
     if (w.spell !== was && NOTABLE[w.spell]) out.events.push({ type: 'weather', message: NOTABLE[w.spell] ?? '' });
+    // The rest reads the spell the weather resolved (a forced alias, 'rain', as the 'soft-rain' it stepped to).
     const e: SimEnv = env.useLiveWeather ? { ...env, windSpeed: w.windSpeed, cloudCover: w.cloudCover, weather: w.spell }
-      : { ...env, weather: env.weather ?? w.spell };
+      : { ...env, weather: w.spell };
     if (refreshFlood(s)) {
       out.waterChanged = true; out.groundChanged = true; out.fieldStagesChanged = true;
       if (!flooded && sim.floodApplied > 0) out.events.push({ type: 'flood', message: 'The brook is rising: flood water spills over the low meadows.' });

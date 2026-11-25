@@ -49,6 +49,25 @@ test('a storm falling as snow in a hard winter fills no tank and waters no field
   assert.ok(isLiquidRain(s, 'soft-rain'));
 });
 
+test('a forced \'rain\' in a hard winter falls as snow too: the alias reads as the spell it stands for', () => {
+  const s = land({ height: () => 12 });
+  s.season = 'winter';
+  s.climate = 'hard';
+  s.sim.hour = 3;
+  const field = fieldAt(s, 'wheat', 0, 0), tank = building(s, 'rain_tank', -4, 0).r, sprinkler = building(s, 'sprinkler', 6, 0).r;
+  building(s, 'turbine', 12, 0);
+  const env = { windSpeed: 12, cloudCover: 1, weather: 'rain' };
+  for (let k = 0; k < 60; k++) stepSim(s, 1, env);
+  const w = s.sim.weather;
+  assert.equal(w.spell, 'soft-rain', '\'rain\' is soft rain');
+  assert.equal(w.rain, 0, 'no rain: it falls as snow');
+  assert.ok(w.snow > 0, `snow (${w.snow.toFixed(2)})`);
+  assert.ok(!isLiquidRain(s, 'rain') && !isLiquidRain(s, 'soft-rain'), 'the alias and the spell read alike');
+  assert.equal(tank.water, 0, 'no refill from snow');
+  assert.equal(sprinkler.watts, 1, 'the sprinkler runs');
+  assert.equal(effectiveMoisture(s, field, undefined, 'rain'), 0.75, 'watered by the sprinkler alone');
+});
+
 test('only a powered sprinkler irrigates a high terrace inside its reach', () => {
   const s = land({ height: () => 12 });
   fieldAt(s, 'wheat', 0, 0);

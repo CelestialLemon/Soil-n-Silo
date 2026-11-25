@@ -88,13 +88,13 @@ test('a flood spills over the low meadow, pauses its fields, cuts unbridged ways
   beans.avgMoisture = far.avgMoisture = 0.6;
   const base = Float32Array.from(g.baseWaterLevel), level = Float32Array.from(g.waterLevel), moisture = Float32Array.from(g.moisture);
   const navKey = navFor(s).key, near = (a: number, b: number) => Math.abs(a - b) < 1e-6;
-  assert.ok(near(groundAt(s, -40, -9).speed, GROUND.meadow.speed), 'dry meadow out from the bank');
+  assert.ok(near(groundAt(s, -40, -6).speed, GROUND.meadow.speed), 'dry meadow out from the bank');
   assert.ok(passable(navFor(s), navCellOf(-20, -3)), 'dry meadow by the brook');
 
   s.sim.weather.floodSurge = 0.38;
   assert.ok(refreshFlood(s), 'the water changed');
-  assert.ok(g.flood[cellOf(s, -20, -3.5)] > FLOOD_DEEP, `deep by the bank: ${g.flood[cellOf(s, -20, -3.5)].toFixed(3)} m`);
-  assert.ok(g.waterLevel[cellOf(s, -20, -3.5)] > 0, 'drawn as water');
+  assert.ok(g.flood[cellOf(s, -20, -2.5)] > FLOOD_DEEP, `deep by the bank: ${g.flood[cellOf(s, -20, -2.5)].toFixed(3)} m`);
+  assert.ok(g.waterLevel[cellOf(s, -20, -2.5)] > 0, 'drawn as water');
   assert.equal(g.flood[cellOf(s, -20, -30)], 0, 'never far from the bank');
   assert.ok(same(g.baseWaterLevel, base), 'the natural water is never touched');
   assert.ok(beans.flooded && !far.flooded);
@@ -106,8 +106,9 @@ test('a flood spills over the low meadow, pauses its fields, cuts unbridged ways
   assert.ok(!passable(nav, navCellOf(-20, -3)), 'deep flood water cuts the way');
   assert.ok(passable(nav, navCellOf(-20, -30)));
   assert.ok(passable(nav, navCellOf(bridge.x, bridge.z)), 'the bridge still carries it');
-  assert.ok(g.flood[cellOf(s, -40, -8.5)] > FLOOD_MIN && g.flood[cellOf(s, -40, -8.5)] <= FLOOD_DEEP, 'shallow at the flood\'s edge');
-  assert.ok(near(groundAt(s, -40, -9).speed, GROUND.mud.speed), 'and muddy: the carts slow');
+  assert.ok(g.flood[cellOf(s, -40, -6.5)] > FLOOD_MIN && g.flood[cellOf(s, -40, -6.5)] <= FLOOD_DEEP, 'shallow at the flood\'s edge');
+  assert.equal(g.flood[cellOf(s, -40, -7.5)], 0, 'and dry beyond it, some 6 m out (0.18 m thinning 3 cm/m)');
+  assert.ok(near(groundAt(s, -40, -6).speed, GROUND.mud.speed), 'and muddy: the carts slow');
 
   // A move under 2 cm leaves the water as it is.
   s.sim.weather.floodSurge = 0.37;
@@ -117,7 +118,6 @@ test('a flood spills over the low meadow, pauses its fields, cuts unbridged ways
   assert.ok(refreshFlood(s));
   const shallow = g.flood[cellOf(s, -20, -3.5)];
   assert.ok(shallow > FLOOD_MIN && shallow <= FLOOD_DEEP, `shallow: ${shallow.toFixed(3)} m`);
-  assert.ok(g.flood[cellOf(s, -20, -4.5)] > FLOOD_MIN && g.flood[cellOf(s, -20, -4.5)] <= FLOOD_DEEP);
   assert.ok(passable(navFor(s), navCellOf(-20, -5)), 'shallow flood water is passable');
 
 
@@ -181,15 +181,68 @@ test('a higher flood reaches a cell past a lower bank nearer to it', () => {
   const s = land({ height: () => 0, water: (x) => (Math.abs(x + 3) <= 1 ? -0.3 : Math.abs(x - 3) <= 1 ? -0.1 : undefined), depth: 0.6 });
   const g = s.grid, level = Float32Array.from(g.baseWaterLevel), depth = new Float32Array(g.nx * g.nz);
   overlayFlood(s, 0.3, level, depth);
-  // The cell right by the low bank is 1 m from it but 4 m from the high one: the high water, thinned 2 cm/m, stands at
-  // 0.12 m there, well above the low water's -0.02 m.
-  for (const [x, want] of [[-1.5, 0.12], [-0.5, 0.14], [0.5, 0.16], [1.5, 0.18]]) {
+  // The cell right by the low bank is 1 m from it but 4 m from the high one: the high water, thinned 3 cm/m, stands at
+  // 0.08 m there, well above the low water's -0.03 m.
+  for (const [x, want] of [[-1.5, 0.08], [-0.5, 0.11], [0.5, 0.14], [1.5, 0.17]]) {
     const i = cellOf(s, x, 0.5);
     assert.ok(Math.abs(level[i] - want) < 0.005, `x = ${x}: the higher surface ${want} m, not the nearer lower one (${level[i].toFixed(3)})`);
     assert.ok(depth[i] > FLOOD_MIN);
   }
   // Beyond the low brook only its own (lower) water spreads: the high flood never crosses it.
-  assert.ok(Math.abs(level[cellOf(s, -4.5, 0.5)] - -0.02) < 0.005);
+  assert.ok(Math.abs(level[cellOf(s, -4.5, 0.5)] - -0.03) < 0.005);
+});
+
+test('a higher water source never lowers or dries the flood a lower one already reached', () => {
+  // A walled meadow 0.5 m down: a corridor along z = 0 from x = -18 to 2 with a side branch up x = -3 to z = 10. A low
+  // brook (its surface -0.6 m) crosses the corridor's east end beside the branch; in the second land a higher, perched
+  // pond (its surface 0 m) closes its west end, its flood reaching the branch only after a long run down the corridor.
+  const inside = (x: number, z: number) => (Math.abs(z) <= 1 && x >= -18 && x <= 2) || (x >= -4 && x <= -2 && z >= -1 && z <= 10);
+  const make = (high: boolean) => land({
+    height: (x, z) => (inside(x, z) ? -0.5 : 5),
+    water: (x, z) => (Math.abs(z) >= 1 ? undefined : Math.abs(x) < 1 ? -0.6 : high && x > -17 && x < -15 ? 0 : undefined),
+  });
+  const flood = (s: GameState) => {
+    const level = Float32Array.from(s.grid.baseWaterLevel), depth = new Float32Array(s.grid.nx * s.grid.nz);
+    overlayFlood(s, 0.3, level, depth);
+    return { level, depth };
+  };
+  const low = make(false), both = make(true), a = flood(low), b = flood(both);
+  let wet = 0;
+  for (let i = 0; i < a.depth.length; i++) {
+    if (a.depth[i] <= 0) continue;
+    wet++;
+    assert.ok(b.depth[i] >= a.depth[i] - 1e-6 && b.level[i] >= a.level[i] - 1e-6,
+      `cell ${i}: ${a.depth[i].toFixed(3)} m deep with the low brook alone, ${b.depth[i].toFixed(3)} m with the higher pond too`);
+  }
+  assert.ok(wet > 10, `the low brook floods the branch (${wet} cells)`);
+  assert.ok(b.depth[cellOf(both, -2.5, 5.5)] > 0, 'up the branch, past the high pond\'s long run');
+});
+
+test('a U-shaped rill from the brook back to it is no swale even when a dry sill stops its water halfway', () => {
+  // Ground falling 3 cm/m east; the brook along x = -2. A U out to x = 14 and back, a 1 m rise across its far side.
+  const make = (sill: boolean) => land({
+    height: (x, z) => -0.03 * x + (sill && x > 12 && Math.abs(z) < 2 ? 1 : 0),
+    water: (x) => (Math.abs(x + 2) <= 1.5 ? 0.06 - 0.2 : undefined),
+    flow: () => ({ x: 0, z: 0.8 }),
+  });
+  const s = make(true);
+  assert.ok(apply(s, { type: 'digChannel', points: [{ x: -1, z: -6 }, { x: 14, z: -6 }, { x: 14, z: 6 }, { x: -1, z: 6 }] }).ok);
+  const flow = must(s.channels[0], 'the U').flow;
+  assert.ok(flow.some((p) => !p.wet), 'a dry sill stops its water');
+  const wetHead = flow.findIndex((p) => !p.wet);
+  assert.ok(flow[0].waterLevel - flow[wetHead - 1].waterLevel >= SWALE_MIN_DROP, 'its water drops well below the brook before the sill');
+  assert.deepEqual(swalesOf(s), [], 'but both its ends are on the same brook: no swale');
+  // So it relieves no flood: the meadow between its arms floods just as with no rill at all.
+  const volume = (v: GameState) => {
+    v.sim.weather.floodSurge = 0.38;
+    refreshFlood(v, true);
+    let m = 0;
+    for (let z = -3; z <= 2; z++) for (let x = 0; x <= 4; x++) m += v.grid.flood[cellOf(v, x + 0.5, z + 0.5)];
+    return m;
+  };
+  const plain = make(true);
+  assert.ok(volume(plain) > 0);
+  assert.ok(Math.abs(volume(s) - volume(plain)) < 1e-6, 'no relief');
 });
 
 test('a rill that loops back into the same brook is no swale; one that carries the water downhill is', () => {

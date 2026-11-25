@@ -1,5 +1,7 @@
 // After an edit: rebuild what it touched and everything that follows from it, in order (the land, then the water in the
-// rills, the wet banks, the fields' moisture, the bridges and the power preview), and say what changed.
+// rills, the wet banks, the fields' moisture, the bridges and the power preview, and whether Steady Homestead starts
+// over), and say what changed.
+import { resetSteadyOnSetupChange } from './brief.ts';
 import { recomputeBridges } from './bridges.ts';
 import { type Change, emptyChange } from './change.ts';
 import { recomposeCover, recomposeEarth } from './earth.ts';
@@ -48,6 +50,10 @@ export function settle(s: GameState, e: Edit): Change {
   change.hedges = e.hedges ?? [];
   change.trees = e.trees ?? [];
   if (e.created !== undefined) change.created = e.created;
+  // Taking down what makes the homestead run (a building, or the last field: erased, or under a track, a rill or a
+  // building) starts an unfinished Steady Homestead over now, paused or not, so putting it back before the next tick
+  // can't keep the hours.
+  if (resetSteadyOnSetupChange(s)) change.steadyReset = true;
   return change;
 }
 
