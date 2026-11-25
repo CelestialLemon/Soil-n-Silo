@@ -81,7 +81,16 @@ console errors at ~60 fps.
 ### Milestone 4 — Continuous Unpredictable Weather & All Four Seasons
 *Goal: bring `brush3d`'s full living weather into gameplay as a continuous, unpredictable partner.*
 
-**Rules in place (#301, wave 1: `src/game/` only; drawing and the overlay come in wave 2).** The Winter Valley restores
+**Implemented, ready for review (#301).** Every run rolls fresh weather (`?wseed=` replays one; `?climate=` picks the
+season's character, otherwise the valley's own), lived continuously through all four seasons: the sky, wind, rain, snow,
+lightning, floods, ice and rime are drawn from the game's weather; the postcard names the season's character ("A hard
+winter"); the sky strip reads out the weather and the air's temperature, and once a Weather Station stands, three days
+ahead as small sky icons (day and temperatures on hover). `?weather=` locks the weather until the readout is clicked. The
+Heated Greenhouse's card toggles its crop (Beans or Wheat) and shows its draw and whether it's warming nearby bees; a
+clicked field says when it's frosted or flooded; jumping the clock reads the weather again at once, even paused. Checked
+in GPU Chromium on all four seasons at ~60 fps with no console errors.
+
+**Rules (wave 1: `src/game/`).** The Winter Valley restores
 seed 1042 with a Heated Greenhouse, a Beehive, a Weather Station and two Water Wheels for all 20 Supplies; the Spring
 Valley still restores in its own living weather (and with a stormy character's wind and clouds).
 

@@ -10,17 +10,21 @@
 // it (and the day turns as it passes midnight), so the sky strip's Dawn, Noon, Golden and Dusk move both together. While
 // the clock is stopped, an edit or a jump of the clock reads the power again at once (refreshPower), so the power view's
 // watts and the workshops' lights show it without waiting for the clock to run.
+//
+// The living weather (Milestone 4) is the game's: stepSim moves it on with the clock, the world draws it, and the sky
+// strip reads it out (liveWeatherView) with the Weather Station's days ahead once one stands (stationForecast). A
+// `?weather=` lock holds it until the player lets it go (onClearWeatherLock); a jump of the clock reads it again at once.
 import {
   type Action, cellIx, cellIz, effectiveMoisture, erosionDrain, GOOD_LABELS, apply, diagnoseIdleCarts, CART_COST, CATALOG, CLOCK_JUMPED, type Change, generateValley, type GameState, heightAt, type Point2,
-  refreshPower, resetSteadyOnClockJump, type Season, SETUP_CHANGED, type SimEvent, stepSim, suggestWaterWheelYaw, type ThingKind, TREE_SPECIES,
-  wrapAngle,
+  climateFor, refreshPower, resetSteadyOnClockJump, rollWeatherSeed, type Season, SETUP_CHANGED, type SimEvent, stationForecast, stepSim, stepWeather,
+  suggestWaterWheelYaw, type ThingKind, TREE_SPECIES, wrapAngle,
 } from '../game/index.ts';
 import {
   placedKind, type SelectedThingView, type Speed, toolDef, type ToolId, type ToolReadout, type UiCallbacks, type UiController,
   type UiSnapshot, type ValleyStats, type Weather, type YawMode,
 } from '../ui/index.ts';
-import { type PreviewSpec, type World, writeUrlParam } from '../world/index.ts';
-import { cartControls, skyWeather, thingDetail, thingStatus, uiWeather, valleyStats } from './status.ts';
+import { clearUrlParam, type PreviewSpec, type World, writeUrlParam } from '../world/index.ts';
+import { cartControls, liveWeatherView, skyWeather, thingDetail, thingStatus, uiWeather, valleyStats } from './status.ts';
 import {
   BRUSH, channelReadout, extend, hedgeReadout, isFieldTool, isPowerKind, isStrokeTool, placeReadout, placesPower, STROKE_STEP,
   type StrokeTool, trackReadout, treeReadout, TURN_STEP,
@@ -144,6 +148,8 @@ export class Play implements UiCallbacks {
           this.hoverDirty = true;
           break;
         case 'seal': case 'restored': ui?.showToast(e.message); break;
+        // The weather turning, and the brook flooding or going down: said calmly, the flood as a warning.
+        case 'weather': case 'flood': ui?.showToast(e.message, e.type === 'flood' ? 'warn' : 'info'); break;
         case 'steadyReset': ui?.showToast(e.message, 'warn'); this.blackoutSaid ||= this.state.sim.powerSummary.anyBlackout; break;
         case 'blackout':
           if (!this.blackoutSaid && !reset) ui?.showToast(e.message, 'warn');
@@ -184,14 +190,18 @@ export class Play implements UiCallbacks {
       this.statsDirty = false;
     }
     const hour = this.world.getHour(), selected = this.selectedView(hour);
+    const live = liveWeatherView(this.state), forecast = stationForecast(this.state);
     const snapshot: UiSnapshot = {
       activeTool: this.tool, yawMode: this.world.getYawMode(), powerView: this.powerView, hour, day: this.state.sim.day,
-      speed: this.world.getSpeed(), weather: uiWeather(this.world.getWeather()), stats: this.stats, selected,
+      speed: this.world.getSpeed(), weather: uiWeather(this.world.getWeather()), liveWeather: live, forecast, stats: this.stats, selected,
       readout: this.currentReadout(),
     };
     if (placedKind(this.tool)) snapshot.placingRotationDeg = compassDeg(this.placeYaw);
+    // The weather in the key as the strip shows it (the temperature rounded), so it redraws when the sky turns, not each frame.
+    const weatherKey = `${live.spell} ${Math.round(live.tempC)} ${live.locked ? 1 : 0} ${live.detail ?? ''}`;
     const key = [
       snapshot.activeTool, snapshot.yawMode, snapshot.powerView, snapshot.day, Math.floor(hour * 60), snapshot.speed, snapshot.weather,
+      weatherKey, forecast.map((f) => `${f.day}${f.spell}${Math.round(f.minTempC)}/${Math.round(f.maxTempC)}`).join(','),
       JSON.stringify(this.stats), selected ? JSON.stringify({ ...selected, screenX: 0, screenY: 0, visible: 0 }) : '-',
       snapshot.readout ? `${snapshot.readout.text} ${snapshot.readout.tone}` : '-', snapshot.placingRotationDeg,
     ].join('|');
@@ -224,6 +234,7 @@ export class Play implements UiCallbacks {
     if (detail !== undefined) view.detailLine = detail;
     const r = this.state.sim.things.get(t.id);
     if (t.kind === 'bakery' && r) view.preference = `Recipe: ${r.recipe === 'bread' ? 'Bread' : 'Honey Cake'}`;
+    if (t.kind === 'greenhouse' && r) view.preference = `Crop: ${GOOD_LABELS[r.greenhouseCrop].label}`;
     if ((t.kind === 'mill' || t.kind === 'coop') && r && this.state.things.some(v => v.kind === 'composter')
       && this.state.things.some(v => v.kind === (t.kind === 'mill' ? 'coop' : 'silo')))
       view.preference = `${t.kind === 'mill' ? 'Bran' : 'Manure'} → ${r.priority[0].toUpperCase() + r.priority.slice(1)}`;
@@ -356,6 +367,8 @@ export class Play implements UiCallbacks {
         if (field) {
           const notes = [GOOD_LABELS[field.crop].label, effectiveMoisture(this.state, field, undefined, this.world.getWeather()) >= 0.32 ? 'Well watered' : 'Dry soil'];
           if (field.pollinated) notes.push('Pollinated');
+          if (field.frosted) notes.push('Frosted · regrows once thawed');
+          if (field.flooded) notes.push('Flooded · paused until water recedes');
           if (erosionDrain(this.state, field) > 0.02) notes.push('Sloping soil · shelter with beans, trees or hedges');
           this.ui?.showToast(notes.join(' · '));
         }
@@ -687,6 +700,7 @@ export class Play implements UiCallbacks {
     const r = this.state.sim.things.get(id);
     if (!r) return;
     if (r.kind === 'bakery') this.act({ type: 'setRecipe', id, recipe: r.recipe === 'bread' ? 'honey_cake' : 'bread' });
+    else if (r.kind === 'greenhouse') this.act({ type: 'setGreenhouseCrop', id, crop: r.greenhouseCrop === 'beans' ? 'wheat' : 'beans' });
     else {
       const choices = r.kind === 'mill' ? ['auto', 'coop', 'composter'] as const : ['auto', 'composter', 'silo'] as const;
       const next = choices[(choices.findIndex(p => p === r.priority) + 1) % choices.length];
@@ -713,11 +727,15 @@ export class Play implements UiCallbacks {
   onTogglePowerView() { this.powerView = !this.powerView; }
   /**
    * A jump on the sky strip moves the homestead's hour with the sky's (the day stays: no time is lived through), so an
-   * unfinished Steady Homestead starts over: its hours must be lived.
+   * unfinished Steady Homestead starts over: its hours must be lived. The weather is read again at the new hour (a step of
+   * no time: nothing builds up), so the air's warmth, the frost hollows and the sky show it at once, even paused.
    */
   onSetHour(hour: number) {
     this.world.setHour(hour);
     this.state.sim.hour = this.world.getHour();
+    stepWeather(this.state, 0, this.state.sim.day, this.state.sim.hour);
+    this.world.syncSim();
+    this.statsDirty = true;
     if (resetSteadyOnClockJump(this.state)) { this.ui?.showToast(CLOCK_JUMPED); this.statsDirty = true; }
     this.refreshIfPaused();
   }
@@ -729,18 +747,29 @@ export class Play implements UiCallbacks {
 
   onSetWeather(weather: Weather) { this.world.setWeather(skyWeather(weather)); }
 
+  /** Lets the living weather back in after `?weather=` held it. */
+  onClearWeatherLock() {
+    this.world.setWeatherOverride(null);
+    this.refreshIfPaused();
+    this.statsDirty = true;
+    this.ui?.showToast('Living weather resumed');
+  }
+
+  /** A fresh valley lives in fresh weather of its own (a new weather seed, its own climate): the address's locks go. */
   onNewValley(seed: number, season: Season) {
-    const next = generateValley(seed >>> 0, season);
+    const next = generateValley(seed >>> 0, season, { weatherSeed: rollWeatherSeed(), climate: climateFor(seed >>> 0, season) });
     this.onSelectTool('select');
     this.state = next;
     // A fresh homestead: its own Supplies, brief, Depot and stub, on day 1 at the sky's hour.
     next.sim.hour = this.world.getHour();
+    stepWeather(next, 0, next.sim.day, next.sim.hour);
     this.starterTracks = new Set(next.tracks.map((t) => t.id));
     this.harvestHintSaid = false;
     this.blackoutSaid = false;
     this.world.resetValley(next);
     writeUrlParam('seed', String(next.seed));
     writeUrlParam('season', season);
+    for (const key of ['weather', 'climate', 'wseed']) clearUrlParam(key);
     this.welcomed = false;
     this.statsDirty = true;
     this.hoverDirty = true;
