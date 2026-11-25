@@ -4,7 +4,7 @@
 // Homestead's blackout-free hours (and why it last started over). No timer. When all three fill, a warm "Valley Restored"
 // note. Home and New valley sit at its foot; it folds down to just its title.
 import { type BriefState, GOOD_LABELS, isGood, isWorkshop, SEAL_LABELS, type SealId, SEASONS, type Season, THING_KINDS } from '../game/index.ts';
-import { button, el, recall, remember, setFlag, setHidden, setPressed, setText, setTitle } from './dom.ts';
+import { button, el, setFlag, setHidden, setPressed, setText, setTitle } from './dom.ts';
 import { icon, type IconName, setIcon } from './icons.ts';
 import type { UiCallbacks, ValleyStats } from './types.ts';
 
@@ -99,7 +99,7 @@ const rollSeed = () => Math.floor(Math.random() * 0x7fffffff);
 
 export function createBrief(cb: UiCallbacks): Brief {
   let last: ValleyStats | null = null;
-  let folded = recall('brief.folded') === '1';
+  let folded = false;
   /** A fresh valley waiting for a yes, when the homestead would be cleared. */
   let pending: { seed: number; season: Season } | null = null;
 
@@ -110,7 +110,6 @@ export function createBrief(cb: UiCallbacks): Brief {
   const name = el('h1', 'ui-brief-name');
   const fold = button('ui-icon-btn ui-brief-fold', 'Fold the postcard', () => {
     folded = !folded;
-    remember('brief.folded', folded ? '1' : '0');
     paint();
   });
   fold.append(icon('chevron'));

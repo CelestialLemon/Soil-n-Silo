@@ -643,3 +643,25 @@ export function pathLeft(cart: Cart): number {
   return d;
 }
 
+
+/** Explain a blocked harvest using the same field edges and docks as dispatch. */
+export function diagnoseIdleCarts(s: GameState): string | null {
+  if (!s.sim.carts.length || s.sim.carts.some(c => c.job || c.cargo)) return null;
+  for (const crop of ['wheat', 'beans'] as const) {
+    const ripe = s.fields.filter(f => f.crop === crop && f.harvestReady > 0);
+    if (!ripe.length) continue;
+    const targets = s.things.filter(t => t.kind === 'silo' || (crop === 'wheat' && (t.kind === 'mill' || t.kind === 'coop'))
+      || (t.kind === 'depot' && depotWants(s, t, crop) > 0));
+    if (!targets.length) return `${GOOD_LABELS[crop].label} is ripe — build a ${crop === 'wheat' ? 'Silo or Mill' : 'Silo'} to haul it`;
+    const reachable = new Set<Thing>();
+    for (const cart of s.sim.carts) {
+      const reach = cartReach(s, cart);
+      if (!ripe.some(f => fieldEdge(s, f, reach))) continue;
+      for (const t of targets) if (dockOf(s, t, reach)) reachable.add(t);
+    }
+    if (!reachable.size) return `Ripe ${crop} can't be reached — connect the field and its destination with a track and plank bridge`;
+    if ([...reachable].every(t => t.kind === 'silo' && !siloRoom(s.sim.things.get(t.id)!, crop)))
+      return `Silo has no room for ${crop} — ${crop === 'wheat' ? 'build a Mill to use it' : 'wait for a haul'}`;
+  }
+  return null;
+}

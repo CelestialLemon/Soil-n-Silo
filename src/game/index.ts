@@ -83,7 +83,7 @@ export {
 } from './nav.ts';
 export {
   addStarterCart, atGarage, buyCart, type Cart, CART_CAPACITY, CART_LOW, CART_READY, type CartJob, type CartState, CHARGE_PER_HOUR,
-  chargingAtGarage, DOCK_RADIUS, DRAIN_PER_M, DWELL_HOURS, type Endpoint, endpointLabel, fieldEdge, pathLeft, retireAllCarts, retireCart, stepCarts,
+  diagnoseIdleCarts, chargingAtGarage, DOCK_RADIUS, DRAIN_PER_M, DWELL_HOURS, type Endpoint, endpointLabel, fieldEdge, pathLeft, retireAllCarts, retireCart, stepCarts,
   TRICKLE_PER_HOUR,
 } from './carts.ts';
 export {

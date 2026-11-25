@@ -2,7 +2,7 @@
 // and the power), a clicked thing's plain lines ("Grinding wheat into flour · 40%", "Stock: 4 Wheat") and its card's
 // extras (the Garage's carts, the refund), and the sky's weather in the strip's four words.
 import {
-  BATTERY_WH, CART_COST, CATALOG, channelSummary, countOf, describeInventory, describeRuntime, type GameState, type Good,
+  BATTERY_WH, CART_COST, CATALOG, diagnoseIdleCarts, channelSummary, countOf, describeInventory, describeRuntime, type GameState, type Good,
   GOOD_LABELS, isNight, isWorkshop, MAX_CARTS, polylineDistance, runtimeOf, SILO_CAP, type Thing, type ThingKind, toWorld,
   totalStored,
 } from '../game/index.ts';
@@ -132,6 +132,8 @@ export function thingDetail(s: GameState, t: Thing): string | undefined {
     case 'silo': return `${totalStored(r.outputs)} / ${SILO_CAP} stored`;
     case 'depot': return s.sim.brief.order.done ? undefined : `Order: ${orderLine(s)}`;
     case 'garage': {
+      const diagnosis = diagnoseIdleCarts(s);
+      if (diagnosis) return diagnosis;
       const cart = s.sim.carts.find((c) => c.state !== 'idle') ?? s.sim.carts[0];
       return cart ? `Cart ${cart.id} · ${Math.round(cart.battery * 100)}% · ${cart.jobDesc}` : undefined;
     }

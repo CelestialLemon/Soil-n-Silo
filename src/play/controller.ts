@@ -11,7 +11,7 @@
 // the clock is stopped, an edit or a jump of the clock reads the power again at once (refreshPower), so the power view's
 // watts and the workshops' lights show it without waiting for the clock to run.
 import {
-  type Action, apply, CART_COST, CATALOG, CLOCK_JUMPED, type Change, generateValley, type GameState, heightAt, type Point2,
+  type Action, apply, diagnoseIdleCarts, CART_COST, CATALOG, CLOCK_JUMPED, type Change, generateValley, type GameState, heightAt, type Point2,
   refreshPower, resetSteadyOnClockJump, type Season, SETUP_CHANGED, type SimEvent, stepSim, suggestWaterWheelYaw, type ThingKind, TREE_SPECIES,
   wrapAngle,
 } from '../game/index.ts';
@@ -82,6 +82,7 @@ export class Play implements UiCallbacks {
   /** The tracks the valley came with (the Depot's stub): not the player's work. */
   private starterTracks: ReadonlySet<number>;
   /** A blackout was toasted: the next waits until the power has come back. */
+  private harvestHintSaid = false;
   private blackoutSaid = false;
   private shown = { contours: false, moisture: false, power: false };
   /** The power view (P): every wireless field shown, whatever is in hand. Off by default; not remembered. */
@@ -147,7 +148,11 @@ export class Play implements UiCallbacks {
           if (!this.blackoutSaid && !reset) ui?.showToast(e.message, 'warn');
           this.blackoutSaid = true;
           break;
-        case 'ripe': break;
+        case 'ripe': {
+          const hint = !this.harvestHintSaid && diagnoseIdleCarts(this.state);
+          if (hint) { ui?.showToast(hint); this.harvestHintSaid = true; }
+          break;
+        }
       }
     }
     if (!this.state.sim.powerSummary.anyBlackout) this.blackoutSaid = false;
@@ -701,6 +706,7 @@ export class Play implements UiCallbacks {
     // A fresh homestead: its own Supplies, brief, Depot and stub, on day 1 at the sky's hour.
     next.sim.hour = this.world.getHour();
     this.starterTracks = new Set(next.tracks.map((t) => t.id));
+    this.harvestHintSaid = false;
     this.blackoutSaid = false;
     this.world.resetValley(next);
     writeUrlParam('seed', String(next.seed));
