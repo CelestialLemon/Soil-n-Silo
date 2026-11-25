@@ -67,6 +67,35 @@ test('the Greenhouse draws 2 W in the cold and 0.5 W in mild air', () => {
   assert.equal(GREENHOUSE_MILD_W, 0.5);
 });
 
+test('a cold Greenhouse on too little power never grows a step, not even the first', () => {
+  // A winter valley, the air well below 10°C; a still day: the turbine makes only its 0.5 W, a quarter of the heating.
+  const s = land({ height: () => 0 });
+  s.season = 'winter';
+  s.sim.weatherOverride = 'frost';
+  s.sim.hour = 12;
+  const glass = building(s, 'greenhouse', 0, 0), turbine = building(s, 'turbine', 10, 0);
+  const still = { windSpeed: 0, cloudCover: 0 };
+  stepSim(s, 1, still);
+  assert.ok(s.sim.weather.tempC < GREENHOUSE_COLD_C, `cold: ${s.sim.weather.tempC.toFixed(1)}°C`);
+  assert.ok(turbine.r.watts <= GREENHOUSE_MILD_W + 1e-9);
+  assert.ok(glass.r.working, 'it wants to grow');
+  assert.ok(!glass.r.powered, 'denied its 2 W from the first step');
+  assert.equal(glass.r.progress, 0, 'no free step of growth');
+  for (let k = 0; k < 30; k++) stepSim(s, 1, still);
+  assert.equal(glass.r.progress, 0);
+  // Full, it rests; the moment a cart frees its room, it asks for its full heating again before it grows.
+  glass.r.outputs = { beans: OUTPUT_CAP };
+  stepSim(s, 1, still);
+  assert.ok(!glass.r.working);
+  glass.r.outputs = {};
+  stepSim(s, 1, still);
+  assert.ok(glass.r.working && !glass.r.powered);
+  assert.equal(glass.r.progress, 0, 'still nothing on 0.5 W');
+  // In a good wind it has its 2 W, and grows from the first step.
+  stepSim(s, 1, { windSpeed: 12, cloudCover: 0 });
+  assert.ok(glass.r.powered && glass.r.progress > 0);
+});
+
 test('frost, snow and flood stop the fields but never the glass', () => {
   const s = land({ height: () => 0 });
   const beans = fieldAt(s, 'beans', 20, 0, 4), { r } = building(s, 'greenhouse', -20, 0);

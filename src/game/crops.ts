@@ -1,7 +1,8 @@
 // Living crops: each painted field grows with water, soil and light, ripens into a harvest waiting at its edge, and once
 // the carts have taken the last of it, is sown again. Wheat draws the soil down; beans fix nitrogen and build it back
 // up; a sack of compost lifts it at once.
-import { effectiveMoisture, erosionDrain, fieldTempC, hotMidday, isRaining, pollinationCoverage } from './microclimate.ts';
+import { effectiveMoisture, erosionDrain, fieldTempC, hotMidday, isLiquidRain, pollinationCoverage } from './microclimate.ts';
+import { markFloodedFields } from './flood.ts';
 import { clamp, obbDistance } from './geom.ts';
 import { thingObb } from './earth.ts';
 import { cellX, cellZ, type Grid, type Soil, SOIL } from './grid.ts';
@@ -85,8 +86,20 @@ export const HEAT_C = 30, HEAT_EVAPORATION = 0.12;
  */
 export function fieldMoisture(s: GameState, f: Field, weather?: string, coverage = agrivoltaicCoverage(s).get(f.id) ?? 0): number {
   const m = effectiveMoisture(s, f, undefined, weather);
-  if (isRaining(weather) || s.sim.weather.tempC < HEAT_C) return m;
+  if (isLiquidRain(s, weather) || s.sim.weather.tempC < HEAT_C) return m;
   return Math.max(0, m - HEAT_EVAPORATION * (1 - clamp(coverage, 0, 1)));
+}
+
+/** Whether a growing field stands frosted now: its air (frost hollows colder) at or below freezing, or buried in snow. */
+const frostedNow = (s: GameState, f: Field) => f.harvestReady === 0 && (fieldTempC(s, f, s.sim.weather.tempC) <= 0 || s.sim.weather.snowDepth >= SNOW_BURIES);
+
+/**
+ * Reads every field's frost and flood afresh from the weather and the water as they stand, growing nothing: after the clock
+ * jumps or the weather lock changes while the clock is stopped, so a field's card never shows the last running tick's.
+ */
+export function refreshFieldWeather(s: GameState): void {
+  for (const f of s.fields) f.frosted = frostedNow(s, f);
+  markFloodedFields(s);
 }
 
 /**
@@ -102,8 +115,8 @@ export function growCrops(s: GameState, dtH: number, sun: number, weather?: stri
   for (const f of s.fields) {
     if (f.harvestReady > 0) { f.frosted = false; continue; }
     const before = cropStage(f);
+    f.frosted = frostedNow(s, f);
     const air = fieldTempC(s, f, w.tempC), buried = w.snowDepth >= SNOW_BURIES;
-    f.frosted = air <= 0 || buried;
     if (f.flooded) continue;
     if (f.frosted && (f.crop === 'beans' || buried || air < WHEAT_HARDY_C)) {
       if (f.crop === 'beans' && dtH > 0) f.growth = Math.max(Math.min(f.growth, REPLANT_GROWTH), f.growth - FROST_SETBACK * dtH);

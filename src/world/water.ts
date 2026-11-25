@@ -7,19 +7,9 @@
 // them on slowly, so they're sent again only once what they'd show has moved a step (waterKey, groundKey).
 import { type BrushRenderer, GROUND_EASE, type GroundMap, WATER_EASE, type WaterMap } from '../../brush3d/src/index.ts';
 import { clamp, COVER, type GameState, hollowDepths, isWet } from '../game/index.ts';
+import { FROST_AIR_C, iceOf, SWOLLEN } from './weatherKeys.ts';
 
-/** The brook runs swollen and brown above this surge, m. */
-const SWOLLEN = 0.05;
-/** The rime starts to gather in the hollows below this, °C. */
-const FROST_AIR_C = 3;
-
-/** How frozen the water is, 0..1, for the air (°C) and the season; undefined: open water. */
-export function iceOf(tempC: number, season: GameState['season']): number | undefined {
-  if (tempC <= -4) return 0.75;
-  if (tempC <= 0) return 0.25 + 0.5 * (-tempC / 4);
-  if (tempC <= 2 && season === 'winter') return 0.15;
-  return undefined;
-}
+export { groundKey, iceOf, waterKey } from './weatherKeys.ts';
 
 /** The water as brush3d takes it: narrow water (a rill running down a slope keeps to its own banks). */
 export function waterMap(state: GameState): WaterMap {
@@ -39,12 +29,6 @@ export function waterMap(state: GameState): WaterMap {
     narrow: true, ...(muddy ? { mud } : {}), ...(ice ? { ice } : {}),
   };
 }
-
-/** What of the weather the water map shows, in steps: when it moves, the water is sent again. */
-export const waterKey = (state: GameState) => {
-  const w = state.sim.weather;
-  return `${Math.round((iceOf(w.tempC, state.season) ?? -1) * 20)} ${w.floodSurge > SWOLLEN ? Math.round(w.floodSurge * 50) : 0}`;
-};
 
 /** The ground's state: the wet (banks, rain, flood), the mud, the snow lying, and the frost (deepest in the hollows). */
 export function groundMap(state: GameState): GroundMap {
@@ -66,12 +50,6 @@ export function groundMap(state: GameState): GroundMap {
   }
   return out;
 }
-
-/** What of the weather the ground map shows, in steps: when it moves, the ground is sent again. */
-export const groundKey = (state: GameState) => {
-  const w = state.sim.weather, step = (v: number) => Math.round(v * 20);
-  return `${step(Math.max(w.groundWet, Math.min(1, w.rain * 1.2)))} ${step(w.snowDepth)} ${step(w.frostCover)} ${w.tempC <= FROST_AIR_C ? Math.round(w.tempC * 2) : 'warm'}`;
-};
 
 export const sendWater = (r: BrushRenderer, state: GameState, immediate = false) => r.setWater(waterMap(state), immediate ? 0 : WATER_EASE);
 export const sendGround = (r: BrushRenderer, state: GameState, immediate = false) => r.setGround(groundMap(state), immediate ? 0 : GROUND_EASE);

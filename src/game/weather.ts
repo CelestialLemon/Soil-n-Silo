@@ -342,14 +342,27 @@ const SEVERITY: { readonly [W in WeatherSpell]: number } = {
   clear: 1, scattered: 1, overcast: 1.1, fog: 1.2, 'soft-rain': 1.5, storm: 3, 'heat-wave': 2.5, gale: 2.5, frost: 1.8, snow: 2, blizzard: 3,
 };
 
-/** A day's weather read straight from the timeline: the spell that shapes it, and its coldest and warmest air. */
+/** How finely a forecast reads its day, game hours: fine enough that its low and high are the day's own to 0.1°C. */
+export const FORECAST_STEP_HOURS = 1 / 6;
+
+/**
+ * A day's weather read straight from the timeline: the spell that shapes it, and its coldest and warmest air (read every
+ * ten minutes, and at each spell's turn within the day, where the air shifts fastest).
+ */
 export function forecastDay(key: WeatherKey, day: number, forced?: WeatherSpell | null): DayForecast {
-  const hours = new Map<WeatherSpell, number>();
+  const hours = new Map<WeatherSpell, number>(), t0 = absHour(day, 0), steps = Math.round(24 / FORECAST_STEP_HOURS);
   let lo = Infinity, hi = -Infinity;
-  for (let k = 0; k < 48; k++) {
-    const sky = skyAt(key, absHour(day, (k + 0.5) / 2), forced);
-    hours.set(sky.spell, (hours.get(sky.spell) ?? 0) + 0.5);
+  const air = (t: number) => { const c = skyAt(key, t, forced).tempC; lo = Math.min(lo, c); hi = Math.max(hi, c); };
+  for (let k = 0; k < steps; k++) {
+    const sky = skyAt(key, t0 + (k + 0.5) * FORECAST_STEP_HOURS, forced);
+    hours.set(sky.spell, (hours.get(sky.spell) ?? 0) + FORECAST_STEP_HOURS);
     lo = Math.min(lo, sky.tempC); hi = Math.max(hi, sky.tempC);
+  }
+  for (let k = 0; k <= steps; k++) air(t0 + k * FORECAST_STEP_HOURS);
+  if (!forced) {
+    const half = SPELL_BLEND_HOURS / 2;
+    for (const sp of spellTimeline(key.season, key.climate, key.weatherSeed, t0 + 24))
+      for (const t of [sp.start - half, sp.start, sp.start + half]) if (t >= t0 && t <= t0 + 24) air(t);
   }
   let spell: WeatherSpell = 'clear', best = -1;
   for (const [sp, h] of hours) { const score = h * SEVERITY[sp]; if (score > best) { best = score; spell = sp; } }
@@ -369,9 +382,20 @@ export const hasWeatherStation = (s: GameState): boolean => s.things.some((t) =>
 /** The forecast the sky strip shows: the next `count` days once a Weather Station stands, none before. */
 export const stationForecast = (s: GameState, count = 3): DayForecast[] => (hasWeatherStation(s) ? forecastDays(s, count) : []);
 
-/** A plain line for today's weather and tomorrow's outlook (the Weather Station's card). */
+/**
+ * A plain line for the weather now (its sky, air, wind, and any frost, snow or flood), and tomorrow's outlook once a
+ * Weather Station stands (none before it: the station is what reads the days ahead).
+ */
 export function describeWeather(s: GameState): string {
-  const w = s.sim.weather, [next] = forecastDays(s, 1);
-  return `${w.label}, ${Math.round(w.tempC)}°C · Tomorrow: ${next.label.toLowerCase()}, ${Math.round(next.minTempC)} to ${Math.round(next.maxTempC)}°C`;
+  const w = s.sim.weather;
+  const parts = [`${w.label}, ${Math.round(w.tempC)}°C`, `wind ${Math.round(w.windSpeed)} m/s`];
+  if (w.snowDepth > 0.05) parts.push('snow lying');
+  if (w.frostCover > 0.3) parts.push('frost on the ground');
+  if (s.sim.floodApplied > 0) parts.push('the brook in flood');
+  if (hasWeatherStation(s)) {
+    const [next] = forecastDays(s, 1);
+    parts.push(`Tomorrow: ${next.label.toLowerCase()}, ${Math.round(next.minTempC)} to ${Math.round(next.maxTempC)}°C`);
+  }
+  return parts.join(' · ');
 }
 

@@ -16,7 +16,7 @@
 // `?weather=` lock holds it until the player lets it go (onClearWeatherLock); a jump of the clock reads it again at once.
 import {
   type Action, cellIx, cellIz, effectiveMoisture, erosionDrain, GOOD_LABELS, apply, diagnoseIdleCarts, CART_COST, CATALOG, CLOCK_JUMPED, type Change, generateValley, type GameState, heightAt, type Point2,
-  climateFor, refreshPower, resetSteadyOnClockJump, rollWeatherSeed, type Season, SETUP_CHANGED, type SimEvent, stationForecast, stepSim, stepWeather,
+  climateFor, refreshFieldWeather, refreshPower, resetSteadyOnClockJump, rollWeatherSeed, type Season, SETUP_CHANGED, type SimEvent, stationForecast, stepSim, stepWeather,
   suggestWaterWheelYaw, type ThingKind, TREE_SPECIES, wrapAngle,
 } from '../game/index.ts';
 import {
@@ -365,7 +365,7 @@ export class Play implements UiCallbacks {
         const at = this.world.hitTerrainAt(x, y), g = this.state.grid;
         const field = at && this.state.fields.find(f => f.id === g.fieldOf[cellIz(g, at.z) * g.nx + cellIx(g, at.x)]);
         if (field) {
-          const notes = [GOOD_LABELS[field.crop].label, effectiveMoisture(this.state, field, undefined, this.world.getWeather()) >= 0.32 ? 'Well watered' : 'Dry soil'];
+          const notes = [GOOD_LABELS[field.crop].label, effectiveMoisture(this.state, field, undefined, this.state.sim.weather.spell) >= 0.32 ? 'Well watered' : 'Dry soil'];
           if (field.pollinated) notes.push('Pollinated');
           if (field.frosted) notes.push('Frosted · regrows once thawed');
           if (field.flooded) notes.push('Flooded · paused until water recedes');
@@ -734,6 +734,7 @@ export class Play implements UiCallbacks {
     this.world.setHour(hour);
     this.state.sim.hour = this.world.getHour();
     stepWeather(this.state, 0, this.state.sim.day, this.state.sim.hour);
+    refreshFieldWeather(this.state);
     this.world.syncSim();
     this.statsDirty = true;
     if (resetSteadyOnClockJump(this.state)) { this.ui?.showToast(CLOCK_JUMPED); this.statsDirty = true; }
@@ -745,11 +746,18 @@ export class Play implements UiCallbacks {
     this.world.setSpeed(speed);
   }
 
-  onSetWeather(weather: Weather) { this.world.setWeather(skyWeather(weather)); }
+  /** Locks the weather; the fields' frost and flood are read again at once (paused or not). */
+  onSetWeather(weather: Weather) {
+    this.world.setWeather(skyWeather(weather));
+    refreshFieldWeather(this.state);
+    this.refreshIfPaused();
+    this.statsDirty = true;
+  }
 
   /** Lets the living weather back in after `?weather=` held it. */
   onClearWeatherLock() {
     this.world.setWeatherOverride(null);
+    refreshFieldWeather(this.state);
     this.refreshIfPaused();
     this.statsDirty = true;
     this.ui?.showToast('Living weather resumed');

@@ -41,23 +41,29 @@ function nearNaturalWater(g: Grid, p: Point2): boolean {
   return false;
 }
 
-/** The rill's overflow swale, if it is one: tapped off the brook or pond, flowing far enough and falling away from it. */
+/**
+ * The rill's overflow swale, if it is one: tapped off the brook or pond, flowing far enough, and carrying the water away to
+ * lower ground: the far end of its flowing reach stands SWALE_MIN_DROP or more below its intake (onto lower land, into a
+ * lower basin or a reach of the brook well downstream). A loop that only dips and comes back to the same water gives the
+ * flood nowhere to go, so it is no swale, however low its middle runs.
+ */
 export function swaleOf(s: GameState, c: Channel): Swale | undefined {
   const f = c.flow, g = s.grid;
   if (f.length < 2) return undefined;
-  // Its intake is whichever end meets the natural water, with water flowing from there.
-  const fromStart = f[0].wet && nearNaturalWater(g, f[0]), fromEnd = f[f.length - 1].wet && nearNaturalWater(g, f[f.length - 1]);
+  // Its intake is whichever end meets the natural water, with water flowing from there (the higher, if both do).
+  const first = f[0], last = f[f.length - 1];
+  const fromStart = first.wet && nearNaturalWater(g, first), fromEnd = last.wet && nearNaturalWater(g, last);
   if (!fromStart && !fromEnd) return undefined;
-  const samples = fromStart ? f : [...f].reverse();
+  const samples = fromStart && (!fromEnd || first.waterLevel >= last.waterLevel) ? f : [...f].reverse();
   const path: Point2[] = [];
-  let wetLength = 0, low = samples[0].waterLevel;
-  for (let i = 0; i < samples.length && samples[i].wet; i++) {
-    const p = samples[i];
-    if (i > 0) wetLength += Math.hypot(p.x - samples[i - 1].x, p.z - samples[i - 1].z);
-    low = Math.min(low, p.waterLevel);
+  let wetLength = 0, k = 0;
+  for (; k < samples.length && samples[k].wet; k++) {
+    const p = samples[k];
+    if (k > 0) wetLength += Math.hypot(p.x - samples[k - 1].x, p.z - samples[k - 1].z);
     path.push({ x: p.x, z: p.z });
   }
-  const drop = samples[0].waterLevel - low;
+  // Where its flowing water ends up, against where it was taken off.
+  const drop = samples[0].waterLevel - samples[k - 1].waterLevel;
   return wetLength >= SWALE_MIN_LENGTH && drop >= SWALE_MIN_DROP ? { channelId: c.id, path, drop, wetLength } : undefined;
 }
 
@@ -91,31 +97,35 @@ export function overlayFlood(s: GameState, surge: number, level: Float32Array, d
   if (!(surge > FLOOD_MIN)) return;
   const g = s.grid, nx = g.nx, nz = g.nz, n = nx * nz, swales = swalesOf(s);
   const relief = (ix: number, iz: number) => swales.length ? swaleRelief(swales, g.x0 + (ix + 0.5) * g.cell, g.z0 + (iz + 0.5) * g.cell) : 0;
-  // The flood's surface on each cell, spreading out from the natural water: a Dijkstra on the distance from the bank, each
-  // cell's surface no higher than the cell it came from, nor than the water it spilled from risen by the surge (less what a
-  // swale relieves there) and thinning with the distance.
+  // The flood's surface on each cell, spreading out from the natural water: each cell's surface no higher than the cell
+  // it came from, nor than the water it spilled from risen by the surge (less what a swale relieves there) and thinning
+  // with the distance. Spread highest surface first (a Dijkstra on the head, as the rills' water in flow.ts), and a higher
+  // surface reached later always supersedes a lower one, so a low bank nearby never keeps a higher flood from a cell.
   const surf = new Float32Array(n).fill(-Infinity), dist = new Float32Array(n).fill(Infinity), origin = new Float32Array(n);
-  const heap: number[] = [];
+  // A max-heap of (surface, distance, cell) entries; an entry the cell has since bettered is skipped when it comes up.
+  const hs: number[] = [], hd: number[] = [], hi: number[] = [];
+  const above = (a: number, b: number) => hs[a] > hs[b] || (hs[a] === hs[b] && hd[a] < hd[b]);
+  const swap = (a: number, b: number) => {
+    [hs[a], hs[b]] = [hs[b], hs[a]]; [hd[a], hd[b]] = [hd[b], hd[a]]; [hi[a], hi[b]] = [hi[b], hi[a]];
+  };
   const push = (i: number) => {
-    heap.push(i);
-    let k = heap.length - 1;
-    while (k > 0) { const p = (k - 1) >> 1; if (dist[heap[p]] <= dist[heap[k]]) break; [heap[p], heap[k]] = [heap[k], heap[p]]; k = p; }
+    hs.push(surf[i]); hd.push(dist[i]); hi.push(i);
+    let k = hs.length - 1;
+    while (k > 0) { const p = (k - 1) >> 1; if (!above(k, p)) break; swap(k, p); k = p; }
   };
   const pop = (): number => {
-    const top = heap[0], last = heap.pop() ?? top;
-    if (heap.length > 0) {
-      heap[0] = last;
-      let k = 0;
-      for (;;) {
-        const l = 2 * k + 1, r = l + 1;
-        let m = k;
-        if (l < heap.length && dist[heap[l]] < dist[heap[m]]) m = l;
-        if (r < heap.length && dist[heap[r]] < dist[heap[m]]) m = r;
-        if (m === k) break;
-        [heap[m], heap[k]] = [heap[k], heap[m]]; k = m;
-      }
+    const top = { s: hs[0], d: hd[0], i: hi[0] }, end = hs.length - 1;
+    swap(0, end); hs.pop(); hd.pop(); hi.pop();
+    let k = 0;
+    for (;;) {
+      const l = 2 * k + 1, r = l + 1;
+      let m = k;
+      if (l < hs.length && above(l, m)) m = l;
+      if (r < hs.length && above(r, m)) m = r;
+      if (m === k) break;
+      swap(m, k); k = m;
     }
-    return top;
+    return top.s === surf[top.i] && top.d === dist[top.i] ? top.i : -1;
   };
   for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < nx; ix++) {
     const i = iz * nx + ix;
@@ -127,25 +137,24 @@ export function overlayFlood(s: GameState, surge: number, level: Float32Array, d
     if (level[i] < surf[i]) level[i] = surf[i];
     push(i);
   }
-  const reach = surge / FLOOD_FALL + 1, done = new Uint8Array(n);
-  while (heap.length > 0) {
+  const reach = surge / FLOOD_FALL + 1;
+  while (hs.length > 0) {
     const i = pop();
-    if (done[i]) continue;
-    done[i] = 1;
+    if (i < 0) continue;
     const ix = i % nx, iz = (i - ix) / nx;
     for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
       if (!dx && !dz) continue;
       const jx = ix + dx, jz = iz + dz;
       if (jx < 0 || jz < 0 || jx >= nx || jz >= nz) continue;
       const j = jz * nx + jx;
-      if (done[j] || isWet(g.baseWaterLevel[j])) continue;
+      if (isWet(g.baseWaterLevel[j])) continue;
       const d = dist[i] + (dx && dz ? Math.SQRT2 : 1) * g.cell;
       if (d > reach) continue;
       const ground = cellGround(g, jx, jz);
-      const top = Math.min(surf[i], origin[i] + Math.max(0, surge - relief(jx, jz)) - FLOOD_FALL * d);
+      const top = Math.fround(Math.min(surf[i], origin[i] + Math.max(0, surge - relief(jx, jz)) - FLOOD_FALL * d));
       if (top - ground <= FLOOD_MIN) continue;
-      if (top > surf[j] + 1e-6 || (top >= surf[j] - 1e-6 && d < dist[j])) {
-        surf[j] = top; dist[j] = d; origin[j] = origin[i];
+      if (top > surf[j] + 1e-4 || (top >= surf[j] - 1e-6 && d < dist[j] - 1e-6)) {
+        surf[j] = top; dist[j] = Math.fround(d); origin[j] = origin[i];
         push(j);
       }
     }

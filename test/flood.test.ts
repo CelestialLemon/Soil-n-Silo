@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   apply, type Crop, DRY_FIELDS, DRY_GRACE_HOURS, FLOOD_DEEP, FLOOD_MIN, type GameState, GROUND, groundAt, growCrops, hollowDepth,
-  localTempC, must, weatherDrag, navCellOf, navFor, passable, refreshFlood, sandboxSupplies, type SimEvent, stepSim, swalesOf, type ThingKind,
+  localTempC, must, weatherDrag, navCellOf, navFor, overlayFlood, passable, refreshFieldWeather, refreshFlood, sandboxSupplies, type SimEvent,
+  stepSim, SWALE_MIN_DROP, swalesOf, type ThingKind,
 } from '../src/game/index.ts';
 import { brookLand, fieldAt, flatLand, land, same } from './helpers.ts';
 
@@ -172,6 +173,72 @@ test('an overflow swale off the brook keeps the meadow round it drier', () => {
   const short = brookLand();
   assert.ok(apply(short, { type: 'digChannel', points: [{ x: -1, z: 0 }, { x: 4, z: 0 }] }).ok);
   assert.deepEqual(swalesOf(short), []);
+});
+
+test('a higher flood reaches a cell past a lower bank nearer to it', () => {
+  // Level ground at 0 and two brooks 4 m apart (bank to bank): a low one along x = -3 (its surface 0.3 m down) and a higher
+  // one along x = 3 (0.1 m down). In a 0.3 m surge the low one stands at 0, the high one at 0.2 m.
+  const s = land({ height: () => 0, water: (x) => (Math.abs(x + 3) <= 1 ? -0.3 : Math.abs(x - 3) <= 1 ? -0.1 : undefined), depth: 0.6 });
+  const g = s.grid, level = Float32Array.from(g.baseWaterLevel), depth = new Float32Array(g.nx * g.nz);
+  overlayFlood(s, 0.3, level, depth);
+  // The cell right by the low bank is 1 m from it but 4 m from the high one: the high water, thinned 2 cm/m, stands at
+  // 0.12 m there, well above the low water's -0.02 m.
+  for (const [x, want] of [[-1.5, 0.12], [-0.5, 0.14], [0.5, 0.16], [1.5, 0.18]]) {
+    const i = cellOf(s, x, 0.5);
+    assert.ok(Math.abs(level[i] - want) < 0.005, `x = ${x}: the higher surface ${want} m, not the nearer lower one (${level[i].toFixed(3)})`);
+    assert.ok(depth[i] > FLOOD_MIN);
+  }
+  // Beyond the low brook only its own (lower) water spreads: the high flood never crosses it.
+  assert.ok(Math.abs(level[cellOf(s, -4.5, 0.5)] - -0.02) < 0.005);
+});
+
+test('a rill that loops back into the same brook is no swale; one that carries the water downhill is', () => {
+  // Ground falling 3 cm/m east; the brook along x = -2.
+  const loop = brookLand();
+  assert.ok(apply(loop, { type: 'digChannel', points: [{ x: -1, z: -6 }, { x: 14, z: -6 }, { x: 14, z: 6 }, { x: -1, z: 6 }] }).ok);
+  const flow = must(loop.channels[0], 'the loop').flow;
+  assert.ok(flow.every((p) => p.wet), 'the water runs all the way round');
+  const low = Math.min(...flow.map((p) => p.waterLevel));
+  assert.ok(flow[0].waterLevel - low >= SWALE_MIN_DROP, 'its middle dips well below the brook');
+  assert.deepEqual(swalesOf(loop), [], 'but it brings the water back to the same brook: no swale');
+  const out = brookLand();
+  assert.ok(apply(out, { type: 'digChannel', points: [{ x: -1, z: 0 }, { x: 10, z: 0 }, { x: 22, z: 0 }] }).ok);
+  const [sw] = swalesOf(out);
+  assert.ok(sw && sw.drop >= SWALE_MIN_DROP, 'a swale out onto lower ground');
+  // Under a full surge, the loop leaves the meadow by its intake as flooded as no rill at all; the swale relieves it.
+  const flood = (s: GameState) => {
+    s.sim.weather.floodSurge = 0.38;
+    refreshFlood(s, true);
+    let v = 0;
+    for (let z = -3; z <= 3; z++) for (let x = 0; x <= 4; x++) v += s.grid.flood[cellOf(s, x + 0.5, z + 0.5)];
+    return v;
+  };
+  const plain = brookLand();
+  assert.ok(flood(plain) > 0 && flood(loop) >= 0.95 * flood(plain), 'the loop relieves nothing');
+  assert.ok(flood(out) < 0.8 * flood(plain), 'the swale does');
+});
+
+test('after a jump of the stopped clock, the fields\' frost is read afresh without growing them', () => {
+  const s = hollowAndKnoll(), beans = fieldAt(s, 'beans', -20, 0, 3);
+  beans.growth = 0.5;
+  beans.avgMoisture = 0.6;
+  // A still clear small hour, frost in the hollow: a running tick frosts the beans.
+  s.sim.hour = 3;
+  Object.assign(s.sim.weather, { tempC: 1, windSpeed: 1.5, cloudCover: 0, snowDepth: 0 });
+  growCrops(s, 0, 0);
+  assert.ok(beans.frosted);
+  // The clock jumps to a warm afternoon while stopped: no tick runs, but the field is read again.
+  s.sim.hour = 15;
+  s.sim.weather.tempC = 14;
+  refreshFieldWeather(s);
+  assert.ok(!beans.frosted, 'thawed');
+  assert.equal(beans.growth, 0.5, 'nothing grew');
+  // And back to a hard frost; the flood mark is read too.
+  s.sim.hour = 4;
+  s.sim.weather.tempC = -4;
+  refreshFieldWeather(s);
+  assert.ok(beans.frosted && !beans.flooded);
+  assert.equal(beans.growth, 0.5);
 });
 
 test('gales slow unsheltered carts, cold drains their batteries, and soaked ground bogs them off the track', () => {

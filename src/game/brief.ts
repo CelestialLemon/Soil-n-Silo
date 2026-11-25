@@ -2,16 +2,19 @@
 // (docs/DESIGN.md, "Open Homestead Brief"). Each seal fills as the homestead meets it and, once filled, stays filled.
 //   1. The Pantry Order: deliver the settlement's goods to the Depot.
 //   2. Living Land: keep a good spread of fields on healthy soil.
-//   3. Steady Homestead: once the homestead runs (a Farmhouse, a Garage and a workshop), keep it powered without a
-//      blackout through two full days and nights of living weather, lived through. A blackout or an unpowered homestead
-//      building resets it, and says why; so does taking down what makes it run, or jumping the clock (the hours must be
-//      lived, not skipped). Fields left parched for hours on end pause it (no reset) until they're watered again.
+//   3. Steady Homestead: once the homestead runs (a Farmhouse, a Garage, a workshop, and crops growing: a painted field or
+//      a Heated Greenhouse), keep it powered without a blackout through two full days and nights of living weather, lived
+//      through. A blackout or an unpowered homestead building resets it, and says why; so does taking down what makes it
+//      run (erasing the last field too), or jumping the clock (the hours must be lived, not skipped). Fields left parched
+//      for hours on end pause it (no reset) until they're watered again, and so does every field standing flooded while
+//      no warm Greenhouse grows on.
 // When all three fill, the valley is Restored.
 import { CATALOG, isWorkshop } from './catalog.ts';
 import type { SimEvent } from './events.ts';
 import { countOf, type Good, type Inventory } from './goods.ts';
 import type { GameState, Season } from './state.ts';
 import { fieldMoisture } from './crops.ts';
+import { greenhouseWarm } from './microclimate.ts';
 
 /**
  * Each season's Pantry Order, all within the 20-Supply cap. Winter's leans on the Heated Greenhouse (wheat and beans under
@@ -30,6 +33,7 @@ export const PARCHED = 0.25;
 /** How long every growing field may stay parched before Steady Homestead pauses, game hours. */
 export const DRY_GRACE_HOURS = 6;
 export const DRY_FIELDS = 'Fields are dry — dig a rill, add a Rain Tank or power a Sprinkler';
+export const FLOODED_FIELDS = 'Fields are flooded — wait for water to recede or dig an overflow swale';
 export const LIVING_LAND_M2 = 100, LIVING_LAND_FERTILITY = 0.75;
 /** Two full days and nights, game hours. */
 export const STEADY_HOURS = 48;
@@ -47,7 +51,7 @@ export interface LivingLandSeal extends Seal { plantedM2: number; avgFertility: 
 export interface SteadyHomesteadSeal extends Seal {
   /** Blackout-free hours so far. */
   hours: number; targetHours: number;
-  /** The homestead runs (a Farmhouse, a Garage and a craft workshop stand), so the hours count. */
+  /** The homestead runs (a Farmhouse, a Garage, a craft workshop, and a field or a Greenhouse), so the hours count. */
   running: boolean;
   /** Why it last went back to zero, in plain words (empty if it never has). */
   resetReason: string;
@@ -117,8 +121,9 @@ export function stepBrief(s: GameState, dtH: number, events: SimEvent[]): void {
         h.paused = false; h.pauseReason = '';
       } else {
         h.dryHours = fieldsParched(s) ? h.dryHours + dtH : 0;
-        h.paused = h.dryHours > DRY_GRACE_HOURS;
-        h.pauseReason = h.paused ? DRY_FIELDS : '';
+        const pause = fieldsFlooded(s) ? FLOODED_FIELDS : h.dryHours > DRY_GRACE_HOURS ? DRY_FIELDS : '';
+        h.paused = pause !== '';
+        h.pauseReason = pause;
         if (!h.paused) h.hours += dtH;
       }
     }
@@ -141,16 +146,28 @@ export function fieldsParched(s: GameState): boolean {
   return growing.length > 0 && growing.every((f) => fieldMoisture(s, f, s.sim.weather.spell) < PARCHED);
 }
 
-/** Whether the homestead runs: a Farmhouse, a Garage and a craft workshop stand. */
-export function homesteadRuns(s: GameState): boolean {
-  const kinds = new Set(s.things.map((t) => t.kind));
-  return kinds.has('farmhouse') && kinds.has('garage') && [...kinds].some(isWorkshop);
+/**
+ * Whether the homestead's crops all stand under flood water: it has painted fields, every one is flooded, and no warm Heated
+ * Greenhouse grows on under its glass. The flood stalls it (Steady Homestead pauses until the water recedes).
+ */
+export function fieldsFlooded(s: GameState): boolean {
+  if (s.fields.length === 0 || !s.fields.every((f) => f.flooded)) return false;
+  return !s.things.some((t) => t.kind === 'greenhouse' && greenhouseWarm(s.sim.things.get(t.id)));
 }
 
 /**
- * Notes whether the homestead runs; if the Farmhouse, the Garage or the last workshop came down mid-run, an unfinished
- * Steady Homestead starts over (the hours so far don't count). Called the moment a building comes down, not only on the
- * next tick, so taking one down and building it again while paused can't keep the hours. Returns whether it started over.
+ * Whether the homestead runs: a Farmhouse, a Garage and a craft workshop stand, and it grows crops (a painted field, or a
+ * Heated Greenhouse): a farm with nothing growing isn't running, whatever its lamps do.
+ */
+export function homesteadRuns(s: GameState): boolean {
+  const kinds = new Set(s.things.map((t) => t.kind));
+  return kinds.has('farmhouse') && kinds.has('garage') && [...kinds].some(isWorkshop) && (s.fields.length > 0 || kinds.has('greenhouse'));
+}
+
+/**
+ * Notes whether the homestead runs; if the Farmhouse, the Garage, the last workshop or the last of its crops (the last
+ * field erased, or the Greenhouse with no field left) came down mid-run, an unfinished Steady Homestead starts over (the
+ * hours so far don't count). Called the moment a building or a field comes down, not only on the next tick, so taking one down and building it again while paused can't keep the hours. Returns whether it started over.
  */
 export function resetSteadyOnSetupChange(s: GameState): boolean {
   const h = s.sim.brief.steadyHomestead;

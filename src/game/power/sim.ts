@@ -2,14 +2,14 @@
 // batteries hold. Solar canopies follow the sun and the clouds, wind turbines the live gusts, water wheels the brook
 // (steady, day and night). Batteries soak up the surplus and carry the homestead through the night; when a network
 // can't meet its demand, it sheds its workshops first (they pause), and that is a blackout.
-import { isRaining, serviceSite, treeShade, windShelter } from '../microclimate.ts';
+import { isLiquidRain, serviceSite, treeShade, windShelter } from '../microclimate.ts';
 import { chargingAtGarage } from '../carts.ts';
 import { CATALOG } from '../catalog.ts';
 import { formatClock, isNight, sunFactor } from '../clock.ts';
 import { clamp } from '../geom.ts';
 import { must } from '../result.ts';
 import type { GameState, Thing } from '../state.ts';
-import { describeRuntime, GREENHOUSE_COLD_C, GREENHOUSE_COLD_W, GREENHOUSE_MILD_W, syncRuntime, type ThingRuntime } from '../workshops.ts';
+import { describeRuntime, GREENHOUSE_COLD_C, GREENHOUSE_COLD_W, GREENHOUSE_MILD_W, syncGreenhouses, syncRuntime, type ThingRuntime } from '../workshops.ts';
 import { feeds, roleOf } from './nodes.ts';
 import { networksOf } from './radius.ts';
 
@@ -96,7 +96,7 @@ export function demandOf(s: GameState, t: Thing, r: ThingRuntime, hour: number, 
   const def = CATALOG[t.kind];
   switch (t.kind) {
     case 'farmhouse': return isNight(hour, s.season) ? FARMHOUSE_NIGHT_W : FARMHOUSE_DAY_W;
-    case 'sprinkler': return !isRaining(weather) && sprinklerNeeded(s, t) ? def.powerDemand : 0;
+    case 'sprinkler': return !isLiquidRain(s, weather) && sprinklerNeeded(s, t) ? def.powerDemand : 0;
     case 'garage': return s.sim.carts.some((c) => chargingAtGarage(s, c)) ? GARAGE_CHARGE_W : GARAGE_IDLE_W;
     case 'lantern': return isNight(hour, s.season) ? def.powerDemand : 0;
     case 'mill': case 'bakery': case 'coop': return r.working ? def.powerDemand : 0;
@@ -217,6 +217,7 @@ export function stepPower(s: GameState, dtH: number, hour: number, env: SimEnv):
  */
 export function refreshPower(s: GameState, env: SimEnv): PowerNetwork[] {
   syncRuntime(s);
+  syncGreenhouses(s);
   const fresh = stepPower(s, 0, env.hour ?? s.sim.hour, env);
   for (const r of s.sim.things.values()) r.status = describeRuntime(s, r);
   return fresh;

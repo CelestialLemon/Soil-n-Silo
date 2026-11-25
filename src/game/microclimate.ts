@@ -12,7 +12,22 @@ import type { ThingRuntime } from './workshops.ts';
 export const SERVICE_RADIUS = { beehive: 14, rain_tank: 10, sprinkler: 11 } as const;
 export const hasServiceRadius = (kind: ThingKind): kind is keyof typeof SERVICE_RADIUS => Object.hasOwn(SERVICE_RADIUS, kind);
 const distance = (a: Point2, b: Point2) => Math.hypot(a.x - b.x, a.z - b.z);
+/** Whether a weather spell's name is a rainy one (by its name alone: a storm in hard frost falls as snow; see isLiquidRain). */
 export const isRaining = (weather?: string) => weather === 'rain' || weather === 'soft-rain' || weather === 'storm';
+/** Rain this heavy (state.sim.weather.rain) waters the fields and fills the tanks. */
+export const LIQUID_RAIN = 0.1;
+/**
+ * Whether rain is falling as water now (it waters the fields, fills the Rain Tanks, stills the Sprinklers): the living
+ * weather's own rain, so a storm that falls as snow in the cold doesn't count. A `weather` other than the living spell (a
+ * test's or a caller's synthetic one, the weather not stepped to it) is read by its name.
+ */
+export function isLiquidRain(s: GameState, weather?: string): boolean {
+  if (weather !== undefined && weather !== s.sim.weather.spell) return isRaining(weather);
+  return s.sim.weather.rain >= LIQUID_RAIN;
+}
+/** Whether snow is falling now (by the living weather's snow, or a snowy spell's name). */
+export const isSnowing = (s: GameState, weather?: string) =>
+  weather === 'snow' || weather === 'blizzard' || ((weather === undefined || weather === s.sim.weather.spell) && s.sim.weather.snow >= LIQUID_RAIN);
 export function treeShade(s: GameState, p: Point2, radius?: number): number {
   let shade = 0;
   for (const trees of [s.wildTrees, s.plantedTrees]) for (const t of trees)
@@ -101,7 +116,7 @@ export function forageRate(s: GameState, t: Thing, env: SimEnv): number {
   const flowers = floweringArea(s, t);
   if (warmGreenhouseNear(s, t)) return 1 + Math.min(3, flowers / 20) * 0.2;
   const weather = env.weather ?? s.sim.weather.spell;
-  if (s.season === 'winter' || isRaining(weather) || weather === 'snow' || weather === 'blizzard' || weather === 'gale') return 0;
+  if (s.season === 'winter' || isLiquidRain(s, weather) || isSnowing(s, weather) || weather === 'gale') return 0;
   if (s.sim.weather.tempC < BEE_MIN_C) return 0;
   const site = serviceSite(s, t);
   if (!flowers && !site.meadow) return 0;
@@ -126,7 +141,7 @@ export function pollinationCoverage(s: GameState, f: Field): number {
 // bank needs no lift). Tanks serving the same dry cell share its cost; a cell already moist enough costs them nothing. Rain
 // waters every field at a sprinkler's level, so idle sprinklers and tanks neither dry crops out nor drain.
 export function effectiveMoisture(s: GameState, f: Field, drain?: Map<number, number>, weather?: string): number {
-  if (isRaining(weather)) return Math.max(f.avgMoisture, 0.75);
+  if (isLiquidRain(s, weather)) return Math.max(f.avgMoisture, 0.75);
   const watered = new Map<number, number[]>();
   for (const t of s.things) {
     const r = s.sim.things.get(t.id);

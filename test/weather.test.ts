@@ -7,6 +7,7 @@ import {
   FLOOD_DEEP, FLOOD_MAX, forecastDay, forecastDays, generateValley, isClimate, liveEnv, rollWeatherSeed, type Season, skyAt, spellTimeline,
   stepSim, stepWeather, toSpell, type WeatherKey, type WeatherSpell, WEATHER_SPELLS, weatherKeyOf,
 } from '../src/game/index.ts';
+import { groundKey } from '../src/world/weatherKeys.ts';
 import { same } from './helpers.ts';
 
 const SEASONS: Season[] = ['spring', 'summer', 'autumn', 'winter'];
@@ -115,13 +116,39 @@ test('the forecast is the weather that comes: its spell and its low and high', (
         lo = Math.min(lo, w.tempC); hi = Math.max(hi, w.tempC);
       }
       assert.ok(spells.has(f.spell), `${season} day ${f.day}: ${f.spell} forecast, saw ${[...spells].join(', ')}`);
-      assert.equal(f.minTempC, Math.round(lo * 10) / 10);
-      assert.equal(f.maxTempC, Math.round(hi * 10) / 10);
+      // Its low and high are the day's own: never milder than the hours lived, and within 0.1°C of the minute-by-minute air.
+      assert.ok(f.minTempC <= Math.round(lo * 10) / 10 && f.maxTempC >= Math.round(hi * 10) / 10);
+      const truth = trueRange(weatherKeyOf(s), f.day);
+      assert.ok(Math.abs(f.minTempC - truth.lo) < 0.1 && Math.abs(f.maxTempC - truth.hi) < 0.1, `${f.minTempC}..${f.maxTempC} vs ${truth.lo}..${truth.hi}`);
       assert.ok(f.icon && f.label);
     }
   }
+});
+
+/** A day's coldest and warmest air, read minute by minute from the timeline. */
+function trueRange(key: WeatherKey, day: number): { lo: number; hi: number } {
+  let lo = Infinity, hi = -Infinity;
+  for (let m = 0; m <= 24 * 60; m++) { const t = skyAt(key, absHour(day, m / 60)).tempC; lo = Math.min(lo, t); hi = Math.max(hi, t); }
+  return { lo, hi };
+}
+
+test('the forecast\'s low and high catch the day\'s true extremes (a mild winter\'s coldest small hour)', () => {
+  const s = blankState(1, 'winter', { climate: 'mild', weatherSeed: 1 });
+  const [f] = forecastDays(s, 1), truth = trueRange(weatherKeyOf(s), 2);
+  assert.equal(f.day, 2);
+  assert.ok(Math.abs(f.minTempC - truth.lo) < 0.1, `low ${f.minTempC} vs the day's ${truth.lo.toFixed(2)}`);
+  assert.ok(Math.abs(f.maxTempC - truth.hi) < 0.1, `high ${f.maxTempC} vs the day's ${truth.hi.toFixed(2)}`);
+});
+
+test('the live weather line tells today\'s weather, and the days ahead only once a Weather Station stands', () => {
   const s = blankState(1, 'spring');
-  assert.match(describeWeather(s), /^.+, -?\d+°C · Tomorrow: .+, -?\d+ to -?\d+°C$/);
+  const now = describeWeather(s);
+  assert.match(now, /^.+, -?\d+°C · wind \d+ m\/s/);
+  assert.doesNotMatch(now, /Tomorrow/, 'no forecast without the station');
+  const [next] = forecastDays(s, 1);
+  assert.ok(!now.toLowerCase().includes(`${Math.round(next.minTempC)} to ${Math.round(next.maxTempC)}°c`));
+  s.things.push({ id: s.nextId++, kind: 'weather_station', x: 0, z: 0, yaw: 0, padTargetY: 0 });
+  assert.match(describeWeather(s), /^.+, -?\d+°C · wind \d+ m\/s.* · Tomorrow: .+, -?\d+ to -?\d+°C$/);
 });
 
 test('lightning flickers only in a strong storm', () => {
@@ -183,4 +210,18 @@ test('a locked weather holds the sky and the forecast', () => {
   assert.ok(forecastDays(s).every((d) => d.spell === 'snow' && d.icon === 'snow'));
   s.sim.weatherOverride = null;
   assert.deepEqual(forecastDays(s, 1)[0], forecastDay(weatherKeyOf(s), s.sim.day + 1));
+});
+
+test('a thin snow or frost layer never shares the bare ground\'s map key', () => {
+  const s = blankState(1, 'winter');
+  Object.assign(s.sim.weather, { tempC: 8, rain: 0, groundWet: 0, snowDepth: 0, frostCover: 0 });
+  const bare = groundKey(s);
+  // Both round to step 0 of 20, but each is a layer the ground map draws.
+  s.sim.weather.snowDepth = 0.02;
+  const snow = groundKey(s);
+  assert.notEqual(snow, bare, 'a dusting of snow');
+  s.sim.weather.snowDepth = 0;
+  s.sim.weather.frostCover = 0.02;
+  assert.notEqual(groundKey(s), bare, 'a touch of rime');
+  assert.notEqual(groundKey(s), snow);
 });

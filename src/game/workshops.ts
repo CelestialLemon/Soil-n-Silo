@@ -5,7 +5,7 @@
 // Each building's live side (its goods, recipe, power and the one plain line its floating card shows) is a ThingRuntime,
 // kept by id in `state.sim.things` beside the placed Thing; it comes and goes with the building.
 import { CATALOG, isWorkshop, type ThingKind, type WorkshopKind } from './catalog.ts';
-import { forageRate, hotMidday, effectiveMoisture, isRaining, treeShade } from './microclimate.ts';
+import { forageRate, hotMidday, effectiveMoisture, isLiquidRain, treeShade } from './microclimate.ts';
 import type { SimEnv } from './power/sim.ts';
 import { isNight } from './clock.ts';
 import { addGood, capacity, countOf, describeInventory, GOOD_LABELS, type Good, type Inventory, takeGood, totalStored } from './goods.ts';
@@ -74,7 +74,10 @@ export function stepEcology(s: GameState, dtH: number, env: SimEnv): void {
     const r = s.sim.things.get(t.id);
     if (!r) continue;
     if (t.kind === 'rain_tank') {
-      const refill = isRaining(env.weather) ? 0.18 : env.weather === 'overcast' ? 0.05 : s.sim.hour >= 5 && s.sim.hour < 8 ? 0.02 : 0;
+      // Rain fills it (not snow: a storm falling as snow leaves it as it is); grey skies and the morning dew top it up, but
+      // not while the air freezes.
+      const thawed = s.sim.weather.tempC > 0;
+      const refill = isLiquidRain(s, env.weather) ? 0.18 : !thawed ? 0 : env.weather === 'overcast' ? 0.05 : s.sim.hour >= 5 && s.sim.hour < 8 ? 0.02 : 0;
       // A 25 m² bed consumes 2.5% of a reserve per game hour.
       r.water = Math.max(0, Math.min(1, r.water + dtH * (refill - 0.001 * (drain.get(t.id) ?? 0))));
     } else {
@@ -173,8 +176,17 @@ export function setOutHoney(r: ThingRuntime): void {
   addGood(r.outputs, 'honey', takeGood(r.inputs, 'honey', outputRoom(r)));
 }
 
-/** Starts a recipe in every idle workshop that has its inputs and room for what it makes. */
+/**
+ * Notes which Heated Greenhouses want to grow (they have room for the harvest): read before the power runs, so a cold one
+ * asks for its full heating from the first step and never grows a step on power it didn't get.
+ */
+export function syncGreenhouses(s: GameState): void {
+  for (const r of s.sim.things.values()) if (r.kind === 'greenhouse') r.working = totalStored(r.outputs) + GREENHOUSE_YIELD <= OUTPUT_CAP;
+}
+
+/** Starts a recipe in every idle workshop that has its inputs and room for what it makes (and readies the Greenhouses). */
 export function startRecipes(s: GameState): void {
+  syncGreenhouses(s);
   for (const r of s.sim.things.values()) {
     setOutHoney(r);
     if (!isWorkshop(r.kind) || r.working) continue;
