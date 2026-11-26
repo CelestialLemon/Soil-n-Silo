@@ -421,7 +421,7 @@ function workshopFed(s: GameState, depot: Thing, good: Good): boolean {
   if (!need || !t || !r) return true;
   const shortage = sharedShortage(s, depot, t, r, good);
   if (shortage <= 0) return true;
-  return countOf(r.inputs, good) + incoming(s, thingEnd(t.id), [good]) >= Math.min(need.count, shortage);
+  return countOf(r.inputs, good) + incoming(s, thingEnd(t.id), [good]) >= need.count;
 }
 
 /**

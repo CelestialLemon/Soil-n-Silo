@@ -441,6 +441,15 @@ test('the Cannery and the Loom get their first batch of oil and yarn before the 
     assert.deepEqual(firstHaul(s, 'flour'), { kind: 'thing', id: depot }, 'Honey Cake Bakery does not hoard Flour needed by Depot');
   }
   {
+    // A Loom holding 1 of its 2 required yarn still reserves the completing 2nd yarn ahead of the Depot.
+    const { s } = craftYard();
+    const spinner = put(s, 'spinner', 6, -28, Math.PI), loom = put(s, 'loom', 22, -28, Math.PI);
+    s.sim.brief.order.targets = { linen: 2, yarn: 2 };
+    rt(s, loom).inputs = { yarn: 1 };
+    rt(s, spinner).outputs = { yarn: 1 };
+    assert.deepEqual(firstHaul(s, 'yarn'), { kind: 'thing', id: loom }, 'completes the Loom\'s 2-yarn batch before sending yarn to Depot');
+  }
+  {
     // A rerouted cart carrying 2 Oil drops only the 1 Oil the Cannery needs for its last Sauce batch, then takes the spare 1 Oil to the Depot.
     const { s, depot } = craftYard();
     const cannery = put(s, 'cannery', 22, -28, Math.PI);
@@ -475,6 +484,20 @@ test('a shed load on a neighbouring network never causes an overlapping Digester
   assert.deepEqual(dig.r.inputs, { manure: 1 });
   assert.equal(press.r.powered, true, 'Oil Press runs on Solar');
   assert.equal(mill.r.powered, false, 'Mill sheds on Solar');
+});
+
+test('a cold fueled Digester on an overlapping network ignites when the preferred network falls short', () => {
+  const s = flatLand();
+  // Calm turbine (0.5 W) and fueled Digester 22 m apart; working Oil Press (1.5 W) midway between them.
+  building(s, 'turbine', -11, -20);
+  const dig = building(s, 'digester', 11, -20);
+  const press = building(s, 'oil_press', 0, -20);
+  press.r.working = true;
+  dig.r.inputs = { manure: 1 };
+  stepPower(s, 0.1, 12, { windSpeed: 0, cloudCover: 1 });
+  assert.equal(dig.r.working, true, 'Digester ignites to rescue the shared Oil Press from blackout');
+  assert.equal(press.r.powered, true, 'Oil Press stays powered');
+  assert.equal(s.sim.powerSummary.anyBlackout, false);
 });
 
 test('a byproduct sent to a building since taken down goes where Auto would send it', () => {
