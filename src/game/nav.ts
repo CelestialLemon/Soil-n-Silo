@@ -1,6 +1,7 @@
 // Where an Electric Cart can drive, and how it gets there: a coarse 2 m grid over the land, worked out again whenever the
 // land or what stands on it changes. Tracks and plank bridges are quick and easy on the battery; open meadow is slower
-// and drains it harder; muddy ground by the water bogs a cart down; steep ground costs dear. Unbridged water, rills,
+// and drains it harder; muddy ground by the water bogs a cart down; a planted field is dearer still (carts go round the
+// crops, never through them, unless there's no other way); steep ground costs dear. Unbridged water, rills,
 // rock, woods, hedgerows, tree trunks and buildings are walls; so is deep flood water (shallow flood water is mud). A* finds
 // the cheapest way, then the path is pulled straight wherever a straight line costs no more, so carts follow curving tracks and run straight over bridges.
 import { CATALOG } from './catalog.ts';
@@ -23,6 +24,8 @@ export const GROUND = {
   track: { cost: 1, speed: 1, drain: 1 },
   meadow: { cost: 2.8, speed: 0.48, drain: 1.8 },
   mud: { cost: 4.8, speed: 0.3, drain: 2.4 },
+  /** A planted field: so dear that a cart drives round it (it crosses the crops only where there's no way round). */
+  field: { cost: 28, speed: 0.4, drain: 2.0 },
 } as const;
 /** Slopes steeper than this cost a cart dear. */
 export const STEEP = 0.35;
@@ -38,6 +41,8 @@ export interface Nav {
   track: Uint8Array;
   /** Per cell: 1 on unbridged water or a rill. */
   water: Uint8Array;
+  /** Per cell: 1 on a planted field's ground (off any track or bridge). */
+  field: Uint8Array;
   /** Cell paths found, by "from:to" (null: no way). */
   paths: Map<string, number[] | null>;
   /** Per cell: which connected patch of drivable ground it belongs to (-1: impassable); worked out when first asked. */
@@ -75,7 +80,7 @@ export function navFor(s: GameState): Nav {
 function buildNav(s: GameState, key: string): Nav {
   const g = s.grid, n = NAV_N * NAV_N;
   const cost = new Float32Array(n), speed = new Float32Array(n), drain = new Float32Array(n), track = new Uint8Array(n);
-  const water = new Uint8Array(n), blocked = new Uint8Array(n), wet = new Float32Array(n);
+  const water = new Uint8Array(n), blocked = new Uint8Array(n), wet = new Float32Array(n), crop = new Uint8Array(n), field = new Uint8Array(n);
   for (let cz = 0; cz < NAV_N; cz++) for (let cx = 0; cx < NAV_N; cx++) {
     const i = navIndex(cx, cz), c = navCenter(i);
     if (Math.abs(c.x) > BUILD_HALF + 1 || Math.abs(c.z) > BUILD_HALF + 1) { blocked[i] = 1; continue; }
@@ -84,6 +89,7 @@ function buildNav(s: GameState, key: string): Nav {
       if (cv === COVER.rock || cv === COVER.woods) blocked[i] = 1;
       else if (cv === COVER.water || cv === COVER.rill) water[i] = 1;
       else if (cv === COVER.track) track[i] = 1;
+      if (g.fieldOf[k] !== 0) crop[i] = 1;
       // Deep flood water cuts the way (a bridge still carries it); shallow flood water is mud.
       if (g.flood[k] > FLOOD_DEEP) water[i] = 1;
       wet[i] = Math.max(wet[i], g.moisture[k], g.flood[k] > 0 ? 1 : 0);
@@ -104,13 +110,15 @@ function buildNav(s: GameState, key: string): Nav {
 
   for (let i = 0; i < n; i++) {
     if (blocked[i] || water[i]) { cost[i] = Infinity; speed[i] = 0; drain[i] = 0; continue; }
-    const ground = track[i] ? GROUND.track : wet[i] > MUDDY ? GROUND.mud : GROUND.meadow;
+    // A cell that touches a crop is field ground (a track or bridge through it is still a track).
+    if (!track[i] && crop[i]) field[i] = 1;
+    const ground = track[i] ? GROUND.track : field[i] ? GROUND.field : wet[i] > MUDDY ? GROUND.mud : GROUND.meadow;
     const c = navCenter(i), steep = !track[i] && slopeAt(g, c.x, c.z) > STEEP;
     cost[i] = ground.cost + (steep ? STEEP_COST : 0);
     speed[i] = ground.speed * (steep ? STEEP_SPEED : 1);
     drain[i] = ground.drain + (steep ? STEEP_DRAIN : 0);
   }
-  return { key, cost, speed, drain, track, water, paths: new Map() };
+  return { key, cost, speed, drain, track, water, field, paths: new Map() };
 }
 
 /** The fine land cells (1 m) under a nav cell. */
@@ -273,23 +281,33 @@ function lineCost(nav: Nav, a: Point2, b: Point2): number {
   return worst;
 }
 
-/** Whether a straight run between two points crosses only drivable cells (`own`: a cell it may cross anyway). */
-function runClear(nav: Nav, a: Point2, b: Point2, own = -1): boolean {
+/**
+ * Whether a straight run between two points crosses only drivable cells costing no more than `limit` (`own`: a cell it may
+ * cross anyway): a run the path is pulled onto never cuts across a field the cells it replaces went round.
+ */
+function runClear(nav: Nav, a: Point2, b: Point2, own = -1, limit = Infinity): boolean {
   let clear = true;
-  forSegmentCells(a, b, (i) => { if (i !== own && (i < 0 || !passable(nav, i))) clear = false; return !clear; });
+  forSegmentCells(a, b, (i) => {
+    if (i !== own && (i < 0 || !passable(nav, i) || nav.cost[i] > limit + 1e-6)) clear = false;
+    return !clear;
+  });
   return clear;
 }
 
-/** Pulls a cell path straight wherever a straight line crosses nothing costlier than the cells it skips. */
+/**
+ * Pulls a cell path straight wherever a straight line crosses nothing costlier than the cells it skips. The goal is weighed
+ * as A* weighed it (no dearer than meadow), so a goal inside a field never lets a long straight cut across the crops.
+ */
 function smooth(nav: Nav, cells: readonly number[]): Point2[] {
   const pts = cells.map(navCenter);
   if (pts.length <= 2) return pts;
+  const last = pts.length - 1, costOf = (j: number) => (j === last ? Math.min(nav.cost[cells[j]], GROUND.meadow.cost) : nav.cost[cells[j]]);
   const out: Point2[] = [pts[0]];
   let i = 0;
   while (i < pts.length - 1) {
-    let best = i + 1, worst = nav.cost[cells[i + 1]];
+    let best = i + 1, worst = costOf(i + 1);
     for (let j = i + 2; j < pts.length; j++) {
-      worst = Math.max(worst, nav.cost[cells[j]]);
+      worst = Math.max(worst, costOf(j));
       if (lineCost(nav, pts[i], pts[j]) <= worst + 1e-6) best = j;
       else if (j - best > 3) break;
     }
@@ -342,15 +360,17 @@ export function findPath(s: GameState, from: Point2, to: Point2): Point2[] | nul
   const centres = smooth(nav, cells);
   if (centres.length === 1) centres.push(navCenter(b));
   const start = { x: from.x, z: from.z }, own = navCellOf(from.x, from.z);
-  // Straight to the second waypoint if that's clear; else by the start cell's centre (a cart off the drivable ground
-  // steps out to it first, over no other water).
-  const pts = runClear(nav, start, centres[1], own) ? [start, ...centres.slice(1)] : [start, ...centres];
-  // Finish at the exact spot if it's on drivable ground next to the last cell, and the run to it is clear.
-  const end = pts[pts.length - 1], spot = { x: to.x, z: to.z };
-  if (passable(nav, navCellOf(to.x, to.z)) && Math.hypot(end.x - to.x, end.z - to.z) <= NAV_CELL * 1.5) {
-    const prev = pts[pts.length - 2];
-    if (runClear(nav, prev, spot, pts.length === 2 ? own : -1)) pts[pts.length - 1] = spot;
-    else if (runClear(nav, end, spot)) pts.push(spot);
+  // Straight to the second waypoint if that's clear (and no dearer than the leg from the start cell's centre it replaces:
+  // it never clips a field the path went round); else by the start cell's centre (a cart off the drivable ground steps out
+  // to it first, over no other water).
+  const pts = runClear(nav, start, centres[1], own, lineCost(nav, centres[0], centres[1])) ? [start, ...centres.slice(1)] : [start, ...centres];
+  // Finish at the exact spot if it's on drivable ground next to the last cell, and the run to it is clear (and no dearer
+  // than the leg it replaces, or than the ground at either end of the last step).
+  const end = pts[pts.length - 1], spot = { x: to.x, z: to.z }, spotCell = navCellOf(to.x, to.z);
+  if (passable(nav, spotCell) && Math.hypot(end.x - to.x, end.z - to.z) <= NAV_CELL * 1.5) {
+    const prev = pts[pts.length - 2], last = Math.max(nav.cost[spotCell], nav.cost[navCellOf(end.x, end.z)]);
+    if (runClear(nav, prev, spot, pts.length === 2 ? own : -1, Math.max(lineCost(nav, prev, end), nav.cost[spotCell]))) pts[pts.length - 1] = spot;
+    else if (runClear(nav, end, spot, -1, last)) pts.push(spot);
   }
   return pts;
 }

@@ -2,10 +2,12 @@
 // live line each one says while it's hovered or dragged ("Flowing 16 m", "The ground is too steep here."). Plain functions
 // of the game's state, so the controller only asks.
 import {
-  canDig, canPlace, canPlant, canTrack, CATALOG, channelPath, type ChannelPreview, type Crop, CROPS, type GameState, pathLength, type Point2, previewChannelFlow,
-  type ThingKind, trackBridges, trackPath,
+  canDig, canPlace, canPlant, canTrack, CATALOG, channelPath, type ChannelPreview, type Crop, CROPS, distanceToWater, type GameState, GOOD_LABELS, pathLength,
+  type Point2, previewChannelFlow, sprinklerPowerW, sprinklerWattsLabel, SPRINKLER_NEAR_M, type ThingKind, trackBridges, trackPath,
 } from '../game/index.ts';
 import { placedKind, type ToolId, type ToolReadout } from '../ui/index.ts';
+
+export type { FieldMode } from '../ui/index.ts';
 
 /** A field brush that paints a crop: one for each crop (src/game/state.ts CROPS). */
 export type CropTool = `field:${Crop}`;
@@ -21,6 +23,31 @@ export const isFieldTool = (t: ToolId): t is FieldTool => (FIELD_TOOLS as readon
 export function cropOfTool(t: ToolId): Crop | null {
   if (!isFieldTool(t) || t === 'field:erase') return null;
   return t.slice('field:'.length) as Crop;
+}
+
+/** A click this close to an outline's first corner closes it, m. */
+export const POLYGON_SNAP = 1.5;
+
+/** An outline's area, m² (the shoelace formula; its last corner joins back to its first). */
+export function polygonArea(points: readonly Point2[]): number {
+  let twice = 0;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i], b = points[(i + 1) % points.length];
+    twice += a.x * b.z - b.x * a.z;
+  }
+  return Math.abs(twice) / 2;
+}
+
+/** What a field outline being drawn says: what to do next, and once it has three corners, its area. */
+export function polygonReadout(crop: Crop | null, points: readonly Point2[], cursor?: Point2): ToolReadout {
+  const name = crop === null ? 'Clear' : GOOD_LABELS[crop].label;
+  if (points.length === 0) {
+    return { text: crop === null ? 'Click corners to outline the fields to clear · M for brush' : `Click corners to outline a ${name} field · M for brush` };
+  }
+  const shape = cursor ? [...points, cursor] : [...points];
+  if (shape.length < 3) return { text: `${crop === null ? 'Clearing' : `${name} polygon`} · click the next corner · Backspace undoes one · Esc cancels` };
+  const area = Math.round(polygonArea(shape));
+  return { text: `${crop === null ? 'Clear polygon' : `${name} polygon`} · ~${area} m² · click start or double-click to fill` };
 }
 
 /** The field brush's radius, m: `[` and `]` step it. */
@@ -46,6 +73,13 @@ const m = (n: number) => `${Math.round(n)} m`;
 
 const supplies = (n: number) => `${n} ${n === 1 ? 'Supply' : 'Supplies'}`;
 
+/** What a Sprinkler at a spot would draw, and how far its water is: "0.5 W near water", "1.35 W · 24 m from water". */
+export function sprinklerSiteLine(s: GameState, p: Point2): string {
+  const w = sprinklerWattsLabel(sprinklerPowerW(s, p)), d = distanceToWater(s, p);
+  if (!Number.isFinite(d)) return `${w} · no water in the valley`;
+  return d <= SPRINKLER_NEAR_M ? `${w} near water` : `${w} · ${Math.round(d)} m from water`;
+}
+
 /**
  * What a ghost at a spot says: why it can't stand there (the pool short of its cost among the reasons), or a word on
  * where it would, with what a paid building takes from the pool ("2 Supplies · 8 left").
@@ -58,6 +92,10 @@ export function placeReadout(s: GameState, kind: ThingKind, x: number, z: number
   // A Sandbox's pool has no limit: no price to count down.
   const price = cost > 0 && !s.sim.supplies.unlimited ? ` · ${supplies(cost)} · ${s.sim.supplies.available - cost} left` : '';
   if (kind === 'waterwheel') return { fits: true, readout: { text: `Its wheel turns in the brook${price} · click to place`, tone: 'wet' } };
+  if (kind === 'sprinkler') {
+    // Its pump draws less the nearer the water: say what it would draw here, and how far the water is.
+    return { fits: true, readout: { text: `Sprinkler · ${sprinklerSiteLine(s, { x, z })}${price} · R to turn`, tone: 'wet' } };
+  }
   if (kind === 'solar') {
     const g = s.grid, ix = Math.floor((x - g.x0) / g.cell), iz = Math.floor((z - g.z0) / g.cell);
     const id = ix >= 0 && iz >= 0 && ix < g.nx && iz < g.nz ? g.fieldOf[iz * g.nx + ix] : 0;

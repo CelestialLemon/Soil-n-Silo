@@ -1,15 +1,17 @@
 // The game's tools on the picture: what the player is about to do, drawn over the valley before they do it. A ghost of the
 // thing being placed (brush3d's preview: green where it fits, red where it doesn't), the rill being dragged with the water
 // the rules say it would carry (cool blue where it flows, warm amber dashes past the sill where it runs dry, a ring at the
-// sill), a field brush's circle, a track's, a hedge's or a tree's outline, the contour lines while digging, the
-// ground's moisture glow while painting fields, and the power as the game's state has it (state.power), or would have
+// sill), a field brush's circle, a field outline being drawn corner by corner, a track's, a hedge's or a tree's outline, a
+// Sprinkler's turned patch and a Beehive's or Rain Tank's ring, the contour lines while digging, the watered ground while
+// painting fields or placing water (the brook's and rills' wet banks, every Sprinkler's patch, every Rain Tank's ring, and
+// the one in hand's, with the patches traced on the grass so a field's corners can be laid along them), and the power as the game's state has it (state.power), or would have
 // with the power building or relay in hand put down (previewPower): each power building's and relay's soft wireless
 // field, a calm thin ring on the grass, only when the play layer asks for them (the power view, or a power building or
 // relay in hand or picked; power is wireless: no lines run anywhere).
 import type * as THREE from 'three';
 import { type BrushRenderer, type Line, type LinePoint, OVERLAY_LOOK, OVERLAY_NONE, type Overlay } from '../../brush3d/src/index.ts';
 import {
-  hasServiceRadius, SERVICE_RADIUS, CATALOG, canPlace, canPlant, canTrack, type ChannelPreview, type GameState, padTarget, type Point2, type PowerRadius, previewChannelFlow,
+  hasServiceRadius, type Obb, obbCorners as boxCorners, obbDistance, SERVICE_RADIUS, sprinklerObb, CATALOG, canPlace, canPlant, canTrack, type ChannelPreview, type GameState, padTarget, type Point2, type PowerRadius, previewChannelFlow,
   previewPower, type ThingKind, trackPath, type TreeSpecies, VALLEY_HALF,
 } from '../game/index.ts';
 import type { Things } from './things.ts';
@@ -23,6 +25,11 @@ export type PreviewSpec =
   | { kind: 'thing'; thingKind: ThingKind; x: number; z: number; yaw: number; fits?: boolean; ignore?: number }
   | { kind: 'channel'; points: Point2[]; preview?: ChannelPreview }
   | { kind: 'field'; x: number; z: number; radius: number; erase?: boolean; fits?: boolean }
+  /**
+   * A field outline being drawn: its corners so far, the pointer (where the next corner would go), and whether the pointer
+   * is close enough to the first corner that a click closes it (`snapStart`).
+   */
+  | { kind: 'fieldPolygon'; points: Point2[]; cursor?: Point2; snapStart?: boolean; erase?: boolean }
   | { kind: 'track'; points: Point2[]; fits?: boolean }
   | { kind: 'hedge'; points: Point2[]; fits?: boolean }
   | { kind: 'tree'; x: number; z: number; species?: TreeSpecies; fits?: boolean };
@@ -31,7 +38,24 @@ export type PreviewSpec =
 const COL = {
   wet: 0x5fb8e8, dry: 0xd8a860, sill: 0xf0b25a, fits: 0x9dffc0, blocked: 0xff6a50, field: 0xf3e3a0, erase: 0xff9a7a,
   track: 0xead7a6, hedge: 0x7cc46a, ring: 0xa8dcf5, ringOff: 0xdcc9a2,
+  /** The watered ground: a Sprinkler's patch (bright sky-teal), a Rain Tank's ring (soft pale aqua), and their traces. */
+  spray: 0x3cc8d8, tank: 0xa6e4dc, guide: 0x8fd6e4,
 };
+
+/** A box's four corners on the land: a closed rectangle (a Sprinkler's patch). */
+export function obbCorners(box: Obb): LinePoint[] {
+  return boxCorners(box).map((p) => ({ x: p.x, z: p.z }));
+}
+
+/** A thing's served ground as a line: a Sprinkler's turned patch, a Beehive's or Rain Tank's circle; null for others. */
+function serviceLine(site: { kind: ThingKind; x: number; z: number; yaw: number }, look: Omit<Line, 'points' | 'closed'>): Line | null {
+  if (site.kind === 'sprinkler') return { ...look, points: obbCorners(sprinklerObb(site)), closed: true };
+  if (hasServiceRadius(site.kind)) return { ...look, points: circle(site.x, site.z, SERVICE_RADIUS[site.kind]), closed: true };
+  return null;
+}
+
+/** What's watering a spot on the moisture overlay: a placed or ghost Sprinkler or Rain Tank. */
+interface WaterSite { kind: 'sprinkler' | 'rain_tank'; x: number; z: number; yaw: number }
 
 /** A wireless field's ring: a thin, quiet line in the sky's blue where it carries power, sand-coloured dashes where not. */
 const fieldRing = (x: number, z: number, radius: number, powered: boolean): Line =>
@@ -53,6 +77,8 @@ export class Tools {
   private ghost: { kind: ThingKind; mesh: THREE.Mesh } | null = null;
   private contours = false;
   private moisture = false;
+  /** What the moisture overlay was last drawn for: it's drawn again only when that changes. */
+  private moistureKey = '';
   private showPower = false;
 
   constructor(r: BrushRenderer, state: GameState, things: Things) {
@@ -74,6 +100,8 @@ export class Tools {
     this.spec = spec;
     this.drawPreview();
     this.drawPower();
+    // A Sprinkler or Rain Tank in hand waters the overlay where it would stand (drawn again only when it moves or turns).
+    if (this.moisture) this.drawMoisture();
   }
 
   setContours(on: boolean) {
@@ -86,7 +114,9 @@ export class Tools {
 
   setMoisture(on: boolean) {
     this.moisture = on;
+    this.moistureKey = '';
     this.drawMoisture();
+    this.drawPreview();
   }
 
   setShowPower(on: boolean) { this.showPower = on; this.drawPower(); }
@@ -97,6 +127,7 @@ export class Tools {
     if (this.spec?.kind === 'channel' && this.spec.preview) this.spec = { ...this.spec, preview: undefined };
     this.drawPreview();
     this.drawPower();
+    this.moistureKey = '';
     if (this.moisture) this.drawMoisture();
     if (this.contours) this.setContours(true);
   }
@@ -122,10 +153,23 @@ export class Tools {
     const spec = this.spec, s = this.state;
     if (spec?.kind !== 'thing') this.dropGhost();
     const lines: Line[] = [];
-    const site = spec?.kind === 'thing' ? { kind: spec.thingKind, x: spec.x, z: spec.z }
+    const site = spec?.kind === 'thing' ? { kind: spec.thingKind, x: spec.x, z: spec.z, yaw: spec.yaw }
       : !spec && s.things.find(t => t.id === this.selected);
-    if (site && hasServiceRadius(site.kind))
-      lines.push({ points: circle(site.x, site.z, SERVICE_RADIUS[site.kind]), closed: true, color: site.kind === 'beehive' ? 0xe8be66 : COL.wet, style: 'route', width: 0.15, opacity: 0.55 });
+    // While the watered ground shows for a field (not a building in hand), every Sprinkler's patch and Rain Tank's ring is
+    // traced calmly on the grass, so an outline's corners can be laid right along them.
+    if (this.moisture && (!spec || spec.kind === 'field' || spec.kind === 'fieldPolygon')) {
+      for (const t of s.things) {
+        if (t.kind !== 'sprinkler' && t.kind !== 'rain_tank') continue;
+        if (site && 'id' in site && site.id === t.id) continue;
+        const line = serviceLine(t, { color: t.kind === 'sprinkler' ? COL.guide : COL.tank, style: 'dashed', width: 0.12, opacity: 0.5 });
+        if (line) lines.push(line);
+      }
+    }
+    if (site) {
+      const color = site.kind === 'beehive' ? 0xe8be66 : site.kind === 'sprinkler' ? COL.spray : COL.wet;
+      const line = serviceLine(site, { color, style: 'route', width: 0.15, opacity: 0.55 });
+      if (line) lines.push(line);
+    }
     if (!spec) { this.r.setLines(lines.length ? lines : null, 'tool'); return; }
     switch (spec.kind) {
       case 'thing': {
@@ -164,6 +208,21 @@ export class Tools {
       case 'field': {
         const ok = spec.fits ?? true;
         lines.push({ points: circle(spec.x, spec.z, spec.radius), color: !ok ? COL.blocked : spec.erase ? COL.erase : COL.field, style: 'dashed', width: 0.2, opacity: 0.95, closed: true });
+        break;
+      }
+      case 'fieldPolygon': {
+        const color = spec.erase ? COL.erase : COL.field, pts = spec.points;
+        // The corners laid so far, solid; the rubber band to the pointer and back to the first corner, dashed.
+        if (pts.length >= 2) lines.push({ points: pts.map((p) => ({ x: p.x, z: p.z })), color, style: 'route', width: 0.22, opacity: 0.95 });
+        const last = pts[pts.length - 1];
+        if (spec.cursor && last) {
+          const band = pts.length >= 2 && !spec.snapStart ? [last, spec.cursor, pts[0]] : [last, spec.cursor];
+          lines.push({ points: band.map((p) => ({ x: p.x, z: p.z })), color, style: 'dashed', width: 0.18, opacity: 0.8 });
+        } else if (pts.length >= 3) {
+          lines.push({ points: [last, pts[0]].map((p) => ({ x: p.x, z: p.z })), color, style: 'dashed', width: 0.18, opacity: 0.8 });
+        }
+        for (const p of pts) lines.push({ points: circle(p.x, p.z, 0.35, 14), color, style: 'route', width: 0.14, opacity: 0.95, closed: true });
+        if (spec.snapStart && pts[0]) lines.push({ points: circle(pts[0].x, pts[0].z, 1.1, 28), color: COL.fits, style: 'route', width: 0.22, opacity: 0.95, closed: true });
         break;
       }
       case 'track': {
@@ -223,9 +282,31 @@ export class Tools {
     this.r.setLines(lines.length ? lines : null, 'power');
   }
 
-  /** The ground's moisture as a soft blue glow over the valley (no lines between cells), while fields are being painted. */
+  /** The Sprinklers and Rain Tanks watering the ground, with the one in hand where it would stand (a moved one off its old spot). */
+  private waterSites(): WaterSite[] {
+    const spec = this.spec, out: WaterSite[] = [];
+    const ignore = spec?.kind === 'thing' ? spec.ignore : undefined;
+    for (const t of this.state.things) {
+      if ((t.kind === 'sprinkler' || t.kind === 'rain_tank') && t.id !== ignore) out.push({ kind: t.kind, x: t.x, z: t.z, yaw: t.yaw });
+    }
+    if (spec?.kind === 'thing' && (spec.thingKind === 'sprinkler' || spec.thingKind === 'rain_tank')) {
+      out.push({ kind: spec.thingKind, x: spec.x, z: spec.z, yaw: spec.yaw });
+    }
+    return out;
+  }
+
+  /**
+   * All the watered ground as a soft glow over the valley (no lines between cells), while fields are being painted or water
+   * placed: the brook's, pond's and flowing rills' wet banks from a pale sky blue to a deep pool blue, every Sprinkler's
+   * patch a bright sky-teal, every Rain Tank's ring a soft pale aqua, the one in hand's included. Drawn again only when what
+   * it shows changes (the ghost in hand moving a quarter metre or turning, an edit).
+   */
   private drawMoisture() {
-    if (!this.moisture) { this.r.setOverlay(null); this.r.setOverlayLook(); return; }
+    if (!this.moisture) { this.moistureKey = ''; this.r.setOverlay(null); this.r.setOverlayLook(); return; }
+    const sites = this.waterSites(), q = (v: number) => Math.round(v * 4);
+    const key = `${this.state.revision}|${sites.map((w) => `${w.kind[0]}${q(w.x)},${q(w.z)},${w.kind === 'sprinkler' ? Math.round(w.yaw * 100) : 0}`).join(';')}`;
+    if (key === this.moistureKey) return;
+    this.moistureKey = key;
     const g = this.state.grid, color = new Uint32Array(g.nx * g.nz).fill(OVERLAY_NONE);
     for (let iz = 0; iz < g.nz; iz++) for (let ix = 0; ix < g.nx; ix++) {
       const x = g.x0 + (ix + 0.5) * g.cell, z = g.z0 + (iz + 0.5) * g.cell, k = iz * g.nx + ix;
@@ -235,6 +316,22 @@ export class Tools {
       // From a pale sky blue to a deep pool blue as it wets.
       const t = Math.min(1, m), r = Math.round(0xb8 + (0x2e - 0xb8) * t), gg = Math.round(0xe0 + (0x86 - 0xe0) * t), b = Math.round(0xf4 + (0xd8 - 0xf4) * t);
       color[k] = (r << 16) | (gg << 8) | b;
+    }
+    // The tanks' rings first, then the Sprinklers' patches over them (a Sprinkler waters more than a tank).
+    for (const pass of ['rain_tank', 'sprinkler'] as const) for (const w of sites) {
+      if (w.kind !== pass) continue;
+      const box = w.kind === 'sprinkler' ? sprinklerObb(w) : undefined, radius = SERVICE_RADIUS.rain_tank;
+      const ext = box ? Math.hypot(box.hw, box.hd) : radius;
+      const ix0 = Math.max(0, Math.floor((w.x - ext - g.x0) / g.cell)), ix1 = Math.min(g.nx - 1, Math.floor((w.x + ext - g.x0) / g.cell));
+      const iz0 = Math.max(0, Math.floor((w.z - ext - g.z0) / g.cell)), iz1 = Math.min(g.nz - 1, Math.floor((w.z + ext - g.z0) / g.cell));
+      for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
+        const x = g.x0 + (ix + 0.5) * g.cell, z = g.z0 + (iz + 0.5) * g.cell, k = iz * g.nx + ix;
+        if (Math.abs(x) > VALLEY_HALF || Math.abs(z) > VALLEY_HALF) continue;
+        if (box ? obbDistance(box, x, z) > 0 : Math.hypot(x - w.x, z - w.z) > radius) continue;
+        // A wet bank already as wet as a tank lifts it (0.32) keeps its own blue.
+        if (!box && g.moisture[k] >= 0.32) continue;
+        color[k] = box ? COL.spray : COL.tank;
+      }
     }
     const overlay: Overlay = { width: g.nx, height: g.nz, tile: g.cell, x0: g.x0, z0: g.z0, color, strength: 0.45 };
     this.r.setOverlayLook({ ...OVERLAY_LOOK, edge: 0 });

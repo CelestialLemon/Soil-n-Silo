@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { apply, cellX, effectiveMoisture, isLiquidRain, must, runtimeOf, serviceSite, stepSim, stepWeather } from '../src/game/index.ts';
+import {
+  apply, cellX, effectiveMoisture, isLiquidRain, must, runtimeOf, serviceSite, SPRINKLER_BOX, SPRINKLER_FAR_W, stepSim, stepWeather,
+} from '../src/game/index.ts';
 import { building, fieldAt, land, ribbon } from './helpers.ts';
 
 test('tank reserves irrigate dry fields, drain, refill in rain, and stay bounded', () => {
@@ -43,7 +45,7 @@ test('a storm falling as snow in a hard winter fills no tank and waters no field
   assert.equal(s.sim.weather.spell, 'storm');
   assert.equal(s.sim.weather.rain, 0);
   assert.equal(tank.water, 0, 'no refill from snow');
-  assert.equal(sprinkler.watts, 1, 'the sprinkler runs');
+  assert.equal(sprinkler.watts, SPRINKLER_FAR_W, 'the sprinkler runs (at its full draw: no water in this land)');
   assert.equal(effectiveMoisture(s, field, undefined, 'storm'), 0.75, 'watered by the sprinkler alone');
   // A synthetic rainy spell (not the living one) still reads as rain.
   assert.ok(isLiquidRain(s, 'soft-rain'));
@@ -64,7 +66,7 @@ test('a forced \'rain\' in a hard winter falls as snow too: the alias reads as t
   assert.ok(w.snow > 0, `snow (${w.snow.toFixed(2)})`);
   assert.ok(!isLiquidRain(s, 'rain') && !isLiquidRain(s, 'soft-rain'), 'the alias and the spell read alike');
   assert.equal(tank.water, 0, 'no refill from snow');
-  assert.equal(sprinkler.watts, 1, 'the sprinkler runs');
+  assert.equal(sprinkler.watts, SPRINKLER_FAR_W, 'the sprinkler runs (at its full draw: no water in this land)');
   assert.equal(effectiveMoisture(s, field, undefined, 'rain'), 0.75, 'watered by the sprinkler alone');
 });
 
@@ -78,7 +80,7 @@ test('only a powered sprinkler irrigates a high terrace inside its reach', () =>
   assert.equal(effectiveMoisture(s, field), 0);
   building(s, 'turbine', 12, 0);
   stepSim(s, 1, env);
-  assert.equal(r.watts, 1);
+  assert.equal(r.watts, SPRINKLER_FAR_W);
   assert.equal(effectiveMoisture(s, field), 0.75);
   assert.equal(effectiveMoisture(s, far), 0);
 });
@@ -110,7 +112,7 @@ test('devices irrigate just their share of a ribbon and tanks split the covered 
   stepSim(s, 30, { windSpeed: 0, cloudCover: 0 });
   assert.ok(Math.abs(a.r.water - 0.9995) < 1e-9);
   assert.equal(a.r.water, b.r.water);
-  const sprinkler = building(s, 'sprinkler', tip.x + 11, tip.z);
+  const sprinkler = building(s, 'sprinkler', tip.x + SPRINKLER_BOX.halfW, tip.z);
   building(s, 'turbine', tip.x + 10, tip.z + 3);
   stepSim(s, 1, { windSpeed: 10, cloudCover: 0 });
   assert.equal(effectiveMoisture(s, f), 0.75 / f.cellCount);
@@ -136,7 +138,7 @@ test('rain waters a dry terrace while its sprinkler idles and its tank refills w
   building(s, 'turbine', 12, 0);
   s.sim.hour = 12;
   stepSim(s, 1, { windSpeed: 12, cloudCover: 0 });
-  assert.equal(sprinkler.r.watts, 1);
+  assert.equal(sprinkler.r.watts, SPRINKLER_FAR_W);
   for (const weather of ['soft-rain', 'rain', 'storm']) {
     tank.r.water = 0.5;
     stepSim(s, 3, { windSpeed: 12, cloudCover: 1, weather });
@@ -182,7 +184,7 @@ test('irrigation lifts each covered cell from its own moisture: a wet bank neith
   const spray = must(serviceSite(s, sprinkler.t).cells.get(f.id), 'sprinkler reach');
   assert.ok(spray.length > 0 && spray.every((i) => g.moisture[i] === 0));
   stepSim(s, 1, env);
-  assert.equal(sprinkler.r.watts, 1);
+  assert.equal(sprinkler.r.watts, SPRINKLER_FAR_W);
   assert.ok(Math.abs(effectiveMoisture(s, f) - (f.avgMoisture + 0.75 * spray.length / f.cellCount)) < 1e-9);
   assert.ok(east.length > spray.length);
 

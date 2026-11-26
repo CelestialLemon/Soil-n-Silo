@@ -1,13 +1,13 @@
 // The bottom tool strip: the Supplies counter, Select and four groups (Homestead, Power, Land, Yard) whose tools open in a
 // small tray above it, and above that the readout pill saying what the tool in hand does, or what the drag under way is
-// doing. A building's tool wears its Supplies cost; it dims while the pool can't pay for it (a click says why) and wears a
+// doing (with a field tool in hand, a Polygon / Brush pill beside it: outline a field corner by corner, or paint it). A building's tool wears its Supplies cost; it dims while the pool can't pay for it (a click says why) and wears a
 // check once a one-of-each building stands.
 import { CATALOG } from '../game/index.ts';
 import { button, el, setFlag, setHidden, setPressed, setText, setTitle } from './dom.ts';
 import { icon } from './icons.ts';
 import { createSuppliesPill, isShort, supplyWord } from './supplies.ts';
 import { GROUPS, type GroupId, keyLabel, placedKind, SELECT_TOOL, type ToolDef, toolDef, groupOf } from './tools.ts';
-import type { ToolId, UiCallbacks, UiSnapshot } from './types.ts';
+import type { FieldMode, ToolId, UiCallbacks, UiSnapshot } from './types.ts';
 
 export interface ToolStrip {
   element: HTMLElement;
@@ -40,6 +40,21 @@ export function createToolStrip(cb: UiCallbacks, toast: (message: string) => voi
   const readoutTurn = el('span', 'ui-readout-turn');
   readout.append(readoutDot, readoutText, readoutTurn);
   readout.hidden = true;
+
+  // The field tools' Polygon / Brush pill.
+  const fieldMode = el('div', 'ui-fieldmode ui-float');
+  const modeSeg = el('div', 'ui-seg');
+  modeSeg.setAttribute('role', 'group');
+  modeSeg.setAttribute('aria-label', 'How fields are laid');
+  const modeButtons = (['polygon', 'brush'] as const).map((mode) => {
+    const label = mode === 'polygon' ? 'Polygon' : 'Brush';
+    const b = button('ui-seg-btn', `${label}: ${mode === 'polygon' ? 'click corners to outline a field' : 'drag to paint a field'} (M)`, () => cb.onSetFieldMode?.(mode));
+    b.textContent = label;
+    modeSeg.append(b);
+    return { mode, node: b };
+  });
+  fieldMode.append(modeSeg);
+  fieldMode.hidden = true;
 
   // The tray of the open group's tools.
   const tray = el('div', 'ui-tray ui-float');
@@ -87,7 +102,7 @@ export function createToolStrip(cb: UiCallbacks, toast: (message: string) => voi
     strip.append(tab);
   }
 
-  dock.append(readout, tray, strip);
+  dock.append(readout, fieldMode, tray, strip);
 
   function choose(tool: ToolId): void {
     const s = last;
@@ -132,6 +147,11 @@ export function createToolStrip(cb: UiCallbacks, toast: (message: string) => voi
     }
     supplies.render(s.stats.supplies, s.stats.seed);
     setFlag(tabs.get('homestead') ?? strip, 'is-beckoning', !s.stats.hasFarmhouse && open !== 'homestead');
+
+    // The Polygon / Brush pill, while a field tool is in hand.
+    const mode: FieldMode | undefined = s.activeTool.startsWith('field:') ? s.fieldMode ?? 'polygon' : undefined;
+    setHidden(fieldMode, mode === undefined || !cb.onSetFieldMode);
+    for (const b of modeButtons) setPressed(b.node, b.mode === mode);
 
     // The readout: the live one if there is one, else the tool's own hint.
     const text = s.readout?.text ?? (s.activeTool === 'select' ? '' : toolDef(s.activeTool)?.hint ?? '');

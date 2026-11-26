@@ -4,6 +4,11 @@
 //
 // Heavy work (a rill's flow, a ghost's fit, a field's paint) runs at most once a frame: input only marks what's dirty.
 //
+// A field tool lays a field one of two ways (the tool strip's Polygon / Brush pill, or B): by outline, the default (a click
+// on the land lays a corner, a click back on the first corner, a double-click or Enter fills it, Backspace takes the last
+// corner back, Esc or a right click drops the outline; a drag beyond the click slop still pans), or by the round brush.
+// While a field tool is in hand, or a Sprinkler or Rain Tank is placed, moved or picked, the watered ground shows.
+//
 // It also runs the living homestead (Milestone 2): each frame, while the clock runs, the game's `stepSim` moves it on by
 // the frame's game time with the world's sky and wind, the world draws the tick (crops, carts, buildings' parts), and what
 // the tick tells (a drop, a seal, a blackout) becomes a warm toast. The world's sky owns the clock; the sim's hour follows
@@ -32,8 +37,8 @@ import { clearUrlParam, type PreviewSpec, type World, writeUrlParam } from '../w
 import { mergeSettings, storeSettings } from './settings.ts';
 import { cartControls, liveWeatherView, skyWeather, thingDetail, thingStatus, uiWeather, valleyStats } from './status.ts';
 import {
-  BRUSH, channelReadout, cropOfTool, extend, hedgeReadout, isFieldTool, isPowerKind, isStrokeTool, placeReadout, placesPower, STROKE_STEP,
-  type StrokeTool, trackReadout, treeReadout, TURN_STEP,
+  BRUSH, channelReadout, cropOfTool, extend, type FieldMode, hedgeReadout, isFieldTool, isPowerKind, isStrokeTool, placeReadout, placesPower,
+  POLYGON_SNAP, polygonReadout, STROKE_STEP, type StrokeTool, trackReadout, treeReadout, TURN_STEP,
 } from './tools.ts';
 import { downloadSaveFile, loadFromBrowser, savedSlotInfo, saveToBrowser } from './storage.ts';
 
@@ -42,6 +47,8 @@ const PRIORITY_LABELS: Record<ByproductTarget, string> = { auto: 'Auto', coop: '
 
 /** How far (CSS px) a press may wander and still be a click. */
 const CLICK_SLOP = 5;
+/** Two clicks this close in time (ms) and on screen (CSS px) are a double-click. */
+const DOUBLE_CLICK_MS = 350, DOUBLE_CLICK_PX = 8;
 /** Keyboard panning, in screen pixels a second (so metres a second is this over the zoom). */
 const KEY_PAN = 560;
 /** A right drag in orbit mode turns the view this much a pixel, rad. */
@@ -84,6 +91,11 @@ export class Play implements UiCallbacks {
   private placeYaw = 0;
   private turned = false;
   private brush: number = BRUSH.start;
+  /** How the field tools lay a field, and the outline being drawn (its corners so far). */
+  private fieldMode: FieldMode = 'polygon';
+  private polygon: Point2[] = [];
+  /** The last click on the land with a field outline tool: a second one close by soon after is a double-click. */
+  private lastClick: { t: number; x: number; y: number; closed: boolean } | null = null;
   private wheelTurn = 0;
 
   private press: Press | null = null;
@@ -241,7 +253,7 @@ export class Play implements UiCallbacks {
     const hour = this.world.getHour(), selected = this.selectedView(hour);
     const live = liveWeatherView(this.state), forecast = stationForecast(this.state);
     const snapshot: UiSnapshot = {
-      activeTool: this.tool, yawMode: this.world.getYawMode(), powerView: this.powerView, hour, day: this.state.sim.day,
+      activeTool: this.tool, fieldMode: this.fieldMode, yawMode: this.world.getYawMode(), powerView: this.powerView, hour, day: this.state.sim.day,
       speed: this.world.getSpeed(), weather: uiWeather(this.world.getWeather()), liveWeather: live, forecast, stats: this.stats, selected,
       readout: this.currentReadout(), settings: this.settings, hasSavedGame: this.savedInfo.hasSavedGame,
     };
@@ -250,7 +262,7 @@ export class Play implements UiCallbacks {
     // The weather in the key as the strip shows it (the temperature rounded), so it redraws when the sky turns, not each frame.
     const weatherKey = `${live.spell} ${Math.round(live.tempC)} ${live.locked ? 1 : 0} ${live.detail ?? ''}`;
     const key = [
-      snapshot.activeTool, snapshot.yawMode, snapshot.powerView, snapshot.day, Math.floor(hour * 60), snapshot.speed, snapshot.weather,
+      snapshot.activeTool, snapshot.fieldMode, snapshot.yawMode, snapshot.powerView, snapshot.day, Math.floor(hour * 60), snapshot.speed, snapshot.weather,
       weatherKey, forecast.map((f) => `${f.day}${f.spell}${Math.round(f.minTempC)}/${Math.round(f.maxTempC)}`).join(','),
       JSON.stringify(this.stats), selected ? JSON.stringify({ ...selected, screenX: 0, screenY: 0, visible: 0 }) : '-',
       snapshot.readout ? `${snapshot.readout.text} ${snapshot.readout.tone}` : '-', snapshot.placingRotationDeg,
@@ -303,13 +315,15 @@ export class Play implements UiCallbacks {
 
   /**
    * The wireless fields show only in the power view, or while a power building or relay is picked, placed or moved: open
-   * play keeps the valley clear of rings.
+   * play keeps the valley clear of rings. The watered ground shows while a field tool is in hand, or a Sprinkler or Rain
+   * Tank is placed, moved or picked.
    */
   private syncSwitches() {
     const tool = this.tool, sel = this.selected === null ? undefined : this.state.things.find((t) => t.id === this.selected);
+    const water = (k: ThingKind | null | undefined) => k === 'sprinkler' || k === 'rain_tank';
     const want = {
       contours: tool === 'channel:dig',
-      moisture: isFieldTool(tool),
+      moisture: isFieldTool(tool) || water(placedKind(tool)) || water(this.moving?.kind) || water(sel?.kind),
       power: this.powerView || placesPower(tool) || (this.moving !== null && isPowerKind(this.moving.kind)) || (sel !== undefined && isPowerKind(sel.kind)),
     };
     const was = this.shown;
@@ -348,7 +362,8 @@ export class Play implements UiCallbacks {
     if (this.press) return;
     this.pointer = { x, y };
     const press: Press = { button, startX: x, startY: y, lastX: x, lastY: y, mode: button === 1 ? 'pan' : 'pending' };
-    if (button === 0 && !this.moving && isStrokeTool(this.tool)) {
+    // An outline tool lays corners by clicks: a press waits to be a click (or, dragged past the slop, a pan).
+    if (button === 0 && !this.moving && isStrokeTool(this.tool) && !this.outlining()) {
       const hit = this.world.hitTerrainAt(x, y);
       if (hit) {
         press.mode = 'stroke';
@@ -391,7 +406,10 @@ export class Play implements UiCallbacks {
 
   pointerLeave() {
     this.pointer = null;
-    if (!this.press) { this.world.setPreview(null); if (!this.moving) this.readout = null; }
+    if (this.press) return;
+    // An outline under way stays drawn (without its rubber band) while the pointer is away.
+    this.world.setPreview(this.outlining() && this.polygon.length > 0 ? this.polygonSpec() : null);
+    if (!this.moving) this.readout = null;
   }
 
   /** A lost pointer (another window took it): what was under way is dropped. */
@@ -433,6 +451,7 @@ export class Play implements UiCallbacks {
       return;
     }
     if (kind) { this.placeAt(kind, x, y); return; }
+    if (this.outlining()) { this.polygonClick(x, y); return; }
     if (tool === 'tree:plant') {
       const at = this.world.hitTerrainAt(x, y);
       if (!at) return;
@@ -471,6 +490,65 @@ export class Play implements UiCallbacks {
       }
     }
     this.ui?.showToast('Nothing to clear there · click a track, hedgerow, planted tree or rill');
+  }
+
+  // ---- Field outlines ----
+
+  /** Whether the tool in hand lays a field by outline. */
+  private outlining(): boolean {
+    return isFieldTool(this.tool) && this.fieldMode === 'polygon';
+  }
+
+  /** The outline being drawn, for the world, with the pointer's spot (where the next corner would go) if given. */
+  private polygonSpec(cursor?: Point2): PreviewSpec {
+    const pts = this.polygon, first = pts[0];
+    const snapStart = cursor !== undefined && pts.length >= 3 && Math.hypot(cursor.x - first.x, cursor.z - first.z) <= POLYGON_SNAP;
+    return { kind: 'fieldPolygon', points: [...pts], cursor, snapStart, erase: this.tool === 'field:erase' };
+  }
+
+  /**
+   * A click with an outline tool: back on the first corner (of three or more), or the second of a double-click, fills the
+   * outline; otherwise it lays the next corner (none on top of the last one: a double-click's first click laid it).
+   */
+  private polygonClick(x: number, y: number) {
+    const now = performance.now(), prev = this.lastClick;
+    const double = prev !== null && now - prev.t <= DOUBLE_CLICK_MS && Math.hypot(x - prev.x, y - prev.y) <= DOUBLE_CLICK_PX;
+    this.lastClick = { t: now, x, y, closed: false };
+    // The second click of a double-click that already closed the outline: nothing more.
+    if (double && prev.closed) { this.lastClick = null; return; }
+    const pts = this.polygon;
+    if (double && pts.length >= 3) { this.commitPolygon(); return; }
+    const at = this.world.hitTerrainAt(x, y);
+    if (!at) return;
+    const first = pts[0], last = pts[pts.length - 1];
+    if (pts.length >= 3 && Math.hypot(at.x - first.x, at.z - first.z) <= POLYGON_SNAP) { this.commitPolygon(); return; }
+    if (last && Math.hypot(at.x - last.x, at.z - last.z) < 0.3) return;
+    pts.push({ x: at.x, z: at.z });
+    this.hoverDirty = true;
+  }
+
+  /** Fills the outline drawn (with the crop in hand, or clearing the fields in it), and starts afresh. */
+  private commitPolygon() {
+    const pts = this.polygon, crop = cropOfTool(this.tool);
+    if (pts.length < 3) return;
+    this.polygon = [];
+    if (this.lastClick) this.lastClick.closed = true;
+    this.world.setPreview(null);
+    const change = this.act(crop === null ? { type: 'eraseFieldPolygon', points: pts } : { type: 'paintFieldPolygon', crop, points: pts });
+    if (change) {
+      const area = this.state.fields.reduce((sum, f) => sum + f.areaM2, 0);
+      this.ui?.showToast(`${crop === null ? 'Fields cleared' : `${GOOD_LABELS[crop].label} field planted`} · fields ${Math.round(area)} m²`);
+    }
+    this.hoverDirty = true;
+  }
+
+  /** Drops the outline under way: whether there was one. */
+  private dropPolygon(): boolean {
+    const had = this.polygon.length > 0;
+    this.polygon = [];
+    this.lastClick = null;
+    if (had) { this.world.setPreview(null); this.readout = null; this.hoverDirty = true; }
+    return had;
   }
 
   // ---- Strokes ----
@@ -581,9 +659,12 @@ export class Play implements UiCallbacks {
         const yaw = this.ghostYaw(kind, at.x, at.z), r = placeReadout(this.state, kind, at.x, at.z, yaw);
         spec = { kind: 'thing', thingKind: kind, x: at.x, z: at.z, yaw, fits: r.fits };
         readout = r.readout;
+      } else if (this.outlining()) {
+        spec = this.polygon.length > 0 || at ? this.polygonSpec(at ?? undefined) : null;
+        readout = polygonReadout(cropOfTool(tool), this.polygon, at ?? undefined);
       } else if (isFieldTool(tool)) {
         if (at) spec = { kind: 'field', x: at.x, z: at.z, radius: this.brush, erase: tool === 'field:erase' };
-        readout = { text: `${toolDef(tool)?.hint ?? ''} · brush ${this.brush.toFixed(1)} m ([ ] to resize)` };
+        readout = { text: `${toolDef(tool)?.hint ?? ''} · brush ${this.brush.toFixed(1)} m ([ ] to resize) · M for polygon` };
       } else if (tool === 'tree:plant' && at) {
         const r = treeReadout(this.state, at.x, at.z);
         spec = { kind: 'tree', x: at.x, z: at.z, fits: r.fits };
@@ -637,22 +718,24 @@ export class Play implements UiCallbacks {
     this.select(m.id);
   }
 
-  /** A right click: puts the tool down (or stops a move). */
+  /** A right click: drops the outline under way, or puts the tool down (or stops a move). */
   private putDown() {
     if (this.moving) this.cancelMove();
+    else if (this.dropPolygon()) return;
     else if (this.tool !== 'select') this.onSelectTool('select');
     else if (this.selected !== null) this.select(null);
   }
 
   // ---- Keys (input.ts); each says whether it took the key ----
 
-  /** Esc, before the overlay sees it: drops a stroke or a move under way. */
+  /** Esc, before the overlay sees it: drops a stroke, an outline or a move under way (a second Esc puts the tool down). */
   escape(): boolean {
     if (this.stroke || this.press) {
       if (this.stroke) this.dropStroke();
       this.press = null;
       return true;
     }
+    if (this.dropPolygon()) return true;
     if (this.moving) { this.cancelMove(); return true; }
     return false;
   }
@@ -686,6 +769,21 @@ export class Play implements UiCallbacks {
       case 'p':
         if (!repeat) this.onTogglePowerView();
         return true;
+      // With a field tool in hand: M flips between outlining and brushing; Enter fills the outline, Backspace takes back a corner.
+      case 'm':
+        if (!isFieldTool(this.tool)) return false;
+        if (!repeat) this.onSetFieldMode(this.fieldMode === 'polygon' ? 'brush' : 'polygon');
+        return true;
+      case 'enter':
+        if (!this.outlining() || this.polygon.length < 3) return false;
+        if (!repeat) this.commitPolygon();
+        return true;
+      case 'backspace':
+        if (!this.outlining() || this.polygon.length === 0) return false;
+        this.polygon.pop();
+        if (this.polygon.length === 0) this.lastClick = null;
+        this.hoverDirty = true;
+        return true;
       case '[': case ']':
         this.brush = Math.min(BRUSH.max, Math.max(BRUSH.min, this.brush + (key === ']' ? BRUSH.step : -BRUSH.step)));
         this.hoverDirty = true;
@@ -714,11 +812,22 @@ export class Play implements UiCallbacks {
 
   onSelectTool(tool: ToolId) {
     if (this.stroke) this.dropStroke();
+    this.dropPolygon();
     this.press = null;
     this.moving = null;
     if (this.selected !== null) this.select(null);
     if (tool !== this.tool) { this.turned = false; this.placeYaw = 0; }
     this.tool = tool;
+    this.readout = null;
+    this.world.setPreview(null);
+    this.hoverDirty = true;
+  }
+
+  onSetFieldMode(mode: FieldMode) {
+    if (mode === this.fieldMode) return;
+    if (this.stroke) this.dropStroke();
+    this.dropPolygon();
+    this.fieldMode = mode;
     this.readout = null;
     this.world.setPreview(null);
     this.hoverDirty = true;

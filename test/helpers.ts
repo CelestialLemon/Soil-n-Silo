@@ -119,7 +119,7 @@ export function fieldAt(s: GameState, crop: Crop, x: number, z: number, radius =
   return must(s.fields.find(f => f.crop === crop), crop);
 }
 
-// The easternmost cell is tangent to a device placed one service radius beyond its centre.
+// The easternmost cell is tangent to a device placed one service radius (a Sprinkler: half its patch's width) beyond its centre.
 export function ribbon(s: GameState) {
   const result = apply(s, { type: 'paintField', crop: 'beans', points: [{ x: -40.5, z: 0.5 }, { x: 39.5, z: 0.5 }], radius: 1.1 });
   if (!result.ok) throw new Error(result.error);
