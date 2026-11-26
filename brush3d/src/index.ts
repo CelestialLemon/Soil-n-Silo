@@ -3,7 +3,7 @@
 // The demo (src/demo) imports nothing else; the tools, which test the insides, may.
 
 // ---- The renderer ----
-export { BrushRenderer, FALLING, type DrawnKind, type MeshOptions, type RendererOptions, type Settings } from './renderer/renderer';
+export { BrushRenderer, CLOUD_SHADOW_LOOKS, FALLING, type CloudShadowLook, type DrawnKind, type MeshOptions, type RendererOptions, type Settings } from './renderer/renderer';
 export { QUALITY, type Quality, type QualityName } from './renderer/quality';
 export type { MaterialKind } from './renderer/materials';
 export type { Cover } from './renderer/shelter';

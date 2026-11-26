@@ -98,6 +98,12 @@ vec3 snowPaint(float light, float soft, float brush) {
   lit = mix(lit, stroked, max(stroke, 0.0) * 0.6) * (1.0 - min(stroke, 0.0) * 0.015);
   float t1 = smoothstep(0.30 - soft, 0.30 + soft, light);
   float t2 = smoothstep(0.62 - soft, 0.62 + soft, light);
+  // TEMPORARY (#316): wider edges where a cloud lifts a cast shadow (gBandSoft); the bands as they were elsewhere.
+  if (gBandSoft > 0.0) {
+    float wide = soft + gBandSoft;
+    t1 = smoothstep(0.30 - wide, 0.30 + wide, light);
+    t2 = smoothstep(0.62 - wide, 0.62 + wide, light);
+  }
   return mix(mix(shade, half_, t1), lit, t2);
 }
 ${FROST_GLSL}

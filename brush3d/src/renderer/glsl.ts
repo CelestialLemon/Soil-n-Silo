@@ -1,4 +1,5 @@
 import { CLOUD_MAP_GLSL, MIRROR } from './cloudMap';
+import { UNDER_CLOUD_CAP } from './overcast';
 import { HIDDEN_DIVE, WATER_MAP_GLSL } from './water';
 
 // Shared GLSL: noise, OKLab colour, and the painted light model every surface uses.
@@ -186,6 +187,7 @@ uniform vec4 uCloudBands;      // under a cloud: the shade's hue (radians from u
 uniform vec2 uCloudTint;       // under a cloud, from the gaps': the lit band's hue (radians, the short way) and the shade's
                                // lean (a storm's, storm.ts; none without one)
 uniform float uLightExposure;  // in the gaps: the exposure, over the grade's
+uniform float uCloudShadow;    // TEMPORARY (#316): the look a cast shadow takes under a cloud, 0 orig, 1 a, 2 b, 3 c (sunVisibility)
 // The cloud's shade here, 0 in the sun .. 1 under the deepest of it, as strong as the sun is direct.
 float gCloud = 0.0;
 void cloudAt(vec3 p) { gCloud = cloudMapShade(p.xz) * uCloudStrength; }
@@ -196,6 +198,9 @@ float shadeHueHere() { return uShadeHue + uCloudBands.x * gCloud; }
 float litHueHere() { return uLitHue + uCloudTint.x * gCloud; }
 float shadeLeanHere() { return uShadeLean + uCloudTint.y * gCloud; }
 vec3 exposeHere(vec3 c) { return c * mix(uLightExposure, uCloudBands.w, gCloud); }
+// TEMPORARY (#316): how much wider the bands' soft edges are here, where a cloud lifts a cast shadow (sunVisibility), so
+// the shadow fades as a whole rather than band by band. 0 elsewhere: the bands as they were.
+float gBandSoft = 0.0;
 `;
 
 /**
@@ -272,6 +277,23 @@ float sunVisibility(vec3 worldPos, vec3 n, float brush) {
   // The brush wobbles where the edge is sampled, so a shadow's border is painted rather than ruled.
   vec2 wob = vec2(brush, snoise(worldPos.xz * 1.7 + 9.0)) * uShadowTexel * 2.5;
   vec3 overcast = overcastHere();
+  // TEMPORARY (#316): the look candidates for a cast shadow under a cloud, while the sun still shines in the gaps (the
+  // cloud's fade differs from the gaps'; at full cover the two are the same, and every candidate is the old look). In
+  // the old look (orig) a cloud took most of the shadow away by lifting its light, which swept the shadow up through the
+  // half-tone into the lit band as the cloud's edge crossed it (a moving seam), shrank it as its soft edge crossed the
+  // bands, and widened that edge: shadows brightened, slid and banded at the cloud's edge. Every candidate keeps the
+  // shadow's shape (the gaps' soft edge), and where the cloud lifts a shadow it softens the bands' edges in step
+  // (gBandSoft), so the shadow fades as a whole rather than band by band:
+  //   a, a veil: the cloud doesn't lift the shadow; it dims and cools it with the ground round it, a darker shadow.
+  //   b, a dissolve: the cloud lifts the shadow as much as before, to a faint trace, without the seams.
+  //   c, a half step: the cloud lifts the shadow into the half-tone (UNDER_CLOUD_CAP), never into the lit band.
+  bool held = gCloud > 0.0 && uCloudShadow > 0.5 && uCloudOvercast.y != uOvercast.y;
+  float fade = overcast.y;
+  if (held) {
+    overcast.z = uOvercast.z;
+    if (uCloudShadow < 1.5) fade = uOvercast.y;
+    else if (uCloudShadow > 2.5) fade = mix(uOvercast.y, min(uCloudOvercast.y, max(uOvercast.y, ${UNDER_CLOUD_CAP.toFixed(2)})), gCloud);
+  }
   float vis = 0.0;
   for (int i = 0; i < 8; i++) {
     float a = float(i) * 2.39996 + hash12(worldPos.xz * 31.0) * 6.283;
@@ -280,7 +302,9 @@ float sunVisibility(vec3 worldPos, vec3 n, float brush) {
     float d = shadowDepthAt(uvz.xy + o);
     vis += (uvz.z - 0.0015 > d) ? 0.0 : 1.0;
   }
-  return mix(vis / 8.0, 1.0, overcast.y);
+  vis /= 8.0;
+  if (held) gBandSoft = max(fade - uOvercast.y, 0.0) * (1.0 - vis) * 0.4;
+  return mix(vis, 1.0, fade);
 }
 `;
 
@@ -323,6 +347,12 @@ vec3 paintBands(vec3 base, float light, float soft, float upness) {
   vec3 lit = lchShift(lab, 0.02, 1.05, 0.0) + vec3(0.0, cos(litHue), sin(litHue)) * litLean * 0.09;
   float t1 = smoothstep(0.30 - soft, 0.30 + soft, light);
   float t2 = smoothstep(0.62 - soft, 0.62 + soft, light);
+  // TEMPORARY (#316): wider edges where a cloud lifts a cast shadow (gBandSoft); the bands as they were elsewhere.
+  if (gBandSoft > 0.0) {
+    float wide = soft + gBandSoft;
+    t1 = smoothstep(0.30 - wide, 0.30 + wide, light);
+    t2 = smoothstep(0.62 - wide, 0.62 + wide, light);
+  }
   vec3 col = oklabToLinFit(mix(mix(shade, half_, t1), lit, t2));
   // The sky fills the shade from above; the sun tints the lit band.
   vec3 sky = skyTint() * (0.8 + 0.2 * upness);
