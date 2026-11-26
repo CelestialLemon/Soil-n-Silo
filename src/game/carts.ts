@@ -255,7 +255,7 @@ function incoming(s: GameState, end: Endpoint, goods?: readonly Good[]): number 
   for (const c of s.sim.carts) {
     if (!c.job || !sameEnd(c.job.to, end) || (goods && !goods.includes(c.job.good))) continue;
     if (c.state === 'toPickup') n += c.job.count;
-    else if (c.state === 'toDropoff' && c.cargo) n += c.cargo.count;
+    else if (c.state === 'toDropoff' && c.cargo) n += Math.min(c.cargo.count, c.job.count);
   }
   return n;
 }
@@ -581,7 +581,7 @@ const CRAFTED: readonly Good[] = ['flour', 'eggs', 'bread', 'honey_cake', 'oil',
 function dropOff(s: GameState, cart: Cart, events: SimEvent[]): void {
   const job = cart.job, cargo = cart.cargo;
   if (!job || !cargo) { goHome(s, cart, 'Heading back to the Garage'); return; }
-  const n = accepts(s, job.to, cargo.good, cargo.count);
+  const n = accepts(s, job.to, cargo.good, Math.min(cargo.count, job.count));
   if (n > 0) {
     if (job.to.kind === 'field') { const f = fieldById(s, job.to.id); if (f) for (let k = 0; k < n; k++) compostField(s, f); }
     else {
