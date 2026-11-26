@@ -649,13 +649,13 @@ test('a dense nest of crossing rills is refused before the water solver runs, bo
   for (let i = 0; i < 3; i++) done(apply(digState, { type: 'digChannel', points: horiz(i * 0.05) }), `horiz ${i}`);
   for (let i = 0; i < 3; i++) done(apply(digState, { type: 'digChannel', points: vert(i * 0.05) }), `vert ${i}`);
   assert.equal(digState.channels.length, 6, 'all six legal rills dug below the crossing cap');
-  const seventh = vert(0.15);
+  const before = snapshot(digState), seventh = vert(0.15);
   const canSeventh = canDig(digState, channelPath(seventh));
   assert.ok(!canSeventh.ok && /Too many rills cross/.test(canSeventh.error), canSeventh.ok ? 'canDig allowed crossing cap' : canSeventh.error);
   const previewSeventh = previewChannelFlow(digState, seventh);
   assert.equal(previewSeventh.samples.length, 0, 'preview skips solve past the crossing cap');
   const digRes = apply(digState, { type: 'digChannel', points: seventh });
   assert.ok(!digRes.ok && /Too many rills cross/.test(digRes.error), digRes.ok ? 'allowed crossing nest' : digRes.error);
-  assert.equal(digState.channels.length, 6, 'valley unchanged after refused seventh rill');
+  assert.deepEqual(snapshot(digState), before, 'valley unchanged after refused seventh rill');
   assert.ok(deserializeSave(serializeSave(digState)).ok, 'six-rill valley below the cap saves and loads');
 });
