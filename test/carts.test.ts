@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   apply, atGarage, type Cart, CART_LOW, CART_READY, countOf, demandOf, diagnoseIdleCarts, dockOf, DOCK_RADIUS, findPath, GARAGE_CHARGE_W, GARAGE_IDLE_W, GROUND, groundAt,
-  type GameState, fieldEdge, must, navCellOf, navFor, passable, type Point2, reachOf, sandboxSupplies, SILO_CAP, SILO_GOOD_CAP,
+  type GameState, fieldEdge, must, navCellOf, navFor, PANTRY_ORDERS, passable, type Point2, reachOf, sandboxSupplies, SILO_CAP, SILO_GOOD_CAP,
   type SimEvent, stepSim, type ThingKind, totalStored, wantsInput,
 } from '../src/game/index.ts';
 import { flatLand, land } from './helpers.ts';
@@ -19,6 +19,8 @@ const breezy = { windSpeed: 12, cloudCover: 0 };
 function sandbox(): GameState {
   const s = flatLand();
   s.sim.supplies = sandboxSupplies();
+  // The grain loop's order (flatLand is a summer valley, whose own order is the Cannery's).
+  s.sim.brief.order.targets = { ...PANTRY_ORDERS.spring };
   s.sim.hour = 9;
   return s;
 }

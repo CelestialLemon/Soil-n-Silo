@@ -6,58 +6,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  apply, canPlace, type Change, costOf, countOf, formatClock, type GameState, generateValley, type Good, hasWeatherStation, liveEnv, must, networksOf,
-  PANTRY_ORDER, type Point2, previewChannelFlow, type Result, type SimEvent, serviceSite, stationForecast, stepSim, suggestWaterWheelYaw, SUPPLY_CAP,
+  apply, canPlace, costOf, countOf, formatClock, generateValley, type Good, hasWeatherStation, liveEnv, must,
+  PANTRY_ORDER, type Point2, previewChannelFlow, type SimEvent, serviceSite, stationForecast, stepSim, suggestWaterWheelYaw, SUPPLY_CAP,
   type ThingKind,
 } from '../src/game/index.ts';
-import { brookSpot } from './helpers.ts';
-
-const done = (r: Result<Change, string>, what: string): Change => {
-  assert.ok(r.ok, r.ok ? '' : `${what}: ${r.error}`);
-  return r.value;
-};
-
-/** Places a thing at the first free spot spiralling out from `near`. */
-function build(s: GameState, kind: ThingKind, near: Point2, yaw = 0): number {
-  for (let r = 0; r <= 20; r++) for (let a = 0; a < 16; a++) {
-    const x = near.x + r * Math.cos((a * Math.PI) / 8), z = near.z + r * Math.sin((a * Math.PI) / 8);
-    if (canPlace(s, kind, x, z, yaw).ok) return must(done(apply(s, { type: 'place', kind, x, z, yaw }), kind).created, kind);
-    if (r === 0) break;
-  }
-  assert.fail(`no room for a ${kind} near ${near.x}, ${near.z}`);
-}
-
-/** The ids of the networks a thing belongs to (an emitter) or draws from (a load). */
-function netsOf(s: GameState, id: number): Set<number> {
-  const n = networksOf(s), out = new Set<number>();
-  const e = n.emitters.findIndex((t) => t.id === id);
-  if (e >= 0) out.add(n.emitters[n.netOf[e]].id);
-  const l = n.loads.findIndex((t) => t.id === id);
-  if (l >= 0) for (const i of n.loadNets[l]) out.add(n.emitters[i].id);
-  return out;
-}
-
-/** Brings a thing into the water wheel's network, a relay at a time from the network's nearest field. */
-function joinMain(s: GameState, wheel: number, id: number) {
-  const t = must(s.things.find((v) => v.id === id), 'the thing');
-  for (let tries = 0; tries < 8; tries++) {
-    const n = networksOf(s), main = n.emitters[n.netOf[n.emitters.findIndex((e) => e.id === wheel)]].id;
-    if (netsOf(s, id).has(main)) return;
-    const mains = n.emitters.filter((_e, i) => n.emitters[n.netOf[i]].id === main);
-    let best = mains[0], bd = Infinity;
-    for (const m of mains) { const d = Math.hypot(m.x - t.x, m.z - t.z); if (d < bd) { bd = d; best = m; } }
-    const step = Math.min(13, Math.max(2, bd - 1)), ux = (t.x - best.x) / bd, uz = (t.z - best.z) / bd;
-    let placed = false;
-    for (let j = 0; j < 60 && !placed; j++) {
-      const x = best.x + ux * step + Math.cos(j * 2.4) * j * 0.2, z = best.z + uz * step + Math.sin(j * 2.4) * j * 0.2;
-      if (Math.hypot(x - best.x, z - best.z) > 14.5 || !canPlace(s, 'relay', x, z, 0).ok) continue;
-      done(apply(s, { type: 'place', kind: 'relay', x, z, yaw: 0 }), 'a relay');
-      placed = true;
-    }
-    assert.ok(placed, 'room for a relay');
-  }
-  assert.fail(`could not bring thing ${id} into the network`);
-}
+import { brookSpot, build, done, joinMain } from './helpers.ts';
 
 // Each runs in the valley's own continuous weather (the spell, the air and any flood from the timeline); the last also
 // takes its wind and clouds from the weather (liveEnv), with a stormier character and another weather seed.

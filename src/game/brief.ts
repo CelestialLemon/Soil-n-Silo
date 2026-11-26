@@ -17,13 +17,16 @@ import { fieldFrostStalled, fieldMoisture } from './crops.ts';
 import { greenhouseWarm } from './microclimate.ts';
 
 /**
- * Each season's Pantry Order, all within the 20-Supply cap. Winter's leans on the Heated Greenhouse (wheat and beans under
- * glass) and a Beehive foraging inside it.
+ * Each season's Pantry Order, all within the 20-Supply cap, each with its own craft. Spring's is the grain loop (Mill, Coop,
+ * Bakery). Summer's is the warm crops': tomatoes and sunflowers through the Oil Press and the Cannery (Silo, Garage, Oil
+ * Press, Cannery and a Beehive: 9 Supplies, the rest free for power). Autumn's is the cool crops': flax through the Spinner
+ * and the Loom, and wheat through the Mill (Silo, Garage, Spinner, Loom, Mill and a Beehive: 11). Winter's leans on the
+ * Heated Greenhouse (wheat and beans under glass) and a Beehive foraging inside it.
  */
 export const PANTRY_ORDERS: { readonly [S in Season]: Inventory } = {
   spring: { bread: 10, flour: 6, beans: 6, honey: 4 },
-  summer: { bread: 10, flour: 6, beans: 8, honey: 4 },
-  autumn: { bread: 10, flour: 8, beans: 6, honey: 2 },
+  summer: { tomato_sauce: 6, oil: 4, beans: 6, honey: 4 },
+  autumn: { linen: 6, yarn: 4, flour: 6, honey: 2 },
   winter: { bread: 8, flour: 6, beans: 6, honey: 2 },
 };
 /** The Spring Valley's Pantry Order. */

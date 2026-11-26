@@ -1,6 +1,6 @@
 // The live power (Milestone 2): each wireless network (power/radius.ts) shares what its producers make and what its
 // batteries hold. Solar canopies follow the sun and the clouds, wind turbines the live gusts, water wheels the brook
-// (steady, day and night). Batteries soak up the surplus and carry the homestead through the night; when a network
+// (steady, day and night), the Biogas Digester its burning waste (steady, in any weather, while it has fuel). Batteries soak up the surplus and carry the homestead through the night; when a network
 // can't meet its demand, it sheds its workshops first (they pause), and that is a blackout.
 import { isLiquidRain, serviceSite, treeShade, windShelter } from '../microclimate.ts';
 import { chargingAtGarage } from '../carts.ts';
@@ -9,7 +9,7 @@ import { formatClock, isNight, sunFactor } from '../clock.ts';
 import { clamp } from '../geom.ts';
 import { must } from '../result.ts';
 import type { GameState, Thing } from '../state.ts';
-import { describeRuntime, GREENHOUSE_COLD_C, GREENHOUSE_COLD_W, GREENHOUSE_MILD_W, syncGreenhouses, syncRuntime, type ThingRuntime } from '../workshops.ts';
+import { describeRuntime, DIGESTER_W, GREENHOUSE_COLD_C, GREENHOUSE_COLD_W, GREENHOUSE_MILD_W, syncGreenhouses, syncRuntime, type ThingRuntime } from '../workshops.ts';
 import { feeds, roleOf } from './nodes.ts';
 import { networksOf } from './radius.ts';
 
@@ -73,6 +73,8 @@ export function generationOf(s: GameState, t: Thing, hour: number, env: SimEnv):
     case 'solar': return sunFactor(hour, s.season) * (1 - CLOUD_DIM * clamp(env.cloudCover, 0, 1)) * SOLAR_PEAK_W * (1 - treeShade(s, t));
     case 'turbine': return (TURBINE_BASE_W + clamp(env.windSpeed * (1 - windShelter(s, t)) / TURBINE_FULL_WIND, 0, 1) * TURBINE_SPAN_W) * ridge(s, t);
     case 'waterwheel': return WATERWHEEL_W;
+    // Dark, calm, cloud, frost, storm or blizzard: it makes the same while it burns (workshops.ts lights and burns it).
+    case 'digester': return s.sim.things.get(t.id)?.working ? DIGESTER_W : 0;
     default: return 0;
   }
 }
@@ -99,7 +101,7 @@ export function demandOf(s: GameState, t: Thing, r: ThingRuntime, hour: number, 
     case 'sprinkler': return !isLiquidRain(s, weather) && sprinklerNeeded(s, t) ? def.powerDemand : 0;
     case 'garage': return s.sim.carts.some((c) => chargingAtGarage(s, c)) ? GARAGE_CHARGE_W : GARAGE_IDLE_W;
     case 'lantern': return isNight(hour, s.season) ? def.powerDemand : 0;
-    case 'mill': case 'bakery': case 'coop': return r.working ? def.powerDemand : 0;
+    case 'mill': case 'bakery': case 'coop': case 'oil_press': case 'cannery': case 'spinner': case 'loom': return r.working ? def.powerDemand : 0;
     case 'greenhouse': return r.working ? (s.sim.weather.tempC < GREENHOUSE_COLD_C ? GREENHOUSE_COLD_W : GREENHOUSE_MILD_W) : 0;
     default: return 0;
   }
@@ -109,7 +111,9 @@ export function demandOf(s: GameState, t: Thing, r: ThingRuntime, hour: number, 
  * Who goes without first when a network runs short: workshops pause before the Greenhouse's heating, the hens, the garage
  * and the home go dark.
  */
-const SHED_ORDER: Partial<Record<Thing['kind'], number>> = { farmhouse: 0, garage: 1, coop: 2, lantern: 3, greenhouse: 3, mill: 4, bakery: 5, sprinkler: 6 };
+const SHED_ORDER: Partial<Record<Thing['kind'], number>> = {
+  farmhouse: 0, garage: 1, coop: 2, lantern: 3, greenhouse: 3, mill: 4, oil_press: 4, spinner: 4, bakery: 5, cannery: 5, loom: 5, sprinkler: 6,
+};
 
 /**
  * Runs the power for `dtH` game hours at `hour`; returns the networks that fell into a blackout on this step. With `dtH`

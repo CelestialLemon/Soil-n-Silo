@@ -85,7 +85,7 @@ export function thingStatus(s: GameState, t: Thing, hour: number): { line: strin
     // The Depot's order is its second line: its first says what it is.
     case 'depot': return say(s.sim.brief.order.done ? 'Pantry Order filled · the settlement thanks you' : "The settlement's landing · carts bring the Pantry Order here");
     case 'rain_tank': case 'sprinkler': case 'beehive': case 'farmhouse': case 'silo': case 'mill': case 'bakery': case 'coop': case 'composter': case 'garage':
-    case 'weather_station': case 'greenhouse': {
+    case 'weather_station': case 'greenhouse': case 'oil_press': case 'cannery': case 'spinner': case 'loom': case 'digester': {
       const r = runtimeOf(s, t.id);
       if (r) {
         let note = '';
@@ -94,7 +94,7 @@ export function thingStatus(s: GameState, t: Thing, hour: number): { line: strin
           const flowers = floweringArea(s, t);
           const forage = warmGreenhouseNear(s, t) ? 'Foraging in the Greenhouse'
             : s.season === 'winter' ? 'Resting until spring' : s.sim.weather.tempC < BEE_MIN_C ? 'Too cold to fly'
-            : flowers ? `${flowers} m² of flowering beans` : serviceSite(s, t).meadow ? 'Meadow flowers' : 'Plant beans nearby';
+            : flowers ? `${flowers} m² of flowering crops` : serviceSite(s, t).meadow ? 'Meadow flowers' : 'Plant flowering crops nearby';
           note = `${windShelter(s, t) > 0.1 ? ' · Sheltered' : ''} · ${forage}`;
         }
         return say(describeRuntime(s, r) + note);

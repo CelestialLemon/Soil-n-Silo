@@ -14,7 +14,7 @@ import type { ThingRuntime } from './workshops.ts';
 import { type ClimateCharacter, initialWeather, type WeatherKey, type WeatherSpell, type WeatherState } from './weather.ts';
 import { subSeed } from './rng.ts';
 
-export const STATE_VERSION = 8;
+export const STATE_VERSION = 9;
 
 /** The valley's one season (brush3d's SEASONS). */
 export const SEASONS = ['spring', 'summer', 'autumn', 'winter'] as const;
@@ -24,7 +24,11 @@ export type Season = (typeof SEASONS)[number];
 export const TREE_SPECIES = ['oak', 'birch', 'pine', 'willow', 'poplar', 'apple', 'bush'] as const;
 export type TreeSpecies = (typeof TREE_SPECIES)[number];
 
-export const CROPS = ['wheat', 'beans'] as const;
+/**
+ * The crops a field grows (docs/DESIGN.md), in brush3d's order (its kit/plants.ts CROP_NAMES): a field's crop code in the
+ * renderer's mask is 1 + its index here (fields.ts).
+ */
+export const CROPS = ['wheat', 'beans', 'tomato', 'sunflower', 'flax'] as const;
 export type Crop = (typeof CROPS)[number];
 
 /** A placed building or prop. `padTargetY`: the height its settled pad holds, the mean of the natural ground under its core. */
@@ -44,13 +48,13 @@ export interface Field {
   id: number; crop: Crop; cellCount: number; areaM2: number; avgMoisture: number; bounds: Rect;
   /** 0..1: how grown the crop is (freshly sown fields start at SOWN_GROWTH, so seedlings show at once). */
   growth: number;
-  /** 0..1: the soil's fertility under it (wheat draws it down, beans and compost build it up). */
+  /** 0..1: the soil's fertility under it (wheat, tomato, sunflower and flax draw it down; beans and compost build it up). */
   fertility: number;
   /** Whole units of ripe harvest waiting at its edge for an Electric Cart; 0 while it grows. */
   harvestReady: number;
   /** Largest fraction of this crop covered by active bees during its growing cycle, retained after dusk. */
   pollinated: number;
-  /** Frost has it (its air at or below freezing, or snow lying deep): beans pause and slip back, wheat pauses below -2°C. */
+  /** Frost has it (its air at or below freezing, or snow lying deep): tender crops pause and slip back, hardy wheat and flax pause below -2°C. */
   frosted: boolean;
   /** Flood water stands over it: it pauses until the water goes down (never lost). */
   flooded: boolean;

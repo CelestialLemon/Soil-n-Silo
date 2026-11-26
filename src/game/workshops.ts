@@ -1,6 +1,9 @@
 // The one-of-each workshops and stores, and the closed loops between them: the Mill grinds wheat into flour and bran, the
-// Coop's hens turn bran (or wheat) into eggs and manure, the Bakery bakes flour and eggs into bread, the Composter turns
-// manure (or bran) into compost for the fields. The Silo stores goods; the Depot takes the Pantry Order to the settlement.
+// Coop's hens turn bran (or seed cake, or wheat) into eggs and manure, the Bakery bakes flour and eggs into bread, the
+// Composter turns manure (or bran, or seed cake) into compost for the fields. The Oil Press presses sunflowers into oil and
+// seed cake, the Cannery simmers tomatoes and oil into sauce, the Spinner spins flax into yarn and the Loom weaves it into
+// linen. The Biogas Digester burns the organic waste (manure, bran, seed cake) into steady power whatever the weather. The
+// Silo stores goods; the Depot takes the Pantry Order to the settlement.
 //
 // Each building's live side (its goods, recipe, power and the one plain line its floating card shows) is a ThingRuntime,
 // kept by id in `state.sim.things` beside the placed Thing; it comes and goes with the building.
@@ -27,7 +30,8 @@ export interface ThingRuntime {
   recipe: 'bread' | 'honey_cake';
   /** Recipe paid for when this batch started, even if the player changes the next one. */
   batch: 'bread' | 'honey_cake';
-  priority: 'auto' | 'coop' | 'composter' | 'silo';
+  /** Where its byproduct goes first (the Mill's bran, the Coop's manure, the Oil Press's seed cake): BYPRODUCTS. */
+  priority: ByproductTarget;
   /** The crop the Heated Greenhouse grows under its glass. */
   greenhouseCrop: Crop;
   /** It has the power it needs (for a power building or relay: it's on a fed network). */
@@ -46,6 +50,17 @@ export interface ThingRuntime {
   status: string;
 }
 
+/** Where a byproduct may be sent first: 'auto' leaves it to the carts. */
+export type ByproductTarget = 'auto' | 'coop' | 'composter' | 'digester' | 'silo';
+export type ByproductMaker = 'mill' | 'coop' | 'oil_press';
+/** Each byproduct maker's byproduct, and where the player may send it first (its card's pip cycles through these). */
+export const BYPRODUCTS: { readonly [K in ByproductMaker]: { good: Good; targets: readonly ByproductTarget[] } } = {
+  mill: { good: 'bran', targets: ['auto', 'coop', 'composter', 'digester'] },
+  coop: { good: 'manure', targets: ['auto', 'composter', 'digester', 'silo'] },
+  oil_press: { good: 'seed_cake', targets: ['auto', 'coop', 'composter', 'digester'] },
+};
+export const isByproductMaker = (k: ThingKind): k is ByproductMaker => Object.hasOwn(BYPRODUCTS, k);
+
 /** A recipe's input: one unit-count of any of `options`, the first preferred; carts keep `keep` of it in stock. */
 export interface RecipeInput { options: readonly Good[]; count: number; keep: number }
 export interface Recipe { inputs: readonly RecipeInput[]; outputs: Inventory; hours: number; verb: string }
@@ -53,10 +68,27 @@ export interface Recipe { inputs: readonly RecipeInput[]; outputs: Inventory; ho
 /** The workshops' recipes, paced for a 30-minute session (game hours: 30 s each at 1×). */
 export const RECIPES: { readonly [K in WorkshopKind]: Recipe } = {
   mill: { inputs: [{ options: ['wheat'], count: 2, keep: 4 }], outputs: { flour: 2, bran: 1 }, hours: 1.6, verb: 'Grinding wheat into flour' },
-  coop: { inputs: [{ options: ['bran', 'wheat'], count: 1, keep: 2 }], outputs: { eggs: 2, manure: 1 }, hours: 2, verb: 'Hens laying' },
+  coop: { inputs: [{ options: ['bran', 'seed_cake', 'wheat'], count: 1, keep: 2 }], outputs: { eggs: 2, manure: 1 }, hours: 2, verb: 'Hens laying' },
   bakery: { inputs: [{ options: ['flour'], count: 1, keep: 2 }, { options: ['eggs'], count: 1, keep: 2 }], outputs: { bread: 2 }, hours: 1.8, verb: 'Baking bread' },
-  composter: { inputs: [{ options: ['manure', 'bran'], count: 1, keep: 2 }], outputs: { compost: 2 }, hours: 2.2, verb: 'Turning compost' },
+  composter: { inputs: [{ options: ['manure', 'bran', 'seed_cake'], count: 1, keep: 2 }], outputs: { compost: 2 }, hours: 2.2, verb: 'Turning compost' },
+  oil_press: { inputs: [{ options: ['sunflower'], count: 2, keep: 4 }], outputs: { oil: 2, seed_cake: 1 }, hours: 1.8, verb: 'Pressing sunflower oil' },
+  cannery: { inputs: [{ options: ['tomato'], count: 2, keep: 4 }, { options: ['oil'], count: 1, keep: 2 }], outputs: { tomato_sauce: 2 }, hours: 2, verb: 'Simmering tomato sauce' },
+  spinner: { inputs: [{ options: ['flax'], count: 2, keep: 4 }], outputs: { yarn: 2 }, hours: 1.8, verb: 'Spinning flax into yarn' },
+  loom: { inputs: [{ options: ['yarn'], count: 2, keep: 4 }], outputs: { linen: 2 }, hours: 2.2, verb: 'Weaving linen' },
 };
+
+/** The Biogas Digester's fuel, the first preferred: the homestead's organic waste. */
+export const DIGESTER_FUELS = ['manure', 'bran', 'seed_cake'] as const satisfies readonly Good[];
+/** What it makes while it burns (day and night, in any weather), W; how long one unit of waste burns, game hours. */
+export const DIGESTER_W = 4, DIGESTER_BURN_HOURS = 4;
+/** Its hopper: the carts keep it stocked with this much waste. */
+export const DIGESTER_FEED: RecipeInput = { options: DIGESTER_FUELS, count: 1, keep: 4 };
+
+/** What a building takes in, as recipe inputs: a workshop's recipe's, or the Digester's fuel. Empty for the rest. */
+export function inputsOf(r: ThingRuntime): readonly RecipeInput[] {
+  if (isWorkshop(r.kind)) return recipeOf(r.kind, r).inputs;
+  return r.kind === 'digester' ? [DIGESTER_FEED] : [];
+}
 
 const cake: Recipe = {
   inputs: [...RECIPES.bakery.inputs, { options: ['honey'], count: 1, keep: 2 }],
@@ -131,8 +163,8 @@ export function siloRoom(r: ThingRuntime, good?: Good): number {
   return good === undefined ? left : Math.max(0, Math.min(left, SILO_GOOD_CAP - countOf(r.outputs, good)));
 }
 
-/** A new building's runtime. A Battery is built empty: only what the homestead makes ever fills it (so taking one down
- * and building it again can't make energy). */
+/** A new building's runtime. A Battery is built empty, and a Digester cold with an empty hopper: only what the homestead
+ * makes ever fills them (so taking one down and building it again can't make energy). */
 const blank = (id: number, kind: ThingKind): ThingRuntime => ({
   id, kind, inputs: {}, outputs: {}, progress: 0, working: false, powered: false, powerNetId: -1,
   water: 0, recipe: 'bread', batch: 'bread', priority: 'auto', greenhouseCrop: 'beans',
@@ -189,6 +221,7 @@ export function startRecipes(s: GameState): void {
   syncGreenhouses(s);
   for (const r of s.sim.things.values()) {
     setOutHoney(r);
+    if (r.kind === 'digester') { lightDigester(r); continue; }
     if (!isWorkshop(r.kind) || r.working) continue;
     const recipe = recipeOf(r.kind, r);
     const picks = recipe.inputs.map((input) => pick(r.inputs, input));
@@ -200,10 +233,28 @@ export function startRecipes(s: GameState): void {
   }
 }
 
-/** Works the recipes under way for `dtH` game hours, where power allows; returns the workshops that finished one. */
+/** A cold Digester with waste in its hopper takes a unit of it and starts burning (read before the power runs). */
+function lightDigester(r: ThingRuntime): void {
+  if (r.working) return;
+  const g = pick(r.inputs, DIGESTER_FEED);
+  if (!g) return;
+  takeGood(r.inputs, g, DIGESTER_FEED.count);
+  r.working = true;
+  r.progress = 0;
+}
+
+/**
+ * Works the recipes under way for `dtH` game hours, where power allows, and burns the Digesters' waste; returns the
+ * workshops that finished one.
+ */
 export function advanceRecipes(s: GameState, dtH: number, weather?: string): ThingRuntime[] {
   const done: ThingRuntime[] = [];
   for (const r of s.sim.things.values()) {
+    if (r.kind === 'digester' && r.working && dtH > 0) {
+      r.progress = Math.min(1, r.progress + dtH / DIGESTER_BURN_HOURS);
+      if (r.progress >= 1) { r.working = false; r.progress = 0; r.made++; }
+      continue;
+    }
     if (!isWorkshop(r.kind) || !r.working) continue;
     const needsPower = CATALOG[r.kind].powerDemand > 0;
     if (needsPower && !r.powered) continue;
@@ -222,13 +273,14 @@ export function advanceRecipes(s: GameState, dtH: number, weather?: string): Thi
   return done;
 }
 
-/** How many of `good` a building would take now (a workshop's inputs it keeps, the Silo's room), before carts en route. */
+/**
+ * How many of `good` a building would take now (a workshop's inputs it keeps, the Digester's fuel, the Silo's room), before
+ * carts en route.
+ */
 export function wantsInput(r: ThingRuntime, good: Good): number {
   if (r.kind === 'silo') return siloRoom(r, good);
-  if (!isWorkshop(r.kind)) return 0;
-  const recipe = recipeOf(r.kind, r);
   const room = capacity(r.inputs, INPUT_CAP);
-  for (const input of recipe.inputs) {
+  for (const input of inputsOf(r)) {
     if (!input.options.includes(good)) continue;
     const have = input.options.reduce((n, g) => n + countOf(r.inputs, g), 0);
     return Math.max(0, Math.min(room, input.keep - have));
@@ -253,6 +305,11 @@ export function describeRuntime(s: GameState, r: ThingRuntime): string {
   switch (r.kind) {
     case 'rain_tank': return `Rainwater · ${Math.round(r.water * 100)}% full`;
     case 'weather_station': return describeWeather(s);
+    case 'digester': {
+      if (r.working) return `Burning biogas · ${DIGESTER_W.toFixed(1)} W (${Math.round(r.progress * 100)}%)`;
+      const fuel = DIGESTER_FEED.options.reduce((n, g) => n + countOf(r.inputs, g), 0);
+      return fuel > 0 ? `Ready to burn · ${fuel} waste in the hopper` : 'Waiting for manure, bran or seed cake';
+    }
     case 'greenhouse': {
       const crop = GOOD_LABELS[r.greenhouseCrop].label;
       if (!r.working) return `Full of ${describeInventory(r.outputs)} · waiting for a cart`;
