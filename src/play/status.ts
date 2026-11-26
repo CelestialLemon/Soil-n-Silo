@@ -34,6 +34,9 @@ export function valleyStats(s: GameState, starterTracks: ReadonlySet<number> = n
     cartCount: sim.carts.length, maxCarts: MAX_CARTS, hasGarage: (thingCounts.garage ?? 0) > 0,
     powerSummary: { ...sim.powerSummary },
     climateLabel: describeClimate(s.season, s.climate),
+    terrain: s.terrain, sandbox: s.sandbox,
+    ...(s.valleyTitle === undefined ? {} : { valleyTitle: s.valleyTitle }),
+    ...(s.campaignId === undefined ? {} : { campaignId: s.campaignId }),
   };
 }
 

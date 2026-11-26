@@ -5,11 +5,19 @@
 // `?climate=` (the season's character; left out, the valley's own: climateFor), `?wseed=` (the weather's seed),
 // `?quality=`, and `?yaw=orbit|snap` to override the player's camera setting (a free orbit unless they chose snapped
 // views). Without `?wseed=`, every run rolls fresh weather: the same map never lives through the same week twice.
-import { climateFor, generateValley, rollWeatherSeed, stepWeather } from '../game/index.ts';
+// `?campaign=<id>` opens a campaign valley; `?terrain=`, `?difficulty=` and `?sandbox=1` a procedural (or Sandbox) one.
+//
+// The player's settings (settings.ts: sound, volume, quality, storm flashes) come from the browser; a `?quality=` in the
+// address wins over the stored quality for that visit. The soundscape (src/audio/) wakes on the first press or key.
+import {
+  climateFor, type GameState, generateProceduralValley, generateValley, rollWeatherSeed, startCampaignValley, stepWeather,
+} from '../game/index.ts';
+import { Soundscape } from '../audio/index.ts';
 import { createUi, mountLoading } from '../ui/index.ts';
-import { createWorld, readUrlOptions } from '../world/index.ts';
+import { createWorld, readUrlOptions, type WorldOptions } from '../world/index.ts';
 import { Play } from './controller.ts';
 import { bindInput } from './input.ts';
+import { loadSettings } from './settings.ts';
 
 export { Play } from './controller.ts';
 
@@ -27,15 +35,26 @@ export async function startPlay(canvas: HTMLCanvasElement, uiRoot: HTMLElement):
   const dispose = () => { for (const stop of stops.splice(0).reverse()) stop(); };
   try {
     const options = readUrlOptions(window.location.search);
+    const stored = loadSettings();
+    const settings = { ...stored, quality: options.quality ?? stored.quality };
     const weatherSeed = options.weatherSeed ?? rollWeatherSeed();
-    const climate = options.climate ?? climateFor(options.seed, options.season);
-    const state = generateValley(options.seed, options.season, { weatherSeed, climate });
+    const state = startingValley(options, weatherSeed);
     // The weather as it stands at the address's hour (a valley's first reading is the morning's), before the sky is drawn.
     state.sim.hour = options.hour;
     stepWeather(state, 0, state.sim.day, options.hour);
-    const world = await createWorld(canvas, state, options);
+    const world = await createWorld(canvas, state, { ...options, quality: settings.quality });
     stops.push(() => world.dispose());
-    const play = new Play(state, world);
+    world.setFlashes(settings.flashes);
+    const sound = new Soundscape();
+    stops.push(() => sound.dispose());
+    sound.setEnabled(settings.sound);
+    sound.setVolume(settings.volume);
+    // A browser plays nothing before the player touches the page: the first press or key wakes the sound.
+    const unlock = () => sound.unlock();
+    window.addEventListener('pointerdown', unlock, true);
+    window.addEventListener('keydown', unlock, true);
+    stops.push(() => { window.removeEventListener('pointerdown', unlock, true); window.removeEventListener('keydown', unlock, true); });
+    const play = new Play(state, world, sound, settings);
     // The controller hears the keys first (Esc drops a stroke before the overlay closes a card): bound before the overlay.
     stops.push(bindInput(canvas, play));
     const ui = createUi(uiRoot, play);
@@ -54,4 +73,20 @@ export async function startPlay(canvas: HTMLCanvasElement, uiRoot: HTMLElement):
     loading.fail('The valley could not be painted here: this browser may lack WebGL 2.');
     throw e;
   }
+}
+
+/** The valley the address asks for: a campaign valley, a procedural or Sandbox one, or the seed's own meadow. */
+function startingValley(options: WorldOptions, weatherSeed: number): GameState {
+  if (options.campaign) {
+    const r = startCampaignValley(options.campaign, weatherSeed);
+    if (r.ok) return r.value;
+  }
+  if (options.terrain || options.difficulty || options.sandbox) {
+    return generateProceduralValley({
+      seed: options.seed, season: options.season, weatherSeed,
+      ...(options.terrain ? { terrain: options.terrain } : {}), ...(options.difficulty ? { difficulty: options.difficulty } : {}),
+      ...(options.climate ? { climate: options.climate } : {}), ...(options.sandbox ? { sandbox: true } : {}),
+    });
+  }
+  return generateValley(options.seed, options.season, { weatherSeed, climate: options.climate ?? climateFor(options.seed, options.season) });
 }
