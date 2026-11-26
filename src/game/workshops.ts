@@ -258,6 +258,20 @@ export function lightDigester(r: ThingRuntime): boolean {
   return true;
 }
 
+/**
+ * Feeds the next waste unit into a burning Digester whose current unit will finish mid-step: subtracts 1 from `progress`
+ * so the leftover burn and the new unit flow together seamlessly with zero blackout and exact 16 Wh per unit.
+ */
+export function rolloverDigester(r: ThingRuntime): boolean {
+  if (r.kind !== 'digester' || !r.working) return false;
+  const g = pick(r.inputs, DIGESTER_FEED);
+  if (!g) return false;
+  takeGood(r.inputs, g, DIGESTER_FEED.count);
+  r.progress -= 1;
+  r.made++;
+  return true;
+}
+
 /** Waste in a Digester's hopper, all kinds together. */
 export const digesterFuel = (r: ThingRuntime) => DIGESTER_FEED.options.reduce((n, g) => n + countOf(r.inputs, g), 0);
 

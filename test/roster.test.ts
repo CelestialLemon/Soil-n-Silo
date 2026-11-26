@@ -500,6 +500,23 @@ test('a cold fueled Digester on an overlapping network ignites when the preferre
   assert.equal(s.sim.powerSummary.anyBlackout, false);
 });
 
+test('a burning Digester rolls over to the next waste unit mid-step with zero blackout and exact energy per unit', () => {
+  const s = flatLand();
+  const dig = building(s, 'digester', 0, -20);
+  const mill = building(s, 'mill', 10, -20);
+  mill.r.working = true;
+  dig.r.working = true;
+  dig.r.progress = 0.999;
+  dig.r.inputs = { manure: 2 };
+  const tick = stepSim(s, 1, blizzard);
+  assert.equal(s.sim.powerSummary.anyBlackout, false, 'no blackout across burn boundary');
+  assert.equal(tick.events.filter((e) => e.type === 'blackout').length, 0);
+  assert.equal(dig.r.watts, DIGESTER_W, 'holds full 4 W across the rollover step');
+  assert.equal(dig.r.made, 1, 'counted the finished unit');
+  assert.equal(countOf(dig.r.inputs, 'manure'), 1, 'consumed one next unit');
+  assert.ok(dig.r.progress > 0 && dig.r.progress < 0.02, `exact carryover progress (${dig.r.progress})`);
+});
+
 test('a byproduct sent to a building since taken down goes where Auto would send it', () => {
   const { s } = craftYard();
   const mill = put(s, 'mill', 6, -46, 0), composter = put(s, 'composter', 22, -46, 0), coop = put(s, 'coop', -26, -28, Math.PI);

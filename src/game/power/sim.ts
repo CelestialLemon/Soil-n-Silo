@@ -11,7 +11,7 @@ import { clamp } from '../geom.ts';
 import { countOf } from '../goods.ts';
 import { must } from '../result.ts';
 import type { GameState, Thing } from '../state.ts';
-import { describeRuntime, DIGESTER_BURN_HOURS, DIGESTER_FUELS, DIGESTER_W, GREENHOUSE_COLD_C, GREENHOUSE_COLD_W, GREENHOUSE_MILD_W, lightDigester, syncGreenhouses, syncRuntime, type ThingRuntime } from '../workshops.ts';
+import { describeRuntime, DIGESTER_BURN_HOURS, DIGESTER_FUELS, DIGESTER_W, GREENHOUSE_COLD_C, GREENHOUSE_COLD_W, GREENHOUSE_MILD_W, lightDigester, rolloverDigester, syncGreenhouses, syncRuntime, type ThingRuntime } from '../workshops.ts';
 import { feeds, roleOf } from './nodes.ts';
 import { networksOf } from './radius.ts';
 
@@ -243,12 +243,23 @@ type SimNet = PowerNetwork & { batteries: ThingRuntime[]; digesters: ThingRuntim
  */
 function lightNeededDigesters(nets: Map<number, SimNet>, asks: { nets: PowerNetwork[]; w: number }[],
   canGive: (n: SimNet) => number, dtH: number): void {
-  if (![...nets.values()].some((n) => n.digesters.some((r) => !r.working))) return;
+  const hasFuel = (r: ThingRuntime) => DIGESTER_FUELS.some((g) => countOf(r.inputs, g) > 0);
+  const canBoost = (r: ThingRuntime) => hasFuel(r) && (!r.working || r.watts < DIGESTER_W - 1e-9);
+  if (![...nets.values()].some((n) => n.digesters.some(canBoost))) return;
   // A dry run of the serving below: which network each load would draw from, so its demand counts once.
   const demand = new Map<number, number>(), left = new Map([...nets.values()].map((n) => [n.id, n.generationW + canGive(n)]));
-  const hasFuel = (r: ThingRuntime) => DIGESTER_FUELS.some((g) => countOf(r.inputs, g) > 0);
-  const coldPotential = (n: SimNet) => n.digesters.filter((r) => !r.working && hasFuel(r)).length * DIGESTER_W;
+  const coldPotential = (n: SimNet) => n.digesters.reduce((sum, r) => sum + (canBoost(r) ? DIGESTER_W - r.watts : 0), 0);
   const igniteOne = (n: SimNet): boolean => {
+    // First seamlessly roll over a burning Digester finishing mid-step so power never dips across a burn boundary.
+    for (const r of n.digesters) {
+      if (!r.working || r.watts >= DIGESTER_W - 1e-9 || !rolloverDigester(r)) continue;
+      const before = r.watts;
+      r.watts = digesterWatts(r, dtH);
+      const gain = r.watts - before;
+      n.generationW += gain;
+      left.set(n.id, (left.get(n.id) ?? 0) + gain);
+      return true;
+    }
     for (const r of n.digesters) {
       if (r.working || !lightDigester(r)) continue;
       r.watts = digesterWatts(r, dtH);
