@@ -16,6 +16,12 @@ export type LandTool =
 /** What the pointer does on the valley. `select` inspects, picks things up and pans. */
 export type ToolId = 'select' | PlaceTool | LandTool;
 
+/**
+ * How a field tool lays a field: outlining it corner by corner (`polygon`, the default: click the corners, then the first
+ * again, double-click or Enter to fill it) or painting it with the round brush (`brush`). B flips between them.
+ */
+export type FieldMode = 'polygon' | 'brush';
+
 /** How the camera turns: a free orbit (the default) or snapped 90° views, the player's setting. */
 export type YawMode = 'orbit' | 'snap';
 export const SPEEDS = [0, 1, 2, 4] as const;
@@ -161,6 +167,8 @@ export interface LiveWeatherView {
 /** Everything the UI shows, handed to `render` whenever it changes (every frame is fine: unchanged parts cost nothing). */
 export interface UiSnapshot {
   activeTool: ToolId;
+  /** How the field tools lay a field (the tool strip's Polygon / Brush pill, shown while a field tool is in hand). */
+  fieldMode?: FieldMode;
   yawMode: YawMode;
   /** The power view (P): every wireless power range shown. */
   powerView: boolean;
@@ -191,6 +199,8 @@ export interface UiSnapshot {
 
 export interface UiCallbacks {
   onSelectTool(tool: ToolId): void;
+  /** Lays fields by outline or by brush (the tool strip's Polygon / Brush pill). */
+  onSetFieldMode?: (mode: FieldMode) => void;
   onMoveSelected(id: number): void;
   /**
    * Turns the thing by `deltaRad` in the game's yaw, which turns anticlockwise seen from above: the ring's ↺ sends +π/12

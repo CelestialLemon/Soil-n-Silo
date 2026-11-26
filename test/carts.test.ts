@@ -455,3 +455,118 @@ test('idle carts explain missing storage, disconnected fields and full storage',
   rt(s, silo).outputs.wheat = SILO_GOOD_CAP;
   assert.match(diagnoseIdleCarts(s) ?? '', /no room for wheat/);
 });
+
+// --- Fields are no road (#317) -----------------------------------------------------------------------------------------
+
+/** Whether a path's points (sampled every 0.25 m) ever cross a planted field's ground, but within `skip` m of its ends. */
+function crossesField(s: GameState, path: Point2[], skip = 0): boolean {
+  const nav = navFor(s), first = path[0], last = path[path.length - 1];
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1], b = path[i], n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 0.25));
+    for (let k = 0; k <= n; k++) {
+      const p = { x: a.x + ((b.x - a.x) * k) / n, z: a.z + ((b.z - a.z) * k) / n };
+      if (Math.hypot(p.x - first.x, p.z - first.z) < skip || Math.hypot(p.x - last.x, p.z - last.z) < skip) continue;
+      if (nav.field[navCellOf(p.x, p.z)] === 1) return true;
+    }
+  }
+  return false;
+}
+const outline = (x0: number, z0: number, x1: number, z1: number): Point2[] => [{ x: x0, z: z0 }, { x: x1, z: z0 }, { x: x1, z: z1 }, { x: x0, z: z1 }];
+
+test('carts drive round a planted field, never through it, though the way round is longer', () => {
+  const s = sandbox(), from = { x: -30, z: -30 }, to = { x: 30, z: -30 };
+  const open = must(findPath(s, from, to), 'a way over the open meadow');
+  assert.ok(open.length <= 3, 'straight over the meadow');
+  assert.ok(apply(s, { type: 'paintFieldPolygon', crop: 'wheat', points: outline(-10, -44, 10, -16) }).ok);
+  const nav = navFor(s);
+  assert.equal(nav.cost[navCellOf(0, -30)], GROUND.field.cost, 'the field is field ground');
+  assert.ok(GROUND.field.cost > GROUND.mud.cost && GROUND.mud.cost > GROUND.meadow.cost);
+  assert.ok(GROUND.field.speed < GROUND.meadow.speed && GROUND.field.drain > GROUND.meadow.drain);
+  const round = must(findPath(s, from, to), 'a way round the field');
+  assert.ok(!crossesField(s, round), `never over the crops: ${JSON.stringify(round)}`);
+  assert.ok(onTrackShare(s, round).length > onTrackShare(s, open).length + 4, 'the longer way round');
+  // Hemmed in by a hedge to the north, west and south, the only way out from beside it is over the crops: then it crosses.
+  // (Corners every 2 m along each side, so the hedge's curve keeps to the lines.)
+  const along = (a: Point2, b: Point2) => {
+    const n = Math.round(Math.hypot(b.x - a.x, b.z - a.z) / 2);
+    return Array.from({ length: n }, (_, k) => ({ x: a.x + ((b.x - a.x) * k) / n, z: a.z + ((b.z - a.z) * k) / n }));
+  };
+  const corners = [{ x: 12, z: -14 }, { x: -16, z: -14 }, { x: -16, z: -46 }, { x: 12, z: -46 }];
+  const hedge = [...along(corners[0], corners[1]), ...along(corners[1], corners[2]), ...along(corners[2], corners[3]), corners[3]];
+  assert.ok(apply(s, { type: 'addHedge', points: hedge }).ok);
+  const through = must(findPath(s, { x: -13, z: -30 }, { x: 30, z: -30 }), 'the one way out: over the crops');
+  assert.ok(crossesField(s, through));
+});
+
+test('carts load at a field from its edge, by the track running beside it', () => {
+  const s = sandbox();
+  put(s, 'garage', -30, -28, Math.PI);
+  assert.ok(apply(s, { type: 'paintFieldPolygon', crop: 'wheat', points: outline(-10, -40, 10, -20) }).ok);
+  const f = s.fields[0];
+  // No track: the edge nearest the Garage, outside the crops.
+  const nav = navFor(s), edge = must(fieldEdge(s, f), 'a loading spot');
+  const i = navCellOf(edge.x, edge.z);
+  assert.equal(nav.field[i], 0, 'not among the crops');
+  assert.ok(passable(nav, i));
+  assert.ok(edge.x < -10 && edge.x > -14, `on the field's west side, by the Garage: ${edge.x}, ${edge.z}`);
+  // A track along its south side: carts load on it.
+  assert.ok(apply(s, { type: 'addTrack', points: [{ x: -30, z: -42 }, { x: 0, z: -42 }, { x: 30, z: -42 }] }).ok);
+  const nav2 = navFor(s), onTrack = must(fieldEdge(s, f), 'a loading spot by the track');
+  assert.equal(nav2.track[navCellOf(onTrack.x, onTrack.z)], 1, `on the track: ${onTrack.x}, ${onTrack.z}`);
+  assert.equal(nav2.field[navCellOf(onTrack.x, onTrack.z)], 0);
+  assert.ok(onTrack.z < -40, 'on the south side');
+  // A cart harvests it without once driving over the crops.
+  const silo = put(s, 'silo', 30, -28);
+  f.harvestReady = 4;
+  for (let k = 0; k < 4 * 30 && countOf(rt(s, silo).outputs, 'wheat') === 0; k++) {
+    stepSim(s, 1, breezy);
+    for (const c of s.sim.carts) assert.equal(navFor(s).field[navCellOf(c.x, c.z)], 0, `cart ${c.id} at ${c.x.toFixed(1)}, ${c.z.toFixed(1)}: ${c.jobDesc}`);
+  }
+  assert.ok(countOf(rt(s, silo).outputs, 'wheat') > 0, 'harvested into the Silo');
+});
+
+test('a field walled in on every side is loaded from among its crops, and only by a cart that can reach it', () => {
+  // A 2 m moat round a square island (|x|, |z| < 6): the field fills the island.
+  const s = land({
+    height: () => 0,
+    water: (x, z) => { const r = Math.max(Math.abs(x), Math.abs(z)); return r >= 6 && r < 8 ? -0.02 : undefined; },
+    depth: 0.05,
+  });
+  s.sim.supplies = sandboxSupplies();
+  put(s, 'garage', -30, -28, Math.PI);
+  assert.ok(apply(s, { type: 'paintFieldPolygon', crop: 'wheat', points: outline(-6, -6, 6, 6) }).ok);
+  const f = s.fields[0], nav = navFor(s);
+  const inside = must(fieldEdge(s, f), 'a loading spot on the island');
+  assert.equal(nav.field[navCellOf(inside.x, inside.z)], 1, 'among the crops: there is no edge to stand on');
+  assert.ok(Math.abs(inside.x) < 6 && Math.abs(inside.z) < 6);
+  const cart = s.sim.carts[0];
+  assert.equal(fieldEdge(s, f, reachOf(s, cart, 'start')), null, 'no spot the Garage\'s cart can reach');
+});
+
+test('a 1 m moat sharing a nav cell with a field never lets a mainland cart harvest across the water', () => {
+  const s = land({
+    height: () => 0,
+    water: (x, z) => { const r = Math.max(Math.abs(x), Math.abs(z)); return r >= 5 && r < 6 ? -0.02 : undefined; },
+    depth: 0.05,
+  });
+  s.sim.supplies = sandboxSupplies();
+  put(s, 'garage', -30, -28, Math.PI);
+  const silo = put(s, 'silo', -16, -28);
+  assert.ok(apply(s, { type: 'paintFieldPolygon', crop: 'wheat', points: outline(-5, -5, 5, 5) }).ok);
+  const f = s.fields[0], cart = s.sim.carts[0];
+  const inside = must(fieldEdge(s, f), 'an island loading spot');
+  assert.ok(Math.abs(inside.x) < 5 && Math.abs(inside.z) < 5, `must stay on the island, not mainland: ${inside.x}, ${inside.z}`);
+  assert.equal(fieldEdge(s, f, reachOf(s, cart, 'start')), null, 'unreachable from the mainland');
+  f.harvestReady = 4;
+  run(s, 3);
+  assert.equal(countOf(rt(s, silo).outputs, 'wheat'), 0, 'mainland cart cannot harvest across the moat without a bridge');
+});
+
+test('exact endpoint rewrites never steer a cart through a crop cell A* skipped', () => {
+  const s = land({ height: () => 0 });
+  assert.ok(apply(s, { type: 'paintFieldPolygon', crop: 'wheat', points: outline(0, 2, 4, 4) }).ok);
+  const path = must(findPath(s, { x: 1, z: 1 }, { x: 2.1, z: 3.9 }), 'path to crop goal');
+  const skipped = navCellOf(1, 3);
+  assert.equal(navFor(s).field[skipped], 1, '(1, 3) is inside the crops');
+  assert.ok(!cellsOnPath(path).has(skipped), `path ${JSON.stringify(path)} must not cut across crop cell (1, 3)`);
+});

@@ -8,7 +8,7 @@
 // Each building's live side (its goods, recipe, power and the one plain line its floating card shows) is a ThingRuntime,
 // kept by id in `state.sim.things` beside the placed Thing; it comes and goes with the building.
 import { CATALOG, isWorkshop, type ThingKind, type WorkshopKind } from './catalog.ts';
-import { forageRate, hotMidday, effectiveMoisture, isLiquidRain, treeShade } from './microclimate.ts';
+import { forageRate, hotMidday, effectiveMoisture, isLiquidRain, sprinklerPowerW, sprinklerWattsLabel, treeShade } from './microclimate.ts';
 import type { SimEnv } from './power/sim.ts';
 import { isNight } from './clock.ts';
 import { addGood, capacity, countOf, describeInventory, GOOD_LABELS, type Good, type Inventory, takeGood, totalStored } from './goods.ts';
@@ -349,7 +349,11 @@ export function describeRuntime(s: GameState, r: ThingRuntime): string {
       if (!r.powered) return r.powerNetId >= 0 ? `Paused · not enough power to heat the glass` : dark;
       return `Growing ${crop} under glass · ${Math.round(r.progress * 100)}% · ${r.watts.toFixed(1)} W`;
     }
-    case 'sprinkler': return r.watts > 0 ? 'Watering nearby fields · 1 W' : r.powered ? 'Waiting for dry crops' : dark;
+    case 'sprinkler': {
+      if (r.watts > 0) return `Watering nearby fields · ${sprinklerWattsLabel(r.watts)}`;
+      const t = s.things.find((v) => v.id === r.id), w = t ? ` · ${sprinklerWattsLabel(sprinklerPowerW(s, t))} when running` : '';
+      return r.powered ? `Waiting for dry crops${w}` : `${dark}${w}`;
+    }
     case 'beehive': return `${r.working ? 'Bees foraging' : 'Bees resting'} · ${countOf(r.outputs, 'honey')} Honey`;
     case 'silo': return totalStored(r.outputs) > 0 ? `Storing ${totalStored(r.outputs)} / ${SILO_CAP} · ${describeInventory(r.outputs)}` : `Empty · stores up to ${SILO_CAP} goods`;
     case 'depot': {

@@ -1,7 +1,7 @@
 // Site measurements depend on land edits. Water reserves, weather and bee activity change during play. Frost hollows: cold
 // air drains into low ground on still nights, so a basin runs a few degrees colder than the slopes above it.
 import { isNight } from './clock.ts';
-import { clamp, polylineDistance, type Point2 } from './geom.ts';
+import { clamp, type Obb, obbBounds, obbDistance, polylineDistance, type Point2 } from './geom.ts';
 import { cellX, cellZ, COVER, rectOfWorld, slopeAt } from './grid.ts';
 import { noise2 } from './noise.ts';
 import type { SimEnv } from './power/sim.ts';
@@ -9,9 +9,50 @@ import type { ThingKind } from './catalog.ts';
 import type { Crop, Field, GameState, Thing } from './state.ts';
 import type { ThingRuntime } from './workshops.ts';
 import { toSpell } from './weather.ts';
+import { waterCells } from './wet.ts';
 
-export const SERVICE_RADIUS = { beehive: 14, rain_tank: 10, sprinkler: 11 } as const;
+/** How far a Beehive's bees and a Rain Tank's water reach, m: a circle round each. */
+export const SERVICE_RADIUS = { beehive: 14, rain_tank: 10 } as const;
 export const hasServiceRadius = (kind: ThingKind): kind is keyof typeof SERVICE_RADIUS => Object.hasOwn(SERVICE_RADIUS, kind);
+/** A Sprinkler waters a 20 × 14 m patch centred on it, turned with it (half its width along its yaw's x, half its depth). */
+export const SPRINKLER_BOX = { halfW: 10, halfD: 7 } as const;
+/** The patch a Sprinkler waters, as it stands (or would stand) and is turned. */
+export const sprinklerObb = (t: Pick<Thing, 'x' | 'z' | 'yaw'>): Obb =>
+  ({ cx: t.x, cz: t.z, hw: SPRINKLER_BOX.halfW, hd: SPRINKLER_BOX.halfD, yaw: t.yaw });
+/** Whether a kind serves the ground round it (a Beehive's and a Rain Tank's circle, a Sprinkler's patch). */
+export const hasServiceArea = (kind: ThingKind): kind is keyof typeof SERVICE_RADIUS | 'sprinkler' => hasServiceRadius(kind) || kind === 'sprinkler';
+
+/**
+ * A Sprinkler's draw while it runs, W: it lifts water up from the nearest flowing water (the brook, the pond, a rill that
+ * flows), so 0.5 W within 10 m of it, rising evenly to 2 W at 35 m and beyond (and 2 W in a valley with no water at all).
+ */
+export const SPRINKLER_NEAR_W = 0.5, SPRINKLER_FAR_W = 2, SPRINKLER_NEAR_M = 10, SPRINKLER_FAR_M = 35;
+const waterCache = new WeakMap<GameState, { key: string; d: Float32Array; any: boolean }>();
+
+/** How far a point lies from the nearest flowing water, m (Infinity if the valley has none). Read again as the water changes. */
+export function distanceToWater(s: GameState, p: Point2): number {
+  const key = `${s.revision}:${s.sim.floodKey}`;
+  let hit = waterCache.get(s);
+  if (hit?.key !== key) {
+    const d = waterCells(s.grid);
+    hit = { key, d, any: d.some((v) => v === 0) };
+    waterCache.set(s, hit);
+  }
+  if (!hit.any) return Infinity;
+  const g = s.grid, ix = clamp(Math.floor((p.x - g.x0) / g.cell), 0, g.nx - 1), iz = clamp(Math.floor((p.z - g.z0) / g.cell), 0, g.nz - 1);
+  return hit.d[iz * g.nx + ix] * g.cell;
+}
+
+/** A Sprinkler's watts as its card and the tools say them: "0.5 W", "1.35 W", "2.0 W". */
+export const sprinklerWattsLabel = (w: number) => `${w.toFixed(2).replace(/0$/, '')} W`;
+
+/** What a Sprinkler at a point draws while it runs, W, to the nearest 0.05 W. */
+export function sprinklerPowerW(s: GameState, p: Point2): number {
+  const d = distanceToWater(s, p);
+  if (!Number.isFinite(d)) return SPRINKLER_FAR_W;
+  const w = SPRINKLER_NEAR_W + (SPRINKLER_FAR_W - SPRINKLER_NEAR_W) * clamp((d - SPRINKLER_NEAR_M) / (SPRINKLER_FAR_M - SPRINKLER_NEAR_M), 0, 1);
+  return Math.round(w * 20) / 20;
+}
 const distance = (a: Point2, b: Point2) => Math.hypot(a.x - b.x, a.z - b.z);
 /** Whether a weather spell's name is a rainy one (by its name alone: a storm in hard frost falls as snow; see isLiquidRain). */
 export const isRaining = (weather?: string) => weather === 'rain' || weather === 'soft-rain' || weather === 'storm';
@@ -86,16 +127,19 @@ interface Site { fields: Field[]; cells: Map<number, number[]>; meadow: boolean 
 const sites = new WeakMap<Thing, { key: string; site: Site }>();
 export function serviceSite(s: GameState, t: Thing): Site {
   const hit = sites.get(t);
-  const key = `${s.revision}:${t.x},${t.z}`;
+  const key = `${s.revision}:${t.x},${t.z},${t.yaw}`;
   if (hit?.key === key) return hit.site;
-  if (!hasServiceRadius(t.kind)) return { fields: [], cells: new Map(), meadow: false };
-  const radius = SERVICE_RADIUS[t.kind];
-  const g = s.grid, rect = rectOfWorld(g, t.x - radius, t.z - radius, t.x + radius, t.z + radius);
+  if (!hasServiceArea(t.kind)) return { fields: [], cells: new Map(), meadow: false };
+  // A Sprinkler's turned patch, or a Beehive's or Rain Tank's circle.
+  const box = t.kind === 'sprinkler' ? sprinklerObb(t) : undefined, radius = hasServiceRadius(t.kind) ? SERVICE_RADIUS[t.kind] : 0;
+  const b = box ? obbBounds(box) : { minX: t.x - radius, minZ: t.z - radius, maxX: t.x + radius, maxZ: t.z + radius };
+  const inside = (p: Point2) => (box ? obbDistance(box, p.x, p.z) <= 0 : distance(t, p) <= radius);
+  const g = s.grid, rect = rectOfWorld(g, b.minX, b.minZ, b.maxX, b.maxZ);
   const cells = new Map<number, number[]>();
   let meadow = false;
   if (rect) for (let z = rect.z0; z <= rect.z1; z++) for (let x: number = rect.x0; x <= rect.x1; x++) {
     const p = { x: cellX(g, x), z: cellZ(g, z) }, i = z * g.nx + x;
-    if (distance(t, p) > radius) continue;
+    if (!inside(p)) continue;
     if (g.fieldOf[i]) {
       const id = g.fieldOf[i];
       if (!cells.has(id)) cells.set(id, []);

@@ -6,7 +6,7 @@ import { buyCart, retireCart } from './carts.ts';
 import type { ThingKind } from './catalog.ts';
 import { emptyChange, type Change } from './change.ts';
 import { digChannel, fillChannel } from './channels.ts';
-import { eraseField, type FieldEdit, paintField } from './fields.ts';
+import { eraseField, eraseFieldPolygon, type FieldEdit, paintField, paintFieldPolygon } from './fields.ts';
 import type { Point2 } from './geom.ts';
 import { moveThing, placeThing, removeThing, rotateThing } from './place.ts';
 import { addHedge, addTrack, plantTree, removeHedge, removeTrack, removeTree } from './paths.ts';
@@ -21,6 +21,9 @@ export type Action =
   | { type: 'remove'; id: number }
   | { type: 'paintField'; crop: Crop; points: Point2[]; radius: number }
   | { type: 'eraseField'; points: Point2[]; radius: number }
+  /** A closed outline's corners (the last joins back to the first): the crop fills it, or the fields in it are cleared. */
+  | { type: 'paintFieldPolygon'; crop: Crop; points: Point2[] }
+  | { type: 'eraseFieldPolygon'; points: Point2[] }
   | { type: 'digChannel'; points: Point2[] }
   | { type: 'fillChannel'; id: number }
   | { type: 'addTrack'; points: Point2[] }
@@ -48,6 +51,8 @@ export function apply(s: GameState, a: Action): Result<Change, string> {
     case 'paintField': return fieldChange(s, paintField(s, a.crop, a.points, a.radius));
     // Erasing the last field starts an unfinished Steady Homestead over (settle).
     case 'eraseField': return fieldChange(s, eraseField(s, a.points, a.radius));
+    case 'paintFieldPolygon': return fieldChange(s, paintFieldPolygon(s, a.crop, a.points));
+    case 'eraseFieldPolygon': return fieldChange(s, eraseFieldPolygon(s, a.points));
     case 'digChannel': return digChannel(s, a.points);
     case 'fillChannel': return fillChannel(s, a.id);
     case 'addTrack': return addTrack(s, a.points);

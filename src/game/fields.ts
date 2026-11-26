@@ -1,11 +1,12 @@
-// Painted fields: the player brushes irregular patches of a crop onto clear, gentle ground; each connected patch of one
-// crop is a field. Painting over a field of the other crop takes those cells; erasing can split a field in two.
+// Painted fields: the player brushes irregular patches of a crop onto clear, gentle ground, or outlines one corner by corner
+// (a closed polygon, filled); each connected patch of one crop is a field. Painting over a field of the other crop takes those cells; erasing can split a field in two.
 import { CATALOG } from './catalog.ts';
 import type { Change } from './change.ts';
 import { clamp, obbDistance, type Point2, polylineDistance, resample } from './geom.ts';
 import { addCell, BUILD_HALF, cellX, cellZ, COVER, type Grid, type Rect, slopeAt, unionRect } from './grid.ts';
 import { recomposeCover, thingObb } from './earth.ts';
 import { fieldYield, soilFertility, SOWN_GROWTH } from './crops.ts';
+import { MAX_PATH_POINTS } from './limits.ts';
 import { err, ok, type Result } from './result.ts';
 import { CROPS, type Crop, type Field, type GameState } from './state.ts';
 
@@ -88,6 +89,77 @@ export function eraseField(s: GameState, points: readonly Point2[], radius: numb
   const g = s.grid, crops = cropCells(s);
   let erased = 0;
   strokeCells(g, points, radius, (ix, iz) => { const i = iz * g.nx + ix; if (crops[i] !== 0) { crops[i] = 0; erased++; } });
+  if (erased === 0) return err('No field there to clear.');
+  return ok(relabel(s, crops));
+}
+
+/**
+ * The cells whose centres lie inside a closed polygon (its last point joins back to its first), by the even-odd rule: a ray
+ * from a centre crosses its edges an odd number of times. An edge counts its lower end and not its upper one, so a ray
+ * through a corner is counted once, and a centre exactly on an edge always falls the same way.
+ */
+function polygonCells(g: Grid, points: readonly Point2[], fn: (ix: number, iz: number) => void) {
+  let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
+  for (const p of points) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z); }
+  const ix0 = Math.max(0, Math.floor((minX - g.x0) / g.cell)), ix1 = Math.min(g.nx - 1, Math.floor((maxX - g.x0) / g.cell));
+  const iz0 = Math.max(0, Math.floor((minZ - g.z0) / g.cell)), iz1 = Math.min(g.nz - 1, Math.floor((maxZ - g.z0) / g.cell));
+  const n = points.length;
+  for (let iz = iz0; iz <= iz1; iz++) {
+    const z = cellZ(g, iz);
+    // Where this row's centre line crosses the polygon's edges: a centre with an odd number of them to its east is inside.
+    const xs: number[] = [];
+    for (let k = 0; k < n; k++) {
+      const a = points[k], b = points[(k + 1) % n];
+      if ((a.z > z) !== (b.z > z)) xs.push(a.x + ((z - a.z) * (b.x - a.x)) / (b.z - a.z));
+    }
+    if (xs.length < 2) continue;
+    for (let ix = ix0; ix <= ix1; ix++) {
+      const x = cellX(g, ix);
+      let crossings = 0;
+      for (const cx of xs) if (cx > x) crossings++;
+      if (crossings % 2 === 1) fn(ix, iz);
+    }
+  }
+}
+
+/** The farthest coordinate a field outline may reach, m (well past the valley, well below float overflow in rasterizing). */
+const MAX_POLYGON_COORD = 1e4;
+
+function checkPolygon(points: readonly Point2[]): Result<void, string> {
+  if (points.length < 3) return err('A field outline needs at least three corners.');
+  if (points.length > MAX_PATH_POINTS) return err('That outline has too many corners: draw it in smaller pieces.');
+  if (points.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.z) || Math.abs(p.x) > MAX_POLYGON_COORD || Math.abs(p.z) > MAX_POLYGON_COORD)) {
+    return err('That outline left the valley.');
+  }
+  return ok(undefined);
+}
+
+/** Plants a crop on the clear ground inside a closed outline (its corners; the last joins back to the first). */
+export function paintFieldPolygon(s: GameState, crop: Crop, points: readonly Point2[]): Result<FieldEdit, string> {
+  if (!CROPS.includes(crop)) return err(`There's no crop called ${String(crop)}.`);
+  const bad = checkPolygon(points);
+  if (!bad.ok) return bad;
+  const g = s.grid, crops = cropCells(s), code = cropCode(crop);
+  let painted = 0, already = 0;
+  polygonCells(g, points, (ix, iz) => {
+    const i = iz * g.nx + ix;
+    if (crops[i] === code) { already++; return; }
+    if (!fieldAllowed(s, ix, iz)) return;
+    crops[i] = code;
+    painted++;
+  });
+  if (painted === 0 && already === 0) return err('Nothing there to plant: fields need clear, gentle ground.');
+  if (painted === 0) return ok({ fieldIds: [] });
+  return ok(relabel(s, crops));
+}
+
+/** Clears the fields inside a closed outline. */
+export function eraseFieldPolygon(s: GameState, points: readonly Point2[]): Result<FieldEdit, string> {
+  const bad = checkPolygon(points);
+  if (!bad.ok) return bad;
+  const g = s.grid, crops = cropCells(s);
+  let erased = 0;
+  polygonCells(g, points, (ix, iz) => { const i = iz * g.nx + ix; if (crops[i] !== 0) { crops[i] = 0; erased++; } });
   if (erased === 0) return err('No field there to clear.');
   return ok(relabel(s, crops));
 }

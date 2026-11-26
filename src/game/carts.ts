@@ -21,7 +21,7 @@ import { coreObb } from './earth.ts';
 import { obbDistance, type Point2, toWorld } from './geom.ts';
 import { windShelter } from './microclimate.ts';
 import { addGood, countOf, GOOD_LABELS, type Good, takeGood, totalStored } from './goods.ts';
-import { CART_SPEED, dockOf, findPath, groundAt, navCellOf, navCenter, NAV_CELL, navComponent, navFor, passable, reachOf } from './nav.ts';
+import { CART_SPEED, dockOf, findPath, groundAt, navCellOf, navCenter, NAV_CELL, NAV_N, navComponent, navFor, passable, reachOf } from './nav.ts';
 import { cartIdFits } from './limits.ts';
 import { err, ok, type Result } from './result.ts';
 import { CROPS, type Crop, type Field, type GameState, type Thing } from './state.ts';
@@ -99,10 +99,13 @@ export function endpointLabel(s: GameState, e: Endpoint): string {
 const edgeCache = new WeakMap<GameState, { key: string; at: Map<string, Point2 | null> }>();
 
 /**
- * Where carts load at a field: its drivable cell nearest a track (or, with no tracks, nearest the Garage). Given a patch of
- * drivable ground (`reach`, nav.ts reachOf), the best such cell on that patch, by the tracks on it: a field split by an
- * unbridged brook or a hedge is loaded from the side a cart can reach, not only from the side nearest a track. Null if no
- * cell of it is drivable (on that patch).
+ * Where carts load at a field: from its edge, never among its crops. The drivable ground just outside it (a cell touching
+ * the field, 8-ways, that is no field's ground itself; a track through the field counts too) nearest a track (or, with no
+ * tracks, nearest the Garage), so a track running by the field is where carts load. Only a field walled in on every side
+ * (by water, hedges or buildings) is loaded from among its own crops. Given a patch of drivable ground (`reach`, nav.ts
+ * reachOf), the best such cell on that patch, by the tracks on it: a field split by an unbridged brook or a hedge is loaded
+ * from the side a cart can reach, not only from the side nearest a track. Null if no cell by or in it is drivable (on that
+ * patch).
  */
 export function fieldEdge(s: GameState, f: Field, reach?: number): Point2 | null {
   const nav = navFor(s);
@@ -111,22 +114,40 @@ export function fieldEdge(s: GameState, f: Field, reach?: number): Point2 | null
   const key = `${f.id}:${reach ?? '*'}`, hit = cache.at.get(key);
   if (hit !== undefined) return hit;
   const on = (i: number) => passable(nav, i) && (reach === undefined || navComponent(s, i) === reach);
-  const g = s.grid, cells = new Set<number>();
+  // The drivable nav cells the field covers (on the cart's patch when given). Skipping water/wall-blocked cells ensures a
+  // narrow barrier sharing a nav cell with the field can never project a loading spot across the barrier.
+  const g = s.grid, own = new Set<number>();
   for (let iz = f.bounds.z0; iz <= f.bounds.z1; iz++) for (let ix = f.bounds.x0; ix <= f.bounds.x1; ix++) {
     if (g.fieldOf[iz * g.nx + ix] !== f.id) continue;
     const i = navCellOf(g.x0 + (ix + 0.5) * g.cell, g.z0 + (iz + 0.5) * g.cell);
-    if (on(i)) cells.add(i);
+    if (on(i)) own.add(i);
   }
+  // Its border: drivable ground by a reachable cell of the field (or a track through it) on the same drivable patch, without
+  // reaching across a blocked diagonal corner.
+  const border = new Set<number>();
+  for (const i of own) {
+    const x = i % NAV_N, z = (i - x) / NAV_N, comp = navComponent(s, i);
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const ax = x + dx, az = z + dz;
+      if (ax < 0 || az < 0 || ax >= NAV_N || az >= NAV_N) continue;
+      if (dx !== 0 && dz !== 0 && !passable(nav, ax + z * NAV_N) && !passable(nav, x + az * NAV_N)) continue;
+      const j = ax + az * NAV_N;
+      if (nav.field[j] === 0 && on(j) && navComponent(s, j) === comp) border.add(j);
+    }
+  }
+  const candidates = border.size > 0 ? border : own;
   const tracks: Point2[] = [];
   for (let i = 0; i < nav.track.length; i++) if (nav.track[i] === 1 && on(i)) tracks.push(navCenter(i));
+  // Nearest a track (on one is best), then nearest the Garage.
   const home = garageOf(s);
-  let best: Point2 | null = null, bestD = Infinity;
-  for (const i of cells) {
-    const c = navCenter(i);
+  let best: Point2 | null = null, bestD = Infinity, bestHome = Infinity;
+  for (const i of [...candidates].sort((a, b) => a - b)) {
+    const c = navCenter(i), toHome = home ? Math.hypot(home.x - c.x, home.z - c.z) : 0;
     let d = Infinity;
-    if (tracks.length > 0) for (const t of tracks) d = Math.min(d, Math.hypot(t.x - c.x, t.z - c.z));
-    else d = home ? Math.hypot(home.x - c.x, home.z - c.z) : 0;
-    if (d < bestD) { bestD = d; best = c; }
+    if (nav.track[i] === 1) d = 0;
+    else if (tracks.length > 0) for (const t of tracks) d = Math.min(d, Math.hypot(t.x - c.x, t.z - c.z));
+    else d = toHome;
+    if (d < bestD - 1e-9 || (Math.abs(d - bestD) <= 1e-9 && toHome < bestHome)) { bestD = d; bestHome = toHome; best = c; }
   }
   cache.at.set(key, best);
   return best;

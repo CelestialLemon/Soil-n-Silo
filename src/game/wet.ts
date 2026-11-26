@@ -4,11 +4,21 @@ import { addCell, type Grid, isWet, type Rect } from './grid.ts';
 import { smoothstep } from './geom.ts';
 import type { GameState } from './state.ts';
 
-/** How far a bank's wetness reaches from the water, m. */
-export const WET_REACH = 3.75;
+/** How far a bank's wetness reaches from the water, m: far enough that a field by the brook or a rill needs no Sprinkler. */
+export const WET_REACH = 7;
 
 /** The wet-bank moisture (0..1) for a grid's live water: 1 in the water, fading to 0 at WET_REACH from it. */
 export function wetness(g: Grid): Float32Array {
+  const n = g.nx * g.nz, d = waterCells(g), m = new Float32Array(n);
+  for (let i = 0; i < n; i++) m[i] = d[i] === 0 ? 1 : 1 - smoothstep(0, WET_REACH, d[i] * g.cell);
+  return m;
+}
+
+/**
+ * How far each cell lies from the grid's live water (the brook, the pond, a rill that flows), in cells: 0 in it, Infinity
+ * everywhere when there's none.
+ */
+export function waterCells(g: Grid): Float32Array {
   const n = g.nx * g.nz, d = new Float32Array(n).fill(Infinity);
   for (let i = 0; i < n; i++) if (isWet(g.waterLevel[i])) d[i] = 0;
   // A two-pass chamfer distance (steps of 1 and √2 cells): close to the true distance, and the same on every run.
@@ -32,9 +42,7 @@ export function wetness(g: Grid): Float32Array {
       if (ix > 0) relax(i, i + nx - 1, D);
     }
   }
-  const m = new Float32Array(n);
-  for (let i = 0; i < n; i++) m[i] = d[i] === 0 ? 1 : 1 - smoothstep(0, WET_REACH, d[i] * g.cell);
-  return m;
+  return d;
 }
 
 /** Recomputes the grid's moisture; returns the cells that changed. */

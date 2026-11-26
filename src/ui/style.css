@@ -480,6 +480,9 @@
   color: var(--ink-2);
 }
 
+/* The field tools' Polygon / Brush pill, between the readout and the tray. */
+.ui-fieldmode { padding: 0.25em; border-radius: 999px; font-size: 0.9em; }
+
 .ui-tray { padding: 0.35em; border-radius: 1.25em; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 /* A big group (the Homestead's) wraps onto a second row rather than running off a laptop's screen. */
 .ui-tray-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: stretch; gap: 0.15em; max-width: 62em; }

@@ -45,7 +45,8 @@ test('water speeds a crop: a field on the brook\'s bank ripens in about half a d
   // Ripening through a day's light.
   let h = 0, hour = 8;
   while (wet.harvestReady === 0 && h < 48) { growCrops(s, 0.05, sunFactor(hour, s.season)); h += 0.05; hour = (hour + 0.05) % 24; }
-  assert.ok(h >= 9 && h <= 16, `the watered field ripened in ${h.toFixed(1)} h`);
+  // The bank's wetness reaches 7 m (WET_REACH), so the whole bank field is well watered: it ripens as fast as any.
+  assert.ok(h >= 6 && h <= 16, `the watered field ripened in ${h.toFixed(1)} h`);
   assert.equal(wet.harvestReady, fieldYield(wet));
   assert.ok(dry.harvestReady === 0 && dry.growth < 0.7, `the dry field is at ${dry.growth.toFixed(2)}`);
 });

@@ -10,7 +10,7 @@ export {
 } from './grid.ts';
 export {
   catmullRom, clamp, lerp, type Obb, obbBounds, obbCorners, obbDistance, obbsOverlap, pathLength, type Point2, pointInObb,
-  polylineDistance, resample, segmentDistance, smoothstep, toLocal, toWorld, wrapAngle,
+  polylineDistance, resample, segmentDistance, segmentsCross, smoothstep, toLocal, toWorld, wrapAngle,
 } from './geom.ts';
 export { fbm, noise2 } from './noise.ts';
 export { hash3, makeRng, type Rng } from './rng.ts';
@@ -36,13 +36,13 @@ export {
   CHANNEL_DEPTH, CHANNEL_REACH, coreObb, padTarget, recomposeEarth, RILL_HALF, thingObb, thingRect, TRACK_HALF,
 } from './earth.ts';
 export { canPlace, moveThing, placeThing, removeThing, rotateThing, suggestWaterWheelYaw } from './place.ts';
-export { eraseField, FIELD_MAX_SLOPE, fieldAllowed, type FieldEdit, paintField } from './fields.ts';
+export { eraseField, eraseFieldPolygon, FIELD_MAX_SLOPE, fieldAllowed, type FieldEdit, paintField, paintFieldPolygon } from './fields.ts';
 export { canDig, digChannel, fillChannel } from './channels.ts';
 export {
   CHANNEL_SPACING, channelPath, channelSummary, type ChannelPreview, FREEBOARD, FRICTION, JUNCTION, junctionPairs, type JunctionPair,
   MIN_WATER_DEPTH, previewChannelFlow,
 } from './flow.ts';
-export { WET_REACH, wetness } from './wet.ts';
+export { WET_REACH, waterCells, wetness } from './wet.ts';
 export {
   addHedge, addTrack, canPlant, canTrack, MAX_GRADE, MIN_TRACK, PATH_SPACING, plantTree, removeHedge, removeTrack, removeTree, SAPLING_SCALE,
   trackPath,
@@ -54,7 +54,8 @@ export { type Networks, networksOf } from './power/radius.ts';
 // The living homestead (Milestone 2): time, Supplies, goods, crops, workshops, power, carts and the brief.
 export {
   BEE_MIN_C, FLOWERING_CROPS, FLOWERING_GROWTH, floweringArea, flowerDrift, SOIL_DRAINING, effectiveMoisture, erosionDrain, fieldTempC, forageRate, greenhouseWarm, HOLLOW_COLD_C, HOLLOW_REACH,
-  hollowDepth, hollowDepths, HOT_C, hotMidday, inversion, isLiquidRain, isRaining, isSnowing, LIQUID_RAIN, localTempC, serviceSite, hasServiceRadius, SERVICE_RADIUS, SLOPE_WARM_C,
+  hollowDepth, hollowDepths, HOT_C, hotMidday, inversion, isLiquidRain, isRaining, isSnowing, LIQUID_RAIN, localTempC, serviceSite, hasServiceArea, hasServiceRadius, SERVICE_RADIUS, SLOPE_WARM_C,
+  distanceToWater, SPRINKLER_BOX, SPRINKLER_FAR_M, SPRINKLER_FAR_W, SPRINKLER_NEAR_M, SPRINKLER_NEAR_W, sprinklerObb, sprinklerPowerW, sprinklerWattsLabel,
   treeShade, warmGreenhouseNear, windShelter,
 } from './microclimate.ts';
 export { liveEnv, stepSim, MAX_SUBSTEP_SECONDS, type SimTickResult } from './sim.ts';

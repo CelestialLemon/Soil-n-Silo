@@ -3,7 +3,7 @@
 // (steady, day and night), the Biogas Digester its burning waste (steady, in any weather, while it has fuel; it lights only
 // when its network needs it, so its waste keeps for the dark calm). Batteries soak up the surplus and carry the homestead
 // through the night; when a network can't meet its demand, it sheds its workshops first (they pause), and that is a blackout.
-import { isLiquidRain, serviceSite, treeShade, windShelter } from '../microclimate.ts';
+import { isLiquidRain, serviceSite, sprinklerPowerW, treeShade, windShelter } from '../microclimate.ts';
 import { chargingAtGarage } from '../carts.ts';
 import { CATALOG } from '../catalog.ts';
 import { formatClock, isNight, sunFactor } from '../clock.ts';
@@ -103,7 +103,8 @@ export function demandOf(s: GameState, t: Thing, r: ThingRuntime, hour: number, 
   const def = CATALOG[t.kind];
   switch (t.kind) {
     case 'farmhouse': return isNight(hour, s.season) ? FARMHOUSE_NIGHT_W : FARMHOUSE_DAY_W;
-    case 'sprinkler': return !isLiquidRain(s, weather) && sprinklerNeeded(s, t) ? def.powerDemand : 0;
+    // Its pump's draw grows with how far it lifts the water from the nearest brook, pond or flowing rill.
+    case 'sprinkler': return !isLiquidRain(s, weather) && sprinklerNeeded(s, t) ? sprinklerPowerW(s, t) : 0;
     case 'garage': return s.sim.carts.some((c) => chargingAtGarage(s, c)) ? GARAGE_CHARGE_W : GARAGE_IDLE_W;
     case 'lantern': return isNight(hour, s.season) ? def.powerDemand : 0;
     case 'mill': case 'bakery': case 'coop': case 'oil_press': case 'cannery': case 'spinner': case 'loom': return r.working ? def.powerDemand : 0;

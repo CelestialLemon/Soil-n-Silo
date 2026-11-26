@@ -88,7 +88,8 @@ test('a flood spills over the low meadow, pauses its fields, cuts unbridged ways
   beans.avgMoisture = far.avgMoisture = 0.6;
   const base = Float32Array.from(g.baseWaterLevel), level = Float32Array.from(g.waterLevel), moisture = Float32Array.from(g.moisture);
   const navKey = navFor(s).key, near = (a: number, b: number) => Math.abs(a - b) < 1e-6;
-  assert.ok(near(groundAt(s, -40, -6).speed, GROUND.meadow.speed), 'dry meadow out from the bank');
+  // Beyond the wet bank's mud (it reaches some 4.5 m out before it dries below MUDDY), but within the flood's reach.
+  assert.ok(near(groundAt(s, -40, -7).speed, GROUND.meadow.speed), 'dry meadow out from the bank');
   assert.ok(passable(navFor(s), navCellOf(-20, -3)), 'dry meadow by the brook');
 
   s.sim.weather.floodSurge = 0.38;
@@ -108,7 +109,7 @@ test('a flood spills over the low meadow, pauses its fields, cuts unbridged ways
   assert.ok(passable(nav, navCellOf(bridge.x, bridge.z)), 'the bridge still carries it');
   assert.ok(g.flood[cellOf(s, -40, -6.5)] > FLOOD_MIN && g.flood[cellOf(s, -40, -6.5)] <= FLOOD_DEEP, 'shallow at the flood\'s edge');
   assert.equal(g.flood[cellOf(s, -40, -7.5)], 0, 'and dry beyond it, some 6 m out (0.18 m thinning 3 cm/m)');
-  assert.ok(near(groundAt(s, -40, -6).speed, GROUND.mud.speed), 'and muddy: the carts slow');
+  assert.ok(near(groundAt(s, -40, -7).speed, GROUND.mud.speed), 'and muddy: the carts slow');
 
   // A move under 2 cm leaves the water as it is.
   s.sim.weather.floodSurge = 0.37;

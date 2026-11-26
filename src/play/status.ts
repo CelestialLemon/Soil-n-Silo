@@ -11,6 +11,7 @@ import {
 } from '../game/index.ts';
 import { type CartControls, type LiveWeatherView, suppliesView, type ValleyStats, type Weather } from '../ui/index.ts';
 import type { WeatherName } from '../world/index.ts';
+import { sprinklerSiteLine } from './tools.ts';
 
 /**
  * Whether a valley holds anything a player would lose if it were cleared (a fresh valley rolled over it, a save loaded in
@@ -195,6 +196,8 @@ export function thingDetail(s: GameState, t: Thing, diagnosis: string | null = n
     }
     case 'weather_station': return `Next: ${forecastDays(s, 3).map((f) => `Day ${f.day} ${f.label}`).join(' · ')}`;
     case 'farmhouse': return net ? `Network ${watts(net.generationW)} made, ${watts(net.servedW)} used` : undefined;
+    // Its pump's draw, by how far it lifts its water.
+    case 'sprinkler': return `Pump ${sprinklerSiteLine(s, t)}`;
     default: return undefined;
   }
 }
