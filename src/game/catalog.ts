@@ -70,6 +70,13 @@ const SPECS = {
   // protected crop under glass through frost, snow, flood and drought, and lets bees forage inside it in the cold.
   weather_station: { ...home, label: 'Weather Station', model: 'weather_station', padEase: 2.5, maxSlope: 0.18, cost: 1, powerRole: 'none', lo: [-1.54, -1.85], hi: [1.91, 1.52], top: 4.67 },
   greenhouse: { ...home, label: 'Heated Greenhouse', model: 'greenhouse', padEase: 3, cost: 3, powerDemand: 2, lo: [-5.5, -5.65], hi: [5.64, 5.96], top: 5.26 },
+  // Milestone 5A: the full roster's workshops (workshops.ts RECIPES) and the Biogas Digester, a storm-proof source that burns
+  // the homestead's organic waste (manure, bran, seed cake) into steady power, day and night.
+  oil_press: { ...home, label: 'Oil Press', model: 'oil_press', padEase: 3, cost: 2, powerDemand: 1.5, lo: [-3.83, -3.75], hi: [3.75, 3.75], top: 5.38 },
+  cannery: { ...home, label: 'Cannery', model: 'cannery', padEase: 3, cost: 2, powerDemand: 2, lo: [-3.75, -3.75], hi: [3.85, 3.75], top: 5.6 },
+  spinner: { ...home, label: 'Spinner', model: 'spinner', padEase: 3, cost: 2, powerDemand: 1.5, lo: [-3.75, -3.8], hi: [3.75, 3.75], top: 4.6 },
+  loom: { ...home, label: 'Loom', model: 'loom', padEase: 3, cost: 2, powerDemand: 2, lo: [-3.75, -3.75], hi: [3.75, 3.75], top: 4.38 },
+  digester: { ...power, label: 'Biogas Digester', model: 'digester', padEase: 3, maxSlope: 0.16, oneOfEach: true, cost: 3, lo: [-3.78, -3.78], hi: [3.78, 3.78], top: 6.95 },
   rain_tank: { ...prop, category: 'homestead', padEase: 2.5, cost: 1, label: 'Rain Tank', model: 'rain_tank', lo: [-1.21, -1.05], hi: [1.05, 1.55], top: 3.67 },
   sprinkler: { ...prop, category: 'homestead', padEase: 2.5, powerRole: 'load', powerDemand: 1, cost: 1, label: 'Sprinkler', model: 'sprinkler', lo: [-1.85, -0.85], hi: [1.44, 0.85], top: 3.06 },
   beehive: { ...prop, category: 'homestead', padEase: 2.5, cost: 1, label: 'Beehive', model: 'beehive', lo: [-1.7, -0.95], hi: [1.7, 1.6], top: 2.29 },
@@ -109,6 +116,6 @@ export const CATALOG: { readonly [K in ThingKind]: ThingDef } =
 export const isThingKind = (k: string): k is ThingKind => Object.hasOwn(SPECS, k);
 
 /** The craft workshops: one of each, each turning goods into other goods (workshops.ts). */
-export const WORKSHOP_KINDS = ['mill', 'coop', 'bakery', 'composter'] as const satisfies readonly ThingKind[];
+export const WORKSHOP_KINDS = ['mill', 'coop', 'bakery', 'composter', 'oil_press', 'cannery', 'spinner', 'loom'] as const satisfies readonly ThingKind[];
 export type WorkshopKind = (typeof WORKSHOP_KINDS)[number];
 export const isWorkshop = (k: ThingKind): k is WorkshopKind => (WORKSHOP_KINDS as readonly ThingKind[]).includes(k);

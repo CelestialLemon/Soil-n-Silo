@@ -481,7 +481,8 @@
 }
 
 .ui-tray { padding: 0.35em; border-radius: 1.25em; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
-.ui-tray-row { display: flex; align-items: stretch; gap: 0.15em; }
+/* A big group (the Homestead's) wraps onto a second row rather than running off a laptop's screen. */
+.ui-tray-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: stretch; gap: 0.15em; max-width: 62em; }
 .ui-tray-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 .ui-tool {

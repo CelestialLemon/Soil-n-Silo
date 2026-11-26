@@ -53,7 +53,7 @@ export { type Networks, networksOf } from './power/radius.ts';
 
 // The living homestead (Milestone 2): time, Supplies, goods, crops, workshops, power, carts and the brief.
 export {
-  BEE_MIN_C, floweringArea, flowerDrift, effectiveMoisture, erosionDrain, fieldTempC, forageRate, greenhouseWarm, HOLLOW_COLD_C, HOLLOW_REACH,
+  BEE_MIN_C, FLOWERING_CROPS, FLOWERING_GROWTH, floweringArea, flowerDrift, SOIL_DRAINING, effectiveMoisture, erosionDrain, fieldTempC, forageRate, greenhouseWarm, HOLLOW_COLD_C, HOLLOW_REACH,
   hollowDepth, hollowDepths, HOT_C, hotMidday, inversion, isLiquidRain, isRaining, isSnowing, LIQUID_RAIN, localTempC, serviceSite, hasServiceRadius, SERVICE_RADIUS, SLOPE_WARM_C,
   treeShade, warmGreenhouseNear, windShelter,
 } from './microclimate.ts';
@@ -80,17 +80,19 @@ export {
   isGood, takeGood, totalStored,
 } from './goods.ts';
 export {
-  agrivoltaicCoverage, COMPOST_BOOST, compostField, cropStage, fertilityFactor, fieldFrostStalled, fieldMoisture, fieldYield, FROST_SETBACK, growCrops, HEAT_C,
+  agrivoltaicCoverage, CLIMATE_BOOST, CLIMATE_SULK, COMPOST_BOOST, compostField, cropClimate, cropMoisture, cropStage, DROUGHT_FLOOR,
+  FLAX_COOL_C, FLAX_HOT_C, isTender, TENDER_CROPS, TOMATO_COOL_C, TOMATO_WARM_C, fertilityFactor, fieldFrostStalled, fieldMoisture, fieldYield, FROST_SETBACK, growCrops, HEAT_C,
   HEAT_EVAPORATION, SNOW_BURIES, WHEAT_HARDY_C, growthRate, GROWTH_RATE,
   HARVEST_FERTILITY, harvestField, lightFactor, MIN_FERTILITY, moistureFactor, naturalFertility, refreshFieldWeather, REPLANT_GROWTH, REST_PER_DAY,
   restSoil, SOIL_FERTILITY, soilFertility, SOWN_GROWTH, WATERED, wateredness,
 } from './crops.ts';
 export {
-  advanceRecipes, describeRuntime, GREENHOUSE_COLD_C, GREENHOUSE_COLD_W, GREENHOUSE_HOURS, GREENHOUSE_MILD_W, GREENHOUSE_YIELD, growGreenhouses, INPUT_CAP, OUTPUT_CAP, type Recipe, type RecipeInput, RECIPES, runtimeOf, SILO_CAP,
+  advanceRecipes, BYPRODUCTS, type ByproductMaker, type ByproductTarget, describeRuntime, DIGESTER_BURN_HOURS, DIGESTER_FEED, DIGESTER_FUELS,
+  DIGESTER_W, effectivePriority, inputsOf, isByproductMaker, GREENHOUSE_COLD_C, GREENHOUSE_COLD_W, GREENHOUSE_HOURS, GREENHOUSE_MILD_W, GREENHOUSE_YIELD, growGreenhouses, INPUT_CAP, OUTPUT_CAP, type Recipe, type RecipeInput, RECIPES, runtimeOf, SILO_CAP,
   SILO_GOOD_CAP, siloRoom, startRecipes, syncGreenhouses, syncRuntime, type ThingRuntime, wantsInput,
 } from './workshops.ts';
 export {
-  BATTERY_RATE_W, BATTERY_WH, CLOUD_DIM, demandOf, FARMHOUSE_DAY_W, FARMHOUSE_NIGHT_W, GARAGE_CHARGE_W,
+  BATTERY_RATE_W, BATTERY_WH, CLOUD_DIM, demandOf, DIGESTER_CHARGE_BELOW, FARMHOUSE_DAY_W, FARMHOUSE_NIGHT_W, GARAGE_CHARGE_W,
   GARAGE_IDLE_W, generationOf, type PowerNetwork, type PowerSummary, refreshPower, type SimEnv, SOLAR_PEAK_W, stepPower, TURBINE_BASE_W,
   TURBINE_FULL_WIND, TURBINE_SPAN_W, WATERWHEEL_W,
 } from './power/sim.ts';

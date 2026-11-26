@@ -1,6 +1,6 @@
 // The tool strip's tools: how they're grouped, what each is called, its icon, its key and the hint the readout pill shows
 // while it's in hand.
-import { CATALOG, isThingKind, type ThingKind } from '../game/index.ts';
+import { CATALOG, DIGESTER_W, isThingKind, type ThingKind } from '../game/index.ts';
 import type { IconName } from './icons.ts';
 import type { ToolId } from './types.ts';
 
@@ -55,6 +55,10 @@ export const GROUPS: readonly GroupDef[] = [
       place('sprinkler', 'sprinkler', '0', 'Water uphill fields within 11 m · needs 1 W'),
       place('weather_station', 'weatherStation', undefined, `Click gentle ground to raise the Weather Station · shows 3 upcoming days beside the sky dial · ${turn}`),
       place('greenhouse', 'greenhouse', undefined, `Click gentle ground to build the Heated Greenhouse · grows frost-proof crops and warms nearby bees in winter · ${turn}`),
+      place('oil_press', 'oilPress', undefined, `Click gentle ground to place the Oil Press · it presses sunflowers into oil and seed cake · ${turn}`),
+      place('cannery', 'cannery', undefined, `Click gentle ground to place the Cannery · tomatoes and oil simmer into sauce · ${turn}`),
+      place('spinner', 'spinner', undefined, `Click gentle ground to place the Spinner · it spins flax into yarn · ${turn}`),
+      place('loom', 'loom', undefined, `Click gentle ground to place the Loom · it weaves yarn into linen · ${turn}`),
     ],
   },
   {
@@ -65,12 +69,16 @@ export const GROUPS: readonly GroupDef[] = [
       place('waterwheel', 'waterwheel', '3', `Click a brook bank · the wheel turns in the water, day and night · ${turn}`, true),
       place('battery', 'battery', '4', `Click to place a Battery · it carries the day's power into the night · ${turn}`, true),
       place('relay', 'relay', '5', 'Click to raise a Power Relay · free · it carries power 15 m around, no wires', true),
+      place('digester', 'digester', '6', `Click to build the Biogas Digester · turns manure, bran or seed cake into ${DIGESTER_W} W storm-proof power · ${turn}`, true),
     ],
   },
   {
     id: 'land', label: 'Land', icon: 'land', tools: [
       { id: 'field:wheat', label: 'Wheat Field', icon: 'wheat', key: 'f', hint: 'Drag to paint wheat onto gentle ground' },
       { id: 'field:beans', label: 'Bean Field', icon: 'beans', key: 'b', hint: 'Drag to paint beans onto gentle ground' },
+      { id: 'field:tomato', label: 'Tomato Field', icon: 'tomato', hint: 'Drag to paint tomatoes · they love warmth, fear frost and flower for bees' },
+      { id: 'field:sunflower', label: 'Sunflower Field', icon: 'sunflower', hint: 'Drag to paint sunflowers · they shrug off drought, fear frost and flower for bees' },
+      { id: 'field:flax', label: 'Flax Field', icon: 'flax', hint: 'Drag to paint flax · it likes it cool, stands frost and flowers for bees' },
       { id: 'field:erase', label: 'Erase Field', icon: 'eraseField', key: 'x', hint: 'Drag over a field to wipe it back to meadow' },
       { id: 'channel:dig', label: 'Dig Channel', icon: 'dig', key: 'c', hint: 'Drag from the brook downhill · contours show on the grass' },
       { id: 'channel:fill', label: 'Fill Channel', icon: 'fill', key: 'c', shift: true, hint: 'Click or drag over a rill to fill it in' },

@@ -43,7 +43,7 @@ export function starterSupplies(): SuppliesState {
     available: STARTER_SUPPLIES, spent: 0, unlocked: STARTER_SUPPLIES, cap: SUPPLY_CAP,
     drops: [
       { id: 'firstHarvest', amount: DROP_AMOUNT, label: 'First harvest stored in the Silo or a workshop', received: false },
-      { id: 'firstCraft', amount: DROP_AMOUNT, label: 'First crafted good (Flour, Eggs or Bread) delivered to the Depot', received: false },
+      { id: 'firstCraft', amount: DROP_AMOUNT, label: 'First crafted good (Flour, Bread, Oil, Sauce, Yarn or Linen) delivered to the Depot', received: false },
     ],
   };
 }

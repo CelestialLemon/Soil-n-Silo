@@ -1,6 +1,6 @@
 // Every edit the player makes, as data, through one door: `apply` checks it against the rules, changes the state if it's
 // allowed, and says what changed (or, unchanged, why not).
-import { INPUT_CAP, runtimeOf, setOutHoney } from './workshops.ts';
+import { BYPRODUCTS, type ByproductTarget, INPUT_CAP, isByproductMaker, runtimeOf, setOutHoney } from './workshops.ts';
 import { addGood, capacity, takeGood } from './goods.ts';
 import { buyCart, retireCart } from './carts.ts';
 import type { ThingKind } from './catalog.ts';
@@ -30,7 +30,7 @@ export type Action =
   | { type: 'plantTree'; x: number; z: number; species?: TreeSpecies }
   | { type: 'removeTree'; id: number }
   | { type: 'setRecipe'; id: number; recipe: 'bread' | 'honey_cake' }
-  | { type: 'setByproductPriority'; id: number; target: 'auto' | 'coop' | 'composter' | 'silo' }
+  | { type: 'setByproductPriority'; id: number; target: ByproductTarget }
   | { type: 'setGreenhouseCrop'; id: number; crop: Crop }
   | { type: 'buyCart' }
   | { type: 'retireCart'; id: number };
@@ -67,15 +67,15 @@ export function apply(s: GameState, a: Action): Result<Change, string> {
     }
     case 'setByproductPriority': {
       const r = runtimeOf(s, a.id);
-      if (!r || (r.kind !== 'mill' && r.kind !== 'coop')) return err('Choose a Mill or Coop');
-      if ((a.target === 'silo' && r.kind !== 'coop') || (a.target === 'coop' && r.kind !== 'mill')) return err('Choose a destination for this byproduct');
+      if (!r || !isByproductMaker(r.kind)) return err('Choose a Mill, Coop or Oil Press');
+      if (!BYPRODUCTS[r.kind].targets.includes(a.target)) return err('Choose a destination for this byproduct');
       r.priority = a.target;
       return ok(emptyChange(s.revision));
     }
     case 'setGreenhouseCrop': {
       const r = runtimeOf(s, a.id);
       if (r?.kind !== 'greenhouse') return err('Choose a Heated Greenhouse to change its crop');
-      if (!(CROPS as readonly string[]).includes(a.crop)) return err('The Greenhouse grows Wheat or Beans');
+      if (!(CROPS as readonly string[]).includes(a.crop)) return err('The Greenhouse grows Wheat, Beans, Tomato, Sunflower or Flax');
       // The harvest under way becomes the new crop's: what's grown so far isn't lost, and switching back is symmetric.
       r.greenhouseCrop = a.crop;
       return ok(emptyChange(s.revision));

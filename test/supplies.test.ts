@@ -25,6 +25,7 @@ test('every kind has its price: homes, relays and props are free, canopies, batt
   const want: Partial<Record<ThingKind, number>> = {
     farmhouse: 0, relay: 0, bench: 0, lantern: 0, planter: 0, crates: 0, depot: 0, solar: 1, rain_tank: 1, sprinkler: 1, beehive: 1, battery: 1,
     weather_station: 1, silo: 2, mill: 2, bakery: 2, coop: 2, composter: 2, garage: 2, turbine: 3, waterwheel: 3, greenhouse: 3,
+    oil_press: 2, cannery: 2, spinner: 2, loom: 2, digester: 3,
   };
   for (const k of THING_KINDS) assert.equal(CATALOG[k].cost, want[k], k);
   assert.equal(CART_COST, 1);

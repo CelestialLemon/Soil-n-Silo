@@ -6,7 +6,7 @@ import { cellX, cellZ, COVER, rectOfWorld, slopeAt } from './grid.ts';
 import { noise2 } from './noise.ts';
 import type { SimEnv } from './power/sim.ts';
 import type { ThingKind } from './catalog.ts';
-import type { Field, GameState, Thing } from './state.ts';
+import type { Crop, Field, GameState, Thing } from './state.ts';
 import type { ThingRuntime } from './workshops.ts';
 import { toSpell } from './weather.ts';
 
@@ -55,8 +55,14 @@ function fieldCells(s: GameState, f: Field): Point2[] {
   return points;
 }
 
+/** Crops that draw the soil down (all but beans): on a steep slope no beans, trees or hedges guard, the soil washes away. */
+export const SOIL_DRAINING: readonly Crop[] = ['wheat', 'tomato', 'sunflower', 'flax'];
+/** Crops that flower for the bees once grown this far (all but wheat). */
+export const FLOWERING_CROPS: readonly Crop[] = ['beans', 'tomato', 'sunflower', 'flax'];
+export const FLOWERING_GROWTH = 0.45;
+
 export function erosionDrain(s: GameState, f: Field): number {
-  if (f.crop !== 'wheat') return 0;
+  if (!SOIL_DRAINING.includes(f.crop)) return 0;
   const cells = fieldCells(s, f);
   const avgSlope = cells.reduce((n, p) => n + slopeAt(s.grid, p.x, p.z), 0) / Math.max(1, cells.length);
   const drain = clamp(avgSlope - 0.08, 0, 0.1);
@@ -113,8 +119,8 @@ export function warmGreenhouseNear(s: GameState, t: Point2): boolean {
 }
 
 /**
- * How briskly a hive's bees forage now (0: they stay in). Outdoors they need daylight, flowers (flowering beans or a
- * wildflower meadow), dry calm weather and air of 10°C or more, and never in winter; a warm Heated Greenhouse within their
+ * How briskly a hive's bees forage now (0: they stay in). Outdoors they need daylight, flowers (flowering beans, tomato,
+ * sunflower or flax, or a wildflower meadow), dry calm weather and air of 10°C or more, and never in winter; a warm Heated Greenhouse within their
  * reach lets them forage inside the glass whatever the weather (by day).
  */
 export function forageRate(s: GameState, t: Thing, env: SimEnv): number {
@@ -132,7 +138,7 @@ export function forageRate(s: GameState, t: Thing, env: SimEnv): number {
 
 export function floweringArea(s: GameState, t: Thing): number {
   const site = serviceSite(s, t);
-  return site.fields.reduce((area, f) => area + (f.crop === 'beans' && f.growth >= 0.45
+  return site.fields.reduce((area, f) => area + (FLOWERING_CROPS.includes(f.crop) && f.growth >= FLOWERING_GROWTH
     ? (site.cells.get(f.id)?.length ?? 0) * s.grid.cell ** 2 : 0), 0);
 }
 

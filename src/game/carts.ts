@@ -1,15 +1,18 @@
 // Electric Carts: they haul everything on their own, with no route menus (docs/DESIGN.md, "Zero-Menu Solarpunk
 // Logistics"). An idle cart looks for the most useful job it can reach, in this order:
-//   1. the Pantry Order: bread, flour and beans to the Depot while the settlement still wants them;
-//   2. starved workshops: wheat to the Mill, flour and eggs to the Bakery, bran (or wheat) to the Coop, manure (or bran)
-//      to the Composter, from the fields, the Heated Greenhouse, the workshops that make them or the Silo;
+//   1. the Pantry Order: its goods to the Depot while the settlement still wants them (flour, oil and yarn once the
+//      Bakery, Cannery and Loom standing have enough for a batch);
+//   2. starved workshops: wheat to the Mill, flour and eggs to the Bakery, bran (or seed cake, or wheat) to the Coop,
+//      manure (or bran, or seed cake) to the Composter, sunflowers to the Oil Press, tomatoes and oil to the Cannery, flax
+//      to the Spinner, yarn to the Loom, and then organic waste to the Biogas Digester, from the fields, the Heated
+//      Greenhouse, the workshops that make them or the Silo; a byproduct the player sent somewhere first goes there first;
 //   3. ripe fields, harvested into the Silo;
 //   4. compost to the field whose soil is poorest;
 //   5. workshops' filling output buffers, cleared into the Silo.
 // What's spoken for is read from the carts' own jobs (never kept apart from them, so nothing is ever claimed twice or
 // claimed forever). A cart checks its job again at each end, and on the way: a building taken down, or the land changed
 // under its path, sends it another way, and cargo with nowhere to go waits on the cart until somewhere wants it.
-import { CATALOG, isWorkshop, type ThingKind } from './catalog.ts';
+import { CATALOG, isWorkshop, type ThingKind, WORKSHOP_KINDS } from './catalog.ts';
 import { type Change, emptyChange } from './change.ts';
 import { sunFactor } from './clock.ts';
 import { compostField, harvestField } from './crops.ts';
@@ -20,9 +23,11 @@ import { windShelter } from './microclimate.ts';
 import { addGood, countOf, GOOD_LABELS, type Good, takeGood, totalStored } from './goods.ts';
 import { CART_SPEED, dockOf, findPath, groundAt, navCellOf, navCenter, NAV_CELL, navComponent, navFor, passable, reachOf } from './nav.ts';
 import { err, ok, type Result } from './result.ts';
-import type { Field, GameState, Thing } from './state.ts';
+import { CROPS, type Crop, type Field, type GameState, type Thing } from './state.ts';
 import { CART_COST, canAfford, MAX_CARTS, receiveDrop, refund, spend } from './supplies.ts';
-import { INPUT_CAP, outputRoom, recipeOf, runtimeOf, siloRoom, type ThingRuntime, wantsInput } from './workshops.ts';
+import {
+  BYPRODUCTS, effectivePriority, INPUT_CAP, inputsOf, isByproductMaker, outputRoom, recipeOf, RECIPES, runtimeOf, siloRoom, type ThingRuntime, wantsInput,
+} from './workshops.ts';
 
 /** Units a cart carries per trip. */
 export const CART_CAPACITY = 2;
@@ -250,7 +255,7 @@ function incoming(s: GameState, end: Endpoint, goods?: readonly Good[]): number 
   for (const c of s.sim.carts) {
     if (!c.job || !sameEnd(c.job.to, end) || (goods && !goods.includes(c.job.good))) continue;
     if (c.state === 'toPickup') n += c.job.count;
-    else if (c.state === 'toDropoff' && c.cargo) n += c.cargo.count;
+    else if (c.state === 'toDropoff' && c.cargo) n += Math.min(c.cargo.count, c.job.count);
   }
   return n;
 }
@@ -277,7 +282,7 @@ function sources(s: GameState, good: Good, reach?: Reach): Source[] {
     if (t.kind !== 'silo' && t.kind !== 'beehive' && t.kind !== 'greenhouse' && !isWorkshop(t.kind)) continue;
     // Manure deliberately sent to storage stays there while the Coop keeps that setting.
     if (t.kind === 'silo' && good === 'manure' &&
-        s.things.some(v => v.kind === 'coop' && s.sim.things.get(v.id)?.priority === 'silo')) continue;
+        s.things.some(v => { const c = v.kind === 'coop' && s.sim.things.get(v.id); return c && effectivePriority(s, c) === 'silo'; })) continue;
     const r = s.sim.things.get(t.id);
     if (!r || countOf(r.outputs, good) <= 0) continue;
     const end = thingEnd(t.id), avail = countOf(r.outputs, good) - claimed(s, end, good), at = dockOf(s, t, reach);
@@ -294,12 +299,11 @@ function depotWants(s: GameState, depot: Thing, good: Good): number {
   return Math.max(0, target - countOf(s.sim.delivered, good) - incoming(s, thingEnd(depot.id), [good]));
 }
 
-/** How many of `good` a workshop or the Silo would take, beyond what carts are already bringing. */
+/** How many of `good` a workshop, the Digester or the Silo would take, beyond what carts are already bringing. */
 function thingWants(s: GameState, t: Thing, r: ThingRuntime, good: Good): number {
   const end = thingEnd(t.id);
   if (t.kind === 'silo') return Math.max(0, Math.min(wantsInput(r, good) - incoming(s, end, [good]), siloRoom(r) - incoming(s, end)));
-  if (!isWorkshop(t.kind)) return 0;
-  const group = recipeOf(t.kind, r).inputs.find((input) => input.options.includes(good));
+  const group = inputsOf(r).find((input) => input.options.includes(good));
   if (!group) return 0;
   const room = INPUT_CAP - totalStored(r.inputs) - incoming(s, end);
   return Math.max(0, Math.min(room, wantsInput(r, good) - incoming(s, end, group.options)));
@@ -311,36 +315,32 @@ interface Want { end: Endpoint; at: Point2; good: Good; want: number; priority: 
 /** Everything the homestead wants hauled now (to places on the cart's patch of ground), most urgent first. */
 function wants(s: GameState, reach?: Reach): Want[] {
   const out: Want[] = [];
-  const depot = s.things.find((t) => t.kind === 'depot'), bakery = s.things.find((t) => t.kind === 'bakery');
-  const bakeryFed = () => {
-    if (!bakery) return true;
-    const r = s.sim.things.get(bakery.id);
-    return !r || countOf(r.inputs, 'flour') + incoming(s, thingEnd(bakery.id), ['flour']) >= 1;
-  };
-  // 1. The Pantry Order (flour once the Bakery has its share).
+  const depot = s.things.find((t) => t.kind === 'depot');
+  // 1. The Pantry Order (flour, oil and yarn once the workshop that works them has enough for a batch).
   if (depot) {
     const at = dockOf(s, depot, reach);
     if (at && within(s, reach, at)) for (const good of Object.keys(s.sim.brief.order.targets) as Good[]) {
       const want = depotWants(s, depot, good);
-      if (want > 0) out.push({ end: thingEnd(depot.id), at, good, want, priority: good === 'flour' && !bakeryFed() ? 3.5 : 1 });
+      if (want > 0) out.push({ end: thingEnd(depot.id), at, good, want, priority: workshopFed(s, depot, good) ? 1 : 3.5 });
     }
     if (at && within(s, reach, at)) out.push({ end: thingEnd(depot.id), at, good: 'honey_cake',
       want: CART_CAPACITY, priority: 7, surplusCake: true });
   }
-  // 2. Starved workshops: their preferred input first, the fallback only when none of the preferred is to be had.
+  // 2. Starved workshops: their preferred input first (a byproduct sent to them first, then their recipe's order), the
+  // fallback only when none of the preferred is to be had. Then the Digester, which burns any of its waste, after them.
   for (const t of s.things) {
-    if (!isWorkshop(t.kind)) continue;
+    const digester = t.kind === 'digester';
+    if (!isWorkshop(t.kind) && !digester) continue;
     const r = s.sim.things.get(t.id), at = r && dockOf(s, t, reach);
     if (!r || !at || !within(s, reach, at)) continue;
-    for (const input of recipeOf(t.kind, r).inputs) {
-      const preferBran = t.kind === 'composter' && sources(s, 'bran', reach).some(src =>
-        src.end.kind === 'thing' && s.sim.things.get(src.end.id)?.priority === 'composter');
-      const options = preferBran ? ['bran', 'manure'] as const : input.options;
+    for (const input of inputsOf(r)) {
+      const options = sentFirst(s, t, input.options, reach);
       for (const [k, good] of options.entries()) {
-        if (k > 0 && options.slice(0, k).some(p => sources(s, p, reach).some(src =>
+        if (!digester && k > 0 && options.slice(0, k).some(p => sources(s, p, reach).some(src =>
           src.end.id !== t.id || src.end.kind !== 'thing'))) break;
-        const want = thingWants(s, t, r, good);
-        if (want > 0) out.push({ end: thingEnd(t.id), at, good, want, priority: 2 + k * 0.5 });
+        let want = thingWants(s, t, r, good);
+        if (depot && isWorkshop(t.kind)) want = Math.min(want, sharedCap(s, depot, t, r, good));
+        if (want > 0) out.push({ end: thingEnd(t.id), at, good, want, priority: digester ? DIGESTER_PRIORITY : 2 + k * 0.5 });
       }
     }
   }
@@ -350,7 +350,7 @@ function wants(s: GameState, reach?: Reach): Want[] {
     // Each good only to its share of the Silo, so a glut of one (beans, say) never fills it against the rest: past that,
     // ripe fields hold their harvest until something wants it.
     const room = (good: Good) => thingWants(s, silo, siloRt, good);
-    for (const good of ['wheat', 'beans'] as const) {
+    for (const good of CROPS) {
       const want = room(good);
       if (want > 0) out.push({ end: thingEnd(silo.id), at: siloAt, good, want, priority: 3, fromFieldsOnly: true });
     }
@@ -358,7 +358,7 @@ function wants(s: GameState, reach?: Reach): Want[] {
       const r = isWorkshop(t.kind) || t.kind === 'beehive' || t.kind === 'greenhouse' ? s.sim.things.get(t.id) : undefined;
       if (!r) continue;
       for (const good of Object.keys(r.outputs) as Good[]) {
-        const flush = good === 'honey' || good === 'honey_cake' || (good === 'manure' && r.priority === 'silo');
+        const flush = good === 'honey' || good === 'honey_cake' || (effectivePriority(s, r) === 'silo' && isByproductMaker(r.kind) && good === BYPRODUCTS[r.kind].good);
         if (!flush && totalStored(r.outputs) < 4) continue;
         const want = room(good);
         if (want > 0) out.push({ end: thingEnd(silo.id), at: siloAt, good, want, priority: 5, fromThing: t.id });
@@ -372,6 +372,68 @@ function wants(s: GameState, reach?: Reach): Want[] {
     if (at && within(s, reach, at)) out.push({ end: fieldEnd(f.id), at, good: 'compost', want: 1, priority: 4 + f.fertility * 0.1 });
   }
   return out;
+}
+
+/**
+ * How urgently organic waste goes to the Digester on its own: after every workshop's input, even a third choice (2, 2.5,
+ * 3), so the Coop and the Composter eat first, and before the Silo. A byproduct sent to it first goes at 2 (dispatch).
+ */
+const DIGESTER_PRIORITY = 3.2;
+
+/**
+ * Goods the Pantry Order shares with a workshop's recipe, how many the workshop keeps back for a batch, and what it makes
+ * for the order: the Bakery's flour (for bread), the Cannery's oil (for sauce), the Loom's yarn (two skeins a weave, for
+ * linen).
+ */
+const RESERVED: Partial<Record<Good, { kind: ThingKind; count: number; makes: Good }>> = {
+  flour: { kind: 'bakery', count: 1, makes: 'bread' }, oil: { kind: 'cannery', count: 1, makes: 'tomato_sauce' },
+  yarn: { kind: 'loom', count: 2, makes: 'linen' },
+};
+
+/** Units of `good` still short at its reserved workshop for the remaining Pantry Order batches of `makes`, or Infinity if unshared. */
+function sharedShortage(s: GameState, depot: Thing, t: Thing, r: ThingRuntime, good: Good, countIncoming = true): number {
+  const need = RESERVED[good];
+  if (!need || need.kind !== t.kind || !isWorkshop(t.kind)) return Infinity;
+  const made = sources(s, need.makes).reduce((n, src) => n + src.avail, 0);
+  const baking = r.working ? countOf(recipeOf(t.kind, r, true).outputs, need.makes) : 0;
+  const remMakes = Math.max(0, depotWants(s, depot, need.makes) - made - baking);
+  if (remMakes <= 0) return 0;
+  const perBatch = countOf(recipeOf(t.kind, r).outputs, need.makes);
+  if (perBatch <= 0) return 0;
+  const totalNeed = Math.ceil(remMakes / perBatch) * need.count;
+  const inFlight = countIncoming ? incoming(s, thingEnd(t.id), [good]) : 0;
+  return Math.max(0, totalNeed - countOf(r.inputs, good) - inFlight);
+}
+
+/** When the Depot also wants `good`, cap the workshop's intake to its remaining order batches so spare units aren't stranded. */
+function sharedCap(s: GameState, depot: Thing, t: Thing, r: ThingRuntime, good: Good, countIncoming = true): number {
+  if (depotWants(s, depot, good) <= 0) return Infinity;
+  return sharedShortage(s, depot, t, r, good, countIncoming);
+}
+
+/**
+ * Whether the Depot may take `good` ahead of the workshop that shares it: none stands, the order needs no more of what it
+ * makes (counting finished stock and any batch under way), or it has enough of `good` for its next needed batch.
+ */
+function workshopFed(s: GameState, depot: Thing, good: Good): boolean {
+  const need = RESERVED[good];
+  const t = need && s.things.find((v) => v.kind === need.kind), r = t && s.sim.things.get(t.id);
+  if (!need || !t || !r) return true;
+  const shortage = sharedShortage(s, depot, t, r, good);
+  if (shortage <= 0) return true;
+  return countOf(r.inputs, good) + incoming(s, thingEnd(t.id), [good]) >= need.count;
+}
+
+/**
+ * A workshop's or the Digester's input options, the byproducts the player sent to it first (a maker's priority naming
+ * it, with some of it to be had) ahead of the rest.
+ */
+function sentFirst(s: GameState, t: Thing, options: readonly Good[], reach: Reach): readonly Good[] {
+  const sent = options.filter((g) => sources(s, g, reach).some((src) => {
+    const r = src.end.kind === 'thing' ? s.sim.things.get(src.end.id) : undefined;
+    return r !== undefined && isByproductMaker(r.kind) && BYPRODUCTS[r.kind].good === g && effectivePriority(s, r) === t.kind;
+  }));
+  return sent.length === 0 ? options : [...sent, ...options.filter((g) => !sent.includes(g))];
 }
 
 // --- Dispatch -----------------------------------------------------------------------------------------------------------
@@ -397,9 +459,9 @@ function dispatch(s: GameState, cart: Cart): boolean {
       const job: CartJob = { from: src.end, to: w.end, good: w.good, count, priority: w.priority };
       const source = src.end.kind === 'thing' && s.sim.things.get(src.end.id);
       const destination = w.end.kind === 'thing' && thingById(s, w.end.id)?.kind;
-      if (source && source.priority !== 'auto' &&
-          ((source.kind === 'mill' && w.good === 'bran') || (source.kind === 'coop' && w.good === 'manure'))) {
-        if (source.priority === destination) job.priority = 2;
+      const chosen = source && effectivePriority(s, source);
+      if (source && chosen !== 'auto' && isByproductMaker(source.kind) && w.good === BYPRODUCTS[source.kind].good) {
+        if (chosen === destination) job.priority = 2;
         else if (destination !== 'silo') job.priority = 2.8;
       }
       // Within a priority, the shortest haul; a haul from the Silo only when nothing nearer the source has it.
@@ -434,7 +496,7 @@ function routeCargo(s: GameState, cart: Cart): boolean {
   for (const { w } of options.slice(0, 6)) {
     const path = findPath(s, here, w.at);
     if (!path) continue;
-    cart.job = { from: { kind: 'thing', id: -1 }, to: w.end, good: cargo.good, count: cargo.count, priority: w.priority };
+    cart.job = { from: { kind: 'thing', id: -1 }, to: w.end, good: cargo.good, count: Math.min(cargo.count, w.want), priority: w.priority };
     setLeg(s, cart, 'toDropoff', path, w.end);
     cart.jobDesc = `Taking ${cargo.count} ${GOOD_LABELS[cargo.good].label} to the ${endpointLabel(s, w.end)}`;
     return true;
@@ -504,16 +566,22 @@ function accepts(s: GameState, end: Endpoint, good: Good, n: number): number {
     return o.done ? 0 : Math.min(n, Math.max(0, (o.targets[good] ?? 0) - countOf(s.sim.delivered, good)));
   }
   if (t.kind === 'silo') return Math.min(n, siloRoom(r, good));
-  if (isWorkshop(t.kind) && recipeOf(t.kind, r).inputs.some((input) => input.options.includes(good))) return Math.min(n, Math.max(0, INPUT_CAP - totalStored(r.inputs)));
+  if (inputsOf(r).some((input) => input.options.includes(good))) {
+    const depot = s.things.find((v) => v.kind === 'depot');
+    const cap = depot && isWorkshop(t.kind) ? sharedCap(s, depot, t, r, good, false) : Infinity;
+    return Math.min(n, Math.max(0, INPUT_CAP - totalStored(r.inputs)), cap);
+  }
   return 0;
 }
 
-const HARVESTS: readonly Good[] = ['wheat', 'beans'], CRAFTED: readonly Good[] = ['flour', 'eggs', 'bread'];
+/** What earns the settlement's drops: any crop's harvest stored, any crafted pantry good delivered. */
+const HARVESTS: readonly Good[] = CROPS;
+const CRAFTED: readonly Good[] = ['flour', 'eggs', 'bread', 'honey_cake', 'oil', 'tomato_sauce', 'yarn', 'linen'];
 
 function dropOff(s: GameState, cart: Cart, events: SimEvent[]): void {
   const job = cart.job, cargo = cart.cargo;
   if (!job || !cargo) { goHome(s, cart, 'Heading back to the Garage'); return; }
-  const n = accepts(s, job.to, cargo.good, cargo.count);
+  const n = accepts(s, job.to, cargo.good, Math.min(cargo.count, job.count));
   if (n > 0) {
     if (job.to.kind === 'field') { const f = fieldById(s, job.to.id); if (f) for (let k = 0; k < n; k++) compostField(s, f); }
     else {
@@ -687,16 +755,22 @@ export function diagnoseIdleCarts(s: GameState): string | null {
   for (const f of ripe) {
     const crop = f.crop;
     if (f.harvestReady <= claimed(s, fieldEnd(f.id), crop)) continue;
-    const targets = s.things.filter(t => t.kind === 'silo' || (crop === 'wheat' && (t.kind === 'mill' || t.kind === 'coop'))
+    const user = cropUser(crop);
+    const targets = s.things.filter(t => t.kind === 'silo' || (isWorkshop(t.kind) && RECIPES[t.kind].inputs.some((i) => i.options.includes(crop)))
       || (t.kind === 'depot' && depotWants(s, t, crop) > 0));
-    if (!targets.length) return `${GOOD_LABELS[crop].label} is ripe — build a ${crop === 'wheat' ? 'Silo or Mill' : 'Silo'} to haul it`;
+    if (!targets.length) return `${GOOD_LABELS[crop].label} is ripe — build a ${user ? `Silo or ${CATALOG[user].label}` : 'Silo'} to haul it`;
     const connected = reaches.filter(reach => fieldEdge(s, f, reach));
     if (connected.some(reach => wants(s, reach).some(w => w.good === crop && w.fromThing === undefined))) continue;
     const reachable = targets.filter(t => connected.some(reach => dockOf(s, t, reach)));
     if (!reachable.length) return `Ripe ${crop} can't be reached — connect the field and its destination with a track and plank bridge`;
     if (reachable.every(t => t.kind !== 'silo')) return `Workshops have enough ${crop} — build a Silo for the surplus`;
-    return crop === 'wheat' ? 'Silo has no room for wheat — build a Mill to use it'
-      : 'Silo has no room for beans — check the Pantry Order and the route to the Depot';
+    if (!user) return `Silo has no room for ${crop} — check the Pantry Order and the route to the Depot`;
+    // The workshop already stands (waiting for its other input, or full): point at it rather than at building another.
+    return s.things.some(t => t.kind === user) ? `Silo has no room for ${crop} — check the ${CATALOG[user].label}`
+      : `Silo has no room for ${crop} — build a ${CATALOG[user].label} to use it`;
   }
   return null;
 }
+
+/** The workshop that first uses a crop (the Mill for wheat, the Oil Press for sunflowers), if any does. */
+const cropUser = (crop: Crop) => WORKSHOP_KINDS.find((k) => RECIPES[k].inputs.some((i) => i.options.includes(crop)));

@@ -122,6 +122,14 @@ Valley still restores in its own living weather (and with a stormy character's w
 ### Milestone 5 — Full Roster, Campaign Valleys & Endless Seeds
 *Goal: full 30–60 minute replayable game ready for daily drop-in play.*
 
+**Part 1, the full roster (#302), done and played on the GPU:** Tomato, Sunflower and Flax fields paint beside Wheat and
+Beans (Land tools, brush3d's organic crop blanket). The Oil Press, Cannery, Spinner and Loom stand in the Homestead group
+(2 Supplies each, one of each), and the Biogas Digester (3 Supplies, Shift+6) in the Power group: it burns manure, bran or
+seed cake into 4 W day and night in any weather, its flare lit while it burns, with a 15 m wireless range. The Oil Press's
+handwheel and the Spinner's wheel turn and the Cannery steams while they work with power. The Heated Greenhouse's card
+cycles all five crops; a Mill's, Coop's or Oil Press's byproduct pip shows once two of its destinations stand, and cycles
+Auto and those. The tool trays wrap onto a second row on a laptop screen.
+
 - **Remaining crops & workshops:** Tomato + Cannery (Sauce), Sunflower + Oil Press (Oil, Seed Cake), Flax + Spinner + Loom (Yarn, Linen), Honey Cake at the Bakery, and the **Biogas Digester** (turning organic waste into storm-proof power).
 - **Curated Campaign Valleys:** 6–8 handcrafted seeded valleys spanning all four seasons and distinct terrains (meadow, terraced hill, river bend, windy ridge, dry summer slope, winter glen).
 - **Procedural Valley Generator:** Endless seeded valleys with season/terrain/difficulty controls and auto-balanced Supplies caps, plus Sandbox mode.
