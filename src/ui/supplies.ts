@@ -1,6 +1,7 @@
 // The Supplies counter, docked at the left of the tool strip: the crate and "free / unlocked" (docs/DESIGN.md, "One Shared
 // Capped Pool"). Its tooltip has the valley's cap and what earns the next milestone drop; when a drop arrives it glows
-// once and shows the gift ("+4") for a moment.
+// once and shows the gift ("+4") for a moment. In a Sandbox valley (or any pool with a cap of 900 or more) it reads
+// "∞ Sandbox" instead of its figures.
 import type { SuppliesState } from '../game/index.ts';
 import { el, setFlag, setText, setTitle } from './dom.ts';
 import { icon } from './icons.ts';
@@ -19,12 +20,15 @@ export const supplyWord = (n: number): string => (n === 1 ? 'Supply' : 'Supplies
 
 export interface SuppliesPill {
   element: HTMLElement;
-  /** `seed` tells a fresh valley (whose pool starts over) from a drop arriving. */
-  render(sup: SuppliesView, seed: number): void;
+  /** `seed` tells a fresh valley (whose pool starts over) from a drop arriving; `sandbox` shows "∞ Sandbox". */
+  render(sup: SuppliesView, seed: number, sandbox?: boolean): void;
 }
 
 /** How long a drop's glow and its "+N" stay, ms (matches `ui-drop` in style.css). */
 const GLOW_MS = 2600;
+
+/** A cap this large is the Sandbox's unlimited pool. */
+const SANDBOX_CAP = 900;
 
 export function createSuppliesPill(): SuppliesPill {
   let last: { unlocked: number; seed: number } | null = null;
@@ -39,7 +43,17 @@ export function createSuppliesPill(): SuppliesPill {
   const gift = el('span', 'ui-supplies-gift');
   pill.append(icon('supplies', 'ui-icon ui-supplies-icon'), figure, gift);
 
-  function render(sup: SuppliesView, seed: number): void {
+  function render(sup: SuppliesView, seed: number, sandbox = false): void {
+    const unlimited = sandbox || sup.cap >= SANDBOX_CAP;
+    setFlag(pill, 'is-sandbox', unlimited);
+    if (unlimited) {
+      setText(free, '∞');
+      setText(of, ' Sandbox');
+      setFlag(pill, 'is-empty', false);
+      setTitle(pill, 'Sandbox: unlimited Supplies — build whatever you like');
+      last = { unlocked: sup.unlocked, seed };
+      return;
+    }
     setText(free, String(sup.available));
     setText(of, ` / ${sup.unlocked}`);
     setFlag(pill, 'is-empty', sup.available <= 0);

@@ -3,16 +3,24 @@
 //   weather=clear|scattered|overcast|soft-rain|storm|mist|fog|... (brush3d's WEATHER_PRESETS, or a spell: gale, frost: locks the weather; left out,
 //   the valley lives in its own continuous weather), climate=mild|wet|dry|hot|gales|stormy|hard|highRiver (the season's
 //   character), wseed=12345 (the weather's seed: the same week of weather again), quality=high|medium|low,
-//   yaw=orbit|snap (the camera's turn, for a link that wants one; otherwise the player's own setting).
+//   yaw=orbit|snap (the camera's turn, for a link that wants one; otherwise the player's own setting),
+//   campaign=<id> (a campaign valley, src/game/campaign.ts), terrain=<style> (the game's TERRAIN_STYLES),
+//   difficulty=<difficulty> (the game's DIFFICULTIES) and sandbox=1|true (the sandbox: no order to fill).
 // The camera's turn is a player setting (decided 2026-11-25, docs/ROADMAP.md): a free orbit by default, or snapped 90°
 // views for those who prefer them, remembered in the browser (CAMERA_YAW_KEY).
 import { QUALITY, type QualityName, WEATHER_PRESETS, type WeatherName } from '../../brush3d/src/index.ts';
-import { type ClimateCharacter, isClimate, isWeatherSpell, SEASONS, type Season, type WeatherSpell } from '../game/index.ts';
+import {
+  campaignById, type ClimateCharacter, type Difficulty, isClimate, isDifficulty, isTerrainStyle, isWeatherSpell, SEASONS, type Season,
+  type TerrainStyle, type WeatherSpell,
+} from '../game/index.ts';
 
 /** How the camera turns: a free smooth orbit, or four cardinal views 90° apart. */
 export type YawMode = 'orbit' | 'snap';
 
 export const YAW_MODES: readonly YawMode[] = ['orbit', 'snap'];
+
+/** brush3d's graphics presets, best first (the settings panel's choices). */
+export const QUALITY_NAMES: readonly QualityName[] = ['high', 'medium', 'low'];
 
 /** Where the browser keeps the player's camera setting. */
 export const CAMERA_YAW_KEY = 'soil-n-silo:camera-yaw';
@@ -31,6 +39,14 @@ export interface WorldOptions {
   weatherSeed?: number;
   /** The graphics preset (brush3d's QUALITY); left out, high. */
   quality?: QualityName;
+  /** A campaign valley to open (`?campaign=`, checked against the game's campaign); left out, none. */
+  campaign?: string;
+  /** The land's style for a generated valley (`?terrain=`); left out, the game's own. */
+  terrain?: TerrainStyle;
+  /** How hard a generated valley's order is (`?difficulty=`); left out, the game's own. */
+  difficulty?: Difficulty;
+  /** The sandbox (`?sandbox=1` or `true`): building freely, no order to fill; left out, false. */
+  sandbox?: boolean;
 }
 
 export const DEFAULT_OPTIONS: Readonly<WorldOptions> = { yaw: 'orbit', seed: 1042, season: 'spring', hour: 10.5 };
@@ -80,6 +96,11 @@ export function readUrlOptions(search: string = typeof location === 'undefined' 
   const wseed = wseedText === null || wseedText.trim() === '' ? NaN : Number(wseedText);
   if (Number.isInteger(wseed)) out.weatherSeed = wseed >>> 0;
   if (qualityText !== null && Object.hasOwn(QUALITY, qualityText)) out.quality = qualityText as QualityName;
+  const campaignText = p.get('campaign'), terrainText = p.get('terrain'), difficultyText = p.get('difficulty'), sandboxText = p.get('sandbox');
+  if (campaignText !== null && campaignById(campaignText)) out.campaign = campaignText;
+  if (terrainText !== null && isTerrainStyle(terrainText)) out.terrain = terrainText;
+  if (difficultyText !== null && isDifficulty(difficultyText)) out.difficulty = difficultyText;
+  if (sandboxText !== null && ['1', 'true'].includes(sandboxText.toLowerCase())) out.sandbox = true;
   return out;
 }
 

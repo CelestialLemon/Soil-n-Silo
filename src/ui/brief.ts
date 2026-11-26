@@ -1,15 +1,23 @@
-// The valley postcard, top left: the valley's name (from its seed) and season, its climate character this season in one
-// quiet line ("A wet spring"), a first nudge until the Farmhouse stands,
+// The valley postcard, top left: the valley's name (a campaign valley's title, else one from its seed) and season, its
+// climate character this season and its landform in one quiet line ("A wet spring · Terrace", "· Sandbox" in a Sandbox
+// valley), a first nudge until the Farmhouse stands,
 // and the Open Homestead Brief's three seals (docs/DESIGN.md, "Open Homestead Brief"), each a small ring filling as the
 // homestead meets it, with one live line: the Pantry Order's goods, the Living Land's fields and soil, the Steady
 // Homestead's blackout-free hours (and why it last started over, or why it's paused). No timer. When all three fill, a warm "Valley Restored"
-// note. Home and New valley sit at its foot; it folds down to just its title.
+// note. Home, Valleys (the Valleys panel: the campaign, a custom valley or a Sandbox, and the saves) and a quick Save and
+// Load sit at its foot; it folds down to just its title.
 import { type BriefState, GOOD_LABELS, isGood, isWorkshop, SEAL_LABELS, type SealId, SEASONS, type Season, THING_KINDS } from '../game/index.ts';
 import { button, el, setFlag, setHidden, setPressed, setText, setTitle } from './dom.ts';
 import { icon, type IconName, setIcon } from './icons.ts';
-import type { UiCallbacks, ValleyStats } from './types.ts';
+import { SEASON_LABEL, TERRAIN_LABEL } from './panels.ts';
+import type { UiCallbacks, UiSnapshot, ValleyStats } from './types.ts';
 
-export interface Brief { element: HTMLElement; render(stats: ValleyStats): void }
+export interface Brief {
+  element: HTMLElement;
+  /** The Valleys button, so the panel it opens doesn't count a press on it as one outside. */
+  valleysButton: HTMLElement;
+  render(s: UiSnapshot): void;
+}
 
 const FIRST = ['Willow', 'Alder', 'Sun', 'Bramble', 'Fern', 'Hazel', 'Linden', 'Thistle', 'Clover', 'Rowan', 'Heather', 'Larch', 'Briar', 'Juniper', 'Elder', 'Moss', 'Ash', 'Bryony'];
 const LAST = ['bend Valley', 'brook Hollow', 'ridge Glen', 'combe', 'dale', 'mere Hollow', 'wick Vale', 'ford Glen', 'shaw Valley', 'holt Vale', 'leigh Hollow', 'water Dale'];
@@ -22,7 +30,8 @@ export function valleyName(seed: number): string {
   return `${FIRST[h % FIRST.length] ?? 'Willow'}${LAST[(h >>> 8) % LAST.length] ?? 'bend Valley'}`;
 }
 
-const SEASON_LABEL: Record<Season, string> = { spring: 'Spring', summer: 'Summer', autumn: 'Autumn', winter: 'Winter' };
+/** Whether the valley has the player's work in it, so clearing it should ask first. */
+const hasWork = (s: ValleyStats): boolean => s.landEditCount > 0;
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en');
 
@@ -95,14 +104,13 @@ function createSeal(id: SealId, glyph: IconName): SealView {
   };
 }
 
-/** A fresh seed for a new valley. */
-const rollSeed = () => Math.floor(Math.random() * 0x7fffffff);
-
-export function createBrief(cb: UiCallbacks): Brief {
+/** The postcard; `onValleys` opens or closes the Valleys panel. */
+export function createBrief(cb: UiCallbacks, onValleys: () => void): Brief {
   let last: ValleyStats | null = null;
+  let snap: UiSnapshot | null = null;
   let folded = false;
-  /** A fresh valley waiting for a yes, when the homestead would be cleared. */
-  let pending: { seed: number; season: Season } | null = null;
+  /** A choice waiting for a yes, when it would clear the homestead: a fresh season, or loading the saved game. */
+  let pending: { text: string; yes: string; run: () => void } | null = null;
 
   const card = el('section', 'ui-brief ui-float');
   card.setAttribute('aria-label', 'Your valley');
@@ -156,20 +164,28 @@ export function createBrief(cb: UiCallbacks): Brief {
   const foot = el('div', 'ui-brief-foot');
   const home = button('ui-chip', 'Look at the Farmhouse', () => cb.onCenterHomestead());
   home.append(icon('home'), el('span', '', 'Home'));
-  const roll = button('ui-chip', 'Roll a new valley', () => { if (last) ask(rollSeed(), last.season); });
-  roll.append(icon('dice'), el('span', '', 'New valley'));
+  const valleys = button('ui-chip', 'Valleys: the campaign, a custom valley or a Sandbox, and your saves', () => onValleys());
+  valleys.append(icon('map'), el('span', '', 'Valleys'));
+  const save = button('ui-icon-btn ui-brief-save', 'Save the game', () => cb.onSaveGame?.());
+  save.append(icon('save'));
+  const load = button('ui-icon-btn ui-brief-load', 'Load the saved game', () => {
+    if (snap?.hasSavedGame !== true || !last) return;
+    if (!hasWork(last)) { cb.onLoadGame?.(); return; }
+    pending = { text: 'Load the saved game? This homestead will be replaced.', yes: 'Load', run: () => cb.onLoadGame?.() };
+    paint();
+  });
+  load.append(icon('load'));
   const seedTag = el('span', 'ui-brief-seed');
-  foot.append(home, roll, seedTag);
+  foot.append(home, valleys, save, load, seedTag);
 
   const confirm = el('div', 'ui-brief-confirm');
   const confirmText = el('p', 'ui-brief-confirm-text');
-  const yes = button('ui-chip is-strong', 'Start the new valley', () => {
+  const yes = button('ui-chip is-strong', 'Yes', () => {
     const p = pending;
     pending = null;
     paint();
-    if (p) cb.onNewValley(p.seed, p.season);
+    p?.run();
   });
-  yes.textContent = 'Start afresh';
   const no = button('ui-chip', 'Keep this valley', () => { pending = null; paint(); });
   no.textContent = 'Keep';
   confirm.append(confirmText, yes, no);
@@ -177,29 +193,29 @@ export function createBrief(cb: UiCallbacks): Brief {
   body.append(seasons, climate, prompt, seals, restored, foot, confirm);
   card.append(head, body);
 
-  function hasWork(s: ValleyStats): boolean {
-    return s.landEditCount > 0;
-  }
-
   /** Starts a new valley, first asking when it would clear the player's homestead. */
   function ask(seed: number, season: Season): void {
     if (!last || !hasWork(last)) { cb.onNewValley(seed, season); return; }
-    pending = { seed, season };
-    setText(confirmText, season === last.season
-      ? 'Roll a fresh valley? This homestead will be cleared.'
-      : `Start afresh in ${SEASON_LABEL[season].toLowerCase()}? This homestead will be cleared.`);
+    pending = {
+      text: season === last.season
+        ? 'Roll a fresh valley? This homestead will be cleared.'
+        : `Start afresh in ${SEASON_LABEL[season].toLowerCase()}? This homestead will be cleared.`,
+      yes: 'Start afresh',
+      run: () => cb.onNewValley(seed, season),
+    };
     paint();
   }
 
   function paint(): void {
     const s = last;
     if (!s) return;
-    setText(name, valleyName(s.seed));
+    setText(name, s.valleyTitle || valleyName(s.seed));
     setFlag(card, 'is-folded', folded);
     setHidden(body, folded);
     setTitle(fold, folded ? 'Open the postcard' : 'Fold the postcard');
     for (const [season, b] of seasonBtns) setPressed(b, season === s.season);
-    const climateLabel = s.climateLabel ?? '';
+    const climateLabel = [s.climateLabel, s.terrain ? TERRAIN_LABEL[s.terrain] : undefined, s.sandbox === true ? 'Sandbox' : undefined]
+      .filter((t) => t !== undefined && t !== '').join(' · ');
     setText(climate, climateLabel);
     setHidden(climate, climateLabel === '');
     setHidden(prompt, s.hasFarmhouse);
@@ -213,8 +229,19 @@ export function createBrief(cb: UiCallbacks): Brief {
     setHidden(restored, !s.brief.restored);
     setFlag(card, 'is-restored', s.brief.restored);
     setText(seedTag, `#${s.seed}`);
+    setHidden(save, cb.onSaveGame === undefined);
+    setHidden(load, cb.onLoadGame === undefined);
+    const saved = snap?.hasSavedGame === true;
+    load.disabled = !saved;
+    setFlag(load, 'is-quiet', !saved);
+    setTitle(load, saved ? `Load the saved game${snap?.savedAtLabel ? ` (${snap.savedAtLabel})` : ''}` : 'No saved game yet');
     setHidden(foot, pending !== null);
     setHidden(confirm, pending === null);
+    if (pending) {
+      setText(confirmText, pending.text);
+      setText(yes, pending.yes);
+      setTitle(yes, pending.yes);
+    }
   }
 
   function paintSeals(s: ValleyStats, b: BriefState): void {
@@ -240,11 +267,13 @@ export function createBrief(cb: UiCallbacks): Brief {
       paused || (!h.done && h.running && h.resetReason !== '' && h.hours < 1) ? 'low' : 'neutral');
   }
 
-  function render(stats: ValleyStats): void {
-    if (last && last.seed !== stats.seed) pending = null;
+  function render(s: UiSnapshot): void {
+    const stats = s.stats;
+    if (last && (last.seed !== stats.seed || last.campaignId !== stats.campaignId)) pending = null;
     last = stats;
+    snap = s;
     paint();
   }
 
-  return { element: card, render };
+  return { element: card, valleysButton: valleys, render };
 }

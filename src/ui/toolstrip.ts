@@ -130,7 +130,7 @@ export function createToolStrip(cb: UiCallbacks, toast: (message: string) => voi
       const garage = kind === 'garage' && s.stats.hasGarage ? ` · ${s.stats.cartCount}/${s.stats.maxCarts} carts` : '';
       setTitle(node, `${title}${garage}${placed ? ' · placed' : short ? ` · ${s.stats.supplies.available} free` : ''}`);
     }
-    supplies.render(s.stats.supplies, s.stats.seed);
+    supplies.render(s.stats.supplies, s.stats.seed, s.stats.sandbox === true);
     setFlag(tabs.get('homestead') ?? strip, 'is-beckoning', !s.stats.hasFarmhouse && open !== 'homestead');
 
     // The readout: the live one if there is one, else the tool's own hint.

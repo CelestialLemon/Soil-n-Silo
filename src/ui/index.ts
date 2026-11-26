@@ -1,7 +1,9 @@
 // The HTML over the canvas (docs/DESIGN.md, "Minimal HUD"): the valley postcard and its three seals top left, the sky
 // strip (the day and hour, the camera's turns, its orbit or snapped setting and the power view's bolt, with the power pill
 // under it while the power view is on or the lights are out) top right, the tool strip with its Supplies counter and its
-// readout at the bottom, the building card beside a clicked thing (the Garage's with its carts), and soft toasts. The valley
+// readout at the bottom, the building card beside a clicked thing (the Garage's with its carts), and soft toasts. Two quiet
+// panels stay hidden until asked for (panels.ts): the Valleys panel beside the postcard and the Settings popover under the
+// sky strip; Esc or a click outside closes them. The valley
 // is what you look at: the overlay lets every pointer event through except on its own floating pills.
 //
 // The UI knows nothing of the world or the renderer. The loop hands it a `UiSnapshot` (every frame is fine: it only touches
@@ -11,6 +13,7 @@
 import './style.css';
 import { createBrief } from './brief.ts';
 import { el } from './dom.ts';
+import { createSettingsPanel, createValleysPanel } from './panels.ts';
 import { createRing } from './ring.ts';
 import { createSkyStrip } from './skystrip.ts';
 import { createToasts } from './toast.ts';
@@ -19,8 +22,8 @@ import { keyOf, toolForKey } from './tools.ts';
 import type { UiCallbacks, UiController, UiSnapshot } from './types.ts';
 
 export type {
-  CartControls, LandTool, LiveWeatherView, PlaceTool, SelectedThingView, Speed, SuppliesView, ToolId, ToolReadout, UiCallbacks, UiController,
-  UiSnapshot, ValleyStats, Weather, YawMode,
+  CartControls, LandTool, LiveWeatherView, PlaceTool, ProceduralRequest, SelectedThingView, Speed, SuppliesView, ToolId, ToolReadout,
+  UiCallbacks, UiController, UiQuality, UiSettings, UiSnapshot, ValleyStats, Weather, YawMode,
 } from './types.ts';
 export { suppliesView } from './supplies.ts';
 export { SPEEDS, WEATHERS } from './types.ts';
@@ -39,14 +42,16 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks, options: UiO
 
   const toasts = createToasts();
   const strip = createToolStrip(callbacks, (m) => toasts.show(m, 'info'));
-  const brief = createBrief(callbacks);
-  const sky = createSkyStrip(callbacks);
+  const brief = createBrief(callbacks, () => { settings.close(); valleys.toggle(); });
+  const sky = createSkyStrip(callbacks, () => { valleys.close(); settings.toggle(); });
+  const valleys = createValleysPanel(callbacks, () => [brief.valleysButton]);
+  const settings = createSettingsPanel(callbacks, () => [sky.settingsButton]);
   const ring = createRing(root, callbacks, (m) => toasts.show(m, 'info'));
 
   const right = el('div', 'ui-corner-right');
-  right.append(sky.element, sky.balance);
+  right.append(sky.element, sky.balance, settings.element);
   root.classList.add('ui-root');
-  root.replaceChildren(brief.element, right, toasts.element, ring.element, strip.element);
+  root.replaceChildren(brief.element, valleys.element, right, toasts.element, ring.element, strip.element);
 
   function onKey(e: KeyboardEvent): void {
     const s = last;
@@ -78,8 +83,10 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks, options: UiO
   return {
     render(snapshot) {
       last = snapshot;
-      brief.render(snapshot.stats);
+      brief.render(snapshot);
       sky.render(snapshot);
+      valleys.render(snapshot);
+      settings.render(snapshot);
       strip.render(snapshot);
       ring.render(snapshot.selected);
     },
@@ -87,6 +94,8 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks, options: UiO
     showToast(message, tone = 'info') { toasts.show(message, tone); },
     dispose() {
       if (keyboard) window.removeEventListener('keydown', onKey);
+      valleys.dispose();
+      settings.dispose();
       toasts.dispose();
       root.replaceChildren();
       root.classList.remove('ui-root');

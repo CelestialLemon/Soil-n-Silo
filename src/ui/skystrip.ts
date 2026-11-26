@@ -9,17 +9,26 @@
 // 11°C"), with the wind and any frost or flood note in its tooltip; it's a button only while `?weather=` holds the sky,
 // and a click lets living weather back in. Without it, the old chip that steps through four skies. Once a Weather Station
 // stands, its days ahead sit beside it as tiny sky icons, each named in its tooltip ("Day 4 · Thunderstorm (6°–13°C)"):
-// no table, nothing to open (docs/DESIGN.md, "Minimal HUD and In-World Readability").
+// no table, nothing to open (docs/DESIGN.md, "Minimal HUD and In-World Readability"). In a Sandbox valley the readout is
+// a button that steps through the key skies (Clear, Showers, Thunderstorm, Gale, Heatwave, Frost, Snow, Blizzard) and
+// back to living weather.
+//
+// At the strip's end, beside the power view, a speaker that mutes and unmutes in one click and a gear that opens the
+// Settings popover (panels.ts); both show only once the game hands the UI its settings.
 //
 // Under the strip, a quiet power pill: the valley's watts made and used and the batteries' charge, shown only while the
 // power view is on or the homestead is in a blackout (then in amber, pointing at the power view). Calm play never sees it.
-import { type DayForecast, type ForecastIcon, isNight, type PowerSummary, type Season, seasonHours, type WeatherSpell } from '../game/index.ts';
+import {
+  type DayForecast, type ForecastIcon, isNight, type PowerSummary, type Season, seasonHours, WEATHER_LABELS, type WeatherSpell,
+} from '../game/index.ts';
 import { button, el, setFlag, setHidden, setPressed, setText, setTitle } from './dom.ts';
 import { icon, type IconName, setIcon } from './icons.ts';
 import { SPEEDS, type Speed, type UiCallbacks, type UiSnapshot, type Weather, WEATHERS, type YawMode } from './types.ts';
 
 export interface SkyStrip {
   element: HTMLElement;
+  /** The gear, so the Settings popover it opens doesn't count a press on it as one outside. */
+  settingsButton: HTMLElement;
   /** The power pill, set under the strip. */
   balance: HTMLElement;
   render(s: UiSnapshot): void;
@@ -64,6 +73,10 @@ type Hazard = 'cold' | 'heat' | 'wild';
 const HAZARDS: Partial<Record<WeatherSpell, Hazard>> = { frost: 'cold', blizzard: 'cold', 'heat-wave': 'heat', storm: 'wild', gale: 'wild' };
 
 const LOCKED = 'Locked weather — click to return to living weather';
+const SANDBOX = 'Sandbox weather — click to change (or return to living weather)';
+
+/** The skies a Sandbox click steps through, after living weather (null) and back to it. */
+const SANDBOX_SKIES: readonly (WeatherSpell | null)[] = [null, 'clear', 'soft-rain', 'storm', 'gale', 'heat-wave', 'frost', 'snow', 'blizzard'];
 
 const degrees = (c: number) => `${Math.round(c) === 0 ? 0 : Math.round(c)}°`;
 
@@ -113,7 +126,8 @@ function balanceLine(p: PowerSummary): string {
   return `${watts(p.totalGenW)} gen · ${watts(p.totalDemandW)} use${batt}`;
 }
 
-export function createSkyStrip(cb: UiCallbacks): SkyStrip {
+/** The sky strip; `onSettings` opens or closes the Settings popover. */
+export function createSkyStrip(cb: UiCallbacks, onSettings: () => void): SkyStrip {
   let last: UiSnapshot | null = null;
   let shownMinute = -1;
   let shownDay = -1;
@@ -183,6 +197,10 @@ export function createSkyStrip(cb: UiCallbacks): SkyStrip {
   // Weather: the living sky's readout (a button only while `?weather=` locks it), or the old chip that steps to the next sky.
   const weather = button('ui-chip ui-weather', 'Weather', () => {
     if (!last) return;
+    if (isSandbox(last)) {
+      cb.onPickSandboxWeather?.(SANDBOX_SKIES[(sandboxStep(last) + 1) % SANDBOX_SKIES.length] ?? null);
+      return;
+    }
     if (last.liveWeather) {
       if (last.liveWeather.locked) cb.onClearWeatherLock?.();
       return;
@@ -214,7 +232,16 @@ export function createSkyStrip(cb: UiCallbacks): SkyStrip {
   // The power view: as small and quiet, beside it.
   const powerView = button('ui-icon-btn ui-camera-mode ui-power-view', POWER_VIEW, () => cb.onTogglePowerView());
   powerView.append(icon('power'));
-  turns.append(turnLeft, turnRight, cameraMode, powerView);
+  // Sound and settings: a one-click mute and the gear.
+  const mute = button('ui-icon-btn ui-camera-mode ui-mute', 'Mute', () => {
+    const st = last?.settings;
+    if (st) cb.onUpdateSettings?.({ sound: !st.sound });
+  });
+  const muteIcon = icon('soundOn');
+  mute.append(muteIcon);
+  const gear = button('ui-icon-btn ui-camera-mode ui-gear', 'Settings: sound, graphics and storm flashes', () => onSettings());
+  gear.append(icon('settings'));
+  turns.append(turnLeft, turnRight, cameraMode, powerView, mute, gear);
 
   strip.append(dial, time, moments, el('span', 'ui-rule'), speeds, weather, forecast, el('span', 'ui-rule'), turns);
 
@@ -256,6 +283,16 @@ export function createSkyStrip(cb: UiCallbacks): SkyStrip {
     setIcon(cameraIcon, cam.icon);
     setTitle(cameraMode, `Camera: ${cam.label} (click for ${CAMERA[cam.other].label.toLowerCase()})`);
     setPressed(powerView, s.powerView);
+    const settings = s.settings;
+    const hasSettings = settings !== undefined && cb.onUpdateSettings !== undefined;
+    setHidden(mute, !hasSettings);
+    setHidden(gear, !hasSettings);
+    if (settings) {
+      const on = settings.sound && settings.volume > 0;
+      setIcon(muteIcon, on ? 'soundOn' : 'soundOff');
+      setTitle(mute, on ? 'Mute the sound' : 'Turn the sound on');
+      setFlag(mute, 'is-muted', !on);
+    }
 
     const p = s.stats.powerSummary;
     const blackout = p.anyBlackout;
@@ -268,9 +305,43 @@ export function createSkyStrip(cb: UiCallbacks): SkyStrip {
     setTitle(balance, blackout ? p.lastBlackoutReason || 'Blackout: more load than the power can carry' : 'The valley\'s power: made, used, and stored in batteries');
   }
 
+  function isSandbox(s: UiSnapshot): boolean {
+    return s.stats.sandbox === true && cb.onPickSandboxWeather !== undefined;
+  }
+
+  /**
+   * Where a Sandbox click steps on from: the sky held now (an index into SANDBOX_SKIES; 0 is living weather), read off the
+   * game's lock, so it stays true across a load, a new valley or a `?weather=` link. A held sky not on the list steps to Clear.
+   */
+  function sandboxStep(s: UiSnapshot): number {
+    const held = s.liveWeather?.locked ? s.liveWeather.spell : null;
+    return Math.max(0, SANDBOX_SKIES.indexOf(held));
+  }
+
   function paintWeather(s: UiSnapshot): void {
     const live = s.liveWeather;
-    if (!live) {
+    const sandbox = isSandbox(s);
+    setFlag(weather, 'is-sandbox', sandbox);
+    if (sandbox) {
+      const step = sandboxStep(s);
+      const picked = s.liveWeather?.locked ? s.liveWeather.spell : null;
+      const next = SANDBOX_SKIES[(step + 1) % SANDBOX_SKIES.length] ?? null;
+      const nextName = next === null ? 'living weather' : WEATHER_LABELS[next].toLowerCase();
+      if (live) {
+        setIcon(weatherIcon, skyIcon(live.spell, live.icon));
+        setText(weatherText, `${live.label} · ${degrees(live.tempC)}C`);
+        paintHazard(weather, HAZARDS[live.spell] ?? null);
+      } else {
+        const w = WEATHER[s.weather];
+        setIcon(weatherIcon, w.icon);
+        setText(weatherText, w.label);
+        paintHazard(weather, null);
+      }
+      setTitle(weather, `${SANDBOX}\n${picked === null ? 'Living weather' : `Held: ${WEATHER_LABELS[picked]}`} · click for ${nextName}`);
+      setFlag(weather, 'is-live', false);
+      setFlag(weather, 'is-locked', picked !== null);
+      weather.removeAttribute('aria-disabled');
+    } else if (!live) {
       const w = WEATHER[s.weather];
       setIcon(weatherIcon, w.icon);
       setText(weatherText, w.label);
@@ -309,5 +380,5 @@ export function createSkyStrip(cb: UiCallbacks): SkyStrip {
     }));
   }
 
-  return { element: strip, balance, render };
+  return { element: strip, settingsButton: gear, balance, render };
 }

@@ -6,7 +6,8 @@
 //
 // A strong storm (the game's `lightning`) throws a strike now and then while the clock runs: one every 14 to 28 real
 // seconds, from a seeded sequence, never while paused. brush3d keeps every flash within its flash limits whatever is asked
-// (lightning.ts, FLASH_LIMIT); the spacing here keeps well inside them, so a storm never strobes.
+// (lightning.ts, FLASH_LIMIT); the spacing here keeps well inside them, so a storm never strobes. With the player's
+// flashes off (flashesEnabled, the settings panel), no strike is thrown at all: no bolt, no flash, no glow.
 import { type BrushRenderer, type Character, cloudDriftSpeed, type CloudDrift, SEASON_SUN, type Weather } from '../../brush3d/src/index.ts';
 import { type ClimateCharacter, makeRng, type Rng, type Season, type WeatherState } from '../game/index.ts';
 
@@ -35,6 +36,8 @@ export function drawnWeather(w: WeatherState): Weather {
 export class Sky {
   hour: number;
   speed: Speed = 1;
+  /** Whether the storm throws its strikes (the player's flash setting); off, a storm only rains and blows. */
+  flashesEnabled = true;
   private readonly cloudSeed: number;
   private drift: Required<CloudDrift> = { x: 0, z: 0, vx: 0, vz: 0 };
   private since = 0;
@@ -81,7 +84,7 @@ export class Sky {
 
   /** The storm's strikes: real seconds (a 4× clock doesn't strike faster), none while paused or with no storm on. */
   private storm(r: BrushRenderer, dt: number, weather: WeatherState, view: { x: number; z: number }) {
-    if (!weather.lightning || this.speed === 0) return;
+    if (!this.flashesEnabled || !weather.lightning || this.speed === 0) return;
     this.nextStrike -= dt;
     if (this.nextStrike > 0) return;
     this.nextStrike = this.gap();
