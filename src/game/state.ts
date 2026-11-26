@@ -14,11 +14,24 @@ import type { ThingRuntime } from './workshops.ts';
 import { type ClimateCharacter, initialWeather, type WeatherKey, type WeatherSpell, type WeatherState } from './weather.ts';
 import { subSeed } from './rng.ts';
 
-export const STATE_VERSION = 9;
+export const STATE_VERSION = 11;
 
 /** The valley's one season (brush3d's SEASONS). */
 export const SEASONS = ['spring', 'summer', 'autumn', 'winter'] as const;
 export type Season = (typeof SEASONS)[number];
+
+/**
+ * The valley's landforms (valley/generate.ts): a calm meadow, a stepped hillside terrace, a broad low floodplain, wind-caught
+ * ridges, a sun-facing slope, and a snug wooded glen.
+ */
+export const TERRAIN_STYLES = ['meadow', 'terrace', 'floodplain', 'ridge', 'slope', 'glen'] as const;
+export type TerrainStyle = (typeof TERRAIN_STYLES)[number];
+export const isTerrainStyle = (t: unknown): t is TerrainStyle => typeof t === 'string' && (TERRAIN_STYLES as readonly string[]).includes(t);
+
+/** How tight a procedural valley's Supplies run (procedural.ts balancedCap). */
+export const DIFFICULTIES = ['relaxed', 'standard', 'tight'] as const;
+export type Difficulty = (typeof DIFFICULTIES)[number];
+export const isDifficulty = (d: unknown): d is Difficulty => typeof d === 'string' && (DIFFICULTIES as readonly string[]).includes(d);
 
 /** The trees brush3d grows (its kit/plants.ts SPECIES). */
 export const TREE_SPECIES = ['oak', 'birch', 'pine', 'willow', 'poplar', 'apple', 'bush'] as const;
@@ -145,6 +158,23 @@ export interface GameState {
   weatherSeed: number;
   /** The valley's character: the season's twist ("A wet spring"). */
   climate: ClimateCharacter;
+  /** The valley's landform (valley/generate.ts). */
+  terrain: TerrainStyle;
+  /** Sandbox mode: Supplies without limit (supplies.ts sandboxSupplies). */
+  sandbox: boolean;
+  /** The curated campaign valley it was grown as (campaign.ts), if any. */
+  campaignId?: string;
+  /** The valley's name for the menus ("Willowbend Meadow"), if it has one. */
+  valleyTitle?: string;
+  /**
+   * Grown by the Custom (procedural) generator (procedural.ts generateProceduralValley), with its rolled Pantry Order and a
+   * cap balanced for `difficulty`; left out for the seed's own meadow and the campaign's valleys.
+   */
+  custom?: boolean;
+  /** The difficulty a custom valley's Supplies cap was balanced for. */
+  difficulty?: Difficulty;
+  /** The character the player chose (`?climate=`) in place of the valley's own; left out when it keeps its own. */
+  climateOverride?: ClimateCharacter;
   /** Bumped on every edit to the land, so the picture can tell which land it shows. */
   revision: number;
   grid: Grid;
@@ -173,7 +203,7 @@ export const defaultWeatherSeed = (seed: number) => subSeed(seed, 99);
 export function blankState(seed: number, season: Season, opts: WeatherOptions = {}): GameState {
   const weatherSeed = (opts.weatherSeed ?? defaultWeatherSeed(seed)) >>> 0, climate = opts.climate ?? 'mild';
   return {
-    version: STATE_VERSION, seed, season, weatherSeed, climate, revision: 0, grid: createGrid(),
+    version: STATE_VERSION, seed, season, weatherSeed, climate, terrain: 'meadow', sandbox: false, revision: 0, grid: createGrid(),
     valley: { homestead: { x: 0, z: 0 }, brook: [], brookLevel: [], pond: { x: 0, z: 0, radius: 0, level: 0 } },
     crags: [], wildTrees: [], things: [], fields: [], channels: [], tracks: [], bridges: [], hedges: [], plantedTrees: [],
     power: { radii: [], connected: [], powered: [] }, sim: blankSim(season, { season, climate, weatherSeed }), nextId: 1,

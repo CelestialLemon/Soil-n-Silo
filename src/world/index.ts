@@ -9,7 +9,7 @@
 // the soft wireless fields round power buildings and relays, no lines.
 //
 // The living homestead (Milestone 2): the play layer runs the game's simulation (stepSim) with the world's sky and wind
-// (getSimEnv: the hour, the live wind's speed, the weather's cloud cover), then hands the world the tick (syncSim): the
+// (getSimEnv: the hour, the game's own wind speed and the weather's cloud cover), then hands the world the tick (syncSim): the
 // crops are drawn at the stage they've grown to, the Electric Carts drive, carry and roll their wheels, and each
 // building's moving parts and lights show how it is (working, powered, its battery's charge).
 //
@@ -18,7 +18,7 @@
 // running high and brown and the floodwater over the low ground, the water icing over, the ground wet, muddy, snowed on
 // and rimed (deepest in the frost hollows), and the season's light with the valley's climate character. A locked weather
 // (`?weather=`, setWeather, setWeatherOverride) is the game's weatherOverride: it holds one spell until cleared.
-import { type BrushRenderer as Renderer, BrushRenderer, QUALITY, type WeatherName } from '../../brush3d/src/index.ts';
+import { type BrushRenderer as Renderer, BrushRenderer, QUALITY, type QualityName, type WeatherName } from '../../brush3d/src/index.ts';
 import {
   type Change, COVER, type GameState, polylineDistance, type SimEnv, type SimTickResult, stepWeather, toSpell, type WeatherSpell,
 } from '../game/index.ts';
@@ -38,13 +38,13 @@ import { Wild } from './wild.ts';
 import { Wind } from './wind.ts';
 
 export {
-  CAMERA_YAW_KEY, clearUrlParam, DEFAULT_OPTIONS, readUrlOptions, storedYawMode, storeYawMode, writeUrlParam, YAW_MODES, type WorldOptions, type YawMode,
+  CAMERA_YAW_KEY, clearUrlParam, DEFAULT_OPTIONS, QUALITY_NAMES, readUrlOptions, storedYawMode, storeYawMode, writeUrlParam, YAW_MODES, type WorldOptions, type YawMode,
 } from './options.ts';
 export { CART_MODEL, getModelForKind } from './things.ts';
 export { GROWTH_STEPS, growthStep } from './fields.ts';
 export type { PreviewSpec } from './tools.ts';
 export type { Speed } from './sky.ts';
-export type { WeatherName } from '../../brush3d/src/index.ts';
+export type { QualityName, WeatherName } from '../../brush3d/src/index.ts';
 export { ZOOM_MAX, ZOOM_MIN } from './camera.ts';
 
 /** Where the world draws: the page's canvas. */
@@ -131,6 +131,16 @@ export interface World {
   getZoom(): number;
   getHeading(): number;
   getYawMode(): YawMode;
+  /** Draws at a graphics preset (brush3d's QUALITY) from the next frame, without a reload. */
+  setQuality(quality: QualityName): void;
+  /** The graphics preset drawn at. */
+  getQuality(): QualityName;
+  /**
+   * The storm's lightning flashes on or off (the player's comfort setting): off, a storm throws no strikes at all, and
+   * brush3d's own flash setting is off too (so nothing else ever flashes the picture).
+   */
+  setFlashes(on: boolean): void;
+  getFlashes(): boolean;
   /** Calls `cb` every frame, before it's drawn, with the seconds since the last; returns what stops it. */
   onFrame(cb: (dt: number) => void): () => void;
   dispose(): void;
@@ -156,6 +166,8 @@ class ValleyWorld implements World {
   private readonly frameCallbacks = new Set<(dt: number) => void>();
   private readonly resizer: ResizeObserver | null;
   private raf = 0;
+  /** The graphics preset drawn at (setQuality). */
+  private quality: QualityName = 'high';
   private last = -1;
   private time = 0;
   private disposed = false;
@@ -170,7 +182,7 @@ class ValleyWorld implements World {
     this.r = r;
     // On a high-DPI screen the frame is drawn at 1080p's pixel count and scaled up: the renderer's budget (brush3d/docs/PERFORMANCE.md).
     r.maxPixels = 1920 * 1080;
-    if (options.quality) r.setQuality(QUALITY[options.quality]);
+    if (options.quality) { r.setQuality(QUALITY[options.quality]); this.quality = options.quality; }
     this.resize();
     this.resizer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.resize());
     this.resizer?.observe(canvas);
@@ -283,9 +295,12 @@ class ValleyWorld implements World {
   }
 
   getSimEnv(): SimEnv {
-    const override = this.state.sim.weatherOverride;
+    // The turbines run on the game's own wind (its gusts are the weather seed's), not the drawn wind, so a homestead makes
+    // the same power whether it's played, saved and loaded, or run headless: read from the weather each sub-step as it moves
+    // on (as liveEnv), not held at where it stood when the frame began.
+    const override = this.state.sim.weatherOverride, w = this.state.sim.weather;
     return {
-      hour: this.getHour(), windSpeed: this.scene.wind.speed, cloudCover: this.state.sim.weather.cloudCover, ...(override ? { weather: override } : {}),
+      hour: this.getHour(), windSpeed: w.windSpeed, cloudCover: w.cloudCover, useLiveWeather: true, ...(override ? { weather: override } : {}),
     };
   }
 
@@ -399,6 +414,25 @@ class ValleyWorld implements World {
   getHour() { return this.sky.hour; }
   setSpeed(speed: Speed) { this.sky.speed = speed; }
   getSpeed() { return this.sky.speed; }
+
+  // ---- The player's settings ----
+
+  setQuality(quality: QualityName) {
+    if (quality === this.quality) return;
+    this.quality = quality;
+    this.r.setQuality(QUALITY[quality]);
+  }
+
+  getQuality() { return this.quality; }
+
+  setFlashes(on: boolean) {
+    this.sky.flashesEnabled = on;
+    this.r.lightning.setting = on ? 'full' : 'off';
+    // Turned off mid-storm: a bolt or glow already on screen goes at once, not after it fades.
+    if (!on) this.r.lightning.clear();
+  }
+
+  getFlashes() { return this.sky.flashesEnabled; }
 
   setWeather(weather: WeatherName) {
     this.setWeatherOverride(toSpell(weather));

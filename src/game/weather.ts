@@ -254,6 +254,9 @@ function airMean(season: Season, climate: ClimateCharacter): number {
   return SEASON_AIR[season].mean + CLIMATE_AIR[climate] + (season === 'winter' && climate === 'mild' ? MILD_WINTER : 0);
 }
 
+/** The warmest a held cold spell's air may be, °C: frost below freezing, snow colder still, a blizzard hard frozen. */
+const FORCED_COLD_C: Readonly<Partial<Record<WeatherSpell, number>>> = { frost: -1, snow: -1.5, blizzard: -4 };
+
 /**
  * The sky at game hour `t` (from the start of day 1), straight from the timeline: `forced` holds one spell instead (a
  * locked weather, or a test's). Pure: the same key and hour always give the same sky.
@@ -272,7 +275,11 @@ export function skyAt(key: WeatherKey, t: number, forced?: WeatherSpell | null):
   const haze = clamp(mix((l) => l.haze), 0, 1);
   const shift = mix((l) => l.temp + l.nightTemp * night);
   const air = SEASON_AIR[season];
-  const tempC = clamp(airMean(season, climate) + dayDrift(weatherSeed, t) + air.swing * (1 - 0.55 * cloudCover) * d + shift, -18, 38);
+  let tempC = clamp(airMean(season, climate) + dayDrift(weatherSeed, t) + air.swing * (1 - 0.55 * cloudCover) * d + shift, -18, 38);
+  // A cold spell held in place (Sandbox's weather lock, `?weather=`, a test's) brings its own freezing air whatever the
+  // season, so a locked frost rimes the ground and locked snow falls as snow, not warm rain. The living weather (no spell
+  // held) is untouched.
+  if (forced) { const cold = FORCED_COLD_C[forced]; if (cold !== undefined) tempC = Math.min(tempC, cold); }
   // Rain falls as snow in the cold, and snow as rain in a thaw.
   if (tempC <= 0.5) { snow = clamp(snow + rain, 0, 1); rain = 0; }
   else if (tempC > 2.5) { rain = clamp(rain + snow, 0, 1); snow = 0; }

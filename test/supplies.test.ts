@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  apply, CATALOG, CART_COST, type GameState, MAX_CARTS, must, receiveDrop, STARTER_SUPPLIES, starterSupplies, SUPPLY_CAP,
-  type ThingKind, THING_KINDS,
+  apply, CATALOG, CART_COST, canAfford, type GameState, MAX_CARTS, must, receiveDrop, refund, SANDBOX_SUPPLIES, sandboxSupplies, spend,
+  STARTER_SUPPLIES, starterSupplies, SUPPLY_CAP, type ThingKind, THING_KINDS,
 } from '../src/game/index.ts';
 import { flatLand, freshValley } from './helpers.ts';
 
@@ -130,4 +130,25 @@ test('a removed building takes its live side with it', () => {
   assert.ok(s.sim.things.has(mill));
   assert.ok(apply(s, { type: 'remove', id: mill }).ok);
   assert.ok(!s.sim.things.has(mill));
+});
+
+test('a Sandbox pool never runs short: past a thousand spent it still affords anything, and refunds never go below nothing', () => {
+  const sup = sandboxSupplies();
+  assert.ok(sup.unlimited && !starterSupplies().unlimited);
+  for (let k = 0; k < 1500; k++) {
+    assert.ok(canAfford(sup, 3, 'A Wind Turbine').ok, `turbine ${k}`);
+    spend(sup, 3);
+  }
+  assert.equal(sup.spent, 4500);
+  // What it shows stays put, finite (a save holds plain numbers).
+  assert.deepEqual([sup.available, sup.unlocked, sup.cap], [SANDBOX_SUPPLIES, SANDBOX_SUPPLIES, SANDBOX_SUPPLIES]);
+  refund(sup, 4400);
+  assert.equal(sup.spent, 100);
+  refund(sup, 1000);
+  assert.equal(sup.spent, 0);
+  assert.equal(sup.available, SANDBOX_SUPPLIES);
+  // A drop arrives (its event still tells of it), but the pool stays as it is.
+  sup.drops = starterSupplies().drops;
+  assert.ok(receiveDrop(sup, 'firstHarvest'));
+  assert.deepEqual([sup.available, sup.unlocked, sup.cap], [SANDBOX_SUPPLIES, SANDBOX_SUPPLIES, SANDBOX_SUPPLIES]);
 });

@@ -4,9 +4,10 @@ import { CATALOG } from './catalog.ts';
 import type { Change } from './change.ts';
 import { BEARING, checkCrossings } from './bridges.ts';
 import { CHANNEL_REACH, channelRect, coreObb, RILL_HALF, settles, thingObb } from './earth.ts';
-import { channelPath, heightsWithRill } from './flow.ts';
+import { channelPath, countJunctions, heightsWithRill } from './flow.ts';
 import { obbDistance, pathBounds, pathLength, type Point2 } from './geom.ts';
 import { cellIx, cellIz, COVER, VALLEY_HALF } from './grid.ts';
+import { idFits, MAX_CHANNEL_JUNCTIONS, strokeFits } from './limits.ts';
 import { err, ok, type Result } from './result.ts';
 import { settle } from './settle.ts';
 import { type Channel, type GameState, takeId } from './state.ts';
@@ -33,6 +34,9 @@ export function canDig(s: GameState, path: readonly Point2[]): Result<void, stri
     for (const { t, box } of props) if (obbDistance(box, p.x, p.z) <= RILL_HALF) return err(`The ${CATALOG[t.kind].label} is in the way.`);
     for (const k of s.crags) if (Math.hypot(p.x - k.x, p.z - k.z) <= k.radius + RILL_HALF) return err('There is rock in the way.');
     for (const t of [...s.wildTrees, ...s.plantedTrees]) if (Math.hypot(p.x - t.x, p.z - t.z) <= TRUNK * t.scale + RILL_HALF) return err('A tree is in the way.');
+  }
+  if (countJunctions([...s.channels.map((c) => c.path), path], MAX_CHANNEL_JUNCTIONS) > MAX_CHANNEL_JUNCTIONS) {
+    return err('Too many rills cross each other here: fill some in first.');
   }
   return keepsTracks(s, path);
 }
@@ -62,6 +66,10 @@ const lower = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
 
 /** Digs a rill along a stroke. */
 export function digChannel(s: GameState, points: readonly Point2[]): Result<Change, string> {
+  const idOk = idFits(s);
+  if (!idOk.ok) return idOk;
+  const fits = strokeFits(s, 'rill', points);
+  if (!fits.ok) return fits;
   const path = channelPath(points);
   const can = canDig(s, path);
   if (!can.ok) return can;

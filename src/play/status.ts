@@ -13,27 +13,44 @@ import { type CartControls, type LiveWeatherView, suppliesView, type ValleyStats
 import type { WeatherName } from '../world/index.ts';
 
 /**
- * The postcard's figures. `starterTracks`: the tracks the valley came with (the Depot's stub), which, like the Depot, are
- * not the player's work (so rolling a fresh valley over an untouched one asks nothing).
+ * Whether a valley holds anything a player would lose if it were cleared (a fresh valley rolled over it, a save loaded in
+ * its place), so the overlay asks first. `starterTracks`: the tracks the valley came with (the Depot's stub), which, like
+ * the Depot, are not the player's work. Anything counts: a building placed, a field, rill, hedgerow or tree, a track laid,
+ * moved or the stub taken up, and what outlasts clearing it all away again (a milestone drop received, goods delivered,
+ * a seal's progress, the land ever edited).
  */
+export function hasValleyProgress(s: GameState, starterTracks: ReadonlySet<number>): boolean {
+  if (s.things.some((t) => !CATALOG[t.kind].immovable)) return true;
+  if (s.fields.length > 0 || s.channels.length > 0 || s.hedges.length > 0 || s.plantedTrees.length > 0) return true;
+  if (s.tracks.length !== starterTracks.size || s.tracks.some((t) => !starterTracks.has(t.id))) return true;
+  const sim = s.sim, b = sim.brief;
+  if (sim.supplies.drops.some((d) => d.received)) return true;
+  if (Object.values(sim.delivered).some((n) => (n ?? 0) > 0)) return true;
+  if (b.restored || b.order.progress > 0 || b.livingLand.progress > 0 || b.steadyHomestead.progress > 0) return true;
+  return s.revision > 0;
+}
+
+/** The postcard's figures. `starterTracks`: the tracks the valley came with (hasValleyProgress). */
 export function valleyStats(s: GameState, starterTracks: ReadonlySet<number> = new Set()): ValleyStats {
   const thingCounts: Partial<Record<ThingKind, number>> = {};
   for (const t of s.things) thingCounts[t.kind] = (thingCounts[t.kind] ?? 0) + 1;
-  const placed = s.things.filter((t) => !CATALOG[t.kind].immovable).length;
-  const tracks = s.tracks.filter((t) => !starterTracks.has(t.id)).length;
   const sim = s.sim;
   return {
     seed: s.seed, season: s.season, hasFarmhouse: (thingCounts.farmhouse ?? 0) > 0, thingCounts,
     fieldAreaM2: s.fields.reduce((sum, f) => sum + f.areaM2, 0),
     flowingRillM: s.channels.reduce((sum, c) => sum + channelSummary(c).wetLength, 0),
     bridgeCount: s.bridges.length,
-    landEditCount: placed + s.fields.length + s.channels.length + tracks + s.hedges.length + s.plantedTrees.length,
+    hasProgress: hasValleyProgress(s, starterTracks),
     // Copies, so a snapshot the overlay keeps never changes under it as the homestead runs on.
     supplies: suppliesView(sim.supplies),
     brief: structuredClone(sim.brief),
     cartCount: sim.carts.length, maxCarts: MAX_CARTS, hasGarage: (thingCounts.garage ?? 0) > 0,
     powerSummary: { ...sim.powerSummary },
     climateLabel: describeClimate(s.season, s.climate),
+    terrain: s.terrain, sandbox: s.sandbox,
+    ...(s.valleyTitle === undefined ? {} : { valleyTitle: s.valleyTitle }),
+    ...(s.campaignId === undefined ? {} : { campaignId: s.campaignId }),
+    ...(s.custom ? { custom: true } : {}), ...(s.difficulty === undefined ? {} : { difficulty: s.difficulty }),
   };
 }
 
@@ -195,7 +212,7 @@ export function liveWeatherView(s: GameState): LiveWeatherView {
 export function cartControls(s: GameState): CartControls {
   const carts = s.sim.carts, count = carts.length;
   const view: CartControls = {
-    count, max: MAX_CARTS, canAfford: s.sim.supplies.available >= CART_COST && count < MAX_CARTS, canRetire: count > 1,
+    count, max: MAX_CARTS, canAfford: (s.sim.supplies.unlimited || s.sim.supplies.available >= CART_COST) && count < MAX_CARTS, canRetire: count > 1,
   };
   if (count > 1) view.retireId = carts[count - 1].id;
   return view;

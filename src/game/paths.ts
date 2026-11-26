@@ -5,6 +5,7 @@ import { CATALOG } from './catalog.ts';
 import type { Change } from './change.ts';
 import { RILL_HALF, thingObb, TRACK_HALF, trackRect } from './earth.ts';
 import { catmullRom, obbDistance, pathLength, type Point2, polylineDistance } from './geom.ts';
+import { idFits, MAX_SAVED_ITEMS, strokeFits } from './limits.ts';
 import { BUILD_HALF, cellIx, cellIz, COVER, heightAt, isWet, slopeAt } from './grid.ts';
 import { err, ok, type Result } from './result.ts';
 import { settle } from './settle.ts';
@@ -21,7 +22,7 @@ export const SAPLING_SCALE = 0.6;
 /** How many cells round the water its carved bank lip reaches (a bridge's ends rest there). */
 const BANK_LIP = 1;
 /** How close planted trees may stand to each other and other trees, m. */
-const TREE_SPACING = 1.5;
+export const TREE_SPACING = 1.5;
 /**
  * How close a track's centreline may come to a hedgerow's, m: its half width and half a cell, matching `addHedge`, which
  * refuses a hedge sample standing in a track cell (the cells whose centres lie within `TRACK_HALF`).
@@ -67,6 +68,10 @@ export function canTrack(s: GameState, path: readonly Point2[]): Result<void, st
 }
 
 export function addTrack(s: GameState, points: readonly Point2[]): Result<Change, string> {
+  const idOk = idFits(s);
+  if (!idOk.ok) return idOk;
+  const fits = strokeFits(s, 'track', points);
+  if (!fits.ok) return fits;
   const path = trackPath(points);
   const can = canTrack(s, path);
   if (!can.ok) return can;
@@ -83,6 +88,10 @@ export function removeTrack(s: GameState, id: number): Result<Change, string> {
 }
 
 export function addHedge(s: GameState, points: readonly Point2[]): Result<Change, string> {
+  const idOk = idFits(s);
+  if (!idOk.ok) return idOk;
+  const fits = strokeFits(s, 'hedge', points);
+  if (!fits.ok) return fits;
   const path = catmullRom(points, PATH_SPACING), g = s.grid;
   if (path.length < 2 || pathLength(path) < 1) return err('Drag a little further to plant a hedge.');
   for (const p of path) {
@@ -128,6 +137,9 @@ export function plantTree(s: GameState, x: number, z: number, species: TreeSpeci
   if (!TREE_SPECIES.includes(species)) return err(`There's no tree called ${String(species)}.`);
   const can = canPlant(s, x, z);
   if (!can.ok) return can;
+  if (s.plantedTrees.length >= MAX_SAVED_ITEMS) return err('The valley holds no more planted trees.');
+  const idOk = idFits(s);
+  if (!idOk.ok) return idOk;
   const id = takeId(s);
   const tree: Tree = { id, x, z, species, scale: SAPLING_SCALE, seed: (s.seed ^ Math.imul(id, 0x9e3779b1)) >>> 0, planted: true };
   s.plantedTrees.push(tree);

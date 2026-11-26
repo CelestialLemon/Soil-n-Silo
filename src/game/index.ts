@@ -17,7 +17,7 @@ export { hash3, makeRng, type Rng } from './rng.ts';
 
 // State and its parts.
 export {
-  blankSim, blankState, defaultWeatherSeed, type WeatherOptions, type Bridge, type Channel, type Crag, type Crop, CROPS, type Field, type FlowSample, type GameState, type Hedge,
+  blankSim, blankState, defaultWeatherSeed, isTerrainStyle, TERRAIN_STYLES, type TerrainStyle, type WeatherOptions, type Bridge, type Channel, type Crag, type Crop, CROPS, type Field, type FlowSample, type GameState, type Hedge,
   type PowerRadius, type PowerState, type Season, SEASONS, type SimState, STATE_VERSION, type Thing, type Track, type Tree,
   TREE_SPECIES, type TreeSpecies, type Valley,
 } from './state.ts';
@@ -26,7 +26,7 @@ export {
   WORKSHOP_KINDS, type WorkshopKind,
 } from './catalog.ts';
 export {
-  BANK_FREEBOARD, CLEARING, generateValley, naturalize, SIDE_RISE, TERRACE_DIP, TERRACE_WIDTH, VALLEY_FALL,
+  BANK_FREEBOARD, CLEARING, generateValley, LANDFORMS, naturalize, SIDE_RISE, TERRACE_DIP, TERRACE_WIDTH, VALLEY_FALL, type ValleyGenOptions,
 } from './valley/generate.ts';
 
 // Edits.
@@ -72,7 +72,7 @@ export { refreshFlood } from './settle.ts';
 export { type SimEvent, type SimEventType } from './events.ts';
 export { formatClock, isNight, SECONDS_PER_GAME_HOUR, seasonHours, sunFactor, sunHours } from './clock.ts';
 export {
-  canAfford, CART_COST, costOf, DROP_AMOUNT, type DropId, MAX_CARTS, type MilestoneDrop, receiveDrop, refund, sandboxSupplies, spend,
+  canAfford, CART_COST, costOf, DROP_AMOUNT, type DropId, MAX_CARTS, type MilestoneDrop, receiveDrop, refund, SANDBOX_SUPPLIES, sandboxSupplies, spend,
   STARTER_SUPPLIES, starterSupplies, SUPPLY_CAP, type SuppliesState,
 } from './supplies.ts';
 export {
@@ -110,3 +110,15 @@ export {
   PANTRY_ORDER, PANTRY_ORDERS, type PantryOrderSeal, PARCHED,
   resetSteadyOnClockJump, resetSteadyOnSetupChange, type Seal, type SealId, SEAL_LABELS, SETUP_CHANGED, STEADY_HOURS, stallReason, type SteadyHomesteadSeal, stepBrief,
 } from './brief.ts';
+
+// Milestone 5B: the campaign's curated valleys, procedural valleys and Sandbox, and saves.
+export { CAMPAIGN_VALLEYS, campaignById, type CampaignValley, startCampaignValley } from './campaign.ts';
+export {
+  balancedCap, buildingsForOrder, DIFFICULTIES, DIFFICULTY_ALLOWANCE, type Difficulty, generateProceduralValley, isDifficulty,
+  MIN_PROCEDURAL_CAP, minimumSuppliesForOrder, proceduralTitle, type ProceduralOptions, rollPantryOrder, STARTER_SHARE,
+} from './procedural.ts';
+export { deserializeSave, MAX_SAVE_BYTES, MAX_SAVE_DAY, OLD_SAVE, serializeSave } from './save.ts';
+export {
+  MAX_CHANNEL_JUNCTIONS, MAX_CHANNELS, MAX_PATH_LENGTH, MAX_PATH_POINTS, MAX_SAVED_ID, MAX_SAVED_ITEMS, MAX_TOTAL_PATH_LENGTH,
+  MAX_TOTAL_PATH_POINTS,
+} from './limits.ts';

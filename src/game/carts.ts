@@ -22,6 +22,7 @@ import { obbDistance, type Point2, toWorld } from './geom.ts';
 import { windShelter } from './microclimate.ts';
 import { addGood, countOf, GOOD_LABELS, type Good, takeGood, totalStored } from './goods.ts';
 import { CART_SPEED, dockOf, findPath, groundAt, navCellOf, navCenter, NAV_CELL, navComponent, navFor, passable, reachOf } from './nav.ts';
+import { cartIdFits } from './limits.ts';
 import { err, ok, type Result } from './result.ts';
 import { CROPS, type Crop, type Field, type GameState, type Thing } from './state.ts';
 import { CART_COST, canAfford, MAX_CARTS, receiveDrop, refund, spend } from './supplies.ts';
@@ -203,6 +204,8 @@ export function addStarterCart(s: GameState): Cart | undefined {
 export function buyCart(s: GameState): Result<Change, string> {
   if (!garageOf(s)) return err('Carts live at the Garage: build one first.');
   if (s.sim.carts.length >= MAX_CARTS) return err(`The Garage holds at most ${MAX_CARTS} carts.`);
+  const idOk = cartIdFits(s);
+  if (!idOk.ok) return idOk;
   const can = canAfford(s.sim.supplies, CART_COST, 'Another Electric Cart');
   if (!can.ok) return can;
   spend(s.sim.supplies, CART_COST);
@@ -504,6 +507,12 @@ function routeCargo(s: GameState, cart: Cart): boolean {
   return false;
 }
 
+/** Drops a cart's path: no waypoints, and its cursor back at the start (a save holds the two together). */
+function clearPath(cart: Cart) {
+  cart.path = [];
+  cart.pathIdx = 0;
+}
+
 function setLeg(s: GameState, cart: Cart, state: CartState, path: Point2[], target: Endpoint | 'home') {
   cart.state = state;
   cart.path = path;
@@ -516,10 +525,10 @@ function setLeg(s: GameState, cart: Cart, state: CartState, path: Point2[], targ
 function goHome(s: GameState, cart: Cart, why: string) {
   cart.job = null;
   const spot = parking(s, cart, cartReach(s, cart));
-  if (!spot) { cart.state = 'idle'; cart.path = []; cart.jobDesc = 'Waiting: no way back to the Garage'; cart.wait = THINK_HOURS; return; }
-  if (dist(spot, cart) < 0.5) { cart.state = cart.battery < 1 ? 'charging' : 'idle'; cart.path = []; cart.jobDesc = cart.battery < 1 ? 'Charging at the Garage' : 'Parked at the Garage'; return; }
+  if (!spot) { cart.state = 'idle'; clearPath(cart); cart.jobDesc = 'Waiting: no way back to the Garage'; cart.wait = THINK_HOURS; return; }
+  if (dist(spot, cart) < 0.5) { cart.state = cart.battery < 1 ? 'charging' : 'idle'; clearPath(cart); cart.jobDesc = cart.battery < 1 ? 'Charging at the Garage' : 'Parked at the Garage'; return; }
   const path = findPath(s, cart, spot);
-  if (!path) { cart.state = 'idle'; cart.path = []; cart.jobDesc = 'Waiting: no way back to the Garage'; cart.wait = THINK_HOURS; return; }
+  if (!path) { cart.state = 'idle'; clearPath(cart); cart.jobDesc = 'Waiting: no way back to the Garage'; cart.wait = THINK_HOURS; return; }
   setLeg(s, cart, 'returning', path, 'home');
   cart.jobDesc = why;
 }
@@ -540,7 +549,7 @@ function pickUp(s: GameState, cart: Cart): boolean {
     const r = thingById(s, job.from.id) && s.sim.things.get(job.from.id);
     if (r) took = takeGood(r.outputs, job.good, Math.min(job.count, CART_CAPACITY));
   }
-  if (took === 0) { cart.job = null; cart.state = 'idle'; cart.jobDesc = 'Looking for work'; return false; }
+  if (took === 0) { cart.job = null; cart.state = 'idle'; clearPath(cart); cart.jobDesc = 'Looking for work'; return false; }
   cart.cargo = { good: job.good, count: took };
   job.count = took;
   const dst = placeOf(s, job.to, cartReach(s, cart)), path = dst && findPath(s, cart, dst);
@@ -599,7 +608,7 @@ function dropOff(s: GameState, cart: Cart, events: SimEvent[]): void {
     cart.cargo = null;
     cart.job = null;
     if (cart.battery < CART_LOW) goHome(s, cart, 'Heading back to the Garage to charge');
-    else { cart.state = 'idle'; cart.path = []; cart.jobDesc = 'Looking for work'; }
+    else { cart.state = 'idle'; clearPath(cart); cart.jobDesc = 'Looking for work'; }
     return;
   }
   // Somewhere else must take the rest.
@@ -687,6 +696,7 @@ export function stepCarts(s: GameState, dtSec: number, hour: number, events: Sim
         // Arrived.
         if (cart.state === 'returning') {
           cart.state = cart.battery < 1 ? 'charging' : 'idle';
+          clearPath(cart);
           cart.jobDesc = cart.battery < 1 ? 'Charging at the Garage' : 'Parked at the Garage';
           const g = garageOf(s);
           if (g) cart.yaw = g.yaw + Math.PI;

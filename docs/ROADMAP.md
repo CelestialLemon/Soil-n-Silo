@@ -130,10 +130,34 @@ handwheel and the Spinner's wheel turn and the Cannery steams while they work wi
 cycles all five crops; a Mill's, Coop's or Oil Press's byproduct pip shows once two of its destinations stand, and cycles
 Auto and those. The tool trays wrap onto a second row on a laptop screen.
 
+**Part 2, campaign valleys, endless seeds, saves, settings and sound (#302), built and ready for review:**
+- **Campaign Valleys:** six curated valleys across the four seasons and six landforms (`src/game/campaign.ts`: Willowbend
+  Meadow, Alderbrook Terrace, Fernwater Bend, Suncombe Slope, Rowanridge Glen, Juniper Frost Glen), each with its own
+  character, Pantry Order and Supplies cap, played from the postcard's **Valleys** panel or `?campaign=<id>`.
+- **Procedural Generator & Sandbox:** the panel's *Custom & Sandbox* tab picks a season, landform (meadow, terrace,
+  floodplain, ridge, slope, glen), difficulty (relaxed, standard, tight: the Supplies cap balanced against the order's
+  buildings) and seed; Sandbox gives unlimited Supplies ("∞ Sandbox") and a weather chip that steps through the key skies
+  and back to living weather. The address carries it (`?terrain=`, `?difficulty=`, `?sandbox=1`), and a season pill on the
+  postcard keeps a Sandbox or a landform.
+- **Single-version saves:** one save slot in the browser (the postcard's Save and Load, and the panel's), plus Export to a
+  `.json` file and Import from one; read only through `deserializeSave` at the current save version (an older save is
+  refused, never migrated). Loading over a homestead with work in it asks first. Full or blocked storage is said in a toast.
+- **Settings:** sound on/off (also the sky strip's speaker), volume, graphics quality (high, medium, low, applied without a
+  reload) and storm flashes (off: no strikes at all), remembered in `soil-n-silo:settings:v1`; `?quality=` wins for a visit.
+- **Ambient soundscape (`src/audio/`):** made with Web Audio on the fly (no files) and woken on the first press: wind that
+  rises with the gusts, the brook (nearer as the camera comes in, fuller in a flood), rain patter, a soft hum while
+  workshops work or carts drive, a woody tap on placing and a two-note chime for a Seal or the valley Restored.
+- **Played on the GPU (headless Chromium, AMD RX 570, Vulkan):** the default valley, Juniper Frost Glen from the panel ("A
+  hard winter · Glen"), a Summer Ridge Tight Sandbox (Supplies "∞ Sandbox", all eight sandbox skies and back), a Farmhouse
+  saved, another valley started, and the save loaded back; settings changed and kept across a reload; `?campaign=fern-bend`
+  and `?terrain=terrace&difficulty=tight&sandbox=1` opened directly. 58–60 FPS throughout, with no console, page or WebGL
+  errors. The playtest found the tool strip drawing over the Valleys panel's last row on a 720p window; open panels now
+  sit above the HUD.
+
 - **Remaining crops & workshops:** Tomato + Cannery (Sauce), Sunflower + Oil Press (Oil, Seed Cake), Flax + Spinner + Loom (Yarn, Linen), Honey Cake at the Bakery, and the **Biogas Digester** (turning organic waste into storm-proof power).
 - **Curated Campaign Valleys:** 6–8 handcrafted seeded valleys spanning all four seasons and distinct terrains (meadow, terraced hill, river bend, windy ridge, dry summer slope, winter glen).
 - **Procedural Valley Generator:** Endless seeded valleys with season/terrain/difficulty controls and auto-balanced Supplies caps, plus Sandbox mode.
-- **Save/Load, Settings & Sound:** Clean single-version saves (no legacy migrations), `brush3d` quality/weather accessibility settings, gentle ambient soundscape (wind, brook, rain, turning wheels, humming carts).
+- **Save/Load, Settings & Sound:** Clean single-version saves (no legacy migrations), `brush3d` quality/weather accessibility settings, gentle ambient soundscape (wind, brook, rain, the homestead's hum).
 
 ---
 

@@ -12,6 +12,10 @@
 //   the valley: a rill led that way meets a dry sill within a few metres, which keeps the puzzle.
 // The brook's surface never rises downstream; its bed and the pond's are carved into the valley with shelving banks a
 // little above the water, so the banks hold it.
+//
+// Every valley keeps that shape; its landform (TERRAIN_STYLES, the LANDFORMS below) tunes it: how far it falls, how deep
+// the terrace dips and how wide it runs, how the brook winds, how many knolls and ridges rise, how high the rim hills
+// stand, how thick the woods grow and how sandy the soil runs. The meadow is the valley as it always was.
 import { fbm, noise2 } from '../noise.ts';
 import { CATALOG } from '../catalog.ts';
 import { naturalFertility } from '../crops.ts';
@@ -20,7 +24,13 @@ import { baseHeightAt, cellHeightAt, cellX, cellZ, COVER, type Grid, isWet, SOIL
 import { addTrack, canTrack, trackPath } from '../paths.ts';
 import { canPlace, placeThing } from '../place.ts';
 import { makeRng, subSeed } from '../rng.ts';
-import { blankState, type Crag, type GameState, type Season, type Tree, type TreeSpecies, type WeatherOptions } from '../state.ts';
+import {
+  blankState, type Crag, type Difficulty, type GameState, type Season, TERRAIN_STYLES, type TerrainStyle, type Tree, type TreeSpecies,
+  type WeatherOptions,
+} from '../state.ts';
+import type { Inventory } from '../goods.ts';
+import type { ClimateCharacter } from '../weather.ts';
+import { sandboxSupplies, starterSupplies } from '../supplies.ts';
 import { wetness } from '../wet.ts';
 import { powerFor } from '../power/graph.ts';
 
@@ -48,6 +58,91 @@ const LEVEE = 2.5, LEVEE_FALL = 0.1;
 /** The homestead clearing's radius, m. */
 export const CLEARING = 16;
 
+export { TERRAIN_STYLES, type TerrainStyle };
+
+/** How a landform shapes the valley. The meadow's are the constants above, so a meadow grows exactly as it always has. */
+interface Landform {
+  /** The valley's fall per metre down the brook, and the far side's rise per metre away from it. */
+  fall: number; sideRise: number;
+  /** The terrace's dip below the levee, m; the distance over which it dips, m; how far out it runs before the hills. */
+  dip: number; dipEnd: number; width: number;
+  /** How steeply the hills climb beyond the terrace (per metre, then quadratically). */
+  hillRise: number; hillCurve: number;
+  /** The brook's meanders: their amplitude and how often they bend, [min, max). */
+  amp: readonly [number, number]; freq: readonly [number, number];
+  /** Knolls: how many, how far apart at least, their radius and height ranges. */
+  knolls: number; knollGap: number; knollRadius: readonly [number, number]; knollHeight: readonly [number, number];
+  /** A long ridge on the far side: its height (0: none) and its distance from the brook, m. */
+  ridge: number; ridgeAt: number;
+  /** The rim hills: their height and where they begin and finish rising (by distance from the middle). */
+  rim: number; rimFrom: number; rimTo: number;
+  /** A gentle bowl lifting the valley's sides toward the rim (per metre squared from the middle), for a sheltered hollow. */
+  bowl: number;
+  /** The rolling ground's strength. */
+  roll: number;
+  /** Woods: wild trees on the rim, groves on the sides. */
+  rimTrees: number; groves: number;
+  /** Soils: the silt band by the water, m; above this noise it's clay, below this, sand. */
+  silt: number; clayAbove: number; sandBelow: number;
+}
+
+const MEADOW: Landform = {
+  fall: VALLEY_FALL, sideRise: SIDE_RISE, dip: TERRACE_DIP, dipEnd: 20, width: TERRACE_WIDTH, hillRise: 0.02, hillCurve: 0.0012,
+  amp: [7, 12], freq: [0.035, 0.05], knolls: 4, knollGap: 22, knollRadius: [6, 9], knollHeight: [1.8, 3.2], ridge: 0, ridgeAt: 30,
+  rim: 9, rimFrom: 52, rimTo: 78, bowl: 0, roll: 1, rimTrees: 120, groves: 4, silt: 5, clayAbove: 0.3, sandBelow: -0.35,
+};
+
+/** Each landform's shape (docs/DESIGN.md, the campaign valleys). */
+export const LANDFORMS: { readonly [T in TerrainStyle]: Readonly<Landform> } = {
+  meadow: MEADOW,
+  // A hillside farm: the valley falls harder, the terrace steps down deeper and broader, and the upper rim climbs steeply
+  // (slope erosion and contour rills).
+  terrace: {
+    ...MEADOW, fall: 0.052, sideRise: 0.06, dip: 1.05, dipEnd: 28, width: 32, hillRise: 0.045, hillCurve: 0.0022,
+    knolls: 3, rim: 12, rimFrom: 48, roll: 0.8,
+  },
+  // A broad low meadow by a winding brook: little fall, a shallow terrace running far out, gentle sides (floods spread wide).
+  floodplain: {
+    ...MEADOW, fall: 0.03, sideRise: 0.028, dip: 0.42, dipEnd: 16, width: 42, hillRise: 0.015, hillCurve: 0.0009,
+    amp: [10, 14], freq: [0.045, 0.058], knolls: 2, rim: 7, rimFrom: 56, roll: 0.55, groves: 3, silt: 9, clayAbove: 0.18,
+  },
+  // Wind-caught knolls and a long ridge over the far side round the clearing (turbines and windbreaks).
+  ridge: {
+    ...MEADOW, knolls: 7, knollGap: 17, knollRadius: [7, 11], knollHeight: [3.2, 5.2], ridge: 3.2, ridgeAt: 32, rim: 10, groves: 3,
+  },
+  // A tilted, sun-facing hillside: the far side climbs steeply, the terrace is narrower, the soil runs sandy and dry.
+  slope: {
+    ...MEADOW, fall: 0.05, sideRise: 0.085, dip: 0.85, width: 28, hillRise: 0.035, hillCurve: 0.0016, knolls: 3, rim: 10,
+    rimTrees: 90, groves: 2, clayAbove: 0.5, sandBelow: -0.08,
+  },
+  // A snug wooded hollow: high rim hills close in, a bowl, more groves and woods, steeper knolls (frost settles here).
+  glen: {
+    ...MEADOW, fall: 0.04, sideRise: 0.052, width: 30, knolls: 5, knollGap: 18, knollRadius: [5, 7.5], knollHeight: [2.4, 4],
+    rim: 14, rimFrom: 44, rimTo: 72, bowl: 0.0007, rimTrees: 170, groves: 8,
+  },
+};
+
+/** How a valley is grown: its weather (WeatherOptions), its landform, and the homestead's terms. */
+export interface ValleyGenOptions extends WeatherOptions {
+  /** Its landform (left out, the meadow). */
+  terrain?: TerrainStyle;
+  /** Sandbox: Supplies without limit. */
+  sandbox?: boolean;
+  /** Its Pantry Order (left out, the season's PANTRY_ORDERS). */
+  order?: Inventory;
+  /** Its Supplies cap and starter parcel (left out, 20 and 12); the rest arrive as the two milestone drops. */
+  suppliesCap?: number;
+  starterSupplies?: number;
+  /** The campaign valley it is (campaign.ts), and its name. */
+  campaignId?: string;
+  valleyTitle?: string;
+  /** Grown by the Custom generator, and the difficulty its cap was balanced for (procedural.ts). */
+  custom?: boolean;
+  difficulty?: Difficulty;
+  /** A character the player chose in place of the valley's own: it is the valley's climate (over `climate`). */
+  climateOverride?: ClimateCharacter;
+}
+
 interface Knoll { x: number; z: number; radius: number; height: number }
 
 interface Brook {
@@ -61,13 +156,24 @@ interface Brook {
  * Grows the valley for a seed and season. Its weather rolls from `opts.weatherSeed` (left out, one from the terrain's seed,
  * so tests repeat; the game passes a fresh rollWeatherSeed() each play) and its character `opts.climate` (left out, mild).
  */
-export function generateValley(seed: number, season: Season, opts: WeatherOptions = {}): GameState {
-  const s = blankState(seed, season, opts), g = s.grid, rng = makeRng(subSeed(seed, 1));
+export function generateValley(seed: number, season: Season, opts: ValleyGenOptions = {}): GameState {
+  const weather = opts.climateOverride === undefined ? opts : { ...opts, climate: opts.climateOverride };
+  const s = blankState(seed, season, weather), g = s.grid, rng = makeRng(subSeed(seed, 1));
+  const terrain = opts.terrain ?? 'meadow', L = LANDFORMS[terrain];
+  s.terrain = terrain;
+  s.sandbox = opts.sandbox ?? false;
+  if (opts.campaignId !== undefined) s.campaignId = opts.campaignId;
+  if (opts.valleyTitle !== undefined) s.valleyTitle = opts.valleyTitle;
+  if (opts.custom) s.custom = true;
+  if (opts.difficulty !== undefined) s.difficulty = opts.difficulty;
+  if (opts.climateOverride !== undefined) s.climateOverride = opts.climateOverride;
+  s.sim.supplies = s.sandbox ? sandboxSupplies() : starterSupplies(opts.suppliesCap, opts.starterSupplies);
+  if (opts.order) s.sim.brief.order.targets = { ...opts.order };
   const dir = rng.next() < 0.5 ? 1 : -1; // which way the brook runs (along x)
   const flip = rng.next() < 0.5 ? 1 : -1; // which side of the brook its meanders start
 
   // The brook's course, upstream (u = -84) to downstream (u = 84), u = dir * x.
-  const zMid = rng.range(-8, 8), amp = rng.range(7, 12), freq = rng.range(0.035, 0.05), phase = rng.range(0, Math.PI * 2);
+  const zMid = rng.range(-8, 8), amp = rng.range(L.amp[0], L.amp[1]), freq = rng.range(L.freq[0], L.freq[1]), phase = rng.range(0, Math.PI * 2);
   const ctrl: Point2[] = [];
   for (let u = -86; u <= 86; u += 14) {
     const z = clamp(zMid + flip * amp * Math.sin(phase + u * freq) + rng.range(-2.5, 2.5), -28, 28);
@@ -87,12 +193,12 @@ export function generateValley(seed: number, season: Season, opts: WeatherOption
 
   // Knolls for the crags: up the valley's sides, away from the brook, the terrace, the pond and the homestead.
   const knolls: Knoll[] = [];
-  for (let tries = 0; knolls.length < 4 && tries < 200; tries++) {
+  for (let tries = 0; knolls.length < L.knolls && tries < 200; tries++) {
     const x = rng.range(-50, 50), z = rng.range(-50, 50);
     const n = index.nearest(x, z), dB = n.d;
-    if (dB < 18 || (onFarm(x, z, n) && dB < TERRACE_WIDTH + 6) || Math.hypot(x - home.x, z - home.z) < CLEARING + 14 || Math.hypot(x - pondAt.x, z - pondAt.z) < pondR + 14) continue;
-    if (knolls.some((k) => Math.hypot(k.x - x, k.z - z) < 22)) continue;
-    knolls.push({ x, z, radius: rng.range(6, 9), height: rng.range(1.8, 3.2) });
+    if (dB < 18 || (onFarm(x, z, n) && dB < L.width + 6) || Math.hypot(x - home.x, z - home.z) < CLEARING + 14 || Math.hypot(x - pondAt.x, z - pondAt.z) < pondR + 14) continue;
+    if (knolls.some((k) => Math.hypot(k.x - x, k.z - z) < L.knollGap)) continue;
+    knolls.push({ x, z, radius: rng.range(L.knollRadius[0], L.knollRadius[1]), height: rng.range(L.knollHeight[0], L.knollHeight[1]) });
   }
 
   // The natural ground before the water is carved.
@@ -102,15 +208,18 @@ export function generateValley(seed: number, season: Season, opts: WeatherOption
     const dH = Math.hypot(x - home.x, z - home.z);
     const r = Math.max(Math.abs(x), Math.abs(z));
     // Down the valley; across it, the terrace falling away from the brook's levee on the farming side, the far side rising.
-    let h = -VALLEY_FALL * uOf(x) + (farm ? terrace(dB) : SIDE_RISE * dB + 0.0012 * Math.max(0, dB - 22) ** 2);
+    let h = -L.fall * uOf(x) + (farm ? terrace(L, dB) : L.sideRise * dB + 0.0012 * Math.max(0, dB - 22) ** 2);
     // The hills round the valley, parting where the brook comes in and goes out.
-    h += (9 * smoothstep(52, 78, r) + 0.12 * Math.max(0, r - 54)) * smoothstep(5, 26, dB);
+    h += (L.rim * smoothstep(L.rimFrom, L.rimTo, r) + 0.12 * Math.max(0, r - 54)) * smoothstep(5, 26, dB);
+    // A ridge along the far side; a glen's bowl lifting its sides (both calm by the brook and in the clearing).
+    if (L.ridge > 0 && !farm) h += L.ridge * Math.exp(-(((dB - L.ridgeAt) / 7) ** 2)) * smoothstep(CLEARING, CLEARING + 12, dH);
+    if (L.bowl > 0) h += L.bowl * Math.max(0, Math.hypot(x, z) - 20) ** 2 * smoothstep(6, 20, dB) * smoothstep(CLEARING - 2, CLEARING + 10, dH);
     // Rolling ground: barely a ripple on the terrace, calm by the brook (so the far bank climbs plainly from it) and in
     // the homestead's clearing. On the far side its hollows only come in well away from the brook: where the brook
     // bends, a cut straight across the far bank also runs down the valley, and a hollow there let it fall back below the
     // brook (spring seed 72 once ran a rill 24.5 m across it).
     const calm = smoothstep(5, 16, dB) * smoothstep(CLEARING - 2, CLEARING + 10, dH);
-    const roll = farm ? lerp(0.3, 1.4, smoothstep(TERRACE_WIDTH - 6, TERRACE_WIDTH + 8, dB)) : lerp(0.4, 1.4, smoothstep(10, 26, dB));
+    const roll = L.roll * (farm ? lerp(0.3, 1.4, smoothstep(L.width - 6, L.width + 8, dB)) : lerp(0.4, 1.4, smoothstep(10, 26, dB)));
     const bump = fbm(nSeed, x / 24, z / 24, 4);
     h += roll * (farm || bump >= 0 ? bump : bump * smoothstep(14, 30, dB)) * calm;
     for (const k of knolls) h += k.height * Math.exp(-((x - k.x) ** 2 + (z - k.z) ** 2) / (k.radius * k.radius));
@@ -149,8 +258,8 @@ export function generateValley(seed: number, season: Season, opts: WeatherOption
   carve(g, ground, brook);
   markWater(g, brook);
   holdBanks(g);
-  cover(s, knolls, brook, home);
-  grow(s, rng, brook, home, knolls, season);
+  cover(s, knolls, brook, home, L);
+  grow(s, rng, brook, home, knolls, season, L);
   naturalize(s);
   s.valley = { homestead: home, brook: course, brookLevel: level, pond: { x: pondAt.x, z: pondAt.z, radius: pondR, level: pondLevel } };
   settleDepot(s, course, (x) => uOf(x), side, home);
@@ -209,8 +318,8 @@ type Near = ReturnType<PathIndex['nearest']>;
  * The farming side's cross-section, by distance from the brook's centreline: level on the brook's low natural levee, then
  * falling TERRACE_DIP over the next twenty metres into a broad meadow terrace, rising again past TERRACE_WIDTH to the hills.
  */
-const terrace = (d: number) =>
-  -TERRACE_DIP * smoothstep(2, 20, d) + 0.02 * Math.max(0, d - TERRACE_WIDTH) + 0.0012 * Math.max(0, d - TERRACE_WIDTH - 6) ** 2;
+const terrace = (L: Landform, d: number) =>
+  -L.dip * smoothstep(2, L.dipEnd, d) + L.hillRise * Math.max(0, d - L.width) + L.hillCurve * Math.max(0, d - L.width - 6) ** 2;
 
 /** Which side of the path a point lies, from its nearest segment: 1 left of downstream (as offsetFrom), -1 right. */
 function sideOf(path: readonly Point2[], seg: number, x: number, z: number): 1 | -1 {
@@ -322,7 +431,7 @@ function holdBanks(g: Grid) {
 }
 
 /** The natural covers and soils. */
-function cover(s: GameState, knolls: readonly Knoll[], b: Brook, home: Point2) {
+function cover(s: GameState, knolls: readonly Knoll[], b: Brook, home: Point2, L: Landform) {
   const g = s.grid, soilSeed = subSeed(s.seed, 5);
   for (let iz = 0; iz < g.nz; iz++) for (let ix = 0; ix < g.nx; ix++) {
     const x = cellX(g, ix), z = cellZ(g, iz), i = iz * g.nx + ix, n = waterNear(b, x, z, 10);
@@ -334,16 +443,16 @@ function cover(s: GameState, knolls: readonly Knoll[], b: Brook, home: Point2) {
     const nearKnoll = knolls.some((k) => Math.hypot(x - k.x, z - k.z) < k.radius * 0.9);
     g.baseCover[i] = wet ? COVER.water : out && Math.min(n.eB, n.eP) > 2 ? COVER.woods : slope > 0.5 ? COVER.bare : COVER.grass;
     const v = fbm(soilSeed, x / 18, z / 18, 3);
-    g.soil[i] = Math.min(n.eB, n.eP) < 5 ? (n.eP < 3 && n.eP > -1 ? SOIL.sand : SOIL.silt)
+    g.soil[i] = Math.min(n.eB, n.eP) < L.silt ? (n.eP < 3 && n.eP > -1 ? SOIL.sand : SOIL.silt)
       : slope > 0.25 || nearKnoll ? SOIL.stony
-      : v > 0.3 ? SOIL.clay
-      : v < -0.35 && Math.hypot(x - home.x, z - home.z) > CLEARING ? SOIL.sand
+      : v > L.clayAbove ? SOIL.clay
+      : v < L.sandBelow && Math.hypot(x - home.x, z - home.z) > CLEARING ? SOIL.sand
       : SOIL.loam;
   }
 }
 
 /** The valley's crags and wild trees. */
-function grow(s: GameState, rng: ReturnType<typeof makeRng>, b: Brook, home: Point2, knolls: readonly Knoll[], season: Season) {
+function grow(s: GameState, rng: ReturnType<typeof makeRng>, b: Brook, home: Point2, knolls: readonly Knoll[], season: Season, L: Landform) {
   const g = s.grid;
   const crag = (x: number, z: number, radius: number, height: number) => {
     const c: Crag = { id: s.nextId++, x, z, radius, height, seed: rng.int(0x7fffffff) };
@@ -373,18 +482,18 @@ function grow(s: GameState, rng: ReturnType<typeof makeRng>, b: Brook, home: Poi
   };
   const broadleaf: TreeSpecies[] = season === 'winter' ? ['oak', 'birch', 'pine'] : ['oak', 'birch', 'poplar', 'oak'];
   // The rim: a ring of woods just inside and outside the valley's edge.
-  for (let k = 0; k < 900 && s.wildTrees.length < 120; k++) {
+  for (let k = 0; k < 900 && s.wildTrees.length < L.rimTrees; k++) {
     const edge = rng.range(-64, 64), inward = rng.range(52, 64), along = rng.int(4);
     const x = along === 0 ? inward : along === 1 ? -inward : edge, z = along === 2 ? inward : along === 3 ? -inward : edge;
     if (!clear(x, z, 4.5)) continue;
     tree(x, z, inward > 58 && rng.next() < 0.5 ? 'pine' : rng.pick(broadleaf), rng.range(0.85, 1.25));
   }
   // Groves on the valley's sides.
-  for (let gIdx = 0, tries = 0; gIdx < 4 && tries < 60; tries++) {
+  for (let gIdx = 0, tries = 0; gIdx < L.groves && tries < 15 * L.groves; tries++) {
     const cx = rng.range(-46, 46), cz = rng.range(-46, 46);
     const n = b.index.nearest(cx, cz);
     // Off the terrace, which is kept open for fields and rills.
-    if (n.d < 10 || (sideOf(b.path, n.seg, cx, cz) === b.farm && n.d < TERRACE_WIDTH) || !clear(cx, cz, 10)) continue;
+    if (n.d < 10 || (sideOf(b.path, n.seg, cx, cz) === b.farm && n.d < L.width) || !clear(cx, cz, 10)) continue;
     gIdx++;
     const species = rng.pick(broadleaf), count = 3 + rng.int(5);
     for (let t = 0; t < count * 4 && count > 0; t++) {

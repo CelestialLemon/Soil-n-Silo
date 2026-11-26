@@ -14,6 +14,7 @@ import { CHANNEL_REACH, channelCut, inCore, protectedCores, RILL_HALF } from './
 import { catmullRom, forCellsNear, forVerticesNear, pathLength, type Point2, segmentsCross } from './geom.ts';
 import type { Channel, FlowSample, GameState } from './state.ts';
 import { addCell, type Rect } from './grid.ts';
+import { MAX_CHANNEL_JUNCTIONS } from './limits.ts';
 import { overlayFlood } from './flood.ts';
 
 /** The spacing of a rill's centreline samples, m. */
@@ -192,6 +193,39 @@ function findJunctions(a: readonly Point2[], b: readonly Point2[]): JunctionPair
   return out.concat(crossings);
 }
 
+/**
+ * Counts the junctions across `paths` (endpoints within JUNCTION of another rill, plus centreline crossings), stopping as
+ * soon as `cap` is passed. Runs before `solve` allocates links so a dense nest of crossing rills can never stall or exhaust memory.
+ */
+export function countJunctions(paths: readonly (readonly Point2[])[], cap: number): number {
+  let count = 0;
+  const allRuns = paths.map(runs);
+  const nearEnd = (p: Point2, line: readonly Point2[], lineRuns: Run[]) => {
+    for (const r of lineRuns) {
+      if (!near(r, p.x, p.z, JUNCTION)) continue;
+      for (let k = r.from; k <= r.to; k++) if (Math.hypot(p.x - line[k].x, p.z - line[k].z) <= JUNCTION) return true;
+    }
+    return false;
+  };
+  for (let a = 0; a < paths.length; a++) {
+    const pa = paths[a], ra = allRuns[a];
+    if (pa.length === 0) continue;
+    for (let b = a + 1; b < paths.length; b++) {
+      const pb = paths[b], rb = allRuns[b];
+      if (pb.length === 0) continue;
+      for (const e of [0, pa.length - 1]) if (nearEnd(pa[e], pb, rb) && ++count > cap) return count;
+      for (const e of [0, pb.length - 1]) if (nearEnd(pb[e], pa, ra) && ++count > cap) return count;
+      for (const r of ra) for (const o of rb) {
+        if (!overlap(r, o, 0)) continue;
+        for (let i = r.from + 1; i <= r.to; i++) for (let j = o.from + 1; j <= o.to; j++) {
+          if (segmentsCross(pa[i - 1], pa[i], pb[j - 1], pb[j]) && ++count > cap) return count;
+        }
+      }
+    }
+  }
+  return count;
+}
+
 /** The water along every rill as the land stands now. */
 function solveLive(s: GameState): FlowSample[][] {
   const g = s.grid;
@@ -257,9 +291,13 @@ export interface ChannelPreview {
 export function previewChannelFlow(s: GameState, points: readonly Point2[]): ChannelPreview {
   const g = s.grid, path = channelPath(points);
   if (path.length === 0) return { samples: [], connected: false, wetLength: 0, dryLength: 0 };
+  const paths = [...s.channels.map((c) => c.path), path];
+  if (countJunctions(paths, MAX_CHANNEL_JUNCTIONS) > MAX_CHANNEL_JUNCTIONS) {
+    return { samples: [], connected: false, wetLength: 0, dryLength: 0 };
+  }
   const view = heightsWithRill(s, path);
   const mine = s.channels.length;
-  const flows = solve(g, [...s.channels.map((c) => c.path), path], (_ch, x, z) => sampleHeight(g, view, x, z));
+  const flows = solve(g, paths, (_ch, x, z) => sampleHeight(g, view, x, z));
   return summarize(flows[mine]);
 }
 
