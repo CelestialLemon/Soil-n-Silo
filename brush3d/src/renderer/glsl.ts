@@ -212,6 +212,15 @@ float gLightOpen = 1.0;
 float gLightGap = 1.0;
 float gVisGap = 1.0;
 float gSunVis = 1.0;
+// 1 where the paint isn't exposed after (exposeHere: the ice, which the water blends as it is), so c's ceiling compares
+// the colours as they are; 0, exposed, everywhere else.
+float gUnexposed = 0.0;
+// c: the same paint in the gaps (paintBands' 'gap'), less this paint brought to the gaps' exposure: what frostPaint adds
+// to its paint for the same paint (and what was laid over it since) in the gaps.
+vec3 gGapShift = vec3(0.0);
+// The exposures under the cloud here and in the gaps, as the paint will be (gUnexposed).
+float exposeCloud() { return gUnexposed > 0.5 ? 1.0 : mix(uLightExposure, uCloudBands.w, gCloud); }
+float exposeGap() { return gUnexposed > 0.5 ? 1.0 : uLightExposure; }
 // 'lift': the light the cast shadow takes away here; 'toGap': what the gaps' light (sunLightGap, gVisGap) adds to it.
 void lightOpen(float light, float lift, float toGap) { if (gOpen > 0.0) { gLightOpen = light + lift; gLightGap = light + toGap; } }
 // The share of the way from the shadow's colour here ('shut') to the open colour: b's, gOpen; c's no more than keeps it
@@ -220,15 +229,16 @@ void lightOpen(float light, float lift, float toGap) { if (gOpen > 0.0) { gLight
 float openShare(vec3 shut, vec3 open, vec3 gap) {
   if (uCloudShadow < 2.5) return gOpen;
   vec3 lum = vec3(0.2126, 0.7152, 0.0722);
-  float e = mix(uLightExposure, uCloudBands.w, gCloud), ys = dot(shut, lum) * e, yo = dot(open, lum) * e;
-  return clamp(min(gOpen, (dot(gap, lum) * uLightExposure - ys) / max(yo - ys, 1e-6)), 0.0, 1.0);
+  float e = exposeCloud(), ys = dot(shut, lum) * e, yo = dot(open, lum) * e;
+  return clamp(min(gOpen, (dot(gap, lum) * exposeGap() - ys) / max(yo - ys, 1e-6)), 0.0, 1.0);
 }
 // c's ceiling: a shadow already lighter under the cloud than in the gaps (the cloud's flatter light lifts a low sun's
-// dim faces, at dusk) darkened to the gaps' (exposed), as far as the candidates apply (uCloudPart).
+// dim faces, at dusk) darkened to the gaps' (as exposed, exposeCloud and exposeGap), as far as the candidates apply
+// (uCloudPart).
 vec3 gapCeiling(vec3 c, vec3 gap) {
   if (uCloudShadow < 2.5) return c;
   vec3 lum = vec3(0.2126, 0.7152, 0.0722);
-  float y = dot(c, lum) * mix(uLightExposure, uCloudBands.w, gCloud), yg = dot(gap, lum) * uLightExposure;
+  float y = dot(c, lum) * exposeCloud(), yg = dot(gap, lum) * exposeGap();
   return y > yg ? c * mix(1.0, yg / y, uCloudPart) : c;
 }
 `;
@@ -420,6 +430,7 @@ vec3 paintBands(vec3 base, float light, float soft, float upness) {
     vec3 open = bandsOf(lab1, gLightOpen, soft, upness, gCloud);
     vec3 gap = uCloudShadow > 2.5 ? bandsOf(lab1, gLightGap, soft, upness, 0.0) : painted;
     painted = gapCeiling(mix(painted, open, openShare(painted, open, gap)), gap);
+    if (uCloudShadow > 2.5) gGapShift = gap - painted * (exposeCloud() / exposeGap());
   }
   return painted;
 }

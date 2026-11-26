@@ -1305,7 +1305,8 @@ void main() {
       }
       if (iceCover + rim > 0.001) {
         float lightI = sunLight(n, 0.3) * mix(0.3, 1.0, vis);
-        // TEMPORARY (#316): the ice's light with no cast shadow, and in the gaps' light (snowPaint).
+        // TEMPORARY (#316): the ice's light with no cast shadow, and in the gaps' light (snowPaint); its paint unexposed.
+        gUnexposed = 1.0;
         lightOpen(lightI, sunLight(n, 0.3) * 0.7 * (1.0 - vis), sunLightGap(n, 0.3) * mix(0.3, 1.0, gVisGap) - lightI);
         // Black ice: dark, the bed faint through it, and glossy: the sky and the banks mirrored whole, not broken by ripples.
         vec2 ruv0 = uv - vMirrorShift;
