@@ -47,6 +47,19 @@ float frostCover(float early, float sun, float brush) {
 // ('light', 0 deep shade .. 1 full sun), its crystals the material's own brushwork ('brush', about -1..1), broken up
 // over metres by the land's pattern (the thin snow's, from the hollows map). Matte: the developer's pick of three
 // candidates on #14 (the others were crisp, whiter with a deeper blue shade, and glittering, with points of light).
+// TEMPORARY (#316): c's ceiling for frostPaint's 'frosted', a rime 'a' over 'col' in a cast shadow under a cloud: no
+// lighter (as exposed) than the same rime over the same paint in the gaps (gGapShift) in their light (gLightGap, the
+// gaps' snow paint), from copies as bandsOf's.
+vec3 frostGapCeiling(vec3 frosted, vec3 col, float a) {
+  vec3 c = col * (exposeCloud() / exposeGap()) * uCloudOne + gGapShift;
+  float l = gLightGap * uCloudOne;
+  a *= uCloudOne;
+  vec3 rime = snowBandsOf(l, 0.05, 0.0, 0.0);
+  float inShade = 1.0 - smoothstep(0.30, 0.62, l);
+  vec3 hue = c - dot(c, vec3(0.299, 0.587, 0.114));
+  rime = mix(rime, mix(rime, c * 1.25 + 0.08, 0.45), inShade);
+  return gapCeiling(frosted, mix(c, rime, a) + hue * a * mix(0.6, 0.2, inShade));
+}
 vec3 frostPaint(vec3 col, float light, float amount, float brush) {
   if (amount <= 0.0) return col;
   float grain = clamp(brush, -1.0, 1.0);
@@ -59,7 +72,10 @@ vec3 frostPaint(vec3 col, float light, float amount, float brush) {
   float mottle = gHollow.z >= 0.0 ? clamp(gHollow.w, -1.0, 1.0) : 0.0;
   rime = mix(rime, mix(rime, col * 1.25 + 0.08, 0.45), inShade);
   float a = amount * (0.46 + 0.1 * mottle + 0.12 * grain);
-  return mix(col, rime, a) + hue * a * mix(0.6, 0.2, inShade);
+  vec3 frosted = mix(col, rime, a) + hue * a * mix(0.6, 0.2, inShade);
+  // TEMPORARY (#316): c's ceiling over the rime too (the cloud's light lets more of the pale rime show in a shadow).
+  if (gOpen > 0.0 && uCloudShadow > 2.5) frosted = frostGapCeiling(frosted, col, a);
+  return frosted;
 }
 `;
 

@@ -536,6 +536,13 @@ Not for the game's players, but kept public for the tools that judge renderer wo
   alone, `docs/PERFORMANCE.md`). `new PassTimer(gl, false)` times the CPU alone, asking nothing of the GPU.
 - `r.setVisible(kind, on)`: show or hide a kind (`'ground'`, `'ink'`, `'foliage'`, `'rain'`...), for A/B comparisons.
 - `r.settings.falling` (leave out what's in the air), `prepass`, `waterScissor`, `waterMask` (the water's passes only where it can show, #249; off: the same picture, for timing), `pools` (every mesh but the water drawn from shared buffers, many to a draw call; on by default, #250; off: the same picture, for timing), `equalDepth`, `shelterDebug`, `grain`.
+- `r.settings.cloudShadow` (TEMPORARY, #316: goes when the developer picks): the look a cast shadow takes under a cloud's
+  shadow, one of `CLOUD_SHADOW_LOOKS`: `'c'` by default (a half step: the cloud softens the shadow at most halfway to the
+  ground round it, and never lighter than the shadow in the sun), `'a'` (a veil: the cloud dims the shadow with the
+  ground round it), `'b'` (a dissolve: the cloud softens it to a faint trace) or `'orig'` (as before: its light lifted into
+  the lit band, banding and sliding at the cloud's edge). The demo's and the game's `?cloudShadow=` set it, and a button
+  in the demo's controls flips through them. They differ only while the sun shines in the gaps between the clouds: clear
+  and closed skies are the same in all four.
 - `r.settings.reflection` and `under` (both on by default): draw the water's reflection and the bed under it. Off only to
   time them: the water then shows whatever those targets held last.
 - `r.settings.resolveDepth` (on by default): copy the main view's multisampled depth out with its colour. Off is the same

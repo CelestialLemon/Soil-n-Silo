@@ -137,7 +137,19 @@ export interface Settings {
    * most) say otherwise.
    */
   resolveDepth: boolean;
+  /**
+   * TEMPORARY (#316): the look a cast shadow takes under a cloud's shadow, for the developer to pick on the preview
+   * (CLOUD_SHADOW_LOOKS; the ones not picked go before it merges): 'c' a half step (the default: the cloud softens the
+   * shadow halfway to the ground round it at most, never lighter than the shadow in the sun), 'a' a veil (the cloud dims
+   * the shadow with the ground round it), 'b' a dissolve (the cloud softens it to a faint trace), 'orig' as before (its
+   * light lifted into the lit band, banding and sliding at the cloud's edge).
+   */
+  cloudShadow: CloudShadowLook;
 }
+
+/** TEMPORARY (#316): the candidates for a cast shadow's look under a cloud (Settings.cloudShadow), the default first. */
+export const CLOUD_SHADOW_LOOKS = ['c', 'a', 'b', 'orig'] as const;
+export type CloudShadowLook = typeof CLOUD_SHADOW_LOOKS[number];
 
 /** What the renderer draws, by kind: the scene's materials, and the rain and snow (rain.ts, snowfall.ts), its own. */
 export type DrawnKind = MaterialKind | 'rain' | 'snow';
@@ -197,7 +209,7 @@ export class BrushRenderer {
   readonly view = new ViewCamera();
   readonly shared: SharedUniforms = createSharedUniforms();
   readonly settings: Settings = { lines: true, shadows: true, grain: 0.012, prepass: true, pools: true, waterScissor: true, waterMask: true, equalDepth: true, falling: true, fallingShare: 1, shelterDebug: false,
-    reflection: true, under: true, resolveDepth: true };
+    reflection: true, under: true, resolveDepth: true, cloudShadow: CLOUD_SHADOW_LOOKS[0] };
   width = 1; height = 1;
   /** Device pixels per CSS pixel asked for (see RendererOptions): the screen's pixels, which the zoom counts in. */
   readonly screenRatio: number;
@@ -1254,6 +1266,10 @@ export class BrushRenderer {
     s.uOvercast.value.set(shape * rs.sky, shape * rs.shadowFade, shape * rs.shadowBlur);
     s.uCloudOvercast.value.set(rs.sky, THREE.MathUtils.lerp(THREE.MathUtils.lerp(UNDER_CLOUD_FADE, r.shadowFade, lift), rs.shadowFade, g), rs.shadowBlur);
     s.uCloudStrength.value = strength;
+    s.uCloudShadow.value = ({ orig: 0, a: 1, b: 2, c: 3 } as const)[this.settings.cloudShadow];
+    // (Fully while the gaps are in the sun; easing into the old look over the gaps' last turn to the overcast, from 0.95,
+    // so a closed sky is the old look exactly, a golden break's under a deck too.)
+    s.uCloudPart.value = THREE.MathUtils.clamp((1 - gap) * 20, 0, 1);
     const az = THREE.MathUtils.degToRad(look.sunAz), el = THREE.MathUtils.degToRad(Math.max(look.sunEl, 4));
     this.sunElNow = look.sunEl;
     s.uSunDir.value.set(Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el)).normalize();

@@ -97,6 +97,9 @@ export function createSharedUniforms() {
     uCloudBands: { value: new THREE.Vector4(0, 0.3, 0.1, 1) },
     uCloudTint: { value: new THREE.Vector2(0, 0) },
     uLightExposure: { value: 1 },
+    uCloudShadow: { value: 3 },   // TEMPORARY (#316): the cast shadows' look under a cloud (Settings.cloudShadow)
+    uCloudOne: { value: 1 },      // TEMPORARY (#316): always 1 (glsl.ts bandsOf)
+    uCloudPart: { value: 0 },     // TEMPORARY (#316): how far the gaps between the clouds are in the sun (CLOUD_LIGHT)
     // The sky the water and the solar glass mirror (MIRROR_SKY): the sky map, the gaps' sky and the clouds' colours.
     uSkyMap: { value: null as THREE.Texture | null },
     uSkyRect: { value: new THREE.Vector4(-128, -128, 1 / 256, 1 / 256) },
@@ -688,6 +691,8 @@ void main() {
 #endif
   // Wet (#11, wet.ts): the earth muddy, then the paint darker and richer once lit (wetFinish).
   if (uGroundOn > 0.5 && wetAt(p) > 0.0) base = wetBase(base);
+  // TEMPORARY (#316): its light with no cast shadow, and in the gaps' light.
+  lightOpen(light, sunLight(n, 0.3) * (1.0 - floor_) * (1.0 - vis), sunLightGap(n, 0.3) * mix(floor_, 1.0, gVisGap) - sunLight(n, 0.3) * mix(floor_, 1.0, vis));
   vec3 col = paintBands(base, light, 0.05, n.y * 0.5 + 0.5);
   col = wetFinish(col);
   col += rimColorHere() * rimLight(n, vPaint.w);
@@ -799,6 +804,10 @@ void main() {
   light -= (1.0 - smoothstep(-1.0, 0.6, c.y)) * 0.06;
   // Wet (#11, wet.ts): darker and richer once lit (wetFinish).
   if (uGroundOn > 0.5 && wetAt(p) > 0.0) base = wetBase(base);
+  // TEMPORARY (#316): its light with no cast shadow, and in the gaps' light.
+  float litGap = sunLightGap(n, 0.35);
+  lightOpen(light, lit * (1.0 - vis) * (0.68 - nCanopy.y * 0.12),
+    litGap * mix(0.32, 1.0, gVisGap) - lit * mix(0.32, 1.0, vis) - nCanopy.y * 0.12 * (litGap * gVisGap - lit * vis));
   vec3 col = paintBands(base, light, 0.07, nCanopy.y * 0.5 + 0.5);
   col = wetFinish(col);
   // A crown's shade goes deeper than the ground's, and cooler: the dark under a tree is what makes it a mass.
@@ -858,6 +867,8 @@ void main() {
   light += (vBlade.x - 0.5) * 0.1;
   // Wet (#11, wet.ts): darker and richer once lit (wetFinish).
   if (uGroundOn > 0.5 && wetAt(p) > 0.0) base = wetBase(base);
+  // TEMPORARY (#316): its light with no cast shadow, and in the gaps' light.
+  lightOpen(light, sunLight(n, 0.3) * 0.82 * (1.0 - vis), sunLightGap(n, 0.3) * mix(0.18, 1.0, gVisGap) - sunLight(n, 0.3) * mix(0.18, 1.0, vis));
   vec3 col = paintBands(base, light, 0.06, 0.8);
   col = wetFinish(col);
   col += rimColorHere() * vPaint.w * vBlade.x * vBlade.x * vis * 0.25;
@@ -908,6 +919,8 @@ void main() {
     float g = snoise(vec2(vUv.x * 1.5, vUv.y * 24.0)) * 0.5 + 0.5;
     base = oklabToLin(lchShift(linToOklab(base), (g - 0.5) * 0.05, 1.0, 0.0));
   }
+  // TEMPORARY (#316): its light with no cast shadow, and in the gaps' light.
+  lightOpen(light, sunLight(n, 0.2) * 0.8 * (1.0 - vis), sunLightGap(n, 0.2) * mix(0.2, 1.0, gVisGap) - sunLight(n, 0.2) * mix(0.2, 1.0, vis));
   vec3 col = paintBands(base, light, 0.02, n.y * 0.5 + 0.5);
   if (finish > 2.5) {
     // Tin (uv in metres: down the slope, along the ridge): its corrugations, as tone only, never lines; fading out
@@ -939,7 +952,7 @@ void main() {
     vec3 glass = mix(col, sky * sunTint(), clamp(fres + cloud * 0.15 + glint * 0.4, 0.0, 1.0));
     float sun = pow(max(dot(r, uSunDir), 0.0), 6.0);
     // No sun to shine in it under a cloud.
-    glass = mix(glass, vec3(1.0) * sunTint(), sun * 0.6 * vis * (1.0 - gCloud));
+    glass = mix(glass, vec3(1.0) * sunTint(), sun * 0.6 * gSunVis * (1.0 - gCloud));
     col = mix(glass, glass * 1.3 + 0.04, grid * 0.35);
   }
   // Wet (#11, wet.ts): darker, with the sky glazed over it (not the solar glass, which is glass wet or dry).
@@ -1145,7 +1158,7 @@ void main() {
   // The bed honey-coloured in the evening light, and the light through the ripples on it: only where the sun reaches it,
   // through shallow, clear water. (One copy, not carried by the flow: the web shimmers in place on its own.)
   bed *= mix(vec3(1.0), vec3(1.3, 1.08, 0.72), warmth * 0.6);
-  float sunOnBed = vis * (1.0 - gCloud) * (1.0 - overcastHere().x) * exp(-path * 1.1) * (1.0 - mud);
+  float sunOnBed = gSunVis * (1.0 - gCloud) * (1.0 - overcastHere().x) * exp(-path * 1.1) * (1.0 - mud);
   if (sunOnBed > 0.01) bed += bed * caustic(p.xz) * sunTint() * 1.8 * sunOnBed;
   // Muddy water (#18, the developer's pick "brown"): silt makes it ochre brown and opaque, the bed lost a hand's depth down.
   scatter = mix(scatter, vec3(0.28, 0.15, 0.045), mud);
@@ -1203,7 +1216,7 @@ void main() {
   col = mix(col, exposeHere(mix(uSkyBottom, vec3(1.0), 0.25)), smoothstep(0.5, 0.9, ripple) * 0.25 * depthy * (1.0 - 0.6 * mud));
   // Sparkle: glints of sun on the ripples' crests (sparkle), carried by the flow as the ripples are.
   // (Worked out only where one could show: on a crest, in the sun.)
-  float spark = crest(ripple) * vis * (1.0 - gCloud);
+  float spark = crest(ripple) * gSunVis * (1.0 - gCloud);
   if (spark > 0.001) spark *= sparkleT(q1, turns) * w1 + sparkleT(q2, turns) * w2;
   // No glints under a cloud.
   // (The river's own glints dim a little in a paw, as it darkens.)
@@ -1221,7 +1234,7 @@ void main() {
   vec2 gc = floor(gq), gf = fract(gq) - 0.5 - (hash22(gc) - 0.5) * 0.6;
   float gh = hash12(gc + 3.1);
   float glit = (1.0 - smoothstep(0.1, 0.2, length(gf))) * step(0.4, gh) * max(0.0, sin(uTime * (5.0 + gh * 6.0) + gh * 50.0));
-  col = mix(col, glintC, glit * paw * vis * max(uCloudStrength - gCloud, 0.0));
+  col = mix(col, glintC, glit * paw * gSunVis * max(uCloudStrength - gCloud, 0.0));
   // Fast water (#18, the developer's pick "streaks"), from about a metre a second: the stream in spate.
   float fast = smoothstep(0.45, 1.1, speed);
   if (fast > 0.0) {
@@ -1292,6 +1305,9 @@ void main() {
       }
       if (iceCover + rim > 0.001) {
         float lightI = sunLight(n, 0.3) * mix(0.3, 1.0, vis);
+        // TEMPORARY (#316): the ice's light with no cast shadow, and in the gaps' light (snowPaint); its paint unexposed.
+        gUnexposed = 1.0;
+        lightOpen(lightI, sunLight(n, 0.3) * 0.7 * (1.0 - vis), sunLightGap(n, 0.3) * mix(0.3, 1.0, gVisGap) - lightI);
         // Black ice: dark, the bed faint through it, and glossy: the sky and the banks mirrored whole, not broken by ripples.
         vec2 ruv0 = uv - vMirrorShift;
         // (Blurred a little wider than the open water's: with no ripples to break it up, its half-size texels would shimmer.)

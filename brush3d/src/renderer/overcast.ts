@@ -85,6 +85,11 @@ export const gapCover = (cover: number) => {
  * darkening under things takes over (shadowFade, shadowLift).
  */
 export const UNDER_CLOUD_FADE = 0.8;
+/**
+ * TEMPORARY (#316, candidate c): how far a cloud softens a cast shadow at most, of the way from its colour to the colour
+ * there with no shadow (UNDER_CLOUD_FADE is the dissolve's, b's): half, and never lighter than the shadow in the sun.
+ */
+export const UNDER_CLOUD_CAP = 0.5;
 /** How strong the cloud shadows are by the moon, of the sun's (the developer's "yes, faintly", 2026-10-31). */
 export const CLOUD_NIGHT = 0.4;
 /**

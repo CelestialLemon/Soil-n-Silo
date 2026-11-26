@@ -3,6 +3,7 @@ import {
   TOUR, type Stand, MAX_ZOOM, MIN_ZOOM, cloudDriftSpeed, WEATHER_PRESETS, type CloudDrift, type Haze, type HazeKind,
   type Weather, type WeatherName, steadyWind, WIND_SCALE, windName, type WindStrength, startWind, WIND_TICK,
   type WindGoal, type WindSave, profileTable, runProfile, type ProfileCase, type ProfileRow, type WaterMap,
+  CLOUD_SHADOW_LOOKS, type CloudShadowLook,
 } from '../index';
 import { lightningHud, setupLightning, stormLightning } from './lightning';
 import { buildMeadow } from './scenes/meadow';
@@ -60,6 +61,8 @@ import { WindView } from './windView';
 //   quality=high|medium|low (the game's graphics presets, QUALITY, #209: over samples, shadowMap and shelterSize, and the
 //     pixels drawn, also with profile)
 //   profile: time the frame pass by pass, on whatever machine opens it (see profile.ts)
+//   cloudShadow=c|a|b|orig (TEMPORARY, #316: a cast shadow's look under a cloud, c half step by default, a veil, b dissolve,
+//     orig as before: Settings.cloudShadow)
 
 const params = new URLSearchParams(location.search);
 const num = (k: string, d: number) => (params.has(k) ? Number(params.get(k)) : d);
@@ -161,6 +164,9 @@ renderer.settings.waterScissor = num('scissor', 1) !== 0;
 renderer.settings.waterMask = num('mask', 1) !== 0;
 renderer.settings.equalDepth = num('equal', 1) !== 0;
 renderer.settings.shelterDebug = params.has('shelter') && params.get('shelter') !== '0';
+// TEMPORARY (#316): the look candidates for a cast shadow under a cloud, by URL and by the button.
+const cloudShadowParam = params.get('cloudShadow');
+if ((CLOUD_SHADOW_LOOKS as readonly string[]).includes(cloudShadowParam ?? '')) renderer.settings.cloudShadow = cloudShadowParam as CloudShadowLook;
 setupLightning(renderer);
 // The ground's brush, baked at load into a 2048² texture: the developer's pick (#6, #23), the same to the eye as live
 // and as 4096², at a quarter of 4096's memory. The grass's and crops' brush by place, 1024² at seven angles a scale.
@@ -400,6 +406,19 @@ function hud() {
   map.title = 'The living wind from above, turned as the camera is: how hard it blows (or the shelter), which way, and the obstacles';
   map.onclick = () => { windMap = !windMap; if (windMap) document.body.append(windView.el); else windView.el.remove(); hud(); };
   hudEl.append(map);
+  // TEMPORARY (#316): flip through the looks of a cast shadow under a cloud, kept in the URL for a reload.
+  const shade = Object.assign(document.createElement('button'), {
+    textContent: `Cloud over shadow: ${renderer.settings.cloudShadow}`,
+    title: 'A cast shadow under a cloud (#316): c a half step (default), a a veil, b a dissolve, orig as before',
+  });
+  shade.onclick = () => {
+    const looks = CLOUD_SHADOW_LOOKS;
+    renderer.settings.cloudShadow = looks[(looks.indexOf(renderer.settings.cloudShadow) + 1) % looks.length];
+    params.set('cloudShadow', renderer.settings.cloudShadow);
+    history.replaceState(history.state, '', `?${params}`);
+    hud();
+  };
+  hudEl.append(shade);
   if (tour.length) {
     // The tour (docs/MODELS.md): step through the models where the scene shows them, keeping the hour, weather and season.
     const go = (to: number) => {

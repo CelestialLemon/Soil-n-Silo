@@ -18,7 +18,7 @@
 // running high and brown and the floodwater over the low ground, the water icing over, the ground wet, muddy, snowed on
 // and rimed (deepest in the frost hollows), and the season's light with the valley's climate character. A locked weather
 // (`?weather=`, setWeather, setWeatherOverride) is the game's weatherOverride: it holds one spell until cleared.
-import { type BrushRenderer as Renderer, BrushRenderer, QUALITY, type QualityName, type WeatherName } from '../../brush3d/src/index.ts';
+import { type BrushRenderer as Renderer, BrushRenderer, CLOUD_SHADOW_LOOKS, type CloudShadowLook, QUALITY, type QualityName, type WeatherName } from '../../brush3d/src/index.ts';
 import {
   type Change, COVER, type GameState, polylineDistance, type SimEnv, type SimTickResult, stepWeather, toSpell, type WeatherSpell,
 } from '../game/index.ts';
@@ -183,6 +183,9 @@ class ValleyWorld implements World {
     // On a high-DPI screen the frame is drawn at 1080p's pixel count and scaled up: the renderer's budget (brush3d/docs/PERFORMANCE.md).
     r.maxPixels = 1920 * 1080;
     if (options.quality) { r.setQuality(QUALITY[options.quality]); this.quality = options.quality; }
+    // TEMPORARY (#316): the look candidates for a cast shadow under a cloud, on the preview (?cloudShadow=c|a|b|orig).
+    const cloudShadow = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('cloudShadow');
+    if ((CLOUD_SHADOW_LOOKS as readonly string[]).includes(cloudShadow ?? '')) r.settings.cloudShadow = cloudShadow as CloudShadowLook;
     this.resize();
     this.resizer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.resize());
     this.resizer?.observe(canvas);
