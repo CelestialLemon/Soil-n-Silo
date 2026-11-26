@@ -121,6 +121,11 @@ export class Tools {
 
   setShowPower(on: boolean) { this.showPower = on; this.drawPower(); }
 
+  /** After a flood rises or recedes: repaint the moisture overlay if it is showing. */
+  refreshMoisture() {
+    if (this.moisture) this.drawMoisture();
+  }
+
   /** After an edit: what the tools show may have changed with the state (the rules' answers, the wet, the power). */
   refresh() {
     // The valley changed: a rill's preview worked out before it is stale.
@@ -304,7 +309,7 @@ export class Tools {
   private drawMoisture() {
     if (!this.moisture) { this.moistureKey = ''; this.r.setOverlay(null); this.r.setOverlayLook(); return; }
     const sites = this.waterSites(), q = (v: number) => Math.round(v * 4);
-    const key = `${this.state.revision}|${sites.map((w) => `${w.kind[0]}${q(w.x)},${q(w.z)},${w.kind === 'sprinkler' ? Math.round(w.yaw * 100) : 0}`).join(';')}`;
+    const key = `${this.state.revision}|${this.state.sim.floodKey}|${sites.map((w) => `${w.kind[0]}${q(w.x)},${q(w.z)},${w.kind === 'sprinkler' ? Math.round(w.yaw * 100) : 0}`).join(';')}`;
     if (key === this.moistureKey) return;
     this.moistureKey = key;
     const g = this.state.grid, color = new Uint32Array(g.nx * g.nz).fill(OVERLAY_NONE);

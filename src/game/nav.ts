@@ -282,27 +282,34 @@ function lineCost(nav: Nav, a: Point2, b: Point2): number {
 }
 
 /**
- * Whether a straight run between two points crosses only drivable cells costing no more than `limit` (`own`: a cell it may
- * cross anyway): a run the path is pulled onto never cuts across a field the cells it replaces went round.
+ * Whether a straight run between two points stays drivable without entering any crop cell outside `allowed` or any ground
+ * dearer than `limit` (`own`: the cart's own starting cell, which it may step out of even if walled).
  */
-function runClear(nav: Nav, a: Point2, b: Point2, own = -1, limit = Infinity): boolean {
+function legClear(nav: Nav, a: Point2, b: Point2, own: number, allowed: ReadonlySet<number>, limit: number): boolean {
   let clear = true;
   forSegmentCells(a, b, (i) => {
-    if (i !== own && (i < 0 || !passable(nav, i) || nav.cost[i] > limit + 1e-6)) clear = false;
-    return !clear;
+    if (i === own) return false;
+    if (i < 0 || !passable(nav, i)) { clear = false; return true; }
+    if (allowed.has(i)) return false;
+    if (nav.field[i] === 1 || nav.cost[i] > limit + 1e-6) { clear = false; return true; }
+    return false;
   });
   return clear;
 }
 
+/** A cell's ground cost capped at meadow when it is a field endpoint, so an endpoint in crops never widens a leg's budget. */
+const legCost = (nav: Nav, i: number) => (nav.field[i] === 1 ? Math.min(nav.cost[i], GROUND.meadow.cost) : nav.cost[i]);
+
 /**
- * Pulls a cell path straight wherever a straight line crosses nothing costlier than the cells it skips. The goal is weighed
- * as A* weighed it (no dearer than meadow), so a goal inside a field never lets a long straight cut across the crops.
+ * Pulls a cell path straight wherever a straight line crosses nothing costlier than the cells it skips, returning the indices
+ * kept from `cells`. The goal is weighed as A* weighed it (no dearer than meadow), so a goal inside a field never lets a
+ * long straight cut across the crops.
  */
-function smooth(nav: Nav, cells: readonly number[]): Point2[] {
+function smoothIndices(nav: Nav, cells: readonly number[]): number[] {
+  if (cells.length <= 2) return cells.map((_, i) => i);
   const pts = cells.map(navCenter);
-  if (pts.length <= 2) return pts;
   const last = pts.length - 1, costOf = (j: number) => (j === last ? Math.min(nav.cost[cells[j]], GROUND.meadow.cost) : nav.cost[cells[j]]);
-  const out: Point2[] = [pts[0]];
+  const keep: number[] = [0];
   let i = 0;
   while (i < pts.length - 1) {
     let best = i + 1, worst = costOf(i + 1);
@@ -311,10 +318,10 @@ function smooth(nav: Nav, cells: readonly number[]): Point2[] {
       if (lineCost(nav, pts[i], pts[j]) <= worst + 1e-6) best = j;
       else if (j - best > 3) break;
     }
-    out.push(pts[best]);
+    keep.push(best);
     i = best;
   }
-  return out;
+  return keep;
 }
 
 /**
@@ -357,20 +364,37 @@ export function findPath(s: GameState, from: Point2, to: Point2): Point2[] | nul
   if (a === undefined || b === undefined) return null;
   const cells = findCells(nav, a, b);
   if (!cells) return null;
-  const centres = smooth(nav, cells);
-  if (centres.length === 1) centres.push(navCenter(b));
+  const keep = smoothIndices(nav, cells);
+  if (keep.length === 1) keep.push(cells.length - 1);
+  const centres = keep.map((k) => navCenter(cells[k]));
   const start = { x: from.x, z: from.z }, own = navCellOf(from.x, from.z);
-  // Straight to the second waypoint if that's clear (and no dearer than the leg from the start cell's centre it replaces:
-  // it never clips a field the path went round); else by the start cell's centre (a cart off the drivable ground steps out
-  // to it first, over no other water).
-  const pts = runClear(nav, start, centres[1], own, lineCost(nav, centres[0], centres[1])) ? [start, ...centres.slice(1)] : [start, ...centres];
-  // Finish at the exact spot if it's on drivable ground next to the last cell, and the run to it is clear (and no dearer
-  // than the leg it replaces, or than the ground at either end of the last step).
+  // Straight to the second waypoint only if it crosses no new crop cell and nothing dearer than the non-crop cells on the
+  // leg it replaces; else step via the start cell's centre first.
+  const firstCells = new Set(cells.slice(0, keep[1] + 1));
+  let firstLimit = 0;
+  for (const c of firstCells) firstLimit = Math.max(firstLimit, legCost(nav, c));
+  const skipStartCentre = legClear(nav, start, centres[1], own, firstCells, firstLimit);
+  const pts = skipStartCentre ? [start, ...centres.slice(1)] : [start, ...centres];
+  const prevKeepIdx = skipStartCentre
+    ? (keep.length === 2 ? 0 : keep[keep.length - 2])
+    : keep[keep.length - 2];
+  // Finish at the exact spot if it's on drivable ground next to the last cell, and the leg to it crosses no new crop cell
+  // A* didn't already step into (nor dearer ground than the leg it replaces).
   const end = pts[pts.length - 1], spot = { x: to.x, z: to.z }, spotCell = navCellOf(to.x, to.z);
   if (passable(nav, spotCell) && Math.hypot(end.x - to.x, end.z - to.z) <= NAV_CELL * 1.5) {
-    const prev = pts[pts.length - 2], last = Math.max(nav.cost[spotCell], nav.cost[navCellOf(end.x, end.z)]);
-    if (runClear(nav, prev, spot, pts.length === 2 ? own : -1, Math.max(lineCost(nav, prev, end), nav.cost[spotCell]))) pts[pts.length - 1] = spot;
-    else if (runClear(nav, end, spot, -1, last)) pts.push(spot);
+    const prev = pts[pts.length - 2];
+    const lastCells = new Set(cells.slice(prevKeepIdx));
+    lastCells.add(spotCell);
+    let lastLimit = legCost(nav, spotCell);
+    for (const c of lastCells) lastLimit = Math.max(lastLimit, legCost(nav, c));
+    const endOwn = pts.length === 2 ? own : -1;
+    if (legClear(nav, prev, spot, endOwn, lastCells, lastLimit)) {
+      pts[pts.length - 1] = spot;
+    } else {
+      const tailCells = new Set([cells[cells.length - 1], spotCell]);
+      const tailLimit = Math.max(legCost(nav, cells[cells.length - 1]), legCost(nav, spotCell));
+      if (legClear(nav, end, spot, -1, tailCells, tailLimit)) pts.push(spot);
+    }
   }
   return pts;
 }

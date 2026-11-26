@@ -14,7 +14,7 @@ import type { ThingRuntime } from './workshops.ts';
 import { type ClimateCharacter, initialWeather, type WeatherKey, type WeatherSpell, type WeatherState } from './weather.ts';
 import { subSeed } from './rng.ts';
 
-export const STATE_VERSION = 11;
+export const STATE_VERSION = 12;
 
 /** The valley's one season (brush3d's SEASONS). */
 export const SEASONS = ['spring', 'summer', 'autumn', 'winter'] as const;

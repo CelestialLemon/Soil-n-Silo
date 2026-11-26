@@ -10,7 +10,7 @@ export {
 } from './grid.ts';
 export {
   catmullRom, clamp, lerp, type Obb, obbBounds, obbCorners, obbDistance, obbsOverlap, pathLength, type Point2, pointInObb,
-  polylineDistance, resample, segmentDistance, smoothstep, toLocal, toWorld, wrapAngle,
+  polylineDistance, resample, segmentDistance, segmentsCross, smoothstep, toLocal, toWorld, wrapAngle,
 } from './geom.ts';
 export { fbm, noise2 } from './noise.ts';
 export { hash3, makeRng, type Rng } from './rng.ts';

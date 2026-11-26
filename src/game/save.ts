@@ -14,7 +14,7 @@ import { recomputeBridges } from './bridges.ts';
 import type { Cart, CartState, Endpoint } from './carts.ts';
 import { naturalFertility } from './crops.ts';
 import { coreObb, padTarget, recomposeEarth, thingObb } from './earth.ts';
-import { TREE_CLEAR } from './fields.ts';
+import { TREE_CLEAR, updateFieldMoisture } from './fields.ts';
 import { channelPath, countJunctions, refreshWater } from './flow.ts';
 import { catmullRom, type Obb, obbCorners, obbDistance, obbSamples, obbsOverlap, type Point2 } from './geom.ts';
 import { type Inventory, isGood } from './goods.ts';
@@ -642,6 +642,7 @@ function rebuild(f: SaveFile): Result<GameState, string> {
   const land = checkLand(s);
   if (land) return err(damaged(land));
   refreshWet(s);
+  updateFieldMoisture(s);
   recomputeBridges(s);
   s.power = powerFor(s);
   s.revision = f.revision;

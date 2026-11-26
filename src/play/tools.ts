@@ -3,7 +3,7 @@
 // of the game's state, so the controller only asks.
 import {
   canDig, canPlace, canPlant, canTrack, CATALOG, channelPath, type ChannelPreview, type Crop, CROPS, distanceToWater, type GameState, GOOD_LABELS, pathLength,
-  type Point2, previewChannelFlow, sprinklerPowerW, sprinklerWattsLabel, SPRINKLER_NEAR_M, type ThingKind, trackBridges, trackPath,
+  type Point2, previewChannelFlow, segmentsCross, sprinklerPowerW, sprinklerWattsLabel, SPRINKLER_NEAR_M, type ThingKind, trackBridges, trackPath,
 } from '../game/index.ts';
 import { placedKind, type ToolId, type ToolReadout } from '../ui/index.ts';
 
@@ -38,6 +38,21 @@ export function polygonArea(points: readonly Point2[]): number {
   return Math.abs(twice) / 2;
 }
 
+/** Whether any two non-adjacent edges of a closed outline cross (shoelace area cancels oppositely wound lobes). */
+function polygonSelfIntersects(points: readonly Point2[]): boolean {
+  const n = points.length;
+  if (n < 4) return false;
+  if (n > 200) return true;
+  for (let i = 0; i < n; i++) {
+    const a = points[i], b = points[(i + 1) % n];
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue;
+      if (segmentsCross(a, b, points[j], points[(j + 1) % n])) return true;
+    }
+  }
+  return false;
+}
+
 /** What a field outline being drawn says: what to do next, and once it has three corners, its area. */
 export function polygonReadout(crop: Crop | null, points: readonly Point2[], cursor?: Point2): ToolReadout {
   const name = crop === null ? 'Clear' : GOOD_LABELS[crop].label;
@@ -46,8 +61,8 @@ export function polygonReadout(crop: Crop | null, points: readonly Point2[], cur
   }
   const shape = cursor ? [...points, cursor] : [...points];
   if (shape.length < 3) return { text: `${crop === null ? 'Clearing' : `${name} polygon`} · click the next corner · Backspace undoes one · Esc cancels` };
-  const area = Math.round(polygonArea(shape));
-  return { text: `${crop === null ? 'Clear polygon' : `${name} polygon`} · ~${area} m² · click start or double-click to fill` };
+  const area = polygonSelfIntersects(shape) ? '' : ` · ~${Math.round(polygonArea(shape))} m²`;
+  return { text: `${crop === null ? 'Clear polygon' : `${name} polygon`}${area} · click start or double-click to fill` };
 }
 
 /** The field brush's radius, m: `[` and `]` step it. */

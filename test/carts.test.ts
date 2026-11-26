@@ -542,3 +542,12 @@ test('a field walled in on every side is loaded from among its crops, and only b
   const cart = s.sim.carts[0];
   assert.equal(fieldEdge(s, f, reachOf(s, cart, 'start')), null, 'no spot the Garage\'s cart can reach');
 });
+
+test('exact endpoint rewrites never steer a cart through a crop cell A* skipped', () => {
+  const s = land({ height: () => 0 });
+  assert.ok(apply(s, { type: 'paintFieldPolygon', crop: 'wheat', points: outline(0, 2, 4, 4) }).ok);
+  const path = must(findPath(s, { x: 1, z: 1 }, { x: 2.1, z: 3.9 }), 'path to crop goal');
+  const skipped = navCellOf(1, 3);
+  assert.equal(navFor(s).field[skipped], 1, '(1, 3) is inside the crops');
+  assert.ok(!cellsOnPath(path).has(skipped), `path ${JSON.stringify(path)} must not cut across crop cell (1, 3)`);
+});

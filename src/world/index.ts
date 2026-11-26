@@ -307,7 +307,7 @@ class ValleyWorld implements World {
   syncSim(tick?: SimTickResult) {
     const s = this.scene;
     // The flood rose or fell, and the banks it wets with it; the weather's ice, wet, snow and frost moved on a step.
-    if (!tick || tick.waterChanged) this.sendWater();
+    if (!tick || tick.waterChanged) { this.sendWater(); s.tools.refreshMoisture(); }
     if (!tick || tick.groundChanged) this.sendGround();
     this.followWeather();
     s.wind.setSpeed(this.state.sim.weather.windSpeed);

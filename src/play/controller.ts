@@ -174,6 +174,7 @@ export class Play implements UiCallbacks {
     if (speed <= 0) return;
     const tick = stepSim(this.state, Math.min(dt, MAX_SIM_FRAME) * speed, this.world.getSimEnv());
     this.world.syncSim(tick);
+    if (tick.waterChanged) this.hoverDirty = true;
     if (tick.events.length > 0) this.tell(tick.events);
     else if (this.blackoutSaid && !this.state.sim.powerSummary.anyBlackout) this.blackoutSaid = false;
     this.statsClock += dt;
@@ -362,6 +363,7 @@ export class Play implements UiCallbacks {
     if (this.press) return;
     this.pointer = { x, y };
     const press: Press = { button, startX: x, startY: y, lastX: x, lastY: y, mode: button === 1 ? 'pan' : 'pending' };
+    if (button === 1) this.lastClick = null;
     // An outline tool lays corners by clicks: a press waits to be a click (or, dragged past the slop, a pan).
     if (button === 0 && !this.moving && isStrokeTool(this.tool) && !this.outlining()) {
       const hit = this.world.hitTerrainAt(x, y);
@@ -381,6 +383,7 @@ export class Play implements UiCallbacks {
     const dx = x - p.lastX, dy = y - p.lastY;
     p.lastX = x; p.lastY = y;
     if (p.mode === 'pending' && Math.hypot(x - p.startX, y - p.startY) > CLICK_SLOP) {
+      this.lastClick = null;
       p.mode = p.button === 2 && this.world.getYawMode() === 'orbit' ? 'orbit' : 'pan';
       if (p.mode === 'pan') this.world.panByScreen(x - p.startX - dx, y - p.startY - dy);
     }
@@ -420,6 +423,7 @@ export class Play implements UiCallbacks {
 
   /** The wheel: zooms at the pointer, or with Shift turns the ghost being placed or moved. */
   wheel(delta: number, x: number, y: number, shift: boolean) {
+    this.lastClick = null;
     if (shift && (this.moving || placedKind(this.tool))) {
       this.wheelTurn += delta;
       if (Math.abs(this.wheelTurn) >= WHEEL_TURN) { this.turnGhost(this.wheelTurn > 0 ? -1 : 1); this.wheelTurn = 0; }
@@ -513,16 +517,24 @@ export class Play implements UiCallbacks {
   private polygonClick(x: number, y: number) {
     const now = performance.now(), prev = this.lastClick;
     const double = prev !== null && now - prev.t <= DOUBLE_CLICK_MS && Math.hypot(x - prev.x, y - prev.y) <= DOUBLE_CLICK_PX;
-    this.lastClick = { t: now, x, y, closed: false };
     // The second click of a double-click that already closed the outline: nothing more.
     if (double && prev.closed) { this.lastClick = null; return; }
     const pts = this.polygon;
-    if (double && pts.length >= 3) { this.commitPolygon(); return; }
+    if (double && pts.length >= 3) {
+      this.lastClick = { t: now, x, y, closed: true };
+      this.commitPolygon();
+      return;
+    }
     const at = this.world.hitTerrainAt(x, y);
-    if (!at) return;
+    if (!at) { this.lastClick = null; return; }
     const first = pts[0], last = pts[pts.length - 1];
-    if (pts.length >= 3 && Math.hypot(at.x - first.x, at.z - first.z) <= POLYGON_SNAP) { this.commitPolygon(); return; }
+    if (pts.length >= 3 && Math.hypot(at.x - first.x, at.z - first.z) <= POLYGON_SNAP) {
+      this.lastClick = { t: now, x, y, closed: true };
+      this.commitPolygon();
+      return;
+    }
     if (last && Math.hypot(at.x - last.x, at.z - last.z) < 0.3) return;
+    this.lastClick = { t: now, x, y, closed: false };
     pts.push({ x: at.x, z: at.z });
     this.hoverDirty = true;
   }
@@ -781,7 +793,7 @@ export class Play implements UiCallbacks {
       case 'backspace':
         if (!this.outlining() || this.polygon.length === 0) return false;
         this.polygon.pop();
-        if (this.polygon.length === 0) this.lastClick = null;
+        this.lastClick = null;
         this.hoverDirty = true;
         return true;
       case '[': case ']':

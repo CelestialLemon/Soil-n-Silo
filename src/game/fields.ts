@@ -122,10 +122,15 @@ function polygonCells(g: Grid, points: readonly Point2[], fn: (ix: number, iz: n
   }
 }
 
+/** The farthest coordinate a field outline may reach, m (well past the valley, well below float overflow in rasterizing). */
+const MAX_POLYGON_COORD = 1e4;
+
 function checkPolygon(points: readonly Point2[]): Result<void, string> {
   if (points.length < 3) return err('A field outline needs at least three corners.');
   if (points.length > MAX_PATH_POINTS) return err('That outline has too many corners: draw it in smaller pieces.');
-  if (points.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.z))) return err('That outline left the valley.');
+  if (points.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.z) || Math.abs(p.x) > MAX_POLYGON_COORD || Math.abs(p.z) > MAX_POLYGON_COORD)) {
+    return err('That outline left the valley.');
+  }
   return ok(undefined);
 }
 

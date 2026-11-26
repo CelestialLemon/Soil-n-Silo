@@ -103,6 +103,7 @@ test('a bad outline is refused, and the land is left as it was', () => {
   const after = Uint16Array.from(s.grid.fieldOf);
   refused(paintFieldPolygon(s, 'wheat', [{ x: 0, z: 0 }, { x: Number.NaN, z: 5 }, { x: 5, z: 0 }]), 'a corner off the valley');
   refused(paintFieldPolygon(s, 'wheat', [{ x: 0, z: 0 }, { x: Infinity, z: 5 }, { x: 5, z: 0 }]), 'a corner off the valley');
+  refused(paintFieldPolygon(s, 'wheat', [{ x: -1e200, z: -1e200 }, { x: 1e200, z: -1e200 }, { x: 0, z: 1e200 }]), 'huge finite corners');
   refused(paintFieldPolygon(s, 'rye' as Crop, rect(30, 0, 34, 4)), 'no such crop');
   refused(paintFieldPolygon(s, 'wheat', [{ x: 30, z: 0 }, { x: 34, z: 0 }, { x: 38, z: 0 }]), 'a flat outline holds no ground');
   refused(paintFieldPolygon(s, 'wheat', rect(500, 500, 510, 510)), 'off the land');
