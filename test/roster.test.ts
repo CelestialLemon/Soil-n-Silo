@@ -5,9 +5,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import {
-  advanceRecipes, apply, canPlace, CATALOG, costOf, CROPS, type Crop, cropClimate, countOf, describeRuntime, DIGESTER_BURN_HOURS, DIGESTER_W, erosionDrain,
+  advanceRecipes, apply, BATTERY_WH, canPlace, CATALOG, costOf, CROPS, type Crop, cropClimate, countOf, describeRuntime, diagnoseIdleCarts,
+  DIGESTER_BURN_HOURS, DIGESTER_CHARGE_BELOW, DIGESTER_W, type Endpoint, erosionDrain,
   type Field, floweringArea, forageRate, formatClock, type GameState, generateValley, generationOf, type Good, GOOD_LABELS, GOODS, GREENHOUSE_HOURS, GREENHOUSE_YIELD,
-  growCrops, growGreenhouses, HARVEST_FERTILITY, liveEnv, must, PANTRY_ORDERS, type Point2, previewChannelFlow, RECIPES, sandboxSupplies, type SimEnv, type SimEvent, starterSupplies, startRecipes, stepSim,
+  growCrops, growGreenhouses, HARVEST_FERTILITY, liveEnv, must, PANTRY_ORDERS, type Point2, previewChannelFlow, RECIPES, sandboxSupplies, type SimEnv, type SimEvent, SILO_GOOD_CAP, starterSupplies, startRecipes, stepPower, stepSim,
   suggestWaterWheelYaw, SUPPLY_CAP, type ThingKind, WHEAT_HARDY_C,
 } from '../src/game/index.ts';
 import { brookSpot, build, building, done, fieldAt, flatLand, joinMain, land } from './helpers.ts';
@@ -217,6 +218,10 @@ test('the Biogas Digester is built cold and empty: taking it down and building i
   assert.deepEqual([r.working, r.inputs, r.progress], [false, {}, 0]);
   r.inputs = { manure: 3 };
   startRecipes(s);
+  assert.ok(!r.working, 'the workshops\' start leaves it cold: only the power lights it');
+  // An empty Battery beside it asks for charge: it lights.
+  put(s, 'battery', 8, -20);
+  stepSim(s, 1, blizzard);
   assert.ok(r.working);
   assert.ok(apply(s, { type: 'remove', id }).ok);
   const again = put(s, 'digester', 0, -20), r2 = rt(s, again);
@@ -231,6 +236,8 @@ test('the Biogas Digester burns waste into 4 W in a pitch-dark calm winter blizz
   s.sim.weatherOverride = 'blizzard';
   s.sim.hour = 0;
   const dig = building(s, 'digester', 0, -20), spinner = building(s, 'spinner', 10, -20), solar = building(s, 'solar', -10, -20);
+  // The farmhouse's lamps keep asking all night, so it burns its waste back to back.
+  building(s, 'farmhouse', 0, -32);
   dig.r.inputs = { manure: 1, bran: 1 };
   spinner.r.inputs = { flax: 4 };
   const env: SimEnv = { windSpeed: 0, cloudCover: 1, weather: 'blizzard' };
@@ -279,6 +286,160 @@ test('carts bring the Digester its waste, and a byproduct sent to the Digester g
   run(s, 1);
   assert.equal(countOf(rt(s, coop).outputs, 'manure') <= 1, true, 'the manure was hauled');
   assert.ok(rt(s, dig).made + (rt(s, dig).working ? 1 : 0) + countOf(rt(s, dig).inputs, 'manure') + countOf(rt(s, dig).inputs, 'bran') > before);
+});
+
+// --- Sol's Round 1 review of Milestone 5A -------------------------------------------------------------------------------
+
+test('the Digester is dispatchable: it holds its waste on a sunny surplus, and lights the moment a load or a low battery needs it', () => {
+  const s = flatLand();
+  s.sim.hour = 12;
+  const sunny: SimEnv = { windSpeed: 0, cloudCover: 0, weather: 'clear' };
+  const dig = building(s, 'digester', 0, -20);
+  building(s, 'solar', -8, -20);
+  dig.r.inputs = { manure: 2 };
+  // Noon sun, nothing asking, no battery: standby, the hopper untouched.
+  for (let k = 0; k < 30; k++) stepSim(s, 1, sunny);
+  assert.equal(dig.r.working, false);
+  assert.deepEqual(dig.r.inputs, { manure: 2 });
+  assert.equal(dig.r.watts, 0);
+  assert.equal(describeRuntime(s, dig.r), `Standby · 2 waste ready (${DIGESTER_W.toFixed(1)} W on demand)`);
+  // A full Battery and the farmhouse's daytime draw within the sun's: still standby.
+  const bat = building(s, 'battery', 8, -20);
+  bat.r.charge = 1;
+  const home = building(s, 'farmhouse', 0, -32);
+  for (let k = 0; k < 30; k++) stepSim(s, 1, sunny);
+  assert.equal(dig.r.working, false, 'the sun and a full battery carry the day');
+  assert.deepEqual(dig.r.inputs, { manure: 2 });
+  // Sunset: the canopy dark, the lamps lit. It lights at once and carries them, with no blackout and the battery spared.
+  s.sim.hour = 23;
+  const events = stepSim(s, 1, { ...sunny, hour: 23 + 1 / 30 }).events;
+  assert.ok(dig.r.working, 'lit by the shortfall');
+  assert.deepEqual(dig.r.inputs, { manure: 1 });
+  assert.ok(home.r.powered);
+  assert.equal(events.filter((e) => e.type === 'blackout').length, 0);
+  assert.ok(!s.sim.powerSummary.anyBlackout);
+
+  // A Battery drained below 85% on a sunny surplus with nothing asking: it lights to top it up.
+  const t = flatLand();
+  t.sim.hour = 12;
+  const d2 = building(t, 'digester', 0, -20), b2 = building(t, 'battery', 8, -20);
+  building(t, 'solar', -8, -20);
+  d2.r.inputs = { bran: 1 };
+  b2.r.charge = DIGESTER_CHARGE_BELOW + 0.05;
+  stepSim(t, 1, sunny);
+  assert.equal(d2.r.working, false, 'above 85%: standby');
+  b2.r.charge = DIGESTER_CHARGE_BELOW - 0.05;
+  stepSim(t, 1, sunny);
+  assert.ok(d2.r.working, 'below 85%: lit');
+  assert.deepEqual(d2.r.inputs, {});
+});
+
+test('paused, the power never lights a cold Digester', () => {
+  const s = flatLand();
+  s.sim.hour = 23;
+  const dig = building(s, 'digester', 0, -20);
+  building(s, 'farmhouse', 0, -32);
+  dig.r.inputs = { manure: 1 };
+  stepPower(s, 0, 23, blizzard);
+  assert.equal(dig.r.working, false);
+  assert.deepEqual(dig.r.inputs, { manure: 1 });
+});
+
+test('one unit of waste gives exactly 16 Wh, and the card reads 0 W the moment the burn ends', () => {
+  const s = flatLand();
+  const dig = building(s, 'digester', 0, -20), bat = building(s, 'battery', 8, -20);
+  dig.r.inputs = { manure: 1 };
+  // A step that doesn't divide the four-hour burn: the last one has only a sliver of it left.
+  const dtH = 0.3;
+  let steps = 0;
+  while (dig.r.made === 0 && steps < 100) {
+    stepPower(s, dtH, 0, blizzard);
+    advanceRecipes(s, dtH, 'blizzard');
+    steps++;
+    if (dig.r.made === 0) assert.equal(dig.r.watts, DIGESTER_W * Math.min(1, (1 - dig.r.progress + dtH / DIGESTER_BURN_HOURS) * DIGESTER_BURN_HOURS / dtH));
+  }
+  assert.equal(dig.r.made, 1);
+  assert.equal(dig.r.watts, 0, 'burnt out: no stale 4 W');
+  assert.equal(dig.r.working, false);
+  const wh = bat.r.charge * BATTERY_WH;
+  assert.ok(wh <= DIGESTER_W * DIGESTER_BURN_HOURS + 1e-6, `${wh} Wh`);
+  assert.ok(Math.abs(wh - DIGESTER_W * DIGESTER_BURN_HOURS) < 0.01, `${wh} Wh`);
+});
+
+/** Runs the yard a frame at a time until a cart sets out with `good`; returns where it's bound. */
+function firstHaul(s: GameState, good: Good): Endpoint {
+  for (let k = 0; k < 30 * 6; k++) {
+    stepSim(s, 1, breezy);
+    const job = s.sim.carts.find((c) => c.job?.good === good)?.job;
+    if (job) return job.to;
+  }
+  assert.fail(`no cart set out with ${good}`);
+}
+
+test('the Cannery and the Loom get their first batch of oil and yarn before the Depot takes the order\'s share', () => {
+  {
+    const { s } = craftYard();
+    const press = put(s, 'oil_press', 6, -28, Math.PI), cannery = put(s, 'cannery', 22, -28, Math.PI);
+    s.sim.brief.order.targets = { tomato_sauce: 6, oil: 4 };
+    rt(s, cannery).inputs = { tomato: 4 };
+    rt(s, press).outputs = { oil: 2 };
+    assert.deepEqual(firstHaul(s, 'oil'), { kind: 'thing', id: cannery }, 'oil to the waiting Cannery first');
+  }
+  {
+    const { s } = craftYard();
+    const spinner = put(s, 'spinner', 6, -28, Math.PI), loom = put(s, 'loom', 22, -28, Math.PI);
+    s.sim.brief.order.targets = { linen: 6, yarn: 4 };
+    rt(s, spinner).outputs = { yarn: 2 };
+    assert.deepEqual(firstHaul(s, 'yarn'), { kind: 'thing', id: loom }, 'yarn to the waiting Loom first');
+  }
+  {
+    // Once the order wants no more linen, the Loom holds no yarn back from the Depot.
+    const { s, depot } = craftYard();
+    const spinner = put(s, 'spinner', 6, -28, Math.PI);
+    put(s, 'loom', 22, -28, Math.PI);
+    s.sim.brief.order.targets = { linen: 6, yarn: 4 };
+    s.sim.delivered = { linen: 6 };
+    rt(s, spinner).outputs = { yarn: 2 };
+    assert.deepEqual(firstHaul(s, 'yarn'), { kind: 'thing', id: depot });
+  }
+});
+
+test('a byproduct sent to a building since taken down goes where Auto would send it', () => {
+  const { s } = craftYard();
+  const mill = put(s, 'mill', 6, -46, 0), composter = put(s, 'composter', 22, -46, 0), coop = put(s, 'coop', -26, -28, Math.PI);
+  const dig = put(s, 'digester', 22, -28);
+  assert.ok(apply(s, { type: 'setByproductPriority', id: mill, target: 'digester' }).ok);
+  assert.ok(apply(s, { type: 'remove', id: dig }).ok);
+  assert.equal(rt(s, mill).priority, 'digester', 'the choice is kept');
+  rt(s, mill).outputs = { bran: 2 };
+  // As on Auto: the hungry Coop (bran its first choice) before the nearer Composter (bran its second).
+  assert.deepEqual(firstHaul(s, 'bran'), { kind: 'thing', id: coop });
+  assert.equal(countOf(rt(s, composter).inputs, 'bran'), 0);
+});
+
+test('on Auto the Composter eats seed cake before the Digester burns it; sent to the Digester, it goes there first', () => {
+  for (const sendTo of ['auto', 'digester'] as const) {
+    const { s } = craftYard();
+    const press = put(s, 'oil_press', 6, -46, 0), composter = put(s, 'composter', -26, -28, Math.PI), dig = put(s, 'digester', 22, -46);
+    assert.ok(apply(s, { type: 'setByproductPriority', id: press, target: sendTo }).ok);
+    rt(s, press).outputs = { seed_cake: 2 };
+    assert.deepEqual(firstHaul(s, 'seed_cake'), { kind: 'thing', id: sendTo === 'auto' ? composter : dig }, sendTo);
+  }
+});
+
+test('with the Silo full and a Cannery already standing, the idle carts never ask for another Cannery', () => {
+  const { s, silo } = craftYard();
+  const cannery = put(s, 'cannery', 22, -28, Math.PI);
+  s.sim.brief.order.targets = { linen: 6 };
+  rt(s, cannery).inputs = { tomato: 4 };
+  rt(s, silo).outputs = { tomato: SILO_GOOD_CAP };
+  assert.ok(apply(s, { type: 'paintField', crop: 'tomato', points: [{ x: -44, z: -54 }, { x: -30, z: -54 }], radius: 3 }).ok);
+  must(s.fields.find((f) => f.crop === 'tomato'), 'tomatoes').harvestReady = 4;
+  const hint = must(diagnoseIdleCarts(s), 'a hint');
+  assert.equal(hint, 'Silo has no room for tomato — check the Cannery');
+  // With no Cannery standing, it suggests one.
+  assert.ok(apply(s, { type: 'remove', id: cannery }).ok);
+  assert.equal(diagnoseIdleCarts(s), 'Silo has no room for tomato — build a Cannery to use it');
 });
 
 test('each season has its own Pantry Order, all within the 20-Supply cap', () => {

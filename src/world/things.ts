@@ -148,9 +148,12 @@ export class Things {
       case 'bakery': running = working && powered; break;
       // The press's handwheel and the great spinning wheel turn only while they work with power.
       case 'oil_press': case 'spinner': running = working && powered; spin = running ? 1 : 0; break;
-      // The cannery's stove glows and its pipe steams, and the loom weaves, while they work with power.
+      // The cannery's stove glows and its pipe steams while it works with power (its model's `running_glow` and
+      // `smoke_emitter`). The loom's model has no moving or running part yet (brush3d/docs/MODELS.md): `running` is set for
+      // it so a part added later lights up, and until then it stands still. Model tweaks go in their own renderer PR.
       case 'cannery': case 'loom': running = working && powered; break;
-      // It makes its own power: its flare burns and its pipe smokes while it burns waste, day or night, in any weather.
+      // It makes its own power: its pipe smokes (the model's one part, `smoke_emitter`) while it burns waste, day or night,
+      // in any weather; standing by with a full hopper it's quiet. The flare is painted on, not a running part.
       case 'digester': running = working; break;
       // The drum turns by hand-crank and gravity: no power, only something to turn.
       case 'composter': spin = working ? 1 : 0; running = working; break;

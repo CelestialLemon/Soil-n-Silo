@@ -1,7 +1,8 @@
 // The live power (Milestone 2): each wireless network (power/radius.ts) shares what its producers make and what its
 // batteries hold. Solar canopies follow the sun and the clouds, wind turbines the live gusts, water wheels the brook
-// (steady, day and night), the Biogas Digester its burning waste (steady, in any weather, while it has fuel). Batteries soak up the surplus and carry the homestead through the night; when a network
-// can't meet its demand, it sheds its workshops first (they pause), and that is a blackout.
+// (steady, day and night), the Biogas Digester its burning waste (steady, in any weather, while it has fuel; it lights only
+// when its network needs it, so its waste keeps for the dark calm). Batteries soak up the surplus and carry the homestead
+// through the night; when a network can't meet its demand, it sheds its workshops first (they pause), and that is a blackout.
 import { isLiquidRain, serviceSite, treeShade, windShelter } from '../microclimate.ts';
 import { chargingAtGarage } from '../carts.ts';
 import { CATALOG } from '../catalog.ts';
@@ -9,7 +10,7 @@ import { formatClock, isNight, sunFactor } from '../clock.ts';
 import { clamp } from '../geom.ts';
 import { must } from '../result.ts';
 import type { GameState, Thing } from '../state.ts';
-import { describeRuntime, DIGESTER_W, GREENHOUSE_COLD_C, GREENHOUSE_COLD_W, GREENHOUSE_MILD_W, syncGreenhouses, syncRuntime, type ThingRuntime } from '../workshops.ts';
+import { describeRuntime, DIGESTER_BURN_HOURS, DIGESTER_W, GREENHOUSE_COLD_C, GREENHOUSE_COLD_W, GREENHOUSE_MILD_W, lightDigester, syncGreenhouses, syncRuntime, type ThingRuntime } from '../workshops.ts';
 import { feeds, roleOf } from './nodes.ts';
 import { networksOf } from './radius.ts';
 
@@ -40,6 +41,8 @@ export const TURBINE_BASE_W = 0.5, TURBINE_SPAN_W = 4, TURBINE_FULL_WIND = 12;
 export const WATERWHEEL_W = 3.2;
 /** A Battery's store and the most it gives or takes. A new one is built empty (workshops.ts). */
 export const BATTERY_WH = 18, BATTERY_RATE_W = 6;
+/** A Digester on a network whose batteries are below this share of full lights to top them up. */
+export const DIGESTER_CHARGE_BELOW = 0.85;
 /** The Garage's draw while it charges a cart, and idle. */
 export const GARAGE_CHARGE_W = 1.5, GARAGE_IDLE_W = 0.2;
 /** The Farmhouse's draw at night (lamps lit) and by day. */
@@ -73,7 +76,8 @@ export function generationOf(s: GameState, t: Thing, hour: number, env: SimEnv):
     case 'solar': return sunFactor(hour, s.season) * (1 - CLOUD_DIM * clamp(env.cloudCover, 0, 1)) * SOLAR_PEAK_W * (1 - treeShade(s, t));
     case 'turbine': return (TURBINE_BASE_W + clamp(env.windSpeed * (1 - windShelter(s, t)) / TURBINE_FULL_WIND, 0, 1) * TURBINE_SPAN_W) * ridge(s, t);
     case 'waterwheel': return WATERWHEEL_W;
-    // Dark, calm, cloud, frost, storm or blizzard: it makes the same while it burns (workshops.ts lights and burns it).
+    // Dark, calm, cloud, frost, storm or blizzard: it makes the same while it burns (stepPower lights it when its network
+    // needs it, and gives only what's left of its burn on the last step; workshops.ts burns it down).
     case 'digester': return s.sim.things.get(t.id)?.working ? DIGESTER_W : 0;
     default: return 0;
   }
@@ -116,19 +120,31 @@ const SHED_ORDER: Partial<Record<Thing['kind'], number>> = {
 };
 
 /**
+ * What a burning Digester gives over a step of `dtH` hours, W: its full watts, less on the step its waste burns out (only
+ * the burn it has left), so one unit gives exactly DIGESTER_W × DIGESTER_BURN_HOURS. With no time passing, its full watts.
+ */
+function digesterWatts(r: ThingRuntime, dtH: number): number {
+  if (!r.working) return 0;
+  if (dtH <= 0) return DIGESTER_W;
+  return DIGESTER_W * Math.min(1, Math.max(0, (1 - r.progress) * DIGESTER_BURN_HOURS) / dtH);
+}
+
+/**
  * Runs the power for `dtH` game hours at `hour`; returns the networks that fell into a blackout on this step. With `dtH`
- * 0 it only reads the power as it stands (refreshPower): a battery with any charge can give its rate, and none is drawn.
+ * 0 it only reads the power as it stands (refreshPower): a battery with any charge can give its rate, and none is drawn,
+ * and no cold Digester lights. A cold Digester lights (dispatchable) only when its network's other producers fall short of
+ * what its loads ask, or its batteries are below DIGESTER_CHARGE_BELOW: on a sunny surplus its waste waits in the hopper.
  */
 export function stepPower(s: GameState, dtH: number, hour: number, env: SimEnv): PowerNetwork[] {
   const rt = s.sim.things, { emitters, netOf, loads, loadNets } = networksOf(s);
   const was = new Map(s.sim.networks.map((n) => [n.id, n.blackout]));
-  const nets = new Map<number, PowerNetwork & { batteries: ThingRuntime[] }>();
+  const nets = new Map<number, SimNet>();
   const nets_ = (id: number) => must(nets.get(id), 'a power network');
   emitters.forEach((e, i) => {
     const root = emitters[netOf[i]].id;
     let n = nets.get(root);
     if (!n) {
-      n = { id: root, emitters: [], loads: [], generationW: 0, demandW: 0, servedW: 0, batteryWh: 0, batteryCapWh: 0, blackout: false, fed: false, batteries: [] };
+      n = { id: root, emitters: [], loads: [], generationW: 0, demandW: 0, servedW: 0, batteryWh: 0, batteryCapWh: 0, blackout: false, fed: false, batteries: [], digesters: [] };
       nets.set(root, n);
     }
     n.emitters.push(e.id);
@@ -136,8 +152,9 @@ export function stepPower(s: GameState, dtH: number, hour: number, env: SimEnv):
     const r = rt.get(e.id);
     if (!r) return;
     r.powerNetId = root;
-    r.watts = generationOf(s, e, hour, env);
+    r.watts = e.kind === 'digester' ? digesterWatts(r, dtH) : generationOf(s, e, hour, env);
     n.generationW += r.watts;
+    if (e.kind === 'digester') n.digesters.push(r);
     if (e.kind === 'battery') { n.batteries.push(r); n.batteryWh += r.charge * BATTERY_WH; n.batteryCapWh += BATTERY_WH; }
   });
 
@@ -151,11 +168,14 @@ export function stepPower(s: GameState, dtH: number, hour: number, env: SimEnv):
   });
   asks.sort((a, b) => (SHED_ORDER[a.t.kind] ?? 9) - (SHED_ORDER[b.t.kind] ?? 9) || a.t.id - b.t.id);
 
-  // Serve the loads in order while the networks' producers and batteries can.
   const canGive = (n: { batteries: ThingRuntime[]; batteryWh: number }) => {
     const rate = n.batteries.length * BATTERY_RATE_W;
     return dtH > 0 ? Math.min(rate, n.batteryWh / dtH) : n.batteryWh > 1e-9 ? rate : 0;
   };
+  // Light the cold Digesters whose networks need them, before any load is served or battery charged.
+  if (dtH > 0) lightNeededDigesters(nets, asks, canGive, dtH);
+
+  // Serve the loads in order while the networks' producers and batteries can.
   const left = new Map([...nets.values()].map((n) => [n.id, n.generationW + canGive(n)]));
   const short: Thing[] = [];
   for (const a of asks) {
@@ -211,6 +231,36 @@ export function stepPower(s: GameState, dtH: number, hour: number, env: SimEnv):
     sum.lastBlackoutReason = `Blackout on ${formatClock(s.sim.day, hour)}: the ${names} went without power. To carry it, ${fix}.`;
   }
   return fresh;
+}
+
+type SimNet = PowerNetwork & { batteries: ThingRuntime[]; digesters: ThingRuntime[] };
+
+/**
+ * Lights cold Digesters (with waste in their hoppers) on the networks that need them: where the loads, each counted
+ * against the fed network the serving would draw it from, ask more than the other producers make, or where the batteries
+ * are below DIGESTER_CHARGE_BELOW. One at a time, so a second Digester stays cold while the first covers the shortfall.
+ */
+function lightNeededDigesters(nets: Map<number, SimNet>, asks: { nets: PowerNetwork[]; w: number }[],
+  canGive: (n: SimNet) => number, dtH: number): void {
+  if (![...nets.values()].some((n) => n.digesters.some((r) => !r.working))) return;
+  // A dry run of the serving below: which network each load would draw from, so its demand counts once.
+  const demand = new Map<number, number>(), left = new Map([...nets.values()].map((n) => [n.id, n.generationW + canGive(n)]));
+  for (const a of asks) {
+    let best: PowerNetwork | undefined;
+    for (const n of a.nets) if (n.fed && (!best || (left.get(n.id) ?? 0) > (left.get(best.id) ?? 0) + 1e-9)) best = n;
+    if (!best) continue;
+    demand.set(best.id, (demand.get(best.id) ?? 0) + a.w);
+    left.set(best.id, (left.get(best.id) ?? 0) - a.w);
+  }
+  for (const n of nets.values()) {
+    const needs = () => n.generationW < (demand.get(n.id) ?? 0) - 1e-9 ||
+      (n.batteryCapWh > 0 && n.batteryWh < n.batteryCapWh * DIGESTER_CHARGE_BELOW);
+    for (const r of n.digesters) {
+      if (r.working || !needs() || !lightDigester(r)) continue;
+      r.watts = digesterWatts(r, dtH);
+      n.generationW += r.watts;
+    }
+  }
 }
 
 /**

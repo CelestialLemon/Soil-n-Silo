@@ -15,7 +15,7 @@
 // strip reads it out (liveWeatherView) with the Weather Station's days ahead once one stands (stationForecast). A
 // `?weather=` lock holds it until the player lets it go (onClearWeatherLock); a jump of the clock reads it again at once.
 import {
-  type Action, type ByproductMaker, type ByproductTarget, BYPRODUCTS, CROPS, isByproductMaker, cellIx, cellIz, effectiveMoisture, erosionDrain, GOOD_LABELS, apply, diagnoseIdleCarts, CART_COST, CATALOG, CLOCK_JUMPED, type Change, generateValley, type GameState, heightAt, type Point2,
+  type Action, type ByproductMaker, type ByproductTarget, BYPRODUCTS, CROPS, effectivePriority, isByproductMaker, cellIx, cellIz, effectiveMoisture, erosionDrain, GOOD_LABELS, apply, diagnoseIdleCarts, CART_COST, CATALOG, CLOCK_JUMPED, type Change, generateValley, type GameState, heightAt, type Point2,
   climateFor, refreshFieldWeather, refreshPower, resetSteadyOnClockJump, rollWeatherSeed, type Season, SETUP_CHANGED, type SimEvent, stationForecast, stepSim, stepWeather,
   suggestWaterWheelYaw, type ThingKind, TREE_SPECIES, wrapAngle,
 } from '../game/index.ts';
@@ -240,7 +240,7 @@ export class Play implements UiCallbacks {
     if (t.kind === 'greenhouse' && r) view.preference = `Crop: ${GOOD_LABELS[r.greenhouseCrop].label}`;
     // A byproduct's destination is the player's to choose only once two of its destinations stand to choose between.
     if (isByproductMaker(t.kind) && r && this.byproductChoices(t.kind).length > 2)
-      view.preference = `${GOOD_LABELS[BYPRODUCTS[t.kind].good].label} → ${PRIORITY_LABELS[r.priority]}`;
+      view.preference = `${GOOD_LABELS[BYPRODUCTS[t.kind].good].label} → ${PRIORITY_LABELS[effectivePriority(this.state, r)]}`;
     if (t.kind === 'garage') view.cartControls = cartControls(this.state);
     return view;
   }

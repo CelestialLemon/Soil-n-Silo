@@ -2,8 +2,8 @@
 // Coop's hens turn bran (or seed cake, or wheat) into eggs and manure, the Bakery bakes flour and eggs into bread, the
 // Composter turns manure (or bran, or seed cake) into compost for the fields. The Oil Press presses sunflowers into oil and
 // seed cake, the Cannery simmers tomatoes and oil into sauce, the Spinner spins flax into yarn and the Loom weaves it into
-// linen. The Biogas Digester burns the organic waste (manure, bran, seed cake) into steady power whatever the weather. The
-// Silo stores goods; the Depot takes the Pantry Order to the settlement.
+// linen. The Biogas Digester burns the organic waste (manure, bran, seed cake) into steady power whatever the weather, lit
+// only when its network needs it. The Silo stores goods; the Depot takes the Pantry Order to the settlement.
 //
 // Each building's live side (its goods, recipe, power and the one plain line its floating card shows) is a ThingRuntime,
 // kept by id in `state.sim.things` beside the placed Thing; it comes and goes with the building.
@@ -60,6 +60,15 @@ export const BYPRODUCTS: { readonly [K in ByproductMaker]: { good: Good; targets
   oil_press: { good: 'seed_cake', targets: ['auto', 'coop', 'composter', 'digester'] },
 };
 export const isByproductMaker = (k: ThingKind): k is ByproductMaker => Object.hasOwn(BYPRODUCTS, k);
+
+/**
+ * Where a maker's byproduct really goes first now: its chosen destination while one of that kind stands, else 'auto' (a
+ * Digester chosen and then taken down leaves the carts to choose, as if the player had never picked).
+ */
+export function effectivePriority(s: GameState, r: ThingRuntime): ByproductTarget {
+  const p = r.priority;
+  return p === 'auto' || !s.things.some((t) => t.kind === p) ? 'auto' : p;
+}
 
 /** A recipe's input: one unit-count of any of `options`, the first preferred; carts keep `keep` of it in stock. */
 export interface RecipeInput { options: readonly Good[]; count: number; keep: number }
@@ -216,12 +225,14 @@ export function syncGreenhouses(s: GameState): void {
   for (const r of s.sim.things.values()) if (r.kind === 'greenhouse') r.working = totalStored(r.outputs) + GREENHOUSE_YIELD <= OUTPUT_CAP;
 }
 
-/** Starts a recipe in every idle workshop that has its inputs and room for what it makes (and readies the Greenhouses). */
+/**
+ * Starts a recipe in every idle workshop that has its inputs and room for what it makes (and readies the Greenhouses). The
+ * Digester isn't one of them: the power lights it when its network needs it (power/sim.ts), so its waste waits for need.
+ */
 export function startRecipes(s: GameState): void {
   syncGreenhouses(s);
   for (const r of s.sim.things.values()) {
     setOutHoney(r);
-    if (r.kind === 'digester') { lightDigester(r); continue; }
     if (!isWorkshop(r.kind) || r.working) continue;
     const recipe = recipeOf(r.kind, r);
     const picks = recipe.inputs.map((input) => pick(r.inputs, input));
@@ -233,15 +244,22 @@ export function startRecipes(s: GameState): void {
   }
 }
 
-/** A cold Digester with waste in its hopper takes a unit of it and starts burning (read before the power runs). */
-function lightDigester(r: ThingRuntime): void {
-  if (r.working) return;
+/**
+ * A cold Digester with waste in its hopper takes a unit of it and starts burning; returns whether it lit. The power calls
+ * it (stepPower) only when the Digester's network is short or its batteries are low.
+ */
+export function lightDigester(r: ThingRuntime): boolean {
+  if (r.kind !== 'digester' || r.working) return false;
   const g = pick(r.inputs, DIGESTER_FEED);
-  if (!g) return;
+  if (!g) return false;
   takeGood(r.inputs, g, DIGESTER_FEED.count);
   r.working = true;
   r.progress = 0;
+  return true;
 }
+
+/** Waste in a Digester's hopper, all kinds together. */
+export const digesterFuel = (r: ThingRuntime) => DIGESTER_FEED.options.reduce((n, g) => n + countOf(r.inputs, g), 0);
 
 /**
  * Works the recipes under way for `dtH` game hours, where power allows, and burns the Digesters' waste; returns the
@@ -252,7 +270,8 @@ export function advanceRecipes(s: GameState, dtH: number, weather?: string): Thi
   for (const r of s.sim.things.values()) {
     if (r.kind === 'digester' && r.working && dtH > 0) {
       r.progress = Math.min(1, r.progress + dtH / DIGESTER_BURN_HOURS);
-      if (r.progress >= 1) { r.working = false; r.progress = 0; r.made++; }
+      // Burnt out: cold at once, so its card never shows the watts of a burn that's over.
+      if (r.progress >= 1) { r.working = false; r.progress = 0; r.watts = 0; r.made++; }
       continue;
     }
     if (!isWorkshop(r.kind) || !r.working) continue;
@@ -307,8 +326,8 @@ export function describeRuntime(s: GameState, r: ThingRuntime): string {
     case 'weather_station': return describeWeather(s);
     case 'digester': {
       if (r.working) return `Burning biogas · ${DIGESTER_W.toFixed(1)} W (${Math.round(r.progress * 100)}%)`;
-      const fuel = DIGESTER_FEED.options.reduce((n, g) => n + countOf(r.inputs, g), 0);
-      return fuel > 0 ? `Ready to burn · ${fuel} waste in the hopper` : 'Waiting for manure, bran or seed cake';
+      const fuel = digesterFuel(r);
+      return fuel > 0 ? `Standby · ${fuel} waste ready (${DIGESTER_W.toFixed(1)} W on demand)` : 'Waiting for manure, bran or seed cake';
     }
     case 'greenhouse': {
       const crop = GOOD_LABELS[r.greenhouseCrop].label;

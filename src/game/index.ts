@@ -88,11 +88,11 @@ export {
 } from './crops.ts';
 export {
   advanceRecipes, BYPRODUCTS, type ByproductMaker, type ByproductTarget, describeRuntime, DIGESTER_BURN_HOURS, DIGESTER_FEED, DIGESTER_FUELS,
-  DIGESTER_W, inputsOf, isByproductMaker, GREENHOUSE_COLD_C, GREENHOUSE_COLD_W, GREENHOUSE_HOURS, GREENHOUSE_MILD_W, GREENHOUSE_YIELD, growGreenhouses, INPUT_CAP, OUTPUT_CAP, type Recipe, type RecipeInput, RECIPES, runtimeOf, SILO_CAP,
+  DIGESTER_W, effectivePriority, inputsOf, isByproductMaker, GREENHOUSE_COLD_C, GREENHOUSE_COLD_W, GREENHOUSE_HOURS, GREENHOUSE_MILD_W, GREENHOUSE_YIELD, growGreenhouses, INPUT_CAP, OUTPUT_CAP, type Recipe, type RecipeInput, RECIPES, runtimeOf, SILO_CAP,
   SILO_GOOD_CAP, siloRoom, startRecipes, syncGreenhouses, syncRuntime, type ThingRuntime, wantsInput,
 } from './workshops.ts';
 export {
-  BATTERY_RATE_W, BATTERY_WH, CLOUD_DIM, demandOf, FARMHOUSE_DAY_W, FARMHOUSE_NIGHT_W, GARAGE_CHARGE_W,
+  BATTERY_RATE_W, BATTERY_WH, CLOUD_DIM, demandOf, DIGESTER_CHARGE_BELOW, FARMHOUSE_DAY_W, FARMHOUSE_NIGHT_W, GARAGE_CHARGE_W,
   GARAGE_IDLE_W, generationOf, type PowerNetwork, type PowerSummary, refreshPower, type SimEnv, SOLAR_PEAK_W, stepPower, TURBINE_BASE_W,
   TURBINE_FULL_WIND, TURBINE_SPAN_W, WATERWHEEL_W,
 } from './power/sim.ts';
