@@ -25,7 +25,7 @@ const BOTTOM = 112, TOP = 12;
 
 /** What changes the card's size: when it does, the card is measured again. */
 const shapeOf = (v: SelectedThingView): string => [
-  v.label, v.statusLine, v.detailLine ?? '', v.connected ?? '', v.immovable ?? false, v.refund ?? 0,
+  v.preference, v.label, v.statusLine, v.detailLine ?? '', v.connected ?? '', v.immovable ?? false, v.refund ?? 0,
   v.cartControls ? `${v.cartControls.canRetire}` : '',
 ].join('|');
 
@@ -86,7 +86,8 @@ export function createRing(root: HTMLElement, cb: UiCallbacks, toast: (message: 
   remove.append(icon('remove'), removeText);
   actions.append(move, left, right, remove);
 
-  inner.append(head, status, detail, meta, carts, actions);
+  const preference = button('ui-cart-btn ui-ring-pref', 'Cycle production preference', withId(id => cb.onCyclePreference(id)));
+  inner.append(head, status, detail, meta, preference, carts, actions);
   card.append(inner);
   layer.append(anchor, card);
   layer.hidden = true;
@@ -113,6 +114,8 @@ export function createRing(root: HTMLElement, cb: UiCallbacks, toast: (message: 
     setHidden(layer, selected === null);
     if (!selected) { shown = false; return; }
 
+    setHidden(preference, !selected.preference);
+    setText(preference, selected.preference ?? '');
     setText(title, selected.label);
     setText(status, selected.statusLine);
     setText(detail, selected.detailLine ?? '');

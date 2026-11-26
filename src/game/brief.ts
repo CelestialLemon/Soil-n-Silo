@@ -12,7 +12,7 @@ import { countOf, type Good, type Inventory } from './goods.ts';
 import type { GameState } from './state.ts';
 
 /** The Spring Valley's Pantry Order. */
-export const PANTRY_ORDER: Inventory = { bread: 10, flour: 6, beans: 6 };
+export const PANTRY_ORDER: Inventory = { bread: 10, flour: 6, beans: 6, honey: 4 };
 export const LIVING_LAND_M2 = 100, LIVING_LAND_FERTILITY = 0.75;
 /** Two full days and nights, game hours. */
 export const STEADY_HOURS = 48;
@@ -40,9 +40,11 @@ export interface BriefState { order: PantryOrderSeal; livingLand: LivingLandSeal
 export type SealId = 'order' | 'livingLand' | 'steadyHomestead';
 export const SEAL_LABELS: { readonly [K in SealId]: string } = { order: 'The Pantry Order', livingLand: 'Living Land', steadyHomestead: 'Steady Homestead' };
 
-export function blankBrief(): BriefState {
+export function blankBrief(season: GameState['season'] = 'spring'): BriefState {
+  const targets = { ...PANTRY_ORDER };
+  if (season === 'winter') delete targets.honey;
   return {
-    order: { targets: { ...PANTRY_ORDER }, delivered: {}, progress: 0, done: false },
+    order: { targets, delivered: {}, progress: 0, done: false },
     livingLand: { plantedM2: 0, avgFertility: 0, targetM2: LIVING_LAND_M2, targetFertility: LIVING_LAND_FERTILITY, progress: 0, done: false },
     steadyHomestead: { hours: 0, targetHours: STEADY_HOURS, running: false, resetReason: '', progress: 0, done: false },
     restored: false,

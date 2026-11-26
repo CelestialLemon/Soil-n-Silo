@@ -50,6 +50,9 @@ export const GROUPS: readonly GroupDef[] = [
       place('coop', 'coop', '5', `Click gentle ground to place the Coop · hens turn bran or wheat into eggs · ${turn}`),
       place('bakery', 'bakery', '6', `Click gentle ground to place the Bakery · flour and eggs make bread · ${turn}`),
       place('composter', 'composter', '7', `Click gentle ground to place the Composter · it feeds the fields' soil · ${turn}`),
+      place('beehive', 'beehive', '8', 'Bees pollinate fields and make honey within 14 m'),
+      place('rain_tank', 'rain_tank', '9', 'Store rain and water nearby fields within 10 m'),
+      place('sprinkler', 'sprinkler', '0', 'Water uphill fields within 11 m · needs 1 W'),
     ],
   },
   {

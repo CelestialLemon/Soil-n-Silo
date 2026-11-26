@@ -11,7 +11,7 @@
 // the clock is stopped, an edit or a jump of the clock reads the power again at once (refreshPower), so the power view's
 // watts and the workshops' lights show it without waiting for the clock to run.
 import {
-  type Action, apply, CART_COST, CATALOG, CLOCK_JUMPED, type Change, generateValley, type GameState, heightAt, type Point2,
+  type Action, cellIx, cellIz, effectiveMoisture, erosionDrain, GOOD_LABELS, apply, diagnoseIdleCarts, CART_COST, CATALOG, CLOCK_JUMPED, type Change, generateValley, type GameState, heightAt, type Point2,
   refreshPower, resetSteadyOnClockJump, type Season, SETUP_CHANGED, type SimEvent, stepSim, suggestWaterWheelYaw, type ThingKind, TREE_SPECIES,
   wrapAngle,
 } from '../game/index.ts';
@@ -77,11 +77,13 @@ export class Play implements UiCallbacks {
   private welcomed = false;
 
   private stats: ValleyStats;
+  private harvestDiagnosis: string | null = null;
   private statsDirty = true;
   private statsClock = 0;
   /** The tracks the valley came with (the Depot's stub): not the player's work. */
   private starterTracks: ReadonlySet<number>;
   /** A blackout was toasted: the next waits until the power has come back. */
+  private harvestHintSaid = false;
   private blackoutSaid = false;
   private shown = { contours: false, moisture: false, power: false };
   /** The power view (P): every wireless field shown, whatever is in hand. Off by default; not remembered. */
@@ -130,7 +132,7 @@ export class Play implements UiCallbacks {
   /**
    * What a tick tells, as toasts: a parcel, a seal, the valley Restored, a blackout (once an episode, until the power is
    * back), the Steady Homestead starting over (with why; it says the blackout too, so a blackout with it isn't said twice).
-   * A field ripening isn't: the field shows it.
+   * The first ripe field with a blocked haul gets a quiet hint.
    */
   private tell(events: readonly SimEvent[]) {
     const ui = this.ui, reset = events.some((e) => e.type === 'steadyReset');
@@ -147,7 +149,6 @@ export class Play implements UiCallbacks {
           if (!this.blackoutSaid && !reset) ui?.showToast(e.message, 'warn');
           this.blackoutSaid = true;
           break;
-        case 'ripe': break;
       }
     }
     if (!this.state.sim.powerSummary.anyBlackout) this.blackoutSaid = false;
@@ -173,7 +174,15 @@ export class Play implements UiCallbacks {
   private renderUi() {
     const ui = this.ui;
     if (!ui) return;
-    if (this.statsDirty) { this.stats = valleyStats(this.state, this.starterTracks); this.statsDirty = false; }
+    if (this.statsDirty) {
+      this.stats = valleyStats(this.state, this.starterTracks);
+      this.harvestDiagnosis = diagnoseIdleCarts(this.state);
+      if (this.harvestDiagnosis && !this.harvestHintSaid) {
+        this.ui?.showToast(this.harvestDiagnosis);
+        this.harvestHintSaid = true;
+      }
+      this.statsDirty = false;
+    }
     const hour = this.world.getHour(), selected = this.selectedView(hour);
     const snapshot: UiSnapshot = {
       activeTool: this.tool, yawMode: this.world.getYawMode(), powerView: this.powerView, hour, day: this.state.sim.day,
@@ -211,8 +220,13 @@ export class Play implements UiCallbacks {
     };
     if (status.connected !== undefined) view.connected = status.connected;
     if (def.immovable) view.immovable = true;
-    const detail = thingDetail(this.state, t);
+    const detail = thingDetail(this.state, t, this.harvestDiagnosis);
     if (detail !== undefined) view.detailLine = detail;
+    const r = this.state.sim.things.get(t.id);
+    if (t.kind === 'bakery' && r) view.preference = `Recipe: ${r.recipe === 'bread' ? 'Bread' : 'Honey Cake'}`;
+    if ((t.kind === 'mill' || t.kind === 'coop') && r && this.state.things.some(v => v.kind === 'composter')
+      && this.state.things.some(v => v.kind === (t.kind === 'mill' ? 'coop' : 'silo')))
+      view.preference = `${t.kind === 'mill' ? 'Bran' : 'Manure'} → ${r.priority[0].toUpperCase() + r.priority.slice(1)}`;
     if (t.kind === 'garage') view.cartControls = cartControls(this.state);
     return view;
   }
@@ -336,6 +350,16 @@ export class Play implements UiCallbacks {
     if (tool === 'select') {
       const hit = this.world.pickAt(x, y);
       this.select(hit?.kind === 'thing' && hit.id !== undefined ? hit.id : null);
+      if (this.selected === null) {
+        const at = this.world.hitTerrainAt(x, y), g = this.state.grid;
+        const field = at && this.state.fields.find(f => f.id === g.fieldOf[cellIz(g, at.z) * g.nx + cellIx(g, at.x)]);
+        if (field) {
+          const notes = [GOOD_LABELS[field.crop].label, effectiveMoisture(this.state, field, undefined, this.world.getWeather()) >= 0.32 ? 'Well watered' : 'Dry soil'];
+          if (field.pollinated) notes.push('Pollinated');
+          if (erosionDrain(this.state, field) > 0.02) notes.push('Sloping soil · shelter with beans, trees or hedges');
+          this.ui?.showToast(notes.join(' · '));
+        }
+      }
       return;
     }
     if (kind) { this.placeAt(kind, x, y); return; }
@@ -659,6 +683,17 @@ export class Play implements UiCallbacks {
     this.ui?.showToast(`${CATALOG[t.kind].label} taken down${back > 0 ? ` · +${back} ${back === 1 ? 'Supply' : 'Supplies'} back` : ''}${gone}`);
   }
 
+  onCyclePreference(id: number) {
+    const r = this.state.sim.things.get(id);
+    if (!r) return;
+    if (r.kind === 'bakery') this.act({ type: 'setRecipe', id, recipe: r.recipe === 'bread' ? 'honey_cake' : 'bread' });
+    else {
+      const choices = r.kind === 'mill' ? ['auto', 'coop', 'composter'] as const : ['auto', 'composter', 'silo'] as const;
+      const next = choices[(choices.findIndex(p => p === r.priority) + 1) % choices.length];
+      this.act({ type: 'setByproductPriority', id, target: next });
+    }
+  }
+
   onBuyCart() {
     if (this.act({ type: 'buyCart' })) this.ui?.showToast('New Electric Cart ready at the Garage');
   }
@@ -701,6 +736,7 @@ export class Play implements UiCallbacks {
     // A fresh homestead: its own Supplies, brief, Depot and stub, on day 1 at the sky's hour.
     next.sim.hour = this.world.getHour();
     this.starterTracks = new Set(next.tracks.map((t) => t.id));
+    this.harvestHintSaid = false;
     this.blackoutSaid = false;
     this.world.resetValley(next);
     writeUrlParam('seed', String(next.seed));

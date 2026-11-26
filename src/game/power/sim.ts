@@ -2,6 +2,7 @@
 // batteries hold. Solar canopies follow the sun and the clouds, wind turbines the live gusts, water wheels the brook
 // (steady, day and night). Batteries soak up the surplus and carry the homestead through the night; when a network
 // can't meet its demand, it sheds its workshops first (they pause), and that is a blackout.
+import { isRaining, serviceSite, treeShade, windShelter } from '../microclimate.ts';
 import { chargingAtGarage } from '../carts.ts';
 import { CATALOG } from '../catalog.ts';
 import { formatClock, isNight, sunFactor } from '../clock.ts';
@@ -18,6 +19,7 @@ export interface SimEnv {
   hour?: number;
   /** The live wind (brush3d's WindRecipe speed), m/s. */
   windSpeed: number;
+  weather?: string;
   /** 0..1: how overcast the sky is. */
   cloudCover: number;
 }
@@ -60,17 +62,10 @@ export interface PowerSummary {
 export function generationOf(s: GameState, t: Thing, hour: number, env: SimEnv): number {
   switch (t.kind) {
     case 'solar': return sunFactor(hour, s.season) * (1 - CLOUD_DIM * clamp(env.cloudCover, 0, 1)) * SOLAR_PEAK_W * (1 - treeShade(s, t));
-    case 'turbine': return (TURBINE_BASE_W + clamp(env.windSpeed / TURBINE_FULL_WIND, 0, 1) * TURBINE_SPAN_W) * ridge(s, t);
+    case 'turbine': return (TURBINE_BASE_W + clamp(env.windSpeed * (1 - windShelter(s, t)) / TURBINE_FULL_WIND, 0, 1) * TURBINE_SPAN_W) * ridge(s, t);
     case 'waterwheel': return WATERWHEEL_W;
     default: return 0;
   }
-}
-
-/** How much nearby trees shade a canopy: a fifth of its light for each trunk right beside it, at most half. */
-function treeShade(s: GameState, t: Thing): number {
-  let n = 0;
-  for (const tr of [...s.wildTrees, ...s.plantedTrees]) if (Math.hypot(tr.x - t.x, tr.z - t.z) <= 3.5 + 2 * tr.scale) n++;
-  return Math.min(0.5, 0.2 * n);
 }
 
 /** A turbine catches more wind standing high and open, less down in a hollow (against the homestead's ground). */
@@ -80,12 +75,19 @@ function ridge(s: GameState, t: Thing): number {
   return 1 + clamp((t.padTargetY - base) / 8, -0.15, 0.25);
 }
 
+/** A Sprinkler runs while any growing crop it reaches stands on a dry cell (a wet bank elsewhere in the field doesn't count). */
+function sprinklerNeeded(s: GameState, t: Thing): boolean {
+  const site = serviceSite(s, t);
+  return site.fields.some((f) => !f.harvestReady && (site.cells.get(f.id) ?? []).some((cell) => s.grid.moisture[cell] < 0.45));
+}
+
 /** A load's watts now: workshops while they work, the farmhouse's lamps at night, the garage while it charges a cart
  * parked at it (not one left at its old site after it moved). */
-export function demandOf(s: GameState, t: Thing, r: ThingRuntime, hour: number): number {
+export function demandOf(s: GameState, t: Thing, r: ThingRuntime, hour: number, weather?: string): number {
   const def = CATALOG[t.kind];
   switch (t.kind) {
     case 'farmhouse': return isNight(hour, s.season) ? FARMHOUSE_NIGHT_W : FARMHOUSE_DAY_W;
+    case 'sprinkler': return !isRaining(weather) && sprinklerNeeded(s, t) ? def.powerDemand : 0;
     case 'garage': return s.sim.carts.some((c) => chargingAtGarage(s, c)) ? GARAGE_CHARGE_W : GARAGE_IDLE_W;
     case 'lantern': return isNight(hour, s.season) ? def.powerDemand : 0;
     case 'mill': case 'bakery': case 'coop': return r.working ? def.powerDemand : 0;
@@ -94,7 +96,7 @@ export function demandOf(s: GameState, t: Thing, r: ThingRuntime, hour: number):
 }
 
 /** Who goes without first when a network runs short: workshops pause before the hens, the garage and the home go dark. */
-const SHED_ORDER: Partial<Record<Thing['kind'], number>> = { farmhouse: 0, garage: 1, coop: 2, lantern: 3, mill: 4, bakery: 5 };
+const SHED_ORDER: Partial<Record<Thing['kind'], number>> = { farmhouse: 0, garage: 1, coop: 2, lantern: 3, mill: 4, bakery: 5, sprinkler: 6 };
 
 /**
  * Runs the power for `dtH` game hours at `hour`; returns the networks that fell into a blackout on this step. With `dtH`
@@ -128,7 +130,7 @@ export function stepPower(s: GameState, dtH: number, hour: number, env: SimEnv):
     const r = rt.get(l.id);
     if (!r) return;
     const nets = [...loadNets[k]].map((i) => nets_(emitters[i].id)).sort((a, b) => a.id - b.id);
-    asks.push({ t: l, r, nets, w: demandOf(s, l, r, hour) });
+    asks.push({ t: l, r, nets, w: demandOf(s, l, r, hour, env.weather) });
   });
   asks.sort((a, b) => (SHED_ORDER[a.t.kind] ?? 9) - (SHED_ORDER[b.t.kind] ?? 9) || a.t.id - b.t.id);
 

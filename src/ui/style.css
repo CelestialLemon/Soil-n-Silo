@@ -633,3 +633,6 @@
 .ui-loading-title { margin: 0 0 0.2em; font: 600 1.35em/1.2 var(--font-title); }
 .ui-loading-text { margin: 0; color: var(--ink-2); }
 .ui-loading.is-failed .ui-loading-text { color: var(--clay); }
+
+.ui-ring-pref { margin-block: 0.4rem; }
+.ui-ring-pref::after { content: '↻'; margin-inline-start: 0.5em; opacity: 0.7; }

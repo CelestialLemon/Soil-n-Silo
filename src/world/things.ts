@@ -131,6 +131,7 @@ export class Things {
         break;
       }
       // Grinding needs wheat and power: waiting for either, the stone stands still and the flour stops.
+      case 'sprinkler': running = (rt?.watts ?? 0) > 0; spin = running ? 1 : 0; break;
       case 'mill': running = working && powered; spin = running ? 1 : 0; break;
       case 'bakery': running = working && powered; break;
       // The drum turns by hand-crank and gravity: no power, only something to turn.

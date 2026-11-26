@@ -9,7 +9,7 @@
 import type * as THREE from 'three';
 import { type BrushRenderer, type Line, type LinePoint, OVERLAY_LOOK, OVERLAY_NONE, type Overlay } from '../../brush3d/src/index.ts';
 import {
-  CATALOG, canPlace, canPlant, canTrack, type ChannelPreview, type GameState, padTarget, type Point2, type PowerRadius, previewChannelFlow,
+  hasServiceRadius, SERVICE_RADIUS, CATALOG, canPlace, canPlant, canTrack, type ChannelPreview, type GameState, padTarget, type Point2, type PowerRadius, previewChannelFlow,
   previewPower, type ThingKind, trackPath, type TreeSpecies, VALLEY_HALF,
 } from '../game/index.ts';
 import type { Things } from './things.ts';
@@ -48,6 +48,7 @@ export class Tools {
   private readonly r: BrushRenderer;
   private state: GameState;
   private readonly things: Things;
+  private selected: number | null = null;
   private spec: PreviewSpec | null = null;
   private ghost: { kind: ThingKind; mesh: THREE.Mesh } | null = null;
   private contours = false;
@@ -62,6 +63,11 @@ export class Tools {
   reset(state: GameState) {
     this.state = state;
     this.refresh();
+  }
+
+  setSelected(id: number | null) {
+    this.selected = id;
+    this.drawPreview();
   }
 
   setPreview(spec: PreviewSpec | null) {
@@ -115,8 +121,12 @@ export class Tools {
   private drawPreview() {
     const spec = this.spec, s = this.state;
     if (spec?.kind !== 'thing') this.dropGhost();
-    if (!spec) { this.r.setLines(null, 'tool'); return; }
     const lines: Line[] = [];
+    const site = spec?.kind === 'thing' ? { kind: spec.thingKind, x: spec.x, z: spec.z }
+      : !spec && s.things.find(t => t.id === this.selected);
+    if (site && hasServiceRadius(site.kind))
+      lines.push({ points: circle(site.x, site.z, SERVICE_RADIUS[site.kind]), closed: true, color: site.kind === 'beehive' ? 0xe8be66 : COL.wet, style: 'route', width: 0.15, opacity: 0.55 });
+    if (!spec) { this.r.setLines(lines.length ? lines : null, 'tool'); return; }
     switch (spec.kind) {
       case 'thing': {
         const fits = spec.fits ?? canPlace(s, spec.thingKind, spec.x, spec.z, spec.yaw, spec.ignore).ok;

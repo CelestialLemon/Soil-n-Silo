@@ -2,7 +2,7 @@
 // crop is a field. Painting over a field of the other crop takes those cells; erasing can split a field in two.
 import { CATALOG } from './catalog.ts';
 import type { Change } from './change.ts';
-import { obbDistance, type Point2, polylineDistance, resample } from './geom.ts';
+import { clamp, obbDistance, type Point2, polylineDistance, resample } from './geom.ts';
 import { addCell, BUILD_HALF, cellX, cellZ, COVER, type Grid, type Rect, slopeAt, unionRect } from './grid.ts';
 import { recomposeCover, thingObb } from './earth.ts';
 import { fieldYield, soilFertility, SOWN_GROWTH } from './crops.ts';
@@ -144,8 +144,15 @@ function relabel(s: GameState, crops: Uint8Array): FieldEdit {
     if (fieldOf[i] !== g.fieldOf[i] || crops[i] !== was[i]) { const ix = i % g.nx; dirty = addCell(dirty, ix, (i - ix) / g.nx); }
   }
   const before = new Map(s.fields.map((f) => [f.id, f]));
+  // Pollination belongs to the cells the bees visited: each patch carries what its surviving cells of the same crop had
+  // (read before the grid takes the new ids), so newly sown cells start unpollinated.
+  const pollen = comps.map((c) => {
+    let sum = 0;
+    for (const i of c.cells) { const was = before.get(g.fieldOf[i]); if (was && cropCode(was.crop) === c.crop) sum += was.pollinated; }
+    return sum;
+  });
   g.fieldOf.set(fieldOf);
-  s.fields = comps.map((c, k) => fieldOf2(g, idOf[k], CROPS[c.crop - 1], c.cells, before.get(idOf[k]))).sort((a, b) => a.id - b.id);
+  s.fields = comps.map((c, k) => fieldOf2(g, idOf[k], CROPS[c.crop - 1], c.cells, before.get(idOf[k]), pollen[k])).sort((a, b) => a.id - b.id);
   if (dirty) recomposeCover(s, dirty);
   const changed = s.fields.filter((f) => { const b = before.get(f.id); return !b || b.cellCount !== f.cellCount || b.crop !== f.crop; }).map((f) => f.id);
   for (const id of before.keys()) if (!s.fields.some((f) => f.id === id)) changed.push(id);
@@ -154,10 +161,11 @@ function relabel(s: GameState, crops: Uint8Array): FieldEdit {
 
 /**
  * A field over these cells. One that keeps an old field's id keeps how its crop was doing (its growth and any harvest
- * waiting, trimmed to what its new size yields); a new field, or one painted over with the other crop, is sown fresh. Its
- * fertility is always its cells' (grid.fertility), as farming left them.
+ * waiting, trimmed to what its new size yields); every same-crop fragment keeps the pollination of the cells that survive
+ * (`pollen`: the sum of their old fields' share), spread over its new size; a new field, or one painted over with the
+ * other crop, starts unpollinated and sown fresh. Its fertility is always its cells' (grid.fertility), as farming left them.
  */
-function fieldOf2(g: Grid, id: number, crop: Crop, cells: number[], was: Field | undefined): Field {
+function fieldOf2(g: Grid, id: number, crop: Crop, cells: number[], was: Field | undefined, pollen: number): Field {
   let bounds: Rect | undefined, wet = 0;
   for (const i of cells) { const ix = i % g.nx; bounds = addCell(bounds, ix, (i - ix) / g.nx); wet += g.moisture[i]; }
   const areaM2 = cells.length * g.cell * g.cell, kept = was?.crop === crop ? was : undefined;
@@ -166,8 +174,9 @@ function fieldOf2(g: Grid, id: number, crop: Crop, cells: number[], was: Field |
     id, crop, cellCount: cells.length, areaM2, avgMoisture: cells.length > 0 ? wet / cells.length : 0,
     bounds: bounds ?? { x0: 0, z0: 0, x1: -1, z1: -1 },
     growth: kept ? kept.growth : SOWN_GROWTH, fertility, harvestReady: 0,
+    pollinated: cells.length > 0 ? clamp(pollen / cells.length, 0, 1) : 0,
   };
-  if (kept && kept.harvestReady > 0) f.harvestReady = Math.min(kept.harvestReady, fieldYield(f));
+  if (kept && kept.harvestReady > 0) f.harvestReady = Math.min(kept.harvestReady, fieldYield(f, f.pollinated));
   return f;
 }
 

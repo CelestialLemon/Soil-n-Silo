@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  apply, atGarage, type Cart, CART_LOW, CART_READY, countOf, demandOf, dockOf, DOCK_RADIUS, findPath, GARAGE_CHARGE_W, GARAGE_IDLE_W, GROUND, groundAt,
+  apply, atGarage, type Cart, CART_LOW, CART_READY, countOf, demandOf, diagnoseIdleCarts, dockOf, DOCK_RADIUS, findPath, GARAGE_CHARGE_W, GARAGE_IDLE_W, GROUND, groundAt,
   type GameState, fieldEdge, must, navCellOf, navFor, passable, type Point2, reachOf, sandboxSupplies, SILO_CAP, SILO_GOOD_CAP,
   type SimEvent, stepSim, type ThingKind, totalStored, wantsInput,
 } from '../src/game/index.ts';
@@ -339,6 +339,10 @@ test('a cart left in a wide brook when its bridge comes up climbs out on the nea
   // Driven by the sim, the stranded cart never moves through the brook either.
   const cart = s.sim.carts[0];
   cart.x = -20; cart.z = -1; cart.state = 'idle'; cart.path = []; cart.job = null;
+  put(s, 'silo', 12, -24);
+  assert.ok(apply(s, { type: 'paintField', crop: 'beans', points: [{ x: 0, z: -28 }], radius: 3 }).ok);
+  s.fields[0].harvestReady = 4;
+  assert.match(diagnoseIdleCarts(s) ?? '', /bridge/);
   const start = navCellOf(cart.x, cart.z);
   for (let k = 0; k < 60; k++) {
     stepSim(s, 1, breezy);
@@ -423,4 +427,29 @@ test('a building facing a narrow unbridged brook is loaded from a side on its ow
   run(s, 2, () => countOf(rt(s, silo).outputs, 'wheat') > 0);
   assert.ok(countOf(rt(s, silo).outputs, 'wheat') > 0, `harvested to the Silo: ${cart.jobDesc}`);
   assert.ok(must(s.fields.find((f) => f.id === wheat), 'the field').harvestReady < 4);
+});
+
+test('idle carts explain missing storage, disconnected fields and full storage', () => {
+  const s = sandbox();
+  put(s, 'garage', -15, -25);
+  assert.ok(apply(s, { type: 'paintField', crop: 'wheat', points: [{ x: -15, z: 25 }], radius: 3 }).ok);
+  s.fields[0].harvestReady = 4;
+  assert.match(diagnoseIdleCarts(s) ?? '', /Silo or Mill/);
+  const silo = put(s, 'silo', 10, -25);
+  assert.ok(apply(s, { type: 'paintField', crop: 'wheat', points: [{ x: -32, z: -25 }], radius: 3 }).ok);
+  for (const f of s.fields) f.harvestReady = 4;
+  assert.equal(s.fields.length, 2);
+  assert.ok(apply(s, { type: 'buyCart' }).ok);
+  const busy = s.sim.carts[1];
+  busy.state = 'toPickup';
+  busy.job = { from: { kind: 'field', id: s.fields.find(f => f.bounds.z0 < s.grid.nz / 2)!.id },
+    to: { kind: 'thing', id: silo }, good: 'wheat', count: 2, priority: 3 };
+  assert.match(diagnoseIdleCarts(s) ?? '', /bridge/);
+  busy.job = null;
+  busy.state = 'idle';
+  assert.match(diagnoseIdleCarts(s) ?? '', /bridge/);
+  assert.ok(apply(s, { type: 'addTrack', points: [{ x: 0, z: -12 }, { x: 0, z: 12 }] }).ok);
+  assert.equal(diagnoseIdleCarts(s), null);
+  rt(s, silo).outputs.wheat = SILO_GOOD_CAP;
+  assert.match(diagnoseIdleCarts(s) ?? '', /no room for wheat/);
 });

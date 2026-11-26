@@ -23,7 +23,7 @@ test('the Spring Valley starts with 12 Supplies, two drops to come and a cap of 
 
 test('every kind has its price: homes, relays and props are free, canopies and batteries 1, workshops 2, turbines and wheels 3', () => {
   const want: Partial<Record<ThingKind, number>> = {
-    farmhouse: 0, relay: 0, bench: 0, lantern: 0, planter: 0, crates: 0, depot: 0, solar: 1, battery: 1,
+    farmhouse: 0, relay: 0, bench: 0, lantern: 0, planter: 0, crates: 0, depot: 0, solar: 1, rain_tank: 1, sprinkler: 1, beehive: 1, battery: 1,
     silo: 2, mill: 2, bakery: 2, coop: 2, composter: 2, garage: 2, turbine: 3, waterwheel: 3,
   };
   for (const k of THING_KINDS) assert.equal(CATALOG[k].cost, want[k], k);

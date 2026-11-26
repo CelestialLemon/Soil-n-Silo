@@ -12,7 +12,7 @@ import type { PowerNetwork, PowerSummary } from './power/sim.ts';
 import { starterSupplies, type SuppliesState } from './supplies.ts';
 import type { ThingRuntime } from './workshops.ts';
 
-export const STATE_VERSION = 5;
+export const STATE_VERSION = 7;
 
 /** The valley's one season (brush3d's SEASONS). */
 export const SEASONS = ['spring', 'summer', 'autumn', 'winter'] as const;
@@ -46,6 +46,8 @@ export interface Field {
   fertility: number;
   /** Whole units of ripe harvest waiting at its edge for an Electric Cart; 0 while it grows. */
   harvestReady: number;
+  /** Largest fraction of this crop covered by active bees during its growing cycle, retained after dusk. */
+  pollinated: number;
 }
 
 /** The water along a rill's centreline at one sample. */
@@ -108,11 +110,11 @@ export interface SimState {
 }
 
 /** A fresh homestead: morning of day 1, the starter Supplies parcel, nothing running yet. */
-export function blankSim(): SimState {
+export function blankSim(season: Season = 'spring'): SimState {
   return {
     day: 1, hour: 8, supplies: starterSupplies(), things: new Map(), carts: [], nextCartId: 1, delivered: {}, networks: [],
     powerSummary: { totalGenW: 0, totalDemandW: 0, totalStoredWh: 0, totalCapWh: 0, anyBlackout: false, lastBlackoutReason: '' },
-    brief: blankBrief(), soilHours: 0,
+    brief: blankBrief(season), soilHours: 0,
   };
 }
 
@@ -144,7 +146,7 @@ export function blankState(seed: number, season: Season): GameState {
     version: STATE_VERSION, seed, season, revision: 0, grid: createGrid(),
     valley: { homestead: { x: 0, z: 0 }, brook: [], brookLevel: [], pond: { x: 0, z: 0, radius: 0, level: 0 } },
     crags: [], wildTrees: [], things: [], fields: [], channels: [], tracks: [], bridges: [], hedges: [], plantedTrees: [],
-    power: { radii: [], connected: [], powered: [] }, sim: blankSim(), nextId: 1,
+    power: { radii: [], connected: [], powered: [] }, sim: blankSim(season), nextId: 1,
   };
 }
 

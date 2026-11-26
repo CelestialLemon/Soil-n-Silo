@@ -66,6 +66,9 @@ const SPECS = {
   battery: { ...power, label: 'Battery', model: 'battery', powerRole: 'store', cost: 1, lo: [-3.6, -3.6], hi: [3.6, 3.6], top: 4.52 },
   // No relay model yet: the relay mast borrows brush3d's slim pylon (a renderer may dress it differently).
   relay: { ...prop, label: 'Power Relay', category: 'power', model: 'pylon', maxSlope: 0.45, powerRole: 'relay', powerRange: 15, lo: [-1, -0.4], hi: [1, 0.88], top: 5.72 },
+  rain_tank: { ...prop, category: 'homestead', padEase: 2.5, cost: 1, label: 'Rain Tank', model: 'rain_tank', lo: [-1.21, -1.05], hi: [1.05, 1.55], top: 3.67 },
+  sprinkler: { ...prop, category: 'homestead', padEase: 2.5, powerRole: 'load', powerDemand: 1, cost: 1, label: 'Sprinkler', model: 'sprinkler', lo: [-1.85, -0.85], hi: [1.44, 0.85], top: 3.06 },
+  beehive: { ...prop, category: 'homestead', padEase: 2.5, cost: 1, label: 'Beehive', model: 'beehive', lo: [-1.7, -0.95], hi: [1.7, 1.6], top: 2.29 },
   bench: { ...prop, label: 'Bench', model: 'bench', lo: [-1.98, -0.46], hi: [1.98, 0.26], top: 1 },
   lantern: { ...prop, label: 'Solar Lantern', model: 'lantern', powerRole: 'load', powerDemand: 0.05, lo: [-0.4, -0.3], hi: [0.4, 0.82], top: 3.31 },
   planter: { ...prop, label: 'Planter', model: 'planter', lo: [-1.7, -1.6], hi: [1.78, 1.4], top: 0.56 },

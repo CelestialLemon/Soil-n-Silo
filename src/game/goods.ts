@@ -1,7 +1,7 @@
 // Goods: what the fields grow, the workshops make and the Electric Carts carry. An inventory is a plain record of counts
 // (whole units), and every count it leaves out is zero.
 
-export const GOODS = ['wheat', 'beans', 'flour', 'bran', 'eggs', 'manure', 'compost', 'bread'] as const;
+export const GOODS = ['wheat', 'beans', 'flour', 'bran', 'eggs', 'manure', 'compost', 'bread', 'honey', 'honey_cake'] as const;
 export type Good = (typeof GOODS)[number];
 
 /** What kind of good it is: a crop off the fields, a crafted pantry good, a byproduct that cycles back, or soil food. */
@@ -25,6 +25,8 @@ export const GOOD_LABELS: { readonly [G in Good]: GoodInfo } = {
   eggs: { label: 'Eggs', unit: 'basket of eggs', category: 'crafted', color: '#f3e3c3' },
   manure: { label: 'Manure', unit: 'barrow of manure', category: 'byproduct', color: '#5b4330' },
   compost: { label: 'Compost', unit: 'sack of compost', category: 'soil', color: '#3f2f22' },
+  honey: { label: 'Honey', unit: 'jar of honey', category: 'crafted', color: '#edb33d' },
+  honey_cake: { label: 'Honey Cake', unit: 'honey cake', category: 'crafted', color: '#d99a48' },
   bread: { label: 'Bread', unit: 'crate of bread', category: 'crafted', color: '#c4813f' },
 };
 

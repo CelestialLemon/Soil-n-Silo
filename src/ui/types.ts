@@ -42,6 +42,7 @@ export interface SelectedThingView {
   /** An optional second line under the status, e.g. "Stock: 4 Wheat, 2 Flour" or "Battery 72% · Charging". */
   detailLine?: string;
   /** The Garage's cart row: add or retire an Electric Cart right on its card. Left out for everything else. */
+  preference?: string;
   cartControls?: CartControls;
 }
 
@@ -121,6 +122,7 @@ export interface UiCallbacks {
   onRemoveSelected(id: number): void;
   onDeselect(): void;
   /** Buys an Electric Cart at the Garage (its card's "+ Cart"). */
+  onCyclePreference(id: number): void;
   onBuyCart(): void;
   /** Retires the cart `id` for a full refund (the Garage card's "Retire"). */
   onRetireCart(id: number): void;

@@ -29,7 +29,7 @@ const PACE_EASE = 8;
 /** How a good's heap looks: sheaves, baskets, sacks or crates. */
 type Heap = 'sheaf' | 'basket' | 'sack' | 'crate';
 const HEAP: { readonly [G in Good]: Heap } = {
-  wheat: 'sheaf', beans: 'basket', eggs: 'basket', flour: 'sack', bran: 'sack', manure: 'sack', compost: 'sack', bread: 'crate',
+  wheat: 'sheaf', beans: 'basket', eggs: 'basket', flour: 'sack', bran: 'sack', manure: 'sack', compost: 'sack', bread: 'crate', honey: 'basket', honey_cake: 'crate',
 };
 /** A basket's wicker and a crate's slats (sRGB). */
 const WICKER = 0xa0703f, SLAT = 0x9b6a3c;
