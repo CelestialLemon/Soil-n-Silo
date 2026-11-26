@@ -74,8 +74,8 @@ export function placeReadout(s: GameState, kind: ThingKind, x: number, z: number
 export function channelReadout(s: GameState, points: readonly Point2[]): { readout: ToolReadout; preview?: ChannelPreview } {
   const path = channelPath(points);
   if (path.length < 2 || pathLength(path) < 1.5) return { readout: { text: 'Drag from the brook or pond, downhill or along the contours' } };
-  const preview = previewChannelFlow(s, points), can = canDig(s, path);
-  if (!can.ok) return { readout: { text: can.error, tone: 'warn' }, preview };
+  const can = canDig(s, path), preview = previewChannelFlow(s, points);
+  if (!can.ok) return { readout: { text: can.error, tone: 'warn' }, ...(preview.samples.length > 0 ? { preview } : {}) };
   if (!preview.connected) return { readout: { text: 'Start from the brook or pond for gravity flow', tone: 'warn' }, preview };
   if (preview.sillPoint) return { readout: { text: `Flowing ${m(preview.wetLength)} · stops dry at uphill sill`, tone: 'warn' }, preview };
   return { readout: { text: `Flowing ${m(preview.wetLength)}`, tone: 'wet' }, preview };

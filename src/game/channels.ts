@@ -35,6 +35,9 @@ export function canDig(s: GameState, path: readonly Point2[]): Result<void, stri
     for (const k of s.crags) if (Math.hypot(p.x - k.x, p.z - k.z) <= k.radius + RILL_HALF) return err('There is rock in the way.');
     for (const t of [...s.wildTrees, ...s.plantedTrees]) if (Math.hypot(p.x - t.x, p.z - t.z) <= TRUNK * t.scale + RILL_HALF) return err('A tree is in the way.');
   }
+  if (countJunctions([...s.channels.map((c) => c.path), path], MAX_CHANNEL_JUNCTIONS) > MAX_CHANNEL_JUNCTIONS) {
+    return err('Too many rills cross each other here: fill some in first.');
+  }
   return keepsTracks(s, path);
 }
 
@@ -70,9 +73,6 @@ export function digChannel(s: GameState, points: readonly Point2[]): Result<Chan
   const path = channelPath(points);
   const can = canDig(s, path);
   if (!can.ok) return can;
-  if (countJunctions([...s.channels.map((c) => c.path), path], MAX_CHANNEL_JUNCTIONS) > MAX_CHANNEL_JUNCTIONS) {
-    return err('Too many rills cross each other here: fill some in first.');
-  }
   const id = takeId(s);
   const c: Channel = { id, points: points.map((p) => ({ x: p.x, z: p.z })), path, flow: [] };
   s.channels.push(c);

@@ -14,6 +14,7 @@ import { CHANNEL_REACH, channelCut, inCore, protectedCores, RILL_HALF } from './
 import { catmullRom, forCellsNear, forVerticesNear, pathLength, type Point2, segmentsCross } from './geom.ts';
 import type { Channel, FlowSample, GameState } from './state.ts';
 import { addCell, type Rect } from './grid.ts';
+import { MAX_CHANNEL_JUNCTIONS } from './limits.ts';
 import { overlayFlood } from './flood.ts';
 
 /** The spacing of a rill's centreline samples, m. */
@@ -290,9 +291,13 @@ export interface ChannelPreview {
 export function previewChannelFlow(s: GameState, points: readonly Point2[]): ChannelPreview {
   const g = s.grid, path = channelPath(points);
   if (path.length === 0) return { samples: [], connected: false, wetLength: 0, dryLength: 0 };
+  const paths = [...s.channels.map((c) => c.path), path];
+  if (countJunctions(paths, MAX_CHANNEL_JUNCTIONS) > MAX_CHANNEL_JUNCTIONS) {
+    return { samples: [], connected: false, wetLength: 0, dryLength: 0 };
+  }
   const view = heightsWithRill(s, path);
   const mine = s.channels.length;
-  const flows = solve(g, [...s.channels.map((c) => c.path), path], (_ch, x, z) => sampleHeight(g, view, x, z));
+  const flows = solve(g, paths, (_ch, x, z) => sampleHeight(g, view, x, z));
   return summarize(flows[mine]);
 }
 
