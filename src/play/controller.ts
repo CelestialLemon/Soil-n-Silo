@@ -515,6 +515,8 @@ export class Play implements UiCallbacks {
    * outline; otherwise it lays the next corner (none on top of the last one: a double-click's first click laid it).
    */
   private polygonClick(x: number, y: number) {
+    const at = this.world.hitTerrainAt(x, y);
+    if (!at) { this.lastClick = null; return; }
     const now = performance.now(), prev = this.lastClick;
     const double = prev !== null && now - prev.t <= DOUBLE_CLICK_MS && Math.hypot(x - prev.x, y - prev.y) <= DOUBLE_CLICK_PX;
     // The second click of a double-click that already closed the outline: nothing more.
@@ -525,8 +527,6 @@ export class Play implements UiCallbacks {
       this.commitPolygon();
       return;
     }
-    const at = this.world.hitTerrainAt(x, y);
-    if (!at) { this.lastClick = null; return; }
     const first = pts[0], last = pts[pts.length - 1];
     if (pts.length >= 3 && Math.hypot(at.x - first.x, at.z - first.z) <= POLYGON_SNAP) {
       this.lastClick = { t: now, x, y, closed: true };

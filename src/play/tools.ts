@@ -38,6 +38,18 @@ export function polygonArea(points: readonly Point2[]): number {
   return Math.abs(twice) / 2;
 }
 
+const samePoint = (a: Point2, b: Point2) => Math.hypot(a.x - b.x, a.z - b.z) < 1e-6;
+
+/** Strips consecutive (and wrap-around first/last) duplicate points from a closed loop. */
+function dedupeLoop(points: readonly Point2[]): Point2[] {
+  const out: Point2[] = [];
+  for (const p of points) {
+    if (out.length === 0 || !samePoint(out[out.length - 1], p)) out.push(p);
+  }
+  while (out.length > 1 && samePoint(out[0], out[out.length - 1])) out.pop();
+  return out;
+}
+
 /** Whether any two non-adjacent edges of a closed outline cross (shoelace area cancels oppositely wound lobes). */
 function polygonSelfIntersects(points: readonly Point2[]): boolean {
   const n = points.length;
@@ -59,7 +71,7 @@ export function polygonReadout(crop: Crop | null, points: readonly Point2[], cur
   if (points.length === 0) {
     return { text: crop === null ? 'Click corners to outline the fields to clear · M for brush' : `Click corners to outline a ${name} field · M for brush` };
   }
-  const shape = cursor ? [...points, cursor] : [...points];
+  const shape = dedupeLoop(cursor ? [...points, cursor] : points);
   if (shape.length < 3) return { text: `${crop === null ? 'Clearing' : `${name} polygon`} · click the next corner · Backspace undoes one · Esc cancels` };
   const area = polygonSelfIntersects(shape) ? '' : ` · ~${Math.round(polygonArea(shape))} m²`;
   return { text: `${crop === null ? 'Clear polygon' : `${name} polygon`}${area} · click start or double-click to fill` };
