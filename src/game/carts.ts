@@ -391,22 +391,24 @@ const RESERVED: Partial<Record<Good, { kind: ThingKind; count: number; makes: Go
 };
 
 /** Units of `good` still short at its reserved workshop for the remaining Pantry Order batches of `makes`, or Infinity if unshared. */
-function sharedShortage(s: GameState, depot: Thing, t: Thing, r: ThingRuntime, good: Good): number {
+function sharedShortage(s: GameState, depot: Thing, t: Thing, r: ThingRuntime, good: Good, countIncoming = true): number {
   const need = RESERVED[good];
   if (!need || need.kind !== t.kind || !isWorkshop(t.kind)) return Infinity;
   const made = sources(s, need.makes).reduce((n, src) => n + src.avail, 0);
   const baking = r.working ? countOf(recipeOf(t.kind, r, true).outputs, need.makes) : 0;
   const remMakes = Math.max(0, depotWants(s, depot, need.makes) - made - baking);
   if (remMakes <= 0) return 0;
-  const perBatch = Math.max(1, countOf(recipeOf(t.kind, r).outputs, need.makes));
+  const perBatch = countOf(recipeOf(t.kind, r).outputs, need.makes);
+  if (perBatch <= 0) return 0;
   const totalNeed = Math.ceil(remMakes / perBatch) * need.count;
-  return Math.max(0, totalNeed - countOf(r.inputs, good) - incoming(s, thingEnd(t.id), [good]));
+  const inFlight = countIncoming ? incoming(s, thingEnd(t.id), [good]) : 0;
+  return Math.max(0, totalNeed - countOf(r.inputs, good) - inFlight);
 }
 
 /** When the Depot also wants `good`, cap the workshop's intake to its remaining order batches so spare units aren't stranded. */
-function sharedCap(s: GameState, depot: Thing, t: Thing, r: ThingRuntime, good: Good): number {
+function sharedCap(s: GameState, depot: Thing, t: Thing, r: ThingRuntime, good: Good, countIncoming = true): number {
   if (depotWants(s, depot, good) <= 0) return Infinity;
-  return sharedShortage(s, depot, t, r, good);
+  return sharedShortage(s, depot, t, r, good, countIncoming);
 }
 
 /**
@@ -494,7 +496,7 @@ function routeCargo(s: GameState, cart: Cart): boolean {
   for (const { w } of options.slice(0, 6)) {
     const path = findPath(s, here, w.at);
     if (!path) continue;
-    cart.job = { from: { kind: 'thing', id: -1 }, to: w.end, good: cargo.good, count: cargo.count, priority: w.priority };
+    cart.job = { from: { kind: 'thing', id: -1 }, to: w.end, good: cargo.good, count: Math.min(cargo.count, w.want), priority: w.priority };
     setLeg(s, cart, 'toDropoff', path, w.end);
     cart.jobDesc = `Taking ${cargo.count} ${GOOD_LABELS[cargo.good].label} to the ${endpointLabel(s, w.end)}`;
     return true;
@@ -564,7 +566,11 @@ function accepts(s: GameState, end: Endpoint, good: Good, n: number): number {
     return o.done ? 0 : Math.min(n, Math.max(0, (o.targets[good] ?? 0) - countOf(s.sim.delivered, good)));
   }
   if (t.kind === 'silo') return Math.min(n, siloRoom(r, good));
-  if (inputsOf(r).some((input) => input.options.includes(good))) return Math.min(n, Math.max(0, INPUT_CAP - totalStored(r.inputs)));
+  if (inputsOf(r).some((input) => input.options.includes(good))) {
+    const depot = s.things.find((v) => v.kind === 'depot');
+    const cap = depot && isWorkshop(t.kind) ? sharedCap(s, depot, t, r, good, false) : Infinity;
+    return Math.min(n, Math.max(0, INPUT_CAP - totalStored(r.inputs)), cap);
+  }
   return 0;
 }
 

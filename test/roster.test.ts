@@ -431,6 +431,30 @@ test('the Cannery and the Loom get their first batch of oil and yarn before the 
     rt(s, spinner).outputs = { yarn: 2 };
     assert.deepEqual(firstHaul(s, 'yarn'), { kind: 'thing', id: depot }, 'in-progress linen counts toward order, freeing yarn for Depot');
   }
+  {
+    // A Bakery set to Honey Cake makes no Bread for the Pantry Order, so it doesn't hold Flour back from the Depot.
+    const { s, depot } = craftYard();
+    const mill = put(s, 'mill', 6, -28, Math.PI), bakery = put(s, 'bakery', 22, -28, Math.PI);
+    s.sim.brief.order.targets = { bread: 2, flour: 1 };
+    assert.ok(apply(s, { type: 'setRecipe', id: bakery, recipe: 'honey_cake' }).ok);
+    rt(s, mill).outputs = { flour: 2 };
+    assert.deepEqual(firstHaul(s, 'flour'), { kind: 'thing', id: depot }, 'Honey Cake Bakery does not hoard Flour needed by Depot');
+  }
+  {
+    // A rerouted cart carrying 2 Oil drops only the 1 Oil the Cannery needs for its last Sauce batch, then takes the spare 1 Oil to the Depot.
+    const { s, depot } = craftYard();
+    const cannery = put(s, 'cannery', 22, -28, Math.PI);
+    s.sim.brief.order.targets = { tomato_sauce: 2, oil: 1 };
+    rt(s, cannery).inputs = { tomato: 4 };
+    const cart = must(s.sim.carts[0], 'starter cart');
+    cart.cargo = { good: 'oil', count: 2 };
+    cart.state = 'idle';
+    cart.job = null;
+    for (let k = 0; k < 30 * 12 && countOf(s.sim.delivered, 'oil') < 1; k++) stepSim(s, 1, breezy);
+    assert.equal(countOf(s.sim.delivered, 'oil'), 1, 'spare Oil reaches Depot instead of stranding in Cannery');
+    assert.ok(countOf(rt(s, cannery).inputs, 'oil') + countOf(rt(s, cannery).outputs, 'tomato_sauce') + (rt(s, cannery).working ? 1 : 0) >= 1);
+    assert.ok(depot > 0);
+  }
 });
 
 test('a shed load on a neighbouring network never causes an overlapping Digester to burn fuel unnecessarily', () => {
