@@ -6,6 +6,7 @@ import type { Change } from './change.ts';
 import { CHANNEL_REACH, coreObb, padTarget, RILL_HALF, thingObb, thingRect, TRACK_HALF } from './earth.ts';
 import { obbCorners, obbDistance, obbSamples, obbsOverlap, pathBounds, polylineDistance, toWorld, wrapAngle } from './geom.ts';
 import { BUILD_HALF, cellIx, cellIz, COVER, isWet, sampleHeight, unionRect } from './grid.ts';
+import { MAX_SAVED_ITEMS } from './limits.ts';
 import { err, ok, type Result } from './result.ts';
 import { settle } from './settle.ts';
 import { type GameState, type Thing, takeId } from './state.ts';
@@ -57,11 +58,11 @@ export function canPlace(s: GameState, kind: ThingKind, x: number, z: number, ya
 
   // Its whole footprint: clear of rills, tracks, hedges, fields, rocks, trees and other things.
   for (const p of obbSamples(full, 0.75)) {
-    const inRace = def.onBank && localZ(at, p) > RACE_START;
-    for (const c of s.channels) if (near(c.path, p.x, p.z, inRace ? 0 : RILL_HALF + GAP)) return err('A rill runs there.');
+    const inWheelRace = def.onBank && inRace(at, p);
+    for (const c of s.channels) if (near(c.path, p.x, p.z, inWheelRace ? 0 : RILL_HALF + GAP)) return err('A rill runs there.');
     for (const t of s.tracks) if (near(t.path, p.x, p.z, TRACK_HALF + GAP)) return err("That's on a track.");
     for (const h of s.hedges) if (near(h.path, p.x, p.z, HEDGE_CLEAR)) return err('A hedge is in the way.');
-    if (!def.allowOnField && !inRace && g.fieldOf[cellIz(g, p.z) * g.nx + cellIx(g, p.x)] !== 0) return err("That's on a field: clear it first, or build beside it.");
+    if (!def.allowOnField && !inWheelRace && g.fieldOf[cellIz(g, p.z) * g.nx + cellIx(g, p.x)] !== 0) return err("That's on a field: clear it first, or build beside it.");
   }
   for (const c of s.crags) if (obbDistance(full, c.x, c.z) <= c.radius) return err('There is rock in the way.');
   for (const t of [...s.wildTrees, ...s.plantedTrees]) if (obbDistance(full, t.x, t.z) <= TRUNK * t.scale) return err('A tree is in the way.');
@@ -80,6 +81,8 @@ export function canPlace(s: GameState, kind: ThingKind, x: number, z: number, ya
 
 const localZ = (t: { x: number; z: number; yaw: number }, p: { x: number; z: number }) =>
   (p.x - t.x) * Math.sin(t.yaw) + (p.z - t.z) * Math.cos(t.yaw);
+/** Whether a point of a water wheel's footprint lies in its race (out over the brook, in front of its house). */
+export const inRace = (t: { x: number; z: number; yaw: number }, p: { x: number; z: number }) => localZ(t, p) > RACE_START;
 
 /** A water wheel's race: its wheel must turn in the flowing brook, deep enough, in front of its house. */
 function raceCheck(s: GameState, t: { kind: ThingKind; x: number; z: number; yaw: number }): Result<void, string> {
@@ -121,6 +124,7 @@ export function suggestWaterWheelYaw(s: GameState, x: number, z: number): number
 export function placeThing(s: GameState, kind: ThingKind, x: number, z: number, yaw: number): Result<Change, string> {
   const can = canPlace(s, kind, x, z, yaw);
   if (!can.ok) return can;
+  if (s.things.length >= MAX_SAVED_ITEMS) return err('The valley holds no more buildings.');
   const id = takeId(s), t: Thing = { id, kind, x, z, yaw: wrapAngle(yaw), padTargetY: 0 };
   t.padTargetY = padTarget(s.grid, t);
   s.things.push(t);

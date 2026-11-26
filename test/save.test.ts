@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   apply, CATALOG, canPlace, compostField, COVER, deserializeSave, type GameState, generateProceduralValley, generateValley, liveEnv,
-  MAX_SAVE_BYTES, must, naturalFertility, OLD_SAVE, padTarget, type Point2, previewChannelFlow, runtimeOf, serializeSave, spend,
+  MAX_CHANNELS, MAX_PATH_POINTS, MAX_SAVE_BYTES, MAX_SAVED_ID, MAX_TOTAL_PATH_LENGTH, MAX_TOTAL_PATH_POINTS, must, naturalFertility, OLD_SAVE, padTarget, type Point2, previewChannelFlow, runtimeOf, serializeSave, spend,
   startCampaignValley, STATE_VERSION, stepSim, type ThingKind,
 } from '../src/game/index.ts';
 import { brookSpot, build, done, joinMain, same } from './helpers.ts';
@@ -446,4 +446,152 @@ test('a tampered save is refused, never trusted: places, ids, references, the Su
   const long = 'x'.repeat(100000);
   refuse(tampered((d) => { d.sim.weatherOverride = long; }));
   refuse(tampered((d) => { (d.valley as Rec).season = { toString: long }; }));
+});
+
+test("the drawing tools keep to the save's limits: no stroke they take makes a save that won't load", () => {
+  const s = generateValley(1042, 'spring', { sandbox: true, weatherSeed: 55 });
+  const line = (n: number) => Array.from({ length: n }, (_, k) => ({ x: -10 + k * 0.01, z: -20 }));
+  // One stroke of too many points, or running too far (back and forth across the valley).
+  const zigzag = Array.from({ length: 60 }, (_, k) => ({ x: k % 2 ? 40 : -40, z: -20 + k * 0.1 }));
+  for (const type of ['addHedge', 'addTrack', 'digChannel'] as const) {
+    for (const points of [line(MAX_PATH_POINTS + 1), zigzag]) {
+      const r = apply(s, { type, points });
+      assert.ok(!r.ok && /too long/.test(r.error), `${type} of ${points.length} points refused`);
+    }
+  }
+  assert.deepEqual([s.hedges.length, s.channels.length], [0, 0], 'and nothing was made');
+  // All of them together: no more than the valley holds, in points, in length, or (rills) in number.
+  const keep = { channels: s.channels, hedges: s.hedges };
+  const filler = (n: number, points: Point2[]) => Array.from({ length: n }, () => ({ id: s.nextId++, points, path: points, flow: [] }));
+  s.hedges = filler(6, line(MAX_PATH_POINTS));
+  assert.ok(MAX_TOTAL_PATH_POINTS - 6 * MAX_PATH_POINTS < 50, 'the hedges hold nearly all the points');
+  let r = apply(s, { type: 'addHedge', points: line(60) });
+  assert.ok(!r.ok && /no more/.test(r.error), 'a stroke past all the points the valley holds is refused');
+  s.hedges = filler(6, Array.from({ length: 21 }, (_, k) => ({ x: k % 2 ? 50 : -50, z: 0 })));
+  assert.ok(MAX_TOTAL_PATH_LENGTH - 6 * 2000 < 1, 'the hedges run nearly as far as the valley holds');
+  r = apply(s, { type: 'addHedge', points: line(400) });
+  assert.ok(!r.ok && /no more/.test(r.error), 'a stroke past the length the valley holds is refused');
+  s.hedges = keep.hedges;
+  s.channels = filler(MAX_CHANNELS, [{ x: 0, z: 0 }]);
+  r = apply(s, { type: 'digChannel', points: [{ x: -10, z: -20 }, { x: -6, z: -20 }] });
+  assert.ok(!r.ok && /no more rills/.test(r.error), 'a rill past the most the valley holds is refused');
+  s.channels = keep.channels;
+});
+
+test('a save past the limits on strokes, or past its size in bytes, is refused before any curve is grown', () => {
+  const { s } = cartYard();
+  const good = JSON.parse(serializeSave(s)) as Record<string, unknown> & { nextId: number; channels: unknown[]; hedges: unknown[] };
+  const refuse = (raw: string, why: RegExp) => {
+    let r: ReturnType<typeof deserializeSave> | undefined;
+    assert.doesNotThrow(() => { r = deserializeSave(raw); });
+    assert.ok(r && !r.ok, 'refused');
+    if (r && !r.ok) assert.match(r.error, why);
+  };
+  const tampered = (edit: (d: typeof good) => void) => { const d = structuredClone(good); edit(d); return JSON.stringify(d); };
+  const strokes = (d: typeof good, n: number, points: Point2[]) => Array.from({ length: n }, () => ({ id: d.nextId++, points }));
+  refuse(tampered((d) => { d.channels = strokes(d, MAX_CHANNELS + 1, [{ x: 0, z: 0 }]); }), /damaged/);
+  refuse(tampered((d) => {
+    d.hedges = strokes(d, Math.ceil(MAX_TOTAL_PATH_POINTS / 1800) + 1, Array.from({ length: 1800 }, (_, k) => ({ x: k * 0.01, z: 0 })));
+  }), /together/);
+  refuse(tampered((d) => {
+    d.hedges = strokes(d, Math.ceil(MAX_TOTAL_PATH_LENGTH / 1800) + 1, Array.from({ length: 19 }, (_, k) => ({ x: k % 2 ? 50 : -50, z: 0 })));
+  }), /together/);
+  // Under the cap in characters, over it in UTF-8 bytes (as the file picker counts them).
+  const text = serializeSave(s), wide = `${text.slice(0, -1)},"note":"${'€'.repeat(Math.ceil(MAX_SAVE_BYTES / 3) + 10)}"}`;
+  assert.ok(wide.length < MAX_SAVE_BYTES, 'fewer characters than the cap');
+  refuse(wide, /isn't a Soil/);
+});
+
+test('trees and fields stand where the game lets them: none in the brook, none under a building but a Solar Canopy', () => {
+  const { s } = cartYard();
+  const g = s.grid, good = JSON.parse(serializeSave(s)) as Record<string, unknown> & { nextId: number; plantedTrees: unknown[]; fields: unknown[] };
+  const tampered = (edit: (d: typeof good) => void) => { const d = structuredClone(good); edit(d); return JSON.stringify(d); };
+  const refused = (raw: string, why: RegExp) => { const r = deserializeSave(raw); assert.ok(!r.ok && why.test(r.error), r.ok ? 'loaded' : r.error); };
+  const water = must(Array.from(g.baseCover).findIndex((c, i) => c === COVER.water && Math.abs(g.x0 + ((i % g.nx) + 0.5) * g.cell) < 50), 'a water cell');
+  const wx = g.x0 + ((water % g.nx) + 0.5) * g.cell, wz = g.z0 + (Math.floor(water / g.nx) + 0.5) * g.cell;
+  refused(tampered((d) => { d.plantedTrees.push({ id: d.nextId++, x: wx, z: wz, species: 'oak', scale: 0.6, seed: 1, planted: true }); }), /planted tree .* in the water/);
+  const depot = must(s.things.find((t) => t.kind === 'depot'), 'the Depot');
+  refused(tampered((d) => { d.plantedTrees.push({ id: d.nextId++, x: depot.x, z: depot.z, species: 'oak', scale: 0.6, seed: 1, planted: true }); }), /under the Depot/);
+  const under = Math.floor((depot.z - g.z0) / g.cell) * g.nx + Math.floor((depot.x - g.x0) / g.cell);
+  refused(tampered((d) => {
+    d.fields.push({ id: 99, crop: 'wheat', growth: 0, fertility: 0.8, harvestReady: 0, pollinated: 0, frosted: false, flooded: false, avgMoisture: 0, cells: [under, 1] });
+  }), /field 99 under the Depot/);
+
+  // A Solar Canopy over the wheat: built through the game's own rules, and it loads back the same.
+  const f = s.fields[0];
+  let canopy = false;
+  for (let iz = f.bounds.z0; iz <= f.bounds.z1 && !canopy; iz++) for (let ix = f.bounds.x0; ix <= f.bounds.x1 && !canopy; ix++) {
+    const x = g.x0 + (ix + 0.5) * g.cell, z = g.z0 + (iz + 0.5) * g.cell;
+    if (g.fieldOf[iz * g.nx + ix] === f.id && canPlace(s, 'solar', x, z, 0).ok) canopy = apply(s, { type: 'place', kind: 'solar', x, z, yaw: 0 }).ok;
+  }
+  assert.ok(canopy, 'a Solar Canopy over the wheat');
+  const solar = must(s.things.find((t) => t.kind === 'solar'), 'the canopy');
+  const cellsUnder = Array.from(g.fieldOf).filter((id, i) => id !== 0 && Math.abs(g.x0 + ((i % g.nx) + 0.5) * g.cell - solar.x) < 1 && Math.abs(g.z0 + (Math.floor(i / g.nx) + 0.5) * g.cell - solar.z) < 1);
+  assert.ok(cellsUnder.length > 0, 'wheat under the canopy');
+  assert.deepEqual(snapshot(reload(s)), snapshot(s));
+});
+
+test("a cart's route agrees with what it's doing: home, an empty pickup, and a forged trip are told apart", () => {
+  const { s } = cartYard();
+  const cart = s.sim.carts[0];
+  // Home again from a haul: parked or charging, no way left to go.
+  let wasOut = false, home = false;
+  for (let k = 0; k < 30 * 48 && !home; k++) {
+    step(s);
+    if (cart.state === 'returning') wasOut = true;
+    else if (wasOut && (cart.state === 'idle' || cart.state === 'charging')) home = true;
+  }
+  assert.ok(home, 'the cart came home');
+  assert.deepEqual([cart.path.length, cart.pathIdx, cart.job], [0, 0, null]);
+  assert.deepEqual(snapshot(reload(s)), snapshot(s));
+
+  // Off to a field whose harvest is gone by the time it gets there.
+  const yard = cartYard(), c = yard.s.sim.carts[0];
+  for (let k = 0; k < 30 * 24 && c.state !== 'toPickup'; k++) step(yard.s);
+  assert.equal(c.state, 'toPickup');
+  for (const fd of yard.s.fields) fd.harvestReady = 0;
+  for (let k = 0; k < 30 * 24 && c.state === 'toPickup'; k++) step(yard.s);
+  assert.deepEqual([c.state, c.path.length, c.pathIdx, c.job], ['idle', 0, 0, null], 'it found the pickup empty');
+  assert.deepEqual(snapshot(reload(yard.s)), snapshot(yard.s));
+
+  // Forged: out on a trip with no job and no way, parked with a way, heading home with a job.
+  const good = JSON.parse(serializeSave(s)) as { sim: { carts: Record<string, unknown>[] } };
+  const forged = (patch: Record<string, unknown>) => {
+    const d = structuredClone(good);
+    Object.assign(d.sim.carts[0], patch);
+    const r = deserializeSave(JSON.stringify(d));
+    assert.ok(!r.ok && /cart \d+'s (path|job)/.test(r.error), r.ok ? `loaded ${JSON.stringify(patch)}` : r.error);
+  };
+  const job = { from: { kind: 'field', id: 1 }, to: { kind: 'thing', id: yard.silo }, good: 'wheat', count: 1, priority: 1 };
+  forged({ state: 'toPickup', path: [], pathIdx: 0, job: null });
+  forged({ state: 'toPickup', path: [], pathIdx: 0, job });
+  forged({ state: 'toDropoff', path: [{ x: 0, z: -40 }, { x: 1, z: -40 }], pathIdx: 1, job: null });
+  forged({ state: 'idle', path: [{ x: 0, z: -40 }, { x: 1, z: -40 }], pathIdx: 1, job: null });
+  forged({ state: 'charging', path: [], pathIdx: 0, job });
+  forged({ state: 'returning', path: [{ x: 0, z: -40 }, { x: 1, z: -40 }], pathIdx: 1, job });
+});
+
+test('ids stay exact whole numbers, and each building stands in one power network named for one of its own', () => {
+  const { s } = cartYard();
+  for (let k = 0; k < 30 * 2; k++) step(s);
+  type Net = { id: number; emitters: number[]; loads: number[] };
+  const good = JSON.parse(serializeSave(s)) as { nextId: number; sim: { nextCartId: number; networks: Net[] } };
+  const tampered = (edit: (d: typeof good) => void) => { const d = structuredClone(good); edit(d); return JSON.stringify(d); };
+  const refused = (raw: string, why: RegExp) => { const r = deserializeSave(raw); assert.ok(!r.ok && why.test(r.error), r.ok ? 'loaded' : r.error); };
+  refused(tampered((d) => { d.nextId = Number.MAX_SAFE_INTEGER; }), /next id/);
+  refused(tampered((d) => { d.nextId = MAX_SAVED_ID + 1; }), /next id/);
+  refused(tampered((d) => { d.sim.nextCartId = Number.MAX_SAFE_INTEGER; }), /carts' ids/);
+  assert.ok(deserializeSave(tampered((d) => { d.nextId = MAX_SAVED_ID; d.sim.nextCartId = MAX_SAVED_ID; })).ok, 'up to the cap loads');
+  assert.ok(good.sim.networks.length > 0, 'a power network');
+  // (A building taken down while paused keeps its id in the last step's networks: an allocated id not otherwise used.)
+  refused(tampered((d) => {
+    const free = d.nextId++, n = d.sim.networks[0];
+    d.sim.networks.push({ ...structuredClone(n), id: free, emitters: [free], loads: [n.emitters[0]] });
+  }), /building \d+ in two power networks/);
+  refused(tampered((d) => { d.sim.networks[0].id = d.nextId++; }), /power network/);
+  refused(tampered((d) => { d.sim.networks[0].emitters = []; }), /power network/);
+  assert.ok(deserializeSave(tampered((d) => {
+    const free = d.nextId++;
+    d.sim.networks.push({ ...structuredClone(d.sim.networks[0]), id: free, emitters: [free], loads: [] });
+  })).ok, "a removed emitter's network still loads");
 });

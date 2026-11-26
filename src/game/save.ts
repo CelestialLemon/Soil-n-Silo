@@ -19,7 +19,8 @@ import { channelPath, refreshWater } from './flow.ts';
 import { catmullRom, type Obb, obbCorners, obbDistance, obbSamples, obbsOverlap, type Point2 } from './geom.ts';
 import { type Inventory, isGood } from './goods.ts';
 import { BUILD_HALF, CELL_M, cellIx, cellIz, cellX, cellZ, COVER, fullRect, type Grid, GRID_N, GRID_X0, GRID_Z0, isWet } from './grid.ts';
-import { PATH_SPACING, trackPath } from './paths.ts';
+import { PATH_SPACING, trackPath, TREE_SPACING } from './paths.ts';
+import { inRace } from './place.ts';
 import { powerFor } from './power/graph.ts';
 import type { PowerNetwork, PowerSummary } from './power/sim.ts';
 import { err, ok, type Result } from './result.ts';
@@ -30,19 +31,18 @@ import {
 import { CART_COST, type DropId, MAX_CARTS, type SuppliesState } from './supplies.ts';
 import { generateValley } from './valley/generate.ts';
 import { type ClimateCharacter, FLOOD_MAX, isClimate, isWeatherSpell, type WeatherSpell, type WeatherState } from './weather.ts';
+import { MAX_CHANNELS, MAX_PATH_LENGTH, MAX_PATH_POINTS, MAX_SAVED_ITEMS, strokesFault } from './limits.ts';
 import { refreshWet } from './wet.ts';
 import type { BriefState } from './brief.ts';
 import { BYPRODUCTS, type ByproductTarget, type ThingRuntime } from './workshops.ts';
 
-/** The longest save text read, in characters (a homestead well under way saves in about 15 KB). */
+/** The longest save text read, in UTF-8 bytes (as a file's size counts them; a homestead well under way saves in about 15 KB). */
 export const MAX_SAVE_BYTES = 4 * 1024 * 1024;
-/** The most buildings, rills, tracks, hedges or planted trees a save may hold, each. */
-export const MAX_SAVED_ITEMS = 4000;
-/** The most control points one rill, track or hedge holds, and the longest its stroke runs, m. */
-export const MAX_PATH_POINTS = 2000;
-export const MAX_PATH_LENGTH = 2000;
 /** The most waypoints a cart's path holds (its way across the valley, on the carts' nav grid). */
 const MAX_CART_PATH = 20000;
+/** The highest next id (of a building, rill, track, hedge, tree or cart) a save may hold: far below where whole numbers stop
+ * being exact, so the ids taken after it stay exact. */
+export const MAX_SAVED_ID = 1_000_000_000;
 /** The latest day a save may stand on (a century of seasons: the weather's timeline is read out to it). */
 export const MAX_SAVE_DAY = 36500;
 /** The largest a planted tree's scale may be. */
@@ -226,7 +226,7 @@ const FILE: Shape = {
       },
       max: GRID_N * GRID_N,
     },
-    channels: { arr: PATH, max: MAX_SAVED_ITEMS }, tracks: { arr: PATH, max: MAX_SAVED_ITEMS }, hedges: { arr: PATH, max: MAX_SAVED_ITEMS },
+    channels: { arr: PATH, max: MAX_CHANNELS }, tracks: { arr: PATH, max: MAX_SAVED_ITEMS }, hedges: { arr: PATH, max: MAX_SAVED_ITEMS },
     plantedTrees: {
       arr: { obj: { id: 'int', x: 'num', z: 'num', species: SPECIES, scale: 'num', seed: 'int', planted: 'bool' } }, max: MAX_SAVED_ITEMS,
     },
@@ -384,6 +384,8 @@ function checkSense(f: SaveFile, cells: number): string | undefined {
   for (const [list, what] of [[f.channels, 'rill'], [f.tracks, 'track'], [f.hedges, 'hedge']] as const) {
     for (const p of list) { const bad = pathFault(p, what); if (bad) return bad; }
   }
+  const strokes = strokesFault(f);
+  if (strokes) return strokes;
   for (const t of f.plantedTrees) {
     if (t.id <= 0 || !t.planted || !within(t, BUILD_HALF) || !(t.scale > 0 && t.scale <= MAX_TREE_SCALE)) return `planted tree ${t.id}`;
   }
@@ -392,16 +394,22 @@ function checkSense(f: SaveFile, cells: number): string | undefined {
   const made = [...f.things, ...f.channels, ...f.tracks, ...f.hedges, ...f.plantedTrees].map((v) => v.id);
   const dupMade = duplicate(made);
   if (dupMade !== undefined) return `two things share id ${dupMade}`;
-  if (f.nextId <= 0 || made.some((id) => id >= f.nextId)) return 'the next id';
+  if (f.nextId <= 0 || f.nextId > MAX_SAVED_ID || made.some((id) => id >= f.nextId)) return 'the next id';
 
   // Carts: their own numbering, a Garage to belong to, on the map, paths and cursors that agree, jobs that make sense.
   const carts = f.sim.carts, garage = kinds.has('garage');
   const dupCart = duplicate(carts.map((c) => c.id));
   if (dupCart !== undefined) return `two carts share id ${dupCart}`;
-  if (f.sim.nextCartId < 1 || carts.some((c) => c.id <= 0 || c.id >= f.sim.nextCartId)) return "the carts' ids";
+  if (f.sim.nextCartId < 1 || f.sim.nextCartId > MAX_SAVED_ID || carts.some((c) => c.id <= 0 || c.id >= f.sim.nextCartId)) return "the carts' ids";
   if (garage !== (carts.length > 0)) return garage ? 'a Garage without its cart' : 'carts without a Garage';
   for (const c of carts) {
     if (!onMap(c) || !c.path.every(onMap)) return `cart ${c.id} off the map`;
+    // Parked or charging: no job and no way to go. Out on a job: the job and the way to it. Heading home: no job, and a way
+    // there (or none yet, when the way was cut and it waits to try again).
+    const parked = c.state === 'idle' || c.state === 'charging', onJob = c.state === 'toPickup' || c.state === 'toDropoff';
+    if ((parked || c.state === 'returning') && c.job !== null) return `cart ${c.id}'s job`;
+    if (onJob && c.job === null) return `cart ${c.id}'s job`;
+    if ((parked || onJob) && (c.path.length === 0) !== parked) return `cart ${c.id}'s path`;
     if (c.path.length === 0 ? c.pathIdx !== 0 : c.pathIdx < 0 || c.pathIdx > c.path.length) return `cart ${c.id}'s path`;
     if (c.cargo && c.cargo.count < 1) return `cart ${c.id}'s cargo`;
     if (c.job) {
@@ -415,8 +423,11 @@ function checkSense(f: SaveFile, cells: number): string | undefined {
   // The power networks: their own ids, each building once in a list, batteries within their capacity.
   const dupNet = duplicate(f.sim.networks.map((n) => n.id));
   if (dupNet !== undefined) return `two power networks share id ${dupNet}`;
+  // A network is named for one of its emitters, and each building stands in one network at most (as stepPower builds them).
+  const dupMember = duplicate(f.sim.networks.flatMap((n) => [...n.emitters, ...n.loads]));
+  if (dupMember !== undefined) return `building ${dupMember} in two power networks`;
   for (const n of f.sim.networks) {
-    if (n.id <= 0 || duplicate(n.emitters) !== undefined || duplicate(n.loads) !== undefined) return `power network ${n.id}`;
+    if (n.id <= 0 || !n.emitters.includes(n.id)) return `power network ${n.id}`;
     if ([...n.emitters, ...n.loads].some((id) => id <= 0 || id >= f.nextId)) return `power network ${n.id}`;
     if (n.batteryWh > n.batteryCapWh + 1e-6) return `power network ${n.id}'s battery`;
   }
@@ -482,6 +493,17 @@ function checkValley(f: SaveFile, s: GameState): string | undefined {
     for (const w of s.wildTrees) if (obbDistance(box, w.x, w.z) < w.scale - 1e-6) return `${label} on a tree`;
     boxes.push({ t, box, r: Math.hypot(box.hw, box.hd) });
   }
+  // The planted trees, where plantTree lets one grow: not in the brook or pond, nor on rock, nor under a building, nor
+  // crowding the valley's own trees (none of which ever move).
+  for (const t of f.plantedTrees) {
+    const label = `planted tree ${t.id}`, c = g.baseCover[cellIz(g, t.z) * g.nx + cellIx(g, t.x)];
+    if (c === COVER.water) return `${label} in the water`;
+    if (c === COVER.rock || s.crags.some((k) => Math.hypot(t.x - k.x, t.z - k.z) < k.radius - 1e-6)) return `${label} on rock`;
+    if (s.wildTrees.some((w) => Math.hypot(t.x - w.x, t.z - w.z) < TREE_SPACING - 1e-6)) return `${label} on a tree`;
+    for (const { t: b, box, r } of boxes) {
+      if (Math.hypot(t.x - box.cx, t.z - box.cz) <= r && obbDistance(box, t.x, t.z) <= 0) return `${label} under the ${CATALOG[b.kind].label} ${b.id}`;
+    }
+  }
   for (let a = 0; a < boxes.length; a++) for (let b = a + 1; b < boxes.length; b++) {
     const A = boxes[a], B = boxes[b];
     if (Math.hypot(A.box.cx - B.box.cx, A.box.cz - B.box.cz) > A.r + B.r) continue;
@@ -498,9 +520,26 @@ function checkValley(f: SaveFile, s: GameState): string | undefined {
   return undefined;
 }
 
-/** What the rebuilt land must be: fields only on field ground clear of the valley's rocks and trees, and no broken heights. */
+/**
+ * What the rebuilt land must be: fields only on field ground clear of the valley's rocks and trees and of the buildings
+ * that can't stand over a crop, and no broken heights.
+ */
 function checkLand(s: GameState): string | undefined {
   const g = s.grid;
+  // A field cell under a building that can't stand over one. A field is painted only on cells whose centre lies outside
+  // such a building (fieldAllowed), and a building is placed only where none of its footprint's samples falls on a field
+  // (canPlace, a wheel's race aside), so a cell can be farmed under one only if it fails one of the two: both is a forgery.
+  // (recomposeEarth paints a field's cover under anything, so the cover can't tell.)
+  for (const t of s.things) {
+    const def = CATALOG[t.kind];
+    if (def.allowOnField) continue;
+    const box = thingObb(t);
+    for (const p of obbSamples(box, 0.75)) {
+      if (def.onBank && inRace(t, p)) continue;
+      const ix = cellIx(g, p.x), iz = cellIz(g, p.z), i = iz * g.nx + ix;
+      if (g.fieldOf[i] !== 0 && obbDistance(box, cellX(g, ix), cellZ(g, iz)) <= 0) return `field ${g.fieldOf[i]} under the ${def.label} ${t.id}`;
+    }
+  }
   for (let i = 0; i < g.fieldOf.length; i++) {
     if (g.fieldOf[i] === 0) continue;
     const ix = i % g.nx, iz = (i - ix) / g.nx;
@@ -526,7 +565,8 @@ function checkLand(s: GameState): string | undefined {
 /** Reads a save's text back into a homestead, or says why it can't. Never throws. */
 export function deserializeSave(raw: string): Result<GameState, string> {
   try {
-    if (typeof raw !== 'string' || raw.length > MAX_SAVE_BYTES) return err(NOT_A_SAVE);
+    // A string's length is at most its UTF-8 size: the quick check first, then the bytes themselves (as the file's size).
+    if (typeof raw !== 'string' || raw.length > MAX_SAVE_BYTES || new TextEncoder().encode(raw).byteLength > MAX_SAVE_BYTES) return err(NOT_A_SAVE);
     let data: unknown;
     try { data = JSON.parse(raw); } catch { return err(NOT_A_SAVE); }
     if (!isRecord(data) || !('version' in data)) return err(NOT_A_SAVE);

@@ -546,7 +546,7 @@ function pickUp(s: GameState, cart: Cart): boolean {
     const r = thingById(s, job.from.id) && s.sim.things.get(job.from.id);
     if (r) took = takeGood(r.outputs, job.good, Math.min(job.count, CART_CAPACITY));
   }
-  if (took === 0) { cart.job = null; cart.state = 'idle'; cart.jobDesc = 'Looking for work'; return false; }
+  if (took === 0) { cart.job = null; cart.state = 'idle'; clearPath(cart); cart.jobDesc = 'Looking for work'; return false; }
   cart.cargo = { good: job.good, count: took };
   job.count = took;
   const dst = placeOf(s, job.to, cartReach(s, cart)), path = dst && findPath(s, cart, dst);
@@ -693,6 +693,7 @@ export function stepCarts(s: GameState, dtSec: number, hour: number, events: Sim
         // Arrived.
         if (cart.state === 'returning') {
           cart.state = cart.battery < 1 ? 'charging' : 'idle';
+          clearPath(cart);
           cart.jobDesc = cart.battery < 1 ? 'Charging at the Garage' : 'Parked at the Garage';
           const g = garageOf(s);
           if (g) cart.yaw = g.yaw + Math.PI;

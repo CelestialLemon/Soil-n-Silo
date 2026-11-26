@@ -21,7 +21,7 @@
 import { type Soundscape } from '../audio/index.ts';
 import {
   type Action, type ByproductMaker, type ByproductTarget, BYPRODUCTS, CROPS, effectivePriority, isByproductMaker, cellIx, cellIz, effectiveMoisture, erosionDrain, GOOD_LABELS, apply, diagnoseIdleCarts, CART_COST, CATALOG, CLOCK_JUMPED, type Change, generateValley, type GameState, heightAt, type Point2,
-  climateFor, climatesOf, deserializeSave, generateProceduralValley, refreshFieldWeather, startCampaignValley, refreshPower, resetSteadyOnClockJump, rollWeatherSeed, type Season, SETUP_CHANGED, type SimEvent, stationForecast, stepSim, stepWeather,
+  type ClimateCharacter, climateFor, climatesOf, deserializeSave, generateProceduralValley, refreshFieldWeather, startCampaignValley, refreshPower, resetSteadyOnClockJump, rollWeatherSeed, type Season, SETUP_CHANGED, type SimEvent, stationForecast, stepSim, stepWeather,
   suggestWaterWheelYaw, type ThingKind, TREE_SPECIES, type WeatherSpell, wrapAngle,
 } from '../game/index.ts';
 import {
@@ -98,6 +98,12 @@ export class Play implements UiCallbacks {
   private welcomed = false;
 
   private stats: ValleyStats;
+  /**
+   * The climate the player chose (`?climate=`, or kept from the Custom tab), held across valleys: a season pill applies it
+   * where the new season has it and keeps it where not, so going back to a season that has it brings it back. A campaign
+   * valley drops it (its character is curated); a loaded save brings its own.
+   */
+  private preferredClimate: ClimateCharacter | undefined;
   private harvestDiagnosis: string | null = null;
   private statsDirty = true;
   private statsClock = 0;
@@ -122,7 +128,8 @@ export class Play implements UiCallbacks {
     this.starterTracks = new Set(state.tracks.map((t) => t.id));
     // The sky's clock (the address's ?hour=) is the valley's: the homestead starts at its hour.
     state.sim.hour = world.getHour();
-    this.stats = valleyStats(state, this.starterTracks);
+    this.preferredClimate = state.climateOverride;
+    this.stats = this.valleyStats();
     this.welcomed = state.things.some((t) => t.kind === 'farmhouse');
     world.onFrame((dt) => this.frame(dt));
   }
@@ -223,7 +230,7 @@ export class Play implements UiCallbacks {
     const ui = this.ui;
     if (!ui) return;
     if (this.statsDirty) {
-      this.stats = valleyStats(this.state, this.starterTracks);
+      this.stats = this.valleyStats();
       this.harvestDiagnosis = diagnoseIdleCarts(this.state);
       if (this.harvestDiagnosis && !this.harvestHintSaid) {
         this.ui?.showToast(this.harvestDiagnosis);
@@ -251,6 +258,12 @@ export class Play implements UiCallbacks {
     ].join('|');
     if (key !== this.uiKey) { this.uiKey = key; ui.render(snapshot); }
     if (selected) ui.updateRingPosition(selected.screenX, selected.screenY, selected.visible);
+  }
+
+  /** The postcard's figures, with the climate the player chose (the Custom tab offers it again). */
+  private valleyStats(): ValleyStats {
+    const stats = valleyStats(this.state, this.starterTracks);
+    return this.preferredClimate === undefined ? stats : { ...stats, preferredClimate: this.preferredClimate };
   }
 
   private currentReadout(): ToolReadout | null {
@@ -820,11 +833,12 @@ export class Play implements UiCallbacks {
   /**
    * A fresh valley lives in fresh weather of its own (a new weather seed): the address's locks go. A custom (procedural)
    * valley stays one, with its landform, difficulty and Sandbox (a season pill doesn't throw the player out of it);
-   * otherwise, the seed's own meadow. A climate the player chose stays, if the new season has it.
+   * otherwise, the seed's own meadow. A climate the player chose stays, if the new season has it (and is kept for the next
+   * season if not).
    */
   onNewValley(seed: number, season: Season) {
     const s = this.state, weatherSeed = rollWeatherSeed(), at = seed >>> 0;
-    const climate = s.climateOverride !== undefined && climatesOf(season).includes(s.climateOverride) ? s.climateOverride : undefined;
+    const climate = this.climateIn(season);
     if (s.custom) {
       this.startValley(generateProceduralValley({
         seed: at, season, terrain: s.terrain, sandbox: s.sandbox, weatherSeed,
@@ -840,16 +854,26 @@ export class Play implements UiCallbacks {
   onStartCampaign(id: string) {
     const r = startCampaignValley(id, rollWeatherSeed());
     if (!r.ok) { this.ui?.showToast(r.error, 'warn'); return; }
+    this.preferredClimate = undefined;
     this.startValley(r.value);
     this.ui?.showToast(`Welcome to ${r.value.valleyTitle ?? 'the valley'} · place your Farmhouse to begin`);
   }
 
   onStartProcedural(req: ProceduralRequest) {
-    const next = generateProceduralValley({ ...req, seed: req.seed >>> 0, weatherSeed: rollWeatherSeed() });
+    const { climate: preferred, ...rest } = req;
+    this.preferredClimate = preferred;
+    const climate = this.climateIn(req.season);
+    const next = generateProceduralValley({ ...rest, seed: req.seed >>> 0, weatherSeed: rollWeatherSeed(), ...(climate === undefined ? {} : { climate }) });
     this.startValley(next);
     this.ui?.showToast(next.sandbox
       ? `${next.valleyTitle ?? 'A Sandbox valley'} · Sandbox: build freely, pick the sky from the weather chip`
       : `Welcome to ${next.valleyTitle ?? 'a fresh valley'} · place your Farmhouse to begin`);
+  }
+
+  /** The climate the player chose, if the season has it. */
+  private climateIn(season: Season): ClimateCharacter | undefined {
+    const c = this.preferredClimate;
+    return c !== undefined && climatesOf(season).includes(c) ? c : undefined;
   }
 
   /** A fresh homestead: its own Supplies, brief, Depot and stub, on day 1 at the sky's hour. */
@@ -862,6 +886,7 @@ export class Play implements UiCallbacks {
 
   /** A saved homestead, as it stood: its own clock (the sky jumps to its hour), weather and work. */
   private loadState(next: GameState) {
+    this.preferredClimate = next.climateOverride;
     this.world.setHour(next.sim.hour);
     // No starter tracks: a loaded homestead is the player's work, so clearing it always asks first.
     this.swapState(next, new Set());

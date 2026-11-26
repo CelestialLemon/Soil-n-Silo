@@ -296,9 +296,12 @@ class ValleyWorld implements World {
 
   getSimEnv(): SimEnv {
     // The turbines run on the game's own wind (its gusts are the weather seed's), not the drawn wind, so a homestead makes
-    // the same power whether it's played, saved and loaded, or run headless.
+    // the same power whether it's played, saved and loaded, or run headless: read from the weather each sub-step as it moves
+    // on (as liveEnv), not held at where it stood when the frame began.
     const override = this.state.sim.weatherOverride, w = this.state.sim.weather;
-    return { hour: this.getHour(), windSpeed: w.windSpeed, cloudCover: w.cloudCover, ...(override ? { weather: override } : {}) };
+    return {
+      hour: this.getHour(), windSpeed: w.windSpeed, cloudCover: w.cloudCover, useLiveWeather: true, ...(override ? { weather: override } : {}),
+    };
   }
 
   syncSim(tick?: SimTickResult) {

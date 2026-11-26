@@ -1,7 +1,7 @@
 // The UI's contract with the rest of the game: what it shows (a `UiSnapshot` the loop hands it) and what it asks for
 // (`UiCallbacks`). The UI never reaches into the world or the renderer; it only reads the snapshot and calls back.
 import type {
-  BriefState, DayForecast, Difficulty, ForecastIcon, PowerSummary, Season, TerrainStyle, ThingKind, WeatherSpell,
+  BriefState, ClimateCharacter, DayForecast, Difficulty, ForecastIcon, PowerSummary, Season, TerrainStyle, ThingKind, WeatherSpell,
 } from '../game/index.ts';
 
 /** Placing one of the catalog's things (src/game/catalog.ts). */
@@ -44,6 +44,11 @@ export interface ProceduralRequest {
   difficulty: Difficulty;
   /** Unlimited Supplies and free weather. */
   sandbox: boolean;
+  /**
+   * The climate the player chose (`?climate=`), kept: the valley takes it if its season has it, else the season's own for
+   * its seed (and the choice is still kept for the next valley).
+   */
+  climate?: ClimateCharacter;
 }
 
 /** The thing the player clicked, and where it stands on screen (CSS pixels from the canvas's top-left). */
@@ -132,6 +137,11 @@ export interface ValleyStats {
   /** A custom (procedural) valley, and the difficulty its Supplies were balanced for (the Custom tab opens on them). */
   custom?: boolean;
   difficulty?: Difficulty;
+  /**
+   * The climate the player chose (`?climate=`), kept across valleys of the seed's meadow and custom ones (a season pill
+   * keeps it where the season has it): the Custom tab offers it again. Left out when none was chosen, or in a campaign valley.
+   */
+  preferredClimate?: ClimateCharacter;
 }
 
 /** The weather now, as the sky strip reads it out: "Showers · 11°C". */

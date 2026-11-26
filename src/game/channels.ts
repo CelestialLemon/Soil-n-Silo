@@ -7,6 +7,7 @@ import { CHANNEL_REACH, channelRect, coreObb, RILL_HALF, settles, thingObb } fro
 import { channelPath, heightsWithRill } from './flow.ts';
 import { obbDistance, pathBounds, pathLength, type Point2 } from './geom.ts';
 import { cellIx, cellIz, COVER, VALLEY_HALF } from './grid.ts';
+import { strokeFits } from './limits.ts';
 import { err, ok, type Result } from './result.ts';
 import { settle } from './settle.ts';
 import { type Channel, type GameState, takeId } from './state.ts';
@@ -62,6 +63,8 @@ const lower = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
 
 /** Digs a rill along a stroke. */
 export function digChannel(s: GameState, points: readonly Point2[]): Result<Change, string> {
+  const fits = strokeFits(s, 'rill', points);
+  if (!fits.ok) return fits;
   const path = channelPath(points);
   const can = canDig(s, path);
   if (!can.ok) return can;

@@ -11,15 +11,18 @@
 // The Settings popover: sound on or off and its volume, the graphics quality, and the storm flashes (off for players
 // sensitive to flashing light).
 import {
-  CAMPAIGN_VALLEYS, type Difficulty, DIFFICULTIES, MAX_SAVE_BYTES, SEASONS, type Season, TERRAIN_STYLES, type TerrainStyle,
+  CAMPAIGN_VALLEYS, type ClimateCharacter, climatesOf, describeClimate, type Difficulty, DIFFICULTIES, MAX_SAVE_BYTES, SEASONS, type Season, TERRAIN_STYLES, type TerrainStyle,
 } from '../game/index.ts';
 import { button, el, setFlag, setHidden, setPressed, setText, setTitle } from './dom.ts';
 import { icon } from './icons.ts';
-import type { UiCallbacks, UiQuality, UiSettings, UiSnapshot } from './types.ts';
+import type { ProceduralRequest, UiCallbacks, UiQuality, UiSettings, UiSnapshot } from './types.ts';
 
 export const SEASON_LABEL: Record<Season, string> = { spring: 'Spring', summer: 'Summer', autumn: 'Autumn', winter: 'Winter' };
 export const TERRAIN_LABEL: Record<TerrainStyle, string> = {
   meadow: 'Meadow', terrace: 'Terrace', floodplain: 'Floodplain', ridge: 'Ridge', slope: 'Slope', glen: 'Glen',
+};
+const CLIMATE_LABEL: Record<ClimateCharacter, string> = {
+  mild: 'Mild', wet: 'Wet', dry: 'Dry', hot: 'Hot', gales: 'Gales', stormy: 'Stormy', hard: 'Hard', highRiver: 'Spate',
 };
 const DIFFICULTY_LABEL: Record<Difficulty, string> = { relaxed: 'Relaxed', standard: 'Standard', tight: 'Tight' };
 const QUALITIES: readonly UiQuality[] = ['low', 'medium', 'high'];
@@ -159,7 +162,15 @@ export function createValleysPanel(cb: UiCallbacks, owners: () => readonly Eleme
   let valleyKey = '';
   /** A choice waiting for a yes, when it would clear a homestead with work in it. */
   let pending: { text: string; yes: string; run: () => void } | null = null;
-  const custom = { seed: rollSeed(), season: 'spring' as Season, terrain: 'meadow' as TerrainStyle, difficulty: 'standard' as Difficulty, sandbox: false };
+  /** `climate`: the climate the player chose (`?climate=`), offered again until cleared; the valley takes it if its season has it. */
+  const custom: { seed: number; season: Season; terrain: TerrainStyle; difficulty: Difficulty; sandbox: boolean; climate?: ClimateCharacter } = {
+    seed: rollSeed(), season: 'spring', terrain: 'meadow', difficulty: 'standard', sandbox: false,
+  };
+  /**
+   * Counts the file imports begun: a file read that finishes after another began, after the panel closed, or after another
+   * valley came into play is let go (it mustn't ask to replace a valley it wasn't picked over).
+   */
+  let importSeq = 0;
 
   const panel = el('section', 'ui-panel ui-valleys ui-float');
   panel.setAttribute('role', 'dialog');
@@ -224,6 +235,14 @@ export function createValleysPanel(cb: UiCallbacks, owners: () => readonly Eleme
   seedRow.append(seedInput, reroll);
   seedInput.value = String(custom.seed);
 
+  // The climate the player chose, kept (with a way to let it go): the season's own takes over where the season lacks it.
+  const climateRow = el('div', 'ui-custom-climate');
+  const climateText = el('span', 'ui-check-hint');
+  const climateClear = button('ui-icon-btn', "Let the season pick the climate", () => { delete custom.climate; paint(); });
+  climateClear.append(icon('close'));
+  climateRow.append(climateText, climateClear);
+  const climateField = field('Climate', climateRow);
+
   const sandboxRow = el('label', 'ui-check');
   const sandboxBox = el('input');
   sandboxBox.type = 'checkbox';
@@ -235,7 +254,10 @@ export function createValleysPanel(cb: UiCallbacks, owners: () => readonly Eleme
   const start = button('ui-chip is-strong ui-custom-start', 'Start a fresh valley', () => {
     const seed = parseSeed(seedInput.value);
     if (seed === null) return;
-    const req = { seed, season: custom.season, terrain: custom.terrain, difficulty: custom.difficulty, sandbox: custom.sandbox };
+    const req: ProceduralRequest = {
+      seed, season: custom.season, terrain: custom.terrain, difficulty: custom.difficulty, sandbox: custom.sandbox,
+      ...(custom.climate === undefined ? {} : { climate: custom.climate }),
+    };
     const what = req.sandbox ? 'a Sandbox valley' : `a ${SEASON_LABEL[req.season].toLowerCase()} ${TERRAIN_LABEL[req.terrain].toLowerCase()}`;
     ask(`Start ${what}? This homestead will be cleared.`, 'Start afresh', () => {
       if (cb.onStartProcedural) cb.onStartProcedural(req);
@@ -246,6 +268,7 @@ export function createValleysPanel(cb: UiCallbacks, owners: () => readonly Eleme
 
   form.append(
     field('Season', seasonPills.element),
+    climateField,
     field('Landform', terrainPills.element),
     field('Difficulty', difficultyPills.element),
     field('Seed', seedRow),
@@ -272,12 +295,15 @@ export function createValleysPanel(cb: UiCallbacks, owners: () => readonly Eleme
   file.addEventListener('change', () => {
     const f = file.files?.[0];
     file.value = '';
+    const seq = ++importSeq;
     if (!f) return;
     // Too big to be a save: said at once, before reading a byte of it.
     if (f.size > MAX_SAVE_BYTES) { onError?.(`"${f.name}" is too large to be a Soil-n-Silo save.`); return; }
+    // Read while the panel stays open on the same valley, or not at all.
+    const current = () => seq === importSeq && pop.isOpen;
     f.text().then(
-      (json) => ask(`Load "${f.name}"? This homestead will be replaced.`, 'Load', () => cb.onImportSave?.(json)),
-      () => onError?.(`"${f.name}" could not be read.`),
+      (json) => { if (current()) ask(`Load "${f.name}"? This homestead will be replaced.`, 'Load', () => cb.onImportSave?.(json)); },
+      () => { if (current()) onError?.(`"${f.name}" could not be read.`); },
     );
   });
   const importBtn = button('ui-icon-btn ui-saves-btn', 'Import a game from a .json file', () => file.click());
@@ -306,7 +332,7 @@ export function createValleysPanel(cb: UiCallbacks, owners: () => readonly Eleme
       if (last.stats.campaignId !== undefined) tab = 'campaign';
       else if (last.stats.custom === true || last.stats.sandbox === true) tab = 'custom';
     }
-    if (!open) pending = null;
+    if (!open) { pending = null; importSeq++; }
     paint();
   });
 
@@ -317,9 +343,13 @@ export function createValleysPanel(cb: UiCallbacks, owners: () => readonly Eleme
    */
   function matchValley(s: UiSnapshot): void {
     const v = s.stats;
-    const key = [v.seed, v.season, v.terrain ?? '', v.sandbox === true, v.custom === true, v.difficulty ?? '', v.campaignId ?? ''].join('|');
+    const key = [v.seed, v.season, v.terrain ?? '', v.sandbox === true, v.custom === true, v.difficulty ?? '', v.campaignId ?? '',
+      v.preferredClimate ?? ''].join('|');
     if (key === valleyKey) return;
     valleyKey = key;
+    importSeq++;
+    if (v.preferredClimate === undefined) delete custom.climate;
+    else custom.climate = v.preferredClimate;
     custom.season = v.season;
     custom.terrain = v.terrain ?? 'meadow';
     custom.sandbox = v.sandbox === true;
@@ -364,6 +394,12 @@ export function createValleysPanel(cb: UiCallbacks, owners: () => readonly Eleme
     }
 
     seasonPills.paint(custom.season);
+    const chosen = custom.climate;
+    setHidden(climateField, chosen === undefined);
+    if (chosen !== undefined) {
+      setText(climateText, climatesOf(custom.season).includes(chosen) ? describeClimate(custom.season, chosen)
+        : `${CLIMATE_LABEL[chosen]} isn't a ${SEASON_LABEL[custom.season].toLowerCase()} climate: the season picks (kept for another)`);
+    }
     terrainPills.paint(custom.terrain);
     difficultyPills.paint(custom.difficulty);
     setFlag(form, 'is-sandbox', custom.sandbox);
