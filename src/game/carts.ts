@@ -504,6 +504,12 @@ function routeCargo(s: GameState, cart: Cart): boolean {
   return false;
 }
 
+/** Drops a cart's path: no waypoints, and its cursor back at the start (a save holds the two together). */
+function clearPath(cart: Cart) {
+  cart.path = [];
+  cart.pathIdx = 0;
+}
+
 function setLeg(s: GameState, cart: Cart, state: CartState, path: Point2[], target: Endpoint | 'home') {
   cart.state = state;
   cart.path = path;
@@ -516,10 +522,10 @@ function setLeg(s: GameState, cart: Cart, state: CartState, path: Point2[], targ
 function goHome(s: GameState, cart: Cart, why: string) {
   cart.job = null;
   const spot = parking(s, cart, cartReach(s, cart));
-  if (!spot) { cart.state = 'idle'; cart.path = []; cart.jobDesc = 'Waiting: no way back to the Garage'; cart.wait = THINK_HOURS; return; }
-  if (dist(spot, cart) < 0.5) { cart.state = cart.battery < 1 ? 'charging' : 'idle'; cart.path = []; cart.jobDesc = cart.battery < 1 ? 'Charging at the Garage' : 'Parked at the Garage'; return; }
+  if (!spot) { cart.state = 'idle'; clearPath(cart); cart.jobDesc = 'Waiting: no way back to the Garage'; cart.wait = THINK_HOURS; return; }
+  if (dist(spot, cart) < 0.5) { cart.state = cart.battery < 1 ? 'charging' : 'idle'; clearPath(cart); cart.jobDesc = cart.battery < 1 ? 'Charging at the Garage' : 'Parked at the Garage'; return; }
   const path = findPath(s, cart, spot);
-  if (!path) { cart.state = 'idle'; cart.path = []; cart.jobDesc = 'Waiting: no way back to the Garage'; cart.wait = THINK_HOURS; return; }
+  if (!path) { cart.state = 'idle'; clearPath(cart); cart.jobDesc = 'Waiting: no way back to the Garage'; cart.wait = THINK_HOURS; return; }
   setLeg(s, cart, 'returning', path, 'home');
   cart.jobDesc = why;
 }
@@ -599,7 +605,7 @@ function dropOff(s: GameState, cart: Cart, events: SimEvent[]): void {
     cart.cargo = null;
     cart.job = null;
     if (cart.battery < CART_LOW) goHome(s, cart, 'Heading back to the Garage to charge');
-    else { cart.state = 'idle'; cart.path = []; cart.jobDesc = 'Looking for work'; }
+    else { cart.state = 'idle'; clearPath(cart); cart.jobDesc = 'Looking for work'; }
     return;
   }
   // Somewhere else must take the rest.

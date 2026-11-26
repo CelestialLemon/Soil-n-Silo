@@ -283,6 +283,29 @@ export class Lightning {
     this.farSwell = { start: now, shape: gentle ? FAR_SOFT : FAR, weight: (gentle ? FAR_GENTLE : FAR_PEAK) * strength, strike: false };
   }
 
+  /**
+   * Puts out everything lit now: the flash, the far swell, every bolt in the air and glow on the land, at once (a player
+   * turning the flashes off mid-storm sees them go). The setting and the flash limits' history stay as they are.
+   */
+  clear() {
+    this.flash = this.farSwell = null;
+    this.bolts.fill(null);
+    this.glows.fill(null);
+    this.boltU.uBoltGlow.value.fill(0);
+    this.boltsLive = false;
+    this.boltMesh.visible = false;
+    this.level = 0;
+    this.aiming = false;
+    const pu = this.post;
+    pu.uGlowN.value = 0;
+    pu.uFlashW.value = 0;
+    pu.uFlashTint.value = 0;
+    pu.uFlashAimed.value = 0;
+    pu.uFlashFar.value.z = 0;
+    this.active = false;
+    pu.uFlashOn.value = 0;
+  }
+
   /** The flashes, bolts and glows as of now: called once a frame before the look. */
   update(view: THREE.Vector3, zoom: number, reach: number, width: number, height: number, aux: THREE.Texture) {
     const now = this.clock(), pu = this.post;

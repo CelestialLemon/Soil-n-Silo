@@ -21,12 +21,12 @@
 import { type Soundscape } from '../audio/index.ts';
 import {
   type Action, type ByproductMaker, type ByproductTarget, BYPRODUCTS, CROPS, effectivePriority, isByproductMaker, cellIx, cellIz, effectiveMoisture, erosionDrain, GOOD_LABELS, apply, diagnoseIdleCarts, CART_COST, CATALOG, CLOCK_JUMPED, type Change, generateValley, type GameState, heightAt, type Point2,
-  climateFor, deserializeSave, type Difficulty, generateProceduralValley, refreshFieldWeather, startCampaignValley, refreshPower, resetSteadyOnClockJump, rollWeatherSeed, type Season, SETUP_CHANGED, type SimEvent, stationForecast, stepSim, stepWeather,
+  climateFor, climatesOf, deserializeSave, generateProceduralValley, refreshFieldWeather, startCampaignValley, refreshPower, resetSteadyOnClockJump, rollWeatherSeed, type Season, SETUP_CHANGED, type SimEvent, stationForecast, stepSim, stepWeather,
   suggestWaterWheelYaw, type ThingKind, TREE_SPECIES, type WeatherSpell, wrapAngle,
 } from '../game/index.ts';
 import {
   placedKind, type ProceduralRequest, type SelectedThingView, type Speed, toolDef, type ToolId, type ToolReadout, type UiCallbacks, type UiController,
-  type UiSettings, type UiSnapshot, type ValleyStats, type Weather, type YawMode,
+  type UiQuality, type UiSettings, type UiSnapshot, type ValleyStats, type Weather, type YawMode,
 } from '../ui/index.ts';
 import { clearUrlParam, type PreviewSpec, type World, writeUrlParam } from '../world/index.ts';
 import { mergeSettings, storeSettings } from './settings.ts';
@@ -69,7 +69,10 @@ export class Play implements UiCallbacks {
   state: GameState;
   readonly world: World;
   readonly sound: Soundscape;
-  private settings: UiSettings;
+  /** The player's settings as remembered in the browser. */
+  private storedSettings: UiSettings;
+  /** The address's `?quality=`, which wins over the stored quality until the player picks one in Settings. */
+  private urlQuality: UiQuality | undefined;
   /** Whether a saved game is there, and when it was saved (read again on each save). */
   private savedInfo: { hasSavedGame: boolean; savedAtLabel?: string };
   private ui: UiController | null = null;
@@ -109,11 +112,12 @@ export class Play implements UiCallbacks {
   private powerView = false;
   private uiKey = '';
 
-  constructor(state: GameState, world: World, sound: Soundscape, settings: UiSettings) {
+  constructor(state: GameState, world: World, sound: Soundscape, storedSettings: UiSettings, urlQuality?: UiQuality) {
     this.state = state;
     this.world = world;
     this.sound = sound;
-    this.settings = { ...settings };
+    this.storedSettings = { ...storedSettings };
+    this.urlQuality = urlQuality;
     this.savedInfo = savedSlotInfo();
     this.starterTracks = new Set(state.tracks.map((t) => t.id));
     // The sky's clock (the address's ?hour=) is the valley's: the homestead starts at its hour.
@@ -121,6 +125,11 @@ export class Play implements UiCallbacks {
     this.stats = valleyStats(state, this.starterTracks);
     this.welcomed = state.things.some((t) => t.kind === 'farmhouse');
     world.onFrame((dt) => this.frame(dt));
+  }
+
+  /** The settings in force: the stored ones, with the address's quality over them while it stands. */
+  private get settings(): UiSettings {
+    return this.urlQuality === undefined ? { ...this.storedSettings } : { ...this.storedSettings, quality: this.urlQuality };
   }
 
   /** The overlay, once it's built (it needs these callbacks first). */
@@ -227,7 +236,7 @@ export class Play implements UiCallbacks {
     const snapshot: UiSnapshot = {
       activeTool: this.tool, yawMode: this.world.getYawMode(), powerView: this.powerView, hour, day: this.state.sim.day,
       speed: this.world.getSpeed(), weather: uiWeather(this.world.getWeather()), liveWeather: live, forecast, stats: this.stats, selected,
-      readout: this.currentReadout(), settings: { ...this.settings }, hasSavedGame: this.savedInfo.hasSavedGame,
+      readout: this.currentReadout(), settings: this.settings, hasSavedGame: this.savedInfo.hasSavedGame,
     };
     if (this.savedInfo.savedAtLabel !== undefined) snapshot.savedAtLabel = this.savedInfo.savedAtLabel;
     if (placedKind(this.tool)) snapshot.placingRotationDeg = compassDeg(this.placeYaw);
@@ -261,7 +270,7 @@ export class Play implements UiCallbacks {
     const p = this.world.toScreen(t.x, heightAt(this.state.grid, t.x, t.z) + def.top * 0.55, t.z);
     const view: SelectedThingView = {
       id: t.id, kind: t.kind, label: def.label, statusLine: status.line, screenX: p.x, screenY: p.y, visible: p.visible,
-      yawDeg: compassDeg(t.yaw), refund: def.cost,
+      yawDeg: compassDeg(t.yaw), refund: this.state.sim.supplies.unlimited ? 0 : def.cost,
     };
     if (status.connected !== undefined) view.connected = status.connected;
     if (def.immovable) view.immovable = true;
@@ -727,7 +736,7 @@ export class Play implements UiCallbacks {
     const carts = t.kind === 'garage' ? this.state.sim.carts.length : 0;
     if (!this.act({ type: 'remove', id })) return;
     this.select(null);
-    const cost = CATALOG[t.kind].cost, back = cost + Math.max(0, carts - 1) * CART_COST;
+    const cost = CATALOG[t.kind].cost, back = this.state.sim.supplies.unlimited ? 0 : cost + Math.max(0, carts - 1) * CART_COST;
     const gone = carts > 0 ? ` · its ${carts === 1 ? 'cart goes' : `${carts} carts go`} with it` : '';
     this.ui?.showToast(`${CATALOG[t.kind].label} taken down${back > 0 ? ` · +${back} ${back === 1 ? 'Supply' : 'Supplies'} back` : ''}${gone}`);
   }
@@ -756,7 +765,9 @@ export class Play implements UiCallbacks {
   }
 
   onRetireCart(id: number) {
-    if (this.act({ type: 'retireCart', id })) this.ui?.showToast(`Electric Cart retired · +${CART_COST} ${CART_COST === 1 ? 'Supply' : 'Supplies'} refunded`);
+    if (!this.act({ type: 'retireCart', id })) return;
+    this.ui?.showToast(this.state.sim.supplies.unlimited ? 'Electric Cart retired'
+      : `Electric Cart retired · +${CART_COST} ${CART_COST === 1 ? 'Supply' : 'Supplies'} refunded`);
   }
 
   onDeselect() { this.select(null); }
@@ -807,17 +818,23 @@ export class Play implements UiCallbacks {
   }
 
   /**
-   * A fresh valley lives in fresh weather of its own (a new weather seed, its own climate): the address's locks go. A
-   * Sandbox or a valley of another landform keeps its landform and its Sandbox (a season pill doesn't throw the player out
-   * of it); otherwise, the seed's own meadow.
+   * A fresh valley lives in fresh weather of its own (a new weather seed): the address's locks go. A custom (procedural)
+   * valley stays one, with its landform, difficulty and Sandbox (a season pill doesn't throw the player out of it);
+   * otherwise, the seed's own meadow. A climate the player chose stays, if the new season has it.
    */
   onNewValley(seed: number, season: Season) {
-    const s = this.state, weatherSeed = rollWeatherSeed();
-    if (s.sandbox || s.terrain !== 'meadow') {
-      this.startValley(generateProceduralValley({ seed: seed >>> 0, season, terrain: s.terrain, sandbox: s.sandbox, weatherSeed }));
+    const s = this.state, weatherSeed = rollWeatherSeed(), at = seed >>> 0;
+    const climate = s.climateOverride !== undefined && climatesOf(season).includes(s.climateOverride) ? s.climateOverride : undefined;
+    if (s.custom) {
+      this.startValley(generateProceduralValley({
+        seed: at, season, terrain: s.terrain, sandbox: s.sandbox, weatherSeed,
+        ...(s.difficulty === undefined ? {} : { difficulty: s.difficulty }), ...(climate === undefined ? {} : { climate }),
+      }));
       return;
     }
-    this.startValley(generateValley(seed >>> 0, season, { weatherSeed, climate: climateFor(seed >>> 0, season) }));
+    this.startValley(generateValley(at, season, {
+      weatherSeed, climate: climateFor(at, season), ...(climate === undefined ? {} : { climateOverride: climate }),
+    }));
   }
 
   onStartCampaign(id: string) {
@@ -829,17 +846,17 @@ export class Play implements UiCallbacks {
 
   onStartProcedural(req: ProceduralRequest) {
     const next = generateProceduralValley({ ...req, seed: req.seed >>> 0, weatherSeed: rollWeatherSeed() });
-    this.startValley(next, req.difficulty);
+    this.startValley(next);
     this.ui?.showToast(next.sandbox
       ? `${next.valleyTitle ?? 'A Sandbox valley'} · Sandbox: build freely, pick the sky from the weather chip`
       : `Welcome to ${next.valleyTitle ?? 'a fresh valley'} · place your Farmhouse to begin`);
   }
 
   /** A fresh homestead: its own Supplies, brief, Depot and stub, on day 1 at the sky's hour. */
-  private startValley(next: GameState, difficulty?: Difficulty) {
+  private startValley(next: GameState) {
     next.sim.hour = this.world.getHour();
     stepWeather(next, 0, next.sim.day, next.sim.hour);
-    this.swapState(next, new Set(next.tracks.map((t) => t.id)), difficulty);
+    this.swapState(next, new Set(next.tracks.map((t) => t.id)));
     this.welcomed = false;
   }
 
@@ -852,7 +869,7 @@ export class Play implements UiCallbacks {
   }
 
   /** Puts a different valley in play: the world rebuilt for it, the hints reset, and the address saying what it is. */
-  private swapState(next: GameState, starterTracks: ReadonlySet<number>, difficulty?: Difficulty) {
+  private swapState(next: GameState, starterTracks: ReadonlySet<number>) {
     this.onSelectTool('select');
     this.state = next;
     this.starterTracks = starterTracks;
@@ -860,25 +877,27 @@ export class Play implements UiCallbacks {
     this.blackoutSaid = false;
     this.world.resetValley(next);
     this.world.syncSim();
-    this.writeValleyUrl(next, difficulty);
+    this.writeValleyUrl(next);
     this.statsDirty = true;
     this.hoverDirty = true;
   }
 
   /**
-   * The address names the valley in play, so a reload (or a shared link) opens the same one (a procedural valley's
-   * difficulty only when it was just picked: the state doesn't keep it).
+   * The address names the valley in play, so a reload (or a shared link) opens the same one: a campaign valley by its id,
+   * a custom one by its landform, difficulty (and Sandbox), so even a custom meadow reopens with its own Pantry Order, and
+   * the seed's own meadow by its seed and season alone. A climate the player chose goes with it.
    */
-  private writeValleyUrl(s: GameState, difficulty?: Difficulty) {
+  private writeValleyUrl(s: GameState) {
     for (const key of ['weather', 'climate', 'wseed', 'campaign', 'terrain', 'difficulty', 'sandbox']) clearUrlParam(key);
     if (s.campaignId !== undefined) writeUrlParam('campaign', s.campaignId);
-    else if (s.terrain !== 'meadow' || s.sandbox || difficulty !== undefined) {
+    else if (s.custom) {
       writeUrlParam('terrain', s.terrain);
-      if (difficulty !== undefined) writeUrlParam('difficulty', difficulty);
+      writeUrlParam('difficulty', s.difficulty ?? 'standard');
       if (s.sandbox) writeUrlParam('sandbox', '1');
     }
     writeUrlParam('seed', String(s.seed));
     writeUrlParam('season', s.season);
+    if (s.climateOverride !== undefined) writeUrlParam('climate', s.climateOverride);
     if (s.sim.weatherOverride) writeUrlParam('weather', s.sim.weatherOverride);
   }
 
@@ -909,15 +928,24 @@ export class Play implements UiCallbacks {
     this.ui?.showToast('Save imported');
   }
 
-  /** Changes the player's settings: heard and drawn at once, and remembered (quietly not, where storage is blocked). */
+  /**
+   * Changes the player's settings: heard and drawn at once, and remembered (quietly not, where storage is blocked). A
+   * `?quality=` in the address is never remembered as the player's: only picking a quality here stores one (and lifts the
+   * address's, so a reload keeps the pick).
+   */
   onUpdateSettings(patch: Partial<UiSettings>) {
-    const next = mergeSettings(this.settings, patch);
-    this.settings = next;
+    const stored = mergeSettings(this.storedSettings, patch);
+    if (patch.quality !== undefined && stored.quality === patch.quality) {
+      this.urlQuality = undefined;
+      clearUrlParam('quality');
+    }
+    this.storedSettings = stored;
+    const next = this.settings;
     this.sound.setEnabled(next.sound);
     this.sound.setVolume(next.volume);
     this.world.setQuality(next.quality);
     this.world.setFlashes(next.flashes);
-    storeSettings(next);
+    storeSettings(stored);
   }
 
   /** Sandbox only: holds the sky at a spell, or lets living weather back in. */

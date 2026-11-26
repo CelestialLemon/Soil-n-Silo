@@ -5,7 +5,7 @@
 import { CATALOG } from '../game/index.ts';
 import { button, el, setFlag, setHidden, setPressed, setText, setTitle } from './dom.ts';
 import { icon } from './icons.ts';
-import { createSuppliesPill, supplyWord } from './supplies.ts';
+import { createSuppliesPill, isShort, supplyWord } from './supplies.ts';
 import { GROUPS, type GroupId, keyLabel, placedKind, SELECT_TOOL, type ToolDef, toolDef, groupOf } from './tools.ts';
 import type { ToolId, UiCallbacks, UiSnapshot } from './types.ts';
 
@@ -99,7 +99,7 @@ export function createToolStrip(cb: UiCallbacks, toast: (message: string) => voi
       return;
     }
     const cost = costOfTool(tool);
-    if (kind && tool !== s.activeTool && cost > s.stats.supplies.available) {
+    if (kind && tool !== s.activeTool && isShort(s.stats.supplies, cost)) {
       const free = s.stats.supplies.available;
       toast(`${CATALOG[kind].label} needs ${cost} ${supplyWord(cost)} · ${free} free · remove something for a full refund`);
       return;
@@ -123,14 +123,14 @@ export function createToolStrip(cb: UiCallbacks, toast: (message: string) => voi
       setPressed(node, def.id === s.activeTool);
       const kind = placedKind(def.id);
       const placed = kind !== null && CATALOG[kind].oneOfEach && (s.stats.thingCounts[kind] ?? 0) > 0;
-      const short = !placed && costOfTool(def.id) > s.stats.supplies.available;
+      const short = !placed && isShort(s.stats.supplies, costOfTool(def.id));
       setFlag(node, 'is-placed', placed);
       setFlag(node, 'is-short', short);
       setFlag(node, 'is-beckoning', kind === 'farmhouse' && !s.stats.hasFarmhouse);
       const garage = kind === 'garage' && s.stats.hasGarage ? ` · ${s.stats.cartCount}/${s.stats.maxCarts} carts` : '';
       setTitle(node, `${title}${garage}${placed ? ' · placed' : short ? ` · ${s.stats.supplies.available} free` : ''}`);
     }
-    supplies.render(s.stats.supplies, s.stats.seed, s.stats.sandbox === true);
+    supplies.render(s.stats.supplies, s.stats.seed);
     setFlag(tabs.get('homestead') ?? strip, 'is-beckoning', !s.stats.hasFarmhouse && open !== 'homestead');
 
     // The readout: the live one if there is one, else the tool's own hint.

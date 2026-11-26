@@ -9,11 +9,12 @@
 // The UI knows nothing of the world or the renderer. The loop hands it a `UiSnapshot` (every frame is fine: it only touches
 // what changed) and it answers through `UiCallbacks`. It also takes the tool keys (V; 1–7 the homestead, ⇧1–⇧5 the power;
 // F, B, X, C, T, H, G, ⇧C, ⇧X the land), Esc (close the card, else put the tool down) and Delete (remove the selected
-// thing, unless it's fixed), unless a key handler that ran first called `preventDefault`.
+// thing, unless it's fixed), unless a key handler that ran first called `preventDefault`, and none while the Valleys
+// panel or the Settings popover is open (or the key was pressed inside one: blocksShortcuts).
 import './style.css';
 import { createBrief } from './brief.ts';
 import { el } from './dom.ts';
-import { createSettingsPanel, createValleysPanel } from './panels.ts';
+import { blocksShortcuts, createSettingsPanel, createValleysPanel } from './panels.ts';
 import { createRing } from './ring.ts';
 import { createSkyStrip } from './skystrip.ts';
 import { createToasts } from './toast.ts';
@@ -30,6 +31,7 @@ export { SPEEDS, WEATHERS } from './types.ts';
 export { placedKind, placeTool, toolDef } from './tools.ts';
 export { valleyName } from './brief.ts';
 export { mountLoading, type Loading } from './loading.ts';
+export { blocksShortcuts } from './panels.ts';
 
 export interface UiOptions {
   /** Take the tool keys, Esc and Delete (default true). */
@@ -44,7 +46,7 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks, options: UiO
   const strip = createToolStrip(callbacks, (m) => toasts.show(m, 'info'));
   const brief = createBrief(callbacks, () => { settings.close(); valleys.toggle(); });
   const sky = createSkyStrip(callbacks, () => { valleys.close(); settings.toggle(); });
-  const valleys = createValleysPanel(callbacks, () => [brief.valleysButton]);
+  const valleys = createValleysPanel(callbacks, () => [brief.valleysButton], (m) => toasts.show(m, 'warn'));
   const settings = createSettingsPanel(callbacks, () => [sky.settingsButton]);
   const ring = createRing(root, callbacks, (m) => toasts.show(m, 'info'));
 
@@ -57,6 +59,7 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks, options: UiO
     const s = last;
     if (!s || e.defaultPrevented || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
     const target = e.target;
+    if (blocksShortcuts(target)) return;
     if (target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select') !== null)) return;
     const key = e.key.toLowerCase();
     if (key === 'escape') {

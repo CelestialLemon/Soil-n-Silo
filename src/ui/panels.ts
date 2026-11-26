@@ -1,6 +1,7 @@
 // The two quiet panels that stay hidden until asked for (docs/DESIGN.md, "Minimal HUD and In-World Readability"): the
 // Valleys panel beside the postcard (its Valleys button) and the Settings popover under the sky strip (its gear). Each
-// closes on Esc, on a click anywhere outside it, or on its own button again.
+// closes on Esc, on a click anywhere outside it, or on its own button again. Open, it takes the keyboard's focus (Tab
+// and Shift+Tab go round inside it, and the game's shortcuts wait: blocksShortcuts), and gives it back on closing.
 //
 // The Valleys panel has two tabs: Campaign, the six curated valleys (each its season and landform, one line about it, its
 // Supplies cap and Play), and Custom, a fresh procedural valley from a season, a landform, a difficulty and a seed, or a
@@ -10,7 +11,7 @@
 // The Settings popover: sound on or off and its volume, the graphics quality, and the storm flashes (off for players
 // sensitive to flashing light).
 import {
-  CAMPAIGN_VALLEYS, type Difficulty, DIFFICULTIES, SEASONS, type Season, TERRAIN_STYLES, type TerrainStyle,
+  CAMPAIGN_VALLEYS, type Difficulty, DIFFICULTIES, MAX_SAVE_BYTES, SEASONS, type Season, TERRAIN_STYLES, type TerrainStyle,
 } from '../game/index.ts';
 import { button, el, setFlag, setHidden, setPressed, setText, setTitle } from './dom.ts';
 import { icon } from './icons.ts';
@@ -33,7 +34,26 @@ const MAX_SEED = 0x7fffffff;
 export const rollSeed = (): number => Math.floor(Math.random() * MAX_SEED);
 
 /** Whether a valley has the player's work in it, so clearing it should ask first. */
-export const hasWork = (s: UiSnapshot): boolean => s.stats.landEditCount > 0;
+export const hasWork = (s: UiSnapshot): boolean => s.stats.hasProgress;
+
+/** Marks the panels that hold the keyboard while open (the building card doesn't: it's beside the game, not over it). */
+const MODAL = 'data-ui-modal';
+
+/**
+ * Whether the game's keyboard shortcuts should wait: a panel is open, or the key was pressed inside one (Esc still
+ * closes the panel: it hears it first).
+ */
+export function blocksShortcuts(target: EventTarget | null): boolean {
+  if (typeof document !== 'undefined' && document.querySelector(`[${MODAL}]:not([hidden])`) !== null) return true;
+  return target instanceof Element && target.closest(`[${MODAL}]`) !== null;
+}
+
+const FOCUSABLE = 'button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
+
+/** What Tab can reach inside `root`, in order (only what's shown). */
+function focusables(root: HTMLElement): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((e) => e.getClientRects().length > 0);
+}
 
 export interface Panel {
   element: HTMLElement;
@@ -47,17 +67,34 @@ export interface Panel {
 
 /**
  * The open and close behaviour both panels share: hidden until opened; Esc or a press outside it (and outside its own
- * buttons, `owners`) closes it.
+ * buttons, `owners`) closes it. Opening moves the focus in (to its first control) and keeps Tab inside it; closing hands
+ * the focus back to what had it before (the button that opened it), if that's still on the page.
  */
 function popover(element: HTMLElement, owners: () => readonly Element[], onChange: (open: boolean) => void) {
   let isOpen = false;
+  let opener: Element | null = null;
   element.hidden = true;
+  element.tabIndex = -1;
+  element.setAttribute(MODAL, '');
 
   function onKey(e: KeyboardEvent): void {
-    if (e.key !== 'Escape' || !isOpen) return;
+    if (!isOpen) return;
+    if (e.key === 'Tab') { trapTab(e); return; }
+    if (e.key !== 'Escape') return;
     e.preventDefault();
     e.stopPropagation();
     close();
+  }
+  /** Tab past the last control comes round to the first, and Shift+Tab before the first to the last. */
+  function trapTab(e: KeyboardEvent): void {
+    const list = focusables(element), first = list[0], last = list[list.length - 1];
+    const at = document.activeElement;
+    if (!first || !last) { e.preventDefault(); element.focus(); return; }
+    const inside = at instanceof Node && element.contains(at);
+    if (e.shiftKey ? !inside || at === first || at === element : !inside || at === last) {
+      e.preventDefault();
+      (e.shiftKey ? last : first).focus();
+    }
   }
   function onPointer(e: PointerEvent): void {
     const t = e.target;
@@ -67,18 +104,25 @@ function popover(element: HTMLElement, owners: () => readonly Element[], onChang
   function open(): void {
     if (isOpen) return;
     isOpen = true;
+    opener = document.activeElement;
     element.hidden = false;
     window.addEventListener('keydown', onKey, true);
     window.addEventListener('pointerdown', onPointer, true);
     onChange(true);
+    (focusables(element)[0] ?? element).focus({ preventScroll: true });
   }
   function close(): void {
     if (!isOpen) return;
     isOpen = false;
+    const back = opener;
+    opener = null;
+    // The focus goes back only if it's still in the panel (a press outside may have put it somewhere of the player's own).
+    const had = document.activeElement === document.body || (document.activeElement instanceof Node && element.contains(document.activeElement));
     element.hidden = true;
     window.removeEventListener('keydown', onKey, true);
     window.removeEventListener('pointerdown', onPointer, true);
     onChange(false);
+    if (had && back instanceof HTMLElement && back.isConnected) back.focus({ preventScroll: true });
   }
   return { get isOpen() { return isOpen; }, open, close, toggle: () => (isOpen ? close() : open()) };
 }
@@ -104,10 +148,15 @@ function field(label: string, control: HTMLElement): HTMLElement {
   return row;
 }
 
-/** The Valleys panel. `owners` are the buttons that open it (outside presses on them don't count as "outside"). */
-export function createValleysPanel(cb: UiCallbacks, owners: () => readonly Element[]): Panel {
+/**
+ * The Valleys panel. `owners` are the buttons that open it (outside presses on them don't count as "outside"); `onError`
+ * says what went wrong with a file picked to import.
+ */
+export function createValleysPanel(cb: UiCallbacks, owners: () => readonly Element[], onError?: (message: string) => void): Panel {
   let last: UiSnapshot | null = null;
   let tab: 'campaign' | 'custom' = 'campaign';
+  /** The valley the Custom tab's choices were last matched to (a new valley or a load matches them again). */
+  let valleyKey = '';
   /** A choice waiting for a yes, when it would clear a homestead with work in it. */
   let pending: { text: string; yes: string; run: () => void } | null = null;
   const custom = { seed: rollSeed(), season: 'spring' as Season, terrain: 'meadow' as TerrainStyle, difficulty: 'standard' as Difficulty, sandbox: false };
@@ -224,9 +273,12 @@ export function createValleysPanel(cb: UiCallbacks, owners: () => readonly Eleme
     const f = file.files?.[0];
     file.value = '';
     if (!f) return;
-    void f.text().then((json) => {
-      ask(`Load "${f.name}"? This homestead will be replaced.`, 'Load', () => cb.onImportSave?.(json));
-    });
+    // Too big to be a save: said at once, before reading a byte of it.
+    if (f.size > MAX_SAVE_BYTES) { onError?.(`"${f.name}" is too large to be a Soil-n-Silo save.`); return; }
+    f.text().then(
+      (json) => ask(`Load "${f.name}"? This homestead will be replaced.`, 'Load', () => cb.onImportSave?.(json)),
+      () => onError?.(`"${f.name}" could not be read.`),
+    );
   });
   const importBtn = button('ui-icon-btn ui-saves-btn', 'Import a game from a .json file', () => file.click());
   importBtn.append(icon('upload'));
@@ -250,16 +302,33 @@ export function createValleysPanel(cb: UiCallbacks, owners: () => readonly Eleme
 
   const pop = popover(panel, owners, (open) => {
     if (open && last) {
-      // Open on the valley being played: Custom in a procedural or Sandbox valley, its season and landform to hand.
+      // Open on the valley being played: Custom in a custom (procedural) or Sandbox valley.
       if (last.stats.campaignId !== undefined) tab = 'campaign';
-      else if (last.stats.sandbox === true) tab = 'custom';
-      custom.season = last.stats.season;
-      custom.terrain = last.stats.terrain ?? custom.terrain;
-      custom.sandbox = last.stats.sandbox === true;
+      else if (last.stats.custom === true || last.stats.sandbox === true) tab = 'custom';
     }
     if (!open) pending = null;
     paint();
   });
+
+  /**
+   * The Custom tab's choices follow the valley in play, each time a different one starts or is loaded: a custom valley's
+   * own season, landform, difficulty, Sandbox and seed, so its Start rolls the same kind again; a campaign valley's season
+   * and landform; the seed's own meadow its season and seed.
+   */
+  function matchValley(s: UiSnapshot): void {
+    const v = s.stats;
+    const key = [v.seed, v.season, v.terrain ?? '', v.sandbox === true, v.custom === true, v.difficulty ?? '', v.campaignId ?? ''].join('|');
+    if (key === valleyKey) return;
+    valleyKey = key;
+    custom.season = v.season;
+    custom.terrain = v.terrain ?? 'meadow';
+    custom.sandbox = v.sandbox === true;
+    if (v.difficulty !== undefined) custom.difficulty = v.difficulty;
+    if (v.campaignId === undefined) {
+      custom.seed = v.seed;
+      seedInput.value = String(v.seed);
+    }
+  }
 
   function parseSeed(text: string): number | null {
     const t = text.trim();
@@ -329,6 +398,7 @@ export function createValleysPanel(cb: UiCallbacks, owners: () => readonly Eleme
     toggle: pop.toggle,
     render(s) {
       last = s;
+      matchValley(s);
       paint();
     },
     dispose: pop.close,

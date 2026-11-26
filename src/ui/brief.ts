@@ -31,7 +31,7 @@ export function valleyName(seed: number): string {
 }
 
 /** Whether the valley has the player's work in it, so clearing it should ask first. */
-const hasWork = (s: ValleyStats): boolean => s.landEditCount > 0;
+const hasWork = (s: ValleyStats): boolean => s.hasProgress;
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en');
 

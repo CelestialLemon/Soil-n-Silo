@@ -225,3 +225,39 @@ test('a thin snow or frost layer never shares the bare ground\'s map key', () =>
   assert.notEqual(groundKey(s), bare, 'a touch of rime');
   assert.notEqual(groundKey(s), snow);
 });
+
+test('a held frost, snow or blizzard brings freezing air in any season; the living summer is left as it was', () => {
+  for (const season of SEASONS) {
+    const key: WeatherKey = { season, climate: season === 'summer' ? 'hot' : 'mild', weatherSeed: 77 };
+    for (let t = 0; t < 72; t += 0.5) {
+      for (const [spell, warmest] of [['frost', -1], ['snow', -1.5], ['blizzard', -4]] as const) {
+        const sky = skyAt(key, t, spell);
+        assert.ok(sky.tempC <= warmest, `${season} ${spell} at ${t}h: ${sky.tempC.toFixed(1)}°C`);
+        assert.equal(sky.rain, 0, `${season} ${spell} at ${t}h: no warm rain`);
+        if (spell !== 'frost') assert.ok(sky.snow > 0, `${season} ${spell} at ${t}h: it snows`);
+      }
+      // Held showers in summer stay rain, in summer warmth: only the cold spells bring their own air.
+      if (season === 'summer') {
+        const showers = skyAt(key, t, 'soft-rain');
+        assert.ok(showers.tempC > 2.5 && showers.rain > 0 && showers.snow === 0, `summer showers at ${t}h`);
+      }
+    }
+  }
+  // The stepped weather holds it too: a summer valley locked in frost rimes over, and locked snow lies.
+  const s = generateValley(1042, 'summer', { weatherSeed: 3 });
+  s.sim.weatherOverride = 'snow';
+  for (let k = 0; k < 30 * 6; k++) stepSim(s, 1, liveEnv(s));
+  assert.ok(s.sim.weather.tempC <= -1.5 && s.sim.weather.rain === 0 && s.sim.weather.snowDepth > 0, 'locked summer snow lies');
+  s.sim.weatherOverride = 'frost';
+  for (let k = 0; k < 30 * 3; k++) stepSim(s, 1, liveEnv(s));
+  assert.ok(s.sim.weather.tempC <= -1 && s.sim.weather.frostCover > 0.3, 'locked summer frost rimes the ground');
+  // Living summer weather, nothing held: warm, and never snow.
+  const live: WeatherKey = { season: 'summer', climate: 'hot', weatherSeed: 77 };
+  let warmest = -Infinity;
+  for (let t = 0; t < 24 * 10; t += 0.25) {
+    const sky = skyAt(live, t);
+    assert.equal(sky.snow, 0, `living summer at ${t}h`);
+    warmest = Math.max(warmest, sky.tempC);
+  }
+  assert.ok(warmest > 25, `a living summer's afternoons are warm (${warmest.toFixed(1)}°C)`);
+});

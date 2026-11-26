@@ -25,9 +25,11 @@ import { addTrack, canTrack, trackPath } from '../paths.ts';
 import { canPlace, placeThing } from '../place.ts';
 import { makeRng, subSeed } from '../rng.ts';
 import {
-  blankState, type Crag, type GameState, type Season, TERRAIN_STYLES, type TerrainStyle, type Tree, type TreeSpecies, type WeatherOptions,
+  blankState, type Crag, type Difficulty, type GameState, type Season, TERRAIN_STYLES, type TerrainStyle, type Tree, type TreeSpecies,
+  type WeatherOptions,
 } from '../state.ts';
 import type { Inventory } from '../goods.ts';
+import type { ClimateCharacter } from '../weather.ts';
 import { sandboxSupplies, starterSupplies } from '../supplies.ts';
 import { wetness } from '../wet.ts';
 import { powerFor } from '../power/graph.ts';
@@ -134,6 +136,11 @@ export interface ValleyGenOptions extends WeatherOptions {
   /** The campaign valley it is (campaign.ts), and its name. */
   campaignId?: string;
   valleyTitle?: string;
+  /** Grown by the Custom generator, and the difficulty its cap was balanced for (procedural.ts). */
+  custom?: boolean;
+  difficulty?: Difficulty;
+  /** A character the player chose in place of the valley's own: it is the valley's climate (over `climate`). */
+  climateOverride?: ClimateCharacter;
 }
 
 interface Knoll { x: number; z: number; radius: number; height: number }
@@ -150,12 +157,16 @@ interface Brook {
  * so tests repeat; the game passes a fresh rollWeatherSeed() each play) and its character `opts.climate` (left out, mild).
  */
 export function generateValley(seed: number, season: Season, opts: ValleyGenOptions = {}): GameState {
-  const s = blankState(seed, season, opts), g = s.grid, rng = makeRng(subSeed(seed, 1));
+  const weather = opts.climateOverride === undefined ? opts : { ...opts, climate: opts.climateOverride };
+  const s = blankState(seed, season, weather), g = s.grid, rng = makeRng(subSeed(seed, 1));
   const terrain = opts.terrain ?? 'meadow', L = LANDFORMS[terrain];
   s.terrain = terrain;
   s.sandbox = opts.sandbox ?? false;
   if (opts.campaignId !== undefined) s.campaignId = opts.campaignId;
   if (opts.valleyTitle !== undefined) s.valleyTitle = opts.valleyTitle;
+  if (opts.custom) s.custom = true;
+  if (opts.difficulty !== undefined) s.difficulty = opts.difficulty;
+  if (opts.climateOverride !== undefined) s.climateOverride = opts.climateOverride;
   s.sim.supplies = s.sandbox ? sandboxSupplies() : starterSupplies(opts.suppliesCap, opts.starterSupplies);
   if (opts.order) s.sim.brief.order.targets = { ...opts.order };
   const dir = rng.next() < 0.5 ? 1 : -1; // which way the brook runs (along x)

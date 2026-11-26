@@ -55,7 +55,8 @@ export function placeReadout(s: GameState, kind: ThingKind, x: number, z: number
   if (!can.ok) return { fits: false, readout: { text: can.error, tone: 'warn' } };
   // A move costs nothing: only a new building says its price.
   const cost = ignore === undefined ? CATALOG[kind].cost : 0;
-  const price = cost > 0 ? ` · ${supplies(cost)} · ${s.sim.supplies.available - cost} left` : '';
+  // A Sandbox's pool has no limit: no price to count down.
+  const price = cost > 0 && !s.sim.supplies.unlimited ? ` · ${supplies(cost)} · ${s.sim.supplies.available - cost} left` : '';
   if (kind === 'waterwheel') return { fits: true, readout: { text: `Its wheel turns in the brook${price} · click to place`, tone: 'wet' } };
   if (kind === 'solar') {
     const g = s.grid, ix = Math.floor((x - g.x0) / g.cell), iz = Math.floor((z - g.z0) / g.cell);

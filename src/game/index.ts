@@ -72,7 +72,7 @@ export { refreshFlood } from './settle.ts';
 export { type SimEvent, type SimEventType } from './events.ts';
 export { formatClock, isNight, SECONDS_PER_GAME_HOUR, seasonHours, sunFactor, sunHours } from './clock.ts';
 export {
-  canAfford, CART_COST, costOf, DROP_AMOUNT, type DropId, MAX_CARTS, type MilestoneDrop, receiveDrop, refund, sandboxSupplies, spend,
+  canAfford, CART_COST, costOf, DROP_AMOUNT, type DropId, MAX_CARTS, type MilestoneDrop, receiveDrop, refund, SANDBOX_SUPPLIES, sandboxSupplies, spend,
   STARTER_SUPPLIES, starterSupplies, SUPPLY_CAP, type SuppliesState,
 } from './supplies.ts';
 export {
@@ -117,4 +117,4 @@ export {
   balancedCap, buildingsForOrder, DIFFICULTIES, DIFFICULTY_ALLOWANCE, type Difficulty, generateProceduralValley, isDifficulty,
   MIN_PROCEDURAL_CAP, minimumSuppliesForOrder, proceduralTitle, type ProceduralOptions, rollPantryOrder, STARTER_SHARE,
 } from './procedural.ts';
-export { deserializeSave, FERTILITY_SAVE_EPS, OLD_SAVE, serializeSave } from './save.ts';
+export { deserializeSave, MAX_PATH_LENGTH, MAX_PATH_POINTS, MAX_SAVE_BYTES, MAX_SAVE_DAY, MAX_SAVED_ITEMS, OLD_SAVE, serializeSave } from './save.ts';

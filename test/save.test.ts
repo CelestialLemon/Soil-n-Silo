@@ -3,8 +3,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  apply, canPlace, compostField, deserializeSave, FERTILITY_SAVE_EPS, type GameState, generateValley, liveEnv, must, naturalFertility, OLD_SAVE,
-  type Point2, previewChannelFlow, serializeSave, STATE_VERSION, stepSim, type ThingKind,
+  apply, CATALOG, canPlace, compostField, COVER, deserializeSave, type GameState, generateProceduralValley, generateValley, liveEnv,
+  MAX_SAVE_BYTES, must, naturalFertility, OLD_SAVE, padTarget, type Point2, previewChannelFlow, runtimeOf, serializeSave, spend,
+  startCampaignValley, STATE_VERSION, stepSim, type ThingKind,
 } from '../src/game/index.ts';
 import { brookSpot, build, done, joinMain, same } from './helpers.ts';
 
@@ -112,10 +113,9 @@ function snapshot(s: GameState) {
   };
 }
 
+/** The soil's fertility, cell for cell and bit for bit. */
 function assertFertility(a: GameState, b: GameState) {
-  let worst = 0;
-  for (let i = 0; i < a.grid.fertility.length; i++) worst = Math.max(worst, Math.abs(a.grid.fertility[i] - b.grid.fertility[i]));
-  assert.ok(worst <= FERTILITY_SAVE_EPS + 1e-6, `fertility within ${FERTILITY_SAVE_EPS} (${worst.toFixed(5)})`);
+  assert.ok(same(a.grid.fertility, b.grid.fertility), 'the same fertility in every cell');
 }
 
 const reload = (s: GameState): GameState => {
@@ -136,7 +136,7 @@ test('a homestead well under way is saved small and loads back the same', (t) =>
   assert.ok([...s.sim.things.values()].some((r) => r.kind === 'digester' && Object.keys(r.inputs).length > 0), 'a fuelled Digester');
   assert.ok(s.fields.some((f) => f.pollinated > 0) || s.fields.some((f) => f.growth > 0.3), 'crops under way');
   let farmed = 0;
-  for (let i = 0; i < s.grid.fertility.length; i++) if (Math.abs(s.grid.fertility[i] - naturalFertility(s.grid, i)) > FERTILITY_SAVE_EPS) farmed++;
+  for (let i = 0; i < s.grid.fertility.length; i++) if (s.grid.fertility[i] !== Math.fround(naturalFertility(s.grid, i))) farmed++;
   assert.ok(farmed > 20, `farmed soil (${farmed} cells)`);
 
   const back = must((() => { const r = deserializeSave(text); return r.ok ? r.value : undefined; })(), 'the loaded homestead');
@@ -148,7 +148,7 @@ test('a homestead well under way is saved small and loads back the same', (t) =>
   // Written again, the same text.
   assert.equal(serializeSave(back), text);
 
-  // And it runs on as the homestead would have (the soil within the save's thousandths).
+  // And it runs on exactly as the homestead would have.
   run(s, 6);
   run(back, 6);
   const a = snapshot(s), b = snapshot(back);
@@ -160,8 +160,7 @@ test('a homestead well under way is saved small and loads back the same', (t) =>
   for (const [i, f] of s.fields.entries()) {
     const g = back.fields[i];
     assert.deepEqual([g.id, g.crop, g.harvestReady, g.frosted, g.flooded], [f.id, f.crop, f.harvestReady, f.frosted, f.flooded]);
-    // A harvest takes the field's fertility from its cells, which the save keeps to the thousandth.
-    assert.ok(Math.abs(g.growth - f.growth) < 1e-4 && Math.abs(g.fertility - f.fertility) <= FERTILITY_SAVE_EPS, `field ${f.id} grows on alike`);
+    assert.deepEqual([g.growth, g.fertility], [f.growth, f.fertility], `field ${f.id} grows on alike`);
   }
   assertFertility(back, s);
 });
@@ -172,6 +171,131 @@ test('a fresh campaign or Sandbox valley round-trips too', () => {
     const back = reload(s);
     assert.deepEqual(snapshot(back), snapshot(s));
     assert.deepEqual([back.terrain, back.sandbox, back.campaignId, back.valleyTitle], [s.terrain, s.sandbox, s.campaignId, s.valleyTitle]);
+  }
+});
+
+/**
+ * A small Sandbox homestead (seed 1042, spring): the Silo, the Garage and its cart, a Wind Turbine, and a wheat field with
+ * a ripe harvest waiting at its edge.
+ */
+function cartYard() {
+  const s = generateValley(1042, 'spring', { sandbox: true, weatherSeed: 55 });
+  const silo = build(s, 'silo', { x: 0, z: -43 }), garage = build(s, 'garage', { x: 10, z: -43 }, Math.PI);
+  build(s, 'turbine', { x: -12, z: -43 });
+  let painted = false;
+  for (const c of [{ x: -10, z: -30 }, { x: 0, z: -30 }, { x: 10, z: -30 }]) {
+    if (!painted) painted = apply(s, { type: 'paintField', crop: 'wheat', points: [c, { x: c.x + 6, z: c.z }], radius: 2.5 }).ok;
+  }
+  assert.ok(painted, 'a wheat field');
+  s.fields[0].harvestReady = 4;
+  return { s, silo, garage };
+}
+
+const step = (s: GameState) => stepSim(s, 1, liveEnv(s));
+
+test('a cart that has just put its wheat in the Silo saves and loads', () => {
+  const { s, silo } = cartYard();
+  const wheat = () => must(s.sim.things.get(silo), 'the Silo').outputs.wheat ?? 0;
+  for (let k = 0; k < 30 * 24 && wheat() === 0; k++) step(s);
+  assert.ok(wheat() > 0, 'the wheat is in the Silo');
+  const cart = s.sim.carts[0];
+  // It dropped its path when it unloaded: no waypoints, and its cursor back at the start.
+  assert.deepEqual([cart.state, cart.path.length, cart.pathIdx], ['idle', 0, 0]);
+  const back = reload(s);
+  assert.deepEqual(snapshot(back), snapshot(s));
+  for (let k = 0; k < 30 * 2; k++) { step(s); step(back); }
+  assert.deepEqual(snapshot(back), snapshot(s), 'and it runs on alike');
+});
+
+test('a cart that finds no way back to the Garage saves and loads', () => {
+  const { s } = cartYard();
+  // Set its cart down across the brook from the Garage, heading home on a way the land no longer has.
+  const P = s.valley.brook, m = P[Math.floor(P.length / 2)], n = P[Math.floor(P.length / 2) + 2], L = Math.hypot(n.x - m.x, n.z - m.z);
+  const cart = s.sim.carts[0];
+  let stranded = false;
+  for (const side of [1, -1]) {
+    if (stranded) break;
+    cart.x = m.x - ((n.z - m.z) / L) * 12 * side; cart.z = m.z + ((n.x - m.x) / L) * 12 * side;
+    Object.assign(cart, { state: 'returning', path: [{ x: cart.x, z: cart.z }, { x: cart.x + 1, z: cart.z }, { x: cart.x + 2, z: cart.z }], pathIdx: 2, navKey: 'stale', job: null, cargo: null, wait: 0 });
+    step(s);
+    stranded = cart.jobDesc === 'Waiting: no way back to the Garage';
+  }
+  assert.ok(stranded, 'stranded across the brook');
+  assert.deepEqual([cart.state, cart.path.length, cart.pathIdx], ['idle', 0, 0]);
+  assert.deepEqual(snapshot(reload(s)), snapshot(s));
+});
+
+test("a cart whose job's building came down while paused loads, and finds its feet on the next step", () => {
+  const { s, silo } = cartYard();
+  for (let k = 0; k < 30 * 24 && !s.sim.carts.some((c) => c.job?.to.id === silo && c.state === 'toPickup'); k++) step(s);
+  const cart = must(s.sim.carts.find((c) => c.job?.to.id === silo), 'a cart bound for the Silo');
+  // Taken down while paused: the cart's job and the power's last networks still name it.
+  assert.ok(apply(s, { type: 'remove', id: silo }).ok);
+  assert.ok(s.sim.networks.some((n) => n.loads.includes(silo)), "the power's last step still lists the Silo");
+  const back = reload(s);
+  assert.deepEqual(snapshot(back), snapshot(s));
+  step(back);
+  const again = must(back.sim.carts.find((c) => c.id === cart.id), 'the cart');
+  assert.ok(again.job === null || again.job.to.id !== silo, 'it gave up the job');
+  assert.ok(!back.sim.networks.some((n) => n.loads.includes(silo)), 'and the power forgot the Silo');
+});
+
+test('a Sandbox homestead of more than a thousand sprinklers is affordable, and saves and loads', () => {
+  const s = generateValley(12, 'summer', { sandbox: true, terrain: 'floodplain' });
+  // Laid out directly on a grid of clear spots (placing each through `apply` re-settles the land every time, which is slow).
+  let placed = 0;
+  for (let z = -56; z <= 56; z += 2.02) for (let x = -56; x <= 56; x += 3.62) {
+    if (!canPlace(s, 'sprinkler', x, z, 0).ok) continue;
+    const t = { id: s.nextId++, kind: 'sprinkler' as const, x, z, yaw: 0, padTargetY: 0 };
+    t.padTargetY = padTarget(s.grid, t);
+    s.things.push(t);
+    runtimeOf(s, t.id);
+    spend(s.sim.supplies, CATALOG.sprinkler.cost);
+    placed++;
+  }
+  assert.ok(placed > 1000, `${placed} sprinklers`);
+  assert.ok(s.sim.supplies.spent > 1000 && s.sim.supplies.unlimited);
+  const back = reload(s);
+  assert.equal(back.things.filter((t) => t.kind === 'sprinkler').length, placed);
+  assert.deepEqual(back.sim.supplies, s.sim.supplies);
+  // And taken down and put back the ordinary way, refunded and paid for again.
+  const one = must(back.things.find((t) => t.kind === 'sprinkler'), 'a sprinkler');
+  assert.ok(apply(back, { type: 'remove', id: one.id }).ok);
+  assert.equal(back.sim.supplies.spent, s.sim.supplies.spent - CATALOG.sprinkler.cost);
+  assert.ok(apply(back, { type: 'place', kind: 'sprinkler', x: one.x, z: one.z, yaw: 0 }).ok);
+  assert.equal(reload(back).sim.supplies.spent, s.sim.supplies.spent);
+});
+
+test("the soil's fertility comes back bit for bit, however small the change", () => {
+  const s = generateValley(7, 'summer'), g = s.grid;
+  const tiny = [100 * 160 + 40, 100 * 160 + 41, 90 * 160 + 80];
+  const natural = tiny.map((i) => Math.fround(naturalFertility(g, i)));
+  g.fertility[tiny[0]] = natural[0] - 0.001;
+  // The next Float32 up from its soil's own: the smallest change there is.
+  const bits = new Float32Array([natural[1]]), word = new Uint32Array(bits.buffer);
+  word[0]++;
+  g.fertility[tiny[1]] = bits[0];
+  assert.notEqual(g.fertility[tiny[1]], natural[1]);
+  g.fertility[tiny[2]] = 0.849;
+  const back = reload(s);
+  assert.ok(same(back.grid.fertility, g.fertility), 'every cell bit for bit');
+  assert.equal(JSON.parse(serializeSave(s)).fertility.length, 3, 'only the farmed cells are saved');
+});
+
+test("a valley keeps how it was made: Custom and its difficulty, a chosen character, or none of those", () => {
+  const custom = generateProceduralValley({ seed: 77, season: 'autumn', difficulty: 'tight', climate: 'gales' });
+  assert.deepEqual([custom.custom, custom.difficulty, custom.climateOverride, custom.climate], [true, 'tight', 'gales', 'gales']);
+  const own = generateProceduralValley({ seed: 78, season: 'summer' });
+  assert.deepEqual([own.custom, own.difficulty, own.climateOverride], [true, 'standard', undefined]);
+  const campaign = must((() => { const r = startCampaignValley('sun-slope', 5, 'stormy'); return r.ok ? r.value : undefined; })(), 'Suncombe');
+  assert.deepEqual([campaign.custom, campaign.campaignId, campaign.climateOverride, campaign.climate], [undefined, 'sun-slope', 'stormy', 'stormy']);
+  const meadow = generateValley(1042, 'spring');
+  assert.deepEqual([meadow.custom, meadow.difficulty, meadow.climateOverride], [undefined, undefined, undefined]);
+  for (const v of [custom, own, campaign, meadow]) {
+    const back = reload(v);
+    assert.deepEqual([back.custom, back.difficulty, back.climateOverride, back.climate, back.campaignId, back.valleyTitle],
+      [v.custom, v.difficulty, v.climateOverride, v.climate, v.campaignId, v.valleyTitle]);
+    assert.deepEqual(snapshot(back), snapshot(v));
   }
 });
 
@@ -223,4 +347,103 @@ test('a save from another version, or a broken one, is refused in plain words wi
   refuse(tampered((d) => { (d.channels as unknown[]).push({ id: 5, points: [{ x: 'a', z: 0 }] }); }), /damaged/);
   // Untouched, it loads.
   assert.ok(deserializeSave(JSON.stringify(good)).ok);
+});
+
+test('a tampered save is refused, never trusted: places, ids, references, the Supplies, the clock and the weather', () => {
+  const { s, silo, garage } = cartYard();
+  for (let k = 0; k < 30 * 2; k++) step(s);
+  const good = JSON.parse(serializeSave(s)) as Record<string, unknown>;
+  const valley = generateValley(7, 'summer'), plain = JSON.parse(serializeSave(valley)) as Record<string, unknown>;
+  type Rec = Record<string, unknown>;
+  type Doc = Rec & { things: Rec[]; channels: Rec[]; tracks: Rec[]; plantedTrees: Rec[]; fields: Rec[]; sim: Rec & { things: unknown[][]; carts: Rec[]; networks: Rec[]; supplies: Rec & { drops: Rec[] }; weather: Rec } };
+  const tampered = (edit: (d: Doc) => void, from = good) => { const d = structuredClone(from) as Doc; edit(d); return JSON.stringify(d); };
+  const refuse = (raw: string, why: RegExp = /damaged/) => {
+    let r: ReturnType<typeof deserializeSave> | undefined;
+    assert.doesNotThrow(() => { r = deserializeSave(raw); });
+    assert.ok(r && !r.ok, `refused: ${raw.slice(0, 60)}`);
+    if (r && !r.ok) { assert.match(r.error, why); assert.ok(r.error.length < 300, 'a short message'); }
+  };
+  const thing = (d: Doc, id: number) => must(d.things.find((t) => t.id === id), `thing ${id}`);
+  const depotId = must(s.things.find((t) => t.kind === 'depot'), 'the Depot').id;
+  const crag = must(s.crags[0], 'a crag');
+  const next = (d: Doc) => { const id = d.nextId as number; d.nextId = id + 1; return id; };
+  // The untouched save loads.
+  assert.ok(deserializeSave(JSON.stringify(good)).ok);
+
+  // Places: off the valley, the Depot moved, a forged pad, two buildings on one spot, a building in the brook.
+  refuse(tampered((d) => { thing(d, silo).x = 1e6; }));
+  refuse(tampered((d) => { thing(d, silo).z = -80; }));
+  refuse(tampered((d) => { thing(d, depotId).x = (thing(d, depotId).x as number) + 1; }), /Depot/);
+  refuse(tampered((d) => { thing(d, depotId).yaw = (thing(d, depotId).yaw as number) + 0.1; }), /Depot/);
+  refuse(tampered((d) => { thing(d, silo).padTargetY = (thing(d, silo).padTargetY as number) + 5; }), /pad/);
+  refuse(tampered((d) => { thing(d, silo).padTargetY = 1e300; }));
+  // (Moved with the pad its new ground would give it, so only where it stands is wrong.)
+  const moveTo = (d: Doc, id: number, x: number, z: number) => {
+    const t = thing(d, id);
+    Object.assign(t, { x, z, padTargetY: padTarget(s.grid, { kind: t.kind as ThingKind, x, z, yaw: t.yaw as number }) });
+  };
+  refuse(tampered((d) => { moveTo(d, silo, thing(d, garage).x as number, thing(d, garage).z as number); }), /overlaps/);
+  const brook = s.valley.brook[Math.floor(s.valley.brook.length / 2)];
+  refuse(tampered((d) => { moveTo(d, silo, brook.x, brook.z); }), /in the water/);
+  // Strokes: too many points, off the map, too long; a planted tree of no size.
+  refuse(tampered((d) => { d.channels.push({ id: next(d), points: Array.from({ length: 2500 }, (_, k) => ({ x: k * 0.01, z: 0 })) }); }));
+  refuse(tampered((d) => { d.channels.push({ id: next(d), points: [{ x: 0, z: 0 }, { x: 1e7, z: 0 }] }); }), /off the map/);
+  refuse(tampered((d) => { d.hedges = [{ id: next(d), points: Array.from({ length: 1500 }, (_, k) => ({ x: k % 2 ? 70 : -70, z: 0 })) }]; }), /too long/);
+  refuse(tampered((d) => { d.plantedTrees.push({ id: next(d), x: 0, z: 0, species: 'oak', scale: 0, seed: 1, planted: true }); }));
+  refuse(tampered((d) => { d.plantedTrees.push({ id: next(d), x: 0, z: 0, species: 'oak', scale: 0.6, seed: 1, planted: false }); }));
+  // Ids: shared between kinds, with the valley's own rocks, or ahead of the next id.
+  refuse(tampered((d) => { d.tracks[0].id = silo; }), /share id/);
+  refuse(tampered((d) => { d.tracks[0].id = crag.id; }), /valley's own/);
+  refuse(tampered((d) => { d.nextId = silo; }), /next id/);
+  refuse(tampered((d) => { d.nextId = 1; }));
+  // Runtimes: one each.
+  refuse(tampered((d) => { d.sim.things.push(structuredClone(d.sim.things[0])); }), /two runtimes/);
+  refuse(tampered((d) => { d.sim.things.pop(); }), /runtime/);
+  // Carts: one numbering, a cursor that agrees with the path, jobs that name things.
+  refuse(tampered((d) => { d.sim.carts.push(structuredClone(d.sim.carts[0])); }), /two carts/);
+  refuse(tampered((d) => { d.sim.nextCartId = 1; }));
+  refuse(tampered((d) => { Object.assign(d.sim.carts[0], { path: [], pathIdx: 1 }); }), /path/);
+  refuse(tampered((d) => { Object.assign(d.sim.carts[0], { path: [{ x: 0, z: 0 }], pathIdx: 2 }); }), /path/);
+  refuse(tampered((d) => { Object.assign(d.sim.carts[0], { x: 1e5 }); }), /off the map/);
+  refuse(tampered((d) => { Object.assign(d.sim.carts[0], { battery: 3 }); }));
+  refuse(tampered((d) => { Object.assign(d.sim.carts[0], { wait: -1 }); }));
+  refuse(tampered((d) => { Object.assign(d.sim.carts[0], { cargo: { good: 'wheat', count: 0 } }); }));
+  refuse(tampered((d) => { Object.assign(d.sim.carts[0], { job: { from: { kind: 'thing', id: 0 }, to: { kind: 'thing', id: silo }, good: 'wheat', count: 1, priority: 1 } }); }));
+  refuse(tampered((d) => { Object.assign(d.sim.carts[0], { job: { from: { kind: 'field', id: 1 }, to: { kind: 'thing', id: d.tracks[0].id }, good: 'wheat', count: 1, priority: 1 } }); }));
+  refuse(tampered((d) => { d.sim.carts = []; }), /Garage/);
+  // The power: its networks' members are buildings, its batteries within their capacity.
+  assert.ok(s.sim.networks.length > 0, 'a power network');
+  refuse(tampered((d) => { (d.sim.networks[0].emitters as number[]).push(d.tracks[0].id as number); }));
+  refuse(tampered((d) => { (d.sim.networks[0].emitters as number[]).push(99999); }));
+  refuse(tampered((d) => { d.sim.networks.push(structuredClone(d.sim.networks[0])); }));
+  refuse(tampered((d) => { Object.assign(d.sim.networks[0], { batteryWh: (d.sim.networks[0].batteryCapWh as number) + 5 }); }));
+  refuse(tampered((d) => { Object.assign(d.sim.networks[0], { generationW: -1 }); }));
+  // The Supplies: what's spent is what stands, what's unlocked is what the valley gave, Sandbox is Sandbox.
+  refuse(tampered((d) => { (d.sim.supplies.spent as number)++; }), /supplies/i);
+  refuse(tampered((d) => { d.sim.supplies.unlimited = false; }), /supplies/i);
+  refuse(tampered((d) => { (d.sim.supplies.spent as number)++; (d.sim.supplies.available as number)--; }, plain), /supplies/i);
+  refuse(tampered((d) => { (d.sim.supplies.unlocked as number)++; (d.sim.supplies.available as number)++; }, plain), /supplies/i);
+  refuse(tampered((d) => { d.sim.supplies.drops[0].received = true; }, plain), /supplies/i);
+  refuse(tampered((d) => { (d.sim.supplies.drops[0].amount as number) += 2; }, plain), /supplies/i);
+  refuse(tampered((d) => { d.sim.supplies.drops.push(structuredClone(d.sim.supplies.drops[0])); }, plain), /supplies/i);
+  refuse(tampered((d) => { d.sim.supplies.available = -3; }, plain), /supplies/i);
+  // Fields on ground that can't be farmed, and soil past its range.
+  const water = must(Array.from(s.grid.baseCover).findIndex((c) => c === COVER.water), 'a water cell');
+  refuse(tampered((d) => { d.fields.push({ id: 99, crop: 'wheat', growth: 0, fertility: 0.8, harvestReady: 0, pollinated: 0, frosted: false, flooded: false, avgMoisture: 0, cells: [water, 1] }); }), /farmed/);
+  refuse(tampered((d) => { d.fertility = [[0, 5]]; }));
+  refuse(tampered((d) => { d.fertility = [[0, 0.5], [0, 0.6]]; }));
+  // The clock and the weather, within the ranges the game keeps them in.
+  refuse(tampered((d) => { d.sim.day = 1e9; }), /clock/);
+  refuse(tampered((d) => { d.sim.day = 0; }), /clock/);
+  refuse(tampered((d) => { d.sim.soilHours = -1; }));
+  refuse(tampered((d) => { d.sim.weather.tempC = 1e6; }));
+  refuse(tampered((d) => { d.sim.weather.floodSurge = 5; }));
+  refuse(tampered((d) => { d.sim.weather.windSpeed = 1e9; }));
+  refuse(tampered((d) => { d.sim.weather.rain = 2; }));
+  // A huge or deeply nested text, or a huge unknown value: refused at once, and never echoed back.
+  refuse(JSON.stringify(good) + ' '.repeat(MAX_SAVE_BYTES), /isn't a Soil/);
+  refuse('['.repeat(200000) + ']'.repeat(200000), /isn't a Soil/);
+  const long = 'x'.repeat(100000);
+  refuse(tampered((d) => { d.sim.weatherOverride = long; }));
+  refuse(tampered((d) => { (d.valley as Rec).season = { toString: long }; }));
 });

@@ -64,12 +64,16 @@ export const CAMPAIGN_VALLEYS: readonly CampaignValley[] = [
 /** A campaign valley by its id. */
 export const campaignById = (id: string): CampaignValley | undefined => CAMPAIGN_VALLEYS.find((c) => c.id === id);
 
-/** Grows a campaign valley, with the given weather seed or a fresh one. */
-export function startCampaignValley(id: string, weatherSeed: number = rollWeatherSeed()): Result<GameState, string> {
+/**
+ * Grows a campaign valley, with the given weather seed or a fresh one, in its own character or (`climateOverride`, the
+ * player's `?climate=`) another.
+ */
+export function startCampaignValley(id: string, weatherSeed: number = rollWeatherSeed(), climateOverride?: ClimateCharacter): Result<GameState, string> {
   const c = campaignById(id);
   if (!c) return err(`There's no campaign valley called "${id}".`);
   return ok(generateValley(c.seed, c.season, {
     weatherSeed, climate: c.climate, terrain: c.terrain, order: c.order, suppliesCap: c.suppliesCap,
     starterSupplies: c.starterSupplies, campaignId: c.id, valleyTitle: c.title,
+    ...(climateOverride === undefined ? {} : { climateOverride }),
   }));
 }

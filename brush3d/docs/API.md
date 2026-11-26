@@ -513,6 +513,7 @@ land and over the days it makes the valley's power. The rules sample the shade a
 | Sun shadows on or off | `r.settings.shadows` | today |
 | How much rain and snow falls (1 full, about a third reduced) | `r.settings.fallingShare` | today |
 | Lightning flashes: full, gentle or off | `r.lightning.setting` (it stays there: #209) | today |
+| Put out every flash, bolt and glow lit now (a player turning the flashes off mid-storm) | `r.lightning.clear()` (the setting and the flash limits' history stay) | today |
 | Graphics quality presets for the three machines | `r.setQuality(QUALITY.medium)` (`high`, `medium`, `low`) | today |
 | On a high-DPI screen, the most pixels drawn a point (softer, faster; an ordinary screen is unchanged) | `r.setMaxRatio(1)` (`Infinity`, the default: the screen's own, within the quality's pixels); `r.maxRatio` | today (Soil-n-Silo#210) |
 

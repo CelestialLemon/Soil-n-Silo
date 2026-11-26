@@ -9,7 +9,7 @@
 // the soft wireless fields round power buildings and relays, no lines.
 //
 // The living homestead (Milestone 2): the play layer runs the game's simulation (stepSim) with the world's sky and wind
-// (getSimEnv: the hour, the live wind's speed, the weather's cloud cover), then hands the world the tick (syncSim): the
+// (getSimEnv: the hour, the game's own wind speed and the weather's cloud cover), then hands the world the tick (syncSim): the
 // crops are drawn at the stage they've grown to, the Electric Carts drive, carry and roll their wheels, and each
 // building's moving parts and lights show how it is (working, powered, its battery's charge).
 //
@@ -295,10 +295,10 @@ class ValleyWorld implements World {
   }
 
   getSimEnv(): SimEnv {
-    const override = this.state.sim.weatherOverride;
-    return {
-      hour: this.getHour(), windSpeed: this.scene.wind.speed, cloudCover: this.state.sim.weather.cloudCover, ...(override ? { weather: override } : {}),
-    };
+    // The turbines run on the game's own wind (its gusts are the weather seed's), not the drawn wind, so a homestead makes
+    // the same power whether it's played, saved and loaded, or run headless.
+    const override = this.state.sim.weatherOverride, w = this.state.sim.weather;
+    return { hour: this.getHour(), windSpeed: w.windSpeed, cloudCover: w.cloudCover, ...(override ? { weather: override } : {}) };
   }
 
   syncSim(tick?: SimTickResult) {
@@ -425,6 +425,8 @@ class ValleyWorld implements World {
   setFlashes(on: boolean) {
     this.sky.flashesEnabled = on;
     this.r.lightning.setting = on ? 'full' : 'off';
+    // Turned off mid-storm: a bolt or glow already on screen goes at once, not after it fades.
+    if (!on) this.r.lightning.clear();
   }
 
   getFlashes() { return this.sky.flashesEnabled; }

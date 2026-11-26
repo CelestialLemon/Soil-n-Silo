@@ -1,6 +1,7 @@
 // The page's input, in plain terms for the controller: presses, drags and clicks on the valley's canvas, the wheel, and
 // the keys. The keys are heard before the overlay's own (src/ui/ takes the tool keys, Esc and Delete): a key the controller
 // takes is marked `preventDefault`, which the overlay leaves alone, so Esc first drops a stroke or a move under way.
+import { blocksShortcuts } from '../ui/index.ts';
 import type { Play } from './controller.ts';
 
 /** Whether a key goes to a text field (the page has none yet, but a key typed there is never a tool's). */
@@ -59,6 +60,8 @@ export function bindInput(canvas: HTMLCanvasElement, play: Play): () => void {
   const took = new Set<string>();
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || typing(e.target)) return;
+    // An open panel holds the keyboard: no panning, turning, pausing or tools under it (its own Esc closes it first).
+    if (blocksShortcuts(e.target)) return;
     if (e.key === ' ' && e.target !== canvas && onControl(e.target)) return;
     const key = e.key.toLowerCase();
     if (key === 'escape' ? play.escape() : play.keyDown(key, e.shiftKey, e.repeat)) { took.add(key); e.preventDefault(); }

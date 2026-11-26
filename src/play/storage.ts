@@ -1,11 +1,13 @@
-// The saved game: one slot in this browser (SAVE_KEY, with when it was saved under SAVE_AT_KEY) and a `.json` file to
-// download. Both hold the game's own save text (src/game/save.ts serializeSave), read back only through deserializeSave,
-// which refuses any other version: an old save is refused, never migrated. Storage that's blocked or full is said in a
-// Result, never thrown.
+// The saved game: one slot in this browser (SAVE_KEY) and a `.json` file to download. Both hold the game's own save text
+// (src/game/save.ts serializeSave), read back only through deserializeSave, which refuses any other version: an old save
+// is refused, never migrated. The slot is one envelope, `{ savedAt, data }`, written in one go, so a write the browser
+// refuses (its storage full) leaves the last save whole. Storage that's blocked or full is said in a Result, never thrown.
 import { deserializeSave, err, type GameState, ok, type Result, serializeSave } from '../game/index.ts';
 
-export const SAVE_KEY = 'soil-n-silo:save';
-export const SAVE_AT_KEY = 'soil-n-silo:save-at';
+export const SAVE_KEY = 'soil-n-silo:save:v2';
+
+/** What the slot holds: when it was saved (ms since 1970) and the game's save text. */
+interface SlotEnvelope { savedAt: number; data: string }
 
 const NO_STORAGE = 'This browser has no storage to save in.';
 
@@ -17,15 +19,23 @@ function storage(): Storage | null {
 export function saveToBrowser(state: GameState, now: Date = new Date()): Result<void, string> {
   const ls = storage();
   if (!ls) return err(NO_STORAGE);
-  const text = serializeSave(state);
+  const envelope: SlotEnvelope = { savedAt: now.getTime(), data: serializeSave(state) };
   try {
-    ls.setItem(SAVE_KEY, text);
-    ls.setItem(SAVE_AT_KEY, String(now.getTime()));
+    ls.setItem(SAVE_KEY, JSON.stringify(envelope));
     return ok(undefined);
   } catch (e) {
     const full = e instanceof DOMException && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED');
     return err(full ? 'There is no room left in this browser to save.' : 'This browser would not keep the save.');
   }
+}
+
+/** The slot's envelope from its stored text, or null when it isn't one. */
+function parseSlot(text: string): SlotEnvelope | null {
+  let v: unknown;
+  try { v = JSON.parse(text); } catch { return null; }
+  if (typeof v !== 'object' || v === null) return null;
+  const { savedAt, data } = v as Record<string, unknown>;
+  return typeof savedAt === 'number' && Number.isFinite(savedAt) && typeof data === 'string' ? { savedAt, data } : null;
 }
 
 /** The game saved in this browser, or why it can't be loaded. */
@@ -35,7 +45,9 @@ export function loadFromBrowser(): Result<GameState, string> {
   let text: string | null;
   try { text = ls.getItem(SAVE_KEY); } catch { return err('This browser would not read the save.'); }
   if (text === null) return err('There is no saved game yet.');
-  return deserializeSave(text);
+  const slot = parseSlot(text);
+  if (!slot) return err('The saved game is damaged.');
+  return deserializeSave(slot.data);
 }
 
 /** When a save was made, in plain words: "Saved 10:42", "Saved yesterday", "Saved 24 Nov". */
@@ -52,9 +64,10 @@ export function savedSlotInfo(now: Date = new Date()): { hasSavedGame: boolean; 
   const ls = storage();
   if (!ls) return { hasSavedGame: false };
   try {
-    if (ls.getItem(SAVE_KEY) === null) return { hasSavedGame: false };
-    const at = Number(ls.getItem(SAVE_AT_KEY));
-    return Number.isFinite(at) && at > 0 ? { hasSavedGame: true, savedAtLabel: savedAtLabel(new Date(at), now) } : { hasSavedGame: true };
+    const text = ls.getItem(SAVE_KEY);
+    if (text === null) return { hasSavedGame: false };
+    const slot = parseSlot(text);
+    return slot && slot.savedAt > 0 ? { hasSavedGame: true, savedAtLabel: savedAtLabel(new Date(slot.savedAt), now) } : { hasSavedGame: true };
   } catch { return { hasSavedGame: false }; }
 }
 

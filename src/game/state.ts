@@ -14,7 +14,7 @@ import type { ThingRuntime } from './workshops.ts';
 import { type ClimateCharacter, initialWeather, type WeatherKey, type WeatherSpell, type WeatherState } from './weather.ts';
 import { subSeed } from './rng.ts';
 
-export const STATE_VERSION = 10;
+export const STATE_VERSION = 11;
 
 /** The valley's one season (brush3d's SEASONS). */
 export const SEASONS = ['spring', 'summer', 'autumn', 'winter'] as const;
@@ -27,6 +27,11 @@ export type Season = (typeof SEASONS)[number];
 export const TERRAIN_STYLES = ['meadow', 'terrace', 'floodplain', 'ridge', 'slope', 'glen'] as const;
 export type TerrainStyle = (typeof TERRAIN_STYLES)[number];
 export const isTerrainStyle = (t: unknown): t is TerrainStyle => typeof t === 'string' && (TERRAIN_STYLES as readonly string[]).includes(t);
+
+/** How tight a procedural valley's Supplies run (procedural.ts balancedCap). */
+export const DIFFICULTIES = ['relaxed', 'standard', 'tight'] as const;
+export type Difficulty = (typeof DIFFICULTIES)[number];
+export const isDifficulty = (d: unknown): d is Difficulty => typeof d === 'string' && (DIFFICULTIES as readonly string[]).includes(d);
 
 /** The trees brush3d grows (its kit/plants.ts SPECIES). */
 export const TREE_SPECIES = ['oak', 'birch', 'pine', 'willow', 'poplar', 'apple', 'bush'] as const;
@@ -161,6 +166,15 @@ export interface GameState {
   campaignId?: string;
   /** The valley's name for the menus ("Willowbend Meadow"), if it has one. */
   valleyTitle?: string;
+  /**
+   * Grown by the Custom (procedural) generator (procedural.ts generateProceduralValley), with its rolled Pantry Order and a
+   * cap balanced for `difficulty`; left out for the seed's own meadow and the campaign's valleys.
+   */
+  custom?: boolean;
+  /** The difficulty a custom valley's Supplies cap was balanced for. */
+  difficulty?: Difficulty;
+  /** The character the player chose (`?climate=`) in place of the valley's own; left out when it keeps its own. */
+  climateOverride?: ClimateCharacter;
   /** Bumped on every edit to the land, so the picture can tell which land it shows. */
   revision: number;
   grid: Grid;

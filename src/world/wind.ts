@@ -2,8 +2,9 @@
 // hedges, with gusts running through the grass and the crowns; its strength follows the living weather's wind
 // (state.sim.weather.windSpeed, setSpeed). It's run on a few seconds
 // before it's shown, so the gusts have filled the valley; until then, and wherever a worker can't run, the renderer is
-// given the goal, steady (steadyWind). The live wind's speed, eased over a few seconds, is what the homestead's turbines
-// are fed (the world's getSimEnv).
+// given the goal, steady (steadyWind). It only draws: the trees, grass, hedges and the turbines' blades sway and spin with
+// it, while the turbines' power comes from the game's own wind (state.sim.weather.windSpeed, the world's getSimEnv), so
+// a homestead makes the same power played, saved and loaded, or run headless.
 import {
   type BrushRenderer, type Obstacle, startWind, steadyWind, WIND_TICK, type WindGoal, type WindWorker,
 } from '../../brush3d/src/index.ts';
@@ -22,7 +23,7 @@ const SPEED_EASE = 3;
 export class Wind {
   private worker: WindWorker | null = null;
   goal: WindGoal;
-  /** The live wind's speed (m/s) over the valley at a hub's height, eased: what the turbines make power from. */
+  /** The live wind's speed (m/s) over the valley at a hub's height, eased: what the turbines' blades are drawn spinning at. */
   speed: number;
 
   constructor(speed: number, seed: number, obstacles: Obstacle[]) {

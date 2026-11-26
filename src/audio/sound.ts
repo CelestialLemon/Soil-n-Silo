@@ -10,7 +10,8 @@
 // restored (playChime).
 //
 // A browser won't play sound before the player has touched the page, so nothing is made until unlock() (the play layer
-// calls it on the first pointer or key press). Where there is no Web Audio at all (a headless browser, an old one), or it
+// calls it on the first pointer or key press), and not while the sound is off or silent: it's made the first time it's
+// to be heard after a press. Where there is no Web Audio at all (a headless browser, an old one), or it
 // stays locked, every call quietly does nothing: the sound never throws. A hidden tab, or the sound turned off, fades
 // to silence and then suspends the audio (no CPU spent on it).
 import { FLOOD_MAX } from '../game/index.ts';
@@ -26,7 +27,7 @@ export interface SoundSample {
   snow?: number;
   /** How far the brook stands above its usual level, m (the weather's floodSurge, 0..FLOOD_MAX). */
   floodSurge: number;
-  /** The camera's zoom (the world's getZoom, ZOOM_MIN close to ZOOM_MAX far). */
+  /** The camera's zoom (the world's getZoom, pixels a metre: ZOOM_MIN far out, ZOOM_MAX close in). */
   zoom: number;
   /** How many workshops are working. */
   activeWorkshops: number;
@@ -60,12 +61,16 @@ interface Graph {
   sources: AudioScheduledSourceNode[];
 }
 
-const QUIET: SoundSample = { windSpeed: 0, rain: 0, floodSurge: 0, zoom: ZOOM_MAX, activeWorkshops: 0, movingCarts: 0, paused: true };
+const QUIET: SoundSample = { windSpeed: 0, rain: 0, floodSurge: 0, zoom: ZOOM_MIN, activeWorkshops: 0, movingCarts: 0, paused: true };
 
 export class Soundscape {
   private graph: Graph | null = null;
   /** Whether making the audio failed (no Web Audio here): unlock stops trying. */
   private broken = false;
+  /** Whether the player has pressed the page yet (the browser lets the audio start from then on). */
+  private gestured = false;
+  /** Whether the master was last set to be heard: the audio suspends only on the way from heard to silent. */
+  private wasAudible = false;
   private enabled = true;
   private volume = DEFAULT_VOLUME;
   private hidden = typeof document !== 'undefined' && document.hidden;
@@ -83,15 +88,12 @@ export class Soundscape {
 
   /**
    * Makes the audio, or wakes it, on a player's gesture (a browser plays nothing before one). Safe to call on every
-   * press: after the first it only resumes a suspended context.
+   * press: after the first it only resumes a suspended context. While the sound is off (or silent) nothing is made: it's
+   * made when the sound is next turned on.
    */
   unlock(): void {
     if (this.disposed || this.broken) return;
-    if (!this.graph) {
-      this.graph = this.build();
-      if (!this.graph) { this.broken = true; return; }
-      this.applyLayers(true);
-    }
+    this.gestured = true;
     this.applyMaster();
   }
 
@@ -175,20 +177,36 @@ export class Soundscape {
 
   private audible() { return this.enabled && !this.hidden && this.volume > 0; }
 
-  /** Eases the master volume to where it should be, and suspends or resumes the audio to match. */
+  /**
+   * Eases the master volume to where it should be, and suspends or resumes the audio to match: the audio is made the first
+   * time it's to be heard after a press, and suspended once faded out on the way from heard to silent (once, not again on
+   * every press while it's quiet).
+   */
   private applyMaster() {
+    if (this.disposed) return;
+    const on = this.audible();
+    if (on && !this.graph && this.gestured && !this.broken) {
+      this.graph = this.build();
+      if (!this.graph) { this.broken = true; return; }
+      this.applyLayers(true);
+    }
     const g = this.graph;
     if (!g) return;
-    if (this.suspendTimer !== null) { clearTimeout(this.suspendTimer); this.suspendTimer = null; }
-    const on = this.audible();
-    if (on && g.ctx.state === 'suspended') g.ctx.resume().catch(() => { /* still locked: the next gesture tries again */ });
-    ease(g.ctx, g.master.gain, on ? this.volume : 0, EASE.master);
-    if (!on) {
-      this.suspendTimer = setTimeout(() => {
-        this.suspendTimer = null;
-        if (this.graph && !this.audible() && this.graph.ctx.state === 'running') this.graph.ctx.suspend().catch(() => { /* closed */ });
-      }, SUSPEND_AFTER);
+    const was = this.wasAudible;
+    this.wasAudible = on;
+    if (on) {
+      if (this.suspendTimer !== null) { clearTimeout(this.suspendTimer); this.suspendTimer = null; }
+      if (g.ctx.state === 'suspended') g.ctx.resume().catch(() => { /* still locked: the next gesture tries again */ });
+      ease(g.ctx, g.master.gain, this.volume, EASE.master);
+      return;
     }
+    if (!was) return;
+    ease(g.ctx, g.master.gain, 0, EASE.master);
+    if (this.suspendTimer !== null) clearTimeout(this.suspendTimer);
+    this.suspendTimer = setTimeout(() => {
+      this.suspendTimer = null;
+      if (this.graph && !this.audible() && this.graph.ctx.state === 'running') this.graph.ctx.suspend().catch(() => { /* closed */ });
+    }, SUSPEND_AFTER);
   }
 
   /** Eases each layer to the sample's levels (`first`: fading in from silence, a little slower). */
@@ -204,7 +222,7 @@ export class Soundscape {
     ease(ctx, g.wind.gust.gain, 0.012 + 0.08 * w, tau);
 
     // The brook: nearer (and warmer, its bubbling lower) as the camera comes in; fuller in flood.
-    const near = clamp01((ZOOM_MAX - s.zoom) / (ZOOM_MAX - ZOOM_MIN)), flood = clamp01(s.floodSurge / FLOOD_MAX);
+    const near = clamp01((s.zoom - ZOOM_MIN) / (ZOOM_MAX - ZOOM_MIN)), flood = clamp01(s.floodSurge / FLOOD_MAX);
     ease(ctx, g.brook.gain.gain, 0.02 + 0.05 * near + 0.1 * flood, tau);
     ease(ctx, g.brook.low.frequency, 900 - 200 * near, tau);
     ease(ctx, g.brook.high.frequency, 1400 - 250 * near + 100 * flood, tau);

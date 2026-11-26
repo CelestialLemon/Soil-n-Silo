@@ -5,15 +5,13 @@
 import { CATALOG, type ThingKind, WORKSHOP_KINDS, type WorkshopKind } from './catalog.ts';
 import { GOOD_LABELS, type Good, type Inventory } from './goods.ts';
 import { makeRng, type Rng, subSeed } from './rng.ts';
-import type { GameState, Season, TerrainStyle } from './state.ts';
+import type { Difficulty, GameState, Season, TerrainStyle } from './state.ts';
 import { TERRAIN_STYLES } from './state.ts';
 import { generateValley } from './valley/generate.ts';
 import { type ClimateCharacter, climateFor } from './weather.ts';
 import { RECIPES } from './workshops.ts';
 
-export const DIFFICULTIES = ['relaxed', 'standard', 'tight'] as const;
-export type Difficulty = (typeof DIFFICULTIES)[number];
-export const isDifficulty = (d: unknown): d is Difficulty => typeof d === 'string' && (DIFFICULTIES as readonly string[]).includes(d);
+export { DIFFICULTIES, type Difficulty, isDifficulty } from './state.ts';
 
 /** The Supplies a difficulty allows beyond the order's bare minimum, for power, water, carts and slack. */
 export const DIFFICULTY_ALLOWANCE: { readonly [D in Difficulty]: number } = { relaxed: 12, standard: 9, tight: 6 };
@@ -121,7 +119,7 @@ export interface ProceduralOptions {
   terrain?: TerrainStyle;
   /** Left out, standard. */
   difficulty?: Difficulty;
-  /** Left out, the season's character for the seed (weather.ts climateFor). */
+  /** Left out, the season's character for the seed (weather.ts climateFor); given, the valley's `climateOverride`. */
   climate?: ClimateCharacter;
   /** Left out, one from the seed (the game passes a fresh rollWeatherSeed()). */
   weatherSeed?: number;
@@ -137,11 +135,13 @@ export interface ProceduralOptions {
 export function generateProceduralValley(opts: ProceduralOptions): GameState {
   const seed = opts.seed >>> 0, season = opts.season, rng = makeRng(subSeed(seed, 70));
   const terrain = opts.terrain ?? rng.pick(TERRAIN_STYLES);
-  const climate = opts.climate ?? climateFor(seed, season);
+  const climate = opts.climate ?? climateFor(seed, season), difficulty = opts.difficulty ?? 'standard';
   const order = rollPantryOrder(seed, season);
-  const cap = balancedCap(order, season, opts.difficulty ?? 'standard');
+  const cap = balancedCap(order, season, difficulty);
   return generateValley(seed, season, {
     climate, terrain, order, suppliesCap: cap, starterSupplies: Math.round(cap * STARTER_SHARE), sandbox: opts.sandbox ?? false,
-    valleyTitle: proceduralTitle(seed, terrain), ...(opts.weatherSeed === undefined ? {} : { weatherSeed: opts.weatherSeed }),
+    valleyTitle: proceduralTitle(seed, terrain), custom: true, difficulty,
+    ...(opts.climate === undefined ? {} : { climateOverride: opts.climate }),
+    ...(opts.weatherSeed === undefined ? {} : { weatherSeed: opts.weatherSeed }),
   });
 }

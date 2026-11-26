@@ -12,8 +12,9 @@ import { CROPS, type Crop, type Field, type GameState } from './state.ts';
 /** The steepest ground a field takes. */
 export const FIELD_MAX_SLOPE = 0.3;
 export const MAX_BRUSH = 8;
-/** How close to a tree's trunk or a hedge a field may come, m. */
-const TREE_CLEAR = 1.2, HEDGE_CLEAR = 0.6;
+/** How close to a tree's trunk (times its scale) or a hedge a field may come, m. */
+export const TREE_CLEAR = 1.2;
+const HEDGE_CLEAR = 0.6;
 
 const cropCode = (c: Crop) => CROPS.indexOf(c) + 1;
 

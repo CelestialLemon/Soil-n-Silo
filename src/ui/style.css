@@ -774,3 +774,24 @@
 @media (max-width: 860px) {
   .ui-valleys { width: calc(100vw - 2.3em); }
 }
+
+/*
+ * Narrow windows (a phone, a slim browser): the postcard and the sky strip no longer fit side by side, so the top of the
+ * screen becomes a column. The sky strip goes first, across the top, wrapping its controls onto a second row as it must
+ * (the Settings gear and the mute stay on screen); the postcard sits under it, its Save, Load and Valleys row whole. The
+ * Valleys panel opens over both, the width of the window.
+ */
+@media (max-width: 780px) {
+  .ui-root { display: flex; flex-wrap: wrap; align-content: flex-start; align-items: flex-start; gap: 0.5em; padding: 0.6em; }
+  .ui-corner-right { position: relative; top: auto; right: auto; order: -1; flex: 1 1 100%; min-width: 0; }
+  .ui-sky { flex-wrap: wrap; justify-content: flex-end; row-gap: 0.2em; max-width: 100%; border-radius: 1.3em; }
+  .ui-brief { position: relative; top: auto; left: auto; width: min(16em, 100%); max-height: calc(100vh - 13em); overflow-y: auto; scrollbar-width: thin; }
+  .ui-valleys { top: 0.6em; left: 0.6em; width: calc(100vw - 1.2em); max-height: calc(100vh - 6.5em); }
+  .ui-settings { width: min(17.5em, calc(100vw - 1.2em)); }
+}
+@media (max-width: 560px) {
+  .ui-root { font-size: 13px; }
+  .ui-time { min-width: 0; }
+  .ui-sky { gap: 0.35em; }
+  .ui-brief { width: 100%; }
+}

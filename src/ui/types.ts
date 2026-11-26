@@ -93,6 +93,8 @@ export interface SuppliesView {
   unlocked: number;
   /** The valley's hard ceiling. */
   cap: number;
+  /** Sandbox: no limit (the figures above are only kept for the save; show "∞ Sandbox", never "999 free"). */
+  unlimited: boolean;
   /** The next milestone drop, e.g. "+4 · First harvest stored in the Silo or a workshop"; null once every drop has come. */
   nextDropHint: string | null;
 }
@@ -104,8 +106,11 @@ export interface ValleyStats {
   seed: number; season: Season; hasFarmhouse: boolean;
   thingCounts: Partial<Record<ThingKind, number>>;
   fieldAreaM2: number; flowingRillM: number; bridgeCount: number;
-  /** Everything the player has made: things, fields, rills (wet or dry), tracks, hedgerows and planted trees. */
-  landEditCount: number;
+  /**
+   * Whether the valley holds the player's work or progress (anything built, laid, planted or dug, the starter track
+   * taken up, a drop received, goods delivered, a seal begun): clearing it asks first.
+   */
+  hasProgress: boolean;
   /** The one capped Supplies pool. */
   supplies: SuppliesView;
   /** The Open Homestead Brief: its three seals and whether the valley is Restored. */
@@ -124,6 +129,9 @@ export interface ValleyStats {
   sandbox?: boolean;
   /** The campaign valley being played (`CAMPAIGN_VALLEYS`' id); left out for procedural and Sandbox valleys. */
   campaignId?: string;
+  /** A custom (procedural) valley, and the difficulty its Supplies were balanced for (the Custom tab opens on them). */
+  custom?: boolean;
+  difficulty?: Difficulty;
 }
 
 /** The weather now, as the sky strip reads it out: "Showers · 11°C". */
