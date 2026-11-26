@@ -37,13 +37,19 @@ export interface SuppliesState {
   drops: MilestoneDrop[];
 }
 
-/** The Spring Valley's pool: the starter parcel, and two drops to come. */
-export function starterSupplies(): SuppliesState {
+/**
+ * A valley's pool: the starter parcel now, and two milestone drops to come, together making the valley's hard `cap` (left
+ * out, the Spring Valley's 12 now and two drops of 4 up to 20). What the parcel leaves goes to the drops: the first harvest
+ * gets the larger half of an odd remainder.
+ */
+export function starterSupplies(cap = SUPPLY_CAP, starter = cap === SUPPLY_CAP ? STARTER_SUPPLIES : Math.round(cap * 0.6)): SuppliesState {
+  const top = Math.max(0, Math.floor(cap)), now = Math.max(0, Math.min(top, Math.floor(starter))), rest = top - now;
+  const harvest = Math.ceil(rest / 2), craft = rest - harvest;
   return {
-    available: STARTER_SUPPLIES, spent: 0, unlocked: STARTER_SUPPLIES, cap: SUPPLY_CAP,
+    available: now, spent: 0, unlocked: now, cap: top,
     drops: [
-      { id: 'firstHarvest', amount: DROP_AMOUNT, label: 'First harvest stored in the Silo or a workshop', received: false },
-      { id: 'firstCraft', amount: DROP_AMOUNT, label: 'First crafted good (Flour, Bread, Oil, Sauce, Yarn or Linen) delivered to the Depot', received: false },
+      { id: 'firstHarvest', amount: harvest, label: 'First harvest stored in the Silo or a workshop', received: false },
+      { id: 'firstCraft', amount: craft, label: 'First crafted good (Flour, Bread, Oil, Sauce, Yarn or Linen) delivered to the Depot', received: false },
     ],
   };
 }

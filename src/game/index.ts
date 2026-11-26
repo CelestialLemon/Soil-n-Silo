@@ -17,7 +17,7 @@ export { hash3, makeRng, type Rng } from './rng.ts';
 
 // State and its parts.
 export {
-  blankSim, blankState, defaultWeatherSeed, type WeatherOptions, type Bridge, type Channel, type Crag, type Crop, CROPS, type Field, type FlowSample, type GameState, type Hedge,
+  blankSim, blankState, defaultWeatherSeed, isTerrainStyle, TERRAIN_STYLES, type TerrainStyle, type WeatherOptions, type Bridge, type Channel, type Crag, type Crop, CROPS, type Field, type FlowSample, type GameState, type Hedge,
   type PowerRadius, type PowerState, type Season, SEASONS, type SimState, STATE_VERSION, type Thing, type Track, type Tree,
   TREE_SPECIES, type TreeSpecies, type Valley,
 } from './state.ts';
@@ -26,7 +26,7 @@ export {
   WORKSHOP_KINDS, type WorkshopKind,
 } from './catalog.ts';
 export {
-  BANK_FREEBOARD, CLEARING, generateValley, naturalize, SIDE_RISE, TERRACE_DIP, TERRACE_WIDTH, VALLEY_FALL,
+  BANK_FREEBOARD, CLEARING, generateValley, LANDFORMS, naturalize, SIDE_RISE, TERRACE_DIP, TERRACE_WIDTH, VALLEY_FALL, type ValleyGenOptions,
 } from './valley/generate.ts';
 
 // Edits.
@@ -110,3 +110,11 @@ export {
   PANTRY_ORDER, PANTRY_ORDERS, type PantryOrderSeal, PARCHED,
   resetSteadyOnClockJump, resetSteadyOnSetupChange, type Seal, type SealId, SEAL_LABELS, SETUP_CHANGED, STEADY_HOURS, stallReason, type SteadyHomesteadSeal, stepBrief,
 } from './brief.ts';
+
+// Milestone 5B: the campaign's curated valleys, procedural valleys and Sandbox, and saves.
+export { CAMPAIGN_VALLEYS, campaignById, type CampaignValley, startCampaignValley } from './campaign.ts';
+export {
+  balancedCap, buildingsForOrder, DIFFICULTIES, DIFFICULTY_ALLOWANCE, type Difficulty, generateProceduralValley, isDifficulty,
+  MIN_PROCEDURAL_CAP, minimumSuppliesForOrder, proceduralTitle, type ProceduralOptions, rollPantryOrder, STARTER_SHARE,
+} from './procedural.ts';
+export { deserializeSave, FERTILITY_SAVE_EPS, OLD_SAVE, serializeSave } from './save.ts';
