@@ -5,11 +5,12 @@
 // Each building's live side (its goods, recipe, power and the one plain line its floating card shows) is a ThingRuntime,
 // kept by id in `state.sim.things` beside the placed Thing; it comes and goes with the building.
 import { CATALOG, isWorkshop, type ThingKind, type WorkshopKind } from './catalog.ts';
-import { forageRate, hotMidday, effectiveMoisture, isRaining, treeShade } from './microclimate.ts';
+import { forageRate, hotMidday, effectiveMoisture, isLiquidRain, treeShade } from './microclimate.ts';
 import type { SimEnv } from './power/sim.ts';
 import { isNight } from './clock.ts';
 import { addGood, capacity, countOf, describeInventory, GOOD_LABELS, type Good, type Inventory, takeGood, totalStored } from './goods.ts';
-import type { GameState } from './state.ts';
+import type { Crop, GameState } from './state.ts';
+import { describeWeather } from './weather.ts';
 
 export interface ThingRuntime {
   id: number; kind: ThingKind;
@@ -27,6 +28,8 @@ export interface ThingRuntime {
   /** Recipe paid for when this batch started, even if the player changes the next one. */
   batch: 'bread' | 'honey_cake';
   priority: 'auto' | 'coop' | 'composter' | 'silo';
+  /** The crop the Heated Greenhouse grows under its glass. */
+  greenhouseCrop: Crop;
   /** It has the power it needs (for a power building or relay: it's on a fed network). */
   powered: boolean;
   /** The network it draws from or belongs to (its root emitter's thing id), or -1. */
@@ -71,7 +74,10 @@ export function stepEcology(s: GameState, dtH: number, env: SimEnv): void {
     const r = s.sim.things.get(t.id);
     if (!r) continue;
     if (t.kind === 'rain_tank') {
-      const refill = isRaining(env.weather) ? 0.18 : env.weather === 'overcast' ? 0.05 : s.sim.hour >= 5 && s.sim.hour < 8 ? 0.02 : 0;
+      // Rain fills it (not snow: a storm falling as snow leaves it as it is); grey skies and the morning dew top it up, but
+      // not while the air freezes.
+      const thawed = s.sim.weather.tempC > 0;
+      const refill = isLiquidRain(s, env.weather) ? 0.18 : !thawed ? 0 : env.weather === 'overcast' ? 0.05 : s.sim.hour >= 5 && s.sim.hour < 8 ? 0.02 : 0;
       // A 25 m² bed consumes 2.5% of a reserve per game hour.
       r.water = Math.max(0, Math.min(1, r.water + dtH * (refill - 0.001 * (drain.get(t.id) ?? 0))));
     } else {
@@ -85,6 +91,33 @@ export function stepEcology(s: GameState, dtH: number, env: SimEnv): void {
       r.progress %= 1;
     }
   }
+}
+
+/** The Heated Greenhouse: what it grows per harvest, how long one takes (game hours) and below what air it heats harder. */
+export const GREENHOUSE_YIELD = 2, GREENHOUSE_HOURS = 3.2, GREENHOUSE_COLD_C = 10;
+/** Its draw while it grows: heating hard in the cold, a little warmth and light otherwise, W. */
+export const GREENHOUSE_COLD_W = 2, GREENHOUSE_MILD_W = 0.5;
+
+/**
+ * Grows the Heated Greenhouse's crop for `dtH` game hours: under glass, frost, snow, flood and drought never touch it, but
+ * it grows only while powered, and only while it has room for the harvest (the carts take it away like a workshop's goods).
+ * `working`: it wants to grow (it has room), so it draws its power; it grows when it has it.
+ */
+export function growGreenhouses(s: GameState, dtH: number): ThingRuntime[] {
+  const done: ThingRuntime[] = [];
+  for (const r of s.sim.things.values()) {
+    if (r.kind !== 'greenhouse') continue;
+    r.working = totalStored(r.outputs) + GREENHOUSE_YIELD <= OUTPUT_CAP;
+    if (!r.working || !r.powered || dtH <= 0) continue;
+    r.progress = Math.min(1, r.progress + dtH / GREENHOUSE_HOURS);
+    if (r.progress >= 1) {
+      addGood(r.outputs, r.greenhouseCrop, GREENHOUSE_YIELD);
+      r.progress = 0;
+      r.made++;
+      done.push(r);
+    }
+  }
+  return done;
 }
 
 /** How many goods a workshop holds waiting, and made, in all. */
@@ -102,7 +135,7 @@ export function siloRoom(r: ThingRuntime, good?: Good): number {
  * and building it again can't make energy). */
 const blank = (id: number, kind: ThingKind): ThingRuntime => ({
   id, kind, inputs: {}, outputs: {}, progress: 0, working: false, powered: false, powerNetId: -1,
-  water: 0, recipe: 'bread', batch: 'bread', priority: 'auto',
+  water: 0, recipe: 'bread', batch: 'bread', priority: 'auto', greenhouseCrop: 'beans',
   charge: 0, siloFill: 0, watts: 0, made: 0, status: '',
 });
 
@@ -143,8 +176,17 @@ export function setOutHoney(r: ThingRuntime): void {
   addGood(r.outputs, 'honey', takeGood(r.inputs, 'honey', outputRoom(r)));
 }
 
-/** Starts a recipe in every idle workshop that has its inputs and room for what it makes. */
+/**
+ * Notes which Heated Greenhouses want to grow (they have room for the harvest): read before the power runs, so a cold one
+ * asks for its full heating from the first step and never grows a step on power it didn't get.
+ */
+export function syncGreenhouses(s: GameState): void {
+  for (const r of s.sim.things.values()) if (r.kind === 'greenhouse') r.working = totalStored(r.outputs) + GREENHOUSE_YIELD <= OUTPUT_CAP;
+}
+
+/** Starts a recipe in every idle workshop that has its inputs and room for what it makes (and readies the Greenhouses). */
 export function startRecipes(s: GameState): void {
+  syncGreenhouses(s);
   for (const r of s.sim.things.values()) {
     setOutHoney(r);
     if (!isWorkshop(r.kind) || r.working) continue;
@@ -210,6 +252,13 @@ export function describeRuntime(s: GameState, r: ThingRuntime): string {
   }
   switch (r.kind) {
     case 'rain_tank': return `Rainwater · ${Math.round(r.water * 100)}% full`;
+    case 'weather_station': return describeWeather(s);
+    case 'greenhouse': {
+      const crop = GOOD_LABELS[r.greenhouseCrop].label;
+      if (!r.working) return `Full of ${describeInventory(r.outputs)} · waiting for a cart`;
+      if (!r.powered) return r.powerNetId >= 0 ? `Paused · not enough power to heat the glass` : dark;
+      return `Growing ${crop} under glass · ${Math.round(r.progress * 100)}% · ${r.watts.toFixed(1)} W`;
+    }
     case 'sprinkler': return r.watts > 0 ? 'Watering nearby fields · 1 W' : r.powered ? 'Waiting for dry crops' : dark;
     case 'beehive': return `${r.working ? 'Bees foraging' : 'Bees resting'} · ${countOf(r.outputs, 'honey')} Honey`;
     case 'silo': return totalStored(r.outputs) > 0 ? `Storing ${totalStored(r.outputs)} / ${SILO_CAP} · ${describeInventory(r.outputs)}` : `Empty · stores up to ${SILO_CAP} goods`;

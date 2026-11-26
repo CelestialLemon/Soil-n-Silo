@@ -1,9 +1,11 @@
 // The play layer: boots a valley from the page's address and wires the game's state (src/game/), the world that draws it
 // (src/world/) and the overlay (src/ui/) together through the controller (controller.ts) and the page's input (input.ts).
 //
-// The address opens the valley (src/world/options.ts): `?seed=`, `?season=`, `?hour=`, `?weather=`, `?quality=`, and
-// `?yaw=orbit|snap` to override the player's camera setting (a free orbit unless they chose snapped views).
-import { generateValley } from '../game/index.ts';
+// The address opens the valley (src/world/options.ts): `?seed=`, `?season=`, `?hour=`, `?weather=` (locks the weather),
+// `?climate=` (the season's character; left out, the valley's own: climateFor), `?wseed=` (the weather's seed),
+// `?quality=`, and `?yaw=orbit|snap` to override the player's camera setting (a free orbit unless they chose snapped
+// views). Without `?wseed=`, every run rolls fresh weather: the same map never lives through the same week twice.
+import { climateFor, generateValley, rollWeatherSeed, stepWeather } from '../game/index.ts';
 import { createUi, mountLoading } from '../ui/index.ts';
 import { createWorld, readUrlOptions } from '../world/index.ts';
 import { Play } from './controller.ts';
@@ -25,7 +27,12 @@ export async function startPlay(canvas: HTMLCanvasElement, uiRoot: HTMLElement):
   const dispose = () => { for (const stop of stops.splice(0).reverse()) stop(); };
   try {
     const options = readUrlOptions(window.location.search);
-    const state = generateValley(options.seed, options.season);
+    const weatherSeed = options.weatherSeed ?? rollWeatherSeed();
+    const climate = options.climate ?? climateFor(options.seed, options.season);
+    const state = generateValley(options.seed, options.season, { weatherSeed, climate });
+    // The weather as it stands at the address's hour (a valley's first reading is the morning's), before the sky is drawn.
+    state.sim.hour = options.hour;
+    stepWeather(state, 0, state.sim.day, options.hour);
     const world = await createWorld(canvas, state, options);
     stops.push(() => world.dispose());
     const play = new Play(state, world);

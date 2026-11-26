@@ -1,7 +1,8 @@
 // Living crops: each painted field grows with water, soil and light, ripens into a harvest waiting at its edge, and once
 // the carts have taken the last of it, is sown again. Wheat draws the soil down; beans fix nitrogen and build it back
 // up; a sack of compost lifts it at once.
-import { effectiveMoisture, erosionDrain, hotMidday, pollinationCoverage } from './microclimate.ts';
+import { effectiveMoisture, erosionDrain, fieldTempC, hotMidday, isLiquidRain, pollinationCoverage } from './microclimate.ts';
+import { markFloodedFields } from './flood.ts';
 import { clamp, obbDistance } from './geom.ts';
 import { thingObb } from './earth.ts';
 import { cellX, cellZ, type Grid, type Soil, SOIL } from './grid.ts';
@@ -70,19 +71,73 @@ export function growthRate(f: Pick<Field, 'avgMoisture' | 'fertility'>, sun: num
 /** A coarse stage of a field's crop for redrawing: 0..20 as it grows, 21 when ripe. */
 export const cropStage = (f: Pick<Field, 'growth' | 'harvestReady'>) => (f.harvestReady > 0 ? 21 : Math.floor(clamp(f.growth, 0, 1) * 20));
 
-/** Grows every field by `dtH` game hours; returns the fields that ripened and whether any stage changed. */
+/** Beans are frost-tender: under frost they pause and slip back this much growth per game hour (never below a seedling). */
+export const FROST_SETBACK = 0.08;
+/** Wheat shrugs off a chill down to this air, °C; colder, it pauses. */
+export const WHEAT_HARDY_C = -2;
+/** Snow this deep buries a field: it pauses. */
+export const SNOW_BURIES = 0.35;
+/** A heatwave's air (°C) and how much moisture it takes off an unshaded field. */
+export const HEAT_C = 30, HEAT_EVAPORATION = 0.12;
+
+/**
+ * The moisture a field's crop feels now: its banks' and its devices' (effectiveMoisture), less a heatwave's evaporation
+ * where no solar canopy shades it. `coverage`: the share of it under canopies.
+ */
+export function fieldMoisture(s: GameState, f: Field, weather?: string, coverage = agrivoltaicCoverage(s).get(f.id) ?? 0): number {
+  const m = effectiveMoisture(s, f, undefined, weather);
+  if (isLiquidRain(s, weather) || s.sim.weather.tempC < HEAT_C) return m;
+  return Math.max(0, m - HEAT_EVAPORATION * (1 - clamp(coverage, 0, 1)));
+}
+
+/** Whether a growing field stands frosted now: its air (frost hollows colder) at or below freezing, or buried in snow. */
+const frostedNow = (s: GameState, f: Field) => f.harvestReady === 0 && (fieldTempC(s, f, s.sim.weather.tempC) <= 0 || s.sim.weather.snowDepth >= SNOW_BURIES);
+
+/**
+ * Whether frost or snow actually stalls this growing field: beans stall at 0°C, hardy wheat grows down to WHEAT_HARDY_C
+ * (-2°C), and deep snow buries both. Used by both `growCrops` and Steady Homestead so they never disagree.
+ */
+export function fieldFrostStalled(s: GameState, f: Field): boolean {
+  if (f.harvestReady > 0) return false;
+  if (s.sim.weather.snowDepth >= SNOW_BURIES) return true;
+  const air = fieldTempC(s, f, s.sim.weather.tempC);
+  return f.crop === 'beans' ? air <= 0 : air < WHEAT_HARDY_C;
+}
+
+/**
+ * Reads every field's frost and flood afresh from the weather and the water as they stand, growing nothing: after the clock
+ * jumps or the weather lock changes while the clock is stopped, so a field's card never shows the last running tick's.
+ */
+export function refreshFieldWeather(s: GameState): void {
+  for (const f of s.fields) f.frosted = frostedNow(s, f);
+  markFloodedFields(s);
+}
+
+/**
+ * Grows every field by `dtH` game hours; returns the fields that ripened and whether any stage changed. The weather has
+ * its say (state.sim.weather): a flooded field pauses; frost (its air at or below freezing, frost hollows colder) or deep
+ * snow pauses beans and nips them back a little (they regrow once thawed), while wheat grows on down to -2°C; a heatwave
+ * dries the unshaded fields.
+ */
 export function growCrops(s: GameState, dtH: number, sun: number, weather?: string, cloudCover = 0): { ripened: Field[]; stagesChanged: boolean } {
   const ripened: Field[] = [];
   let stagesChanged = false;
   const cover = agrivoltaicCoverage(s);
   for (const f of s.fields) {
-    if (f.harvestReady > 0) continue;
+    if (f.harvestReady > 0) { f.frosted = false; continue; }
     const before = cropStage(f);
+    f.frosted = frostedNow(s, f);
+    if (f.flooded) continue;
+    if (fieldFrostStalled(s, f)) {
+      if (f.crop === 'beans' && dtH > 0) f.growth = Math.max(Math.min(f.growth, REPLANT_GROWTH), f.growth - FROST_SETBACK * dtH);
+      if (cropStage(f) !== before) stagesChanged = true;
+      continue;
+    }
     const coverage = cover.get(f.id) ?? 0;
     const climate = cloudCover >= 0.65 ? 1 - 0.1 * coverage : hotMidday(s, weather) ? 1 + 0.12 * coverage : 1;
     const bees = pollinationCoverage(s, f);
     if (dtH > 0) f.pollinated = Math.max(f.pollinated, bees);
-    const rate = growthRate({ fertility: f.fertility, avgMoisture: effectiveMoisture(s, f, undefined, weather) }, sun, coverage);
+    const rate = growthRate({ fertility: f.fertility, avgMoisture: fieldMoisture(s, f, weather, coverage) }, sun, coverage);
     f.growth = Math.min(1, f.growth + rate * climate * (1 + 0.05 * bees) * dtH);
     if (f.growth >= 1) { f.harvestReady = fieldYield(f, f.pollinated); ripened.push(f); }
     if (cropStage(f) !== before) stagesChanged = true;

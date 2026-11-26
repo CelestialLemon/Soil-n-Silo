@@ -12,7 +12,7 @@ import { moveThing, placeThing, removeThing, rotateThing } from './place.ts';
 import { addHedge, addTrack, plantTree, removeHedge, removeTrack, removeTree } from './paths.ts';
 import { err, ok, type Result } from './result.ts';
 import { settle } from './settle.ts';
-import type { Crop, GameState, TreeSpecies } from './state.ts';
+import { type Crop, CROPS, type GameState, type TreeSpecies } from './state.ts';
 
 export type Action =
   | { type: 'place'; kind: ThingKind; x: number; z: number; yaw: number }
@@ -31,6 +31,7 @@ export type Action =
   | { type: 'removeTree'; id: number }
   | { type: 'setRecipe'; id: number; recipe: 'bread' | 'honey_cake' }
   | { type: 'setByproductPriority'; id: number; target: 'auto' | 'coop' | 'composter' | 'silo' }
+  | { type: 'setGreenhouseCrop'; id: number; crop: Crop }
   | { type: 'buyCart' }
   | { type: 'retireCart'; id: number };
 
@@ -45,6 +46,7 @@ export function apply(s: GameState, a: Action): Result<Change, string> {
     case 'rotate': return rotateThing(s, a.id, a.yaw);
     case 'remove': return removeThing(s, a.id);
     case 'paintField': return fieldChange(s, paintField(s, a.crop, a.points, a.radius));
+    // Erasing the last field starts an unfinished Steady Homestead over (settle).
     case 'eraseField': return fieldChange(s, eraseField(s, a.points, a.radius));
     case 'digChannel': return digChannel(s, a.points);
     case 'fillChannel': return fillChannel(s, a.id);
@@ -68,6 +70,14 @@ export function apply(s: GameState, a: Action): Result<Change, string> {
       if (!r || (r.kind !== 'mill' && r.kind !== 'coop')) return err('Choose a Mill or Coop');
       if ((a.target === 'silo' && r.kind !== 'coop') || (a.target === 'coop' && r.kind !== 'mill')) return err('Choose a destination for this byproduct');
       r.priority = a.target;
+      return ok(emptyChange(s.revision));
+    }
+    case 'setGreenhouseCrop': {
+      const r = runtimeOf(s, a.id);
+      if (r?.kind !== 'greenhouse') return err('Choose a Heated Greenhouse to change its crop');
+      if (!(CROPS as readonly string[]).includes(a.crop)) return err('The Greenhouse grows Wheat or Beans');
+      // The harvest under way becomes the new crop's: what's grown so far isn't lost, and switching back is symmetric.
+      r.greenhouseCrop = a.crop;
       return ok(emptyChange(s.revision));
     }
     case 'buyCart': return buyCart(s);

@@ -21,10 +21,10 @@ test('the Spring Valley starts with 12 Supplies, two drops to come and a cap of 
   assert.deepEqual(sup.drops.map((d) => [d.id, d.amount, d.received]), [['firstHarvest', 4, false], ['firstCraft', 4, false]]);
 });
 
-test('every kind has its price: homes, relays and props are free, canopies and batteries 1, workshops 2, turbines and wheels 3', () => {
+test('every kind has its price: homes, relays and props are free, canopies, batteries and the Weather Station 1, workshops 2, turbines, wheels and the Greenhouse 3', () => {
   const want: Partial<Record<ThingKind, number>> = {
     farmhouse: 0, relay: 0, bench: 0, lantern: 0, planter: 0, crates: 0, depot: 0, solar: 1, rain_tank: 1, sprinkler: 1, beehive: 1, battery: 1,
-    silo: 2, mill: 2, bakery: 2, coop: 2, composter: 2, garage: 2, turbine: 3, waterwheel: 3,
+    weather_station: 1, silo: 2, mill: 2, bakery: 2, coop: 2, composter: 2, garage: 2, turbine: 3, waterwheel: 3, greenhouse: 3,
   };
   for (const k of THING_KINDS) assert.equal(CATALOG[k].cost, want[k], k);
   assert.equal(CART_COST, 1);

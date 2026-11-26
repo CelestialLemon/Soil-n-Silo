@@ -1,6 +1,5 @@
 // Free placement: buildings and props go anywhere on clear, gentle ground at any rotation. Buildings settle a soft pad
 // into the slope (earth.ts); the water wheel stands on a brook's bank with its wheel in the flowing water.
-import { resetSteadyOnSetupChange } from './brief.ts';
 import { addStarterCart, ejectCartsFromGarage, retireAllCarts } from './carts.ts';
 import { CATALOG, isThingKind, RACE_START, type ThingKind } from './catalog.ts';
 import type { Change } from './change.ts';
@@ -171,7 +170,5 @@ export function removeThing(s: GameState, id: number): Result<Change, string> {
   change.supplies = CATALOG[t.kind].cost > 0;
   // Its carts go with the Garage (the extra ones refunded too).
   if (t.kind === 'garage') { change.supplies ||= s.sim.carts.length > 1; change.carts = s.sim.carts.length > 0; retireAllCarts(s); }
-  // Taking down what makes the homestead run starts Steady Homestead over now, paused or not.
-  if (resetSteadyOnSetupChange(s)) change.steadyReset = true;
   return ok(change);
 }

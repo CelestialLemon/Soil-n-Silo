@@ -1,13 +1,14 @@
 // Where an Electric Cart can drive, and how it gets there: a coarse 2 m grid over the land, worked out again whenever the
 // land or what stands on it changes. Tracks and plank bridges are quick and easy on the battery; open meadow is slower
 // and drains it harder; muddy ground by the water bogs a cart down; steep ground costs dear. Unbridged water, rills,
-// rock, woods, hedgerows, tree trunks and buildings are walls. A* finds the cheapest way, then the path is pulled
-// straight wherever a straight line costs no more, so carts follow curving tracks and run straight over bridges.
+// rock, woods, hedgerows, tree trunks and buildings are walls; so is deep flood water (shallow flood water is mud). A* finds
+// the cheapest way, then the path is pulled straight wherever a straight line costs no more, so carts follow curving tracks and run straight over bridges.
 import { CATALOG } from './catalog.ts';
 import { coreObb } from './earth.ts';
 import { type Obb, obbDistance, type Point2, polylineDistance, toWorld } from './geom.ts';
 import { BUILD_HALF, COVER, type Grid, slopeAt } from './grid.ts';
 import type { GameState } from './state.ts';
+import { FLOOD_DEEP } from './flood.ts';
 
 /** The nav grid's cell, m, and its size: 80 × 80 over the 160 m land. */
 export const NAV_CELL = 2;
@@ -53,7 +54,7 @@ function navKey(s: GameState): string {
   let hedges = 0, trees = 0;
   for (const h of s.hedges) hedges += h.id;
   for (const t of s.plantedTrees) trees += t.id;
-  return `${s.revision}|${s.hedges.length}:${hedges}|${s.plantedTrees.length}:${trees}`;
+  return `${s.revision}|${s.hedges.length}:${hedges}|${s.plantedTrees.length}:${trees}|${s.sim.floodKey}`;
 }
 
 export const navIndex = (cx: number, cz: number) => cz * NAV_N + cx;
@@ -83,7 +84,9 @@ function buildNav(s: GameState, key: string): Nav {
       if (cv === COVER.rock || cv === COVER.woods) blocked[i] = 1;
       else if (cv === COVER.water || cv === COVER.rill) water[i] = 1;
       else if (cv === COVER.track) track[i] = 1;
-      wet[i] = Math.max(wet[i], g.moisture[k]);
+      // Deep flood water cuts the way (a bridge still carries it); shallow flood water is mud.
+      if (g.flood[k] > FLOOD_DEEP) water[i] = 1;
+      wet[i] = Math.max(wet[i], g.moisture[k], g.flood[k] > 0 ? 1 : 0);
     });
   }
   // Plank bridges carry carts over the water and rills they span.

@@ -19,7 +19,7 @@ import { keyOf, toolForKey } from './tools.ts';
 import type { UiCallbacks, UiController, UiSnapshot } from './types.ts';
 
 export type {
-  CartControls, LandTool, PlaceTool, SelectedThingView, Speed, SuppliesView, ToolId, ToolReadout, UiCallbacks, UiController,
+  CartControls, LandTool, LiveWeatherView, PlaceTool, SelectedThingView, Speed, SuppliesView, ToolId, ToolReadout, UiCallbacks, UiController,
   UiSnapshot, ValleyStats, Weather, YawMode,
 } from './types.ts';
 export { suppliesView } from './supplies.ts';

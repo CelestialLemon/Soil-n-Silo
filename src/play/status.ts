@@ -1,12 +1,15 @@
 // What the overlay says about the valley, read off the game's state: the postcard's figures (with the Supplies, the brief
 // and the power), a clicked thing's plain lines ("Grinding wheat into flour · 40%", "Stock: 4 Wheat") and its card's
-// extras (the Garage's carts, the refund), and the sky's weather in the strip's four words.
+// extras (the Garage's carts, the refund, the Greenhouse's draw, the Weather Station's days ahead), and the living weather
+// as the sky strip reads it out ("Showers · 11°C"; the old four-word chip still maps brush3d's presets).
 import {
-  BATTERY_WH, CART_COST, CATALOG, floweringArea, serviceSite, windShelter, treeShade, channelSummary, countOf, describeInventory, describeRuntime, type GameState, type Good,
+  BATTERY_WH, BEE_MIN_C, CART_COST, CATALOG, channelSummary, countOf, describeClimate, describeInventory, describeRuntime, describeWeather,
+  floweringArea, FORECAST_ICONS, forecastDays, type GameState, type Good, GREENHOUSE_COLD_C, GREENHOUSE_COLD_W, GREENHOUSE_MILD_W,
+  greenhouseWarm, SERVICE_RADIUS, serviceSite, treeShade, warmGreenhouseNear, windShelter,
   GOOD_LABELS, isNight, isWorkshop, MAX_CARTS, polylineDistance, runtimeOf, SILO_CAP, type Thing, type ThingKind, toWorld,
   totalStored,
 } from '../game/index.ts';
-import { type CartControls, suppliesView, type ValleyStats, type Weather } from '../ui/index.ts';
+import { type CartControls, type LiveWeatherView, suppliesView, type ValleyStats, type Weather } from '../ui/index.ts';
 import type { WeatherName } from '../world/index.ts';
 
 /**
@@ -30,6 +33,7 @@ export function valleyStats(s: GameState, starterTracks: ReadonlySet<number> = n
     brief: structuredClone(sim.brief),
     cartCount: sim.carts.length, maxCarts: MAX_CARTS, hasGarage: (thingCounts.garage ?? 0) > 0,
     powerSummary: { ...sim.powerSummary },
+    climateLabel: describeClimate(s.season, s.climate),
   };
 }
 
@@ -80,15 +84,17 @@ export function thingStatus(s: GameState, t: Thing, hour: number): { line: strin
     // The homestead's buildings say how they're doing as the homestead runs (workshops.ts).
     // The Depot's order is its second line: its first says what it is.
     case 'depot': return say(s.sim.brief.order.done ? 'Pantry Order filled · the settlement thanks you' : "The settlement's landing · carts bring the Pantry Order here");
-    case 'rain_tank': case 'sprinkler': case 'beehive': case 'farmhouse': case 'silo': case 'mill': case 'bakery': case 'coop': case 'composter': case 'garage': {
+    case 'rain_tank': case 'sprinkler': case 'beehive': case 'farmhouse': case 'silo': case 'mill': case 'bakery': case 'coop': case 'composter': case 'garage':
+    case 'weather_station': case 'greenhouse': {
       const r = runtimeOf(s, t.id);
       if (r) {
         let note = '';
         if (t.kind === 'coop' && treeShade(s, t, 10)) note = ' · Shaded by trees';
         if (t.kind === 'beehive') {
           const flowers = floweringArea(s, t);
-          const forage = s.season === 'winter' ? 'Resting until spring' : flowers ? `${flowers} m² of flowering beans`
-            : serviceSite(s, t).meadow ? 'Meadow flowers' : 'Plant beans nearby';
+          const forage = warmGreenhouseNear(s, t) ? 'Foraging in the Greenhouse'
+            : s.season === 'winter' ? 'Resting until spring' : s.sim.weather.tempC < BEE_MIN_C ? 'Too cold to fly'
+            : flowers ? `${flowers} m² of flowering beans` : serviceSite(s, t).meadow ? 'Meadow flowers' : 'Plant beans nearby';
           note = `${windShelter(s, t) > 0.1 ? ' · Sheltered' : ''} · ${forage}`;
         }
         return say(describeRuntime(s, r) + note);
@@ -155,9 +161,29 @@ export function thingDetail(s: GameState, t: Thing, diagnosis: string | null = n
       const way = r.charge >= 0.999 ? 'Full' : spare > 0.05 ? 'Charging' : spare < -0.05 ? 'Carrying the homestead' : 'Holding';
       return `${net.batteryWh.toFixed(1)} / ${net.batteryCapWh.toFixed(0)} Wh · ${way}`;
     }
+    case 'greenhouse': {
+      const parts: string[] = [];
+      if (totalStored(r.outputs) > 0) parts.push(`Made: ${describeInventory(r.outputs)}`);
+      // Its draw while it grows (a full one rests, drawing nothing, until a cart takes the harvest).
+      if (!r.powered) parts.push('Needs power');
+      else if (r.working) parts.push(s.sim.weather.tempC < GREENHOUSE_COLD_C ? `${watts(GREENHOUSE_COLD_W)} in cold` : `${watts(GREENHOUSE_MILD_W)} in mild air`);
+      const bees = s.things.some((h) => h.kind === 'beehive' && Math.hypot(h.x - t.x, h.z - t.z) <= SERVICE_RADIUS.beehive);
+      if (bees && greenhouseWarm(r)) parts.push('Warming nearby bees');
+      return parts.join(' · ');
+    }
+    case 'weather_station': return `Next: ${forecastDays(s, 3).map((f) => `Day ${f.day} ${f.label}`).join(' · ')}`;
     case 'farmhouse': return net ? `Network ${watts(net.generationW)} made, ${watts(net.servedW)} used` : undefined;
     default: return undefined;
   }
+}
+
+/** The sky strip's living weather: the spell now, its words, the air's temperature, and whether `?weather=` holds it. */
+export function liveWeatherView(s: GameState): LiveWeatherView {
+  const w = s.sim.weather;
+  return {
+    spell: w.spell, label: w.label, tempC: w.tempC, icon: FORECAST_ICONS[w.spell], locked: s.sim.weatherOverride !== null,
+    detail: describeWeather(s),
+  };
 }
 
 /** The Garage card's cart row: buy another, or retire the newest (the Garage's own first one stays). */

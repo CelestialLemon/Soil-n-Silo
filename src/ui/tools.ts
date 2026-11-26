@@ -53,6 +53,8 @@ export const GROUPS: readonly GroupDef[] = [
       place('beehive', 'beehive', '8', 'Bees pollinate fields and make honey within 14 m'),
       place('rain_tank', 'rain_tank', '9', 'Store rain and water nearby fields within 10 m'),
       place('sprinkler', 'sprinkler', '0', 'Water uphill fields within 11 m · needs 1 W'),
+      place('weather_station', 'weatherStation', undefined, `Click gentle ground to raise the Weather Station · shows 3 upcoming days beside the sky dial · ${turn}`),
+      place('greenhouse', 'greenhouse', undefined, `Click gentle ground to build the Heated Greenhouse · grows frost-proof crops and warms nearby bees in winter · ${turn}`),
     ],
   },
   {

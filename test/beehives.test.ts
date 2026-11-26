@@ -151,7 +151,7 @@ test('forage follows flowering area and the pantry follows the growing season', 
   };
   assert.ok(rate(true) < rate(false));
   for (const season of ['spring', 'summer', 'autumn', 'winter'] as const)
-    assert.equal(blankState(1, season).sim.brief.order.targets.honey, season === 'winter' ? undefined : 4);
+    assert.equal(blankState(1, season).sim.brief.order.targets.honey, season === 'spring' || season === 'summer' ? 4 : 2);
 });
 
 test('a Bakery returns honey already in transit and carts continue hauling', () => {

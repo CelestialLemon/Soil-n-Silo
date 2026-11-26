@@ -20,7 +20,7 @@ import { baseHeightAt, cellHeightAt, cellX, cellZ, COVER, type Grid, isWet, SOIL
 import { addTrack, canTrack, trackPath } from '../paths.ts';
 import { canPlace, placeThing } from '../place.ts';
 import { makeRng, subSeed } from '../rng.ts';
-import { blankState, type Crag, type GameState, type Season, type Tree, type TreeSpecies } from '../state.ts';
+import { blankState, type Crag, type GameState, type Season, type Tree, type TreeSpecies, type WeatherOptions } from '../state.ts';
 import { wetness } from '../wet.ts';
 import { powerFor } from '../power/graph.ts';
 
@@ -57,9 +57,12 @@ interface Brook {
   pond: { x: number; z: number; radius: number; level: number; seed: number };
 }
 
-/** Grows the valley for a seed and season. */
-export function generateValley(seed: number, season: Season): GameState {
-  const s = blankState(seed, season), g = s.grid, rng = makeRng(subSeed(seed, 1));
+/**
+ * Grows the valley for a seed and season. Its weather rolls from `opts.weatherSeed` (left out, one from the terrain's seed,
+ * so tests repeat; the game passes a fresh rollWeatherSeed() each play) and its character `opts.climate` (left out, mild).
+ */
+export function generateValley(seed: number, season: Season, opts: WeatherOptions = {}): GameState {
+  const s = blankState(seed, season, opts), g = s.grid, rng = makeRng(subSeed(seed, 1));
   const dir = rng.next() < 0.5 ? 1 : -1; // which way the brook runs (along x)
   const flip = rng.next() < 0.5 ? 1 : -1; // which side of the brook its meanders start
 

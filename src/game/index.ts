@@ -17,7 +17,7 @@ export { hash3, makeRng, type Rng } from './rng.ts';
 
 // State and its parts.
 export {
-  blankSim, blankState, type Bridge, type Channel, type Crag, type Crop, CROPS, type Field, type FlowSample, type GameState, type Hedge,
+  blankSim, blankState, defaultWeatherSeed, type WeatherOptions, type Bridge, type Channel, type Crag, type Crop, CROPS, type Field, type FlowSample, type GameState, type Hedge,
   type PowerRadius, type PowerState, type Season, SEASONS, type SimState, STATE_VERSION, type Thing, type Track, type Tree,
   TREE_SPECIES, type TreeSpecies, type Valley,
 } from './state.ts';
@@ -52,8 +52,23 @@ export { type PowerCandidate, powerFor, previewPower } from './power/graph.ts';
 export { type Networks, networksOf } from './power/radius.ts';
 
 // The living homestead (Milestone 2): time, Supplies, goods, crops, workshops, power, carts and the brief.
-export { floweringArea, flowerDrift, effectiveMoisture, erosionDrain, forageRate, serviceSite, hasServiceRadius, SERVICE_RADIUS, treeShade, windShelter } from './microclimate.ts';
-export { stepSim, MAX_SUBSTEP_SECONDS, type SimTickResult } from './sim.ts';
+export {
+  BEE_MIN_C, floweringArea, flowerDrift, effectiveMoisture, erosionDrain, fieldTempC, forageRate, greenhouseWarm, HOLLOW_COLD_C, HOLLOW_REACH,
+  hollowDepth, hollowDepths, HOT_C, hotMidday, inversion, isLiquidRain, isRaining, isSnowing, LIQUID_RAIN, localTempC, serviceSite, hasServiceRadius, SERVICE_RADIUS, SLOPE_WARM_C,
+  treeShade, warmGreenhouseNear, windShelter,
+} from './microclimate.ts';
+export { liveEnv, stepSim, MAX_SUBSTEP_SECONDS, type SimTickResult } from './sim.ts';
+export {
+  absHour, CLIMATE_DESCRIPTIONS, type ClimateCharacter, CLIMATES, climateFor, climatesOf, type DayForecast, describeClimate, describeWeather,
+  FLOOD_MAX, FORECAST_ICONS, type ForecastIcon, forecastDay, forecastDays, hasWeatherStation, initialWeather, stationForecast, isClimate, isWeatherSpell, rollWeatherSeed, skyAt,
+  type SkyNow, SPELL_BLEND_HOURS, type SpellSpan, spellTimeline, stepWeather, surgeOf, toSpell, WEATHER_LABELS, WEATHER_SPELLS, type WeatherKey,
+  weatherKeyOf, type WeatherSpell, type WeatherState,
+} from './weather.ts';
+export {
+  appliedSurge, FIELD_FLOODED, FLOOD_DEEP, FLOOD_FALL, FLOOD_MIN, FLOOD_STEP, floodMoved, markFloodedFields, overlayFlood, type Swale, SWALE_FAR,
+  SWALE_MIN_DROP, SWALE_MIN_LENGTH, SWALE_NEAR, SWALE_RELIEF, swaleOf, swaleRelief, swalesOf,
+} from './flood.ts';
+export { refreshFlood } from './settle.ts';
 export { type SimEvent, type SimEventType } from './events.ts';
 export { formatClock, isNight, SECONDS_PER_GAME_HOUR, seasonHours, sunFactor, sunHours } from './clock.ts';
 export {
@@ -65,13 +80,14 @@ export {
   isGood, takeGood, totalStored,
 } from './goods.ts';
 export {
-  agrivoltaicCoverage, COMPOST_BOOST, compostField, cropStage, fertilityFactor, fieldYield, growCrops, growthRate, GROWTH_RATE,
-  HARVEST_FERTILITY, harvestField, lightFactor, MIN_FERTILITY, moistureFactor, naturalFertility, REPLANT_GROWTH, REST_PER_DAY,
+  agrivoltaicCoverage, COMPOST_BOOST, compostField, cropStage, fertilityFactor, fieldFrostStalled, fieldMoisture, fieldYield, FROST_SETBACK, growCrops, HEAT_C,
+  HEAT_EVAPORATION, SNOW_BURIES, WHEAT_HARDY_C, growthRate, GROWTH_RATE,
+  HARVEST_FERTILITY, harvestField, lightFactor, MIN_FERTILITY, moistureFactor, naturalFertility, refreshFieldWeather, REPLANT_GROWTH, REST_PER_DAY,
   restSoil, SOIL_FERTILITY, soilFertility, SOWN_GROWTH, WATERED, wateredness,
 } from './crops.ts';
 export {
-  advanceRecipes, describeRuntime, INPUT_CAP, OUTPUT_CAP, type Recipe, type RecipeInput, RECIPES, runtimeOf, SILO_CAP,
-  SILO_GOOD_CAP, siloRoom, startRecipes, syncRuntime, type ThingRuntime, wantsInput,
+  advanceRecipes, describeRuntime, GREENHOUSE_COLD_C, GREENHOUSE_COLD_W, GREENHOUSE_HOURS, GREENHOUSE_MILD_W, GREENHOUSE_YIELD, growGreenhouses, INPUT_CAP, OUTPUT_CAP, type Recipe, type RecipeInput, RECIPES, runtimeOf, SILO_CAP,
+  SILO_GOOD_CAP, siloRoom, startRecipes, syncGreenhouses, syncRuntime, type ThingRuntime, wantsInput,
 } from './workshops.ts';
 export {
   BATTERY_RATE_W, BATTERY_WH, CLOUD_DIM, demandOf, FARMHOUSE_DAY_W, FARMHOUSE_NIGHT_W, GARAGE_CHARGE_W,
@@ -84,10 +100,11 @@ export {
 } from './nav.ts';
 export {
   addStarterCart, atGarage, buyCart, type Cart, CART_CAPACITY, CART_LOW, CART_READY, type CartJob, type CartState, CHARGE_PER_HOUR,
-  diagnoseIdleCarts, chargingAtGarage, DOCK_RADIUS, DRAIN_PER_M, DWELL_HOURS, type Endpoint, endpointLabel, fieldEdge, pathLeft, retireAllCarts, retireCart, stepCarts,
+  diagnoseIdleCarts, chargingAtGarage, COLD_C, GALE_WIND, weatherDrag, DOCK_RADIUS, DRAIN_PER_M, DWELL_HOURS, type Endpoint, endpointLabel, fieldEdge, pathLeft, retireAllCarts, retireCart, stepCarts,
   TRICKLE_PER_HOUR,
 } from './carts.ts';
 export {
-  blankBrief, type BriefState, CLOCK_JUMPED, LIVING_LAND_FERTILITY, LIVING_LAND_M2, type LivingLandSeal, PANTRY_ORDER, type PantryOrderSeal,
-  resetSteadyOnClockJump, resetSteadyOnSetupChange, type Seal, type SealId, SEAL_LABELS, SETUP_CHANGED, STEADY_HOURS, type SteadyHomesteadSeal, stepBrief,
+  blankBrief, type BriefState, CLOCK_JUMPED, DRY_FIELDS, DRY_GRACE_HOURS, FLOODED_FIELDS, fieldsParched, FROSTED_FIELDS, GREENHOUSE_FULL, homesteadRuns, LIVING_LAND_FERTILITY, LIVING_LAND_M2, type LivingLandSeal,
+  PANTRY_ORDER, PANTRY_ORDERS, type PantryOrderSeal, PARCHED,
+  resetSteadyOnClockJump, resetSteadyOnSetupChange, type Seal, type SealId, SEAL_LABELS, SETUP_CHANGED, STEADY_HOURS, stallReason, type SteadyHomesteadSeal, stepBrief,
 } from './brief.ts';

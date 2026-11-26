@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { apply, cellX, effectiveMoisture, must, runtimeOf, serviceSite, stepSim } from '../src/game/index.ts';
+import { apply, cellX, effectiveMoisture, isLiquidRain, must, runtimeOf, serviceSite, stepSim, stepWeather } from '../src/game/index.ts';
 import { building, fieldAt, land, ribbon } from './helpers.ts';
 
 test('tank reserves irrigate dry fields, drain, refill in rain, and stay bounded', () => {
@@ -11,7 +11,7 @@ test('tank reserves irrigate dry fields, drain, refill in rain, and stay bounded
   stepSim(s, 90, { ...env, weather: 'rain' });
   const filled = r.water;
   assert.ok(filled > 0);
-  assert.ok(Math.abs(effectiveMoisture(s, field) - 0.32) < 1e-9);
+  assert.ok(Math.abs(effectiveMoisture(s, field, undefined, 'clear') - 0.32) < 1e-9, 'the tank\'s water, the rain aside');
   stepSim(s, 30, env);
   assert.ok(r.water < filled);
   r.water = 0.001;
@@ -19,7 +19,53 @@ test('tank reserves irrigate dry fields, drain, refill in rain, and stay bounded
   assert.equal(effectiveMoisture(s, field), 0);
   stepSim(s, 300, { ...env, weather: 'soft-rain' });
   assert.equal(r.water, 1);
-  assert.ok(Math.abs(effectiveMoisture(s, field) - 0.32) < 1e-9);
+  assert.ok(Math.abs(effectiveMoisture(s, field, undefined, 'clear') - 0.32) < 1e-9, 'the tank\'s water, the rain aside');
+});
+
+test('a storm falling as snow in a hard winter fills no tank and waters no field, and the sprinklers keep on', () => {
+  const s = land({ height: () => 12 });
+  s.season = 'winter';
+  s.climate = 'hard';
+  s.sim.weatherOverride = 'storm';
+  s.sim.hour = 3;
+  const field = fieldAt(s, 'wheat', 0, 0), tank = building(s, 'rain_tank', -4, 0).r;
+  stepWeather(s, 0, s.sim.day, s.sim.hour);
+  const w = s.sim.weather;
+  assert.equal(w.spell, 'storm');
+  assert.equal(w.rain, 0, 'no rain: it falls as snow');
+  assert.ok(w.snow > 0.5);
+  assert.ok(!isLiquidRain(s, w.spell) && !isLiquidRain(s));
+  assert.equal(effectiveMoisture(s, field, undefined, w.spell), 0, 'the snow doesn\'t water the field');
+  // A sprinkler powered by a turbine keeps on watering the dry field; the tank stays empty.
+  const sprinkler = building(s, 'sprinkler', 6, 0).r;
+  building(s, 'turbine', 12, 0);
+  for (let k = 0; k < 60; k++) stepSim(s, 1, { windSpeed: 12, cloudCover: 1 });
+  assert.equal(s.sim.weather.spell, 'storm');
+  assert.equal(s.sim.weather.rain, 0);
+  assert.equal(tank.water, 0, 'no refill from snow');
+  assert.equal(sprinkler.watts, 1, 'the sprinkler runs');
+  assert.equal(effectiveMoisture(s, field, undefined, 'storm'), 0.75, 'watered by the sprinkler alone');
+  // A synthetic rainy spell (not the living one) still reads as rain.
+  assert.ok(isLiquidRain(s, 'soft-rain'));
+});
+
+test('a forced \'rain\' in a hard winter falls as snow too: the alias reads as the spell it stands for', () => {
+  const s = land({ height: () => 12 });
+  s.season = 'winter';
+  s.climate = 'hard';
+  s.sim.hour = 3;
+  const field = fieldAt(s, 'wheat', 0, 0), tank = building(s, 'rain_tank', -4, 0).r, sprinkler = building(s, 'sprinkler', 6, 0).r;
+  building(s, 'turbine', 12, 0);
+  const env = { windSpeed: 12, cloudCover: 1, weather: 'rain' };
+  for (let k = 0; k < 60; k++) stepSim(s, 1, env);
+  const w = s.sim.weather;
+  assert.equal(w.spell, 'soft-rain', '\'rain\' is soft rain');
+  assert.equal(w.rain, 0, 'no rain: it falls as snow');
+  assert.ok(w.snow > 0, `snow (${w.snow.toFixed(2)})`);
+  assert.ok(!isLiquidRain(s, 'rain') && !isLiquidRain(s, 'soft-rain'), 'the alias and the spell read alike');
+  assert.equal(tank.water, 0, 'no refill from snow');
+  assert.equal(sprinkler.watts, 1, 'the sprinkler runs');
+  assert.equal(effectiveMoisture(s, field, undefined, 'rain'), 0.75, 'watered by the sprinkler alone');
 });
 
 test('only a powered sprinkler irrigates a high terrace inside its reach', () => {

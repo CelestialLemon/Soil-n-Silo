@@ -1,7 +1,8 @@
-// The valley postcard, top left: the valley's name (from its seed) and season, a first nudge until the Farmhouse stands,
+// The valley postcard, top left: the valley's name (from its seed) and season, its climate character this season in one
+// quiet line ("A wet spring"), a first nudge until the Farmhouse stands,
 // and the Open Homestead Brief's three seals (docs/DESIGN.md, "Open Homestead Brief"), each a small ring filling as the
 // homestead meets it, with one live line: the Pantry Order's goods, the Living Land's fields and soil, the Steady
-// Homestead's blackout-free hours (and why it last started over). No timer. When all three fill, a warm "Valley Restored"
+// Homestead's blackout-free hours (and why it last started over, or why it's paused). No timer. When all three fill, a warm "Valley Restored"
 // note. Home and New valley sit at its foot; it folds down to just its title.
 import { type BriefState, GOOD_LABELS, isGood, isWorkshop, SEAL_LABELS, type SealId, SEASONS, type Season, THING_KINDS } from '../game/index.ts';
 import { button, el, setFlag, setHidden, setPressed, setText, setTitle } from './dom.ts';
@@ -134,6 +135,8 @@ export function createBrief(cb: UiCallbacks): Brief {
     seasons.append(b);
   }
 
+  const climate = el('p', 'ui-brief-climate');
+
   const prompt = el('p', 'ui-brief-prompt', 'Place your Farmhouse on a sunny clearing.');
 
   const seals = el('ol', 'ui-seals');
@@ -171,7 +174,7 @@ export function createBrief(cb: UiCallbacks): Brief {
   no.textContent = 'Keep';
   confirm.append(confirmText, yes, no);
 
-  body.append(seasons, prompt, seals, restored, foot, confirm);
+  body.append(seasons, climate, prompt, seals, restored, foot, confirm);
   card.append(head, body);
 
   function hasWork(s: ValleyStats): boolean {
@@ -196,6 +199,9 @@ export function createBrief(cb: UiCallbacks): Brief {
     setHidden(body, folded);
     setTitle(fold, folded ? 'Open the postcard' : 'Fold the postcard');
     for (const [season, b] of seasonBtns) setPressed(b, season === s.season);
+    const climateLabel = s.climateLabel ?? '';
+    setText(climate, climateLabel);
+    setHidden(climate, climateLabel === '');
     setHidden(prompt, s.hasFarmhouse);
     setFlag(seals, 'is-quiet', !s.hasFarmhouse);
     setHidden(home, !s.hasFarmhouse);
@@ -227,9 +233,11 @@ export function createBrief(cb: UiCallbacks): Brief {
 
     const h = b.steadyHomestead;
     const hours = `${Math.floor(h.hours)} / ${h.targetHours} h`;
-    const why = h.done ? '' : !h.running ? needs(s) : h.resetReason !== '' ? `Started over · ${h.resetReason}` : '';
+    const paused = !h.done && h.running && h.paused && h.pauseReason !== '';
+    const why = h.done ? '' : !h.running ? needs(s) : paused ? `Paused · ${h.pauseReason}`
+      : h.resetReason !== '' ? `Started over · ${h.resetReason}` : '';
     steady.paint(h.progress, h.done, h.done ? 'Holding steady' : h.running ? hours : 'Not running yet', why,
-      !h.done && h.running && h.resetReason !== '' && h.hours < 1 ? 'low' : 'neutral');
+      paused || (!h.done && h.running && h.resetReason !== '' && h.hours < 1) ? 'low' : 'neutral');
   }
 
   function render(stats: ValleyStats): void {

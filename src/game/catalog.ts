@@ -66,6 +66,10 @@ const SPECS = {
   battery: { ...power, label: 'Battery', model: 'battery', powerRole: 'store', cost: 1, lo: [-3.6, -3.6], hi: [3.6, 3.6], top: 4.52 },
   // No relay model yet: the relay mast borrows brush3d's slim pylon (a renderer may dress it differently).
   relay: { ...prop, label: 'Power Relay', category: 'power', model: 'pylon', maxSlope: 0.45, powerRole: 'relay', powerRange: 15, lo: [-1, -0.4], hi: [1, 0.88], top: 5.72 },
+  // Milestone 4: the Weather Station reads the next days' weather (weather.ts forecastDays); the Heated Greenhouse grows a
+  // protected crop under glass through frost, snow, flood and drought, and lets bees forage inside it in the cold.
+  weather_station: { ...home, label: 'Weather Station', model: 'weather_station', padEase: 2.5, maxSlope: 0.18, cost: 1, powerRole: 'none', lo: [-1.54, -1.85], hi: [1.91, 1.52], top: 4.67 },
+  greenhouse: { ...home, label: 'Heated Greenhouse', model: 'greenhouse', padEase: 3, cost: 3, powerDemand: 2, lo: [-5.5, -5.65], hi: [5.64, 5.96], top: 5.26 },
   rain_tank: { ...prop, category: 'homestead', padEase: 2.5, cost: 1, label: 'Rain Tank', model: 'rain_tank', lo: [-1.21, -1.05], hi: [1.05, 1.55], top: 3.67 },
   sprinkler: { ...prop, category: 'homestead', padEase: 2.5, powerRole: 'load', powerDemand: 1, cost: 1, label: 'Sprinkler', model: 'sprinkler', lo: [-1.85, -0.85], hi: [1.44, 0.85], top: 3.06 },
   beehive: { ...prop, category: 'homestead', padEase: 2.5, cost: 1, label: 'Beehive', model: 'beehive', lo: [-1.7, -0.95], hi: [1.7, 1.6], top: 2.29 },

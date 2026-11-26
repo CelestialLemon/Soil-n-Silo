@@ -1,10 +1,13 @@
 // After an edit: rebuild what it touched and everything that follows from it, in order (the land, then the water in the
-// rills, the wet banks, the fields' moisture, the bridges and the power preview), and say what changed.
+// rills, the wet banks, the fields' moisture, the bridges and the power preview, and whether Steady Homestead starts
+// over), and say what changed.
+import { resetSteadyOnSetupChange } from './brief.ts';
 import { recomputeBridges } from './bridges.ts';
 import { type Change, emptyChange } from './change.ts';
 import { recomposeCover, recomposeEarth } from './earth.ts';
 import { type FieldEdit, noteFields, pruneFields, updateFieldMoisture } from './fields.ts';
-import { refreshWater } from './flow.ts';
+import { composeWater, refreshWater } from './flow.ts';
+import { appliedSurge, floodMoved, markFloodedFields } from './flood.ts';
 import { clampRect, type Rect, unionRect } from './grid.ts';
 import { refreshPower } from './power/graph.ts';
 import type { GameState } from './state.ts';
@@ -36,7 +39,7 @@ export function settle(s: GameState, e: Edit): Change {
     change.water = refreshWater(s);
     change.wet = refreshWet(s);
   }
-  if (change.wet || change.fields) updateFieldMoisture(s);
+  if (change.wet || change.fields) { updateFieldMoisture(s); markFloodedFields(s); }
   change.bridges = recomputeBridges(s);
   change.powerChanged = refreshPower(s);
   if (change.height || change.cover || change.water || change.fields) s.revision++;
@@ -47,5 +50,24 @@ export function settle(s: GameState, e: Edit): Change {
   change.hedges = e.hedges ?? [];
   change.trees = e.trees ?? [];
   if (e.created !== undefined) change.created = e.created;
+  // Taking down what makes the homestead run (a building, or the last field: erased, or under a track, a rill or a
+  // building) starts an unfinished Steady Homestead over now, paused or not, so putting it back before the next tick
+  // can't keep the hours.
+  if (resetSteadyOnSetupChange(s)) change.steadyReset = true;
   return change;
+}
+
+/**
+ * Redraws the flood when the weather's surge has moved far enough from what the water layer shows (2 cm, or back to
+ * none): the live water, the wet banks, the fields' moisture and which fields stand flooded, and the carts' map. With
+ * `force`, redraws it whatever the surge did. Returns whether the water changed.
+ */
+export function refreshFlood(s: GameState, force = false): boolean {
+  if (!force && !floodMoved(s)) return false;
+  s.sim.floodApplied = appliedSurge(s.sim.weather.floodSurge);
+  const water = composeWater(s), wet = refreshWet(s);
+  if (wet) updateFieldMoisture(s);
+  markFloodedFields(s);
+  s.sim.floodKey++;
+  return water !== undefined || wet !== undefined;
 }

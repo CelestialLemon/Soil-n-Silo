@@ -14,6 +14,7 @@ import { CHANNEL_REACH, channelCut, inCore, protectedCores, RILL_HALF } from './
 import { catmullRom, forCellsNear, forVerticesNear, pathLength, type Point2, segmentsCross } from './geom.ts';
 import type { Channel, FlowSample, GameState } from './state.ts';
 import { addCell, type Rect } from './grid.ts';
+import { overlayFlood } from './flood.ts';
 
 /** The spacing of a rill's centreline samples, m. */
 export const CHANNEL_SPACING = 0.5;
@@ -198,13 +199,21 @@ function solveLive(s: GameState): FlowSample[][] {
 }
 
 /**
- * Re-solves the water in every rill and writes the live water layer (the brook and pond, then the flowing rills). Returns
- * the cells whose water changed.
+ * Re-solves the water in every rill and writes the live water layer (the brook and pond, then the flowing rills, then any
+ * flood the weather has raised: flood.ts). Returns the cells whose water changed.
  */
 export function refreshWater(s: GameState): Rect | undefined {
-  const g = s.grid;
   const flows = solveLive(s);
   s.channels.forEach((c, k) => { c.flow = flows[k]; });
+  return composeWater(s);
+}
+
+/**
+ * Writes the live water layer from the rills' water as last solved and the flood surge last applied
+ * (`state.sim.floodApplied`), without solving the rills again. Returns the cells whose water changed.
+ */
+export function composeWater(s: GameState): Rect | undefined {
+  const g = s.grid;
   const level = Float32Array.from(g.baseWaterLevel), fx = Float32Array.from(g.baseFlowX), fz = Float32Array.from(g.baseFlowZ);
   for (const c of s.channels) {
     for (let i = 1; i < c.flow.length; i++) {
@@ -221,6 +230,7 @@ export function refreshWater(s: GameState): Rect | undefined {
       });
     }
   }
+  overlayFlood(s, s.sim.floodApplied, level, g.flood);
   let dirty: Rect | undefined;
   for (let iz = 0; iz < g.nz; iz++) for (let ix = 0; ix < g.nx; ix++) {
     const k = iz * g.nx + ix;

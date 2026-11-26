@@ -1,17 +1,15 @@
 // The wind: brush3d's live wind simulation (startWind, in a worker) over the valley, round its buildings, trees and
-// hedges, with gusts running through the grass and the crowns; its strength follows the weather. It's run on a few seconds
+// hedges, with gusts running through the grass and the crowns; its strength follows the living weather's wind
+// (state.sim.weather.windSpeed, setSpeed). It's run on a few seconds
 // before it's shown, so the gusts have filled the valley; until then, and wherever a worker can't run, the renderer is
 // given the goal, steady (steadyWind). The live wind's speed, eased over a few seconds, is what the homestead's turbines
 // are fed (the world's getSimEnv).
 import {
-  type BrushRenderer, type Obstacle, startWind, steadyWind, type WeatherName, WIND_TICK, type WindGoal, type WindWorker,
+  type BrushRenderer, type Obstacle, startWind, steadyWind, WIND_TICK, type WindGoal, type WindWorker,
 } from '../../brush3d/src/index.ts';
 
-/** How hard the wind blows (m/s at ground level) in each weather. */
-const STRENGTH: Record<WeatherName, number> = {
-  clear: 3.5, scattered: 4.5, overcast: 5, 'soft-rain': 6, storm: 14, mist: 1.5, fog: 1.5, 'low-cloud': 3, dust: 9,
-  'heat-wave': 2, snow: 5, blizzard: 17,
-};
+/** How far (m/s) the weather's wind must move before the simulation is given a new goal: it eases there itself. */
+const GOAL_STEP = 0.25;
 /** Seconds the wind is run on before it's shown. */
 const WARM = 10;
 /** The wind's grid: a little past the valley's grid. */
@@ -27,8 +25,8 @@ export class Wind {
   /** The live wind's speed (m/s) over the valley at a hub's height, eased: what the turbines make power from. */
   speed: number;
 
-  constructor(weather: WeatherName, seed: number, obstacles: Obstacle[]) {
-    this.goal = { speed: STRENGTH[weather], direction: 0.6 + ((seed % 360) * Math.PI) / 180, gustiness: 0.5, rhythm: 0.5 };
+  constructor(speed: number, seed: number, obstacles: Obstacle[]) {
+    this.goal = { speed, direction: 0.6 + ((seed % 360) * Math.PI) / 180, gustiness: 0.5, rhythm: 0.5 };
     this.speed = this.goal.speed;
     this.start(obstacles, seed);
   }
@@ -44,9 +42,10 @@ export class Wind {
     }
   }
 
-  /** The wind follows the weather. */
-  setWeather(weather: WeatherName) {
-    this.goal = { ...this.goal, speed: STRENGTH[weather] };
+  /** The wind follows the weather's (m/s at ground level): a new goal only once it has moved GOAL_STEP. */
+  setSpeed(speed: number) {
+    if (!Number.isFinite(speed) || Math.abs(speed - this.goal.speed) < GOAL_STEP) return;
+    this.goal = { ...this.goal, speed };
     this.worker?.setGoal(this.goal);
   }
 

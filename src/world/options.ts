@@ -1,11 +1,13 @@
 // The world's URL options: how a PR preview (or the developer) opens the valley.
 //   seed=1042 (the valley), season=spring|summer|autumn|winter, hour=10.5 (or dawn, noon, golden, sunset, night),
-//   weather=clear|scattered|overcast|soft-rain|storm|mist|fog|... (brush3d's WEATHER_PRESETS), quality=high|medium|low,
+//   weather=clear|scattered|overcast|soft-rain|storm|mist|fog|... (brush3d's WEATHER_PRESETS, or a spell: gale, frost: locks the weather; left out,
+//   the valley lives in its own continuous weather), climate=mild|wet|dry|hot|gales|stormy|hard|highRiver (the season's
+//   character), wseed=12345 (the weather's seed: the same week of weather again), quality=high|medium|low,
 //   yaw=orbit|snap (the camera's turn, for a link that wants one; otherwise the player's own setting).
 // The camera's turn is a player setting (decided 2026-11-25, docs/ROADMAP.md): a free orbit by default, or snapped 90°
 // views for those who prefer them, remembered in the browser (CAMERA_YAW_KEY).
 import { QUALITY, type QualityName, WEATHER_PRESETS, type WeatherName } from '../../brush3d/src/index.ts';
-import { SEASONS, type Season } from '../game/index.ts';
+import { type ClimateCharacter, isClimate, isWeatherSpell, SEASONS, type Season, type WeatherSpell } from '../game/index.ts';
 
 /** How the camera turns: a free smooth orbit, or four cardinal views 90° apart. */
 export type YawMode = 'orbit' | 'snap';
@@ -21,12 +23,17 @@ export interface WorldOptions {
   season: Season;
   /** The clock hour, 0..24. */
   hour: number;
-  weather: WeatherName;
+  /** A locked weather (`?weather=`: a brush3d preset or one of the game's spells); left out, the living weather runs. */
+  weather?: WeatherName | WeatherSpell;
+  /** The season's character (`?climate=`); left out, the valley's own. */
+  climate?: ClimateCharacter;
+  /** The weather's seed (`?wseed=`); left out, a fresh one each play. */
+  weatherSeed?: number;
   /** The graphics preset (brush3d's QUALITY); left out, high. */
   quality?: QualityName;
 }
 
-export const DEFAULT_OPTIONS: Readonly<WorldOptions> = { yaw: 'orbit', seed: 1042, season: 'spring', hour: 10.5, weather: 'clear' };
+export const DEFAULT_OPTIONS: Readonly<WorldOptions> = { yaw: 'orbit', seed: 1042, season: 'spring', hour: 10.5 };
 
 /** The camera setting the player last chose in this browser, if any (none where storage is blocked). */
 export function storedYawMode(): YawMode | undefined {
@@ -61,14 +68,17 @@ export function readUrlOptions(search: string = typeof location === 'undefined' 
     if (named !== undefined) hour = named;
     else if (Number.isFinite(n)) hour = ((n % 24) + 24) % 24;
   }
-  const weatherText = p.get('weather'), qualityText = p.get('quality');
+  const weatherText = p.get('weather'), qualityText = p.get('quality'), climateText = p.get('climate'), wseedText = p.get('wseed');
   const out: WorldOptions = {
     yaw: pick(p.get('yaw'), YAW_MODES, stored ?? d.yaw),
     seed: Number.isFinite(seedNum) ? Math.trunc(seedNum) >>> 0 : d.seed,
     season: pick(p.get('season'), SEASONS, d.season),
     hour,
-    weather: weatherText !== null && Object.hasOwn(WEATHER_PRESETS, weatherText) ? (weatherText as WeatherName) : d.weather,
   };
+  if (weatherText !== null && (Object.hasOwn(WEATHER_PRESETS, weatherText) || isWeatherSpell(weatherText))) out.weather = weatherText as WeatherName | WeatherSpell;
+  if (climateText !== null && isClimate(climateText)) out.climate = climateText;
+  const wseed = wseedText === null || wseedText.trim() === '' ? NaN : Number(wseedText);
+  if (Number.isInteger(wseed)) out.weatherSeed = wseed >>> 0;
   if (qualityText !== null && Object.hasOwn(QUALITY, qualityText)) out.quality = qualityText as QualityName;
   return out;
 }
@@ -82,5 +92,14 @@ export function writeUrlParam(key: string, value: string, onlyIfSet = false): vo
   const url = new URL(location.href);
   if (url.searchParams.get(key) === value || (onlyIfSet && !url.searchParams.has(key))) return;
   url.searchParams.set(key, value);
+  history.replaceState(history.state, '', url);
+}
+
+/** Takes a URL option away in place (no reload, no new history entry): a lock lifted. */
+export function clearUrlParam(key: string): void {
+  if (typeof location === 'undefined' || typeof history === 'undefined') return;
+  const url = new URL(location.href);
+  if (!url.searchParams.has(key)) return;
+  url.searchParams.delete(key);
   history.replaceState(history.state, '', url);
 }

@@ -81,6 +81,39 @@ console errors at ~60 fps.
 ### Milestone 4 — Continuous Unpredictable Weather & All Four Seasons
 *Goal: bring `brush3d`'s full living weather into gameplay as a continuous, unpredictable partner.*
 
+**Implemented, ready for review (#301).** Every run rolls fresh weather (`?wseed=` replays one; `?climate=` picks the
+season's character, otherwise the valley's own), lived continuously through all four seasons: the sky, wind, rain, snow,
+lightning, floods, ice and rime are drawn from the game's weather; the postcard names the season's character ("A hard
+winter"); the sky strip reads out the weather and the air's temperature, and once a Weather Station stands, three days
+ahead as small sky icons (day and temperatures on hover). `?weather=` locks the weather until the readout is clicked. The
+Heated Greenhouse's card toggles its crop (Beans or Wheat) and shows its draw and whether it's warming nearby bees; a
+clicked field says when it's frosted or flooded; jumping the clock reads the weather again at once, even paused. Checked
+in GPU Chromium on all four seasons at ~60 fps with no console errors.
+
+**Rules (wave 1: `src/game/`).** The Winter Valley restores
+seed 1042 with a Heated Greenhouse, a Beehive, a Weather Station and two Water Wheels for all 20 Supplies; the Spring
+Valley still restores in its own living weather (and with a stormy character's wind and clouds).
+
+- Each valley has a weather seed of its own (from the valley seed unless one is rolled) and a character per season
+  (`weather.ts`): an endless, deterministic run of 6–16 h spells easing into each other over 1.5 h, with a forecast that
+  is exactly the weather to come. A fixed weather passed to `stepSim` still holds (old `'rain'` reads as soft rain).
+- Frost hollows run up to 3.5°C colder on still clear nights, rises 0.5°C warmer. Frost sets beans back (never below a
+  replant); wheat is hardy to -2°C; snow buries both; 30°C dries fields not under solar canopies.
+- Floods: a soaked catchment raises the brook and pond up to 0.38 m; the water spills over the low ground beside them,
+  thinning 3 cm per metre
+  and never more than some 13 m from the bank (a higher water only ever raises it). Dry or hot summers drain fast (rarely a flood); wet and stormy characters flood more. Deep
+  flood water (over 12 cm) cuts unbridged cart routes and shallow water is mud; flooded fields wait. A rill off the brook
+  that flows at least 8 m and falls 25 cm is an overflow swale (one dug back into the same water is not): it takes up to
+  18 cm off the flood round it.
+- The Weather Station (1 Supply) unlocks the 3-day forecast. The Heated Greenhouse (3 Supplies) grows 2 Wheat or Beans
+  every 3.2 h whatever the weather, drawing 2 W below 10°C and 0.5 W above, and lets bees within 14 m forage inside it in
+  the cold. Outdoors, bees stay in below 10°C.
+- Each season has its own Pantry Order (winter: 8 Bread, 6 Flour, 6 Beans, 2 Honey). Steady Homestead counts only while
+  something grows: it pauses (without resetting) after 6 h of every growing field parched, while every field stands
+  frosted or flooded, or while a full Greenhouse is all there is, unless a warm Greenhouse grows on; it goes on once they
+  grow again. Gales slow unsheltered carts,
+  frost drains their batteries faster, and soaked ground bogs them down off the tracks.
+
 - **Fresh unpredictable weather per run:** Continuous day-by-day weather simulation for all four seasons (Spring, Summer, Autumn, Winter) and climate characters—shifting clouds, showers, calm spells, morning fog, summer heatwaves/droughts, spring late-frost hollows, autumn gales, spring/storm floods, and winter cold snaps/blizzards.
 - **Weather Station:** 1-Supply building that reveals 2–3 tiny upcoming sky icons beside the top-right dial.
 - **Flood swales & winter glass:** Overflow swales guiding rising water around low meadows; **Heated Greenhouse** protecting tender crops and hosting foraging bees in winter.

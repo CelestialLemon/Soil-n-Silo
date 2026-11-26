@@ -5,9 +5,15 @@
 // wireless power range (they're hidden otherwise, unless a power building or relay is in hand or picked). The clock reads
 // the game day too ("Day 2 · 10:30").
 //
+// The weather: with living weather (`liveWeather`), a quiet readout of the sky now and the air's temperature ("Showers ·
+// 11°C"), with the wind and any frost or flood note in its tooltip; it's a button only while `?weather=` holds the sky,
+// and a click lets living weather back in. Without it, the old chip that steps through four skies. Once a Weather Station
+// stands, its days ahead sit beside it as tiny sky icons, each named in its tooltip ("Day 4 · Thunderstorm (6°–13°C)"):
+// no table, nothing to open (docs/DESIGN.md, "Minimal HUD and In-World Readability").
+//
 // Under the strip, a quiet power pill: the valley's watts made and used and the batteries' charge, shown only while the
 // power view is on or the homestead is in a blackout (then in amber, pointing at the power view). Calm play never sees it.
-import { isNight, type PowerSummary, type Season, seasonHours } from '../game/index.ts';
+import { type DayForecast, type ForecastIcon, isNight, type PowerSummary, type Season, seasonHours, type WeatherSpell } from '../game/index.ts';
 import { button, el, setFlag, setHidden, setPressed, setText, setTitle } from './dom.ts';
 import { icon, type IconName, setIcon } from './icons.ts';
 import { SPEEDS, type Speed, type UiCallbacks, type UiSnapshot, type Weather, WEATHERS, type YawMode } from './types.ts';
@@ -45,6 +51,25 @@ const WEATHER: Record<Weather, { label: string; icon: IconName }> = {
   rain: { label: 'Showers', icon: 'rain' },
 };
 
+/** The sky icon for each of the game's forecast icons. */
+const SKY_ICONS: Record<ForecastIcon, IconName> = {
+  sun: 'sun', partly: 'partly', cloud: 'overcast', fog: 'fog', rain: 'rain', storm: 'storm', heat: 'heat', gale: 'gale', frost: 'frost', snow: 'snow',
+};
+
+/** A spell's icon: its forecast icon, but a blizzard gets its own drifting snow. */
+const skyIcon = (spell: WeatherSpell, f: ForecastIcon): IconName => (spell === 'blizzard' ? 'blizzard' : SKY_ICONS[f]);
+
+/** The spells worth a gentle tint: cold ones blue, heat amber, storm and gale clay. */
+type Hazard = 'cold' | 'heat' | 'wild';
+const HAZARDS: Partial<Record<WeatherSpell, Hazard>> = { frost: 'cold', blizzard: 'cold', 'heat-wave': 'heat', storm: 'wild', gale: 'wild' };
+
+const LOCKED = 'Locked weather — click to return to living weather';
+
+const degrees = (c: number) => `${Math.round(c) === 0 ? 0 : Math.round(c)}°`;
+
+/** A day ahead's tooltip: "Day 4 · Thunderstorm (6°–13°C)". */
+const dayTitle = (f: DayForecast) => `Day ${f.day} · ${f.label} (${degrees(f.minTempC)}–${degrees(f.maxTempC)}C)`;
+
 export function clock(hour: number): string {
   const mins = Math.floor((((hour % 24) + 24) % 24) * 60);
   return `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}`;
@@ -73,6 +98,11 @@ function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string,
   const node = document.createElementNS(SVG, tag);
   for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
   return node;
+}
+
+/** Tints an element for a hazardous sky (cold, heat, wild) or clears it. */
+function paintHazard(node: HTMLElement, hazard: Hazard | null): void {
+  for (const h of ['cold', 'heat', 'wild'] as const) setFlag(node, `is-${h}`, h === hazard);
 }
 
 const watts = (w: number) => `${w.toFixed(1)} W`;
@@ -150,15 +180,26 @@ export function createSkyStrip(cb: UiCallbacks): SkyStrip {
     speeds.append(b);
   }
 
-  // Weather: one chip that steps to the next sky.
+  // Weather: the living sky's readout (a button only while `?weather=` locks it), or the old chip that steps to the next sky.
   const weather = button('ui-chip ui-weather', 'Weather', () => {
     if (!last) return;
+    if (last.liveWeather) {
+      if (last.liveWeather.locked) cb.onClearWeatherLock?.();
+      return;
+    }
     const i = WEATHERS.indexOf(last.weather);
     cb.onSetWeather(WEATHERS[(i + 1) % WEATHERS.length] ?? 'clear');
   });
   const weatherIcon = icon('sun');
   const weatherText = el('span', '', 'Clear');
   weather.append(weatherIcon, weatherText);
+
+  // The Weather Station's days ahead: tiny sky icons beside the weather.
+  const forecast = el('div', 'ui-forecast');
+  forecast.setAttribute('role', 'list');
+  forecast.setAttribute('aria-label', 'The Weather Station\'s days ahead');
+  forecast.hidden = true;
+  let shownForecast = '';
 
   // Turning the camera.
   const turns = el('div', 'ui-turns');
@@ -175,7 +216,7 @@ export function createSkyStrip(cb: UiCallbacks): SkyStrip {
   powerView.append(icon('power'));
   turns.append(turnLeft, turnRight, cameraMode, powerView);
 
-  strip.append(dial, time, moments, el('span', 'ui-rule'), speeds, weather, el('span', 'ui-rule'), turns);
+  strip.append(dial, time, moments, el('span', 'ui-rule'), speeds, weather, forecast, el('span', 'ui-rule'), turns);
 
   // The power pill.
   const balance = el('div', 'ui-balance ui-float');
@@ -210,10 +251,7 @@ export function createSkyStrip(cb: UiCallbacks): SkyStrip {
       setFlag(dial, 'is-night', isNight(s.hour, season));
     }
     for (const [sp, b] of speedBtns) setPressed(b, sp === s.speed);
-    const w = WEATHER[s.weather];
-    setIcon(weatherIcon, w.icon);
-    setText(weatherText, w.label);
-    setTitle(weather, `Weather: ${w.label} (click for the next)`);
+    paintWeather(s);
     const cam = CAMERA[s.yawMode];
     setIcon(cameraIcon, cam.icon);
     setTitle(cameraMode, `Camera: ${cam.label} (click for ${CAMERA[cam.other].label.toLowerCase()})`);
@@ -228,6 +266,47 @@ export function createSkyStrip(cb: UiCallbacks): SkyStrip {
     setText(balanceWhy, why);
     setHidden(balanceWhy, why === '');
     setTitle(balance, blackout ? p.lastBlackoutReason || 'Blackout: more load than the power can carry' : 'The valley\'s power: made, used, and stored in batteries');
+  }
+
+  function paintWeather(s: UiSnapshot): void {
+    const live = s.liveWeather;
+    if (!live) {
+      const w = WEATHER[s.weather];
+      setIcon(weatherIcon, w.icon);
+      setText(weatherText, w.label);
+      setTitle(weather, `Weather: ${w.label} (click for the next)`);
+      setFlag(weather, 'is-live', false);
+      setFlag(weather, 'is-locked', false);
+      weather.removeAttribute('aria-disabled');
+      paintHazard(weather, null);
+    } else {
+      setIcon(weatherIcon, skyIcon(live.spell, live.icon));
+      setText(weatherText, `${live.label} · ${degrees(live.tempC)}C`);
+      const locked = live.locked === true;
+      const detail = live.detail ?? `${live.label}, ${degrees(live.tempC)}C`;
+      setTitle(weather, locked ? `${LOCKED}\n${detail}` : detail);
+      setFlag(weather, 'is-live', !locked);
+      setFlag(weather, 'is-locked', locked);
+      if (locked) weather.removeAttribute('aria-disabled');
+      else weather.setAttribute('aria-disabled', 'true');
+      paintHazard(weather, HAZARDS[live.spell] ?? null);
+    }
+
+    const days = s.forecast ?? [];
+    const key = days.map((f) => `${f.day}|${f.spell}|${f.icon}|${Math.round(f.minTempC)}|${Math.round(f.maxTempC)}`).join(',');
+    if (key === shownForecast) return;
+    shownForecast = key;
+    setHidden(forecast, days.length === 0);
+    forecast.replaceChildren(...days.map((f) => {
+      const item = el('span', 'ui-forecast-day');
+      item.setAttribute('role', 'listitem');
+      const title = dayTitle(f);
+      item.title = title;
+      item.setAttribute('aria-label', title);
+      item.append(icon(skyIcon(f.spell, f.icon), 'ui-icon ui-forecast-icon'));
+      paintHazard(item, HAZARDS[f.spell] ?? null);
+      return item;
+    }));
   }
 
   return { element: strip, balance, render };
