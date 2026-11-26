@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   apply, CATALOG, canPlace, compostField, COVER, deserializeSave, type GameState, generateProceduralValley, generateValley, liveEnv,
-  MAX_CHANNELS, MAX_PATH_POINTS, MAX_SAVE_BYTES, MAX_SAVED_ID, MAX_TOTAL_PATH_LENGTH, MAX_TOTAL_PATH_POINTS, must, naturalFertility, OLD_SAVE, padTarget, type Point2, previewChannelFlow, runtimeOf, serializeSave, spend,
+  MAX_CHANNEL_JUNCTIONS, MAX_CHANNELS, MAX_PATH_POINTS, MAX_SAVE_BYTES, MAX_SAVED_ID, MAX_TOTAL_PATH_LENGTH, MAX_TOTAL_PATH_POINTS, must, naturalFertility, OLD_SAVE, padTarget, type Point2, previewChannelFlow, runtimeOf, serializeSave, spend,
   startCampaignValley, STATE_VERSION, stepSim, type ThingKind,
 } from '../src/game/index.ts';
 import { brookSpot, build, done, joinMain, same } from './helpers.ts';
@@ -560,15 +560,25 @@ test("a cart's route agrees with what it's doing: home, an empty pickup, and a f
     const d = structuredClone(good);
     Object.assign(d.sim.carts[0], patch);
     const r = deserializeSave(JSON.stringify(d));
-    assert.ok(!r.ok && /cart \d+'s (path|job)/.test(r.error), r.ok ? `loaded ${JSON.stringify(patch)}` : r.error);
+    assert.ok(!r.ok && /cart \d+'s (path|job|cargo)/.test(r.error), r.ok ? `loaded ${JSON.stringify(patch)}` : r.error);
   };
   const job = { from: { kind: 'field', id: 1 }, to: { kind: 'thing', id: yard.silo }, good: 'wheat', count: 1, priority: 1 };
+  const aboardJob = { from: { kind: 'thing', id: -1 }, to: { kind: 'thing', id: yard.silo }, good: 'wheat', count: 2, priority: 1 };
+  const route = [{ x: 0, z: -40 }, { x: 1, z: -40 }];
   forged({ state: 'toPickup', path: [], pathIdx: 0, job: null });
   forged({ state: 'toPickup', path: [], pathIdx: 0, job });
-  forged({ state: 'toDropoff', path: [{ x: 0, z: -40 }, { x: 1, z: -40 }], pathIdx: 1, job: null });
-  forged({ state: 'idle', path: [{ x: 0, z: -40 }, { x: 1, z: -40 }], pathIdx: 1, job: null });
+  forged({ state: 'toPickup', path: route, pathIdx: 1, job: aboardJob, cargo: null });
+  forged({ state: 'toDropoff', path: route, pathIdx: 1, job: null, cargo: null });
+  forged({ state: 'toDropoff', path: route, pathIdx: 1, job, cargo: null });
+  forged({ state: 'toDropoff', path: route, pathIdx: 1, job, cargo: { good: 'beans', count: 1 } });
+  forged({ state: 'toDropoff', path: route, pathIdx: 1, job: aboardJob, cargo: { good: 'wheat', count: 1 } });
+  forged({ state: 'idle', path: route, pathIdx: 1, job: null });
   forged({ state: 'charging', path: [], pathIdx: 0, job });
-  forged({ state: 'returning', path: [{ x: 0, z: -40 }, { x: 1, z: -40 }], pathIdx: 1, job });
+  forged({ state: 'returning', path: route, pathIdx: 1, job });
+  // A toDropoff job routing cargo already aboard (-1) with matching cargo IS legal.
+  const okAboard = structuredClone(good);
+  Object.assign(okAboard.sim.carts[0], { state: 'toDropoff', path: route, pathIdx: 1, job: aboardJob, cargo: { good: 'wheat', count: 2 } });
+  assert.ok(deserializeSave(JSON.stringify(okAboard)).ok, 'toDropoff with matching aboard cargo loads');
 });
 
 test('ids stay exact whole numbers, and each building stands in one power network named for one of its own', () => {
@@ -594,4 +604,56 @@ test('ids stay exact whole numbers, and each building stands in one power networ
     const free = d.nextId++;
     d.sim.networks.push({ ...structuredClone(d.sim.networks[0]), id: free, emitters: [free], loads: [] });
   })).ok, "a removed emitter's network still loads");
+
+  // Loading at MAX_SAVED_ID must refuse further allocations rather than mutating into an unloadable save.
+  const atCapRes = deserializeSave(tampered((d) => { d.nextId = MAX_SAVED_ID; d.sim.nextCartId = MAX_SAVED_ID; }));
+  assert.ok(atCapRes.ok, 'cap save loads');
+  const atCap = atCapRes.value;
+  const h = atCap.valley.homestead;
+  let spot: Point2 | undefined;
+  for (let r = 0; r <= 18 && !spot; r++) for (let k = 0; k < 16 && !spot; k++) {
+    const x = h.x + r * Math.cos((k * Math.PI) / 8), z = h.z + r * Math.sin((k * Math.PI) / 8);
+    if (canPlace(atCap, 'sprinkler', x, z, 0).ok) spot = { x, z };
+  }
+  const p = must(spot, 'a legal sprinkler spot');
+  const placeRes = apply(atCap, { type: 'place', kind: 'sprinkler', x: p.x, z: p.z, yaw: 0 });
+  assert.ok(!placeRes.ok && /limit of new things/.test(placeRes.error), placeRes.ok ? 'placed at cap' : placeRes.error);
+  const cartRes = apply(atCap, { type: 'buyCart' });
+  assert.ok(!cartRes.ok && /limit of new carts/.test(cartRes.error), cartRes.ok ? 'bought cart at cap' : cartRes.error);
+  const hedgeRes = apply(atCap, { type: 'addHedge', points: [{ x: p.x, z: p.z }, { x: p.x + 3, z: p.z }] });
+  assert.ok(!hedgeRes.ok && /limit of new things/.test(hedgeRes.error), hedgeRes.ok ? 'hedge at cap' : hedgeRes.error);
+  const trackRes = apply(atCap, { type: 'addTrack', points: [{ x: p.x, z: p.z }, { x: p.x + 3, z: p.z }] });
+  assert.ok(!trackRes.ok && /limit of new things/.test(trackRes.error), trackRes.ok ? 'track at cap' : trackRes.error);
+  const rillRes = apply(atCap, { type: 'digChannel', points: [{ x: p.x, z: p.z }, { x: p.x + 3, z: p.z }] });
+  assert.ok(!rillRes.ok && /limit of new things/.test(rillRes.error), rillRes.ok ? 'rill at cap' : rillRes.error);
+  assert.equal(atCap.nextId, MAX_SAVED_ID);
+  assert.equal(atCap.sim.nextCartId, MAX_SAVED_ID);
+  assert.ok(deserializeSave(serializeSave(atCap)).ok, 'valley stays loadable after refused edits at id cap');
+});
+
+test('a dense nest of crossing rills is refused before the water solver runs, both on load and while digging', () => {
+  const s = generateValley(1042, 'spring', { sandbox: true, weatherSeed: 55 });
+  const h = s.valley.homestead;
+  // Build two small crossing zig-zags inside the homestead clearing: under MAX_CHANNEL (240 m), thousands of crossings together.
+  const horiz = (dz: number): Point2[] => Array.from({ length: 20 }, (_, k) => ({ x: h.x + (k % 2 ? 5 : -5), z: h.z - 5 + k * 0.5 + dz }));
+  const vert = (dx: number): Point2[] => Array.from({ length: 20 }, (_, k) => ({ x: h.x - 5 + k * 0.5 + dx, z: h.z + (k % 2 ? 5 : -5) }));
+  const good = JSON.parse(serializeSave(s)) as { nextId: number; channels: { id: number; points: Point2[] }[] };
+  for (let i = 0; i < 4; i++) good.channels.push({ id: good.nextId++, points: horiz(i * 0.05) });
+  for (let i = 0; i < 4; i++) good.channels.push({ id: good.nextId++, points: vert(i * 0.05) });
+  assert.ok(MAX_CHANNEL_JUNCTIONS >= 1000, 'junction budget is non-trivial');
+  const r = deserializeSave(JSON.stringify(good));
+  assert.ok(!r.ok && /too many rill crossings/.test(r.error), r.ok ? 'loaded crossing nest' : r.error);
+
+  // Digging enforces the same crossing budget before mutating the valley.
+  const digState = generateValley(1042, 'spring', { sandbox: true, weatherSeed: 55 });
+  for (let i = 0; i < 4; i++) {
+    const pts = horiz(i * 0.05);
+    digState.channels.push({ id: digState.nextId++, points: pts, path: pts, flow: [] });
+  }
+  for (let i = 0; i < 3; i++) {
+    const pts = vert(i * 0.05);
+    digState.channels.push({ id: digState.nextId++, points: pts, path: pts, flow: [] });
+  }
+  const digRes = apply(digState, { type: 'digChannel', points: vert(0.15) });
+  assert.ok(!digRes.ok && /Too many rills cross/.test(digRes.error), digRes.ok ? 'allowed crossing nest' : digRes.error);
 });

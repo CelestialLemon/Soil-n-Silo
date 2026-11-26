@@ -6,7 +6,7 @@ import type { Change } from './change.ts';
 import { CHANNEL_REACH, coreObb, padTarget, RILL_HALF, thingObb, thingRect, TRACK_HALF } from './earth.ts';
 import { obbCorners, obbDistance, obbSamples, obbsOverlap, pathBounds, polylineDistance, toWorld, wrapAngle } from './geom.ts';
 import { BUILD_HALF, cellIx, cellIz, COVER, isWet, sampleHeight, unionRect } from './grid.ts';
-import { MAX_SAVED_ITEMS } from './limits.ts';
+import { cartIdFits, idFits, MAX_SAVED_ITEMS } from './limits.ts';
 import { err, ok, type Result } from './result.ts';
 import { settle } from './settle.ts';
 import { type GameState, type Thing, takeId } from './state.ts';
@@ -125,6 +125,12 @@ export function placeThing(s: GameState, kind: ThingKind, x: number, z: number, 
   const can = canPlace(s, kind, x, z, yaw);
   if (!can.ok) return can;
   if (s.things.length >= MAX_SAVED_ITEMS) return err('The valley holds no more buildings.');
+  const idOk = idFits(s);
+  if (!idOk.ok) return idOk;
+  if (kind === 'garage' && s.sim.carts.length === 0) {
+    const cartOk = cartIdFits(s);
+    if (!cartOk.ok) return cartOk;
+  }
   const id = takeId(s), t: Thing = { id, kind, x, z, yaw: wrapAngle(yaw), padTargetY: 0 };
   t.padTargetY = padTarget(s.grid, t);
   s.things.push(t);

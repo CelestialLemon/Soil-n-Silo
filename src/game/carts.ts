@@ -22,6 +22,7 @@ import { obbDistance, type Point2, toWorld } from './geom.ts';
 import { windShelter } from './microclimate.ts';
 import { addGood, countOf, GOOD_LABELS, type Good, takeGood, totalStored } from './goods.ts';
 import { CART_SPEED, dockOf, findPath, groundAt, navCellOf, navCenter, NAV_CELL, navComponent, navFor, passable, reachOf } from './nav.ts';
+import { cartIdFits } from './limits.ts';
 import { err, ok, type Result } from './result.ts';
 import { CROPS, type Crop, type Field, type GameState, type Thing } from './state.ts';
 import { CART_COST, canAfford, MAX_CARTS, receiveDrop, refund, spend } from './supplies.ts';
@@ -203,6 +204,8 @@ export function addStarterCart(s: GameState): Cart | undefined {
 export function buyCart(s: GameState): Result<Change, string> {
   if (!garageOf(s)) return err('Carts live at the Garage: build one first.');
   if (s.sim.carts.length >= MAX_CARTS) return err(`The Garage holds at most ${MAX_CARTS} carts.`);
+  const idOk = cartIdFits(s);
+  if (!idOk.ok) return idOk;
   const can = canAfford(s.sim.supplies, CART_COST, 'Another Electric Cart');
   if (!can.ok) return can;
   spend(s.sim.supplies, CART_COST);

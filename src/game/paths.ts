@@ -5,7 +5,7 @@ import { CATALOG } from './catalog.ts';
 import type { Change } from './change.ts';
 import { RILL_HALF, thingObb, TRACK_HALF, trackRect } from './earth.ts';
 import { catmullRom, obbDistance, pathLength, type Point2, polylineDistance } from './geom.ts';
-import { MAX_SAVED_ITEMS, strokeFits } from './limits.ts';
+import { idFits, MAX_SAVED_ITEMS, strokeFits } from './limits.ts';
 import { BUILD_HALF, cellIx, cellIz, COVER, heightAt, isWet, slopeAt } from './grid.ts';
 import { err, ok, type Result } from './result.ts';
 import { settle } from './settle.ts';
@@ -68,6 +68,8 @@ export function canTrack(s: GameState, path: readonly Point2[]): Result<void, st
 }
 
 export function addTrack(s: GameState, points: readonly Point2[]): Result<Change, string> {
+  const idOk = idFits(s);
+  if (!idOk.ok) return idOk;
   const fits = strokeFits(s, 'track', points);
   if (!fits.ok) return fits;
   const path = trackPath(points);
@@ -86,6 +88,8 @@ export function removeTrack(s: GameState, id: number): Result<Change, string> {
 }
 
 export function addHedge(s: GameState, points: readonly Point2[]): Result<Change, string> {
+  const idOk = idFits(s);
+  if (!idOk.ok) return idOk;
   const fits = strokeFits(s, 'hedge', points);
   if (!fits.ok) return fits;
   const path = catmullRom(points, PATH_SPACING), g = s.grid;
@@ -134,6 +138,8 @@ export function plantTree(s: GameState, x: number, z: number, species: TreeSpeci
   const can = canPlant(s, x, z);
   if (!can.ok) return can;
   if (s.plantedTrees.length >= MAX_SAVED_ITEMS) return err('The valley holds no more planted trees.');
+  const idOk = idFits(s);
+  if (!idOk.ok) return idOk;
   const id = takeId(s);
   const tree: Tree = { id, x, z, species, scale: SAPLING_SCALE, seed: (s.seed ^ Math.imul(id, 0x9e3779b1)) >>> 0, planted: true };
   s.plantedTrees.push(tree);

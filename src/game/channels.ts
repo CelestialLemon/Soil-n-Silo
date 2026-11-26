@@ -4,10 +4,10 @@ import { CATALOG } from './catalog.ts';
 import type { Change } from './change.ts';
 import { BEARING, checkCrossings } from './bridges.ts';
 import { CHANNEL_REACH, channelRect, coreObb, RILL_HALF, settles, thingObb } from './earth.ts';
-import { channelPath, heightsWithRill } from './flow.ts';
+import { channelPath, countJunctions, heightsWithRill } from './flow.ts';
 import { obbDistance, pathBounds, pathLength, type Point2 } from './geom.ts';
 import { cellIx, cellIz, COVER, VALLEY_HALF } from './grid.ts';
-import { strokeFits } from './limits.ts';
+import { idFits, MAX_CHANNEL_JUNCTIONS, strokeFits } from './limits.ts';
 import { err, ok, type Result } from './result.ts';
 import { settle } from './settle.ts';
 import { type Channel, type GameState, takeId } from './state.ts';
@@ -63,11 +63,16 @@ const lower = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
 
 /** Digs a rill along a stroke. */
 export function digChannel(s: GameState, points: readonly Point2[]): Result<Change, string> {
+  const idOk = idFits(s);
+  if (!idOk.ok) return idOk;
   const fits = strokeFits(s, 'rill', points);
   if (!fits.ok) return fits;
   const path = channelPath(points);
   const can = canDig(s, path);
   if (!can.ok) return can;
+  if (countJunctions([...s.channels.map((c) => c.path), path], MAX_CHANNEL_JUNCTIONS) > MAX_CHANNEL_JUNCTIONS) {
+    return err('Too many rills cross each other here: fill some in first.');
+  }
   const id = takeId(s);
   const c: Channel = { id, points: points.map((p) => ({ x: p.x, z: p.z })), path, flow: [] };
   s.channels.push(c);

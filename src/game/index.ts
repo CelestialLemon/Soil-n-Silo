@@ -117,7 +117,8 @@ export {
   balancedCap, buildingsForOrder, DIFFICULTIES, DIFFICULTY_ALLOWANCE, type Difficulty, generateProceduralValley, isDifficulty,
   MIN_PROCEDURAL_CAP, minimumSuppliesForOrder, proceduralTitle, type ProceduralOptions, rollPantryOrder, STARTER_SHARE,
 } from './procedural.ts';
-export { deserializeSave, MAX_SAVE_BYTES, MAX_SAVE_DAY, MAX_SAVED_ID, OLD_SAVE, serializeSave } from './save.ts';
+export { deserializeSave, MAX_SAVE_BYTES, MAX_SAVE_DAY, OLD_SAVE, serializeSave } from './save.ts';
 export {
-  MAX_CHANNELS, MAX_PATH_LENGTH, MAX_PATH_POINTS, MAX_SAVED_ITEMS, MAX_TOTAL_PATH_LENGTH, MAX_TOTAL_PATH_POINTS,
+  MAX_CHANNEL_JUNCTIONS, MAX_CHANNELS, MAX_PATH_LENGTH, MAX_PATH_POINTS, MAX_SAVED_ID, MAX_SAVED_ITEMS, MAX_TOTAL_PATH_LENGTH,
+  MAX_TOTAL_PATH_POINTS,
 } from './limits.ts';

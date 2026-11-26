@@ -7,12 +7,29 @@ import { err, ok, type Result } from './result.ts';
 export const MAX_SAVED_ITEMS = 4000;
 /** The most rills: the water's solve weighs every pair of them. */
 export const MAX_CHANNELS = 200;
+/** The most junctions across all rills (ends touching another rill, plus crossings): bounds the water solver's links. */
+export const MAX_CHANNEL_JUNCTIONS = 4000;
 /** The most control points one rill, track or hedge holds, and the longest its stroke runs (through its points), m. */
 export const MAX_PATH_POINTS = 2000;
 export const MAX_PATH_LENGTH = 2000;
 /** The most control points, and the longest strokes, all the rills, tracks and hedges hold together (points, m). */
 export const MAX_TOTAL_PATH_POINTS = 12_000;
 export const MAX_TOTAL_PATH_LENGTH = 12_000;
+/**
+ * The highest next id (of a building, rill, track, hedge, tree or cart) a valley may hold: far below where whole numbers
+ * stop being exact, so every id allocated stays exact and every edited valley stays loadable.
+ */
+export const MAX_SAVED_ID = 1_000_000_000;
+
+/** Whether the valley still has headroom to allocate another entity id without crossing MAX_SAVED_ID. */
+export const idFits = (s: { nextId: number }): Result<void, string> => (
+  s.nextId < MAX_SAVED_ID ? ok(undefined) : err('This valley has reached its limit of new things.')
+);
+
+/** Whether the homestead still has headroom to allocate another cart id without crossing MAX_SAVED_ID. */
+export const cartIdFits = (s: { sim: { nextCartId: number } }): Result<void, string> => (
+  s.sim.nextCartId < MAX_SAVED_ID ? ok(undefined) : err('This valley has reached its limit of new carts.')
+);
 
 export type StrokeKind = 'rill' | 'track' | 'hedge';
 interface Strokes { channels: readonly { points: readonly Point2[] }[]; tracks: readonly { points: readonly Point2[] }[]; hedges: readonly { points: readonly Point2[] }[] }

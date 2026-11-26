@@ -15,7 +15,7 @@ import type { Cart, CartState, Endpoint } from './carts.ts';
 import { naturalFertility } from './crops.ts';
 import { coreObb, padTarget, recomposeEarth, thingObb } from './earth.ts';
 import { TREE_CLEAR } from './fields.ts';
-import { channelPath, refreshWater } from './flow.ts';
+import { channelPath, countJunctions, refreshWater } from './flow.ts';
 import { catmullRom, type Obb, obbCorners, obbDistance, obbSamples, obbsOverlap, type Point2 } from './geom.ts';
 import { type Inventory, isGood } from './goods.ts';
 import { BUILD_HALF, CELL_M, cellIx, cellIz, cellX, cellZ, COVER, fullRect, type Grid, GRID_N, GRID_X0, GRID_Z0, isWet } from './grid.ts';
@@ -31,7 +31,7 @@ import {
 import { CART_COST, type DropId, MAX_CARTS, type SuppliesState } from './supplies.ts';
 import { generateValley } from './valley/generate.ts';
 import { type ClimateCharacter, FLOOD_MAX, isClimate, isWeatherSpell, type WeatherSpell, type WeatherState } from './weather.ts';
-import { MAX_CHANNELS, MAX_PATH_LENGTH, MAX_PATH_POINTS, MAX_SAVED_ITEMS, strokesFault } from './limits.ts';
+import { MAX_CHANNEL_JUNCTIONS, MAX_CHANNELS, MAX_PATH_LENGTH, MAX_PATH_POINTS, MAX_SAVED_ID, MAX_SAVED_ITEMS, strokesFault } from './limits.ts';
 import { refreshWet } from './wet.ts';
 import type { BriefState } from './brief.ts';
 import { BYPRODUCTS, type ByproductTarget, type ThingRuntime } from './workshops.ts';
@@ -40,9 +40,6 @@ import { BYPRODUCTS, type ByproductTarget, type ThingRuntime } from './workshops
 export const MAX_SAVE_BYTES = 4 * 1024 * 1024;
 /** The most waypoints a cart's path holds (its way across the valley, on the carts' nav grid). */
 const MAX_CART_PATH = 20000;
-/** The highest next id (of a building, rill, track, hedge, tree or cart) a save may hold: far below where whole numbers stop
- * being exact, so the ids taken after it stay exact. */
-export const MAX_SAVED_ID = 1_000_000_000;
 /** The latest day a save may stand on (a century of seasons: the weather's timeline is read out to it). */
 export const MAX_SAVE_DAY = 36500;
 /** The largest a planted tree's scale may be. */
@@ -414,9 +411,12 @@ function checkSense(f: SaveFile, cells: number): string | undefined {
     if (c.cargo && c.cargo.count < 1) return `cart ${c.id}'s cargo`;
     if (c.job) {
       if (c.job.count < 1) return `cart ${c.id}'s job`;
-      // A cart routing cargo it already holds has no pickup: its job comes from building -1.
-      const end = (e: Endpoint, from: boolean) => (e.kind === 'field' ? e.id > 0 && e.id <= 0xffff : e.id > 0 ? e.id < f.nextId : from && e.id === -1);
-      if (!end(c.job.from, true) || !end(c.job.to, false)) return `cart ${c.id}'s job`;
+      // A cart routing cargo it already holds has no pickup: its job comes from building -1 (only while heading to drop off).
+      const end = (e: Endpoint, allowAboard: boolean) => (
+        e.kind === 'field' ? e.id > 0 && e.id <= 0xffff : e.id > 0 ? e.id < f.nextId : allowAboard && e.id === -1
+      );
+      if (!end(c.job.from, c.state === 'toDropoff') || !end(c.job.to, false)) return `cart ${c.id}'s job`;
+      if (c.state === 'toDropoff' && (!c.cargo || c.cargo.good !== c.job.good || c.cargo.count < c.job.count)) return `cart ${c.id}'s cargo`;
     }
   }
 
@@ -601,6 +601,9 @@ function rebuild(f: SaveFile): Result<GameState, string> {
   // the height its natural ground gives it, as when it was placed.
   s.things = f.things.map((t) => ({ id: t.id, kind: t.kind, x: t.x, z: t.z, yaw: t.yaw, padTargetY: padTarget(g, t) }));
   s.channels = f.channels.map((c) => ({ id: c.id, points: c.points, path: channelPath(c.points), flow: [] }));
+  if (countJunctions(s.channels.map((c) => c.path), MAX_CHANNEL_JUNCTIONS) > MAX_CHANNEL_JUNCTIONS) {
+    return err(damaged('too many rill crossings'));
+  }
   s.tracks = f.tracks.map((t) => ({ id: t.id, points: t.points, path: trackPath(t.points) }));
   s.hedges = f.hedges.map((h) => ({ id: h.id, points: h.points, path: catmullRom(h.points, PATH_SPACING) }));
   s.plantedTrees = f.plantedTrees.map((t) => ({ ...t, planted: true }));
