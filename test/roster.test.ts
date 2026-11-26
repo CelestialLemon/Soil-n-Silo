@@ -517,6 +517,23 @@ test('a burning Digester rolls over to the next waste unit mid-step with zero bl
   assert.ok(dig.r.progress > 0 && dig.r.progress < 0.02, `exact carryover progress (${dig.r.progress})`);
 });
 
+test('lighting a Digester for a later load never steals an earlier shared load off its turbine and blacks out the later load', () => {
+  const s = flatLand();
+  // Turbine (~3 W at wind 7.5) at (-11, -20), fueled Digester at (11, -20), Mill (2 W) midway at (0, -20), Bakery (2.5 W) at (21, -20).
+  building(s, 'turbine', -11, -20);
+  const dig = building(s, 'digester', 11, -20);
+  const mill = building(s, 'mill', 0, -20);
+  const bakery = building(s, 'bakery', 21, -20);
+  mill.r.working = true;
+  bakery.r.working = true;
+  dig.r.inputs = { manure: 1 };
+  stepPower(s, 0.1, 12, { windSpeed: 7.5, cloudCover: 1 });
+  assert.equal(dig.r.working, true, 'Digester lights for the Bakery');
+  assert.equal(mill.r.powered, true, 'Mill stays on the turbine');
+  assert.equal(bakery.r.powered, true, 'Bakery runs on the Digester');
+  assert.equal(s.sim.powerSummary.anyBlackout, false, 'zero blackout');
+});
+
 test('a byproduct sent to a building since taken down goes where Auto would send it', () => {
   const { s } = craftYard();
   const mill = put(s, 'mill', 6, -46, 0), composter = put(s, 'composter', 22, -46, 0), coop = put(s, 'coop', -26, -28, Math.PI);

@@ -173,21 +173,53 @@ export function stepPower(s: GameState, dtH: number, hour: number, env: SimEnv):
     const rate = n.batteries.length * BATTERY_RATE_W;
     return dtH > 0 ? Math.min(rate, n.batteryWh / dtH) : n.batteryWh > 1e-9 ? rate : 0;
   };
-  // Light the cold Digesters whose networks need them, before any load is served or battery charged.
-  if (dtH > 0) lightNeededDigesters(nets, asks, canGive, dtH);
+  const hasFuel = (r: ThingRuntime) => DIGESTER_FUELS.some((g) => countOf(r.inputs, g) > 0);
+  const canBoost = (r: ThingRuntime) => hasFuel(r) && (!r.working || r.watts < DIGESTER_W - 1e-9);
+  const coldPotential = (n: SimNet) => n.digesters.reduce((sum, r) => sum + (canBoost(r) ? DIGESTER_W - r.watts : 0), 0);
 
-  // Serve the loads in order while the networks' producers and batteries can.
+  // Serve the loads in one unified pass while lighting cold/finishing Digesters on demand, so an ignition for a later
+  // load never shifts an earlier shared load off the network that already covered it.
   const left = new Map([...nets.values()].map((n) => [n.id, n.generationW + canGive(n)]));
+  const igniteOne = (n: SimNet): boolean => {
+    if (dtH <= 0) return false;
+    // First seamlessly roll over a burning Digester finishing mid-step so power never dips across a burn boundary.
+    for (const r of n.digesters) {
+      if (!r.working || r.watts >= DIGESTER_W - 1e-9 || !rolloverDigester(r)) continue;
+      const before = r.watts;
+      r.watts = digesterWatts(r, dtH);
+      const gain = r.watts - before;
+      n.generationW += gain;
+      left.set(n.id, (left.get(n.id) ?? 0) + gain);
+      return true;
+    }
+    for (const r of n.digesters) {
+      if (r.working || !lightDigester(r)) continue;
+      r.watts = digesterWatts(r, dtH);
+      n.generationW += r.watts;
+      left.set(n.id, (left.get(n.id) ?? 0) + r.watts);
+      return true;
+    }
+    return false;
+  };
   const short: Thing[] = [];
   for (const a of asks) {
-    const fed = a.nets.filter((n) => n.fed);
-    let best: PowerNetwork | undefined;
+    const fed = a.nets.map((n) => nets_(n.id)).filter((n) => n.fed);
+    let best: SimNet | undefined;
     for (const n of fed) if (!best || (left.get(n.id) ?? 0) > (left.get(best.id) ?? 0) + 1e-9) best = n;
+    let have = best ? (left.get(best.id) ?? 0) : 0;
+    if (dtH > 0 && best && a.w > have + 1e-9) {
+      // If the preferred network falls short, rescue with a reachable network whose fueled Digester(s) can carry it.
+      const rescue = fed.find((n) => (left.get(n.id) ?? 0) + coldPotential(n) >= a.w - 1e-9);
+      if (rescue) {
+        best = rescue;
+        have = left.get(best.id) ?? 0;
+        while (a.w > have + 1e-9 && igniteOne(best)) have = left.get(best.id) ?? 0;
+      }
+    }
     const net = best ?? a.nets[0];
     a.r.powerNetId = net ? net.id : -1;
     if (net) { net.loads.push(a.t.id); net.demandW += a.w; }
     if (!best) { a.r.powered = false; a.r.watts = 0; continue; }
-    const have = left.get(best.id) ?? 0;
     if (a.w <= have + 1e-9) {
       left.set(best.id, have - a.w);
       best.servedW += a.w;
@@ -197,6 +229,12 @@ export function stepPower(s: GameState, dtH: number, hour: number, env: SimEnv):
       a.r.powered = false; a.r.watts = 0;
       short.push(a.t);
     }
+  }
+  // Light Digesters on any network whose served loads outstrip direct generation (sparing batteries) or whose batteries sit below 85%.
+  if (dtH > 0) for (const n of nets.values()) {
+    const needs = () => n.generationW < n.servedW - 1e-9 ||
+      (n.batteryCapWh > 0 && n.batteryWh < n.batteryCapWh * DIGESTER_CHARGE_BELOW);
+    while (needs() && igniteOne(n)) { /* keep lighting until covered or out of fueled digesters */ }
   }
   // Emitters are powered when their network is fed.
   for (const n of nets.values()) for (const id of n.emitters) { const r = rt.get(id); if (r) r.powered = n.fed; }
@@ -235,67 +273,6 @@ export function stepPower(s: GameState, dtH: number, hour: number, env: SimEnv):
 }
 
 type SimNet = PowerNetwork & { batteries: ThingRuntime[]; digesters: ThingRuntime[] };
-
-/**
- * Lights cold Digesters (with waste in their hoppers) on the networks that need them: where the loads, each counted
- * against the fed network the serving would draw it from, ask more than the other producers make, or where the batteries
- * are below DIGESTER_CHARGE_BELOW. One at a time, so a second Digester stays cold while the first covers the shortfall.
- */
-function lightNeededDigesters(nets: Map<number, SimNet>, asks: { nets: PowerNetwork[]; w: number }[],
-  canGive: (n: SimNet) => number, dtH: number): void {
-  const hasFuel = (r: ThingRuntime) => DIGESTER_FUELS.some((g) => countOf(r.inputs, g) > 0);
-  const canBoost = (r: ThingRuntime) => hasFuel(r) && (!r.working || r.watts < DIGESTER_W - 1e-9);
-  if (![...nets.values()].some((n) => n.digesters.some(canBoost))) return;
-  // A dry run of the serving below: which network each load would draw from, so its demand counts once.
-  const demand = new Map<number, number>(), left = new Map([...nets.values()].map((n) => [n.id, n.generationW + canGive(n)]));
-  const coldPotential = (n: SimNet) => n.digesters.reduce((sum, r) => sum + (canBoost(r) ? DIGESTER_W - r.watts : 0), 0);
-  const igniteOne = (n: SimNet): boolean => {
-    // First seamlessly roll over a burning Digester finishing mid-step so power never dips across a burn boundary.
-    for (const r of n.digesters) {
-      if (!r.working || r.watts >= DIGESTER_W - 1e-9 || !rolloverDigester(r)) continue;
-      const before = r.watts;
-      r.watts = digesterWatts(r, dtH);
-      const gain = r.watts - before;
-      n.generationW += gain;
-      left.set(n.id, (left.get(n.id) ?? 0) + gain);
-      return true;
-    }
-    for (const r of n.digesters) {
-      if (r.working || !lightDigester(r)) continue;
-      r.watts = digesterWatts(r, dtH);
-      n.generationW += r.watts;
-      left.set(n.id, (left.get(n.id) ?? 0) + r.watts);
-      return true;
-    }
-    return false;
-  };
-  for (const a of asks) {
-    let best: SimNet | undefined;
-    for (const n of a.nets) {
-      const sn = nets.get(n.id);
-      if (sn && sn.fed && (!best || (left.get(sn.id) ?? 0) > (left.get(best.id) ?? 0) + 1e-9)) best = sn;
-    }
-    if (!best) continue;
-    let have = left.get(best.id) ?? 0;
-    if (a.w > have + 1e-9) {
-      // If the preferred network falls short, see whether a reachable network with a cold fueled Digester can carry it.
-      const rescue = a.nets.map((n) => nets.get(n.id)).find((sn): sn is SimNet =>
-        sn !== undefined && sn.fed && (left.get(sn.id) ?? 0) + coldPotential(sn) >= a.w - 1e-9);
-      if (rescue) {
-        best = rescue;
-        have = left.get(best.id) ?? 0;
-        while (a.w > have + 1e-9 && igniteOne(best)) have = left.get(best.id) ?? 0;
-      }
-    }
-    demand.set(best.id, (demand.get(best.id) ?? 0) + a.w);
-    if (a.w <= have + 1e-9) left.set(best.id, have - a.w);
-  }
-  for (const n of nets.values()) {
-    const needs = () => n.generationW < (demand.get(n.id) ?? 0) - 1e-9 ||
-      (n.batteryCapWh > 0 && n.batteryWh < n.batteryCapWh * DIGESTER_CHARGE_BELOW);
-    while (needs() && igniteOne(n)) { /* keep lighting until covered or out of cold fueled digesters */ }
-  }
-}
 
 /**
  * Reads the power again as the homestead stands now, with no time passing: what each network makes and asks for, what's
