@@ -402,6 +402,55 @@ test('the Cannery and the Loom get their first batch of oil and yarn before the 
     rt(s, spinner).outputs = { yarn: 2 };
     assert.deepEqual(firstHaul(s, 'yarn'), { kind: 'thing', id: depot });
   }
+  {
+    // With 1 sauce batch (needs 1 oil) and 1 Depot oil remaining, a 2-oil stack sends only 1 oil to the Cannery so the other isn't stranded.
+    const { s } = craftYard();
+    const press = put(s, 'oil_press', 6, -28, Math.PI), cannery = put(s, 'cannery', 22, -28, Math.PI);
+    s.sim.brief.order.targets = { tomato_sauce: 2, oil: 1 };
+    rt(s, cannery).inputs = { tomato: 4 };
+    rt(s, press).outputs = { oil: 2 };
+    let hauledCount = 0;
+    for (let k = 0; k < 30 * 6; k++) {
+      stepSim(s, 1, breezy);
+      const job = s.sim.carts.find((c) => c.job?.good === 'oil')?.job;
+      if (job) {
+        assert.deepEqual(job.to, { kind: 'thing', id: cannery });
+        hauledCount = job.count;
+        break;
+      }
+    }
+    assert.equal(hauledCount, 1, 'caps Cannery oil haul to the 1 oil needed for the final sauce batch');
+  }
+  {
+    // When the final required linen batch is already underway in the Loom, Spinner yarn goes straight to the Depot.
+    const { s, depot } = craftYard();
+    const spinner = put(s, 'spinner', 6, -28, Math.PI), loom = put(s, 'loom', 22, -28, Math.PI);
+    s.sim.brief.order.targets = { linen: 2, yarn: 2 };
+    rt(s, loom).working = true;
+    rt(s, loom).progress = 0.25;
+    rt(s, spinner).outputs = { yarn: 2 };
+    assert.deepEqual(firstHaul(s, 'yarn'), { kind: 'thing', id: depot }, 'in-progress linen counts toward order, freeing yarn for Depot');
+  }
+});
+
+test('a shed load on a neighbouring network never causes an overlapping Digester to burn fuel unnecessarily', () => {
+  const s = flatLand();
+  // Network A: solar (~1.8 W in light cloud at noon) reaches Mill (2.0 W, sheds) and shared Oil Press (1.5 W).
+  // Network B: cold Digester (with fuel) sits 22 m away so its emitters don't merge with Solar, but its 15 m range also reaches Oil Press.
+  const solar = building(s, 'solar', -11, -20);
+  const dig = building(s, 'digester', 11, -20);
+  const mill = building(s, 'mill', -19, -20);
+  const press = building(s, 'oil_press', 0, -20);
+  mill.r.working = true;
+  press.r.working = true;
+  dig.r.inputs = { manure: 1 };
+  // Noon with cloudCover 0.72 -> solar makes ~1.81 W (enough for Oil Press 1.5 W, short of Mill 2.0 W).
+  stepPower(s, 0.1, 12, { windSpeed: 0, cloudCover: 0.72 });
+  assert.ok(solar.r.watts > 1.5 && solar.r.watts < 2.0, `solar output ${solar.r.watts.toFixed(2)} W`);
+  assert.equal(dig.r.working, false, 'Digester stays cold: Solar already covers the shared Oil Press');
+  assert.deepEqual(dig.r.inputs, { manure: 1 });
+  assert.equal(press.r.powered, true, 'Oil Press runs on Solar');
+  assert.equal(mill.r.powered, false, 'Mill sheds on Solar');
 });
 
 test('a byproduct sent to a building since taken down goes where Auto would send it', () => {

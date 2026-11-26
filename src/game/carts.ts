@@ -26,7 +26,7 @@ import { err, ok, type Result } from './result.ts';
 import { CROPS, type Crop, type Field, type GameState, type Thing } from './state.ts';
 import { CART_COST, canAfford, MAX_CARTS, receiveDrop, refund, spend } from './supplies.ts';
 import {
-  BYPRODUCTS, effectivePriority, INPUT_CAP, inputsOf, isByproductMaker, outputRoom, RECIPES, runtimeOf, siloRoom, type ThingRuntime, wantsInput,
+  BYPRODUCTS, effectivePriority, INPUT_CAP, inputsOf, isByproductMaker, outputRoom, recipeOf, RECIPES, runtimeOf, siloRoom, type ThingRuntime, wantsInput,
 } from './workshops.ts';
 
 /** Units a cart carries per trip. */
@@ -338,7 +338,8 @@ function wants(s: GameState, reach?: Reach): Want[] {
       for (const [k, good] of options.entries()) {
         if (!digester && k > 0 && options.slice(0, k).some(p => sources(s, p, reach).some(src =>
           src.end.id !== t.id || src.end.kind !== 'thing'))) break;
-        const want = thingWants(s, t, r, good);
+        let want = thingWants(s, t, r, good);
+        if (depot && isWorkshop(t.kind)) want = Math.min(want, sharedCap(s, depot, t, r, good));
         if (want > 0) out.push({ end: thingEnd(t.id), at, good, want, priority: digester ? DIGESTER_PRIORITY : 2 + k * 0.5 });
       }
     }
@@ -389,17 +390,36 @@ const RESERVED: Partial<Record<Good, { kind: ThingKind; count: number; makes: Go
   yarn: { kind: 'loom', count: 2, makes: 'linen' },
 };
 
+/** Units of `good` still short at its reserved workshop for the remaining Pantry Order batches of `makes`, or Infinity if unshared. */
+function sharedShortage(s: GameState, depot: Thing, t: Thing, r: ThingRuntime, good: Good): number {
+  const need = RESERVED[good];
+  if (!need || need.kind !== t.kind || !isWorkshop(t.kind)) return Infinity;
+  const made = sources(s, need.makes).reduce((n, src) => n + src.avail, 0);
+  const baking = r.working ? countOf(recipeOf(t.kind, r, true).outputs, need.makes) : 0;
+  const remMakes = Math.max(0, depotWants(s, depot, need.makes) - made - baking);
+  if (remMakes <= 0) return 0;
+  const perBatch = Math.max(1, countOf(recipeOf(t.kind, r).outputs, need.makes));
+  const totalNeed = Math.ceil(remMakes / perBatch) * need.count;
+  return Math.max(0, totalNeed - countOf(r.inputs, good) - incoming(s, thingEnd(t.id), [good]));
+}
+
+/** When the Depot also wants `good`, cap the workshop's intake to its remaining order batches so spare units aren't stranded. */
+function sharedCap(s: GameState, depot: Thing, t: Thing, r: ThingRuntime, good: Good): number {
+  if (depotWants(s, depot, good) <= 0) return Infinity;
+  return sharedShortage(s, depot, t, r, good);
+}
+
 /**
  * Whether the Depot may take `good` ahead of the workshop that shares it: none stands, the order needs no more of what it
- * makes (counting what's made and waiting to be hauled), or it has enough of `good` for a batch.
+ * makes (counting finished stock and any batch under way), or it has enough of `good` for its next needed batch.
  */
 function workshopFed(s: GameState, depot: Thing, good: Good): boolean {
   const need = RESERVED[good];
   const t = need && s.things.find((v) => v.kind === need.kind), r = t && s.sim.things.get(t.id);
   if (!need || !t || !r) return true;
-  const made = sources(s, need.makes).reduce((n, src) => n + src.avail, 0);
-  if (depotWants(s, depot, need.makes) - made <= 0) return true;
-  return countOf(r.inputs, good) + incoming(s, thingEnd(t.id), [good]) >= need.count;
+  const shortage = sharedShortage(s, depot, t, r, good);
+  if (shortage <= 0) return true;
+  return countOf(r.inputs, good) + incoming(s, thingEnd(t.id), [good]) >= Math.min(need.count, shortage);
 }
 
 /**

@@ -705,9 +705,10 @@ export class Play implements UiCallbacks {
     if (r.kind === 'bakery') this.act({ type: 'setRecipe', id, recipe: r.recipe === 'bread' ? 'honey_cake' : 'bread' });
     else if (r.kind === 'greenhouse') this.act({ type: 'setGreenhouseCrop', id, crop: CROPS[(CROPS.indexOf(r.greenhouseCrop) + 1) % CROPS.length] });
     else if (isByproductMaker(r.kind)) {
-      // A destination taken down since it was chosen reads as not in the list: the next is the first, 'auto'.
+      // A destination taken down since it was chosen reads as 'auto', so the first click moves straight to the first standing target.
       const choices = this.byproductChoices(r.kind);
-      const next = choices[(choices.indexOf(r.priority) + 1) % choices.length];
+      const current = effectivePriority(this.state, r);
+      const next = choices[(choices.indexOf(current) + 1) % choices.length];
       this.act({ type: 'setByproductPriority', id, target: next });
     }
   }

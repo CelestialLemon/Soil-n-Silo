@@ -249,8 +249,9 @@ function lightNeededDigesters(nets: Map<number, SimNet>, asks: { nets: PowerNetw
     let best: PowerNetwork | undefined;
     for (const n of a.nets) if (n.fed && (!best || (left.get(n.id) ?? 0) > (left.get(best.id) ?? 0) + 1e-9)) best = n;
     if (!best) continue;
+    const have = left.get(best.id) ?? 0;
     demand.set(best.id, (demand.get(best.id) ?? 0) + a.w);
-    left.set(best.id, (left.get(best.id) ?? 0) - a.w);
+    if (a.w <= have + 1e-9) left.set(best.id, have - a.w);
   }
   for (const n of nets.values()) {
     const needs = () => n.generationW < (demand.get(n.id) ?? 0) - 1e-9 ||
