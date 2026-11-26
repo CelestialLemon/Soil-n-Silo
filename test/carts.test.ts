@@ -543,6 +543,25 @@ test('a field walled in on every side is loaded from among its crops, and only b
   assert.equal(fieldEdge(s, f, reachOf(s, cart, 'start')), null, 'no spot the Garage\'s cart can reach');
 });
 
+test('a 1 m moat sharing a nav cell with a field never lets a mainland cart harvest across the water', () => {
+  const s = land({
+    height: () => 0,
+    water: (x, z) => { const r = Math.max(Math.abs(x), Math.abs(z)); return r >= 5 && r < 6 ? -0.02 : undefined; },
+    depth: 0.05,
+  });
+  s.sim.supplies = sandboxSupplies();
+  put(s, 'garage', -30, -28, Math.PI);
+  const silo = put(s, 'silo', -16, -28);
+  assert.ok(apply(s, { type: 'paintFieldPolygon', crop: 'wheat', points: outline(-5, -5, 5, 5) }).ok);
+  const f = s.fields[0], cart = s.sim.carts[0];
+  const inside = must(fieldEdge(s, f), 'an island loading spot');
+  assert.ok(Math.abs(inside.x) < 5 && Math.abs(inside.z) < 5, `must stay on the island, not mainland: ${inside.x}, ${inside.z}`);
+  assert.equal(fieldEdge(s, f, reachOf(s, cart, 'start')), null, 'unreachable from the mainland');
+  f.harvestReady = 4;
+  run(s, 3);
+  assert.equal(countOf(rt(s, silo).outputs, 'wheat'), 0, 'mainland cart cannot harvest across the moat without a bridge');
+});
+
 test('exact endpoint rewrites never steer a cart through a crop cell A* skipped', () => {
   const s = land({ height: () => 0 });
   assert.ok(apply(s, { type: 'paintFieldPolygon', crop: 'wheat', points: outline(0, 2, 4, 4) }).ok);

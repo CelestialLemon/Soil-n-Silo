@@ -114,23 +114,28 @@ export function fieldEdge(s: GameState, f: Field, reach?: number): Point2 | null
   const key = `${f.id}:${reach ?? '*'}`, hit = cache.at.get(key);
   if (hit !== undefined) return hit;
   const on = (i: number) => passable(nav, i) && (reach === undefined || navComponent(s, i) === reach);
-  // The nav cells the field covers.
+  // The drivable nav cells the field covers (on the cart's patch when given). Skipping water/wall-blocked cells ensures a
+  // narrow barrier sharing a nav cell with the field can never project a loading spot across the barrier.
   const g = s.grid, own = new Set<number>();
   for (let iz = f.bounds.z0; iz <= f.bounds.z1; iz++) for (let ix = f.bounds.x0; ix <= f.bounds.x1; ix++) {
-    if (g.fieldOf[iz * g.nx + ix] === f.id) own.add(navCellOf(g.x0 + (ix + 0.5) * g.cell, g.z0 + (iz + 0.5) * g.cell));
+    if (g.fieldOf[iz * g.nx + ix] !== f.id) continue;
+    const i = navCellOf(g.x0 + (ix + 0.5) * g.cell, g.z0 + (iz + 0.5) * g.cell);
+    if (on(i)) own.add(i);
   }
-  // Its border: drivable ground by it (or a track through it) that grows no crop.
+  // Its border: drivable ground by a reachable cell of the field (or a track through it) on the same drivable patch, without
+  // reaching across a blocked diagonal corner.
   const border = new Set<number>();
   for (const i of own) {
-    const x = i % NAV_N, z = (i - x) / NAV_N;
+    const x = i % NAV_N, z = (i - x) / NAV_N, comp = navComponent(s, i);
     for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
       const ax = x + dx, az = z + dz;
       if (ax < 0 || az < 0 || ax >= NAV_N || az >= NAV_N) continue;
+      if (dx !== 0 && dz !== 0 && !passable(nav, ax + z * NAV_N) && !passable(nav, x + az * NAV_N)) continue;
       const j = ax + az * NAV_N;
-      if (nav.field[j] === 0 && on(j)) border.add(j);
+      if (nav.field[j] === 0 && on(j) && navComponent(s, j) === comp) border.add(j);
     }
   }
-  const candidates = border.size > 0 ? border : new Set([...own].filter(on));
+  const candidates = border.size > 0 ? border : own;
   const tracks: Point2[] = [];
   for (let i = 0; i < nav.track.length; i++) if (nav.track[i] === 1 && on(i)) tracks.push(navCenter(i));
   // Nearest a track (on one is best), then nearest the Garage.
