@@ -202,21 +202,34 @@ float litHueHere() { return uLitHue + uCloudTint.x * gCloud; }
 float shadeLeanHere() { return uShadeLean + uCloudTint.y * gCloud; }
 vec3 exposeHere(vec3 c) { return c * mix(uLightExposure, uCloudBands.w, gCloud); }
 // TEMPORARY (#316, sunVisibility): where a cloud softens a cast shadow (candidates b and c), how far the painted colour
-// goes from the shadow's towards the colour there with no shadow (paintBands, snowPaint), and the light it would have
-// with none (each material's, gLightOpen); 0 elsewhere: the colour as it was. And the sun's visibility for what only
-// the direct sun makes (a glint, a sparkle, the sun on the bed: never inside a cast shadow, whatever the cloud).
+// goes from the shadow's towards the colour there with no shadow (paintBands, snowPaint), the light it would have with
+// none (each material's, gLightOpen), and the light the same shadow has in the gaps between the clouds (gLightGap, c's
+// ceiling); 0 elsewhere: the colour as it was. gVisGap is the sun's visibility in the gaps' light. And gSunVis is the
+// sun's visibility for what only the direct sun makes (a glint, a sparkle, the sun on the bed): none inside a cast
+// shadow while the sun shines in the gaps, cloud or not.
 float gOpen = 0.0;
 float gLightOpen = 1.0;
+float gLightGap = 1.0;
+float gVisGap = 1.0;
 float gSunVis = 1.0;
-void lightOpen(float light, float lift) { if (gOpen > 0.0) gLightOpen = light + lift; }
+// 'lift': the light the cast shadow takes away here; 'toGap': what the gaps' light (sunLightGap, gVisGap) adds to it.
+void lightOpen(float light, float lift, float toGap) { if (gOpen > 0.0) { gLightOpen = light + lift; gLightGap = light + toGap; } }
 // The share of the way from the shadow's colour here ('shut') to the open colour: b's, gOpen; c's no more than keeps it
-// as dark, exposed (exposeHere), as the same shadow in the sun's gaps ('gap', in the gaps' light), so a shadow is never
-// lighter under a cloud than it is in the sun beside it.
+// as dark, exposed (exposeHere), as the same shadow in the gaps' light ('gap'), so a shadow is never lighter under a
+// cloud than it is in the sun beside it.
 float openShare(vec3 shut, vec3 open, vec3 gap) {
   if (uCloudShadow < 2.5) return gOpen;
   vec3 lum = vec3(0.2126, 0.7152, 0.0722);
   float e = mix(uLightExposure, uCloudBands.w, gCloud), ys = dot(shut, lum) * e, yo = dot(open, lum) * e;
   return clamp(min(gOpen, (dot(gap, lum) * uLightExposure - ys) / max(yo - ys, 1e-6)), 0.0, 1.0);
+}
+// c's ceiling: a shadow already lighter under the cloud than in the gaps (the cloud's flatter light lifts a low sun's
+// dim faces, at dusk) darkened to the gaps' (exposed), as far as the candidates apply (uCloudPart).
+vec3 gapCeiling(vec3 c, vec3 gap) {
+  if (uCloudShadow < 2.5) return c;
+  vec3 lum = vec3(0.2126, 0.7152, 0.0722);
+  float y = dot(c, lum) * mix(uLightExposure, uCloudBands.w, gCloud), yg = dot(gap, lum) * uLightExposure;
+  return y > yg ? c * mix(1.0, yg / y, uCloudPart) : c;
 }
 `;
 
@@ -323,7 +336,10 @@ float sunVisibility(vec3 worldPos, vec3 n, float brush) {
   float lit = mix(vis, 1.0, fade);
   gSunVis = lit;
   if (cand) {
-    gSunVis = mix(vis, 1.0, uOvercast.y);
+    // The direct sun: none where the shadow map is blocked (not the shadow's lift, which is the sky's light), easing
+    // into the old look as the sky closes (uCloudPart) and in from the gaps' over the cloud's edge (gCloud to 0.1).
+    gSunVis = mix(mix(vis, 1.0, overcast.y), vis, uCloudPart * min(gCloud * 10.0, 1.0));
+    gVisGap = mix(vis, 1.0, uOvercast.y);
     if (uCloudShadow > 1.5 && vis < 1.0) gOpen = gCloud * uCloudPart * (uCloudShadow > 2.5 ? ${UNDER_CLOUD_CAP.toFixed(2)} : ${UNDER_CLOUD_FADE.toFixed(2)});
   }
   return lit;
@@ -346,6 +362,13 @@ float sunLight(vec3 n, float wrap) {
   float rel = dot(n, uSunDir) / max(uSunDir.y, 0.3);
   float sun = clamp((rel + wrap) / (1.0 + wrap), 0.0, 1.0);
   return mix(sun, clamp(0.5 + 0.5 * n.y, 0.0, 1.0), overcastHere().x);
+}
+// TEMPORARY (#316): sunLight in the gaps between the clouds (their sky's share, not the cloud's), from copies as bandsOf.
+float sunLightGap(vec3 n, float wrap) {
+  n *= uCloudOne;
+  float rel = dot(n, uSunDir) / max(uSunDir.y, 0.3);
+  float sun = clamp((rel + wrap) / (1.0 + wrap), 0.0, 1.0);
+  return mix(sun, clamp(0.5 + 0.5 * n.y, 0.0, 1.0), uOvercast.x);
 }
 // The direction brush strokes run on the ground: along the contours where it slopes, a set angle where it's flat.
 float contourAngle(vec3 n, float fallback) {
@@ -391,12 +414,12 @@ vec3 paintBands(vec3 base, float light, float soft, float upness) {
   vec3 sky = skyTint() * (0.8 + 0.2 * upness);
   vec3 painted = mix(col * sky, col * sunTint(), t2 * 0.85 + t1 * 0.15);
   // TEMPORARY (#316): a cast shadow under a cloud softened in its colour, towards the colour with no shadow (gOpen); c
-  // no lighter than the same shadow in the gaps' light (openShare).
+  // no lighter than the same shadow in the gaps' light (openShare, gapCeiling).
   if (gOpen > 0.0) {
     vec3 lab1 = linToOklab(base * uCloudOne);
     vec3 open = bandsOf(lab1, gLightOpen, soft, upness, gCloud);
-    vec3 gap = uCloudShadow > 2.5 ? bandsOf(lab1, light, soft, upness, 0.0) : painted;
-    painted = mix(painted, open, openShare(painted, open, gap));
+    vec3 gap = uCloudShadow > 2.5 ? bandsOf(lab1, gLightGap, soft, upness, 0.0) : painted;
+    painted = gapCeiling(mix(painted, open, openShare(painted, open, gap)), gap);
   }
   return painted;
 }

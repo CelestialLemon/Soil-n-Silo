@@ -91,11 +91,13 @@ vec3 groundTools(vec3 col, vec3 p, vec3 n, float light) {
     if (o.a > 0.0) {
       float lit = uToolsOverlayLook.x;
       // Painted in the land's light (the bands it was painted with), or as in full sun wherever it lies.
-      // (TEMPORARY, #316: its light with no cast shadow, as the land's, gLightOpen.)
-      float landOpen = gLightOpen;
+      // (TEMPORARY, #316: its light with no cast shadow and in the gaps' light, as the land's, gLightOpen and gLightGap.)
+      float landOpen = gLightOpen, landGap = gLightGap;
       gLightOpen = mix(1.0, landOpen, lit);
+      gLightGap = mix(1.0, landGap, lit);
       vec3 tint = paintBands(toolsSrgbToLin(o.rgb), mix(1.0, light, lit), 0.02, n.y * 0.5 + 0.5);
       gLightOpen = landOpen;
+      gLightGap = landGap;
       // How far into the tile from its nearest sides (tiles, and pixels), and whether the tiles across them have another colour.
       vec2 f = fract(q), fw = max(fwidth(q), vec2(1e-5));
       vec2 d = min(f, 1.0 - f), side = d / fw;

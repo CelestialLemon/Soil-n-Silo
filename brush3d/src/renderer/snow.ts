@@ -110,8 +110,8 @@ vec3 snowPaint(float light, float soft, float brush) {
   // bandsOf's).
   if (gOpen > 0.0) {
     vec3 open = snowBandsOf(gLightOpen, soft, stroke, gCloud);
-    vec3 gap = snowBandsOf(light, soft, stroke, 0.0);
-    painted = mix(painted, open, openShare(painted, open, gap));
+    vec3 gap = snowBandsOf(gLightGap, soft, stroke, 0.0);
+    painted = gapCeiling(mix(painted, open, openShare(painted, open, gap)), gap);
   }
   return painted;
 }
