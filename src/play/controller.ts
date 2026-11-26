@@ -15,7 +15,7 @@
 // strip reads it out (liveWeatherView) with the Weather Station's days ahead once one stands (stationForecast). A
 // `?weather=` lock holds it until the player lets it go (onClearWeatherLock); a jump of the clock reads it again at once.
 import {
-  type Action, cellIx, cellIz, effectiveMoisture, erosionDrain, GOOD_LABELS, apply, diagnoseIdleCarts, CART_COST, CATALOG, CLOCK_JUMPED, type Change, generateValley, type GameState, heightAt, type Point2,
+  type Action, type ByproductMaker, type ByproductTarget, BYPRODUCTS, CROPS, isByproductMaker, cellIx, cellIz, effectiveMoisture, erosionDrain, GOOD_LABELS, apply, diagnoseIdleCarts, CART_COST, CATALOG, CLOCK_JUMPED, type Change, generateValley, type GameState, heightAt, type Point2,
   climateFor, refreshFieldWeather, refreshPower, resetSteadyOnClockJump, rollWeatherSeed, type Season, SETUP_CHANGED, type SimEvent, stationForecast, stepSim, stepWeather,
   suggestWaterWheelYaw, type ThingKind, TREE_SPECIES, wrapAngle,
 } from '../game/index.ts';
@@ -26,9 +26,12 @@ import {
 import { clearUrlParam, type PreviewSpec, type World, writeUrlParam } from '../world/index.ts';
 import { cartControls, liveWeatherView, skyWeather, thingDetail, thingStatus, uiWeather, valleyStats } from './status.ts';
 import {
-  BRUSH, channelReadout, extend, hedgeReadout, isFieldTool, isPowerKind, isStrokeTool, placeReadout, placesPower, STROKE_STEP,
+  BRUSH, channelReadout, cropOfTool, extend, hedgeReadout, isFieldTool, isPowerKind, isStrokeTool, placeReadout, placesPower, STROKE_STEP,
   type StrokeTool, trackReadout, treeReadout, TURN_STEP,
 } from './tools.ts';
+
+/** How a byproduct's destination reads on its card's pip ("Bran → Digester"). */
+const PRIORITY_LABELS: Record<ByproductTarget, string> = { auto: 'Auto', coop: 'Coop', composter: 'Composter', digester: 'Digester', silo: 'Silo' };
 
 /** How far (CSS px) a press may wander and still be a click. */
 const CLICK_SLOP = 5;
@@ -235,9 +238,9 @@ export class Play implements UiCallbacks {
     const r = this.state.sim.things.get(t.id);
     if (t.kind === 'bakery' && r) view.preference = `Recipe: ${r.recipe === 'bread' ? 'Bread' : 'Honey Cake'}`;
     if (t.kind === 'greenhouse' && r) view.preference = `Crop: ${GOOD_LABELS[r.greenhouseCrop].label}`;
-    if ((t.kind === 'mill' || t.kind === 'coop') && r && this.state.things.some(v => v.kind === 'composter')
-      && this.state.things.some(v => v.kind === (t.kind === 'mill' ? 'coop' : 'silo')))
-      view.preference = `${t.kind === 'mill' ? 'Bran' : 'Manure'} → ${r.priority[0].toUpperCase() + r.priority.slice(1)}`;
+    // A byproduct's destination is the player's to choose only once two of its destinations stand to choose between.
+    if (isByproductMaker(t.kind) && r && this.byproductChoices(t.kind).length > 2)
+      view.preference = `${GOOD_LABELS[BYPRODUCTS[t.kind].good].label} → ${PRIORITY_LABELS[r.priority]}`;
     if (t.kind === 'garage') view.cartControls = cartControls(this.state);
     return view;
   }
@@ -423,20 +426,20 @@ export class Play implements UiCallbacks {
     st.dirty = false;
     const last = st.points[st.points.length - 1];
     switch (st.tool) {
-      case 'field:wheat': case 'field:beans': case 'field:erase': {
-        const erase = st.tool === 'field:erase';
+      case 'field:wheat': case 'field:beans': case 'field:tomato': case 'field:sunflower': case 'field:flax': case 'field:erase': {
+        const crop = cropOfTool(st.tool), erase = crop === null;
         this.world.setPreview({ kind: 'field', x: last.x, z: last.z, radius: this.brush, erase });
         if (st.sent >= st.points.length) return;
         const seg = st.points.slice(Math.max(0, st.sent - 1));
         st.sent = st.points.length;
-        const r = apply(this.state, erase
+        const r = apply(this.state, crop === null
           ? { type: 'eraseField', points: seg, radius: this.brush }
-          : { type: 'paintField', crop: st.tool === 'field:wheat' ? 'wheat' : 'beans', points: seg, radius: this.brush });
+          : { type: 'paintField', crop, points: seg, radius: this.brush });
         if (r.ok) {
           this.world.sync(r.value);
           this.statsDirty = true;
           const area = this.state.fields.reduce((sum, f) => sum + f.areaM2, 0);
-          this.readout = { text: `${erase ? 'Clearing' : st.tool === 'field:wheat' ? 'Painting wheat' : 'Painting beans'} · fields ${Math.round(area)} m²` };
+          this.readout = { text: `${crop === null ? 'Clearing' : `Painting ${GOOD_LABELS[crop].label.toLowerCase()}`} · fields ${Math.round(area)} m²` };
         } else if (!erase) this.readout = { text: r.error, tone: 'warn' };
         return;
       }
@@ -700,12 +703,18 @@ export class Play implements UiCallbacks {
     const r = this.state.sim.things.get(id);
     if (!r) return;
     if (r.kind === 'bakery') this.act({ type: 'setRecipe', id, recipe: r.recipe === 'bread' ? 'honey_cake' : 'bread' });
-    else if (r.kind === 'greenhouse') this.act({ type: 'setGreenhouseCrop', id, crop: r.greenhouseCrop === 'beans' ? 'wheat' : 'beans' });
-    else {
-      const choices = r.kind === 'mill' ? ['auto', 'coop', 'composter'] as const : ['auto', 'composter', 'silo'] as const;
-      const next = choices[(choices.findIndex(p => p === r.priority) + 1) % choices.length];
+    else if (r.kind === 'greenhouse') this.act({ type: 'setGreenhouseCrop', id, crop: CROPS[(CROPS.indexOf(r.greenhouseCrop) + 1) % CROPS.length] });
+    else if (isByproductMaker(r.kind)) {
+      // A destination taken down since it was chosen reads as not in the list: the next is the first, 'auto'.
+      const choices = this.byproductChoices(r.kind);
+      const next = choices[(choices.indexOf(r.priority) + 1) % choices.length];
       this.act({ type: 'setByproductPriority', id, target: next });
     }
+  }
+
+  /** Where a byproduct may be sent first now: 'auto', then each of its destinations that stands in the valley. */
+  private byproductChoices(kind: ByproductMaker): ByproductTarget[] {
+    return BYPRODUCTS[kind].targets.filter((p) => p === 'auto' || this.state.things.some((v) => v.kind === p));
   }
 
   onBuyCart() {

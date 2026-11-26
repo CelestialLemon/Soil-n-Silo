@@ -29,6 +29,12 @@ const PATHS = {
   relay: 'M12 11v10M9 21h6M12 11m-1.6 0a1.6 1.6 0 1 0 3.2 0a1.6 1.6 0 1 0-3.2 0M8.2 7.2a5.4 5.4 0 0 0 0 7.6M15.8 7.2a5.4 5.4 0 0 1 0 7.6M5.4 4.6a9.2 9.2 0 0 0 0 12.8M18.6 4.6a9.2 9.2 0 0 1 0 12.8',
   wheat: 'M12 21V5M12 8.5L9 6.5M12 8.5l3-2M12 12.5l-3-2M12 12.5l3-2M12 16.5l-3-2M12 16.5l3-2M12 5V3',
   beans: 'M5.5 18.5C5.5 10 11 5 18.5 5.5 19 13 14 18.5 5.5 18.5zM9 15.2h.01M12 12.2h.01M15 9.2h.01M4 20l2-2',
+  // A round fruit with its star of a calyx and stalk.
+  tomato: 'M12 7.5c4.6 0 7.5 2.8 7.5 6.3S16.4 20.5 12 20.5 4.5 17.3 4.5 13.8 7.4 7.5 12 7.5zM12 7.5V4M12 7.5L8.5 6M12 7.5l3.5-1.5M12 7.5l-2 2.6M12 7.5l2 2.6',
+  // A flower head on a tall stalk, with one leaf.
+  sunflower: 'M12 7.5m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0M12 2.5v1.2M12 11.3v1.2M7 7.5h1.2M15.8 7.5H17M8.5 4l.9.9M14.6 10.1l.9.9M8.5 11l.9-.9M14.6 4.9l.9-.9M12 12.5V21M12 17c0-2.2 1.7-3.5 4-3.5 0 2.2-1.7 3.5-4 3.5z',
+  // Slim stems, each topped with a small five-petalled flower.
+  flax: 'M8 21V9M12 21V6M16 21V10M8 9m-1.5 0a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M12 6m-1.5 0a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M16 10m-1.5 0a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M8 15l-2-1.5M16 16l2-1.5',
   eraseField: 'M4.5 15.5l8-8 6.5 6.5-6 6H8.5zM9 11l6.5 6.5M14.5 20h5.5',
   dig: `M14.5 3.5l6 6-2.6 2.6-6-6zM11.9 6.1L5 13M4.2 13.8l1.6 1.6${WAVE}`,
   fill: 'M3 19c3-6 15-6 18 0zM12 3.5v8M8.8 8.4l3.2 3.2 3.2-3.2',
@@ -42,6 +48,16 @@ const PATHS = {
   crates: 'M3 12h9v8.5H3zM12 12h9v8.5h-9zM7.5 3.5h9V12h-9zM3 12l9 8.5M12 12l9 8.5M7.5 3.5l9 8.5',
   // A mast with spinning cups on top and a wind vane below them.
   weatherStation: 'M12 21V6M9 21h6M4.5 6h15M4.5 6a2.2 2.2 0 0 0 4.4 0M15.1 6a2.2 2.2 0 0 0 4.4 0M12 6V3.5M12 13.5h6.5M18.5 13.5l-1.8-1.8M18.5 13.5l-1.8 1.8M12 13.5H7.5l-1.5-1.5M7.5 13.5L6 15',
+  // A screw press: a frame, its screw and handwheel, and a jar under the spout.
+  oilPress: 'M5 20.5V7h14v13.5M3.5 7h17M12 7v6M9 13h6v2.5H9zM8 4h8M12 4v3M15.5 18.5h2.5v2h-2.5zM14 15.5l2 3',
+  // A big kettle on its stove, steam curling off its pipe.
+  cannery: 'M4.5 20.5h15M6 20.5v-4h12v4M6.5 16.5a5.5 4.5 0 0 1 11 0M12 12V9.5M10 9.5h4M17 13.5l2.5-2V6M19.5 6c-1-1.2 1-2 0-3.2',
+  // A great spinning wheel on its stand, with the bobbin beside.
+  spinner: 'M10 10m-6 0a6 6 0 1 0 12 0a6 6 0 1 0-12 0M10 10m-1 0a1 1 0 1 0 2 0a1 1 0 1 0-2 0M10 4v12M4 10h12M10 16l-3 4.5M10 16l3 4.5M5.5 20.5h9M18.5 8v8M17 9.5h3M17 14.5h3',
+  // A loom's frame with the warp threads and a shuttle across them.
+  loom: 'M4 20.5V4M20 20.5V4M3 4.5h18M4 17h16M7.5 4.5V17M10.5 4.5V17M13.5 4.5V17M16.5 4.5V17M5.5 11h13M9 9.5h6v3H9z',
+  // A round tank under a dome, a pipe up to a small flame.
+  digester: 'M4 20.5h16M5.5 20.5V13h13v7.5M5.5 13a6.5 5.5 0 0 1 13 0M18.5 15.5h2V8M20.5 8c-1.4-1.2-.6-2.6 0-4 .6 1.4 1.4 2.8 0 4zM9 17h6',
   // An arched glasshouse with its glazing ribs and a door.
   greenhouse: 'M3.5 20V12a8.5 7 0 0 1 17 0v8zM3.5 20h17M8 20v-9.8M16 20v-9.8M12 20V5M3.5 13.5h17M10.2 20v-3.6h3.6V20',
   // Categories.

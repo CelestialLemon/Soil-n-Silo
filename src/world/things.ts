@@ -7,8 +7,9 @@
 // glows and smokes while it bakes with power, the garage's lamp while it has power, the battery's rings show its charge,
 // the farmhouse smokes and its windows light after sunset while it has power, the lanterns (self-charging) and the Depot's
 // beacon glow after dusk always (brush3d lights what runs, at night). The Weather Station's anemometer cups spin with the
-// wind at its mast, and the Heated Greenhouse's lanterns glow warm at night while it's heated and powered. What has no
-// power sits quiet and dark.
+// wind at its mast, and the Heated Greenhouse's lanterns glow warm at night while it's heated and powered. The Oil Press's
+// handwheel and the Spinner's wheel turn, the Cannery's stove glows and steams and the Loom weaves only while they work with
+// power; the Biogas Digester's flare burns while it burns waste, whatever the sky. What has no power sits quiet and dark.
 import * as THREE from 'three';
 import {
   blocksWind, type BrushRenderer, type LandArea, loadModel, MODELS, type ModelParts, ModelSet, type Obstacle,
@@ -145,6 +146,12 @@ export class Things {
       case 'sprinkler': running = (rt?.watts ?? 0) > 0; spin = running ? 1 : 0; break;
       case 'mill': running = working && powered; spin = running ? 1 : 0; break;
       case 'bakery': running = working && powered; break;
+      // The press's handwheel and the great spinning wheel turn only while they work with power.
+      case 'oil_press': case 'spinner': running = working && powered; spin = running ? 1 : 0; break;
+      // The cannery's stove glows and its pipe steams, and the loom weaves, while they work with power.
+      case 'cannery': case 'loom': running = working && powered; break;
+      // It makes its own power: its flare burns and its pipe smokes while it burns waste, day or night, in any weather.
+      case 'digester': running = working; break;
       // The drum turns by hand-crank and gravity: no power, only something to turn.
       case 'composter': spin = working ? 1 : 0; running = working; break;
       case 'battery': running = powered; charge = RINGS.filter((at) => (rt?.charge ?? 0) >= at).length; break;

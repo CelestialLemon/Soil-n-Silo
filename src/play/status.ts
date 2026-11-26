@@ -155,6 +155,11 @@ export function thingDetail(s: GameState, t: Thing, diagnosis: string | null = n
     }
     case 'solar': case 'turbine': case 'waterwheel':
       return `Making ${watts(r.watts)}${net ? ` · network ${watts(net.generationW)} made, ${watts(net.servedW)} used` : ''}`;
+    case 'digester': {
+      // Its hopper (the waste the carts bring) and what it and its network make.
+      const fuel = totalStored(r.inputs) > 0 ? `Hopper: ${describeInventory(r.inputs)}` : 'Hopper empty';
+      return `${fuel} · making ${watts(r.watts)}${net ? ` · network ${watts(net.generationW)} made, ${watts(net.servedW)} used` : ''}`;
+    }
     case 'battery': {
       if (!net) return `${(r.charge * BATTERY_WH).toFixed(1)} / ${BATTERY_WH} Wh`;
       const spare = net.generationW - net.servedW;

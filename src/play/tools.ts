@@ -2,22 +2,33 @@
 // live line each one says while it's hovered or dragged ("Flowing 16 m", "The ground is too steep here."). Plain functions
 // of the game's state, so the controller only asks.
 import {
-  canDig, canPlace, canPlant, canTrack, CATALOG, channelPath, type ChannelPreview, type GameState, pathLength, type Point2, previewChannelFlow,
+  canDig, canPlace, canPlant, canTrack, CATALOG, channelPath, type ChannelPreview, type Crop, CROPS, type GameState, pathLength, type Point2, previewChannelFlow,
   type ThingKind, trackBridges, trackPath,
 } from '../game/index.ts';
 import { placedKind, type ToolId, type ToolReadout } from '../ui/index.ts';
 
+/** A field brush that paints a crop: one for each crop (src/game/state.ts CROPS). */
+export type CropTool = `field:${Crop}`;
+/** The field brushes: a crop's, or the eraser. */
+export type FieldTool = CropTool | 'field:erase';
 /** The tools a left drag paints with, rather than pans the view. */
-export type StrokeTool = 'field:wheat' | 'field:beans' | 'field:erase' | 'channel:dig' | 'channel:fill' | 'track:draw' | 'hedge:draw';
-const STROKES: readonly ToolId[] = ['field:wheat', 'field:beans', 'field:erase', 'channel:dig', 'channel:fill', 'track:draw', 'hedge:draw'];
+export type StrokeTool = FieldTool | 'channel:dig' | 'channel:fill' | 'track:draw' | 'hedge:draw';
+const FIELD_TOOLS: readonly FieldTool[] = [...CROPS.map((c): CropTool => `field:${c}`), 'field:erase'];
+const STROKES: readonly ToolId[] = [...FIELD_TOOLS, 'channel:dig', 'channel:fill', 'track:draw', 'hedge:draw'];
 export const isStrokeTool = (t: ToolId): t is StrokeTool => STROKES.includes(t);
-export const isFieldTool = (t: ToolId) => t.startsWith('field:');
+export const isFieldTool = (t: ToolId): t is FieldTool => (FIELD_TOOLS as readonly ToolId[]).includes(t);
+/** The crop a field brush paints, or null for the eraser and every other tool. */
+export function cropOfTool(t: ToolId): Crop | null {
+  if (!isFieldTool(t) || t === 'field:erase') return null;
+  return t.slice('field:'.length) as Crop;
+}
 
 /** The field brush's radius, m: `[` and `]` step it. */
 export const BRUSH = { min: 2, max: 5, step: 0.5, start: 3 } as const;
 /** How far apart a stroke's points are kept, m. */
 export const STROKE_STEP: Record<StrokeTool, number> = {
-  'field:wheat': 0.6, 'field:beans': 0.6, 'field:erase': 0.6, 'channel:dig': 0.8, 'channel:fill': 0.5, 'track:draw': 1, 'hedge:draw': 1,
+  ...(Object.fromEntries(FIELD_TOOLS.map((t) => [t, 0.6])) as Record<FieldTool, number>),
+  'channel:dig': 0.8, 'channel:fill': 0.5, 'track:draw': 1, 'hedge:draw': 1,
 };
 /** A turn of R, Shift+wheel or the ring: 15°. */
 export const TURN_STEP = Math.PI / 12;

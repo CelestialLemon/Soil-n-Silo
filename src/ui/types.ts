@@ -6,7 +6,7 @@ import type { BriefState, DayForecast, ForecastIcon, PowerSummary, Season, Thing
 export type PlaceTool = `place:${ThingKind}`;
 /** The free land-craft brushes. */
 export type LandTool =
-  | 'field:wheat' | 'field:beans' | 'field:erase'
+  | 'field:wheat' | 'field:beans' | 'field:tomato' | 'field:sunflower' | 'field:flax' | 'field:erase'
   | 'channel:dig' | 'channel:fill'
   | 'track:draw' | 'hedge:draw' | 'tree:plant'
   /** Clears a track, a hedgerow or a planted tree under the pointer. */
