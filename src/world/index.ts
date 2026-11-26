@@ -183,7 +183,7 @@ class ValleyWorld implements World {
     // On a high-DPI screen the frame is drawn at 1080p's pixel count and scaled up: the renderer's budget (brush3d/docs/PERFORMANCE.md).
     r.maxPixels = 1920 * 1080;
     if (options.quality) { r.setQuality(QUALITY[options.quality]); this.quality = options.quality; }
-    // TEMPORARY (#316): the look candidates for a cast shadow under a cloud, on the preview (?cloudShadow=b|a|c|orig).
+    // TEMPORARY (#316): the look candidates for a cast shadow under a cloud, on the preview (?cloudShadow=c|a|b|orig).
     const cloudShadow = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('cloudShadow');
     if ((CLOUD_SHADOW_LOOKS as readonly string[]).includes(cloudShadow ?? '')) r.settings.cloudShadow = cloudShadow as CloudShadowLook;
     this.resize();

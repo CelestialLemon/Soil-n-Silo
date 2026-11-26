@@ -86,11 +86,10 @@ export const gapCover = (cover: number) => {
  */
 export const UNDER_CLOUD_FADE = 0.8;
 /**
- * TEMPORARY (#316, candidate c): the most of the sun's cast shadows a cloud takes away while the sun still shines in the
- * gaps, so a shadow under a cloud lifts into the half-tone and no further (the ground's, the grass's and the inked
- * things' shadows from 0.18-0.3 to 0.38-0.48; the lit band starts at 0.62, less its soft edge).
+ * TEMPORARY (#316, candidate c): how far a cloud softens a cast shadow at most, of the way from its colour to the colour
+ * there with no shadow (UNDER_CLOUD_FADE is the dissolve's, b's): half, and never lighter than the shadow in the sun.
  */
-export const UNDER_CLOUD_CAP = 0.25;
+export const UNDER_CLOUD_CAP = 0.5;
 /** How strong the cloud shadows are by the moon, of the sun's (the developer's "yes, faintly", 2026-10-31). */
 export const CLOUD_NIGHT = 0.4;
 /**

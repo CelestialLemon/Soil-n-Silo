@@ -91,6 +91,13 @@ float snowBuries(vec3 p, float d) {
 // its lit band, a little darker and cooler. Its colours are worked out in the hour's light once a frame
 // (SnowPaint below), in the gaps and under a cloud, mixed here by the cloud's shade. Not exposed (the material does that,
 // as for its own).
+// TEMPORARY (#316): snowPaint's colour at 'light' with 'cloud' of a cloud's shade over it, 'stroke' its brush (clamped).
+vec3 snowBandsOf(float light, float soft, float stroke, float cloud) {
+  light *= uCloudOne; soft *= uCloudOne; stroke *= uCloudOne; cloud *= uCloudOne;
+  vec3 lit = mix(mix(uSnowGap[2], uSnowCloud[2], cloud), mix(uSnowGap[3], uSnowCloud[3], cloud), max(stroke, 0.0) * 0.6) * (1.0 - min(stroke, 0.0) * 0.015);
+  float t1 = smoothstep(0.30 - soft, 0.30 + soft, light), t2 = smoothstep(0.62 - soft, 0.62 + soft, light);
+  return mix(mix(mix(uSnowGap[0], uSnowCloud[0], cloud), mix(uSnowGap[1], uSnowCloud[1], cloud), t1), lit, t2);
+}
 vec3 snowPaint(float light, float soft, float brush) {
   vec3 shade = mix(uSnowGap[0], uSnowCloud[0], gCloud), half_ = mix(uSnowGap[1], uSnowCloud[1], gCloud);
   vec3 lit = mix(uSnowGap[2], uSnowCloud[2], gCloud), stroked = mix(uSnowGap[3], uSnowCloud[3], gCloud);
@@ -98,13 +105,15 @@ vec3 snowPaint(float light, float soft, float brush) {
   lit = mix(lit, stroked, max(stroke, 0.0) * 0.6) * (1.0 - min(stroke, 0.0) * 0.015);
   float t1 = smoothstep(0.30 - soft, 0.30 + soft, light);
   float t2 = smoothstep(0.62 - soft, 0.62 + soft, light);
-  // TEMPORARY (#316): wider edges where a cloud lifts a cast shadow (gBandSoft); the bands as they were elsewhere.
-  if (gBandSoft > 0.0) {
-    float wide = soft + gBandSoft;
-    t1 = smoothstep(0.30 - wide, 0.30 + wide, light);
-    t2 = smoothstep(0.62 - wide, 0.62 + wide, light);
+  vec3 painted = mix(mix(shade, half_, t1), lit, t2);
+  // TEMPORARY (#316): a cast shadow under a cloud softened in its colour, as paintBands does (and from copies, as
+  // bandsOf's).
+  if (gOpen > 0.0) {
+    vec3 open = snowBandsOf(gLightOpen, soft, stroke, gCloud);
+    vec3 gap = snowBandsOf(light, soft, stroke, 0.0);
+    painted = mix(painted, open, openShare(painted, open, gap));
   }
-  return mix(mix(shade, half_, t1), lit, t2);
+  return painted;
 }
 ${FROST_GLSL}
 `;

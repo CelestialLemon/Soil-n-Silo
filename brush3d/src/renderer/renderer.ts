@@ -139,9 +139,10 @@ export interface Settings {
   resolveDepth: boolean;
   /**
    * TEMPORARY (#316): the look a cast shadow takes under a cloud's shadow, for the developer to pick on the preview
-   * (CLOUD_SHADOW_LOOKS; the ones not picked go before it merges): 'a' a veil (the cloud dims the shadow with the ground
-   * round it), 'b' held shade (the shadow keeps its sunny-day look, the ground round it dims to meet it), 'c' a half
-   * step (the cloud lifts the shadow into the half-tone, no further), 'orig' as before (lifted into the lit band).
+   * (CLOUD_SHADOW_LOOKS; the ones not picked go before it merges): 'c' a half step (the default: the cloud softens the
+   * shadow halfway to the ground round it at most, never lighter than the shadow in the sun), 'a' a veil (the cloud dims
+   * the shadow with the ground round it), 'b' a dissolve (the cloud softens it to a faint trace), 'orig' as before (its
+   * light lifted into the lit band, banding and sliding at the cloud's edge).
    */
   cloudShadow: CloudShadowLook;
 }
@@ -1266,6 +1267,9 @@ export class BrushRenderer {
     s.uCloudOvercast.value.set(rs.sky, THREE.MathUtils.lerp(THREE.MathUtils.lerp(UNDER_CLOUD_FADE, r.shadowFade, lift), rs.shadowFade, g), rs.shadowBlur);
     s.uCloudStrength.value = strength;
     s.uCloudShadow.value = ({ orig: 0, a: 1, b: 2, c: 3 } as const)[this.settings.cloudShadow];
+    // (Fully while the gaps are in the sun; easing into the old look over the gaps' last turn to the overcast, from 0.95,
+    // so a closed sky is the old look exactly, a golden break's under a deck too.)
+    s.uCloudPart.value = THREE.MathUtils.clamp((1 - gap) * 20, 0, 1);
     const az = THREE.MathUtils.degToRad(look.sunAz), el = THREE.MathUtils.degToRad(Math.max(look.sunEl, 4));
     this.sunElNow = look.sunEl;
     s.uSunDir.value.set(Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el)).normalize();
